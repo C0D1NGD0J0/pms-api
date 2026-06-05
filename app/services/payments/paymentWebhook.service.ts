@@ -4,7 +4,6 @@ import { Types } from 'mongoose';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
-import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
@@ -19,21 +18,29 @@ import {
   PaymentMethod,
 } from '@interfaces/index';
 
+/**
+ * Fields available on the Stripe Invoice object in webhook payloads.
+ * Since API v2025-03-31.basil, `charge`, `payment_intent`, `paid`, and
+ * `latest_charge` were removed from the top-level — use
+ * `stripeService.getInvoicePaymentDetails()` to retrieve those via the
+ * `payments` sub-object expansion.
+ */
 export interface IStripeInvoiceWebhookData {
-  last_payment_error?: {
-    message?: string;
-    code?: string;
-    type?: string;
-    payment_method?: { type?: string };
-  };
+  metadata?: Record<string, string>;
+  default_payment_method?: string;
   next_payment_attempt?: number;
   hosted_invoice_url?: string;
   attempt_count?: number;
-  charge?: string;
+  subscription?: string;
+  period_start?: number;
+  amount_due?: number;
+  currency?: string;
+  customer?: string;
+  status?: string;
+  id?: string;
 }
 
 interface IConstructor {
-  subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
@@ -84,7 +91,6 @@ export class PaymentWebhookService {
   private readonly log: Logger;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
-  private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly emitterService: EventEmitterService;
   private readonly stripeService: StripeService;
@@ -95,7 +101,6 @@ export class PaymentWebhookService {
   constructor({
     paymentGatewayService,
     paymentProcessorDAO,
-    subscriptionPlanConfig,
     subscriptionDAO,
     emitterService,
     stripeService,
@@ -106,7 +111,6 @@ export class PaymentWebhookService {
     this.log = createLogger('PaymentWebhookService');
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
-    this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.subscriptionDAO = subscriptionDAO;
     this.emitterService = emitterService;
     this.stripeService = stripeService;
@@ -121,7 +125,7 @@ export class PaymentWebhookService {
   ): IPromiseReturnedData<void> {
     try {
       const payment = await this.paymentDAO.findFirst({
-        gatewayPaymentId: invoiceId,
+        $or: [{ gatewayPaymentId: invoiceId }, { 'splitInvoices.invoiceId': invoiceId }],
         deletedAt: null,
       });
 
@@ -135,9 +139,11 @@ export class PaymentWebhookService {
         return { success: true, data: undefined, message: 'Payment already paid' };
       }
 
-      const chargeId = invoiceData.charge;
+      // ── Mark payment as PAID ─────────────────────────────────────────────
+      const paymentDetails = await this.stripeService.getInvoicePaymentDetails(invoiceId);
+      const chargeId = paymentDetails.chargeId;
       if (!chargeId) {
-        this.log.warn('No charge ID found in invoice', { invoiceId });
+        this.log.warn('No charge ID found for invoice', { invoiceId });
       }
 
       const hostedInvoiceUrl = invoiceData.hosted_invoice_url || null;
@@ -159,38 +165,40 @@ export class PaymentWebhookService {
 
       this.log.info('Payment marked as paid', { pytuid: payment.pytuid, invoiceId, chargeId });
 
+      // Look up tenant user ID from the Profile ref for receipt email
+      let tenantUserId: string | undefined;
+      if (payment.tenant) {
+        try {
+          const tenantProfile = await this.profileDAO.findFirst({
+            _id: new Types.ObjectId(payment.tenant.toString()),
+          });
+          if (tenantProfile?.user) {
+            tenantUserId = tenantProfile.user.toString();
+          }
+        } catch (err) {
+          this.log.warn(
+            { err, pytuid: payment.pytuid },
+            'Could not resolve tenant user ID for receipt'
+          );
+        }
+      }
+
       this.emitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
         cuid: payment.cuid,
         pytuid: payment.pytuid,
         invoiceId,
         amount: payment.baseAmount,
         paidAt: dayjs().toDate(),
+        tenantId: tenantUserId,
+        receiptUrl: hostedInvoiceUrl ?? undefined,
+        paymentType: payment.paymentType,
       });
 
-      if (
-        payment.paymentType === PaymentRecordType.MAINTENANCE &&
-        !payment.vendorId &&
-        payment.maintenanceRequestUid
-      ) {
-        // Stamp the invoice so the funds-availability cron can pick it up
-        await this.invoiceDAO.update(
-          { mruid: payment.maintenanceRequestUid, cuid: payment.cuid, isDeleted: false },
-          {
-            $set: {
-              tenantPaymentStatus: TenantPaymentStatus.PAID,
-              ...(chargeId && { stripeChargeId: chargeId }),
-            },
-          }
-        );
-
-        this.emitterService.emit(EventTypes.MAINTENANCE_CHARGE_PAID, {
-          cuid: payment.cuid,
-          pytuid: payment.pytuid,
-          mruid: payment.maintenanceRequestUid,
-          amountInCents: payment.baseAmount,
-          chargeId: chargeId ?? undefined,
-        });
-      }
+      await this.markMaintenanceChargePaid(
+        payment,
+        chargeId ?? undefined,
+        hostedInvoiceUrl ?? undefined
+      );
 
       return { success: true, data: undefined, message: 'Payment updated successfully' };
     } catch (error: any) {
@@ -205,7 +213,7 @@ export class PaymentWebhookService {
   ): IPromiseReturnedData<void> {
     try {
       const payment = await this.paymentDAO.findFirst({
-        gatewayPaymentId: invoiceId,
+        $or: [{ gatewayPaymentId: invoiceId }, { 'splitInvoices.invoiceId': invoiceId }],
         deletedAt: null,
       });
 
@@ -214,37 +222,47 @@ export class PaymentWebhookService {
         return { success: false, data: undefined, message: 'Payment record not found' };
       }
 
-      // ── ACSS-specific failure: attempt card retry before standard failure logic ─
-      // Primary signal: paymentMandates on the tenant profile (set only for ACSS/PAD).
-      // last_payment_error is a PaymentIntent field and is absent on Invoice webhook payloads
-      // unless payment_intent is expanded — use it only as a secondary / supplementary check.
-      const [tenantProfile, processor] = await Promise.all([
-        this.profileDAO.findFirst({ user: new Types.ObjectId(payment.tenant?.toString()) }),
-        this.paymentProcessorDAO.findFirst({ cuid: payment.cuid }),
-      ]);
-      const mandateId = processor?.accountId
-        ? tenantProfile?.tenantInfo?.paymentMandates?.get(processor.accountId)
-        : null;
+      // ── Detect bank-debit (ACSS) failure and attempt card retry ────────────────
+      // Check the invoice's default_payment_method type from Stripe. This is the
+      // only reliable signal — Stripe often rejects ACSS before creating a
+      // PaymentIntent, so PI-level error fields are unavailable.
+      let isAcssFailure = false;
+      let failureReason = 'Payment failed';
 
-      const lastError = invoiceData.last_payment_error;
-      const errorBasedAcss =
-        lastError?.payment_method?.type === 'acss_debit' ||
-        lastError?.code === 'amount_too_large' ||
-        (lastError?.message ?? '').toLowerCase().includes('acss_debit');
-
-      const isAcssFailure = !!mandateId || errorBasedAcss;
+      if (invoiceData.default_payment_method) {
+        try {
+          const pm = await this.stripeService.retrievePaymentMethod(
+            invoiceData.default_payment_method
+          );
+          isAcssFailure = pm.type === 'acss_debit';
+          if (isAcssFailure) {
+            failureReason = 'Bank debit failed — payment amount may exceed per-transaction limit';
+          }
+        } catch (err) {
+          this.log.warn({ err }, 'Could not retrieve payment method type');
+        }
+      }
 
       if (isAcssFailure) {
         this.log.warn(
-          { pytuid: payment.pytuid, invoiceId, mandateId, errorCode: lastError?.code },
-          '[PaymentWebhookService] ACSS payment failure detected — attempting card retry'
+          { pytuid: payment.pytuid, invoiceId },
+          '[PaymentWebhookService] ACSS/bank-debit failure detected — attempting card retry'
         );
         const retried = await this.retryPaymentWithCard(payment, invoiceId);
         if (retried) {
+          // Notify tenant: bank debit failed, card was charged instead
+          this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
+            cuid: payment.cuid,
+            pytuid: payment.pytuid,
+            invoiceId,
+            amount: payment.baseAmount,
+            tenantId: payment.tenant?.toString(),
+            hostedInvoiceUrl: invoiceData.hosted_invoice_url ?? payment.receipt?.url,
+          });
           return {
             success: true,
             data: undefined,
-            message: 'ACSS payment failed — retried with card',
+            message: 'Bank debit failed — retried with card',
           };
         }
         // No card available — mark failed with a clear reason for the PM
@@ -267,6 +285,7 @@ export class PaymentWebhookService {
           invoiceId,
           amount: payment.baseAmount,
           tenantId: payment.tenant?.toString(),
+          hostedInvoiceUrl: invoiceData.hosted_invoice_url ?? payment.receipt?.url,
         });
         return { success: true, data: undefined, message: 'ACSS payment failed — no card on file' };
       }
@@ -282,7 +301,7 @@ export class PaymentWebhookService {
           {
             $set: {
               status: PaymentRecordStatus.OVERDUE,
-              'failure.reason': invoiceData.last_payment_error?.message,
+              'failure.reason': failureReason,
               'failure.lastFailedAt': dayjs().toDate(),
               'failure.retryCount': newRetryCount,
             },
@@ -305,7 +324,7 @@ export class PaymentWebhookService {
             'failure.pmNotifiedAt': dayjs().toDate(),
             'failure.retryCount': newRetryCount,
             'failure.lastFailedAt': dayjs().toDate(),
-            'failure.reason': invoiceData.last_payment_error?.message,
+            'failure.reason': failureReason,
           },
         }
       );
@@ -323,6 +342,7 @@ export class PaymentWebhookService {
         invoiceId,
         amount: payment.baseAmount,
         tenantId: payment.tenant?.toString(),
+        hostedInvoiceUrl: invoiceData.hosted_invoice_url ?? payment.receipt?.url,
       });
 
       return { success: true, data: undefined, message: 'Payment marked as failed' };
@@ -337,21 +357,48 @@ export class PaymentWebhookService {
    * Voids the failed invoice, creates a new card invoice, and pays it.
    * Returns true if the retry succeeded, false if no card was available or the retry failed.
    */
-  private async retryPaymentWithCard(
-    payment: IPaymentDocument,
-    failedInvoiceId: string
-  ): Promise<boolean> {
+  async retryPaymentWithCard(payment: IPaymentDocument, failedInvoiceId: string): Promise<boolean> {
     const { cuid } = payment;
 
+    const markFailed = async (reason: string) => {
+      await this.paymentDAO.update(
+        { _id: payment._id, cuid },
+        {
+          $set: {
+            status: PaymentRecordStatus.FAILED,
+            'failure.reason': reason,
+            'failure.lastFailedAt': dayjs().toDate(),
+            'failure.pmNotifiedAt': dayjs().toDate(),
+            'failure.retryCount': (payment.failure?.retryCount ?? 0) + 1,
+          },
+        }
+      );
+      this.log.warn(
+        { pytuid: payment.pytuid, cuid, reason },
+        '[PaymentWebhookService] Card retry failed'
+      );
+    };
+
     const [tenantProfile, processor] = await Promise.all([
-      this.profileDAO.findFirst({ user: new Types.ObjectId(payment.tenant?.toString()) }),
+      this.profileDAO.findFirst({ _id: new Types.ObjectId(payment.tenant?.toString()) }),
       this.paymentProcessorDAO.findFirst({ cuid }),
     ]);
 
-    if (!tenantProfile || !processor?.accountId) return false;
+    if (!tenantProfile || !processor?.accountId) {
+      await markFailed('Card retry failed: tenant profile or payment processor not found');
+      return false;
+    }
 
-    const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(processor.accountId);
-    if (!paymentMethodId) return false;
+    // Check for a saved card first, then fall back to the primary payment method
+    const paymentMethodId =
+      tenantProfile.tenantInfo?.cardPaymentMethods?.get(processor.accountId) ||
+      tenantProfile.tenantInfo?.paymentMethods?.get(processor.accountId);
+    if (!paymentMethodId) {
+      await markFailed(
+        'Bank debit failed and no card on file. Please add a card to complete payment.'
+      );
+      return false;
+    }
 
     // Confirm this stored method is not itself ACSS (no fallback if it is)
     const pmResult = await this.paymentGatewayService.retrievePaymentMethod(
@@ -359,15 +406,17 @@ export class PaymentWebhookService {
       paymentMethodId
     );
     if (!pmResult.success || pmResult.data?.type === 'acss_debit') {
-      this.log.warn(
-        { pytuid: payment.pytuid, cuid, pmType: pmResult.data?.type },
-        '[PaymentWebhookService] No non-ACSS payment method on file for card retry'
+      await markFailed(
+        'Bank debit failed and no card on file. Please add a card to complete payment.'
       );
       return false;
     }
 
     const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
-    if (!tenantCustomerId) return false;
+    if (!tenantCustomerId) {
+      await markFailed('Card retry failed: no Stripe customer ID on file');
+      return false;
+    }
 
     // Void the failed ACSS invoice so Stripe stops retrying it
     const voidResult = await this.paymentGatewayService.voidInvoice(
@@ -381,13 +430,9 @@ export class PaymentWebhookService {
       );
     }
 
-    // Calculate application fee for the new invoice
-    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
-    const txFeePercent = subscription
-      ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
-      : 0;
-    const applicationFeeCents = Math.round(payment.baseAmount * (txFeePercent / 100));
-
+    // Create a new invoice with the card payment method.
+    // Use the application fee already stored on the payment record — no need
+    // to re-derive from subscription.
     const lineItems = payment.lineItems?.length
       ? (payment.lineItems as { description: string; amountInCents: number }[])
       : [
@@ -402,7 +447,7 @@ export class PaymentWebhookService {
       {
         tenantCustomerId,
         connectedAccountId: processor.accountId,
-        applicationFeeAmountInCents: applicationFeeCents,
+        applicationFeeAmountInCents: payment.applicationFee ?? 0,
         currency: (payment.currency ?? 'USD').toLowerCase(),
         description: payment.description || `Card retry for ${payment.pytuid}`,
         autoChargeDueDate: dayjs().toDate(),
@@ -411,11 +456,9 @@ export class PaymentWebhookService {
         paymentMethodId,
       }
     );
-
     if (!invoiceResult.success || !invoiceResult.data) {
-      this.log.error(
-        { pytuid: payment.pytuid, message: invoiceResult.message },
-        '[PaymentWebhookService] Failed to create card invoice for ACSS retry'
+      await markFailed(
+        `Card retry failed: could not create invoice — ${invoiceResult.message || 'unknown error'}`
       );
       return false;
     }
@@ -424,12 +467,8 @@ export class PaymentWebhookService {
       IPaymentGatewayProvider.STRIPE,
       invoiceResult.data.invoiceId
     );
-
     if (!finalizeResult.success) {
-      this.log.error(
-        { pytuid: payment.pytuid },
-        '[PaymentWebhookService] Failed to finalize card invoice for ACSS retry'
-      );
+      await markFailed('Card retry failed: could not finalize invoice');
       return false;
     }
 
@@ -440,10 +479,7 @@ export class PaymentWebhookService {
     );
 
     if (!payResult.success) {
-      this.log.error(
-        { pytuid: payment.pytuid },
-        '[PaymentWebhookService] Failed to pay card invoice for ACSS retry'
-      );
+      await markFailed(`Card payment failed — ${payResult.message || 'unknown error'}`);
       return false;
     }
 
@@ -658,11 +694,12 @@ export class PaymentWebhookService {
     const paymentIntentId =
       typeof session.payment_intent === 'string' ? session.payment_intent : null;
 
-    // Fetch the Stripe receipt URL and charge ID from the PaymentIntent (best-effort)
+    // Fetch charge ID, receipt URL, and payment method ID from the PaymentIntent
     let receiptUrl: string | null = null;
     let chargeId: string | null = null;
+    let paymentMethodId: string | null = null;
     if (paymentIntentId) {
-      ({ chargeId, receiptUrl } =
+      ({ chargeId, receiptUrl, paymentMethodId } =
         await this.stripeService.getPaymentIntentChargeInfo(paymentIntentId));
     }
 
@@ -685,38 +722,41 @@ export class PaymentWebhookService {
       'Payment marked as PAID via card checkout'
     );
 
+    // Save the card to a separate field so the bank account (primary) is not
+    // overwritten. This card is used by retryPaymentWithCard for ACSS fallback
+    // and can also be used for maintenance payments.
+    const tenantId = session.metadata?.uid;
+    const cuid = session.metadata?.cuid;
+    if (paymentMethodId && tenantId && cuid) {
+      try {
+        const processor = await this.paymentProcessorDAO.findFirst({ cuid });
+        if (processor?.accountId) {
+          await this.profileDAO.update(
+            { user: new Types.ObjectId(tenantId) },
+            { $set: { [`tenantInfo.cardPaymentMethods.${processor.accountId}`]: paymentMethodId } }
+          );
+          this.log.info(
+            { pytuid, paymentMethodId },
+            'Card saved to tenant profile for future payments'
+          );
+        }
+      } catch (err) {
+        this.log.warn({ err, pytuid }, 'Could not save card — payment still succeeded');
+      }
+    }
+
     this.emitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
       cuid: payment.cuid,
       pytuid: payment.pytuid,
       invoiceId: paymentIntentId ?? session.id,
       amount: payment.baseAmount,
       paidAt: dayjs().toDate(),
+      tenantId: session.metadata?.uid,
+      receiptUrl: receiptUrl ?? undefined,
+      paymentType: payment.paymentType,
     });
 
-    if (
-      payment.paymentType === PaymentRecordType.MAINTENANCE &&
-      !payment.vendorId &&
-      payment.maintenanceRequestUid
-    ) {
-      // Stamp the invoice so the funds-availability cron can pick it up
-      await this.invoiceDAO.update(
-        { mruid: payment.maintenanceRequestUid, cuid: payment.cuid, isDeleted: false },
-        {
-          $set: {
-            tenantPaymentStatus: TenantPaymentStatus.PAID,
-            ...(chargeId && { stripeChargeId: chargeId }),
-          },
-        }
-      );
-
-      this.emitterService.emit(EventTypes.MAINTENANCE_CHARGE_PAID, {
-        cuid: payment.cuid,
-        pytuid: payment.pytuid,
-        mruid: payment.maintenanceRequestUid,
-        amountInCents: payment.baseAmount,
-        chargeId: chargeId ?? undefined,
-      });
-    }
+    await this.markMaintenanceChargePaid(payment, chargeId ?? undefined, receiptUrl ?? undefined);
   }
 
   async handleSetupIntentSucceeded(setupIntent: {
@@ -728,18 +768,9 @@ export class PaymentWebhookService {
   }): Promise<void> {
     const tenantId = setupIntent.metadata?.tenantId;
     const cuid = setupIntent.metadata?.cuid;
-    const paymentMethodId =
-      typeof setupIntent.payment_method === 'string'
-        ? setupIntent.payment_method
-        : (setupIntent.payment_method?.id ?? '');
-    const mandateId =
-      typeof setupIntent.mandate === 'string'
-        ? setupIntent.mandate
-        : (setupIntent.mandate?.id ?? null);
-    const customerId =
-      typeof setupIntent.customer === 'string'
-        ? setupIntent.customer
-        : (setupIntent.customer?.id ?? null);
+    const paymentMethodId = this.extractStripeId(setupIntent.payment_method) ?? '';
+    const mandateId = this.extractStripeId(setupIntent.mandate);
+    const customerId = this.extractStripeId(setupIntent.customer);
 
     if (!tenantId || !cuid || !paymentMethodId) {
       this.log.warn(
@@ -765,32 +796,24 @@ export class PaymentWebhookService {
     disputeData: IStripeDisputeWebhookData
   ): IPromiseReturnedData<void> {
     try {
-      const chargeId =
-        typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
-      if (!chargeId) {
-        this.log.warn('No charge ID in dispute data', { disputeId });
-        return { success: false, data: undefined, message: 'No charge ID in dispute data' };
+      const result = await this.findPaymentByDispute(disputeData, disputeId);
+      if (!result) {
+        return {
+          success: false,
+          data: undefined,
+          message: 'No charge ID or payment record not found',
+        };
       }
-      const amount: number = disputeData.amount;
-      const currency: string = disputeData.currency;
+      const { payment, chargeId, amount, currency } = result;
       const reason: string = disputeData.reason || 'unknown';
-
-      const payment = await this.paymentDAO.findFirst({
-        gatewayChargeId: chargeId,
-        deletedAt: null,
-      });
-      if (!payment) {
-        this.log.warn('Payment not found for disputed charge', { chargeId, disputeId });
-        return { success: false, data: undefined, message: 'Payment record not found' };
-      }
 
       const chargeResult = await this.paymentGatewayService.getCharge(
         IPaymentGatewayProvider.STRIPE,
         chargeId
       );
-      const transferRaw = chargeResult.data?.transfer;
-      const transfer = transferRaw as string | { id: string } | undefined;
-      const transferId = typeof transfer === 'string' ? transfer : transfer?.id;
+      const transferId = this.extractStripeId(
+        chargeResult.data?.transfer as string | { id?: string } | undefined
+      );
 
       if (transferId) {
         try {
@@ -878,23 +901,15 @@ export class PaymentWebhookService {
     disputeData: IStripeDisputeWebhookData
   ): IPromiseReturnedData<void> {
     try {
-      const chargeId =
-        typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
-      if (!chargeId) {
-        this.log.warn('No charge ID in dispute data', { disputeId });
-        return { success: false, data: undefined, message: 'No charge ID in dispute data' };
+      const result = await this.findPaymentByDispute(disputeData, disputeId);
+      if (!result) {
+        return {
+          success: false,
+          data: undefined,
+          message: 'No charge ID or payment record not found',
+        };
       }
-      const amount: number = disputeData.amount;
-      const currency: string = disputeData.currency;
-
-      const payment = await this.paymentDAO.findFirst({
-        gatewayChargeId: chargeId,
-        deletedAt: null,
-      });
-      if (!payment) {
-        this.log.warn('Payment not found for won dispute charge', { chargeId, disputeId });
-        return { success: false, data: undefined, message: 'Payment record not found' };
-      }
+      const { payment, chargeId, amount, currency } = result;
 
       if (payment.dispute?.status === 'won') {
         this.log.info('Dispute already marked won — skipping duplicate event', { disputeId });
@@ -954,23 +969,15 @@ export class PaymentWebhookService {
     disputeData: IStripeDisputeWebhookData
   ): IPromiseReturnedData<void> {
     try {
-      const chargeId =
-        typeof disputeData.charge === 'string' ? disputeData.charge : disputeData.charge?.id;
-      if (!chargeId) {
-        this.log.warn('No charge ID in dispute data', { disputeId });
-        return { success: false, data: undefined, message: 'No charge ID in dispute data' };
+      const result = await this.findPaymentByDispute(disputeData, disputeId);
+      if (!result) {
+        return {
+          success: false,
+          data: undefined,
+          message: 'No charge ID or payment record not found',
+        };
       }
-      const amount: number = disputeData.amount;
-      const currency: string = disputeData.currency;
-
-      const payment = await this.paymentDAO.findFirst({
-        gatewayChargeId: chargeId,
-        deletedAt: null,
-      });
-      if (!payment) {
-        this.log.warn('Payment not found for lost dispute charge', { chargeId, disputeId });
-        return { success: false, data: undefined, message: 'Payment record not found' };
-      }
+      const { payment, chargeId, amount, currency } = result;
 
       await this.paymentProcessorDAO.update(
         { cuid: payment.cuid },
@@ -1015,6 +1022,74 @@ export class PaymentWebhookService {
     }
   }
 
+  private extractStripeId(obj: string | { id?: string } | null | undefined): string | null {
+    if (!obj) return null;
+    return typeof obj === 'string' ? obj : (obj.id ?? null);
+  }
+
+  private async findPaymentByDispute(
+    disputeData: IStripeDisputeWebhookData,
+    disputeId: string
+  ): Promise<{
+    payment: IPaymentDocument;
+    chargeId: string;
+    amount: number;
+    currency: string;
+  } | null> {
+    const chargeId = this.extractStripeId(disputeData.charge);
+    if (!chargeId) {
+      this.log.warn('No charge ID in dispute data', { disputeId });
+      return null;
+    }
+
+    const payment = await this.paymentDAO.findFirst({
+      gatewayChargeId: chargeId,
+      deletedAt: null,
+    });
+    if (!payment) {
+      this.log.warn('Payment not found for dispute charge', { chargeId, disputeId });
+      return null;
+    }
+
+    return {
+      payment,
+      chargeId,
+      amount: disputeData.amount,
+      currency: disputeData.currency,
+    };
+  }
+
+  private async markMaintenanceChargePaid(
+    payment: IPaymentDocument,
+    chargeId?: string,
+    receiptUrl?: string
+  ): Promise<void> {
+    if (
+      payment.paymentType === PaymentRecordType.MAINTENANCE &&
+      !payment.vendorId &&
+      payment.maintenanceRequestUid
+    ) {
+      await this.invoiceDAO.update(
+        { mruid: payment.maintenanceRequestUid, cuid: payment.cuid, isDeleted: false },
+        {
+          $set: {
+            tenantPaymentStatus: TenantPaymentStatus.PAID,
+            ...(chargeId && { stripeChargeId: chargeId }),
+            ...(receiptUrl && { stripeReceiptUrl: receiptUrl }),
+          },
+        }
+      );
+
+      this.emitterService.emit(EventTypes.MAINTENANCE_CHARGE_PAID, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        mruid: payment.maintenanceRequestUid,
+        amountInCents: payment.baseAmount,
+        chargeId: chargeId ?? undefined,
+      });
+    }
+  }
+
   private async saveTenantSetupPaymentMethod(input: {
     tenantId: string;
     cuid: string;
@@ -1041,29 +1116,33 @@ export class PaymentWebhookService {
       paymentMethodId
     );
     const bankDebitTypes = new Set(['us_bank_account', 'acss_debit', 'sepa_debit', 'bacs_debit']);
+    const pmType = paymentMethodResult.data?.type;
+    const isCard = pmType === 'card';
 
-    if (
-      paymentMethodResult.data?.type &&
-      bankDebitTypes.has(paymentMethodResult.data.type) &&
-      !mandateId
-    ) {
+    if (pmType && bankDebitTypes.has(pmType) && !mandateId) {
       this.log.warn(
         {
           sourceId,
           sourceType,
           paymentMethodId,
-          paymentMethodType: paymentMethodResult.data.type,
+          paymentMethodType: pmType,
         },
         'Setup flow produced a bank debit payment method without a mandate — not saving'
       );
       return;
     }
 
-    const profileUpdate: Record<string, any> = {
-      [`tenantInfo.paymentMethods.${pmAccountId}`]: paymentMethodId,
-    };
-    if (mandateId) {
-      profileUpdate[`tenantInfo.paymentMandates.${pmAccountId}`] = mandateId;
+    const profileUpdate: Record<string, any> = {};
+
+    if (isCard) {
+      // Save card to the separate cardPaymentMethods map so it does not overwrite
+      // the primary bank debit method used for recurring rent charges.
+      profileUpdate[`tenantInfo.cardPaymentMethods.${pmAccountId}`] = paymentMethodId;
+    } else {
+      profileUpdate[`tenantInfo.paymentMethods.${pmAccountId}`] = paymentMethodId;
+      if (mandateId) {
+        profileUpdate[`tenantInfo.paymentMandates.${pmAccountId}`] = mandateId;
+      }
     }
 
     await this.profileDAO.update({ user: new Types.ObjectId(tenantId) }, { $set: profileUpdate });
@@ -1190,12 +1269,7 @@ export class PaymentWebhookService {
 
   async handleInvoiceOverdue(
     invoiceId: string,
-    invoiceData: {
-      amount_due?: number;
-      currency?: string;
-      customer?: string;
-      subscription?: string;
-    } & IStripeInvoiceWebhookData
+    invoiceData: IStripeInvoiceWebhookData
   ): IPromiseReturnedData<void> {
     try {
       const payment = await this.paymentDAO.findFirst({
@@ -1233,13 +1307,7 @@ export class PaymentWebhookService {
     }
   }
 
-  async handleInvoiceUpcoming(invoiceData: {
-    id: string;
-    subscription?: string;
-    amount_due?: number;
-    currency?: string;
-    period_start?: number;
-  }): IPromiseReturnedData<void> {
+  async handleInvoiceUpcoming(invoiceData: IStripeInvoiceWebhookData): IPromiseReturnedData<void> {
     try {
       const stripeSubscriptionId = invoiceData.subscription;
       if (!stripeSubscriptionId) {

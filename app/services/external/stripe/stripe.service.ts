@@ -368,16 +368,25 @@ export class StripeService implements IPaymentProvider {
 
   async getPaymentIntentChargeInfo(
     paymentIntentId: string
-  ): Promise<{ chargeId: string | null; receiptUrl: string | null }> {
+  ): Promise<{
+    chargeId: string | null;
+    receiptUrl: string | null;
+    paymentMethodId: string | null;
+  }> {
     try {
       const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
         expand: ['latest_charge'],
       });
       const charge = pi.latest_charge as Stripe.Charge | null;
-      return { chargeId: charge?.id ?? null, receiptUrl: charge?.receipt_url ?? null };
+      const pmId = typeof pi.payment_method === 'string' ? pi.payment_method : null;
+      return {
+        chargeId: charge?.id ?? null,
+        receiptUrl: charge?.receipt_url ?? null,
+        paymentMethodId: pmId,
+      };
     } catch (error) {
       this.log.error({ error, paymentIntentId }, 'Error retrieving charge info from PaymentIntent');
-      return { chargeId: null, receiptUrl: null };
+      return { chargeId: null, receiptUrl: null, paymentMethodId: null };
     }
   }
 
@@ -1020,6 +1029,7 @@ export class StripeService implements IPaymentProvider {
 
   async createPaymentCheckoutSession(params: {
     customerEmail: string;
+    customerId?: string;
     lineItems: Array<{
       name: string;
       description: string;
@@ -1035,6 +1045,7 @@ export class StripeService implements IPaymentProvider {
     try {
       const {
         customerEmail,
+        customerId,
         lineItems,
         applicationFeeAmount,
         destinationAccountId,
@@ -1047,7 +1058,7 @@ export class StripeService implements IPaymentProvider {
       const session = await this.stripe.checkout.sessions.create({
         mode: 'payment',
         payment_method_types: ['card'],
-        customer_email: customerEmail,
+        ...(customerId ? { customer: customerId } : { customer_email: customerEmail }),
         line_items: lineItems.map((item) => ({
           price_data: {
             currency: currency.toLowerCase(),
@@ -1060,6 +1071,8 @@ export class StripeService implements IPaymentProvider {
           application_fee_amount: applicationFeeAmount,
           transfer_data: { destination: destinationAccountId },
           metadata,
+          // Save the card for future charges (e.g., ACSS-to-card retry)
+          ...(customerId && { setup_future_usage: 'off_session' as const }),
         },
         metadata,
         success_url: successUrl,
@@ -1082,6 +1095,52 @@ export class StripeService implements IPaymentProvider {
         'Error creating Stripe payment checkout session'
       );
       throw error;
+    }
+  }
+
+  /**
+   * Retrieve payment details for a Stripe invoice by expanding the payments
+   * sub-object. Since API v2025-03-31.basil, `charge` and `payment_intent`
+   * were removed from the Invoice top-level and moved into `payments.data[]`.
+   */
+  async getInvoicePaymentDetails(invoiceId: string): Promise<{
+    chargeId?: string;
+    receiptUrl?: string;
+    paymentIntentId?: string;
+    lastPaymentError?: {
+      message?: string;
+      code?: string;
+      type?: string;
+      payment_method?: { type?: string };
+    };
+    paymentMethodType?: string;
+  }> {
+    try {
+      const invoice = await this.stripe.invoices.retrieve(invoiceId, {
+        expand: ['payments.data.payment.payment_intent'],
+      });
+
+      const firstPayment = (invoice as any).payments?.data?.[0];
+      const pi = firstPayment?.payment?.payment_intent;
+      const piObj = pi && typeof pi === 'object' ? pi : undefined;
+
+      const latestCharge = piObj?.latest_charge;
+      const chargeId = latestCharge
+        ? typeof latestCharge === 'string'
+          ? latestCharge
+          : latestCharge.id
+        : undefined;
+
+      return {
+        chargeId,
+        paymentIntentId: typeof pi === 'string' ? pi : piObj?.id,
+        lastPaymentError: piObj?.last_payment_error ?? undefined,
+        paymentMethodType:
+          piObj?.last_payment_error?.payment_method?.type ?? piObj?.payment_method_types?.[0],
+      };
+    } catch (error) {
+      this.log.warn({ error, invoiceId }, 'Could not retrieve invoice payment details');
+      return {};
     }
   }
 

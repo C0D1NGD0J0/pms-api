@@ -5,6 +5,7 @@ import { createLogger } from '@utils/index';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
+import { PlanName } from '@interfaces/subscription.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { StripeService } from '@services/external/stripe/stripe.service';
@@ -173,23 +174,14 @@ export class MaintenancePaymentService {
       return { success: true, data: existingCharge, message: 'Charge already created' };
     }
 
-    const activeLease = await this.leaseDAO.getActiveLeaseByTenant(cuid, tenantId);
-    const currency = activeLease?.fees?.currency ?? 'USD';
-
-    const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
-      subscription.planName
-    );
-    const serviceFeeCents = Math.round((amount * transactionFeePercent) / 100);
-    const totalAmount = amount + serviceFeeCents;
-    const lineItems = [
-      { description: 'Maintenance Service', amountInCents: amount },
-      ...(serviceFeeCents > 0
-        ? [{ description: 'Service Fee', amountInCents: serviceFeeCents }]
-        : []),
-    ];
-
-    const GRACE_PERIOD_DAYS = 5;
-    const dueDate = dayjs().add(GRACE_PERIOD_DAYS, 'day').toDate();
+    const { totalAmount, serviceFeeCents, lineItems, currency, dueDate } =
+      await this.buildMaintenanceChargeSetup({
+        cuid,
+        tenantId,
+        amount,
+        planName: subscription.planName,
+        vendorLineItems: [{ description: 'Maintenance Service', amountInCents: amount }],
+      });
 
     const payment = await this.paymentDAO.insert({
       cuid,
@@ -382,28 +374,22 @@ export class MaintenancePaymentService {
       return;
     }
 
-    const activeLease = await this.leaseDAO.getActiveLeaseByTenant(cuid, tenantId!);
-    const currency = activeLease?.fees?.currency ?? 'USD';
-
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     const planName = subscription?.planName ?? 'essential';
-    const maintenanceFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(planName);
-    const serviceFeeCents = Math.round((amount * maintenanceFeePercent) / 100);
 
-    const GRACE_PERIOD_DAYS = 5;
-    const dueDate = dayjs().add(GRACE_PERIOD_DAYS, 'day').toDate();
-
-    const totalAmount = amount + serviceFeeCents;
     const vendorItems: { description: string; amountInCents: number }[] = payload.invoiceLineItems
       ?.length
       ? payload.invoiceLineItems
       : [{ description: 'Maintenance Service', amountInCents: amount }];
-    const lineItems = [
-      ...vendorItems,
-      ...(serviceFeeCents > 0
-        ? [{ description: 'Service Fee', amountInCents: serviceFeeCents }]
-        : []),
-    ];
+
+    const { totalAmount, serviceFeeCents, lineItems, currency, dueDate } =
+      await this.buildMaintenanceChargeSetup({
+        cuid,
+        tenantId: tenantId!,
+        amount,
+        planName,
+        vendorLineItems: vendorItems,
+      });
 
     const record = await this.paymentDAO.insert({
       cuid,
@@ -438,5 +424,44 @@ export class MaintenancePaymentService {
       cuid,
       dueDate,
     });
+  }
+
+  /**
+   * Shared setup logic for maintenance charges: subscription fee calculation,
+   * currency resolution, line item assembly, and due date computation.
+   */
+  private async buildMaintenanceChargeSetup(params: {
+    cuid: string;
+    tenantId: string;
+    amount: number;
+    planName: PlanName;
+    vendorLineItems: { description: string; amountInCents: number }[];
+  }): Promise<{
+    totalAmount: number;
+    serviceFeeCents: number;
+    lineItems: { description: string; amountInCents: number }[];
+    currency: string;
+    dueDate: Date;
+  }> {
+    const { cuid, tenantId, amount, planName, vendorLineItems } = params;
+
+    const activeLease = await this.leaseDAO.getActiveLeaseByTenant(cuid, tenantId);
+    const currency = activeLease?.fees?.currency ?? 'USD';
+
+    const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(planName);
+    const serviceFeeCents = Math.round((amount * transactionFeePercent) / 100);
+    const totalAmount = amount + serviceFeeCents;
+
+    const lineItems = [
+      ...vendorLineItems,
+      ...(serviceFeeCents > 0
+        ? [{ description: 'Service Fee', amountInCents: serviceFeeCents }]
+        : []),
+    ];
+
+    const GRACE_PERIOD_DAYS = 5;
+    const dueDate = dayjs().add(GRACE_PERIOD_DAYS, 'day').toDate();
+
+    return { totalAmount, serviceFeeCents, lineItems, currency, dueDate };
   }
 }

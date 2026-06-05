@@ -2,10 +2,10 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
 import { IPaymentGatewayProvider } from '@interfaces/index';
-import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { PaymentProcessorDAO, ProfileDAO, ClientDAO, VendorDAO } from '@dao/index';
+import { IPromiseReturnedData, ISuccessReturnData } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { getCountryCodeFromLocation, getPaymentProcessorUrls, createLogger } from '@utils/index';
 
@@ -63,6 +63,58 @@ export class PayoutAccountService {
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
     this.vendorDAO = vendorDAO;
+  }
+
+  private async getProcessorOrThrow(cuid: string) {
+    const processor = await this.paymentProcessorDAO.findFirst({ cuid });
+    if (!processor?.accountId) {
+      throw new BadRequestError({ message: 'Payment account not configured' });
+    }
+    return processor;
+  }
+
+  private async getOnboardingOrUpdateLink(
+    cuid: string,
+    type: 'onboarding' | 'update',
+    urls: { refreshUrl: string; returnUrl: string }
+  ): Promise<ISuccessReturnData<{ url: string }>> {
+    try {
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+
+      const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
+      const fallback = getPaymentProcessorUrls(baseUrl, cuid);
+      const returnUrl =
+        urls.returnUrl ||
+        (type === 'onboarding' ? fallback.kycReturnUrl : fallback.accountUpdateReturnUrl);
+      const refreshUrl = urls.refreshUrl || fallback.refreshUrl;
+
+      const linkResult = await this.paymentGatewayService.createKycOnboardingLink(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          accountId: paymentProcessor.accountId,
+          refreshUrl,
+          returnUrl,
+        }
+      );
+
+      if (!linkResult.success || !linkResult.data) {
+        const label = type === 'onboarding' ? 'onboarding link' : 'account update link';
+        throw new BadRequestError({
+          message: linkResult.message || `Failed to create ${label}`,
+        });
+      }
+
+      const message =
+        type === 'onboarding'
+          ? 'Onboarding link created successfully'
+          : 'Account update link created successfully';
+
+      return { success: true, data: { url: linkResult.data.url }, message };
+    } catch (error) {
+      const label = type === 'onboarding' ? 'onboarding' : 'account update';
+      this.log.error(`Error creating ${label} link`, error);
+      throw error;
+    }
   }
 
   async createConnectAccount(
@@ -140,90 +192,25 @@ export class PayoutAccountService {
     cuid: string,
     urlOverrides?: { returnUrl?: string; refreshUrl?: string }
   ): IPromiseReturnedData<{ url: string }> {
-    try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor || !paymentProcessor.accountId) {
-        throw new BadRequestError({
-          message: 'No Connect account found. Please create one first.',
-        });
-      }
-
-      const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
-      const fallback = getPaymentProcessorUrls(baseUrl, cuid);
-      const linkResult = await this.paymentGatewayService.createKycOnboardingLink(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          accountId: paymentProcessor.accountId,
-          refreshUrl: urlOverrides?.refreshUrl || fallback.refreshUrl,
-          returnUrl: urlOverrides?.returnUrl || fallback.kycReturnUrl,
-        }
-      );
-
-      if (!linkResult.success || !linkResult.data) {
-        throw new BadRequestError({
-          message: linkResult.message || 'Failed to create onboarding link',
-        });
-      }
-
-      return {
-        success: true,
-        data: { url: linkResult.data.url },
-        message: 'Onboarding link created successfully',
-      };
-    } catch (error) {
-      this.log.error('Error creating onboarding link', error);
-      throw error;
-    }
+    return this.getOnboardingOrUpdateLink(cuid, 'onboarding', {
+      refreshUrl: urlOverrides?.refreshUrl || '',
+      returnUrl: urlOverrides?.returnUrl || '',
+    });
   }
 
   async getAccountUpdateLink(
     cuid: string,
     urlOverrides?: { returnUrl?: string; refreshUrl?: string }
   ): IPromiseReturnedData<{ url: string }> {
-    try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor || !paymentProcessor.accountId) {
-        throw new BadRequestError({
-          message: 'No Connect account found.',
-        });
-      }
-
-      const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
-      const fallback = getPaymentProcessorUrls(baseUrl, cuid);
-      const linkResult = await this.paymentGatewayService.createKycOnboardingLink(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          accountId: paymentProcessor.accountId,
-          refreshUrl: urlOverrides?.refreshUrl || fallback.refreshUrl,
-          returnUrl: urlOverrides?.returnUrl || fallback.accountUpdateReturnUrl,
-        }
-      );
-
-      if (!linkResult.success || !linkResult.data) {
-        throw new BadRequestError({
-          message: linkResult.message || 'Failed to create account update link',
-        });
-      }
-
-      return {
-        success: true,
-        data: { url: linkResult.data.url },
-        message: 'Account update link created successfully',
-      };
-    } catch (error) {
-      this.log.error('Error creating account update link', error);
-      throw error;
-    }
+    return this.getOnboardingOrUpdateLink(cuid, 'update', {
+      refreshUrl: urlOverrides?.refreshUrl || '',
+      returnUrl: urlOverrides?.returnUrl || '',
+    });
   }
 
   async getExternalDashboardLoginLink(cuid: string): IPromiseReturnedData<{ url: string }> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor || !paymentProcessor.accountId) {
-        throw new BadRequestError({
-          message: 'No Connect account found',
-        });
-      }
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
 
       const linkResult = await this.paymentGatewayService.createDashboardLoginLink(
         IPaymentGatewayProvider.STRIPE,
@@ -247,10 +234,7 @@ export class PayoutAccountService {
 
   async getPayoutBalance(cuid: string): IPromiseReturnedData<any> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor?.accountId) {
-        throw new NotFoundError({ message: 'No Connect account found for this client' });
-      }
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
       if (!paymentProcessor.payoutsEnabled) {
         throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
       }
@@ -282,10 +266,7 @@ export class PayoutAccountService {
     query: { limit?: number; cursor?: string }
   ): IPromiseReturnedData<any> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor?.accountId) {
-        throw new NotFoundError({ message: 'No Connect account found for this client' });
-      }
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
       if (!paymentProcessor.payoutsEnabled) {
         throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
       }
@@ -330,10 +311,7 @@ export class PayoutAccountService {
 
   async getPayoutSchedule(cuid: string): IPromiseReturnedData<IPayoutSchedule> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor?.accountId) {
-        throw new NotFoundError({ message: 'No Connect account found for this client' });
-      }
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
 
       const result = await this.paymentGatewayService.getPayoutSchedule(
         IPaymentGatewayProvider.STRIPE,
@@ -356,10 +334,7 @@ export class PayoutAccountService {
     weeklyAnchor?: string
   ): IPromiseReturnedData<null> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor?.accountId) {
-        throw new NotFoundError({ message: 'No Connect account found for this client' });
-      }
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
       if (!paymentProcessor.payoutsEnabled) {
         throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
       }

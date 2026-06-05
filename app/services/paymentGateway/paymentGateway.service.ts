@@ -744,6 +744,32 @@ export class PaymentGatewayService {
     }
   }
 
+  async getInvoicePaymentDetails(
+    provider: IPaymentGatewayProvider,
+    invoiceId: string
+  ): IPromiseReturnedData<
+    | {
+        chargeId?: string;
+        paymentIntentId?: string;
+        lastPaymentError?: { message?: string; code?: string };
+        paymentMethodType?: string;
+      }
+    | undefined
+  > {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const details = await providerInstance.getInvoicePaymentDetails(invoiceId);
+      return { success: true, data: details };
+    } catch (error) {
+      this.log.error({ error, provider, invoiceId }, 'Error fetching invoice payment details');
+      return {
+        success: false,
+        data: undefined,
+        message: error instanceof Error ? error.message : 'Failed to fetch invoice payment details',
+      };
+    }
+  }
+
   async getCharge(provider: IPaymentGatewayProvider, chargeId: string): IPromiseReturnedData<any> {
     try {
       const providerInstance = this.getProvider(provider);

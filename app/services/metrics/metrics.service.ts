@@ -248,10 +248,15 @@ export class MetricsService implements ICronProvider {
       users,
       maintenance: {
         activeCount:
-          maintenance.open + maintenance.assigned + maintenance.inProgress + maintenance.pending,
+          maintenance.open +
+          maintenance.assigned +
+          maintenance.inProgress +
+          maintenance.awaitingInvoice +
+          maintenance.pending,
         open: maintenance.open,
         assigned: maintenance.assigned,
         inProgress: maintenance.inProgress,
+        awaitingInvoice: maintenance.awaitingInvoice,
         completed: maintenance.completed,
         cancelled: maintenance.cancelled,
         pending: maintenance.pending,

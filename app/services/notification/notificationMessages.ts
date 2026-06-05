@@ -128,7 +128,7 @@ export const NotificationMessages = {
     failedTenant: {
       title: 'Payment Could Not Be Processed',
       message:
-        'Your payment of {{amount}} could not be processed. Please update your payment method or contact your property manager.',
+        'Your payment of {{amount}} could not be processed. Please use the payment link provided or add a card to complete your payment.',
     },
     overdueTenant: {
       title: 'Rent Payment Overdue',
@@ -214,6 +214,11 @@ export const NotificationMessages = {
     invoiceApproved: {
       title: 'Invoice Approved',
       message: 'Your invoice for request {{mruid}} has been approved',
+    },
+    invoiceApprovedTenant: {
+      title: 'Service Request Update',
+      message:
+        'The invoice for your maintenance request {{mruid}} has been approved and work is being finalized.',
     },
     invoiceBillableNotice: {
       title: 'Maintenance Charge Pending',
@@ -309,6 +314,7 @@ export type NotificationMessageKey =
   | 'maintenance.requestCancelled'
   | 'maintenance.invoiceSubmitted'
   | 'maintenance.invoiceApproved'
+  | 'maintenance.invoiceApprovedTenant'
   | 'maintenance.invoiceBillableNotice'
   | 'maintenance.chargeCreated'
   | 'maintenance.invoiceRejected'

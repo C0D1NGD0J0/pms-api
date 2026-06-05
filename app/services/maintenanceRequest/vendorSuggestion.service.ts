@@ -7,6 +7,7 @@ import { AIService } from '@services/ai/ai.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { RoleHelpers } from '@shared/constants/roles.constants';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { CATEGORY_TO_VENDOR_SERVICE, createLogger } from '@utils/index';
 import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
@@ -83,7 +84,7 @@ export class VendorSuggestionService {
   async acceptAISuggestion(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
     const { cuid } = ctx.request.params;
     const role = ctx.currentuser?.client?.role;
-    if (!role || !['super-admin', 'manager', 'admin'].includes(role)) {
+    if (!role || !RoleHelpers.isManagementRole(role)) {
       throw new ForbiddenError({ message: 'Only managers can accept AI suggestions' });
     }
 
@@ -153,7 +154,7 @@ export class VendorSuggestionService {
     const { cuid } = ctx.request.params;
     // Only managers and above may dismiss AI suggestions.
     const role = ctx.currentuser?.client?.role;
-    if (!role || !['super-admin', 'manager', 'admin'].includes(role)) {
+    if (!role || !RoleHelpers.isManagementRole(role)) {
       throw new ForbiddenError({ message: 'Only managers can dismiss AI suggestions' });
     }
     const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);

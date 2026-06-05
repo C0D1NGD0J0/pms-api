@@ -49,6 +49,7 @@ import {
 import { VendorSuggestionService } from './vendorSuggestion.service';
 import { MaintenanceInvoiceService } from './maintenanceInvoice.service';
 import {
+  assertVendorAuthorized,
   resolvePrimaryVendorId,
   getRequestOrThrow,
   assertTransition,
@@ -638,8 +639,8 @@ export class MaintenanceRequestService {
       plain.tenantName =
         `${tenantProfile.firstName || ''} ${tenantProfile.lastName || ''}`.trim() || tenant.email;
     }
-    // tenantId populated object is not consumed by any portal — drop it
-    delete plain.tenantId;
+    // Collapse tenantId back to a plain string after populate (like vendorId)
+    plain.tenantId = tenant?._id?.toString() ?? null;
 
     // Resolve active lease end date for the property/unit so the frontend can cap scheduling
     const leaseFilter: Record<string, any> = {
@@ -685,6 +686,8 @@ export class MaintenanceRequestService {
       externalInvoiceUrl: inv.source?.externalUrl,
       vendorPayoutStatus: inv.vendorPayoutStatus,
       vendorPaidAt: inv.vendorPaidAt,
+      tenantPaymentStatus: inv.tenantPaymentStatus,
+      stripeReceiptUrl: inv.stripeReceiptUrl ?? null,
     });
 
     // Map populated invoiceId to `invoice` for frontend compatibility.
@@ -800,15 +803,7 @@ export class MaintenanceRequestService {
     if (request.status !== MaintenanceRequestStatus.ASSIGNED) {
       throw new BadRequestError({ message: t('maintenance.errors.notAssigned') });
     }
-    const isAssignedVendor = request.vendorId?.toString() === currentuser.sub;
-    let authorized = isAssignedVendor;
-    if (!authorized && CurrentUser.isVendorTeamMember(currentuser)) {
-      const primaryId = await resolvePrimaryVendorId(this.vendorDAO, currentuser);
-      authorized = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-    }
-    if (!authorized) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
-    }
+    await this.assertIsAssignedVendor(request, currentuser);
 
     // Work-order guard: block acceptance if a work order is pending or rejected
     if (request.workOrder) {
@@ -868,32 +863,14 @@ export class MaintenanceRequestService {
     if (request.status !== MaintenanceRequestStatus.ASSIGNED) {
       throw new BadRequestError({ message: t('maintenance.errors.notAssigned') });
     }
-    const isAssignedDecline = request.vendorId?.toString() === currentuser.sub;
-    let authorizedDecline = isAssignedDecline;
-    if (!authorizedDecline && CurrentUser.isVendorTeamMember(currentuser)) {
-      const primaryId = await resolvePrimaryVendorId(this.vendorDAO, currentuser);
-      authorizedDecline = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-    }
-    if (!authorizedDecline) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
-    }
+    await this.assertIsAssignedVendor(request, currentuser);
 
     // Unassign vendor and return to OPEN for PM to reassign
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
-        {
-          $set: { status: MaintenanceRequestStatus.OPEN },
-          $unset: {
-            vendorId: 1,
-            assignedAt: 1,
-            assignedBy: 1,
-            scheduledDate: 1,
-            assignedTechnician: 1,
-            workOrder: 1,
-          },
-        },
+        this.buildUnassignUpdate(),
         undefined,
         session
       );
@@ -944,32 +921,14 @@ export class MaintenanceRequestService {
     }
 
     // Verify the caller is the assigned vendor
-    const isAssigned = request.vendorId?.toString() === currentuser.sub;
-    let authorized = isAssigned;
-    if (!authorized && CurrentUser.isVendorTeamMember(currentuser)) {
-      const primaryId = await resolvePrimaryVendorId(this.vendorDAO, currentuser);
-      authorized = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-    }
-    if (!authorized) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
-    }
+    await this.assertIsAssignedVendor(request, currentuser);
 
     // Unassign vendor, clear WO, return SR to OPEN for PM to reassign
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
-        {
-          $set: { status: MaintenanceRequestStatus.OPEN },
-          $unset: {
-            vendorId: 1,
-            assignedAt: 1,
-            assignedBy: 1,
-            scheduledDate: 1,
-            assignedTechnician: 1,
-            workOrder: 1,
-          },
-        },
+        this.buildUnassignUpdate(),
         undefined,
         session
       );
@@ -1214,7 +1173,6 @@ export class MaintenanceRequestService {
       },
     });
 
-    // @ts-expect-error — event payload type pending update from invoice decoupling
     this.emitterService.emit(EventTypes.MAINTENANCE_FEEDBACK_SUBMITTED, {
       requestId: request._id.toString(),
       mruid: request.mruid,
@@ -1231,6 +1189,27 @@ export class MaintenanceRequestService {
     }
 
     return { success: true, data: updated, message: t('maintenance.success.feedbackSubmitted') };
+  }
+
+  private async assertIsAssignedVendor(
+    request: { vendorId?: any },
+    currentuser: any
+  ): Promise<void> {
+    await assertVendorAuthorized(this.vendorDAO, currentuser, request);
+  }
+
+  private buildUnassignUpdate() {
+    return {
+      $set: { status: MaintenanceRequestStatus.OPEN },
+      $unset: {
+        vendorId: 1,
+        assignedAt: 1,
+        assignedBy: 1,
+        scheduledDate: 1,
+        assignedTechnician: 1,
+        workOrder: 1,
+      },
+    };
   }
 
   private async updateVendorRating(vendorUserId: string): Promise<void> {
@@ -1252,13 +1231,10 @@ export class MaintenanceRequestService {
       const avgRating = (totalRating / items.length).toFixed(1);
 
       // Update vendor profile stats
-      const vendorDAO = (this as any).vendorDAO;
-      if (vendorDAO) {
-        await vendorDAO.updateMany(
-          { 'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorUserId) },
-          { $set: { 'stats.rating': avgRating, 'stats.reviewCount': items.length } }
-        );
-      }
+      await this.vendorDAO.updateMany(
+        { 'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorUserId) },
+        { $set: { 'stats.rating': avgRating, 'stats.reviewCount': items.length } }
+      );
     } catch (error) {
       this.log.error('Failed to update vendor rating:', error);
     }
@@ -1467,10 +1443,14 @@ export class MaintenanceRequestService {
     }
 
     const tenantUserId = currentuser.client.role === 'tenant' ? currentuser.sub : undefined;
+    const assignedTechnicianUserId = CurrentUser.isVendorTeamMember(currentuser)
+      ? currentuser.sub
+      : undefined;
 
     const stats = await this.maintenanceRequestDAO.getStats(cuid, {
       propertyId: propertyObjectId,
       tenantUserId,
+      assignedTechnicianUserId,
     });
     return { success: true, data: stats };
   }

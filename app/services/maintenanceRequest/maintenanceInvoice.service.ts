@@ -2,7 +2,6 @@ import Logger from 'bunyan';
 import Decimal from 'decimal.js';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { UserDAO } from '@dao/userDAO';
 import sanitizeHtml from 'sanitize-html';
 import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
@@ -33,25 +32,16 @@ interface IConstructor {
   emitterService: EventEmitterService;
   invoiceDAO: InvoiceDAO;
   vendorDAO: VendorDAO;
-  userDAO: UserDAO;
 }
 
 export class MaintenanceInvoiceService {
   private readonly log: Logger;
-  private readonly userDAO: UserDAO;
   private readonly vendorDAO: VendorDAO;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
 
-  constructor({
-    maintenanceRequestDAO,
-    emitterService,
-    invoiceDAO,
-    userDAO,
-    vendorDAO,
-  }: IConstructor) {
-    this.userDAO = userDAO;
+  constructor({ maintenanceRequestDAO, emitterService, invoiceDAO, vendorDAO }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.invoiceDAO = invoiceDAO;
     this.emitterService = emitterService;
@@ -68,9 +58,19 @@ export class MaintenanceInvoiceService {
     const { cuid } = ctx.request.params;
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
-    if (request.status !== MaintenanceRequestStatus.AWAITING_INVOICE) {
+    const invoiceAllowedStatuses = [
+      MaintenanceRequestStatus.IN_PROGRESS,
+      MaintenanceRequestStatus.AWAITING_INVOICE,
+    ];
+    if (!invoiceAllowedStatuses.includes(request.status)) {
       throw new BadRequestError({ message: t('maintenance.errors.invoiceInvalidStatus') });
     }
+
+    // Work order must be approved before invoicing (same gate as mark_work_done)
+    if (!request.workOrder || request.workOrder.status !== WorkOrderStatus.APPROVED) {
+      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotApproved') });
+    }
+
     if (CurrentUser.isVendor(currentuser)) {
       const isDirectlyAssigned = request.vendorId?.toString() === currentuser.sub;
       let authorized = isDirectlyAssigned;
@@ -100,13 +100,31 @@ export class MaintenanceInvoiceService {
       }
     }
 
-    // Create standalone Invoice document and link to MR atomically.
-    // Both writes are wrapped in a session transaction so a partial failure
-    // cannot leave an orphaned invoice with no MR reference.
+    // Track whether we need to emit WORK_DONE after the transaction succeeds
+    const needsAutoTransition = request.status === MaintenanceRequestStatus.IN_PROGRESS;
+    const invoiceDeadline = needsAutoTransition
+      ? new Date(Date.now() + 72 * 60 * 60 * 1000)
+      : undefined;
+
+    // Create standalone Invoice document, link to MR, and (if needed) auto-transition
+    // from IN_PROGRESS → AWAITING_INVOICE — all within a single transaction so a
+    // partial failure cannot leave inconsistent state.
+    // Uses baseDAO.withTransaction which gracefully skips transactions in dev mode
+    // (standalone MongoDB doesn't support multi-doc transactions).
     const session = await this.invoiceDAO.startSession();
     let invoice: any;
     try {
-      await session.withTransaction(async () => {
+      await this.invoiceDAO.withTransaction(session, async (txnSession) => {
+        // Auto-transition status inside the transaction to avoid write conflicts
+        if (needsAutoTransition) {
+          await this.maintenanceRequestDAO.updateById(
+            request._id.toString(),
+            { $set: { status: MaintenanceRequestStatus.AWAITING_INVOICE, invoiceDeadline } },
+            {},
+            txnSession
+          );
+        }
+
         invoice = await this.invoiceDAO.insert(
           {
             cuid,
@@ -125,18 +143,31 @@ export class MaintenanceInvoiceService {
               externalUrl: data.externalInvoiceUrl,
             },
           } as any,
-          session
+          txnSession
         );
 
         await this.maintenanceRequestDAO.updateById(
           request._id.toString(),
           { $set: { invoiceId: invoice._id } },
           {},
-          session
+          txnSession
         );
       });
     } finally {
       await session.endSession();
+    }
+
+    // Emit WORK_DONE event after successful transaction so tenant/staff get notified
+    if (needsAutoTransition) {
+      this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_WORK_DONE, {
+        requestId: request._id.toString(),
+        mruid,
+        cuid,
+        tenantId: request.tenantId?.toString(),
+        vendorId: request.vendorId?.toString(),
+        completedBy: currentuser.sub,
+        invoiceDeadline: invoiceDeadline!.toISOString(),
+      });
     }
 
     (this.emitterService as any).emit(EventTypes.MAINTENANCE_INVOICE_SUBMITTED, {
@@ -416,6 +447,7 @@ export class MaintenanceInvoiceService {
         cuid,
         vendorId: request.vendorId?.toString(),
         technicianId: request.assignedTechnician?.userId?.toString(),
+        tenantId: request.tenantId?.toString(),
         approvedBy: currentuser.sub,
       });
     } else {
@@ -425,6 +457,7 @@ export class MaintenanceInvoiceService {
         cuid,
         vendorId: request.vendorId?.toString(),
         technicianId: request.assignedTechnician?.userId?.toString(),
+        tenantId: request.tenantId?.toString(),
         rejectedBy: currentuser.sub,
         rejectionReason: data.rejectionReason!,
       });
@@ -463,10 +496,11 @@ export class MaintenanceInvoiceService {
     }
 
     // Create invoice and link to MR atomically — mirrors submitInvoice transaction pattern.
+    // Uses baseDAO.withTransaction which gracefully skips sessions in dev mode.
     const session = await this.invoiceDAO.startSession();
     let invoice: any;
     try {
-      await session.withTransaction(async () => {
+      await this.invoiceDAO.withTransaction(session, async (txnSession) => {
         invoice = await this.invoiceDAO.insert(
           {
             cuid: request.cuid,
@@ -485,14 +519,14 @@ export class MaintenanceInvoiceService {
               externalUrl: payload.externalInvoiceUrl,
             },
           } as any,
-          session
+          txnSession
         );
 
         await this.maintenanceRequestDAO.updateById(
           request._id.toString(),
           { $set: { invoiceId: (invoice as any)._id } },
           {},
-          session
+          txnSession
         );
       });
     } finally {

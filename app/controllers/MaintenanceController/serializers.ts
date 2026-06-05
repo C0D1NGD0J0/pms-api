@@ -105,9 +105,15 @@ export function serializeMaintenanceRequest(
   if (role === ROLES.TENANT) {
     const out = pick(data, [...COMMON_FIELDS, 'assignedAt']);
 
-    // Work order — tenant sees status only (for scheduling context); no cost data
+    // Work order — tenant sees scope + status for context; estimated cost is hidden
     if (data.workOrder) {
-      out.workOrder = pick(data.workOrder, ['status', 'rejectionReason', 'submittedAt']);
+      out.workOrder = pick(data.workOrder, [
+        'status',
+        'scope',
+        'notes',
+        'rejectionReason',
+        'submittedAt',
+      ]);
     }
 
     // Invoice — tenant sees their own billing summary; no raw cost or line items
@@ -123,6 +129,7 @@ export function serializeMaintenanceRequest(
         'rejectionReason',
         'reviewedAt',
         'tenantPaymentStatus',
+        'stripeReceiptUrl',
       ]);
     }
 

@@ -1,9 +1,10 @@
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { VendorDAO } from '@dao/vendorDAO';
+import { CurrentUser } from '@utils/currentUserRole';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   IMaintenanceRequestDocument,
   MaintenanceRequestStatus,
@@ -63,6 +64,28 @@ export async function resolvePrimaryVendorId(
   if (!connection?.primaryAccountHolderUserId) return null;
 
   return connection.primaryAccountHolderUserId;
+}
+
+/**
+ * Verifies that the current user is the assigned vendor (or a team member
+ * whose primary vendor account is the assigned vendor). Throws ForbiddenError
+ * when the check fails.
+ */
+export async function assertVendorAuthorized(
+  vendorDAO: VendorDAO,
+  currentuser: ICurrentUser,
+  request: { vendorId?: any },
+  errorMessage?: string
+): Promise<void> {
+  const isAssigned = request.vendorId?.toString() === currentuser.sub;
+  if (isAssigned) return;
+
+  if (CurrentUser.isVendorTeamMember(currentuser)) {
+    const primaryId = await resolvePrimaryVendorId(vendorDAO, currentuser);
+    if (primaryId && request.vendorId?.toString() === primaryId.toString()) return;
+  }
+
+  throw new ForbiddenError({ message: errorMessage || t('maintenance.errors.notYourAssignment') });
 }
 
 export async function getRequestOrThrow(

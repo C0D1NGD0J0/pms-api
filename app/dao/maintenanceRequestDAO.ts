@@ -126,12 +126,19 @@ export class MaintenanceRequestDAO
    */
   async getStats(
     cuid: string,
-    opts?: { propertyId?: string; tenantUserId?: string; vendorUserId?: string }
+    opts?: {
+      propertyId?: string;
+      tenantUserId?: string;
+      vendorUserId?: string;
+      assignedTechnicianUserId?: string;
+    }
   ): Promise<IMaintenanceStats> {
     const matchStage: FilterQuery<IMaintenanceRequestDocument> = { cuid, deletedAt: null };
     if (opts?.propertyId) matchStage.propertyId = new Types.ObjectId(opts.propertyId);
     if (opts?.tenantUserId) matchStage.tenantId = new Types.ObjectId(opts.tenantUserId);
     if (opts?.vendorUserId) matchStage.vendorId = new Types.ObjectId(opts.vendorUserId);
+    if (opts?.assignedTechnicianUserId)
+      matchStage['assignedTechnician.userId'] = new Types.ObjectId(opts.assignedTechnicianUserId);
 
     const results = await this.aggregate([
       { $match: matchStage },
@@ -184,6 +191,7 @@ export class MaintenanceRequestDAO
       open: statusMap[MaintenanceRequestStatus.OPEN] || 0,
       assigned: statusMap[MaintenanceRequestStatus.ASSIGNED] || 0,
       inProgress: statusMap[MaintenanceRequestStatus.IN_PROGRESS] || 0,
+      awaitingInvoice: statusMap[MaintenanceRequestStatus.AWAITING_INVOICE] || 0,
       completed: statusMap[MaintenanceRequestStatus.COMPLETED] || 0,
       cancelled: statusMap[MaintenanceRequestStatus.CANCELLED] || 0,
       pending: statusMap[MaintenanceRequestStatus.PENDING] || 0,

@@ -47,6 +47,7 @@ export enum DataRetentionPolicy {
 export interface ITenantInfo {
   paymentGatewayCustomers?: Map<string, string>;
   backgroundChecks?: IBackgroundCheckItem[];
+  cardPaymentMethods?: Map<string, string>;
   paymentHistory?: IPaymentHistoryItem[];
   paymentMandates?: Map<string, string>;
   rentalReferences?: IRentalReference[];

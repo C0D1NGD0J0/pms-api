@@ -3,6 +3,17 @@ import { Stripe } from 'stripe';
 import { IPaymentGatewayProvider } from './subscription.interface';
 
 export interface IPaymentProvider {
+  getInvoicePaymentDetails(invoiceId: string): Promise<{
+    chargeId?: string;
+    paymentIntentId?: string;
+    lastPaymentError?: {
+      message?: string;
+      code?: string;
+      type?: string;
+      payment_method?: { type?: string };
+    };
+    paymentMethodType?: string;
+  }>;
   getProductsWithPrices(): Promise<
     Map<
       string,

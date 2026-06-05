@@ -111,6 +111,7 @@ import {
   DSARController,
 } from '@controllers/index';
 import {
+  SubscriptionWebhookService,
   MaintenanceRequestService,
   MaintenanceInvoiceService,
   MaintenancePaymentService,
@@ -134,6 +135,7 @@ import {
   PropertyUnitService,
   LeaseRenewalService,
   SubscriptionService,
+  RentPaymentService,
   FeatureFlagService,
   PaymentCronService,
   PermissionService,
@@ -221,6 +223,7 @@ const ServiceResources = {
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
   subscriptionService: asClass(SubscriptionService).singleton(),
+  subscriptionWebhookService: asClass(SubscriptionWebhookService).singleton(),
   propertyApprovalService: asClass(PropertyApprovalService).singleton(),
   propertyStatsService: asClass(PropertyStatsService).singleton(),
   propertyMediaService: asClass(PropertyMediaService).singleton(),
@@ -244,6 +247,7 @@ const ServiceResources = {
   payoutAccountService: asClass(PayoutAccountService).singleton(),
   paymentWebhookService: asClass(PaymentWebhookService).singleton(),
   maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),
+  rentPaymentService: asClass(RentPaymentService).singleton(),
   paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),

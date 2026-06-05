@@ -26,11 +26,12 @@ export interface IDashboardStats {
     avgPaymentDelayDays: number;
   };
   maintenance: {
-    /** Total of open + assigned + inProgress + pending (excludes completed/cancelled) */
+    /** Total of open + assigned + inProgress + awaitingInvoice + pending (excludes completed/cancelled) */
     activeCount: number;
     open: number;
     assigned: number;
     inProgress: number;
+    awaitingInvoice: number;
     completed: number;
     cancelled: number;
     pending: number;

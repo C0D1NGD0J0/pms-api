@@ -140,6 +140,7 @@ export type EventPayloadMap = {
   [EventTypes.USER_UNARCHIVED]: UserArchivePayload;
   [EventTypes.USER_DISCONNECTED]: UserDisconnectedPayload;
   [EventTypes.MAINTENANCE_AI_TRIAGE_COMPLETED]: MaintenanceAITriageCompletedPayload;
+  [EventTypes.MAINTENANCE_FEEDBACK_SUBMITTED]: MaintenanceFeedbackSubmittedPayload;
   [EventTypes.MAINTENANCE_REQUEST_CREATED]: MaintenanceRequestCreatedPayload;
   [EventTypes.MAINTENANCE_REQUEST_ASSIGNED]: MaintenanceRequestAssignedPayload;
   [EventTypes.MAINTENANCE_REQUEST_ACCEPTED]: MaintenanceRequestAcceptedPayload;
@@ -241,6 +242,7 @@ export interface MaintenanceInvoiceApprovedPayload {
   technicianId?: string;
   isBillable: boolean;
   approvedBy: string;
+  invoiceId: string;
   requestId: string;
   vendorId?: string;
   tenantId?: string;
@@ -320,6 +322,28 @@ export interface MaintenanceRequestCreatedPayload {
   cuid: string;
 }
 
+export interface MaintenanceWorkOrderRejectedPayload {
+  rejectionReason: string;
+  technicianId?: string;
+  rejectedBy: string;
+  tenantId?: string;
+  requestId: string;
+  vendorId?: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceInvoiceRejectedPayload {
+  rejectionReason: string;
+  technicianId?: string;
+  rejectedBy: string;
+  invoiceId: string;
+  requestId: string;
+  vendorId?: string;
+  mruid: string;
+  cuid: string;
+}
+
 export interface LeaseRenewalRequestedPayload {
   renewalTermMonths?: number;
   propertyUnitId?: string;
@@ -342,6 +366,16 @@ export interface MaintenanceRequestCompletedPayload {
   cuid: string;
 }
 
+export interface MaintenanceFeedbackSubmittedPayload {
+  feedbackStatus: 'confirmed' | 'disputed';
+  requestId: string;
+  vendorId?: string;
+  tenantId: string;
+  rating?: number;
+  mruid: string;
+  cuid: string;
+}
+
 export interface SystemErrorPayload {
   error: {
     message: string;
@@ -354,6 +388,17 @@ export interface SystemErrorPayload {
   context?: any;
 }
 
+export interface MaintenanceInvoiceSubmittedPayload {
+  invoiceId?: string;
+  requestId: string;
+  vendorId: string;
+  currency: string;
+  invuid?: string;
+  amount: number;
+  mruid: string;
+  cuid: string;
+}
+
 export interface PaymentDisputeCreatedPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -362,26 +407,6 @@ export interface PaymentDisputeCreatedPayload {
   pytuid: string;
   amount: number;
   reason: string;
-  cuid: string;
-}
-
-export interface MaintenanceWorkOrderRejectedPayload {
-  rejectionReason: string;
-  technicianId?: string;
-  rejectedBy: string;
-  requestId: string;
-  vendorId?: string;
-  mruid: string;
-  cuid: string;
-}
-
-export interface MaintenanceInvoiceRejectedPayload {
-  rejectionReason: string;
-  technicianId?: string;
-  rejectedBy: string;
-  requestId: string;
-  vendorId?: string;
-  mruid: string;
   cuid: string;
 }
 
@@ -407,6 +432,17 @@ export interface PdfGenerationRequestedPayload {
   cuid: string;
 }
 
+export interface PaymentSucceededPayload {
+  paymentType?: string;
+  receiptUrl?: string;
+  invoiceId: string;
+  tenantId?: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+  paidAt: Date;
+}
+
 export interface MaintenanceRequestWorkDonePayload {
   invoiceDeadline: string;
   completedBy: string;
@@ -423,6 +459,16 @@ export interface MaintenanceRequestUpdatedPayload {
   managedBy?: string;
   requestId: string;
   newStatus: string;
+  mruid: string;
+  cuid: string;
+}
+
+export interface MaintenanceWorkOrderApprovedPayload {
+  technicianId?: string;
+  approvedBy: string;
+  tenantId?: string;
+  requestId: string;
+  vendorId?: string;
   mruid: string;
   cuid: string;
 }
@@ -457,7 +503,6 @@ export interface MaintenanceRequestCancelledPayload {
   mruid: string;
   cuid: string;
 }
-
 export interface InvoiceGeneratedPayload {
   generationTime?: number;
   jobId: string | number;
@@ -465,6 +510,16 @@ export interface InvoiceGeneratedPayload {
   fileSize?: number;
   pytuid: string;
   s3Key: string;
+  cuid: string;
+}
+
+export interface PaymentFailedPayload {
+  hostedInvoiceUrl?: string;
+  failureReason?: string;
+  invoiceId: string;
+  tenantId?: string;
+  amount?: number;
+  pytuid: string;
   cuid: string;
 }
 
@@ -495,6 +550,7 @@ export interface PayoutFailedPayload {
   reason?: string;
   cuid: string;
 }
+
 export interface PaymentDisputeLostPayload {
   invoiceNumber: string;
   disputeId: string;
@@ -534,15 +590,6 @@ export interface PaymentDisputeWonPayload {
   cuid: string;
 }
 
-export interface MaintenanceWorkOrderApprovedPayload {
-  technicianId?: string;
-  approvedBy: string;
-  requestId: string;
-  vendorId?: string;
-  mruid: string;
-  cuid: string;
-}
-
 export interface PaymentCancelledPayload {
   amountInCents: number;
   tenantUserId: string; // User._id — for SSE routing
@@ -574,15 +621,6 @@ export interface MaintenanceVendorPaidPayload {
   transferId: string;
   vendorId: string;
   invuid: string;
-  mruid: string;
-  cuid: string;
-}
-
-export interface MaintenanceInvoiceSubmittedPayload {
-  requestId: string;
-  vendorId: string;
-  currency: string;
-  amount: number;
   mruid: string;
   cuid: string;
 }
@@ -670,28 +708,12 @@ export interface PropertyUpdatedPayload {
   status: 'success';
 }
 
-export interface PaymentFailedPayload {
-  invoiceId: string;
-  tenantId?: string;
-  amount?: number;
-  pytuid: string;
-  cuid: string;
-}
-
 export interface UserArchivePayload {
   archivedBy: string;
   createdAt: Date;
   roles: string[];
   userId: string;
   cuid: string;
-}
-
-export interface PaymentSucceededPayload {
-  invoiceId: string;
-  pytuid: string;
-  amount: number;
-  cuid: string;
-  paidAt: Date;
 }
 
 export interface MaintenanceFundsAvailablePayload {

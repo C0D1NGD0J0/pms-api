@@ -190,6 +190,21 @@ export interface IUpdateMaintenancePayload {
   title?: string;
 }
 
+export interface IMaintenanceStats {
+  byCategory: Record<string, number>;
+  byPriority: Record<string, number>;
+  avgResolutionDays: number;
+  pendingInvoices: number;
+  awaitingInvoice: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  assigned: number;
+  pending: number;
+  total: number;
+  open: number;
+}
+
 export interface IWorkOrder {
   scope: { text: string; html?: string };
   lineItems?: IWorkOrderLineItem[];
@@ -209,20 +224,6 @@ export interface ISubmitWorkOrderPayload {
   scheduledDate?: Date; // Vendor-confirmed visit date/time within tenant's availability window
   notes?: string;
   scope: string; // HTML from rich text editor — backend stores as { text, html }
-}
-
-export interface IMaintenanceStats {
-  byCategory: Record<string, number>;
-  byPriority: Record<string, number>;
-  avgResolutionDays: number;
-  pendingInvoices: number;
-  inProgress: number;
-  completed: number;
-  cancelled: number;
-  assigned: number;
-  pending: number;
-  total: number;
-  open: number;
 }
 
 export interface IInvoiceWebhookPayload {

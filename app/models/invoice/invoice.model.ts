@@ -127,6 +127,10 @@ const InvoiceSchema = new Schema<IInvoiceDocument>(
       default: null,
       sparse: true,
     },
+    stripeReceiptUrl: {
+      type: String,
+      default: null,
+    },
     vendorPaidAt: { type: Date },
     vendorPayoutTransferId: { type: String, sparse: true },
   },

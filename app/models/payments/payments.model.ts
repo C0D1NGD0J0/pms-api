@@ -208,6 +208,13 @@ const PaymentSchema = new Schema<IPaymentDocument>(
   }
 );
 
+PaymentSchema.virtual('maintenanceRequest', {
+  ref: 'MaintenanceRequest',
+  localField: 'maintenanceRequestUid',
+  foreignField: 'mruid',
+  justOne: true,
+});
+
 PaymentSchema.index({ cuid: 1, status: 1, dueDate: -1 });
 PaymentSchema.index({ tenant: 1, dueDate: -1 });
 PaymentSchema.index(

@@ -225,6 +225,7 @@ MaintenanceRequestSchema.plugin(uniqueValidator, { message: '{PATH} must be uniq
 MaintenanceRequestSchema.index({ cuid: 1, status: 1 });
 MaintenanceRequestSchema.index({ cuid: 1, propertyId: 1 });
 MaintenanceRequestSchema.index({ vendorId: 1, status: 1 });
+MaintenanceRequestSchema.index({ 'assignedTechnician.userId': 1, status: 1 });
 
 const MaintenanceRequestModel = model<IMaintenanceRequestDocument>(
   'MaintenanceRequest',

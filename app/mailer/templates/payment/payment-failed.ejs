@@ -1,0 +1,47 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Payment Could Not Be Processed</h2>
+      <p>Hi <%= tenantName %>,</p>
+      <p>
+        Your payment of <strong><%= amount %></strong> could not be processed.
+      </p>
+    </td>
+  </tr>
+
+  <% if (typeof failureReason !== 'undefined' && failureReason) { %>
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Failure Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reason</td>
+            <td class="detail-value"><%= failureReason %></td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+  <% } %>
+
+  <% if (typeof hostedInvoiceUrl !== 'undefined' && hostedInvoiceUrl) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: hostedInvoiceUrl, label: "Pay Now", colorClass: "btn-success" }) %>
+      <p class="fallback-link">
+        Button not working? Copy and paste this link into your browser:<br />
+        <%= hostedInvoiceUrl %>
+      </p>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <p>
+        If you need help, contact your property manager.
+      </p>
+    </td>
+  </tr>
+</table>

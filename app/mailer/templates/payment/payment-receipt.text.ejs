@@ -1,0 +1,10 @@
+Payment Receipt
+
+Hi <%= tenantName %>,
+
+Your <%= paymentType %> payment of <%= amount %> has been successfully processed on <%= paidAt %>.
+<% if (typeof receiptUrl !== 'undefined' && receiptUrl) { %>
+View your receipt: <%= receiptUrl %>
+<% } %>
+
+Thank you for your payment.

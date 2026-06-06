@@ -1,0 +1,34 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Subscription Renewed</h2>
+      <p>Hi <%= adminName %>,</p>
+      <p>
+        Your <strong><%= planName %></strong> plan has been renewed for <strong><%= amount %></strong>.
+      </p>
+    </td>
+  </tr>
+
+  <% if (typeof nextBillingDate !== 'undefined' && nextBillingDate) { %>
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Next billing date</td>
+            <td class="detail-value"><%= nextBillingDate %></td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <p>
+        Thank you for being a PropertyDesk customer.
+      </p>
+    </td>
+  </tr>
+</table>

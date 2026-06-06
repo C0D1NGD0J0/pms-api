@@ -321,7 +321,6 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
-  // Lazy-loaded services to reduce memory footprint
   serviceAreaService: asFunction(() => {
     return new ServiceAreaService(Profile, Vendor);
   }).singleton(),
@@ -333,7 +332,6 @@ const UtilsResources = {
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
   s3Service: asFunction(() => {
-    // Only initialize S3Service when actually needed
     return new S3Service();
   }).singleton(),
   clamScanner: asClass(ClamScannerService).singleton(),

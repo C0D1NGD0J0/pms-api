@@ -23,6 +23,7 @@ export interface IInvoice {
   lineItems?: IInvoiceLineItem[];
   submittedBy: Types.ObjectId;
   source: IInvoiceSourceInfo;
+  stripeReceiptUrl?: string;
   fundsAvailable?: boolean;
   review?: IInvoiceReview;
   fundsAvailableAt?: Date;

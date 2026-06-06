@@ -32,12 +32,6 @@ export class MailService {
     this.resendClient = new Resend(envVariables.EMAIL.PROD.PROVIDER_PASSWORD);
   }
 
-  /**
-   * Send an email with a specific template
-   * @param data Mail data including recipient
-   * @param mailType Type of email to send
-   * @returns Promise resolving when email is sent
-   */
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
@@ -81,12 +75,6 @@ export class MailService {
     }
   }
 
-  /**
-   * Retrieve email template with caching
-   * @param emailData Template data
-   * @param type Mail type
-   * @returns Rendered email template
-   */
   private async getEmailTemplate(
     emailData: EmailTemplateData,
     type: MailType
@@ -268,13 +256,6 @@ export class MailService {
     return template;
   }
 
-  /**
-   * Build email template from EJS files
-   * @param filename Base filename for template
-   * @param data Template data
-   * @param subdir Optional subdirectory for template
-   * @returns Rendered email template
-   */
   private async buildTemplate(
     filename: string,
     data: EmailTemplateData,
@@ -321,23 +302,11 @@ export class MailService {
     }
   }
 
-  /**
-   * Render a template file with EJS
-   * @param relativePath Path to template file
-   * @param data Template data
-   * @returns Rendered template
-   */
   private async renderTemplateFile(relativePath: string, data: EmailTemplateData): Promise<string> {
     const fullPath = `${__dirname}/templates/${relativePath}`;
     return ejs.renderFile(fullPath, data);
   }
 
-  /**
-   * Render layout template
-   * @param content Main template content
-   * @param layoutData Layout data
-   * @returns Fully rendered template
-   */
   private async renderLayoutTemplate(
     content: string,
     layoutData: Record<string, any>
@@ -348,11 +317,6 @@ export class MailService {
     });
   }
 
-  /**
-   * Get default subject based on mail type
-   * @param mailType Type of email
-   * @returns Default subject line
-   */
   private getDefaultSubject(mailType: MailType): string {
     const defaultText = 'Notification from PropertyDesk';
 

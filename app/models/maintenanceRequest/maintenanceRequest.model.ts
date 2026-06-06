@@ -21,7 +21,6 @@ const WorkOrderLineItemSchema = new Schema(
   { _id: false }
 );
 
-// Zod URL validator
 const urlSchema = z.string().url();
 
 const validateUrl = (v: string): boolean => {
@@ -150,7 +149,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
         key: { type: String },
         status: {
           type: String,
-          enum: ['pending', 'processing', 'active', 'inactive', 'deleted'], // if inactive it would be deleted via cron job ltr
+          enum: ['pending', 'processing', 'active', 'inactive', 'deleted'],
           default: 'active',
         },
         uploadedAt: { type: Date, default: Date.now },

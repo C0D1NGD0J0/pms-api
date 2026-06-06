@@ -94,6 +94,8 @@ describe('SubscriptionService Integration Tests', () => {
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
   beforeEach(async () => {

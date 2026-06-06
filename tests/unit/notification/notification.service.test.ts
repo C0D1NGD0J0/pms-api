@@ -1,5 +1,7 @@
 import { EventTypes } from '@interfaces/events.interface';
 import { NotificationService } from '@services/notification/notification.service';
+import { handleMaintenanceChargePaid } from '@services/notification/notification.maintenance.handlers';
+import { handlePaymentSucceeded, handlePaymentOverdue, handlePaymentFailed } from '@services/notification/notification.payment.handlers';
 import { NotificationPriorityEnum, INotificationDocument, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
 import {
   MaintenanceChargePaidPayload,
@@ -7,8 +9,6 @@ import {
   PaymentOverduePayload,
   PaymentFailedPayload,
 } from '@interfaces/events.interface';
-import { handlePaymentFailed, handlePaymentOverdue, handlePaymentSucceeded } from '@services/notification/notification.payment.handlers';
-import { handleMaintenanceChargePaid } from '@services/notification/notification.maintenance.handlers';
 
 // Mock NotificationDAO
 const mockNotificationDAO = {
@@ -1295,6 +1295,8 @@ describe('NotificationService - handlePaymentSucceeded', () => {
     jest.clearAllMocks();
     mockCtx = {
       createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      emailQueue: { addToEmailQueue: jest.fn() },
+      userDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) },
       log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
     };
   });
@@ -1316,5 +1318,44 @@ describe('NotificationService - handlePaymentSucceeded', () => {
 
     const call = (mockCtx.createNotification as jest.Mock).mock.calls[0][2];
     expect(call.targetRoles).toContain('admin');
+  });
+
+  it('queues payment receipt email when tenantId is present', async () => {
+    const tenantId = '507f1f77bcf86cd799439011';
+    const payloadWithTenant: PaymentSucceededPayload = {
+      ...payload,
+      tenantId,
+      receiptUrl: 'https://stripe.com/receipt/123',
+      paymentType: 'rent',
+    };
+
+    mockCtx.userDAO.findFirst.mockReturnValue(
+      Promise.resolve({
+        email: 'tenant@example.com',
+        fullname: 'Jane Doe',
+        profile: { personalInfo: { firstName: 'Jane' } },
+      })
+    );
+
+    await handlePaymentSucceeded(mockCtx, payloadWithTenant);
+
+    expect(mockCtx.emailQueue.addToEmailQueue).toHaveBeenCalledWith(
+      'paymentReceipt',
+      expect.objectContaining({
+        to: 'tenant@example.com',
+        emailType: 'PAYMENT_RECEIPT',
+        data: expect.objectContaining({
+          tenantName: 'Jane',
+          paymentType: 'Rent',
+          receiptUrl: 'https://stripe.com/receipt/123',
+        }),
+      })
+    );
+  });
+
+  it('does not queue receipt email when tenantId is absent', async () => {
+    await handlePaymentSucceeded(mockCtx, payload);
+
+    expect(mockCtx.emailQueue.addToEmailQueue).not.toHaveBeenCalled();
   });
 });

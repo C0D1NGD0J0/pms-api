@@ -80,6 +80,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
 

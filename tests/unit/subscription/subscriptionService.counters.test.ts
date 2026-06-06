@@ -47,6 +47,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
 
@@ -190,6 +192,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
     });
 

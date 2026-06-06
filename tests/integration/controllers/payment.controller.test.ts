@@ -10,6 +10,7 @@ import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
+import { RentPaymentService } from '@services/payments/rentPayment.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
@@ -85,28 +86,52 @@ describe('PaymentController Integration Tests', () => {
       paymentProcessorModel: PaymentProcessor,
     });
 
-    const paymentService = new PaymentService({
-      paymentDAO,
-      clientDAO,
-      profileDAO,
-      paymentProcessorDAO,
+    const subscriptionDAO = new SubscriptionDAO();
+    const leaseDAO = new LeaseDAO({ leaseModel: Lease });
+    const userDAO = new UserDAO({ userModel: User });
+    const emitterService = { emit: jest.fn(), on: jest.fn() } as any;
+    const subscriptionPlanConfig = {} as any;
+    const queueFactory = { getQueue: jest.fn() } as any;
+    const invoiceDAO = {} as any;
+    const stripeService = {} as any;
+
+    const rentPaymentService = new RentPaymentService({
+      subscriptionPlanConfig,
       paymentGatewayService: mockPaymentGatewayService,
-      subscriptionDAO: new SubscriptionDAO(),
-      leaseDAO: new LeaseDAO({ leaseModel: Lease }),
-      userDAO: new UserDAO({ userModel: User }),
-      subscriptionPlanConfig: {} as any,
-      queueFactory: { getQueue: jest.fn() } as any,
-      pdfGeneratorService: {} as any,
-      invoiceTemplateRenderer: {
-        render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')),
-      } as any,
-      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
-      invoiceDAO: {} as any,
-      stripeService: {} as any,
+      paymentWebhookService: {} as any,
+      paymentProcessorDAO,
+      emitterService,
+      subscriptionDAO,
+      paymentCronService: {} as any,
+      queueFactory,
+      paymentDAO,
+      profileDAO,
+      clientDAO,
+      leaseDAO,
+    });
+
+    const paymentService = new PaymentService({
       maintenancePaymentService: {} as any,
       paymentWebhookService: {} as any,
       payoutAccountService: {} as any,
       paymentCronService: {} as any,
+      rentPaymentService,
+      invoiceTemplateRenderer: {
+        render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')),
+      } as any,
+      subscriptionPlanConfig,
+      paymentGatewayService: mockPaymentGatewayService,
+      pdfGeneratorService: {} as any,
+      paymentProcessorDAO,
+      emitterService,
+      subscriptionDAO,
+      stripeService,
+      invoiceDAO,
+      paymentDAO,
+      profileDAO,
+      clientDAO,
+      leaseDAO,
+      userDAO,
     });
 
     mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));

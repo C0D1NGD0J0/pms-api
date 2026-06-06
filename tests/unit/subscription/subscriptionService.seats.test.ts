@@ -91,6 +91,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
 
@@ -789,7 +791,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
           eventType: 'seats_purchased',
           message: 'Successfully purchased 3 seats',
         }),
-        'subscription_update'
+        'resource-event'
       );
     });
 
@@ -861,7 +863,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
           eventType: 'seats_purchased',
           message: 'Successfully removed 2 seats',
         }),
-        'subscription_update'
+        'resource-event'
       );
     });
   });

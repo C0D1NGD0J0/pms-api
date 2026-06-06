@@ -33,10 +33,11 @@ const mockInvoiceDAO = {
   insert: jest.fn(),
   updateById: jest.fn(),
   startSession: jest.fn().mockReturnValue(Promise.resolve(mockSession)),
+  withTransaction: jest.fn((session: unknown, cb: (s: unknown) => unknown) => cb(session)),
 } as any;
 
-const mockUserDAO = {
-  findFirst: jest.fn(),
+const mockVendorDAO = {
+  getVendorByVuid: jest.fn(),
 } as any;
 
 const mockEmitter = { emit: jest.fn() } as any;
@@ -99,8 +100,8 @@ beforeEach(() => {
   service = new MaintenanceInvoiceService({
     maintenanceRequestDAO: mockDAO,
     invoiceDAO: mockInvoiceDAO,
-    userDAO: mockUserDAO,
     emitterService: mockEmitter,
+    vendorDAO: mockVendorDAO,
   });
 });
 
@@ -126,7 +127,9 @@ describe('submitInvoice', () => {
   });
 
   it('throws ForbiddenError when vendor is not the assigned vendor', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
 
@@ -135,7 +138,9 @@ describe('submitInvoice', () => {
   });
 
   it('allows the assigned vendor to submit an invoice', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
@@ -157,7 +162,9 @@ describe('submitInvoice', () => {
   });
 
   it('throws BadRequestError when an invoice is already PENDING', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     const existingInvoice = makeInvoice(InvoiceStatus.PENDING);
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(existingInvoice));
@@ -167,7 +174,9 @@ describe('submitInvoice', () => {
   });
 
   it('throws BadRequestError when an invoice is already APPROVED', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     const existingInvoice = makeInvoice(InvoiceStatus.APPROVED);
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(existingInvoice));
@@ -177,7 +186,9 @@ describe('submitInvoice', () => {
   });
 
   it('allows resubmission after a REJECTED invoice', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     const rejectedInvoice = makeInvoice(InvoiceStatus.REJECTED);
     const newInvoice = makeInvoice(InvoiceStatus.PENDING);
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
@@ -191,15 +202,21 @@ describe('submitInvoice', () => {
   });
 
   it('allows a team member (linkedVendorUid) to submit when they resolve to the assigned vendor', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
     const teamMemberSub = new Types.ObjectId().toString();
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
     mockInvoiceDAO.insert.mockReturnValue(Promise.resolve(createdInvoice));
     mockDAO.updateById.mockReturnValue(Promise.resolve(request));
-    // resolvePrimaryVendorId returns the assigned vendorId
-    mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+    // resolvePrimaryVendorId calls vendorDAO.getVendorByVuid
+    mockVendorDAO.getVendorByVuid.mockReturnValue(
+      Promise.resolve({
+        connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+      })
+    );
 
     const ctx = makeCtx('vendor', teamMemberSub, { linkedVendorUid: 'primary-vendor-uid' });
     const result = await service.submitInvoice(ctx, 'MR001', invoiceData);
@@ -213,6 +230,7 @@ describe('submitInvoice', () => {
     it('allows primary vendor to submit invoice even when a specific technician is assigned', async () => {
       const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
         assignedTechnician: { userId: assignedTechId, name: 'Tech One' },
+        workOrder: { status: WorkOrderStatus.APPROVED },
       });
       const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
@@ -228,13 +246,18 @@ describe('submitInvoice', () => {
     it('allows the assigned technician to submit invoice', async () => {
       const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
         assignedTechnician: { userId: assignedTechId, name: 'Tech One' },
+        workOrder: { status: WorkOrderStatus.APPROVED },
       });
       const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
       mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
       mockInvoiceDAO.insert.mockReturnValue(Promise.resolve(createdInvoice));
       mockDAO.updateById.mockReturnValue(Promise.resolve(request));
-      mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+      mockVendorDAO.getVendorByVuid.mockReturnValue(
+        Promise.resolve({
+          connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+        })
+      );
 
       const ctx = makeCtx('vendor', assignedTechId, { linkedVendorUid: 'primary-vendor-uid' });
       const result = await service.submitInvoice(ctx, 'MR001', invoiceData);
@@ -244,10 +267,15 @@ describe('submitInvoice', () => {
     it('blocks a non-assigned team member when a specific technician is set', async () => {
       const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
         assignedTechnician: { userId: assignedTechId, name: 'Tech One' },
+        workOrder: { status: WorkOrderStatus.APPROVED },
       });
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
       mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
-      mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+      mockVendorDAO.getVendorByVuid.mockReturnValue(
+        Promise.resolve({
+          connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+        })
+      );
 
       const ctx = makeCtx('vendor', otherTeamMemberId, { linkedVendorUid: 'primary-vendor-uid' });
       await expect(service.submitInvoice(ctx, 'MR001', invoiceData)).rejects.toThrow(ForbiddenError);
@@ -256,13 +284,18 @@ describe('submitInvoice', () => {
     it('allows any linked team member to submit invoice when no specific technician is set (fallback)', async () => {
       const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
         assignedTechnician: { name: 'Some Tech' }, // no userId
+        workOrder: { status: WorkOrderStatus.APPROVED },
       });
       const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
       mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
       mockInvoiceDAO.insert.mockReturnValue(Promise.resolve(createdInvoice));
       mockDAO.updateById.mockReturnValue(Promise.resolve(request));
-      mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+      mockVendorDAO.getVendorByVuid.mockReturnValue(
+        Promise.resolve({
+          connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+        })
+      );
 
       const ctx = makeCtx('vendor', otherTeamMemberId, { linkedVendorUid: 'primary-vendor-uid' });
       const result = await service.submitInvoice(ctx, 'MR001', invoiceData);
@@ -271,7 +304,9 @@ describe('submitInvoice', () => {
   });
 
   it('emits MAINTENANCE_INVOICE_SUBMITTED event on success', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: { status: WorkOrderStatus.APPROVED },
+    });
     const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
@@ -533,7 +568,11 @@ describe('submitWorkOrder', () => {
     const teamMemberSub = new Types.ObjectId().toString();
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
     mockDAO.updateById.mockReturnValue(Promise.resolve(updated));
-    mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+    mockVendorDAO.getVendorByVuid.mockReturnValue(
+      Promise.resolve({
+        connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+      })
+    );
 
     const ctx = makeCtx('vendor', teamMemberSub, { linkedVendorUid: 'primary-uid' });
     const result = await service.submitWorkOrder(ctx, 'MR001', workOrderData);
@@ -564,7 +603,11 @@ describe('submitWorkOrder', () => {
       const updated = { ...request, workOrder: { status: WorkOrderStatus.PENDING_REVIEW } };
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
       mockDAO.updateById.mockReturnValue(Promise.resolve(updated));
-      mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+      mockVendorDAO.getVendorByVuid.mockReturnValue(
+        Promise.resolve({
+          connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+        })
+      );
 
       const ctx = makeCtx('vendor', assignedTechId, { linkedVendorUid: 'primary-uid' });
       const result = await service.submitWorkOrder(ctx, 'MR001', workOrderData);
@@ -576,7 +619,11 @@ describe('submitWorkOrder', () => {
         assignedTechnician: { userId: assignedTechId, name: 'Tech One' },
       });
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
-      mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+      mockVendorDAO.getVendorByVuid.mockReturnValue(
+        Promise.resolve({
+          connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+        })
+      );
 
       const ctx = makeCtx('vendor', otherTeamMemberId, { linkedVendorUid: 'primary-uid' });
       await expect(service.submitWorkOrder(ctx, 'MR001', workOrderData)).rejects.toThrow(
@@ -592,7 +639,11 @@ describe('submitWorkOrder', () => {
       const updated = { ...request, workOrder: { status: WorkOrderStatus.PENDING_REVIEW } };
       mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
       mockDAO.updateById.mockReturnValue(Promise.resolve(updated));
-      mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: vendorObjectId }));
+      mockVendorDAO.getVendorByVuid.mockReturnValue(
+        Promise.resolve({
+          connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: vendorObjectId }],
+        })
+      );
 
       const ctx = makeCtx('vendor', otherTeamMemberId, { linkedVendorUid: 'primary-uid' });
       const result = await service.submitWorkOrder(ctx, 'MR001', workOrderData);

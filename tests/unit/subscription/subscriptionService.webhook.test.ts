@@ -9,6 +9,8 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { ISubscriptionStatus } from '@interfaces/subscription.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
+import { SubscriptionWebhookService } from '@services/subscription/subscriptionWebhook.service';
 
 jest.mock('@models/index', () => ({
   Subscription: {
@@ -70,12 +72,25 @@ describe('SubscriptionService - Webhook Handlers', () => {
     mockPaymentGatewayService = {
       getSubscriptionWithItems: jest.fn(),
       getCharge: jest.fn(),
+      getInvoicePaymentDetails: jest.fn().mockResolvedValue({ data: null }),
     } as any;
     mockEmitterService = {
       emit: jest.fn(),
       off: jest.fn(),
       on: jest.fn(),
     } as any;
+
+    const webhookService = new SubscriptionWebhookService({
+      subscriptionDAO: mockSubscriptionDAO,
+      clientDAO: mockClientDAO,
+      userDAO: mockUserDAO,
+      authCache: mockAuthCache,
+      paymentGatewayService: mockPaymentGatewayService,
+      sseService: mockSSEService,
+      emailQueue: {} as any,
+      paymentProcessorDAO: {} as any,
+      subscriptionPlanConfig,
+    });
 
     subscriptionService = new SubscriptionService({
       subscriptionDAO: mockSubscriptionDAO,
@@ -88,6 +103,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: webhookService,
     });
   });
 
@@ -171,6 +188,9 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockSubscriptionDAO.update.mockResolvedValue({ ...mockSubscription, status: ISubscriptionStatus.ACTIVE } as any);
+      mockPaymentGatewayService.getInvoicePaymentDetails = jest.fn().mockResolvedValue({
+        data: { chargeId: 'ch_test123' },
+      });
       mockPaymentGatewayService.getCharge = jest.fn().mockResolvedValue({
         success: true,
         data: {
@@ -184,7 +204,6 @@ describe('SubscriptionService - Webhook Handlers', () => {
         id: 'in_test123',
         subscription: 'sub_test123',
         billing_reason: 'subscription_create',
-        latest_charge: 'ch_test123',
       });
 
       expect(mockSubscriptionDAO.findFirst).toHaveBeenCalledWith({
@@ -212,6 +231,9 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockSubscriptionDAO.update.mockResolvedValue({ ...mockSubscription, status: ISubscriptionStatus.ACTIVE } as any);
+      mockPaymentGatewayService.getInvoicePaymentDetails = jest.fn().mockResolvedValue({
+        data: { chargeId: 'ch_renewal' },
+      });
       mockPaymentGatewayService.getCharge = jest.fn().mockResolvedValue({
         success: true,
         data: { payment_method_details: { card: { last4: '4444', brand: 'mastercard' } } },
@@ -221,7 +243,6 @@ describe('SubscriptionService - Webhook Handlers', () => {
         id: 'in_renewal',
         subscription: 'sub_test123',
         billing_reason: 'subscription_cycle',
-        latest_charge: 'ch_renewal',
         period_end: Math.floor(new Date('2026-06-01').getTime() / 1000),
       });
 
@@ -368,7 +389,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
           action: 'REFETCH_CURRENT_USER',
           eventType: 'payment_failed',
         }),
-        'subscription_update'
+        'resource-event'
       );
     });
 
@@ -482,7 +503,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
           action: 'REFETCH_CURRENT_USER',
           eventType: 'subscription_updated',
         }),
-        'subscription_update'
+        'resource-event'
       );
     });
 
@@ -630,7 +651,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
           eventType: 'subscription_updated',
           message: expect.stringContaining('Seats: 2'),
         }),
-        'subscription_update'
+        'resource-event'
       );
     });
 
@@ -774,7 +795,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
           action: 'REFETCH_CURRENT_USER',
           eventType: 'subscription_canceled',
         }),
-        'subscription_update'
+        'resource-event'
       );
     });
 

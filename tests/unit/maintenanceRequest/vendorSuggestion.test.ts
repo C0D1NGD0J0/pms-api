@@ -55,6 +55,7 @@ const createService = (mocks: {
       isLocationInVendorServiceArea: jest.fn(),
       ...mocks.serviceAreaService,
     } as any,
+    subscriptionDAO: {} as any,
   });
 };
 

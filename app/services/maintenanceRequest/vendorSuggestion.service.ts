@@ -400,7 +400,6 @@ export class VendorSuggestionService {
 
     scored.sort((a, b) => b.score - a.score);
 
-    // Skip LLM when only 1 candidate or no request context provided
     if (scored.length <= 1 || !requestContext) {
       return scored[0] ?? null;
     }

@@ -88,7 +88,6 @@ export class MaintenanceInvoiceService {
       }
     }
 
-    // Guard: only allow resubmission after rejection
     const existingInvoice = await this.invoiceDAO.findByMaintenanceRequest(mruid, cuid);
     if (existingInvoice) {
       if ([InvoiceStatus.APPROVED, InvoiceStatus.PENDING].includes(existingInvoice.status)) {
@@ -206,7 +205,6 @@ export class MaintenanceInvoiceService {
       throw new BadRequestError({ message: t('maintenance.errors.invoiceNotPending') });
     }
 
-    // Update invoice doc — use { new: true } return value to get the updated state
     const updatedInvoice = await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
       $set: {
         status: InvoiceStatus.APPROVED,
@@ -550,18 +548,11 @@ export class MaintenanceInvoiceService {
     _headers: Record<string, string>,
     _rawBody: Buffer
   ): boolean {
-    // TODO (Phase 2): Verify HMAC signature before processing
-    // Until implemented, this endpoint should NOT be exposed in production without network-level protection
+    // HMAC signature verification not yet implemented — do NOT expose in production without network-level protection
     switch (source) {
       case 'quickbooks':
-        // TODO (Phase 2): verify headers['intuit-signature'] with HMAC-SHA256
-        return true;
       case 'freshbooks':
-        // TODO (Phase 2): verify headers['x-freshbooks-hmac-sha256']
-        return true;
       case 'jobber':
-        // TODO (Phase 2): verify headers['x-jobber-hmac-sha256']
-        return true;
       case 'manual':
       default:
         return true;

@@ -222,7 +222,6 @@ class EnvVariables {
       ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
-      // Disabled by default — HMAC webhook signature verification is not yet implemented.
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
     };
     // Default to 0 (no fee) — safer than NaN, which corrupts all fee arithmetic.

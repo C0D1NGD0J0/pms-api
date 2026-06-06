@@ -120,7 +120,6 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
-    // Verify signature first — userId and cuid are derived from the verified payload only
     const decoded = await this.tokenService.verifyJwtToken(
       JWT_KEY_NAMES.REFRESH_TOKEN as TokenType,
       refreshToken
@@ -140,7 +139,6 @@ export class AuthService {
       throw new UnauthorizedError();
     }
 
-    // Guard: reject if user has been disconnected from this client
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
       throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });

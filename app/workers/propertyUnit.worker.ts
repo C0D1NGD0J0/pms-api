@@ -76,7 +76,6 @@ export class PropertyUnitWorker {
         throw new Error('Property has reached maximum unit capacity');
       }
 
-      // Additional validation: Check if adding the batch would exceed the limit
       if (
         canAddUnits.maxCapacity > 0 &&
         canAddUnits.currentCount + units.length > canAddUnits.maxCapacity

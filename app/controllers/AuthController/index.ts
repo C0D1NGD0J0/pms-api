@@ -170,14 +170,12 @@ export class AuthController {
       });
     }
 
-    // Remove Bearer prefix if present
     if (refreshToken.startsWith('Bearer ')) {
       refreshToken = refreshToken.split(' ')[1];
     }
 
     const result = await this.authService.refreshToken({ refreshToken });
 
-    // Set new tokens as cookies
     res = setAuthCookies(
       {
         accessToken: result.data.accessToken,

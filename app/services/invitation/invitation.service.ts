@@ -116,7 +116,6 @@ export class InvitationService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      // Cap tenant invitations at 5 for unverified accounts
       if (!client.isVerified && validatedData.role === ROLES.TENANT) {
         const pendingTenantInvitations = await this.invitationDAO.countDocuments({
           client: client._id,
@@ -500,7 +499,6 @@ export class InvitationService {
 
       await this.invitationDAO.acceptInvitation(invitationData.token, user._id.toString(), session);
 
-      // this fixes issue where leases created using invitationId as userId cause the userid hadn't been generated when the leases are created
       if (invitation.role === 'tenant') {
         await this.migrateLeasesFromInvitationToUser(invitation._id, user._id, session);
       }

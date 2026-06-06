@@ -2,12 +2,16 @@
   "notifications": {
     "payment": {
       "requested": {
-        "title": "notifications.payment.requested.title",
-        "message": "notifications.payment.requested.message"
+        "title": "Payment Requested",
+        "message": "A payment of {{amount}} is due by {{dueDate}}"
       },
       "cancelled": {
-        "title": "notifications.payment.cancelled.title",
-        "message": "notifications.payment.cancelled.message"
+        "title": "Payment Cancelled",
+        "message": "A payment of {{amount}} has been cancelled"
+      },
+      "failedTenant": {
+        "title": "notifications.payment.failedTenant.title",
+        "message": "notifications.payment.failedTenant.message"
       }
     },
     "maintenance": {
@@ -20,8 +24,24 @@
         "message": "notifications.maintenance.invoiceBillableNotice.message"
       },
       "requestUpdatedByTenant": {
-        "title": "notifications.maintenance.requestUpdatedByTenant.title",
-        "message": "notifications.maintenance.requestUpdatedByTenant.message"
+        "title": "Request Updated by Tenant",
+        "message": "Tenant has updated maintenance request {{mruid}}"
+      },
+      "workDone": {
+        "title": "Work Marked as Done",
+        "message": "Vendor has marked work complete on request {{mruid}} — awaiting invoice"
+      },
+      "workDoneTenant": {
+        "title": "Work Complete on Your Request",
+        "message": "Work has been completed on your maintenance request {{mruid}}"
+      },
+      "invoiceApprovedTenant": {
+        "title": "notifications.maintenance.invoiceApprovedTenant.title",
+        "message": "notifications.maintenance.invoiceApprovedTenant.message"
+      },
+      "chargePaid": {
+        "title": "notifications.maintenance.chargePaid.title",
+        "message": "notifications.maintenance.chargePaid.message"
       }
     }
   },

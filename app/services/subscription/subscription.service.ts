@@ -7,6 +7,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { MoneyUtils } from '@utils/money.utils';
+import { EmailQueue } from '@queues/email.queue';
 import { createLogger, msToDays } from '@utils/index';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
@@ -31,8 +32,10 @@ import {
 } from '@interfaces/index';
 
 import { subscriptionPlanConfig } from './subscription_plans.config';
+import { SubscriptionWebhookService } from './subscriptionWebhook.service';
 
 interface IConstructor {
+  subscriptionWebhookService: SubscriptionWebhookService;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
@@ -40,6 +43,7 @@ interface IConstructor {
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
   sseService: SSEService;
+  emailQueue: EmailQueue;
   clientDAO: ClientDAO;
   authCache: AuthCache;
   userDAO: UserDAO;
@@ -50,6 +54,7 @@ export class SubscriptionService {
   private clientDAO: ClientDAO;
   private authCache: AuthCache;
   private sseService: SSEService;
+  private emailQueue: EmailQueue;
   private emitterService: EventEmitterService;
   private log: ReturnType<typeof createLogger>;
   private readonly subscriptionDAO: SubscriptionDAO;
@@ -57,29 +62,34 @@ export class SubscriptionService {
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly subscriptionWebhookService: SubscriptionWebhookService;
 
   constructor({
     userDAO,
     clientDAO,
     authCache,
     sseService,
+    emailQueue,
     emitterService,
     subscriptionDAO,
     propertyDAO,
     propertyUnitDAO,
     paymentProcessorDAO,
     paymentGatewayService,
+    subscriptionWebhookService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
     this.sseService = sseService;
+    this.emailQueue = emailQueue;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
+    this.subscriptionWebhookService = subscriptionWebhookService;
     this.log = createLogger('SubscriptionService');
     this.setupEventListeners();
   }
@@ -625,10 +635,6 @@ export class SubscriptionService {
     }
   }
 
-  /**
-   * Recalculates all subscription usage counters (properties, units, seats) from source-of-truth
-   * data and persists any corrections. Call this wherever counters may have drifted.
-   */
   private async syncUsageCounters(
     subscription: ISubscriptionDocument,
     cuid: string
@@ -1360,38 +1366,12 @@ export class SubscriptionService {
     return `$${MoneyUtils.centsToDisplay(priceInCents)}`;
   }
 
-  // WEBHOOKS AND CRON JOBS
-  /**
-   * Webhook handler: customer.subscription.created
-   * Links the Stripe subscriberId to our subscription record.
-   * Status/period updates are handled exclusively by customer.subscription.updated.
-   */
+  // WEBHOOKS — delegated to SubscriptionWebhookService
   async handleSubscriptionCreated(data: {
     stripeSubscriptionId: string;
     stripeCustomerId: string;
   }): Promise<void> {
-    const subscription = await this.subscriptionDAO.findFirst({
-      'billing.customerId': data.stripeCustomerId,
-    });
-
-    if (!subscription) {
-      this.log.warn(
-        data,
-        'customer.subscription.created: no local subscription found for customer'
-      );
-      return;
-    }
-
-    if (!subscription.billing?.subscriberId) {
-      await this.subscriptionDAO.update(
-        { _id: subscription._id },
-        { $set: { 'billing.subscriberId': data.stripeSubscriptionId } }
-      );
-      this.log.info(
-        { ...data, subscriptionId: subscription._id },
-        'Linked Stripe subscriberId via customer.subscription.created'
-      );
-    }
+    return this.subscriptionWebhookService.handleSubscriptionCreated(data);
   }
 
   async handlePaymentFailed(data: {
@@ -1399,177 +1379,15 @@ export class SubscriptionService {
     invoiceId: string;
     attemptCount?: number;
   }): IPromiseReturnedData<ISubscriptionDocument> {
-    const session = await this.subscriptionDAO.startSession();
-
-    try {
-      const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
-        const { stripeSubscriptionId, invoiceId, attemptCount } = data;
-
-        const subscription = await this.subscriptionDAO.findFirst(
-          { 'billing.subscriberId': stripeSubscriptionId },
-          undefined,
-          undefined,
-          cxtsession
-        );
-
-        if (!subscription) {
-          this.log.error({ stripeSubscriptionId }, 'Subscription not found for payment failure');
-          throw new BadRequestError({ message: 'Subscription not found' });
-        }
-
-        const gracePeriodEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-
-        const updatedSubscription = await this.subscriptionDAO.update(
-          { _id: subscription._id },
-          {
-            $set: {
-              status: ISubscriptionStatus.PAST_DUE,
-              pendingDowngradeAt: gracePeriodEndsAt,
-            },
-          },
-          undefined,
-          cxtsession
-        );
-
-        if (!updatedSubscription) {
-          throw new BadRequestError({ message: 'Failed to update subscription' });
-        }
-
-        this.log.warn(
-          {
-            subscriptionId: subscription._id,
-            stripeSubscriptionId,
-            invoiceId,
-            attemptCount,
-            gracePeriodEndsAt,
-          },
-          'Payment failed - subscription marked past_due with 7-day grace period'
-        );
-
-        return updatedSubscription;
-      });
-
-      await this.notifyAccountAdminViaSSE(result.cuid, {
-        type: 'payment_failed',
-        subscription: {
-          plan: result.planName,
-          status: result.status,
-          endDate: result.endDate,
-        },
-        message: 'Payment failed - please update your payment method',
-      });
-
-      return { data: result, success: true };
-    } catch (error) {
-      this.log.error({ error, data }, 'Error handling payment failure');
-      throw error;
-    }
+    return this.subscriptionWebhookService.handlePaymentFailed(data);
   }
 
-  /**
-   * Webhook handler: invoice.paid
-   * Saves card details to the subscription on first payment.
-   * Status and period updates are handled exclusively by customer.subscription.updated.
-   * Non-subscription invoices (rent) are silently ignored.
-   */
   async handleInvoicePaid(rawInvoice: any): Promise<void> {
-    const stripeSubscriptionId =
-      rawInvoice.subscription || rawInvoice.parent?.subscription_details?.subscription;
-
-    // Non-subscription invoice (e.g. rent) — handled elsewhere
-    if (!stripeSubscriptionId) return;
-
-    const billingReason: string = rawInvoice.billing_reason ?? '';
-    if (billingReason !== 'subscription_cycle' && billingReason !== 'subscription_create') return;
-
-    const subscription = await this.subscriptionDAO.findFirst({
-      'billing.subscriberId': stripeSubscriptionId,
-    });
-
-    if (!subscription) {
-      this.log.warn({ stripeSubscriptionId }, 'invoice.paid: subscription not found');
-      return;
-    }
-
-    const updateData: Record<string, any> = {};
-
-    // Advance endDate when Stripe provides it (renewal cycle primary source; also present on first invoice)
-    if (rawInvoice.period_end) {
-      const newEndDate = new Date(rawInvoice.period_end * 1000);
-      // Only overwrite if newer than what we have, to avoid racing customer.subscription.updated
-      if (!subscription.endDate || subscription.endDate < newEndDate) {
-        updateData.endDate = newEndDate;
-      }
-    }
-
-    // Resilience: a successful payment is proof Stripe considers the subscription active.
-    // Activate locally if customer.subscription.updated was missed (e.g. Railway sandbox sleep).
-    if (subscription.status !== ISubscriptionStatus.ACTIVE) {
-      updateData.status = ISubscriptionStatus.ACTIVE;
-      if (!subscription.billing?.subscriberId) {
-        updateData['billing.subscriberId'] = stripeSubscriptionId;
-      }
-    }
-
-    // Save / refresh card details from the charge on every paid invoice
-    const rawChargeId: string | undefined =
-      rawInvoice.latest_charge ||
-      (typeof rawInvoice.charge === 'string' ? rawInvoice.charge : rawInvoice.charge?.id);
-
-    if (rawChargeId) {
-      try {
-        const chargeResult = await this.paymentGatewayService.getCharge(
-          IPaymentGatewayProvider.STRIPE,
-          rawChargeId
-        );
-        if (chargeResult.data?.payment_method_details?.card) {
-          const { last4, brand } = chargeResult.data.payment_method_details.card;
-          if (last4) updateData['billing.cardLast4'] = last4;
-          if (brand) updateData['billing.cardBrand'] = brand;
-        }
-      } catch (err) {
-        this.log.warn({ err }, 'invoice.paid: failed to fetch card details from charge');
-      }
-    }
-
-    if (Object.keys(updateData).length > 0) {
-      await this.subscriptionDAO.update({ _id: subscription._id }, { $set: updateData });
-      this.log.info(
-        { stripeSubscriptionId, billingReason, updateData },
-        'invoice.paid: subscription synced'
-      );
-
-      // Purge the super-admin's auth cache so the next request reflects the updated
-      // endDate / status rather than serving stale data from Redis.
-      await this.notifyAccountAdminViaSSE(subscription.cuid, {
-        type: 'subscription_renewed',
-        subscription: {
-          plan: subscription.planName,
-          status: updateData.status ?? subscription.status,
-          endDate: updateData.endDate ?? subscription.endDate,
-        },
-        message: 'Your subscription has been renewed',
-      });
-    }
+    return this.subscriptionWebhookService.handleInvoicePaid(rawInvoice);
   }
 
-  /**
-   * Webhook handler: invoice.payment_failed
-   * Handles subscription payment failures only; silently ignores rent invoices.
-   */
   async handleInvoicePaymentFailed(rawInvoice: any): Promise<void> {
-    const stripeSubscriptionId =
-      rawInvoice.subscription || rawInvoice.parent?.subscription_details?.subscription;
-
-    if (!stripeSubscriptionId) {
-      return;
-    }
-
-    await this.handlePaymentFailed({
-      stripeSubscriptionId,
-      invoiceId: rawInvoice.id,
-      attemptCount: rawInvoice.attempt_count,
-    });
+    return this.subscriptionWebhookService.handleInvoicePaymentFailed(rawInvoice);
   }
 
   async handleSubscriptionUpdated(data: {
@@ -1580,335 +1398,14 @@ export class SubscriptionService {
     currentPeriodEnd?: number;
     items?: any[];
   }): IPromiseReturnedData<ISubscriptionDocument> {
-    try {
-      const {
-        stripeSubscriptionId,
-        stripeCustomerId,
-        status,
-        currentPeriodStart,
-        currentPeriodEnd,
-        items,
-      } = data;
-
-      let subscription = await this.subscriptionDAO.findFirst({
-        'billing.subscriberId': stripeSubscriptionId,
-      });
-
-      // Fallback: subscription may not have subscriberId linked yet (e.g. first activation)
-      if (!subscription && stripeCustomerId) {
-        subscription = await this.subscriptionDAO.findFirst({
-          'billing.customerId': stripeCustomerId,
-        });
-      }
-
-      if (!subscription) {
-        this.log.error({ stripeSubscriptionId }, 'Subscription not found for update');
-        throw new BadRequestError({ message: 'Subscription not found' });
-      }
-
-      const wasFirstActivation = subscription.status === ISubscriptionStatus.PENDING_PAYMENT;
-      const updateData: any = {};
-      if (status === 'active') {
-        updateData.status = ISubscriptionStatus.ACTIVE;
-        updateData.pendingDowngradeAt = null;
-        // Ensure subscriberId is linked (in case customer.subscription.created was missed)
-        if (!subscription.billing?.subscriberId) {
-          updateData['billing.subscriberId'] = stripeSubscriptionId;
-        }
-
-        // Guard: if Stripe omits currentPeriodEnd on this event and the stored endDate is
-        // already in the past, set it to 30 days from now so the frontend never sees
-        // status=active + expired endDate simultaneously (which causes a redirect loop).
-        if (!currentPeriodEnd && (!subscription.endDate || subscription.endDate < new Date())) {
-          updateData.endDate = dayjs().add(30, 'day').toDate();
-        }
-      } else if (status === 'past_due') {
-        updateData.status = ISubscriptionStatus.PAST_DUE;
-        if (!subscription.pendingDowngradeAt) {
-          updateData.pendingDowngradeAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-        }
-      } else if (status === 'canceled' || status === 'unpaid') {
-        updateData.status = ISubscriptionStatus.INACTIVE;
-      }
-
-      if (currentPeriodStart) {
-        updateData.startDate = new Date(currentPeriodStart * 1000);
-
-        // Charge overage for manual payment records from the previous period
-        const quota = subscriptionPlanConfig.getManualRecordQuota(subscription.planName);
-        const previousCount = subscription.manualRecords?.countThisPeriod ?? 0;
-
-        if (previousCount > quota && subscription.billing?.customerId) {
-          const overageCount = previousCount - quota;
-          const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
-          const totalCents = overageCount * feeCents;
-
-          try {
-            await this.paymentGatewayService.createInvoiceItem(IPaymentGatewayProvider.STRIPE, {
-              customerId: subscription.billing.customerId,
-              amountInCents: totalCents,
-              currency: 'usd',
-              description: `Manual payment record overage: ${overageCount} record(s) over ${quota} free @ $${(feeCents / 100).toFixed(2)} each`,
-            });
-            this.log.info(
-              { cuid: subscription.cuid, overageCount, totalCents },
-              'Manual record overage invoice item created'
-            );
-          } catch (err) {
-            this.log.error(
-              { err, cuid: subscription.cuid },
-              'Failed to create manual record overage invoice item'
-            );
-          }
-        }
-
-        // Reset counter for new billing period
-        updateData['manualRecords.countThisPeriod'] = 0;
-        updateData['manualRecords.periodStart'] = new Date(currentPeriodStart * 1000);
-      }
-
-      // Only advance endDate — never allow a stale webhook retry to roll it back
-      if (currentPeriodEnd) {
-        const newEndDate = new Date(currentPeriodEnd * 1000);
-        if (!subscription.endDate || subscription.endDate < newEndDate) {
-          updateData.endDate = newEndDate;
-        }
-      }
-
-      // Sync seat count directly from webhook items — no extra Stripe API call needed
-      const webhookItems: any[] = items ?? [];
-      if (webhookItems.length > 0) {
-        const config = subscriptionPlanConfig.getConfig(subscription.planName);
-        const seatLookupKeys = [
-          config.seatPricing.lookUpKeys?.monthly,
-          config.seatPricing.lookUpKeys?.annual,
-          config.seatPricing.lookUpKey,
-        ].filter(Boolean);
-
-        const seatItem = webhookItems.find((item: any) =>
-          seatLookupKeys.includes(item.price?.lookup_key)
-        );
-
-        if (seatItem) {
-          const newSeatQuantity = seatItem.quantity || 0;
-          if (newSeatQuantity !== subscription.additionalSeatsCount) {
-            this.log.info(
-              {
-                stripeSubscriptionId,
-                oldQuantity: subscription.additionalSeatsCount,
-                newQuantity: newSeatQuantity,
-              },
-              'Seat quantity changed in Stripe, syncing to database'
-            );
-
-            const newAdditionalCost = calcSeatCost(
-              newSeatQuantity,
-              config.seatPricing.additionalSeatPriceCents
-            );
-            const priceDifference = new Decimal(newAdditionalCost)
-              .minus(subscription.additionalSeatsCost ?? 0)
-              .toNumber();
-
-            updateData.additionalSeatsCount = newSeatQuantity;
-            updateData.additionalSeatsCost = newAdditionalCost;
-            updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
-              .plus(priceDifference)
-              .toNumber();
-
-            if (seatItem.id && !subscription.billing?.seatItemId) {
-              updateData['billing.seatItemId'] = seatItem.id;
-            }
-          }
-        } else if (subscription.additionalSeatsCount > 0) {
-          this.log.warn(
-            {
-              stripeSubscriptionId,
-              dbSeatCount: subscription.additionalSeatsCount,
-            },
-            'Seat item not found in webhook items but DB has seats, syncing to zero'
-          );
-
-          updateData.additionalSeatsCount = 0;
-          updateData.additionalSeatsCost = 0;
-          updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
-            .minus(subscription.additionalSeatsCost ?? 0)
-            .toNumber();
-        }
-      }
-
-      const updatedSubscription = await this.subscriptionDAO.update(
-        { _id: subscription._id },
-        { $set: updateData }
-      );
-
-      if (!updatedSubscription) {
-        throw new BadRequestError({ message: 'Failed to update subscription' });
-      }
-
-      // Toggle payouts based on new subscription status
-      if (updateData.status) {
-        await this.syncPayoutSchedule(updatedSubscription.cuid, updateData.status);
-      }
-
-      this.log.info(
-        {
-          subscriptionId: subscription._id,
-          stripeSubscriptionId,
-          newStatus: status,
-          seatsUpdated: updateData.additionalSeatsCount !== undefined,
-        },
-        'Subscription updated from Stripe'
-      );
-
-      // Invalidate billing history cache
-      try {
-        const billingCacheKey = `billing_history:${updatedSubscription.cuid}`;
-        await this.authCache.client.DEL(billingCacheKey);
-      } catch (error) {
-        this.log.warn({ error }, 'Failed to invalidate billing history cache');
-      }
-
-      // Notify user with appropriate message
-      const notificationMessage =
-        updateData.additionalSeatsCount !== undefined
-          ? `Your subscription has been updated. Seats: ${updateData.additionalSeatsCount}`
-          : `Your subscription status has been updated to ${status}`;
-
-      await this.notifyAccountAdminViaSSE(updatedSubscription.cuid, {
-        type:
-          wasFirstActivation && status === 'active'
-            ? 'subscription_activated'
-            : 'subscription_updated',
-        subscription: {
-          plan: updatedSubscription.planName,
-          status: updatedSubscription.status,
-          endDate: updatedSubscription.endDate,
-          additionalSeats: updatedSubscription.additionalSeatsCount,
-          totalMonthlyCost: updatedSubscription.totalMonthlyPrice,
-        },
-        message: notificationMessage,
-      });
-
-      return { data: updatedSubscription, success: true };
-    } catch (error) {
-      this.log.error({ error, data }, 'Error handling subscription update');
-      throw error;
-    }
+    return this.subscriptionWebhookService.handleSubscriptionUpdated(data);
   }
 
   async handleSubscriptionCanceled(data: {
     stripeSubscriptionId: string;
     canceledAt: number;
   }): IPromiseReturnedData<ISubscriptionDocument> {
-    const session = await this.subscriptionDAO.startSession();
-
-    try {
-      const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
-        const { stripeSubscriptionId, canceledAt } = data;
-
-        const subscription = await this.subscriptionDAO.findFirst(
-          { 'billing.subscriberId': stripeSubscriptionId },
-          undefined,
-          undefined,
-          cxtsession
-        );
-
-        if (!subscription) {
-          this.log.error({ stripeSubscriptionId }, 'Subscription not found for cancellation');
-          throw new BadRequestError({ message: 'Subscription not found' });
-        }
-
-        const updatedSubscription = await this.subscriptionDAO.update(
-          { _id: subscription._id },
-          {
-            $set: {
-              status: ISubscriptionStatus.INACTIVE,
-              canceledAt: new Date(canceledAt * 1000),
-            },
-          },
-          undefined,
-          cxtsession
-        );
-
-        if (!updatedSubscription) {
-          throw new BadRequestError({ message: 'Failed to update subscription' });
-        }
-
-        this.log.info(
-          {
-            subscriptionId: subscription._id,
-            stripeSubscriptionId,
-            canceledAt: new Date(canceledAt * 1000),
-          },
-          'Subscription canceled'
-        );
-
-        return updatedSubscription;
-      });
-
-      await this.notifyAccountAdminViaSSE(result.cuid, {
-        type: 'subscription_canceled',
-        subscription: {
-          plan: result.planName,
-          status: result.status,
-          endDate: result.endDate,
-        },
-        message: 'Your subscription has been canceled',
-      });
-
-      return { data: result, success: true };
-    } catch (error) {
-      this.log.error({ error, data }, 'Error handling subscription cancellation');
-      throw error;
-    }
-  }
-
-  private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
-    try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor?.accountId) return;
-
-      if (
-        newStatus === ISubscriptionStatus.INACTIVE ||
-        newStatus === ISubscriptionStatus.PAST_DUE
-      ) {
-        if (paymentProcessor.payoutsPaused) return; // already paused
-
-        await this.paymentGatewayService.updatePayoutSchedule(
-          IPaymentGatewayProvider.STRIPE,
-          paymentProcessor.accountId,
-          'manual'
-        );
-        await this.paymentProcessorDAO.update(
-          { cuid },
-          {
-            $set: {
-              payoutsPaused: true,
-              payoutsPausedReason: `Subscription ${newStatus}`,
-              payoutsPausedAt: new Date(),
-            },
-          }
-        );
-        this.log.info({ cuid, newStatus }, 'Payouts paused — subscription not active');
-      } else if (newStatus === ISubscriptionStatus.ACTIVE && paymentProcessor.payoutsPaused) {
-        await this.paymentGatewayService.updatePayoutSchedule(
-          IPaymentGatewayProvider.STRIPE,
-          paymentProcessor.accountId,
-          'weekly',
-          'monday'
-        );
-        await this.paymentProcessorDAO.update(
-          { cuid },
-          {
-            $set: { payoutsPaused: false },
-            $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },
-          }
-        );
-        this.log.info({ cuid }, 'Payouts resumed — subscription reactivated');
-      }
-    } catch (error) {
-      this.log.error({ error, cuid, newStatus }, 'Failed to sync payout schedule — non-blocking');
-    }
+    return this.subscriptionWebhookService.handleSubscriptionCanceled(data);
   }
 
   async processExpiredSubscriptions(): Promise<void> {
@@ -1979,6 +1476,54 @@ export class SubscriptionService {
     } catch (error) {
       this.log.error({ error }, 'Error in processExpiredSubscriptions cron job');
       throw error;
+    }
+  }
+
+  private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
+    try {
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      if (!paymentProcessor?.accountId) return;
+
+      if (
+        newStatus === ISubscriptionStatus.INACTIVE ||
+        newStatus === ISubscriptionStatus.PAST_DUE
+      ) {
+        if (paymentProcessor.payoutsPaused) return; // already paused
+
+        await this.paymentGatewayService.updatePayoutSchedule(
+          IPaymentGatewayProvider.STRIPE,
+          paymentProcessor.accountId,
+          'manual'
+        );
+        await this.paymentProcessorDAO.update(
+          { cuid },
+          {
+            $set: {
+              payoutsPaused: true,
+              payoutsPausedReason: `Subscription ${newStatus}`,
+              payoutsPausedAt: new Date(),
+            },
+          }
+        );
+        this.log.info({ cuid, newStatus }, 'Payouts paused — subscription not active');
+      } else if (newStatus === ISubscriptionStatus.ACTIVE && paymentProcessor.payoutsPaused) {
+        await this.paymentGatewayService.updatePayoutSchedule(
+          IPaymentGatewayProvider.STRIPE,
+          paymentProcessor.accountId,
+          'weekly',
+          'monday'
+        );
+        await this.paymentProcessorDAO.update(
+          { cuid },
+          {
+            $set: { payoutsPaused: false },
+            $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },
+          }
+        );
+        this.log.info({ cuid }, 'Payouts resumed — subscription reactivated');
+      }
+    } catch (error) {
+      this.log.error({ error, cuid, newStatus }, 'Failed to sync payout schedule — non-blocking');
     }
   }
 
@@ -2053,20 +1598,13 @@ export class SubscriptionService {
     ];
   }
 
-  private readonly onUnitBatchCreated = this.handleUnitBatchCreated.bind(this);
-  private readonly onInvitationSent = this.handleInvitationSent.bind(this);
-  private readonly onInvitationAccepted = this.handleInvitationAccepted.bind(this);
-  private readonly onInvitationExpired = this.handleInvitationExpired.bind(this);
-  private readonly onInvitationRevoked = this.handleInvitationRevoked.bind(this);
-  private readonly onUserArchived = this.handleUserArchived.bind(this);
-
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchCreated);
-    this.emitterService.on(EventTypes.INVITATION_SENT, this.onInvitationSent);
-    this.emitterService.on(EventTypes.INVITATION_ACCEPTED, this.onInvitationAccepted);
-    this.emitterService.on(EventTypes.INVITATION_EXPIRED, this.onInvitationExpired);
-    this.emitterService.on(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
-    this.emitterService.on(EventTypes.USER_ARCHIVED, this.onUserArchived);
+    this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, (p) => this.handleUnitBatchCreated(p));
+    this.emitterService.on(EventTypes.INVITATION_SENT, (p) => this.handleInvitationSent(p));
+    this.emitterService.on(EventTypes.INVITATION_ACCEPTED, (p) => this.handleInvitationAccepted(p));
+    this.emitterService.on(EventTypes.INVITATION_EXPIRED, (p) => this.handleInvitationExpired(p));
+    this.emitterService.on(EventTypes.INVITATION_REVOKED, (p) => this.handleInvitationRevoked(p));
+    this.emitterService.on(EventTypes.USER_ARCHIVED, (p) => this.handleUserArchived(p));
 
     this.log.debug('Subscription service event listeners setup complete');
   }
@@ -2265,12 +1803,12 @@ export class SubscriptionService {
   }
 
   cleanupEventListeners(): void {
-    this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchCreated);
-    this.emitterService.off(EventTypes.INVITATION_SENT, this.onInvitationSent);
-    this.emitterService.off(EventTypes.INVITATION_ACCEPTED, this.onInvitationAccepted);
-    this.emitterService.off(EventTypes.INVITATION_EXPIRED, this.onInvitationExpired);
-    this.emitterService.off(EventTypes.INVITATION_REVOKED, this.onInvitationRevoked);
-    this.emitterService.off(EventTypes.USER_ARCHIVED, this.onUserArchived);
+    this.emitterService.removeAllListeners(EventTypes.UNIT_BATCH_CREATED);
+    this.emitterService.removeAllListeners(EventTypes.INVITATION_SENT);
+    this.emitterService.removeAllListeners(EventTypes.INVITATION_ACCEPTED);
+    this.emitterService.removeAllListeners(EventTypes.INVITATION_EXPIRED);
+    this.emitterService.removeAllListeners(EventTypes.INVITATION_REVOKED);
+    this.emitterService.removeAllListeners(EventTypes.USER_ARCHIVED);
     this.log.info('Subscription service event listeners removed');
   }
 }

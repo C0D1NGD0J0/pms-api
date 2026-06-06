@@ -533,7 +533,7 @@
       "notYourUnit": "You do not have an active lease for this property",
       "staffCannotCreateForOwnUnit": "Staff cannot create maintenance requests for units they occupy",
       "vendorNotFound": "Vendor not found or not connected to this client",
-      "invoiceInvalidStatus": "Invoice can only be submitted on in-progress or completed requests",
+      "invoiceInvalidStatus": "Invoice can only be submitted when work is in progress or awaiting invoice",
       "invoiceForbidden": "Only the assigned vendor can submit an invoice",
       "noInvoice": "No invoice found on this request",
       "invoiceNotPending": "Invoice is not in pending status",
@@ -545,7 +545,7 @@
       "workOrderNotPending": "Work order is not in pending review status",
       "workOrderForbidden": "Only the PM/manager can review work orders",
       "workOrderRequired": "A work order must be submitted and approved before marking work as done",
-      "workOrderNotApproved": "The work order must be approved by the property manager before marking work as done",
+      "workOrderNotApproved": "The work order must be submitted and approved before this action can proceed",
       "notCompleted": "Request must be completed before submitting feedback",
       "notYourRequest": "You are not the tenant on this request",
       "feedbackAlreadySubmitted": "Feedback has already been submitted for this request",
@@ -711,6 +711,10 @@
       "workOrderApproved": {
         "title": "Work Order Approved",
         "message": "Your work order for request {{mruid}} has been approved — proceed with the job"
+      },
+      "workOrderApprovedTenant": {
+        "title": "Work Confirmed",
+        "message": "The work plan for your request {{mruid}} has been approved. Your vendor will be in touch shortly."
       },
       "workOrderRejected": {
         "title": "Work Order Rejected",

@@ -925,6 +925,26 @@ export class PropertyUnitService {
     const { cuid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
 
+    // Check subscription-level unit limit before property-level check
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    if (subscription) {
+      const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
+      if (maxUnits !== -1) {
+        const currentUnits = subscription.currentUnits;
+        if (currentUnits >= maxUnits) {
+          throw new BadRequestError({
+            message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,
+          });
+        }
+        const remaining = maxUnits - currentUnits;
+        if (data.units.length > remaining) {
+          throw new BadRequestError({
+            message: `Cannot add ${data.units.length} units. Your ${subscription.planName} plan allows ${maxUnits} units (${remaining} remaining). Upgrade to add more.`,
+          });
+        }
+      }
+    }
+
     const session = await this.propertyUnitDAO.startSession();
     const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
       const canAddUnits = await this.propertyDAO.canAddUnitToProperty(property.id, session);
@@ -1165,6 +1185,18 @@ export class PropertyUnitService {
     if (!property) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
       throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+    }
+
+    // Pre-check: reject immediately if already at subscription unit limit
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    if (subscription) {
+      const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
+      if (maxUnits !== -1 && subscription.currentUnits >= maxUnits) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+        throw new BadRequestError({
+          message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,
+        });
+      }
     }
 
     const csvProcessor = new PropertyUnitCsvProcessor();

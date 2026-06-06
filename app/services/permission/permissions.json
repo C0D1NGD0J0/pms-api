@@ -127,6 +127,7 @@
         "read:mine",
         "list:mine",
         "update:mine",
+        "stats:mine",
         "read:assigned",
         "update:assigned",
         "list:assigned"

@@ -144,6 +144,13 @@ export class MailService {
       case MailType.SUBSCRIPTION_RENEWAL_UPCOMING:
         template = await this.buildTemplate('subscription-renewal', emailData, 'subscription');
         break;
+      case MailType.SUBSCRIPTION_RENEWAL_RECEIPT:
+        template = await this.buildTemplate(
+          'subscription-renewal-receipt',
+          emailData,
+          'subscription'
+        );
+        break;
       case MailType.MAINTENANCE_REQUEST_ASSIGNED:
         template = await this.buildTemplate(
           'maintenance-request-assigned',
@@ -217,11 +224,17 @@ export class MailService {
       case MailType.LEASE_TERMINATED:
         template = await this.buildTemplate('lease-terminated', emailData, 'lease');
         break;
+      case MailType.PAYMENT_RECEIPT:
+        template = await this.buildTemplate('payment-receipt', emailData, 'payment');
+        break;
       case MailType.FORGOT_PASSWORD:
         template = await this.buildTemplate('forgotPassword', emailData);
         break;
       case MailType.LEASE_ACTIVATED:
         template = await this.buildTemplate('lease-activated', emailData, 'lease');
+        break;
+      case MailType.PAYMENT_FAILED:
+        template = await this.buildTemplate('payment-failed', emailData, 'payment');
         break;
       case MailType.PASSWORD_RESET:
         template = await this.buildTemplate('resetPassword', emailData);
@@ -377,6 +390,9 @@ export class MailService {
       [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: 'Work Order Rejected — Revision Required',
       [MailType.MAINTENANCE_REQUEST_ACCEPTED]: 'Your Maintenance Request is Being Handled',
       [MailType.MAINTENANCE_REQUEST_COMPLETED]: 'Your Maintenance Request Has Been Completed',
+      [MailType.PAYMENT_RECEIPT]: 'Payment Receipt',
+      [MailType.PAYMENT_FAILED]: 'Payment Could Not Be Processed',
+      [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
     };
 

@@ -133,7 +133,6 @@ const makeServiceWithMocks = (
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
-    stripeService: stripeService as unknown as StripeService,
     invoiceDAO,
     profileDAO,
     paymentDAO,
@@ -1618,7 +1617,7 @@ describe('PaymentService - handleInvoicePaymentSucceeded', () => {
   let mockEmitterService: { emit: jest.Mock; on: jest.Mock };
 
   const INVOICE_ID = 'in_test_123';
-  const CHARGE_ID = 'ch_test_abc';
+  const _CHARGE_ID = 'ch_test_abc';
 
   const makePaymentRecord = (overrides: Record<string, any> = {}) => ({
     _id: new Types.ObjectId(),
@@ -3749,7 +3748,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
     expect(mockGateway.payInvoice).toHaveBeenCalledWith(
       expect.anything(),
       INVOICE_ID,
-      { paymentMethod: 'pm_xyz' }
+      { paymentMethod: 'pm_xyz', mandate: 'mandate_abc' }
     );
     expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(
       expect.any(String),
@@ -3783,7 +3782,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
     expect(mockGateway.payInvoice).toHaveBeenCalledWith(
       expect.anything(),
       existingInvoiceId,
-      { paymentMethod: 'pm_xyz' }
+      { paymentMethod: 'pm_xyz', mandate: 'mandate_abc' }
     );
     expect(result.success).toBe(true);
   });
@@ -3817,7 +3816,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
     expect(mockGateway.payInvoice).toHaveBeenCalledWith(
       expect.anything(),
       INVOICE_ID,
-      { paymentMethod: 'pm_xyz' }
+      { paymentMethod: 'pm_xyz', mandate: 'mandate_abc' }
     );
     expect(result.success).toBe(true);
   });
@@ -3839,7 +3838,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
     expect(mockGateway.payInvoice).toHaveBeenCalledWith(
       expect.anything(),
       existingInvoiceId,
-      { paymentMethod: 'pm_xyz' }
+      { paymentMethod: 'pm_xyz', mandate: 'mandate_abc' }
     );
     expect(result.success).toBe(true);
   });
@@ -3879,11 +3878,14 @@ describe('MaintenancePaymentService - payVendor', () => {
   let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
   let mockVendorDAO: { findFirst: jest.Mock };
   let mockGateway: jest.Mocked<PaymentGatewayService>;
-  let mockStripe: { getConnectBalance: jest.Mock };
+  let mockPaymentDAO: { findFirst: jest.Mock };
   let mockEmitter: { emit: jest.Mock; on: jest.Mock };
   let mockUserDAO: jest.Mocked<UserDAO>;
 
+  const VENDOR_VUID = 'VUID-TEST-001';
+
   const makeVendorRecord = (payoutAccount: Record<string, any> = {}) => ({
+    vuid: VENDOR_VUID,
     connectedClients: [
       {
         cuid: CUID,
@@ -3911,16 +3913,15 @@ describe('MaintenancePaymentService - payVendor', () => {
     mockGateway = {
       createTransfer: jest.fn(),
     } as unknown as jest.Mocked<PaymentGatewayService>;
-    mockStripe = { getConnectBalance: jest.fn() };
+    mockPaymentDAO = { findFirst: jest.fn() };
     mockEmitter = { emit: jest.fn(), on: jest.fn() };
     mockUserDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<UserDAO>;
 
     service = new MaintenancePaymentService({
       invoiceDAO: mockInvoiceDAO,
-      paymentDAO: {} as any,
+      paymentDAO: mockPaymentDAO as any,
       paymentProcessorDAO: mockPaymentProcessorDAO,
       paymentGatewayService: mockGateway,
-      stripeService: mockStripe as unknown as StripeService,
       emitterService: mockEmitter as unknown as EventEmitterService,
       userDAO: mockUserDAO,
       vendorDAO: mockVendorDAO as any,
@@ -3943,6 +3944,11 @@ describe('MaintenancePaymentService - payVendor', () => {
       accountId: VENDOR_ACCOUNT_ID,
     } as any);
     mockVendorDAO.findFirst.mockResolvedValue(makeVendorRecord() as any);
+    mockPaymentDAO.findFirst.mockResolvedValue({
+      gatewayChargeId: 'ch_test_charge_123',
+      status: 'paid',
+      paymentType: 'maintenance',
+    } as any);
     mockGateway.createTransfer.mockResolvedValue({
       success: true,
       data: { transferId: TRANSFER_ID, amount: 45000 },
@@ -3961,6 +3967,7 @@ describe('MaintenancePaymentService - payVendor', () => {
         amountInCents: 45000,
         currency: 'cad',
         destination: VENDOR_ACCOUNT_ID,
+        sourceTransaction: 'ch_test_charge_123',
         metadata: expect.objectContaining({ mruid: MRUID, cuid: CUID, invuid: INVUID }),
       })
     );
@@ -4031,61 +4038,33 @@ describe('MaintenancePaymentService - payVendor', () => {
     await expect(service.payVendor(CUID, MRUID)).rejects.toThrow(BadRequestError);
   });
 
-  it('skips Stripe balance check when fundsAvailable flag is already true', async () => {
-    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(
-      makeInvoice({ fundsAvailable: true }) as any
-    );
+  it('throws BadRequestError when tenant payment charge not found', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(null);
+
+    await expect(service.payVendor(CUID, MRUID)).rejects.toThrow(BadRequestError);
+    expect(mockGateway.createTransfer).not.toHaveBeenCalled();
+  });
+
+  it('throws BadRequestError when payment record has no gatewayChargeId', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue({ status: 'paid', gatewayChargeId: null } as any);
+
+    await expect(service.payVendor(CUID, MRUID)).rejects.toThrow(BadRequestError);
+    expect(mockGateway.createTransfer).not.toHaveBeenCalled();
+  });
+
+  it('passes sourceTransaction from payment record gatewayChargeId', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue({
+      gatewayChargeId: 'ch_custom_id',
+      status: 'paid',
+      paymentType: 'maintenance',
+    } as any);
 
     await service.payVendor(CUID, MRUID);
 
-    expect(mockStripe.getConnectBalance).not.toHaveBeenCalled();
-    expect(mockGateway.createTransfer).toHaveBeenCalled();
-  });
-
-  it('performs live Stripe balance check when fundsAvailable is false and sufficient funds settle transfer', async () => {
-    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(
-      makeInvoice({ fundsAvailable: false, amountInCents: 45000, currency: 'cad' }) as any
+    expect(mockGateway.createTransfer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sourceTransaction: 'ch_custom_id' })
     );
-    mockStripe.getConnectBalance.mockResolvedValue({
-      available: [{ currency: 'cad', amount: 100000 }],
-      pending: [],
-    });
-
-    const result = await service.payVendor(CUID, MRUID);
-
-    expect(mockStripe.getConnectBalance).toHaveBeenCalledWith(PM_ACCOUNT_ID);
-    expect(mockInvoiceDAO.updateById).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ $set: expect.objectContaining({ fundsAvailable: true }) })
-    );
-    expect(mockGateway.createTransfer).toHaveBeenCalled();
-    expect(result.success).toBe(true);
-  });
-
-  it('throws BadRequestError when live Stripe balance check shows insufficient funds', async () => {
-    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(
-      makeInvoice({ fundsAvailable: false, amountInCents: 45000, currency: 'cad' }) as any
-    );
-    mockStripe.getConnectBalance.mockResolvedValue({
-      available: [{ currency: 'cad', amount: 10000 }], // less than 45000
-      pending: [],
-    });
-
-    await expect(service.payVendor(CUID, MRUID)).rejects.toThrow(BadRequestError);
-    expect(mockGateway.createTransfer).not.toHaveBeenCalled();
-  });
-
-  it('throws BadRequestError when currency not found in Stripe balance', async () => {
-    mockInvoiceDAO.findByMaintenanceRequest.mockResolvedValue(
-      makeInvoice({ fundsAvailable: false, amountInCents: 45000, currency: 'cad' }) as any
-    );
-    mockStripe.getConnectBalance.mockResolvedValue({
-      available: [{ currency: 'usd', amount: 999999 }], // cad not present
-      pending: [],
-    });
-
-    await expect(service.payVendor(CUID, MRUID)).rejects.toThrow(BadRequestError);
-    expect(mockGateway.createTransfer).not.toHaveBeenCalled();
   });
 });
 
@@ -4142,7 +4121,6 @@ describe('MaintenancePaymentService - handleMaintenanceInvoiceApproved', () => {
       paymentDAO: mockPaymentDAO,
       paymentProcessorDAO: {} as any,
       paymentGatewayService: {} as any,
-      stripeService: {} as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
       userDAO: {} as any,
       vendorDAO: {} as any,

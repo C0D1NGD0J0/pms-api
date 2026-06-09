@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { EventTypes } from '@interfaces/events.interface';
 import { NotificationService } from '@services/notification/notification.service';
 import { handleMaintenanceChargePaid } from '@services/notification/notification.maintenance.handlers';
@@ -16,6 +17,7 @@ const mockNotificationDAO = {
   findFirst: jest.fn(),
   findByNuid: jest.fn(),
   list: jest.fn(),
+  update: jest.fn(),
   updateById: jest.fn(),
   updateMany: jest.fn(),
 } as any;
@@ -515,6 +517,7 @@ describe('NotificationService - New Methods', () => {
 
 describe('NotificationService — Announcement Read Tracking', () => {
   let notificationService: NotificationService;
+  const testUserId = new Types.ObjectId().toString();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -536,63 +539,61 @@ describe('NotificationService — Announcement Read Tracking', () => {
   });
 
   describe('markAllAsRead', () => {
-    it('stores Redis keys for unread announcements and updates individual notifications in DB', async () => {
-      mockNotificationDAO.updateMany.mockResolvedValue({ modifiedCount: 3 });
-      mockNotificationDAO.list.mockResolvedValue({
-        items: [{ nuid: 'ANN-1' }, { nuid: 'ANN-2' }],
-      });
-      mockNotificationCache.markAnnouncementsRead.mockResolvedValue(undefined);
+    it('updates individual notifications and adds userId to readBy on announcements', async () => {
+      mockNotificationDAO.updateMany
+        .mockResolvedValueOnce({ modifiedCount: 3 }) // individual
+        .mockResolvedValueOnce({ modifiedCount: 2 }); // announcements
 
-      const result = await notificationService.markAllAsRead('user-123', 'CUID');
+      const result = await notificationService.markAllAsRead(testUserId, 'CUID');
 
       expect(result.success).toBe(true);
       expect(result.data.modifiedCount).toBe(5);
+      // Individual notifications updated with isRead
       expect(mockNotificationDAO.updateMany).toHaveBeenCalledWith(
-        { recipientType: 'individual', recipient: 'user-123', cuid: 'CUID', isRead: false },
+        { recipientType: 'individual', recipient: testUserId, cuid: 'CUID', isRead: false },
         expect.objectContaining({ $set: { isRead: true, readAt: expect.any(Date) } })
       );
-      expect(mockNotificationCache.markAnnouncementsRead).toHaveBeenCalledWith(
-        'CUID',
-        ['ANN-1', 'ANN-2'],
-        'user-123'
+      // Announcements updated with $addToSet readBy
+      expect(mockNotificationDAO.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientType: 'announcement', cuid: 'CUID' }),
+        expect.objectContaining({ $addToSet: expect.any(Object) })
       );
     });
 
-    it('skips Redis when no unread announcements exist', async () => {
-      mockNotificationDAO.updateMany.mockResolvedValue({ modifiedCount: 1 });
-      mockNotificationDAO.list.mockResolvedValue({ items: [] });
+    it('returns zero modifiedCount when nothing to update', async () => {
+      mockNotificationDAO.updateMany
+        .mockResolvedValueOnce({ modifiedCount: 0 })
+        .mockResolvedValueOnce({ modifiedCount: 0 });
 
-      const result = await notificationService.markAllAsRead('user-123', 'CUID');
+      const result = await notificationService.markAllAsRead(testUserId, 'CUID');
 
       expect(result.success).toBe(true);
-      expect(mockNotificationCache.markAnnouncementsRead).not.toHaveBeenCalled();
+      expect(result.data.modifiedCount).toBe(0);
     });
   });
 
   describe('markAsRead', () => {
-    it('stores in Redis for announcements without updating DB', async () => {
+    it('adds userId to readBy for announcements via $addToSet', async () => {
       mockNotificationDAO.findByNuid.mockResolvedValue({
         nuid: 'ANN-1',
         recipientType: 'announcement',
         cuid: 'CUID',
       });
-      mockNotificationCache.markAnnouncementsRead.mockResolvedValue(undefined);
+      mockNotificationDAO.update.mockResolvedValue({});
 
-      const result = await notificationService.markAsRead('ANN-1', 'user-123', 'CUID');
+      const result = await notificationService.markAsRead('ANN-1', testUserId, 'CUID');
 
       expect(result.success).toBe(true);
-      expect(mockNotificationCache.markAnnouncementsRead).toHaveBeenCalledWith(
-        'CUID',
-        ['ANN-1'],
-        'user-123'
+      expect(mockNotificationDAO.update).toHaveBeenCalledWith(
+        { nuid: 'ANN-1', cuid: 'CUID' },
+        expect.objectContaining({ $addToSet: expect.any(Object) })
       );
-      expect(mockNotificationDAO.updateById).not.toHaveBeenCalled();
     });
 
     it('returns not found when notification does not exist', async () => {
       mockNotificationDAO.findByNuid.mockResolvedValue(null);
 
-      const result = await notificationService.markAsRead('MISSING', 'user-123', 'CUID');
+      const result = await notificationService.markAsRead('MISSING', testUserId, 'CUID');
 
       expect(result.success).toBe(false);
       expect(result.message).toContain('not found');

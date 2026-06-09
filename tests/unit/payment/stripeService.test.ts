@@ -20,10 +20,10 @@ describe('StripeService.payInvoice', () => {
 
     await service.payInvoice('in_123', {});
 
-    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123');
+    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123', {});
   });
 
-  it('updates only the invoice payment method and pays without pay-time params', async () => {
+  it('updates only the invoice payment method and pays without mandate', async () => {
     const { service, stripe } = makeService();
 
     await service.payInvoice('in_123', { paymentMethod: 'pm_123' });
@@ -31,20 +31,23 @@ describe('StripeService.payInvoice', () => {
     expect(stripe.invoices.update).toHaveBeenCalledWith('in_123', {
       default_payment_method: 'pm_123',
     });
-    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123');
+    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123', {});
   });
 
-  it('sets only the default payment method when mandate is absent', async () => {
+  it('passes mandate to invoices.pay when provided', async () => {
     const { service, stripe } = makeService();
 
     await service.payInvoice('in_123', {
       paymentMethod: 'pm_123',
+      mandate: 'mandate_abc',
     });
 
     expect(stripe.invoices.update).toHaveBeenCalledWith('in_123', {
       default_payment_method: 'pm_123',
     });
-    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123');
+    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123', {
+      mandate: 'mandate_abc',
+    });
   });
 
   it('pays without params when no options are supplied', async () => {
@@ -53,7 +56,7 @@ describe('StripeService.payInvoice', () => {
     await service.payInvoice('in_123');
 
     expect(stripe.invoices.update).not.toHaveBeenCalled();
-    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123');
+    expect(stripe.invoices.pay).toHaveBeenCalledWith('in_123', {});
   });
 });
 

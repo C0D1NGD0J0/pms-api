@@ -102,6 +102,7 @@ beforeEach(() => {
     invoiceDAO: mockInvoiceDAO,
     emitterService: mockEmitter,
     vendorDAO: mockVendorDAO,
+    clientDAO: { getClientByCuid: jest.fn().mockResolvedValue({ settings: { defaultCurrency: 'USD' } }) } as any,
   });
 });
 

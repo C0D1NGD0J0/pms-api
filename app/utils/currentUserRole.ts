@@ -1,16 +1,7 @@
 import { ICurrentUser } from '@interfaces/user.interface';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 
-/**
- * Centralized role and identity predicates for the authenticated user.
- *
- * Use these everywhere instead of writing inline role/linkedVendorUid/isLinkedAccount
- * conditions — that logic is duplicated in 10+ places and is error-prone.
- *
- * Usage:
- *   import { CurrentUser } from '@utils/currentUserRole';
- *   if (CurrentUser.isVendorTeamMember(ctx.currentuser)) { ... }
- */
+/** Centralized role and identity predicates for the authenticated user. */
 export const CurrentUser = {
   // ── Vendor checks ──────────────────────────────────────────────────────────
 

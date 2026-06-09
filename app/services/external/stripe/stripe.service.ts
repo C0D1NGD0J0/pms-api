@@ -215,11 +215,9 @@ export class StripeService implements IPaymentProvider {
     newPriceId: string
   ): Promise<Stripe.Subscription> {
     try {
-      // Get current subscription to find subscription item ID
       const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
       const subscriptionItemId = subscription.items.data[0].id;
 
-      // Update to new price with proration (charges immediately)
       const updated = await this.stripe.subscriptions.update(subscriptionId, {
         items: [
           {
@@ -366,9 +364,7 @@ export class StripeService implements IPaymentProvider {
     return (await this.getPaymentIntentChargeInfo(paymentIntentId)).receiptUrl;
   }
 
-  async getPaymentIntentChargeInfo(
-    paymentIntentId: string
-  ): Promise<{
+  async getPaymentIntentChargeInfo(paymentIntentId: string): Promise<{
     chargeId: string | null;
     receiptUrl: string | null;
     paymentMethodId: string | null;
@@ -439,6 +435,7 @@ export class StripeService implements IPaymentProvider {
     amountInCents: number;
     currency: string;
     destination: string;
+    sourceTransaction?: string;
     metadata?: Record<string, string>;
   }): Promise<{ transferId: string; amount: number }> {
     try {
@@ -446,6 +443,7 @@ export class StripeService implements IPaymentProvider {
         amount: params.amountInCents,
         currency: params.currency,
         destination: params.destination,
+        ...(params.sourceTransaction && { source_transaction: params.sourceTransaction }),
         ...(params.metadata && { metadata: params.metadata }),
       });
       this.log.info(
@@ -724,8 +722,10 @@ export class StripeService implements IPaymentProvider {
         leaseUid,
       } = input;
 
-      // Destination charges: application_fee_amount is all-inclusive — Stripe takes its
-      // processing fee from it, platform keeps the rest.
+      // Destination charges (rent): application_fee_amount is all-inclusive — Stripe takes
+      // its processing fee from it, platform keeps the rest.
+      // Separate charges (maintenance): charge stays on platform, no transfer_data.
+      // Vendor is paid later via source_transaction transfer.
       const invoiceParams: Stripe.InvoiceCreateParams = {
         customer: tenantCustomerId,
         currency,
@@ -737,8 +737,10 @@ export class StripeService implements IPaymentProvider {
           cuid,
           ...(leaseUid ? { leaseUid } : {}),
         },
-        application_fee_amount: applicationFeeAmount,
-        transfer_data: { destination: connectedAccountId },
+        ...(!input.skipDestinationTransfer && {
+          application_fee_amount: applicationFeeAmount,
+          transfer_data: { destination: connectedAccountId },
+        }),
       };
 
       const invoice = await this.stripe.invoices.create(invoiceParams);
@@ -836,7 +838,10 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async payInvoice(invoiceId: string, opts?: { paymentMethod?: string }): Promise<void> {
+  async payInvoice(
+    invoiceId: string,
+    opts?: { paymentMethod?: string; mandate?: string }
+  ): Promise<void> {
     try {
       if (opts?.paymentMethod) {
         await this.stripe.invoices.update(invoiceId, {
@@ -844,7 +849,9 @@ export class StripeService implements IPaymentProvider {
         });
       }
 
-      await this.stripe.invoices.pay(invoiceId);
+      await this.stripe.invoices.pay(invoiceId, {
+        ...(opts?.mandate && { mandate: opts.mandate }),
+      });
     } catch (error: any) {
       if (error?.rawType === 'invoice_already_paid') return;
       this.log.error({ error, invoiceId }, 'Error paying invoice');
@@ -1041,6 +1048,7 @@ export class StripeService implements IPaymentProvider {
     metadata: Record<string, string>;
     successUrl: string;
     cancelUrl: string;
+    skipDestinationTransfer?: boolean;
   }): Promise<Stripe.Checkout.Session> {
     try {
       const {
@@ -1052,6 +1060,7 @@ export class StripeService implements IPaymentProvider {
         metadata,
         successUrl,
         cancelUrl,
+        skipDestinationTransfer,
       } = params;
       const currency = lineItems[0]?.currency ?? 'usd';
 
@@ -1068,8 +1077,10 @@ export class StripeService implements IPaymentProvider {
           quantity: 1,
         })),
         payment_intent_data: {
-          application_fee_amount: applicationFeeAmount,
-          transfer_data: { destination: destinationAccountId },
+          ...(!skipDestinationTransfer && {
+            application_fee_amount: applicationFeeAmount,
+            transfer_data: { destination: destinationAccountId },
+          }),
           metadata,
           // Save the card for future charges (e.g., ACSS-to-card retry)
           ...(customerId && { setup_future_usage: 'off_session' as const }),
@@ -1123,17 +1134,34 @@ export class StripeService implements IPaymentProvider {
       const firstPayment = (invoice as any).payments?.data?.[0];
       const pi = firstPayment?.payment?.payment_intent;
       const piObj = pi && typeof pi === 'object' ? pi : undefined;
+      const paymentIntentId = typeof pi === 'string' ? pi : piObj?.id;
 
-      const latestCharge = piObj?.latest_charge;
-      const chargeId = latestCharge
-        ? typeof latestCharge === 'string'
-          ? latestCharge
-          : latestCharge.id
-        : undefined;
+      // Extract charge ID from expanded PaymentIntent
+      let chargeId: string | undefined;
+      if (piObj?.latest_charge) {
+        chargeId =
+          typeof piObj.latest_charge === 'string' ? piObj.latest_charge : piObj.latest_charge.id;
+      }
+
+      // Fallback: if expansion didn't yield a charge (e.g. pi was a string),
+      // retrieve the PaymentIntent directly to get latest_charge.
+      if (!chargeId && paymentIntentId) {
+        try {
+          const piDirect = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+            expand: ['latest_charge'],
+          });
+          const charge = piDirect.latest_charge as Stripe.Charge | null;
+          chargeId =
+            charge?.id ??
+            (typeof piDirect.latest_charge === 'string' ? piDirect.latest_charge : undefined);
+        } catch (err) {
+          this.log.warn({ err, paymentIntentId }, 'Fallback PaymentIntent retrieve failed');
+        }
+      }
 
       return {
         chargeId,
-        paymentIntentId: typeof pi === 'string' ? pi : piObj?.id,
+        paymentIntentId,
         lastPaymentError: piObj?.last_payment_error ?? undefined,
         paymentMethodType:
           piObj?.last_payment_error?.payment_method?.type ?? piObj?.payment_method_types?.[0],

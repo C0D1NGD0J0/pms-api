@@ -92,7 +92,6 @@ export class PaymentCronService implements ICronProvider {
   }
 
   async getCronJobs(): Promise<ICronJob[]> {
-    // Non-time-sensitive jobs — fixed UTC is fine
     const utcJobs: ICronJob[] = [
       {
         name: 'payment.weekly-rent-invoices',
@@ -812,6 +811,8 @@ export class PaymentCronService implements ICronProvider {
       throw new Error('No payment method on file for tenant at this PM account');
     }
 
+    const mandateId = tenantProfile.tenantInfo?.paymentMandates?.get(paymentProcessor.accountId);
+
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     const transactionFeePercent = subscription
       ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
@@ -838,6 +839,7 @@ export class PaymentCronService implements ICronProvider {
             ],
         cuid,
         paymentMethodId,
+        skipDestinationTransfer: payment.paymentType === PaymentRecordType.MAINTENANCE,
       });
 
       activeInvoiceId = invoiceId;
@@ -851,7 +853,7 @@ export class PaymentCronService implements ICronProvider {
     const payResult = await this.paymentGatewayService.payInvoice(
       IPaymentGatewayProvider.STRIPE,
       activeInvoiceId!,
-      { paymentMethod: paymentMethodId }
+      { paymentMethod: paymentMethodId, ...(mandateId && { mandate: mandateId }) }
     );
 
     if (!payResult.success) {
@@ -958,6 +960,7 @@ export class PaymentCronService implements ICronProvider {
     cuid: string;
     paymentMethodId?: string;
     leaseUid?: string;
+    skipDestinationTransfer?: boolean;
   }): Promise<{ invoiceId: string; hostedInvoiceUrl?: string }> {
     const invoiceResult = await this.paymentGatewayService.createInvoice(
       IPaymentGatewayProvider.STRIPE,
@@ -972,6 +975,7 @@ export class PaymentCronService implements ICronProvider {
         cuid: opts.cuid,
         paymentMethodId: opts.paymentMethodId,
         leaseUid: opts.leaseUid,
+        skipDestinationTransfer: opts.skipDestinationTransfer,
       }
     );
     if (!invoiceResult.success || !invoiceResult.data) {

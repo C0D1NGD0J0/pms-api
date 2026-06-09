@@ -66,6 +66,7 @@ import {
   handleInvoiceRejected,
   handleMRCompleted,
   handleMRCancelled,
+  handleVendorPaid,
   handleMRAssigned,
   handleMRAccepted,
   handleMRDeclined,
@@ -334,7 +335,8 @@ export class NotificationService {
         cuid,
         targetingInfo,
         personalFilters,
-        pagination
+        pagination,
+        { archivedAt: null } // Exclude archived individual notifications
       );
 
       return {
@@ -395,25 +397,28 @@ export class NotificationService {
         pagination
       );
 
-      const unreadNuids = result.data.filter((n) => !n.isRead).map((n) => n.nuid);
-      if (unreadNuids.length > 0) {
-        const readSet = await this.notificationCache.getReadAnnouncementNuids(
-          cuid,
-          unreadNuids,
-          userId
-        );
-        for (const notif of result.data) {
-          if (readSet.has(notif.nuid)) {
-            (notif as any).isRead = true;
-          }
+      const userObjectId = new Types.ObjectId(userId);
+
+      // Overlay read status from readBy array and filter out archived
+      const filtered = result.data.filter((notif) => {
+        // Exclude announcements archived by this user
+        if (notif.archivedBy && notif.archivedBy.some((id) => id.equals(userObjectId))) {
+          return false;
+        }
+        return true;
+      });
+
+      for (const notif of filtered) {
+        if (notif.readBy && notif.readBy.some((id) => id.equals(userObjectId))) {
+          (notif as any).isRead = true;
         }
       }
 
       return {
         success: true,
         data: {
-          notifications: result.data,
-          total: result.total,
+          notifications: filtered,
+          total: filtered.length,
         },
         message: 'Announcements retrieved successfully',
       };
@@ -906,9 +911,6 @@ export class NotificationService {
     return notifySystemErrorFn(this.buildContext(), params);
   }
 
-  /**
-   * Find user's supervisor - delegates to UserService
-   */
   async findUserSupervisor(userId: string, cuid: string): Promise<string | null> {
     return this.userService.getUserSupervisor(userId, cuid);
   }
@@ -1029,9 +1031,6 @@ export class NotificationService {
     return this.userService.getUserDisplayName(userId, cuid);
   }
 
-  /**
-   * Check if notification would be a self-notification
-   */
   private isSelfNotification(actorUserId: string, recipientUserId: string): boolean {
     const isSelf = actorUserId === recipientUserId;
     if (isSelf) {
@@ -1098,7 +1097,10 @@ export class NotificationService {
       }
 
       if (notification.recipientType === 'announcement') {
-        await this.notificationCache.markAnnouncementsRead(cuid, [notificationId], userId);
+        await this.notificationDAO.update(
+          { nuid: notificationId, cuid },
+          { $addToSet: { readBy: new Types.ObjectId(userId) } }
+        );
         return { success: true, data: notification };
       }
 
@@ -1134,20 +1136,17 @@ export class NotificationService {
         { $set: { isRead: true, readAt: new Date() } }
       );
 
-      const announcementResult = await this.notificationDAO.list(
-        { recipientType: 'announcement', cuid, isRead: false },
-        { projection: 'nuid', limit: 100 }
+      const userObjectId = new Types.ObjectId(userId);
+      const announcementResult = await this.notificationDAO.updateMany(
+        { recipientType: 'announcement', cuid, readBy: { $ne: userObjectId }, deletedAt: null },
+        { $addToSet: { readBy: userObjectId } }
       );
-      const unreadAnnouncements = announcementResult.items || [];
-
-      if (unreadAnnouncements.length > 0) {
-        const nuids = unreadAnnouncements.map((a: any) => a.nuid);
-        await this.notificationCache.markAnnouncementsRead(cuid, nuids, userId);
-      }
 
       return {
         success: true,
-        data: { modifiedCount: individualResult.modifiedCount + unreadAnnouncements.length },
+        data: {
+          modifiedCount: individualResult.modifiedCount + (announcementResult.modifiedCount || 0),
+        },
       };
     } catch (error) {
       this.log.error('Error marking all notifications as read', {
@@ -1164,10 +1163,100 @@ export class NotificationService {
     }
   }
 
+  async archiveNotification(
+    nuid: string,
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData> {
+    try {
+      const notification = await this.notificationDAO.findByNuid(nuid, cuid);
+      if (!notification) {
+        return { success: false, data: null, message: 'Notification not found' };
+      }
+
+      if (notification.recipientType === 'announcement') {
+        await this.notificationDAO.update(
+          { nuid, cuid },
+          { $addToSet: { archivedBy: new Types.ObjectId(userId) } }
+        );
+      } else {
+        if (notification.recipient?.toString() !== userId) {
+          return { success: false, data: null, message: 'Access denied' };
+        }
+        await this.notificationDAO.updateById(notification._id.toString(), {
+          archivedAt: new Date(),
+        });
+      }
+
+      return { success: true, data: null, message: 'Notification archived' };
+    } catch (error) {
+      this.log.error('Error archiving notification', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        nuid,
+        userId,
+        cuid,
+      });
+      return { success: false, data: null, message: 'Failed to archive notification' };
+    }
+  }
+
+  async archiveAllRead(
+    userId: string,
+    cuid: string
+  ): Promise<ISuccessReturnData<{ modifiedCount: number }>> {
+    try {
+      const userObjectId = new Types.ObjectId(userId);
+
+      // Archive read individual notifications
+      const individualResult = await this.notificationDAO.updateMany(
+        {
+          recipientType: 'individual',
+          recipient: userObjectId,
+          cuid,
+          isRead: true,
+          archivedAt: null,
+          deletedAt: null,
+        },
+        { $set: { archivedAt: new Date() } }
+      );
+
+      // Archive read announcements (user is in readBy but not in archivedBy)
+      const announcementResult = await this.notificationDAO.updateMany(
+        {
+          recipientType: 'announcement',
+          cuid,
+          readBy: userObjectId,
+          archivedBy: { $ne: userObjectId },
+          deletedAt: null,
+        },
+        { $addToSet: { archivedBy: userObjectId } }
+      );
+
+      return {
+        success: true,
+        data: {
+          modifiedCount:
+            (individualResult.modifiedCount || 0) + (announcementResult.modifiedCount || 0),
+        },
+        message: 'Read notifications archived',
+      };
+    } catch (error) {
+      this.log.error('Error archiving all read notifications', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId,
+        cuid,
+      });
+      return {
+        success: false,
+        data: { modifiedCount: 0 },
+        message: 'Failed to archive read notifications',
+      };
+    }
+  }
+
   /**
    * Check if a notification has already been sent
-   * Used to prevent duplicate notifications (e.g., lease expiry reminders)
-   * TODO: Consider introducing a stage-based notification check method for more granular control.
+   * Used to prevent duplicate notifications (e.g., lease expiry reminders).
    */
   async hasNotificationBeenSent(
     leaseId: string,
@@ -1412,6 +1501,7 @@ export class NotificationService {
     this.emitterService.on(EventTypes.MAINTENANCE_INVOICE_REJECTED, (p) =>
       handleInvoiceRejected(ctx, p)
     );
+    this.emitterService.on(EventTypes.MAINTENANCE_VENDOR_PAID, (p) => handleVendorPaid(ctx, p));
     this.emitterService.on(EventTypes.MAINTENANCE_CHARGE_PAID, (p) =>
       handleMaintenanceChargePaid(ctx, p)
     );

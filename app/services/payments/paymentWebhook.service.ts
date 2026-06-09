@@ -139,7 +139,6 @@ export class PaymentWebhookService {
         return { success: true, data: undefined, message: 'Payment already paid' };
       }
 
-      // ── Mark payment as PAID ─────────────────────────────────────────────
       const paymentDetails = await this.stripeService.getInvoicePaymentDetails(invoiceId);
       const chargeId = paymentDetails.chargeId;
       if (!chargeId) {

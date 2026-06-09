@@ -215,8 +215,6 @@ export class MetricsService implements ICronProvider {
     });
   }
 
-  // ─── Query methods ─────────────────────────────────────────────────────────
-
   async getDashboardStats(cuid: string): Promise<IDashboardStats> {
     const [leases, payments, unitCounts, propertyCount, users, maintenance] = await Promise.all([
       this.leaseDAO.getLeaseStats(cuid),

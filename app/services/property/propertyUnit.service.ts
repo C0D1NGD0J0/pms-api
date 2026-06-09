@@ -209,9 +209,6 @@ export class PropertyUnitService {
     }
   }
 
-  /**
-   * Extract high-impact unit changes that require approval
-   */
   private extractHighImpactUnitChanges(updateData: any): any {
     const highImpactChanges: any = {};
     HIGH_IMPACT_UNIT_FIELDS.forEach((field) => {
@@ -222,9 +219,6 @@ export class PropertyUnitService {
     return highImpactChanges;
   }
 
-  /**
-   * Extract operational unit changes that can be applied directly
-   */
   private extractOperationalUnitChanges(updateData: any): any {
     const operationalChanges: any = {};
     OPERATIONAL_UNIT_FIELDS.forEach((field) => {
@@ -239,9 +233,6 @@ export class PropertyUnitService {
     return operationalChanges;
   }
 
-  /**
-   * Helper to check if nested property exists
-   */
   private hasNestedProperty(obj: any, path: string): boolean {
     try {
       const value = path.split('.').reduce((current, key) => {
@@ -254,16 +245,10 @@ export class PropertyUnitService {
     }
   }
 
-  /**
-   * Helper to get nested property value
-   */
   private getNestedProperty(obj: any, path: string): any {
     return path.split('.').reduce((current, key) => current && current[key], obj);
   }
 
-  /**
-   * Helper to set nested property value
-   */
   private setNestedProperty(obj: any, path: string, value: any): void {
     const keys = path.split('.');
     const lastKey = keys.pop()!;
@@ -646,7 +631,6 @@ export class PropertyUnitService {
     }
 
     if (Object.keys(validationErrors).length > 0) {
-      // add suggestion to error message if available
       if (unitNumberSuggestion && validationErrors['unitNumber']) {
         validationErrors['unitNumber'].push(`Suggested unit number: ${unitNumberSuggestion}`);
       }

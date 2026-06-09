@@ -43,9 +43,6 @@ export class PaymentGatewayService {
     }
   }
 
-  /**
-   * Get provider instance by name
-   */
   private getProvider(provider: IPaymentGatewayProvider): IPaymentProvider {
     const providerInstance = this.providers.get(provider);
 
@@ -56,10 +53,6 @@ export class PaymentGatewayService {
     return providerInstance;
   }
 
-  /**
-   * Create or retrieve customer
-   * Routes to correct provider based on input
-   */
   async createCustomer(input: ICreateCustomerInput): IPromiseReturnedData<IPaymentCustomer | null> {
     try {
       const { provider, email, metadata, name, connectedAccountId } = input;
@@ -88,10 +81,6 @@ export class PaymentGatewayService {
     }
   }
 
-  /**
-   * Create checkout session
-   * Routes to correct provider based on input
-   */
   async createCheckoutSession(
     input: ICreateCheckoutInput
   ): IPromiseReturnedData<ICheckoutSession | null> {
@@ -141,10 +130,6 @@ export class PaymentGatewayService {
     }
   }
 
-  /**
-   * Cancel subscription
-   * TODO: Implement when StripeService.cancelSubscription is added
-   */
   async cancelSubscription(
     provider: IPaymentGatewayProvider,
     subscriptionId: string
@@ -154,7 +139,6 @@ export class PaymentGatewayService {
 
       const providerInstance = this.getProvider(provider);
 
-      // Check if provider implements cancelSubscription
       if (!('cancelSubscription' in providerInstance)) {
         throw new Error(`Provider ${provider} does not implement cancelSubscription`);
       }
@@ -625,7 +609,7 @@ export class PaymentGatewayService {
   async payInvoice(
     provider: IPaymentGatewayProvider,
     invoiceId: string,
-    opts?: { paymentMethod?: string }
+    opts?: { paymentMethod?: string; mandate?: string }
   ): IPromiseReturnedData<null> {
     try {
       const providerInstance = this.getProvider(provider);
@@ -810,6 +794,7 @@ export class PaymentGatewayService {
       amountInCents: number;
       currency: string;
       destination: string;
+      sourceTransaction?: string;
       metadata?: Record<string, string>;
     }
   ): IPromiseReturnedData<{ transferId: string; amount: number } | null> {

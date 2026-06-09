@@ -8,7 +8,6 @@ import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { PlanName } from '@interfaces/subscription.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
-import { StripeService } from '@services/external/stripe/stripe.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
@@ -37,7 +36,6 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
-  stripeService: StripeService;
   invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
@@ -54,7 +52,6 @@ export class MaintenancePaymentService {
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
-  private readonly stripeService: StripeService;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
@@ -69,7 +66,6 @@ export class MaintenancePaymentService {
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
-    stripeService,
     invoiceDAO,
     profileDAO,
     paymentDAO,
@@ -84,7 +80,6 @@ export class MaintenancePaymentService {
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
-    this.stripeService = stripeService;
     this.invoiceDAO = invoiceDAO;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
@@ -241,7 +236,7 @@ export class MaintenancePaymentService {
         });
       }
 
-      // Resolve vendor from the invoice submitter
+      // Resolve vendor ORG from the invoice submitter (a team member of the vendor org)
       const vendorUser = await this.userDAO.findFirst({
         _id: invoice.submittedBy,
         deletedAt: null,
@@ -250,8 +245,25 @@ export class MaintenancePaymentService {
         throw new NotFoundError({ message: 'Vendor user record not found.' });
       }
 
+      // Resolve vendor org vuid: team members have linkedVendorUid,
+      // primary account holders (linkedVendorUid is null) are looked up by userId
+      const clientEntry = vendorUser.cuids?.find((c: any) => c.cuid === cuid);
+      let vendorVuid = clientEntry?.linkedVendorUid;
+      if (!vendorVuid) {
+        const vendorOrg = await this.vendorDAO.findFirst({
+          'connectedClients.primaryAccountHolderUserId': vendorUser._id,
+          deletedAt: null,
+        });
+        vendorVuid = vendorOrg?.vuid;
+      }
+      if (!vendorVuid) {
+        throw new BadRequestError({
+          message: 'Could not resolve vendor organization for this user.',
+        });
+      }
+
       // Global Stripe-level check — account frozen/closed affects all clients
-      const vendorProcessor = await this.paymentProcessorDAO.findByVuid(vendorUser.uid);
+      const vendorProcessor = await this.paymentProcessorDAO.findByVuid(vendorVuid);
       if (!vendorProcessor?.accountId) {
         throw new BadRequestError({
           message:
@@ -268,7 +280,7 @@ export class MaintenancePaymentService {
 
       // Per-client check — isSetup, enabled flags, and admin block from connectedClients
       const vendorRecord = await this.vendorDAO.findFirst({
-        vuid: vendorUser.uid,
+        vuid: vendorVuid,
         deletedAt: null,
       });
       const clientConn = vendorRecord?.connectedClients?.find((c: any) => c.cuid === cuid);
@@ -288,28 +300,32 @@ export class MaintenancePaymentService {
 
       const currency = (invoice.currency ?? 'usd').toLowerCase();
 
-      // Hybrid funds check: passive flag first, active Stripe balance as fallback
-      if (!invoice.fundsAvailable) {
-        const balance = await this.stripeService.getConnectBalance(pmProcessor.accountId);
-        const availableEntry = balance.available.find((b) => b.currency === currency);
-        if (!availableEntry || availableEntry.amount < invoice.amountInCents) {
-          throw new BadRequestError({
-            message:
-              'Funds from the tenant payment have not yet settled in your account. Please try again in 1–2 business days.',
-          });
-        }
-        // Confirm live — flip flag so future calls skip the Stripe check
-        await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
-          $set: { fundsAvailable: true, fundsAvailableAt: new Date() },
+      // Maintenance charges use separate charges (no transfer_data) so funds stay
+      // on the platform. We need the tenant's charge ID to link via source_transaction.
+      const paymentRecord = await this.paymentDAO.findFirst({
+        cuid,
+        maintenanceRequestUid: mruid,
+        paymentType: PaymentRecordType.MAINTENANCE,
+        vendorId: { $exists: false },
+        status: PaymentRecordStatus.PAID,
+        deletedAt: null,
+      });
+      if (!paymentRecord?.gatewayChargeId) {
+        throw new BadRequestError({
+          message: 'Tenant payment charge not found. The tenant may not have paid yet.',
         });
       }
 
+      // Transfer vendor amount from platform to vendor's Connect account.
+      // source_transaction links to the tenant's charge so Stripe earmarks the funds
+      // and queues the transfer if the charge hasn't fully settled yet.
       const transferResult = await this.paymentGatewayService.createTransfer(
         IPaymentGatewayProvider.STRIPE,
         {
           amountInCents: invoice.amountInCents,
           currency,
           destination: vendorProcessor.accountId,
+          sourceTransaction: paymentRecord.gatewayChargeId,
           metadata: { cuid, mruid, invuid: invoice.invuid },
         }
       );
@@ -389,6 +405,7 @@ export class MaintenancePaymentService {
         amount,
         planName,
         vendorLineItems: vendorItems,
+        invoiceCurrency: payload.currency,
       });
 
     const record = await this.paymentDAO.insert({
@@ -436,6 +453,7 @@ export class MaintenancePaymentService {
     amount: number;
     planName: PlanName;
     vendorLineItems: { description: string; amountInCents: number }[];
+    invoiceCurrency?: string;
   }): Promise<{
     totalAmount: number;
     serviceFeeCents: number;
@@ -443,10 +461,11 @@ export class MaintenancePaymentService {
     currency: string;
     dueDate: Date;
   }> {
-    const { cuid, tenantId, amount, planName, vendorLineItems } = params;
+    const { cuid, tenantId, amount, planName, vendorLineItems, invoiceCurrency } = params;
 
     const activeLease = await this.leaseDAO.getActiveLeaseByTenant(cuid, tenantId);
-    const currency = activeLease?.fees?.currency ?? 'USD';
+    // Invoice currency takes priority — it's the currency the vendor invoiced in
+    const currency = invoiceCurrency || activeLease?.fees?.currency || 'USD';
 
     const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(planName);
     const serviceFeeCents = Math.round((amount * transactionFeePercent) / 100);

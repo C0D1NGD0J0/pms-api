@@ -1058,6 +1058,13 @@ export class ClientService {
           return;
         }
 
+        // Sync payout flags to vendor's per-client record so payVendor() passes
+        await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+          isSetup: true,
+          payoutsEnabled: true,
+          chargesEnabled: true,
+        });
+
         await this.authCache.invalidateCurrentUser(recipientId, cuid);
 
         await this.sseService.sendToUser(

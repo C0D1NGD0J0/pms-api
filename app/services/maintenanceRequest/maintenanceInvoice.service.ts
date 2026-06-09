@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
+import { ClientDAO } from '@dao/clientDAO';
 import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
 import { InvoiceDAO } from '@dao/invoiceDAO';
@@ -32,17 +33,26 @@ interface IConstructor {
   emitterService: EventEmitterService;
   invoiceDAO: InvoiceDAO;
   vendorDAO: VendorDAO;
+  clientDAO: ClientDAO;
 }
 
 export class MaintenanceInvoiceService {
   private readonly log: Logger;
   private readonly vendorDAO: VendorDAO;
+  private readonly clientDAO: ClientDAO;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
 
-  constructor({ maintenanceRequestDAO, emitterService, invoiceDAO, vendorDAO }: IConstructor) {
+  constructor({
+    maintenanceRequestDAO,
+    emitterService,
+    invoiceDAO,
+    vendorDAO,
+    clientDAO,
+  }: IConstructor) {
     this.vendorDAO = vendorDAO;
+    this.clientDAO = clientDAO;
     this.invoiceDAO = invoiceDAO;
     this.emitterService = emitterService;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
@@ -124,6 +134,9 @@ export class MaintenanceInvoiceService {
           );
         }
 
+        const clientDoc = await this.clientDAO.getClientByCuid(cuid);
+        const fallbackCurrency = clientDoc?.settings?.defaultCurrency || 'USD';
+
         invoice = await this.invoiceDAO.insert(
           {
             cuid,
@@ -132,7 +145,7 @@ export class MaintenanceInvoiceService {
             submittedBy: new Types.ObjectId(currentuser.sub),
             submittedAt: new Date(),
             amountInCents: data.amount,
-            currency: (data.currency || 'USD').toUpperCase(),
+            currency: (data.currency || fallbackCurrency).toUpperCase(),
             description: data.description,
             lineItems: data.lineItems,
             status: InvoiceStatus.PENDING,
@@ -177,7 +190,7 @@ export class MaintenanceInvoiceService {
       cuid,
       vendorId: currentuser.sub,
       amount: data.amount,
-      currency: data.currency || 'USD',
+      currency: (invoice as any).currency || 'USD',
     });
 
     return { success: true, data: invoice, message: t('maintenance.success.invoiceSubmitted') };
@@ -499,6 +512,9 @@ export class MaintenanceInvoiceService {
     let invoice: any;
     try {
       await this.invoiceDAO.withTransaction(session, async (txnSession) => {
+        const clientDoc = await this.clientDAO.getClientByCuid(request.cuid);
+        const fallbackCurrency = clientDoc?.settings?.defaultCurrency || 'USD';
+
         invoice = await this.invoiceDAO.insert(
           {
             cuid: request.cuid,
@@ -507,7 +523,7 @@ export class MaintenanceInvoiceService {
             submittedBy,
             submittedAt: new Date(),
             amountInCents: payload.amount,
-            currency: (payload.currency || 'USD').toUpperCase(),
+            currency: (payload.currency || fallbackCurrency).toUpperCase(),
             description: payload.description,
             lineItems: payload.lineItems,
             status: InvoiceStatus.PENDING,

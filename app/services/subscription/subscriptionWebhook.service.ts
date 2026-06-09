@@ -250,19 +250,22 @@ export class SubscriptionWebhookService {
         { stripeSubscriptionId, billingReason, updateData },
         'invoice.paid: subscription synced'
       );
+    }
 
-      // Purge the super-admin's auth cache so the next request reflects the updated
-      // endDate / status rather than serving stale data from Redis.
-      await this.notifyAccountAdminViaSSE(subscription.cuid, {
-        type: 'subscription_renewed',
-        subscription: {
-          plan: subscription.planName,
-          status: updateData.status ?? subscription.status,
-          endDate: updateData.endDate ?? subscription.endDate,
-        },
-        message: 'Your subscription has been renewed',
-      });
+    // Always bust cache and notify on successful renewal — even when
+    // customer.subscription.updated already advanced the DB fields, the
+    // cached currentUser may still hold stale subscription data.
+    await this.notifyAccountAdminViaSSE(subscription.cuid, {
+      type: 'subscription_renewed',
+      subscription: {
+        plan: subscription.planName,
+        status: updateData.status ?? subscription.status,
+        endDate: updateData.endDate ?? subscription.endDate,
+      },
+      message: 'Your subscription has been renewed',
+    });
 
+    if (Object.keys(updateData).length > 0) {
       // Queue subscription renewal receipt email to account admin
       if (billingReason === 'subscription_cycle') {
         try {

@@ -28,12 +28,12 @@
         "message": "Tenant has updated maintenance request {{mruid}}"
       },
       "workDone": {
-        "title": "Work Marked as Done",
-        "message": "Vendor has marked work complete on request {{mruid}} — awaiting invoice"
+        "title": "notifications.maintenance.workDone.title",
+        "message": "notifications.maintenance.workDone.message"
       },
       "workDoneTenant": {
-        "title": "Work Complete on Your Request",
-        "message": "Work has been completed on your maintenance request {{mruid}}"
+        "title": "notifications.maintenance.workDoneTenant.title",
+        "message": "notifications.maintenance.workDoneTenant.message"
       },
       "invoiceApprovedTenant": {
         "title": "notifications.maintenance.invoiceApprovedTenant.title",

@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import mongoose from 'mongoose';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { FilterQuery, Types } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
@@ -497,17 +498,90 @@ export class PaymentService implements ICronProvider {
       delete paymentObj.tenant;
       delete paymentObj.lease;
 
-      // For vendor maintenance payments with no line items, backfill from the invoice document
-      if (!paymentObj.lineItems?.length && paymentObj.maintenanceRequestUid) {
+      // For maintenance payments, look up the invoice for line items and vendor payout info
+      let vendorPayout = null;
+      if (paymentObj.maintenanceRequestUid) {
         const invoice = await this.invoiceDAO.findByMaintenanceRequest(
           paymentObj.maintenanceRequestUid,
           cuid
         );
-        if (invoice?.lineItems?.length) {
-          paymentObj.lineItems = invoice.lineItems.map((item) => ({
-            description: item.description,
-            amountInCents: item.amountInCents,
-          }));
+
+        if (invoice) {
+          // Backfill line items if missing
+          if (!paymentObj.lineItems?.length && invoice.lineItems?.length) {
+            paymentObj.lineItems = invoice.lineItems.map((item) => ({
+              description: item.description,
+              amountInCents: item.amountInCents,
+            }));
+          }
+
+          // Resolve vendor org name from the submitter
+          let vendorName = '';
+          if (invoice.submittedBy) {
+            const submitter = await this.userDAO.findFirst({ _id: invoice.submittedBy });
+            const clientEntry = submitter?.cuids?.find((c: any) => c.cuid === cuid);
+            const vendorVuid = clientEntry?.linkedVendorUid;
+
+            let vendorOrg;
+            if (vendorVuid) {
+              // Team member — look up org by vuid
+              vendorOrg = await mongoose.connection.db
+                ?.collection('vendors')
+                .findOne({ vuid: vendorVuid, deletedAt: null }, { projection: { companyName: 1 } });
+            } else if (clientEntry?.primaryRole === 'vendor') {
+              // Primary account holder — look up org by primaryAccountHolderUserId
+              vendorOrg = await mongoose.connection.db
+                ?.collection('vendors')
+                .findOne(
+                  {
+                    'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
+                    deletedAt: null,
+                  },
+                  { projection: { companyName: 1 } }
+                );
+            }
+            vendorName = vendorOrg?.companyName || '';
+          }
+
+          vendorPayout = {
+            status: invoice.vendorPayoutStatus || 'pending',
+            paidAt: (invoice as any).vendorPaidAt || null,
+            transferId: (invoice as any).vendorPayoutTransferId || null,
+            vendorName,
+            invoiceAmount: invoice.amountInCents,
+            invoiceCurrency: invoice.currency || paymentObj.currency || 'USD',
+          };
+        }
+      }
+
+      // For maintenance payments with no lease, resolve property from the MR
+      let propertyInfo = {
+        pid: '',
+        name: leaseInfo?.propertyName || '',
+        address: leaseInfo?.address || '',
+      };
+
+      if (!leaseInfo && paymentObj.maintenanceRequestUid) {
+        const mr = await mongoose.connection.db
+          ?.collection('maintenancerequests')
+          .findOne(
+            { mruid: paymentObj.maintenanceRequestUid, cuid },
+            { projection: { propertyId: 1 } }
+          );
+        if (mr?.propertyId) {
+          const prop = await mongoose.connection.db
+            ?.collection('properties')
+            .findOne(
+              { _id: mr.propertyId },
+              { projection: { pid: 1, name: 1, 'address.fullAddress': 1 } }
+            );
+          if (prop) {
+            propertyInfo = {
+              pid: prop.pid || '',
+              name: prop.name || '',
+              address: prop.address?.fullAddress || '',
+            };
+          }
         }
       }
 
@@ -523,12 +597,9 @@ export class PaymentService implements ICronProvider {
             email: tenantProfile.email || '',
             phoneNumber: tenantProfile.phoneNumber || '',
           },
-          property: {
-            pid: '',
-            name: leaseInfo?.propertyName || '',
-            address: leaseInfo?.address || '',
-          },
+          property: propertyInfo,
           leaseInfo,
+          vendorPayout,
         },
         message: 'Payment retrieved successfully',
       };
@@ -776,8 +847,40 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Vendor not found.' });
       }
 
+      // Resolve the vendor org's vuid, then find ALL team members so we capture
+      // invoices submitted by any member of the vendor organization.
+      const clientEntry = vendor.cuids?.find((c: any) => c.cuid === cuid);
+      let vendorVuid = clientEntry?.linkedVendorUid;
+
+      // Primary account holders may not have linkedVendorUid set — resolve from vendor collection
+      if (!vendorVuid) {
+        const vendorOrg = await mongoose.connection.db
+          ?.collection('vendors')
+          .findOne(
+            { 'connectedClients.primaryAccountHolderUserId': vendor._id, deletedAt: null },
+            { projection: { vuid: 1 } }
+          );
+        vendorVuid = vendorOrg?.vuid || null;
+      }
+
+      let vendorUserIds = [vendor._id.toString()];
+      if (vendorVuid) {
+        // Find all users linked to this vendor org (team members + primary holder)
+        const teamMembers = await this.userDAO.list(
+          {
+            'cuids.cuid': cuid,
+            deletedAt: null,
+            $or: [{ 'cuids.linkedVendorUid': vendorVuid }, { _id: vendor._id }],
+          },
+          { projection: '_id' }
+        );
+        if (teamMembers?.items?.length) {
+          vendorUserIds = (teamMembers.items as any[]).map((u) => u._id.toString());
+        }
+      }
+
       // Vendor payout state lives on the Invoice document — query approved invoices directly.
-      const result = await this.invoiceDAO.listByVendor(vendor._id.toString(), cuid, {
+      const result = await this.invoiceDAO.listByVendor(vendorUserIds, cuid, {
         status: InvoiceStatus.APPROVED,
         page,
         limit,
@@ -1239,6 +1342,7 @@ export class PaymentService implements ICronProvider {
         metadata: { pytuid, cuid, uid, type: 'card_payment' },
         successUrl,
         cancelUrl,
+        skipDestinationTransfer: payment.paymentType === PaymentRecordType.MAINTENANCE,
       });
 
       if (!session.url) {

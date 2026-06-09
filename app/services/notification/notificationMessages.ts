@@ -230,6 +230,11 @@ export const NotificationMessages = {
       message:
         'A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Due {{dueDate}} — pay now to avoid auto-debit.',
     },
+    vendorPaid: {
+      title: 'Payout Received',
+      message:
+        'A payout of {{amount}} has been initiated for service request {{mruid}}. Funds will arrive per your payout schedule.',
+    },
     invoiceRejected: {
       title: 'Invoice Rejected',
       message: 'Your invoice for request {{mruid}} was rejected',
@@ -318,6 +323,7 @@ export type NotificationMessageKey =
   | 'maintenance.invoiceBillableNotice'
   | 'maintenance.chargeCreated'
   | 'maintenance.invoiceRejected'
+  | 'maintenance.vendorPaid'
   | 'maintenance.workOrderSubmitted'
   | 'maintenance.workOrderApproved'
   | 'maintenance.workOrderRejected'

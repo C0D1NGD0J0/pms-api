@@ -184,6 +184,9 @@ export class MailService {
       case MailType.MAINTENANCE_CHARGE_CREATED:
         template = await this.buildTemplate('maintenance-charge-created', emailData, 'maintenance');
         break;
+      case MailType.MAINTENANCE_VENDOR_PAID:
+        template = await this.buildTemplate('maintenance-vendor-paid', emailData, 'maintenance');
+        break;
       case MailType.PAYMENT_REQUEST_CREATED:
         template = await this.buildTemplate('payment-request', emailData, 'payment');
         break;
@@ -348,6 +351,7 @@ export class MailService {
       [MailType.MAINTENANCE_INVOICE_SUBMITTED]: 'Invoice Submitted for Review',
       [MailType.MAINTENANCE_INVOICE_APPROVED]: 'Invoice Approved',
       [MailType.MAINTENANCE_INVOICE_REJECTED]: 'Invoice Rejected',
+      [MailType.MAINTENANCE_VENDOR_PAID]: 'Payout Initiated for Your Service',
       [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED]: 'Work Order Submitted — Review Required',
       [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: 'Work Order Submitted for Your Request',
       [MailType.MAINTENANCE_WORK_ORDER_APPROVED]: 'Work Order Approved — Proceed with Job',

@@ -817,6 +817,15 @@ export class MaintenanceRequestService {
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      if (!data.technician?.userId) {
+        data.technician = {
+          phone: '',
+          email: currentuser.email,
+          userId: currentuser.sub.toString(),
+          name: currentuser.fullname || currentuser.displayName || 'Assigned Technician',
+        };
+      }
+
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
         {

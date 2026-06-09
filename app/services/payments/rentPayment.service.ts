@@ -666,7 +666,9 @@ export class RentPaymentService {
         const payResult = await this.paymentGatewayService.payInvoice(
           IPaymentGatewayProvider.STRIPE,
           activeInvoiceId,
-          paymentMethodId ? { paymentMethod: paymentMethodId } : undefined
+          paymentMethodId
+            ? { paymentMethod: paymentMethodId, ...(mandateId && { mandate: mandateId }) }
+            : undefined
         );
 
         if (!payResult.success) {
@@ -726,6 +728,29 @@ export class RentPaymentService {
         });
       }
 
+      const mandateId = tenantProfile.tenantInfo?.paymentMandates?.get(paymentProcessor.accountId);
+
+      // Bank debit without a mandate cannot proceed — same guard as the rent path
+      if (paymentMethodId && !mandateId) {
+        const paymentMethodResult = await this.paymentGatewayService.retrievePaymentMethod(
+          IPaymentGatewayProvider.STRIPE,
+          paymentMethodId
+        );
+        const bankDebitTypes = new Set([
+          'us_bank_account',
+          'acss_debit',
+          'sepa_debit',
+          'bacs_debit',
+        ]);
+
+        if (paymentMethodResult.data?.type && bankDebitTypes.has(paymentMethodResult.data.type)) {
+          throw new BadRequestError({
+            message:
+              'Your bank account must be re-authorized before this charge can be paid. Please set up your payment method again, or pay with card.',
+          });
+        }
+      }
+
       const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
       const transactionFeePercent = subscription
         ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
@@ -752,6 +777,7 @@ export class RentPaymentService {
               ],
           cuid,
           paymentMethodId,
+          skipDestinationTransfer: payment.paymentType === PaymentRecordType.MAINTENANCE,
         });
 
         activeInvoiceId = invoiceId;
@@ -767,7 +793,10 @@ export class RentPaymentService {
       const payResult = await this.paymentGatewayService.payInvoice(
         IPaymentGatewayProvider.STRIPE,
         activeInvoiceId!,
-        { paymentMethod: paymentMethodId }
+        {
+          paymentMethod: paymentMethodId,
+          ...(mandateId && { mandate: mandateId }),
+        }
       );
 
       if (!payResult.success) {
@@ -904,6 +933,7 @@ export class RentPaymentService {
     cuid: string;
     paymentMethodId?: string;
     leaseUid?: string;
+    skipDestinationTransfer?: boolean;
   }): Promise<{ invoiceId: string; hostedInvoiceUrl?: string }> {
     const invoiceResult = await this.paymentGatewayService.createInvoice(
       IPaymentGatewayProvider.STRIPE,
@@ -918,6 +948,7 @@ export class RentPaymentService {
         cuid: opts.cuid,
         paymentMethodId: opts.paymentMethodId,
         leaseUid: opts.leaseUid,
+        skipDestinationTransfer: opts.skipDestinationTransfer,
       }
     );
     if (!invoiceResult.success || !invoiceResult.data) {

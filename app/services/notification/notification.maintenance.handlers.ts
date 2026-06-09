@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
@@ -27,6 +27,7 @@ import {
   MaintenanceRequestUpdatedPayload,
   MaintenanceChargeCreatedPayload,
   MaintenanceChargePaidPayload,
+  MaintenanceVendorPaidPayload,
 } from '@interfaces/events.interface';
 
 import { INotificationContext } from './notification.types';
@@ -58,6 +59,122 @@ const shapeUserForEmail = (user: any) => ({
 });
 
 // ── Maintenance request handlers ────────────────────────────────────────────
+
+export async function handleInvoiceApproved(
+  ctx: INotificationContext,
+  payload: MaintenanceInvoiceApprovedPayload
+): Promise<void> {
+  const {
+    cuid,
+    mruid,
+    vendorId,
+    technicianId,
+    tenantId,
+    isBillable,
+    amount,
+    currency,
+    approvedBy,
+  } = payload;
+  const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+
+  if (vendorId) {
+    try {
+      await notifyIndividuals(
+        ctx,
+        cuid,
+        NotificationTypeEnum.MAINTENANCE,
+        'maintenance.invoiceApproved',
+        { mruid, amount: fmt },
+        [vendorId, technicianId],
+        { mruid },
+        NotificationPriorityEnum.MEDIUM
+      );
+    } catch (error) {
+      ctx.log.error('Error sending invoice approved notification', { error, payload });
+    }
+
+    try {
+      const [vendorUser, approvedByUser] = await Promise.all([
+        ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+        ctx.userDAO.findFirst(
+          { _id: new Types.ObjectId(approvedBy), deletedAt: null },
+          { populate: PROFILE_POPULATE }
+        ),
+      ]);
+      if (vendorUser?.email) {
+        ctx.emailQueue.addToEmailQueue('maintenanceInvoiceApproved', {
+          to: vendorUser.email,
+          emailType: MailType.MAINTENANCE_INVOICE_APPROVED,
+          subject: '',
+          data: {
+            request: { mruid, invoice: { amount, currency } },
+            approvedBy: shapeUserForEmail(approvedByUser),
+          },
+        });
+      }
+    } catch (err) {
+      ctx.log.error({ err, mruid }, 'Failed to enqueue maintenanceInvoiceApproved email to vendor');
+    }
+  }
+
+  // ── Resource-event SSE → tenant page invalidates cache immediately ──────────
+  if (tenantId) {
+    try {
+      await ctx.sseService.sendToUser(
+        tenantId,
+        cuid,
+        { resource: 'maintenance', action: 'invoice-approved', resourceUId: mruid },
+        'resource-event'
+      );
+    } catch (error) {
+      ctx.log.error('Error sending invoice approved resource-event SSE to tenant', {
+        error,
+        payload,
+      });
+    }
+  }
+
+  if (tenantId) {
+    try {
+      const { title, message } = getFormattedNotification('maintenance.invoiceApprovedTenant', {
+        mruid,
+      });
+      await ctx.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: tenantId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.MEDIUM,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    } catch (error) {
+      ctx.log.error('Error sending invoice approved notification to tenant', { error, payload });
+    }
+
+    if (isBillable) {
+      try {
+        const { title, message } = getFormattedNotification('maintenance.invoiceBillableNotice', {
+          mruid,
+          amount: fmt,
+        });
+        await ctx.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          cuid,
+          type: NotificationTypeEnum.PAYMENT,
+          recipient: tenantId,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          priority: NotificationPriorityEnum.HIGH,
+          title,
+          message,
+          metadata: { mruid, amount, currency },
+        });
+      } catch (error) {
+        ctx.log.error('Error sending billable invoice notice to tenant', { error, payload });
+      }
+    }
+  }
+}
 
 export async function handleWorkOrderApproved(
   ctx: INotificationContext,
@@ -159,102 +276,170 @@ export async function handleWorkOrderApproved(
   }
 }
 
-export async function handleInvoiceApproved(
+export async function handleVendorPaid(
   ctx: INotificationContext,
-  payload: MaintenanceInvoiceApprovedPayload
+  payload: MaintenanceVendorPaidPayload
 ): Promise<void> {
-  const {
-    cuid,
-    mruid,
-    vendorId,
-    technicianId,
-    tenantId,
-    isBillable,
-    amount,
-    currency,
-    approvedBy,
-  } = payload;
-  const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+  const { cuid, mruid, vendorId, amountInCents, transferId } = payload;
+  const currency = 'USD'; // transfer currency not on payload — default for display
+  const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency);
 
-  if (vendorId) {
-    try {
+  // ── Resource-event SSE → vendor portal invalidates cache immediately ──────
+  try {
+    await ctx.sseService.sendToUser(
+      vendorId,
+      cuid,
+      { resource: 'maintenance', action: 'vendor-paid', resourceUId: mruid },
+      'resource-event'
+    );
+
+    // Also notify the primary account holder if different from the assigned vendor user
+    const vendorUser = await ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId) });
+    const clientEntry = vendorUser?.cuids?.find((c: any) => c.cuid === cuid);
+    const vendorVuid = clientEntry?.linkedVendorUid;
+
+    const vendorQuery = vendorVuid
+      ? { vuid: vendorVuid, deletedAt: null }
+      : {
+          'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorId),
+          deletedAt: null,
+        };
+    const vendorOrg = await mongoose.connection.db
+      ?.collection('vendors')
+      .findOne(vendorQuery, { projection: { connectedClients: 1 } });
+    const clientConn = vendorOrg?.connectedClients?.find((c: any) => c.cuid === cuid);
+    const primaryHolderId = clientConn?.primaryAccountHolderUserId?.toString();
+
+    if (primaryHolderId && primaryHolderId !== vendorId) {
+      await ctx.sseService.sendToUser(
+        primaryHolderId,
+        cuid,
+        { resource: 'maintenance', action: 'vendor-paid', resourceUId: mruid },
+        'resource-event'
+      );
+    }
+  } catch (error) {
+    ctx.log.error('Error sending vendor-paid resource-event SSE', { error, payload });
+  }
+
+  // ── In-app notification → vendor ──────────────────────────────────────────
+  try {
+    await notifyIndividuals(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      'maintenance.vendorPaid',
+      { mruid, amount: fmt },
+      [vendorId],
+      { mruid, transferId },
+      NotificationPriorityEnum.HIGH
+    );
+  } catch (error) {
+    ctx.log.error('Error sending vendor paid notification', { error, payload });
+  }
+
+  // ── Email → vendor ────────────────────────────────────────────────────────
+  try {
+    const vendorUser = await ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId) });
+    if (vendorUser?.email) {
+      const invoice = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
+      ctx.emailQueue.addToEmailQueue('maintenanceVendorPaid', {
+        to: vendorUser.email,
+        emailType: MailType.MAINTENANCE_VENDOR_PAID,
+        subject: '',
+        data: {
+          mruid,
+          jobTitle: invoice?.title || '',
+          amountInCents,
+          currency: 'USD',
+          transferId,
+        },
+      });
+    }
+  } catch (err) {
+    ctx.log.error({ err, mruid }, 'Failed to enqueue maintenanceVendorPaid email');
+  }
+}
+
+export async function handleInvoiceSubmitted(
+  ctx: INotificationContext,
+  payload: MaintenanceInvoiceSubmittedPayload
+): Promise<void> {
+  try {
+    const { cuid, mruid, amount, currency } = payload;
+    const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.MAINTENANCE,
+      'maintenance.invoiceSubmitted',
+      { mruid, amount: fmt },
+      ALL_STAFF_ROLES,
+      { mruid },
+      NotificationPriorityEnum.HIGH
+    );
+  } catch (error) {
+    ctx.log.error('Error sending invoice submitted notification', { error, payload });
+  }
+
+  // Notify the vendor org's primary account holder if the submitter is a team member
+  try {
+    const { cuid, mruid, vendorId, amount, currency } = payload;
+    const submitter = await ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId) });
+    const clientEntry = submitter?.cuids?.find((c: any) => c.cuid === cuid);
+    const vendorVuid = clientEntry?.linkedVendorUid;
+
+    // Resolve the vendor org — either via linkedVendorUid or as primary holder
+    const vendorQuery = vendorVuid
+      ? { vuid: vendorVuid, deletedAt: null }
+      : {
+          'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorId),
+          deletedAt: null,
+        };
+    const vendorOrg = await mongoose.connection.db
+      ?.collection('vendors')
+      .findOne(vendorQuery, { projection: { connectedClients: 1 } });
+
+    const clientConn = vendorOrg?.connectedClients?.find((c: any) => c.cuid === cuid);
+    const primaryHolderId = clientConn?.primaryAccountHolderUserId?.toString();
+
+    // Only notify if the primary holder is different from the submitter
+    if (primaryHolderId && primaryHolderId !== vendorId) {
+      const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
       await notifyIndividuals(
         ctx,
         cuid,
         NotificationTypeEnum.MAINTENANCE,
-        'maintenance.invoiceApproved',
+        'maintenance.invoiceSubmitted',
         { mruid, amount: fmt },
-        [vendorId, technicianId],
+        [primaryHolderId],
         { mruid },
-        NotificationPriorityEnum.MEDIUM
+        NotificationPriorityEnum.HIGH
       );
-    } catch (error) {
-      ctx.log.error('Error sending invoice approved notification', { error, payload });
     }
-
-    try {
-      const [vendorUser, approvedByUser] = await Promise.all([
-        ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
-        ctx.userDAO.findFirst(
-          { _id: new Types.ObjectId(approvedBy), deletedAt: null },
-          { populate: PROFILE_POPULATE }
-        ),
-      ]);
-      if (vendorUser?.email) {
-        ctx.emailQueue.addToEmailQueue('maintenanceInvoiceApproved', {
-          to: vendorUser.email,
-          emailType: MailType.MAINTENANCE_INVOICE_APPROVED,
-          subject: '',
-          data: {
-            request: { mruid, invoice: { amount, currency } },
-            approvedBy: shapeUserForEmail(approvedByUser),
-          },
-        });
-      }
-    } catch (err) {
-      ctx.log.error({ err, mruid }, 'Failed to enqueue maintenanceInvoiceApproved email to vendor');
-    }
+  } catch (err) {
+    ctx.log.error(
+      { err, mruid: payload.mruid },
+      'Failed to notify vendor primary account holder about invoice submission'
+    );
   }
 
-  if (tenantId) {
-    try {
-      const { title, message } = getFormattedNotification('maintenance.invoiceApprovedTenant', {
-        mruid,
+  try {
+    const { mruid, cuid, amount, vendorId } = payload;
+    const request = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
+    if (request) {
+      ctx.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
+        to: '',
+        emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
+        subject: '',
+        data: { request, invoice: request.invoice, vendorId, amount },
       });
-      await ctx.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
-        cuid,
-        type: NotificationTypeEnum.MAINTENANCE,
-        recipient: tenantId,
-        recipientType: RecipientTypeEnum.INDIVIDUAL,
-        priority: NotificationPriorityEnum.MEDIUM,
-        title,
-        message,
-        metadata: { mruid },
-      });
-    } catch (error) {
-      ctx.log.error('Error sending invoice approved notification to tenant', { error, payload });
     }
-
-    if (isBillable) {
-      try {
-        const { title, message } = getFormattedNotification('maintenance.invoiceBillableNotice', {
-          mruid,
-          amount: fmt,
-        });
-        await ctx.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
-          cuid,
-          type: NotificationTypeEnum.PAYMENT,
-          recipient: tenantId,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          priority: NotificationPriorityEnum.HIGH,
-          title,
-          message,
-          metadata: { mruid, amount, currency },
-        });
-      } catch (error) {
-        ctx.log.error('Error sending billable invoice notice to tenant', { error, payload });
-      }
-    }
+  } catch (err) {
+    ctx.log.error(
+      { err, mruid: payload.mruid },
+      'Failed to enqueue maintenanceInvoiceSubmitted email'
+    );
   }
 }
 
@@ -543,6 +728,8 @@ export async function handleMaintenanceChargeCreated(
   }
 }
 
+// ── Invoice & charge handlers ───────────────────────────────────────────────
+
 export async function handleInvoiceRejected(
   ctx: INotificationContext,
   payload: MaintenanceInvoiceRejectedPayload
@@ -639,8 +826,6 @@ export async function handleMRAccepted(
   }
 }
 
-// ── Invoice & charge handlers ───────────────────────────────────────────────
-
 export async function handleMRCreated(
   ctx: INotificationContext,
   payload: MaintenanceRequestCreatedPayload
@@ -687,46 +872,6 @@ export async function handleMRCreated(
     ctx.log.error(
       { err, mruid: payload.mruid },
       'Failed to enqueue maintenanceRequestCreated email'
-    );
-  }
-}
-
-export async function handleInvoiceSubmitted(
-  ctx: INotificationContext,
-  payload: MaintenanceInvoiceSubmittedPayload
-): Promise<void> {
-  try {
-    const { cuid, mruid, amount, currency } = payload;
-    const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
-    await notifyAnnouncement(
-      ctx,
-      cuid,
-      NotificationTypeEnum.MAINTENANCE,
-      'maintenance.invoiceSubmitted',
-      { mruid, amount: fmt },
-      ALL_STAFF_ROLES,
-      { mruid },
-      NotificationPriorityEnum.HIGH
-    );
-  } catch (error) {
-    ctx.log.error('Error sending invoice submitted notification', { error, payload });
-  }
-
-  try {
-    const { mruid, cuid, amount, vendorId } = payload;
-    const request = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
-    if (request) {
-      ctx.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
-        to: '',
-        emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
-        subject: '',
-        data: { request, invoice: request.invoice, vendorId, amount },
-      });
-    }
-  } catch (err) {
-    ctx.log.error(
-      { err, mruid: payload.mruid },
-      'Failed to enqueue maintenanceInvoiceSubmitted email'
     );
   }
 }
@@ -853,6 +998,8 @@ export async function handleMRDeclined(
   }
 }
 
+// ── Work order handlers ─────────────────────────────────────────────────────
+
 export async function handleMRWorkDone(
   ctx: INotificationContext,
   payload: MaintenanceRequestWorkDonePayload
@@ -888,8 +1035,6 @@ export async function handleMRWorkDone(
     ctx.log.error('Error sending MR work done notification', { error, payload });
   }
 }
-
-// ── Work order handlers ─────────────────────────────────────────────────────
 
 export async function handleMRCancelled(
   ctx: INotificationContext,
@@ -944,6 +1089,8 @@ export async function handleMaintenanceChargePaid(
   }
 }
 
+// ── AI triage handler ───────────────────────────────────────────────────────
+
 export async function handleMaintenanceFundsAvailable(
   ctx: INotificationContext,
   payload: MaintenanceFundsAvailablePayload
@@ -964,8 +1111,6 @@ export async function handleMaintenanceFundsAvailable(
     ctx.log.error('Error sending funds available notification', { error, payload });
   }
 }
-
-// ── AI triage handler ───────────────────────────────────────────────────────
 
 export async function handleAITriageCompleted(
   ctx: INotificationContext,

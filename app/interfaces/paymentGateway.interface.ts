@@ -23,6 +23,13 @@ export interface IPaymentProvider {
       }
     >
   >;
+  createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
+    sourceTransaction?: string;
+    metadata?: Record<string, string>;
+  }): Promise<{ transferId: string; amount: number }>;
   createCustomer(data: {
     email: string;
     name?: string;
@@ -37,12 +44,6 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
-  createTransfer(params: {
-    amountInCents: number;
-    currency: string;
-    destination: string;
-    metadata?: Record<string, string>;
-  }): Promise<{ transferId: string; amount: number }>;
   createRefund(params: {
     chargeId: string;
     amountInCents?: number;
@@ -70,13 +71,13 @@ export interface IPaymentProvider {
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
+  payInvoice(invoiceId: string, opts?: { paymentMethod?: string; mandate?: string }): Promise<void>;
   updateCustomerDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
-  payInvoice(invoiceId: string, opts?: { paymentMethod?: string }): Promise<void>;
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
   createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
@@ -119,6 +120,7 @@ export interface ICreateInvoiceInput {
     amountInCents: number;
   }>;
   applicationFeeAmountInCents: number;
+  skipDestinationTransfer?: boolean;
   connectedAccountId: string;
   tenantCustomerId: string;
   paymentMethodId?: string;

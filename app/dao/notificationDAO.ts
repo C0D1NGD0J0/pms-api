@@ -63,7 +63,8 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     cuid: string,
     targetingInfo: { roles: string[]; vendorId?: string },
     filters?: INotificationFilters,
-    pagination?: IPaginationQuery
+    pagination?: IPaginationQuery,
+    extraFilter?: FilterQuery<INotificationDocument>
   ): Promise<{ data: INotificationDocument[]; total: number }> {
     try {
       // Build $or conditions based on recipientType filter
@@ -133,6 +134,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         cuid,
         $or: orConditions,
         deletedAt: null,
+        ...extraFilter,
       };
 
       if (filters) {

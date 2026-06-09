@@ -205,4 +205,57 @@ export class NotificationController {
       throw error;
     }
   };
+
+  archiveNotification = async (req: AppRequest, res: Response) => {
+    const { cuid, nuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const result = await this.notificationService.archiveNotification(nuid, userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: result.message || t('notification.success.archived'),
+    });
+  };
+
+  archiveAllRead = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const result = await this.notificationService.archiveAllRead(userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result.data,
+      message: result.message || t('notification.success.all_read_archived'),
+    });
+  };
 }

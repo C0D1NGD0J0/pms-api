@@ -97,8 +97,11 @@ export interface INotification {
   priority: NotificationPriorityEnum;
   recipientType: RecipientTypeEnum;
   metadata?: Record<string, any>;
+  archivedBy?: Types.ObjectId[];
   type: NotificationTypeEnum;
   recipient?: Types.ObjectId; // Optional - only required for individual notifications
+  readBy?: Types.ObjectId[];
+  archivedAt?: Date | null;
   // Announcement targeting fields
   author?: Types.ObjectId; // User who created the notification
   targetRoles?: string[];

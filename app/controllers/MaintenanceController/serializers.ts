@@ -73,7 +73,8 @@ export function serializeMaintenanceRequest(
     // Work order — vendor gets full access (they submitted it)
     // No additional filtering needed
 
-    // Invoice — vendor sees their own payout info, but NOT tenant-facing payment fields
+    // Invoice — vendor sees their own payout info + tenant payment status
+    // (so they know when payout is available)
     if (out.invoice) {
       out.invoice = pick(out.invoice, [
         'invuid',
@@ -91,6 +92,7 @@ export function serializeMaintenanceRequest(
         'externalInvoiceUrl',
         'vendorPayoutStatus',
         'vendorPaidAt',
+        'tenantPaymentStatus',
       ]);
     }
 

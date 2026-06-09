@@ -641,11 +641,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     opts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
+      // Include both team members (linkedVendorUid set) and the primary account
+      // holder (linkedVendorUid is null, primaryRole is 'vendor')
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorUid': vendorUid,
         'cuids.isConnected': true,
         deletedAt: null,
+        $or: [
+          { 'cuids.linkedVendorUid': vendorUid },
+          { 'cuids.linkedVendorUid': null, 'cuids.primaryRole': 'vendor' },
+        ],
       };
 
       return await this.list(query, opts);

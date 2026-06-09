@@ -110,7 +110,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         query = query.lean();
       }
 
-      if (options?.sort) query = query.sort(options.sort);
+      query = query.sort(options?.sort || { createdAt: -1 });
       if (options?.skip) query = query.skip(options.skip);
       if (options?.limit) query = query.limit(options.limit);
       if (options?.projection) query = query.select(options.projection);

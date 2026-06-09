@@ -111,14 +111,18 @@ export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
   }
 
   async listByVendor(
-    vendorId: string,
+    vendorId: string | string[],
     cuid: string,
     filters?: { status?: InvoiceStatus; page?: number; limit?: number }
   ): ListResultWithPagination<IInvoiceDocument[]> {
     try {
+      const submittedBy = Array.isArray(vendorId)
+        ? { $in: vendorId.map((id) => new Types.ObjectId(id)) }
+        : new Types.ObjectId(vendorId);
+
       const query: FilterQuery<IInvoiceDocument> = {
         cuid,
-        submittedBy: new Types.ObjectId(vendorId),
+        submittedBy,
         isDeleted: false,
       };
       if (filters?.status) query.status = filters.status;

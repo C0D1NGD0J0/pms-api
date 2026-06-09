@@ -30,6 +30,28 @@ router.patch(
   })
 );
 
+router.patch(
+  '/:cuid/archive/:nuid',
+  basicLimiter(),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.nuid),
+  }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.archiveNotification(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/archive-all-read',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.archiveAllRead(req, res);
+  })
+);
+
 router.get(
   '/:cuid/my-notifications/stream',
   basicLimiter({ max: 10, windowMs: 5 * 60 * 1000 }),

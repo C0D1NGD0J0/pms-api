@@ -110,6 +110,18 @@ const NotificationSchema = new Schema<INotificationDocument>(
       type: String,
       trim: true,
     },
+    readBy: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    archivedBy: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    archivedAt: {
+      type: Date,
+      default: null,
+    },
     expiresAt: {
       type: Date,
       index: { expireAfterSeconds: 0 }, // TTL index for automatic cleanup
@@ -145,6 +157,8 @@ NotificationSchema.index({ recipientType: 1, recipient: 1, cuid: 1, isRead: 1 })
 NotificationSchema.index({ recipientType: 1, cuid: 1, type: 1, createdAt: -1 }); // Announcements by client/type
 NotificationSchema.index({ cuid: 1, type: 1, createdAt: -1 }); // Client notifications by type
 NotificationSchema.index({ 'resourceInfo.resourceName': 1, 'resourceInfo.resourceId': 1, cuid: 1 }); // Resource-specific queries
+NotificationSchema.index({ readBy: 1, cuid: 1 }); // Announcement read status lookups
+NotificationSchema.index({ archivedBy: 1, cuid: 1 }); // Archive filtering
 
 // set expiration date if not provided (default 30 days)
 NotificationSchema.pre('save', function (this: INotificationDocument, next) {

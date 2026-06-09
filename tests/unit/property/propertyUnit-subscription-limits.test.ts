@@ -1,5 +1,5 @@
 import { Types } from 'mongoose';
-import { BadRequestError } from '@shared/customErrors';
+import { BadRequestError as _BadRequestError } from '@shared/customErrors';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { PropertyUnitService } from '@services/property/propertyUnit.service';
 

@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
-import { InvitationQueue, EmailQueue } from '@queues/index';
+import { InvitationQueue as _InvitationQueue, EmailQueue as _EmailQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IRequestContext } from '@interfaces/utils.interface';
-import { ProfileService } from '@services/profile/profile.service';
+import { ProfileService as _ProfileService } from '@services/profile/profile.service';
 import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 

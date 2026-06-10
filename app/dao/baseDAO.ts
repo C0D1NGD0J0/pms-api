@@ -359,7 +359,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   async insert(data: Partial<T>, session?: ClientSession): Promise<T> {
     try {
-      const result = await this.model.create([{ ...data }], { session: session ?? null });
+      const result = await this.model.create([{ ...data } as any], { session: session ?? null });
       return result[0];
     } catch (error) {
       throw this.throwErrorHandler(error);

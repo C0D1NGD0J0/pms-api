@@ -141,6 +141,37 @@ const mockMaintenanceController = {
     });
   }),
 
+  acceptAISuggestion: jest.fn((_req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'AI suggestion applied',
+      data: { category: 'plumbing', priority: 'high' },
+    });
+  }),
+
+  dismissAISuggestion: jest.fn((_req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'AI suggestion dismissed',
+      data: {},
+    });
+  }),
+
+  scanInvoice: jest.fn((_req: Request, res: Response) => {
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: {
+        extracted: {
+          description: 'Plumbing repair',
+          amountInCents: 18500,
+          currency: 'USD',
+          lineItems: [],
+          confidence: 0.92,
+        },
+      },
+    });
+  }),
+
   handleWebhook: jest.fn((_req: Request, res: Response) => {
     res.status(httpStatusCodes.OK).json({
       success: true,
@@ -218,6 +249,18 @@ describe('Maintenance Request Routes', () => {
       testApp.patch(
         `${baseUrl}/:cuid/:mruid/work_order_review`,
         mockMaintenanceController.reviewWorkOrder
+      );
+      testApp.patch(
+        `${baseUrl}/:cuid/:mruid/ai_suggestion/accept`,
+        mockMaintenanceController.acceptAISuggestion
+      );
+      testApp.patch(
+        `${baseUrl}/:cuid/:mruid/ai_suggestion/dismiss`,
+        mockMaintenanceController.dismissAISuggestion
+      );
+      testApp.post(
+        `${baseUrl}/:cuid/:mruid/scan_invoice`,
+        mockMaintenanceController.scanInvoice
       );
     });
   });
@@ -806,6 +849,166 @@ describe('Maintenance Request Routes', () => {
       await request(app)
         .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work_order_review`)
         .send({ action: 'approve' })
+        .expect(httpStatusCodes.FORBIDDEN);
+    });
+  });
+
+  // ─── AI Suggestion — accept ────────────────────────────────────────────────
+
+  describe('PATCH /:cuid/:mruid/ai_suggestion/accept', () => {
+    it('should accept AI suggestion as a manager and return 200', async () => {
+      const response = await request(app)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/accept`)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.category).toBe('plumbing');
+      expect(mockMaintenanceController.acceptAISuggestion).toHaveBeenCalled();
+    });
+
+    it('should return 403 when a vendor tries to accept AI suggestion', async () => {
+      mockMaintenanceController.acceptAISuggestion.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.FORBIDDEN).json({
+            success: false,
+            message: 'Only managers can accept AI suggestions',
+          });
+        }
+      );
+
+      const response = await request(app)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/accept`)
+        .expect(httpStatusCodes.FORBIDDEN);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('manager');
+    });
+
+    it('should return 400 when no AI suggestion is available', async () => {
+      mockMaintenanceController.acceptAISuggestion.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.BAD_REQUEST).json({
+            success: false,
+            message: 'No AI suggestion available to accept',
+          });
+        }
+      );
+
+      const response = await request(app)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/accept`)
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should return 404 when request is not found', async () => {
+      mockMaintenanceController.acceptAISuggestion.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.NOT_FOUND).json({
+            success: false,
+            message: 'Maintenance request not found',
+          });
+        }
+      );
+
+      await request(app)
+        .patch(`${baseUrl}/${mockCuid}/MR-NOTFOUND/ai_suggestion/accept`)
+        .expect(httpStatusCodes.NOT_FOUND);
+    });
+  });
+
+  // ─── AI Suggestion — dismiss ───────────────────────────────────────────────
+
+  describe('PATCH /:cuid/:mruid/ai_suggestion/dismiss', () => {
+    it('should dismiss AI suggestion as a manager and return 200', async () => {
+      const response = await request(app)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/dismiss`)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('AI suggestion dismissed');
+      expect(mockMaintenanceController.dismissAISuggestion).toHaveBeenCalled();
+    });
+
+    it('should return 403 when a vendor tries to dismiss AI suggestion', async () => {
+      mockMaintenanceController.dismissAISuggestion.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.FORBIDDEN).json({
+            success: false,
+            message: 'Only managers can dismiss AI suggestions',
+          });
+        }
+      );
+
+      const response = await request(app)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/dismiss`)
+        .expect(httpStatusCodes.FORBIDDEN);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.message).toContain('manager');
+    });
+  });
+
+  // ─── Scan Invoice (AI) ─────────────────────────────────────────────────────
+
+  describe('POST /:cuid/:mruid/scan_invoice', () => {
+    it('should return extracted invoice data on success', async () => {
+      const response = await request(app)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.extracted).toBeDefined();
+      expect(response.body.data.extracted.amountInCents).toBe(18500);
+      expect(mockMaintenanceController.scanInvoice).toHaveBeenCalled();
+    });
+
+    it('should return 422 when AI extraction fails', async () => {
+      mockMaintenanceController.scanInvoice.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(422).json({
+            success: false,
+            message: 'AI invoice scanning is disabled or failed to extract data',
+          });
+        }
+      );
+
+      const response = await request(app)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .expect(422);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should return 400 when no file is uploaded', async () => {
+      mockMaintenanceController.scanInvoice.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(400).json({
+            success: false,
+            message: 'No invoice file uploaded',
+          });
+        }
+      );
+
+      const response = await request(app)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+    });
+
+    it('should return 403 when vendor is not the assigned vendor', async () => {
+      mockMaintenanceController.scanInvoice.mockImplementationOnce(
+        (_req: Request, res: Response) => {
+          res.status(httpStatusCodes.FORBIDDEN).json({
+            success: false,
+            message: 'You are not the assigned vendor for this request',
+          });
+        }
+      );
+
+      await request(app)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
         .expect(httpStatusCodes.FORBIDDEN);
     });
   });

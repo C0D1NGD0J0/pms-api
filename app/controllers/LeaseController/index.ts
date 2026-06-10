@@ -1,7 +1,6 @@
 import Logger from 'bunyan';
 import { Response } from 'express';
 import { PdfQueue } from '@queues/index';
-// import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
@@ -36,11 +35,6 @@ export class LeaseController {
     const { cuid } = req.params;
     const result = await this.leaseService.createLease(cuid, req.body, req.context);
 
-    // const uploadResult = await this.mediaUploadService.handleFiles(req, {
-    //   primaryResourceId: result.data.id,
-    //   uploadedBy: req.context.currentuser!.sub,
-    //   resourceContext: ResourceContext.LEASE,
-    // });
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: result,
@@ -53,16 +47,28 @@ export class LeaseController {
     const filter = (req.query.filter as any) || {};
 
     const paginationOpts = {
-      page: pagination.page ? parseInt(pagination.page, 10) : 1,
-      limit: pagination.limit ? parseInt(pagination.limit, 10) : 10,
+      page: Math.max(1, pagination.page ? parseInt(pagination.page, 10) : 1),
+      limit: Math.min(100, Math.max(1, pagination.limit ? parseInt(pagination.limit, 10) : 10)),
       sort: pagination.order as string | undefined,
       sortBy: pagination.sortBy as string | undefined,
     };
 
+    const VALID_LEASE_STATUSES = new Set([
+      'ready_for_signature',
+      'pending_signature',
+      'draft_renewal',
+      'terminated',
+      'cancelled',
+      'expired',
+      'renewed',
+      'active',
+      'draft',
+    ]);
     const filterOpts = {
-      status: filter.status as any,
-      search: filter.search as string | undefined,
-      tenantId: filter.tenantId as string | undefined,
+      status: VALID_LEASE_STATUSES.has(filter.status) ? filter.status : undefined,
+      search: typeof filter.search === 'string' ? filter.search : undefined,
+      tenantId: typeof filter.tenantId === 'string' ? filter.tenantId : undefined,
+      unitPuid: typeof filter.unitPuid === 'string' ? filter.unitPuid : undefined,
     };
 
     const result = await this.leaseService.getFilteredLeases(
@@ -97,12 +103,7 @@ export class LeaseController {
 
   deleteLease = async (req: AppRequest, res: Response) => {
     const { cuid, leaseId } = req.params;
-    // const { uid } = req.context.currentuser!;
-
     this.log.info(`Deleting lease ${leaseId} for client ${cuid}`);
-
-    // TODO: Implement lease deletion
-    // const result = await this.leaseService.deleteLease(cuid, leaseId, uid);
 
     res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
       success: false,

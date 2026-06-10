@@ -61,7 +61,6 @@ export const CompanyProfileSchema = z.object({
     .trim()
     .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
     .optional(),
-  industry: z.string().trim().optional(),
   contactInfo: z
     .object({
       email: z.string().email('Invalid email format').optional(),
@@ -268,6 +267,20 @@ export const UpdateTenantProfileSchema = z.object({
             notes: z.string().trim().optional(),
           })
         )
+        .optional(),
+    })
+    .optional(),
+  settings: z
+    .object({
+      notifications: z
+        .object({
+          emailNotifications: z.boolean().optional(),
+          inAppNotifications: z.boolean().optional(),
+          maintenance: z.boolean().optional(),
+          payments: z.boolean().optional(),
+          system: z.boolean().optional(),
+          announcements: z.boolean().optional(),
+        })
         .optional(),
     })
     .optional(),

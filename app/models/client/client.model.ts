@@ -3,6 +3,7 @@ import { Schema, model } from 'mongoose';
 import { isValidPhoneNumber } from '@utils/index';
 import { IClientDocument } from '@interfaces/index';
 import uniqueValidator from 'mongoose-unique-validator';
+import { CURRENCIES } from '@interfaces/utils.interface';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -28,21 +29,6 @@ const ClientSchema = new Schema<IClientDocument>(
     dataProcessingConsent: {
       type: Boolean,
       default: false,
-    },
-    identification: {
-      type: {
-        idType: {
-          type: String,
-          enum: ['passport', 'national-id', 'drivers-license', 'corporation-license'],
-        },
-        idNumber: { type: String, trim: true },
-        expiryDate: { type: Date },
-        issueDate: { type: Date },
-        authority: { type: String, trim: true },
-        issuingState: { type: String, trim: true },
-        dataProcessingConsent: { type: Boolean, default: false },
-      },
-      default: null,
     },
     identityVerification: {
       sessionId: { type: String, select: false },
@@ -244,6 +230,19 @@ const ClientSchema = new Schema<IClientDocument>(
           message: 'Invalid language code',
         },
       },
+      defaultCurrency: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: 'USD',
+        enum: Object.values(CURRENCIES),
+      },
+    },
+    suspension: {
+      isActive: { type: Boolean, default: false, index: true, select: false },
+      reason: { type: String, select: false },
+      at: { type: Date, select: false },
+      by: { type: Schema.Types.ObjectId, ref: 'User', select: false },
     },
     lastModifiedBy: {
       type: Schema.Types.ObjectId,
@@ -276,7 +275,6 @@ ClientSchema.virtual('verificationDeadline').get(function (this: IClientDocument
 
 // Soft deletion method
 ClientSchema.methods.softDelete = async function (userId: string) {
-  this.status = 'deleted';
   this.deletedAt = new Date();
   this.lastModifiedBy = userId;
   return await this.save();

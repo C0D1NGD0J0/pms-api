@@ -10,9 +10,12 @@ import { ISignupData } from '@interfaces/user.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PaymentMethodType } from '@interfaces/lease.interface';
+import { subscriptionPlanConfig } from '@services/subscription';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
+import { PaymentService } from '@services/payments/payments.service';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
+import { PaymentRecordType, IPaymentFormData } from '@interfaces/payments.interface';
 import { ISuccessReturnData, TokenType, MailType } from '@interfaces/utils.interface';
 import { IPaymentGatewayProvider, PlanName } from '@interfaces/subscription.interface';
 import { SubscriptionService, AuthTokenService, VendorService } from '@services/index';
@@ -44,6 +47,7 @@ interface IConstructor {
   subscriptionService: SubscriptionService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
+  paymentService: PaymentService;
   tokenService: AuthTokenService;
   vendorService: VendorService;
   queueFactory: QueueFactory;
@@ -67,6 +71,7 @@ export class AuthService {
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly subscriptionService: SubscriptionService;
+  private readonly paymentService: PaymentService;
   private readonly emitterService: EventEmitterService;
 
   constructor({
@@ -81,6 +86,7 @@ export class AuthService {
     paymentProcessorDAO,
     paymentGatewayService,
     subscriptionService,
+    paymentService,
     emitterService,
   }: IConstructor) {
     this.userDAO = userDAO;
@@ -94,6 +100,7 @@ export class AuthService {
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
     this.subscriptionService = subscriptionService;
+    this.paymentService = paymentService;
     this.emitterService = emitterService;
     this.log = createLogger('AuthService');
     this.setupEventListeners();
@@ -113,7 +120,6 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
-    // Verify signature first — userId and cuid are derived from the verified payload only
     const decoded = await this.tokenService.verifyJwtToken(
       JWT_KEY_NAMES.REFRESH_TOKEN as TokenType,
       refreshToken
@@ -133,7 +139,6 @@ export class AuthService {
       throw new UnauthorizedError();
     }
 
-    // Guard: reject if user has been disconnected from this client
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
       throw new UnauthorizedError({ message: t('auth.errors.tokenExpired') });
@@ -346,7 +351,7 @@ export class AuthService {
           planId: signupData.accountType.planId,
           totalMonthlyPrice: signupData.accountType.totalMonthlyPrice,
         },
-        session
+        session as any
       );
 
       if (!subscriptionResult.success) {
@@ -442,6 +447,10 @@ export class AuthService {
       rememberMe
     );
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    if (currentuser?.subscription?.plan?.name) {
+      const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
+      if (planConfig) currentuser.subscription.entitlements = planConfig.features;
+    }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
 
     if (connectedClients.length === 1) {
@@ -490,6 +499,10 @@ export class AuthService {
     if (!currentuser) {
       this.log.error('User not found. | GetCurrentUser');
       throw new UnauthorizedError({ message: t('auth.errors.unauthorized') });
+    }
+    if (currentuser.subscription?.plan?.name) {
+      const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
+      if (planConfig) currentuser.subscription.entitlements = planConfig.features;
     }
 
     const cachedResp = await this.authCache.saveCurrentUser(currentuser);
@@ -545,6 +558,10 @@ export class AuthService {
     await this.authCache.saveRefreshToken(user._id.toString(), newcuid, tokens.refreshToken, false);
 
     const currentuser = await this.profileDAO.generateCurrentUserInfo(user._id.toString());
+    if (currentuser?.subscription?.plan?.name) {
+      const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
+      if (planConfig) currentuser.subscription.entitlements = planConfig.features;
+    }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
     return {
       success: true,
@@ -846,7 +863,8 @@ export class AuthService {
     cuid: string,
     currentuser: ICurrentUser,
     returnUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    paymentMethodType: 'bank' | 'card' = 'bank'
   ): Promise<
     ISuccessReturnData<{
       requiresSetup: boolean;
@@ -873,10 +891,10 @@ export class AuthService {
         };
       }
 
-      // Electronic lease — create hosted Stripe Checkout session in setup mode
+      // ownerType may be absent on legacy documents created before the field was added
       const processor = await this.paymentProcessorDAO.findFirst({
         cuid,
-        ownerType: 'client',
+        ownerType: { $in: ['client', null] } as any,
         deletedAt: null,
       });
       if (!processor) {
@@ -890,31 +908,56 @@ export class AuthService {
         throw new NotFoundError({ message: t('profile.errors.notFound') });
       }
 
-      let customerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get(processor.accountId);
+      let customerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
 
       if (!customerId) {
         const customerResult = await this.paymentGatewayService.createCustomer({
           provider: IPaymentGatewayProvider.STRIPE,
           email: currentuser.email,
-          metadata: { cuid, tenantId: currentuser.sub },
-          connectedAccountId: processor.accountId,
         });
 
         if (!customerResult.success || !customerResult.data) {
           throw new BadRequestError({ message: 'Failed to create payment customer.' });
         }
+
         customerId = customerResult.data.customerId;
 
         await this.profileDAO.updateById(tenantProfile._id.toString(), {
           $set: {
-            [`tenantInfo.paymentGatewayCustomers.${processor.accountId}`]: customerId,
+            ['tenantInfo.paymentGatewayCustomers.platform']: customerId,
           },
         });
       }
 
+      const currency = (lease.fees as any)?.currency ?? 'USD';
+
+      let sessionPaymentMethodTypes: string[] | undefined;
+
+      if (paymentMethodType === 'card') {
+        // Card setup — always use ['card'] regardless of currency
+        sessionPaymentMethodTypes = ['card'];
+      } else {
+        // Bank setup — map currency to bank debit type, fall back to cards for unsupported currencies
+        const BANK_METHOD_BY_CURRENCY: Record<string, string> = {
+          CAD: 'acss_debit',
+          USD: 'us_bank_account',
+          EUR: 'sepa_debit',
+          GBP: 'bacs_debit',
+        };
+        const bankMethod = BANK_METHOD_BY_CURRENCY[currency.toUpperCase()];
+        sessionPaymentMethodTypes = bankMethod ? [bankMethod] : undefined;
+      }
+
       const sessionResult = await this.paymentGatewayService.createSetupCheckoutSession(
         IPaymentGatewayProvider.STRIPE,
-        { customerId, successUrl: returnUrl, cancelUrl }
+        {
+          customerId,
+          successUrl: returnUrl,
+          cancelUrl,
+          currency: currency.toLowerCase(),
+          paymentMethodTypes: sessionPaymentMethodTypes,
+          metadata: { tenantId: currentuser.sub, cuid, setupType: paymentMethodType },
+        }
       );
 
       if (!sessionResult.success || !sessionResult.data) {
@@ -933,6 +976,216 @@ export class AuthService {
       this.log.error({ error: error.message, cuid }, 'Error creating payment setup session');
       throw error;
     }
+  }
+
+  /**
+   * Return the tenant's saved payment method details for the PM's connected account.
+   * Reads from the profile's paymentMethods map, then fetches human-readable details from Stripe.
+   */
+  async getPaymentMethod(
+    cuid: string,
+    currentuser: ICurrentUser
+  ): Promise<{
+    success: boolean;
+    data: {
+      hasPaymentMethod: boolean;
+      connectedAccountId?: string;
+      paymentMethodId?: string;
+      type?: string;
+      bankName?: string;
+      last4?: string;
+      accountType?: string;
+      card?: {
+        hasCard: boolean;
+        paymentMethodId?: string;
+        brand?: string;
+        last4?: string;
+      };
+    };
+  }> {
+    if (currentuser.client.role !== 'tenant') {
+      throw new BadRequestError({ message: 'Only tenants can view payment methods.' });
+    }
+
+    const processor = await this.paymentProcessorDAO.findFirst({
+      cuid,
+      ownerType: { $in: ['client', null] } as any,
+      deletedAt: null,
+    });
+    if (!processor) {
+      return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
+    }
+
+    const tenantProfile = await this.profileDAO.findFirst({
+      user: new Types.ObjectId(currentuser.sub),
+    });
+    if (!tenantProfile) {
+      return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
+    }
+
+    const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(processor.accountId);
+    const cardPaymentMethodId = tenantProfile.tenantInfo?.cardPaymentMethods?.get(
+      processor.accountId
+    );
+
+    // Fetch card details if a card is saved
+    let cardInfo: { hasCard: boolean; paymentMethodId?: string; brand?: string; last4?: string } = {
+      hasCard: false,
+    };
+    if (cardPaymentMethodId) {
+      try {
+        const cardResult = await this.paymentGatewayService.retrievePaymentMethod(
+          IPaymentGatewayProvider.STRIPE,
+          cardPaymentMethodId
+        );
+        cardInfo = {
+          hasCard: true,
+          paymentMethodId: cardPaymentMethodId,
+          brand: cardResult.data?.bankName,
+          last4: cardResult.data?.last4,
+        };
+      } catch {
+        // Card may have been detached on Stripe side — treat as no card
+        cardInfo = { hasCard: false };
+      }
+    }
+
+    if (!paymentMethodId) {
+      return {
+        success: true,
+        data: { hasPaymentMethod: false, connectedAccountId: processor.accountId, card: cardInfo },
+      };
+    }
+
+    const pmResult = await this.paymentGatewayService.retrievePaymentMethod(
+      IPaymentGatewayProvider.STRIPE,
+      paymentMethodId
+    );
+
+    return {
+      success: true,
+      data: {
+        hasPaymentMethod: true,
+        connectedAccountId: processor.accountId,
+        paymentMethodId,
+        type: pmResult.data?.type,
+        bankName: pmResult.data?.bankName,
+        last4: pmResult.data?.last4,
+        accountType: pmResult.data?.accountType,
+        card: cardInfo,
+      },
+    };
+  }
+
+  /**
+   * Remove the tenant's saved payment method for the PM's connected account.
+   * Enforces that at least one payment method must remain on file.
+   */
+  async removePaymentMethod(
+    cuid: string,
+    currentuser: ICurrentUser
+  ): Promise<{ success: boolean; data: null }> {
+    if (currentuser.client.role !== 'tenant') {
+      throw new BadRequestError({ message: 'Only tenants can remove payment methods.' });
+    }
+
+    const processor = await this.paymentProcessorDAO.findFirst({
+      cuid,
+      ownerType: { $in: ['client', null] } as any,
+      deletedAt: null,
+    });
+    if (!processor) {
+      throw new NotFoundError({ message: 'Payment processor not configured.' });
+    }
+
+    const tenantProfile = await this.profileDAO.findFirst({
+      user: new Types.ObjectId(currentuser.sub),
+    });
+    if (!tenantProfile || !tenantProfile.tenantInfo?.paymentMethods) {
+      throw new NotFoundError({ message: 'No payment method on file.' });
+    }
+
+    const paymentMethods = tenantProfile.tenantInfo.paymentMethods;
+    if (paymentMethods.size <= 1) {
+      throw new BadRequestError({
+        message: 'You must keep at least one payment method on file.',
+      });
+    }
+
+    const paymentMethodId = paymentMethods.get(processor.accountId);
+    if (!paymentMethodId) {
+      throw new NotFoundError({ message: 'No payment method found for this property manager.' });
+    }
+
+    // Remove from profile
+    await this.profileDAO.update(
+      { user: new Types.ObjectId(currentuser.sub) },
+      { $unset: { [`tenantInfo.paymentMethods.${processor.accountId}`]: '' } }
+    );
+
+    this.log.info(
+      { tenantId: currentuser.sub, cuid, paymentMethodId },
+      'Tenant payment method removed'
+    );
+
+    return { success: true, data: null };
+  }
+
+  /**
+   * Charge the tenant's first month rent (pro-rated + security deposit) immediately
+   * after they complete bank account setup during onboarding.
+   * Delegates entirely to createRentPayment which auto-detects isFirstPayment
+   * and applies pro-ration + deposit bundling.
+   */
+  async chargeFirstPayment(
+    cuid: string,
+    currentUser: ICurrentUser
+  ): Promise<
+    ISuccessReturnData<{
+      skipped: boolean;
+      reason?: string;
+      pytuid?: string;
+      baseAmount?: number;
+      currency?: string;
+    }>
+  > {
+    if (currentUser.client.role !== 'tenant') {
+      throw new BadRequestError({ message: 'Only tenants can charge a first payment.' });
+    }
+
+    const lease = await this.leaseDAO.getActiveLeaseByTenant(cuid, currentUser.sub);
+    if (!lease) {
+      return { success: true, data: { skipped: true, reason: 'no_active_lease' } };
+    }
+
+    // Guard against double-charging: check for any existing payments on this lease
+    const existing = await this.paymentService.listPayments(cuid, {
+      leaseId: lease.luid,
+      limit: 1,
+    });
+    if (existing.data && existing.data.items && existing.data.items.length > 0) {
+      return { success: true, data: { skipped: true, reason: 'already_charged' } };
+    }
+
+    const paymentFormData: IPaymentFormData = {
+      paymentType: PaymentRecordType.RENT,
+      leaseId: lease.luid,
+      tenantId: currentUser.sub,
+      dueDate: new Date(lease.duration.startDate),
+    };
+
+    const result = await this.paymentService.createRentPayment(cuid, paymentFormData);
+    const payment = result.data;
+
+    return {
+      success: true,
+      data: {
+        skipped: false,
+        pytuid: payment?.pytuid,
+        baseAmount: payment?.baseAmount,
+        currency: (lease.fees as any)?.currency ?? 'usd',
+      },
+    };
   }
 
   private setupEventListeners(): void {

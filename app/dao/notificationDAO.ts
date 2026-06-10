@@ -7,6 +7,7 @@ import {
   INotificationDocument,
   INotificationFilters,
   NotificationTypeEnum,
+  RecipientTypeEnum,
   INotification,
 } from '@interfaces/notification.interface';
 
@@ -63,7 +64,8 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     cuid: string,
     targetingInfo: { roles: string[]; vendorId?: string },
     filters?: INotificationFilters,
-    pagination?: IPaginationQuery
+    pagination?: IPaginationQuery,
+    extraFilter?: FilterQuery<INotificationDocument>
   ): Promise<{ data: INotificationDocument[]; total: number }> {
     try {
       // Build $or conditions based on recipientType filter
@@ -73,29 +75,31 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         // Filter by specific recipientType
         if (filters.recipientType === 'individual') {
           // Only individual notifications for this user
-          orConditions = [{ recipientType: 'individual', recipient: new Types.ObjectId(userId) }];
+          orConditions = [
+            { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
+          ];
         } else if (filters.recipientType === 'announcement') {
           // Only announcement notifications
           orConditions = [
             {
-              recipientType: 'announcement',
+              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
               targetRoles: { $exists: false },
               targetVendor: { $exists: false },
             },
             ...(targetingInfo.roles.length > 0
               ? [
                   {
-                    recipientType: 'announcement',
+                    recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                     targetRoles: { $in: targetingInfo.roles },
-                  },
+                  } as FilterQuery<INotificationDocument>,
                 ]
               : []),
             ...(targetingInfo.vendorId
               ? [
                   {
-                    recipientType: 'announcement',
+                    recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                     targetVendor: targetingInfo.vendorId,
-                  },
+                  } as FilterQuery<INotificationDocument>,
                 ]
               : []),
           ];
@@ -104,26 +108,26 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         // No recipientType filter - include both individual and announcements (existing behavior)
         orConditions = [
           // Individual notifications for this user
-          { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
+          { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
           {
-            recipientType: 'announcement',
+            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
             targetRoles: { $exists: false },
             targetVendor: { $exists: false },
           },
           ...(targetingInfo.roles.length > 0
             ? [
                 {
-                  recipientType: 'announcement',
+                  recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                   targetRoles: { $in: targetingInfo.roles },
-                },
+                } as FilterQuery<INotificationDocument>,
               ]
             : []),
           ...(targetingInfo.vendorId
             ? [
                 {
-                  recipientType: 'announcement',
+                  recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                   targetVendor: targetingInfo.vendorId,
-                },
+                } as FilterQuery<INotificationDocument>,
               ]
             : []),
         ];
@@ -133,6 +137,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         cuid,
         $or: orConditions,
         deletedAt: null,
+        ...extraFilter,
       };
 
       if (filters) {
@@ -161,6 +166,12 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
           } else if (filters.last30days) {
             filter.createdAt.$gte = dayjs().subtract(30, 'days').toDate();
           }
+        }
+        if (filters.since) {
+          filter.createdAt = {
+            ...((filter.createdAt as object) || {}),
+            $gt: new Date(filters.since),
+          };
         }
       }
 
@@ -196,8 +207,8 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
       const filter: FilterQuery<INotificationDocument> = {
         cuid,
         $or: [
-          { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
-          { recipientType: 'announcement' },
+          { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
+          { recipientType: RecipientTypeEnum.ANNOUNCEMENT },
         ],
         isRead: false,
         deletedAt: null,
@@ -274,7 +285,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     try {
       const filter: FilterQuery<INotificationDocument> = {
         cuid,
-        recipientType: 'individual',
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
         recipient: new Types.ObjectId(userId),
         isRead: false,
         deletedAt: null,

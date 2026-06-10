@@ -11,8 +11,6 @@ import {
   WorkOrderStatus,
 } from '@interfaces/maintenanceRequest.interface';
 
-import { InvoiceSchema } from './invoice.schema';
-
 const WorkOrderLineItemSchema = new Schema(
   {
     description: { type: String, required: true },
@@ -23,7 +21,6 @@ const WorkOrderLineItemSchema = new Schema(
   { _id: false }
 );
 
-// Zod URL validator
 const urlSchema = z.string().url();
 
 const validateUrl = (v: string): boolean => {
@@ -100,13 +97,34 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     completedAt: { type: Date },
     completionNotes: { type: [CompletionNoteSchema], default: undefined },
     actualCost: { type: Number, min: 0 },
-    invoice: { type: InvoiceSchema, default: undefined },
+    invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', index: true },
+    invoiceDeadline: { type: Date },
+    tenantFeedback: {
+      status: { type: String, enum: ['pending', 'confirmed', 'disputed'], default: 'pending' },
+      rating: { type: Number, min: 1, max: 5 },
+      comment: { type: String, maxlength: 1000 },
+      submittedAt: { type: Date },
+      _id: false,
+    },
+    pendingMaintenanceStatus: {
+      propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
+      unitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
+      requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      requestedAt: { type: Date },
+      displayName: { type: String },
+      _id: false,
+    },
     aiAnalysis: {
+      suggestedCategory: { type: String, enum: Object.values(MaintenanceCategory) },
+      suggestedPriority: { type: String, enum: Object.values(MaintenanceRequestPriority) },
       confidence: { type: Number, min: 0, max: 1 },
       reasoning: { type: String },
       suggestedVendorId: { type: Schema.Types.ObjectId, ref: 'User' },
+      suggestedVendorName: { type: String },
+      suggestedVendorReasoning: { type: String },
       processedAt: { type: Date },
       modelUsed: { type: String },
+      accepted: { type: Boolean },
     },
     availabilityInfo: {
       preferredDate: { type: Date },
@@ -131,7 +149,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
         key: { type: String },
         status: {
           type: String,
-          enum: ['pending', 'processing', 'active', 'inactive', 'deleted'], // if inactive it would be deleted via cron job ltr
+          enum: ['pending', 'processing', 'active', 'inactive', 'deleted'],
           default: 'active',
         },
         uploadedAt: { type: Date, default: Date.now },
@@ -143,6 +161,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     isBillable: { type: Boolean, default: false },
     assignedTechnician: {
       type: {
+        _id: false,
         userId: { type: Schema.Types.ObjectId, ref: 'User' },
         name: { type: String, maxlength: 100 },
         phone: { type: String, maxlength: 20 },
@@ -156,7 +175,10 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
           type: String,
           enum: Object.values(WorkOrderStatus),
         },
-        scope: { type: String, maxlength: 2000 },
+        scope: {
+          text: { type: String, maxlength: 2000 },
+          html: { type: String },
+        },
         estimatedCostInCents: { type: Number, min: 0 },
         lineItems: { type: [WorkOrderLineItemSchema], default: undefined },
         submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -172,7 +194,10 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       type: [
         {
           status: { type: String, enum: Object.values(WorkOrderStatus) },
-          scope: { type: String, maxlength: 2000 },
+          scope: {
+            text: { type: String, maxlength: 2000 },
+            html: { type: String },
+          },
           estimatedCostInCents: { type: Number, min: 0 },
           lineItems: { type: [WorkOrderLineItemSchema], default: undefined },
           submittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
@@ -199,7 +224,7 @@ MaintenanceRequestSchema.plugin(uniqueValidator, { message: '{PATH} must be uniq
 MaintenanceRequestSchema.index({ cuid: 1, status: 1 });
 MaintenanceRequestSchema.index({ cuid: 1, propertyId: 1 });
 MaintenanceRequestSchema.index({ vendorId: 1, status: 1 });
-MaintenanceRequestSchema.index({ 'invoice.status': 1, cuid: 1 });
+MaintenanceRequestSchema.index({ 'assignedTechnician.userId': 1, status: 1 });
 
 const MaintenanceRequestModel = model<IMaintenanceRequestDocument>(
   'MaintenanceRequest',

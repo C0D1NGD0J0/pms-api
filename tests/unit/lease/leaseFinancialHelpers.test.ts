@@ -1,11 +1,12 @@
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { ValidationRequestError } from '@shared/customErrors';
+import { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ILeaseESignatureStatusEnum } from '@interfaces/lease.interface';
 import {
   validateLeaseReadyForSignature,
+  calculateFinancialSummary,
   calculateNextPaymentDate,
   calculateProRatedAmount,
-  calculateFinancialSummary,
 } from '@services/lease/leaseHelpers';
 
 // ---------------------------------------------------------------------------
@@ -121,8 +122,8 @@ describe('calculateProRatedAmount', () => {
 
   it('pro-rates for mid-month start (April 10 → 21 of 30 days)', () => {
     const startDate = new Date(2026, 3, 10); // April 10 — 30 day month
-    const monthlyRentInCents = 300000; // $3,000
-    const result = calculateProRatedAmount(monthlyRentInCents, startDate);
+    const rentAmountInCents = 300000; // $3,000
+    const result = calculateProRatedAmount(rentAmountInCents, startDate);
     expect(result.isFullMonth).toBe(false);
     expect(result.daysInMonth).toBe(30);
     expect(result.daysCharged).toBe(21); // 30 - 10 + 1
@@ -164,7 +165,7 @@ describe('calculateProRatedAmount', () => {
 function makeLeaseDoc(overrides: Record<string, any> = {}): any {
   return {
     fees: {
-      monthlyRent: 200000, // $2,000 in cents
+      rentAmount: 200000, // $2,000 in cents
       securityDeposit: 200000,
       currency: 'USD',
       rentDueDay: 1,
@@ -234,6 +235,152 @@ describe('calculateFinancialSummary — first payment composition', () => {
     const summary = calculateFinancialSummary(lease);
     expect(summary.petFee).toBeUndefined();
     expect(summary.petFeeRaw).toBe(0);
+  });
+
+  it('exposes petDepositRaw as a named key', () => {
+    const lease = makeLeaseDoc({
+      petPolicy: { allowed: true, monthlyFee: 0, deposit: 20000 },
+    });
+    const summary = calculateFinancialSummary(lease);
+    expect(summary.petDepositRaw).toBe(20000);
+    expect(summary.petDeposit).toBeDefined();
+  });
+
+  it('petDepositRaw is 0 and petDeposit is undefined when no pet deposit', () => {
+    const lease = makeLeaseDoc();
+    const summary = calculateFinancialSummary(lease);
+    expect(summary.petDepositRaw).toBe(0);
+    expect(summary.petDeposit).toBeUndefined();
+  });
+
+  it('includes management fee in totalMonthlyRent when includeManagementFee is true', () => {
+    const lease = makeLeaseDoc({
+      includeManagementFee: true,
+      propertyInfo: { fees: { managementFees: 15000 } },
+    });
+    const summary = calculateFinancialSummary(lease);
+    expect(summary.managementFeeRaw).toBe(15000);
+    // full month: rent + management in totalMonthlyRent
+    expect(summary.rentAmountRaw).toBe(200000 + 15000);
+  });
+
+  it('management fee is 0 when includeManagementFee is false', () => {
+    const lease = makeLeaseDoc({
+      includeManagementFee: false,
+      propertyInfo: { fees: { managementFees: 15000 } },
+    });
+    const summary = calculateFinancialSummary(lease);
+    expect(summary.managementFeeRaw).toBe(0);
+    expect(summary.managementFee).toBeUndefined();
+  });
+
+  it('includes management fee in firstPaymentAmount (pro-rated on mid-month start)', () => {
+    // June 15: daysCharged=16, ceil(200000 × 16/30)=106667, ceil(15000 × 16/30)=8000
+    const lease = makeLeaseDoc({
+      duration: { startDate: new Date(2024, 5, 15), endDate: new Date(2025, 4, 31) },
+      includeManagementFee: true,
+      propertyInfo: { fees: { managementFees: 15000 } },
+    });
+    const summary = calculateFinancialSummary(lease);
+    const proRatedRent = Math.ceil((200000 * 16) / 30); // 106667
+    const proRatedMgmt = Math.ceil((15000 * 16) / 30);  // 8000
+    expect(summary.proRatedManagementFeeAmount).toBe(proRatedMgmt);
+    expect(summary.firstPaymentAmount).toBe(proRatedRent + proRatedMgmt + 200000); // + security deposit
+  });
+
+  it('forwards lateFeePercentage from lease fees', () => {
+    const lease = makeLeaseDoc({
+      fees: {
+        rentAmount: 200000,
+        securityDeposit: 200000,
+        currency: 'USD',
+        rentDueDay: 1,
+        lateFeeType: 'percentage',
+        lateFeePercentage: 5,
+      },
+    });
+    const summary = calculateFinancialSummary(lease);
+    expect(summary.lateFeePercentage).toBe(5);
+    expect(summary.lateFeeType).toBe('percentage');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// computeLeaseMonthlyFees — shared fee helper
+// ---------------------------------------------------------------------------
+
+describe('computeLeaseMonthlyFees', () => {
+  function makeMinimalLease(overrides: Record<string, any> = {}): any {
+    return {
+      fees: { rentAmount: 150000, securityDeposit: 150000, currency: 'USD', rentDueDay: 1 },
+      petPolicy: null,
+      includeManagementFee: false,
+      property: {},
+      ...overrides,
+    };
+  }
+
+  it('returns correct baseRent, petMonthlyFee, securityDeposit with no extras', () => {
+    const result = computeLeaseMonthlyFees(makeMinimalLease());
+    expect(result.baseRent).toBe(150000);
+    expect(result.petMonthlyFee).toBe(0);
+    expect(result.securityDeposit).toBe(150000);
+    expect(result.managementFee).toBe(0);
+    expect(result.totalMonthlyRent).toBe(150000);
+  });
+
+  it('includes petMonthlyFee in totalMonthlyRent', () => {
+    const result = computeLeaseMonthlyFees(
+      makeMinimalLease({ petPolicy: { monthlyFee: 5000, deposit: 20000 } })
+    );
+    expect(result.petMonthlyFee).toBe(5000);
+    expect(result.petDeposit).toBe(20000);
+    expect(result.totalMonthlyRent).toBe(155000);
+  });
+
+  it('reads management fee from propertyInfo virtual when includeManagementFee is true', () => {
+    const result = computeLeaseMonthlyFees(
+      makeMinimalLease({
+        includeManagementFee: true,
+        propertyInfo: { fees: { managementFees: 10000 } },
+      })
+    );
+    expect(result.managementFee).toBe(10000);
+    expect(result.totalMonthlyRent).toBe(160000);
+  });
+
+  it('reads management fee from property.id populated ref as fallback', () => {
+    const result = computeLeaseMonthlyFees(
+      makeMinimalLease({
+        includeManagementFee: true,
+        property: { id: { fees: { managementFees: 8000 } } },
+      })
+    );
+    expect(result.managementFee).toBe(8000);
+    expect(result.totalMonthlyRent).toBe(158000);
+  });
+
+  it('prefers propertyInfo virtual over property.id when both present', () => {
+    const result = computeLeaseMonthlyFees(
+      makeMinimalLease({
+        includeManagementFee: true,
+        propertyInfo: { fees: { managementFees: 12000 } },
+        property: { id: { fees: { managementFees: 99999 } } },
+      })
+    );
+    expect(result.managementFee).toBe(12000);
+  });
+
+  it('ignores management fee when includeManagementFee is false regardless of property value', () => {
+    const result = computeLeaseMonthlyFees(
+      makeMinimalLease({
+        includeManagementFee: false,
+        propertyInfo: { fees: { managementFees: 10000 } },
+        property: { id: { fees: { managementFees: 10000 } } },
+      })
+    );
+    expect(result.managementFee).toBe(0);
+    expect(result.totalMonthlyRent).toBe(150000);
   });
 });
 

@@ -45,16 +45,17 @@ export enum DataRetentionPolicy {
  * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
  */
 export interface ITenantInfo {
-  maintenanceRequests?: IMaintenanceRequestItem[];
   paymentGatewayCustomers?: Map<string, string>;
   backgroundChecks?: IBackgroundCheckItem[];
+  cardPaymentMethods?: Map<string, string>;
   paymentHistory?: IPaymentHistoryItem[];
+  paymentMandates?: Map<string, string>;
   rentalReferences?: IRentalReference[];
+  paymentMethods?: Map<string, string>;
   emergencyContact?: IEmergencyContact;
   leaseHistory?: ILeaseHistoryItem[];
   employerInfo?: IEmployerInfoItem[];
   activeLeases?: IActiveLeaseItem[];
-  notes?: INoteItem[];
   propertyId?: string;
   unitId?: string;
   pets?: IPet[];
@@ -109,7 +110,7 @@ export interface IActiveLeaseItem {
   leaseId: string | Types.ObjectId;
   propertyAddress?: string;
   leaseNumber?: string;
-  monthlyRent?: number;
+  rentAmount?: number;
   confirmedDate: Date;
   unitNumber?: string;
   confirmed: boolean;
@@ -145,7 +146,7 @@ export interface ILeaseHistoryItem {
   status: LeaseHistoryStatus;
   leaseNumber?: string;
   propertyName: string;
-  monthlyRent: number;
+  rentAmount: number;
   unitNumber: string;
   leaseStart: Date;
   leaseEnd: Date;
@@ -246,18 +247,6 @@ export interface IEmployerInfoItem {
   companyName: string;
   position: string;
   cuid: string;
-}
-
-/**
- * Maintenance Request Item Interface
- */
-export interface IMaintenanceRequestItem {
-  priority: MaintenanceRequestPriority;
-  status: MaintenanceRequestStatus;
-  description: string;
-  requestId: string;
-  type: string;
-  date: Date;
 }
 
 /**
@@ -365,16 +354,6 @@ export interface IPet {
   [key: string]: any;
   breed: string;
   type: string;
-}
-
-/**
- * Note Item Interface
- */
-export interface INoteItem {
-  timestamp: Date;
-  type: NoteType;
-  author: string;
-  note: string;
 }
 
 /**

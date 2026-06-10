@@ -39,6 +39,19 @@ export enum IUserRelationshipsEnum {
  *  - `employeeInfo`     — only present for admin/manager/staff roles
  */
 export interface ICurrentUser {
+  client: {
+    clientSettings?: any;
+    tenantFeatures?: import('@interfaces/client.interface').ITenantFeatureSettings;
+    suspension?: import('@interfaces/client.interface').IClientSuspension;
+    cuid: string;
+    displayname: string;
+    linkedVendorUid?: string;
+    role: IUserRoleType;
+    isVerified: boolean;
+    requiresOnboarding?: boolean;
+    vendorPayoutMode?: 'express' | 'platform_hold';
+    isFormerTenant?: boolean;
+  };
   /** Only populated for super-admin users */
   subscription?: {
     plan: {
@@ -53,18 +66,6 @@ export interface ICurrentUser {
       gracePeriodEndsAt: Date | null;
       daysUntilDowngrade: number | null;
     };
-  };
-  client: {
-    clientSettings?: any;
-    tenantFeatures?: import('@interfaces/client.interface').ITenantFeatureSettings;
-    cuid: string;
-    displayname: string;
-    linkedVendorUid?: string;
-    role: IUserRoleType;
-    isVerified: boolean;
-    requiresOnboarding?: boolean;
-    vendorPayoutMode?: 'express' | 'platform_hold';
-    isFormerTenant?: boolean;
   };
   vendorInfo?: {
     vendorId?: string;
@@ -92,6 +93,7 @@ export interface ICurrentUser {
     hasActiveLease?: boolean;
     backgroundCheckStatus?: string;
     activeLease?: Record<string, any> | null;
+    employerInfo?: Array<Record<string, any>>;
   };
   employeeInfo?: {
     department?: EmployeeDepartment;
@@ -104,6 +106,12 @@ export interface ICurrentUser {
     theme?: ThemePreference;
     timezone?: string;
   };
+  /**
+   * Feature flags from the client's subscription — available for ALL roles.
+   * Vendors and tenants use this instead of `subscription` (which is PM-only)
+   * to gate client-plan-dependent features (AI scanning, eSign, etc.).
+   */
+  clientEntitlements: ISubscriptionEntitlements['entitlements'];
   clients: IClientUserConnections[];
   fullname: string | null;
   permissions: string[];
@@ -114,6 +122,56 @@ export interface ICurrentUser {
   email: string;
   sub: string;
   uid: string;
+}
+
+/**
+ * Vendor Detail Information
+ * Complete vendor profile and metrics
+ */
+export interface IVendorDetailInfo {
+  address?: {
+    fullAddress: string;
+    street: string;
+    city: string;
+    state: string;
+    country: string;
+    postCode: string;
+  };
+  insuranceInfo: {
+    coverageAmount: number;
+    expirationDate: Date | null;
+    policyNumber: string;
+    provider: string;
+  };
+  contactPerson: {
+    jobTitle: string;
+    phone: string;
+  } & Pick<IBaseContactInfo, 'name' | 'email'>;
+  stats: {
+    responseTime: string;
+    completedJobs: number;
+    activeJobs: number;
+  } & IBaseStats;
+  payoutAccount?: {
+    isSetup: boolean;
+    payoutsEnabled: boolean;
+    chargesEnabled: boolean;
+  };
+  serviceAreas: {
+    maxDistance: number;
+  };
+  servicesOffered: Record<string, any>;
+  linkedUsers?: ILinkedVendorUser[];
+  linkedVendorUid: string | null;
+  registrationNumber: string;
+  isLinkedAccount: boolean;
+  isPrimaryVendor: boolean;
+  yearsInBusiness: number;
+  businessType: string;
+  companyName: string;
+  tags: string[];
+  taxId: string;
+  vuid: string;
 }
 
 /**
@@ -158,44 +216,6 @@ export interface IClientTenantDetails {
   userType: 'tenant';
   joinedDate: Date;
   roles: string[];
-}
-
-/**
- * Vendor Detail Information
- * Complete vendor profile and metrics
- */
-export interface IVendorDetailInfo {
-  insuranceInfo: {
-    coverageAmount: number;
-    expirationDate: Date | null;
-    policyNumber: string;
-    provider: string;
-  };
-  contactPerson: {
-    jobTitle: string;
-    phone: string;
-  } & Pick<IBaseContactInfo, 'name' | 'email'>;
-  stats: {
-    responseTime: string;
-    completedJobs: number;
-    activeJobs: number;
-  } & IBaseStats;
-  serviceAreas: {
-    baseLocation: string;
-    maxDistance: number;
-  };
-  servicesOffered: Record<string, any>;
-  linkedUsers?: ILinkedVendorUser[];
-  linkedVendorUid: string | null;
-  registrationNumber: string;
-  isLinkedAccount: boolean;
-  isPrimaryVendor: boolean;
-  yearsInBusiness: number;
-  businessType: string;
-  companyName: string;
-  tags: string[];
-  taxId: string;
-  vuid: string;
 }
 
 /**
@@ -378,6 +398,21 @@ export interface ITenantFilterOptions extends IUserFilterOptions {
 }
 
 /**
+ * Vendor Team Member Response Interface
+ */
+export interface IVendorTeamMember
+  extends Pick<
+    IBaseUserProfile,
+    'displayName' | 'phoneNumber' | 'firstName' | 'isActive' | 'lastName' | 'email' | 'uid'
+  > {
+  lastLogin: Date | null;
+  isTeamMember: boolean;
+  joinedDate: Date;
+  role: string;
+  sub: string; // MongoDB _id as hex string — used to filter assignedTechnician.userId
+}
+
+/**
  * Filtered User Table Data
  * Lightweight user data for table display only
  */
@@ -434,22 +469,8 @@ export interface IIdentificationType {
 export interface FilteredUserTenantInfo {
   propertyAddress?: string; // Full address of the property
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
-  monthlyRent?: number; // Monthly rent amount
+  rentAmount?: number; // Monthly rent amount
   rentStatus?: string; // paid, overdue, pending, etc.
-}
-
-/**
- * Vendor Team Member Response Interface
- */
-export interface IVendorTeamMember
-  extends Pick<
-    IBaseUserProfile,
-    'displayName' | 'phoneNumber' | 'firstName' | 'isActive' | 'lastName' | 'email' | 'uid'
-  > {
-  lastLogin: Date | null;
-  isTeamMember: boolean;
-  joinedDate: Date;
-  role: string;
 }
 
 /**

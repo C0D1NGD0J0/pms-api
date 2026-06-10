@@ -225,7 +225,7 @@ UnitSchema.virtual('maintenanceRequests', {
   foreignField: 'unitId',
 });
 
-UnitSchema.pre('save', function (this: IUnitDocument, next) {
+UnitSchema.pre('save', function (this: IUnitDocument) {
   if (
     this.isModified('inspections') &&
     this.inspections &&
@@ -237,7 +237,6 @@ UnitSchema.pre('save', function (this: IUnitDocument, next) {
     );
     this.lastInspectionDate = sortedInspections[0].inspectionDate;
   }
-  next();
 });
 
 UnitSchema.methods.softDelete = async function (userId: string) {
@@ -321,7 +320,7 @@ UnitSchema.methods.applyRentAdjustment = async function (percentage: number, use
   return this;
 };
 
-UnitSchema.pre('validate', async function (next) {
+UnitSchema.pre('validate', async function () {
   try {
     if (this.isNew || this.isModified('propertyId')) {
       const PropertyModel = model('Property');
@@ -332,13 +331,12 @@ UnitSchema.pre('validate', async function (next) {
       });
 
       if (!property) {
-        return next(new Error('Associated property does not exist or has been deleted'));
+        throw new Error('Associated property does not exist or has been deleted');
       }
     }
-    next();
   } catch (error) {
     logger.error('Error in unit pre-validate hook:', error);
-    next(error);
+    throw error;
   }
 });
 

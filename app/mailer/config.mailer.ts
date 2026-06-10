@@ -32,12 +32,6 @@ export class MailService {
     this.resendClient = new Resend(envVariables.EMAIL.PROD.PROVIDER_PASSWORD);
   }
 
-  /**
-   * Send an email with a specific template
-   * @param data Mail data including recipient
-   * @param mailType Type of email to send
-   * @returns Promise resolving when email is sent
-   */
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
@@ -81,12 +75,6 @@ export class MailService {
     }
   }
 
-  /**
-   * Retrieve email template with caching
-   * @param emailData Template data
-   * @param type Mail type
-   * @returns Rendered email template
-   */
   private async getEmailTemplate(
     emailData: EmailTemplateData,
     type: MailType
@@ -141,6 +129,16 @@ export class MailService {
           'maintenance'
         );
         break;
+      case MailType.SUBSCRIPTION_RENEWAL_UPCOMING:
+        template = await this.buildTemplate('subscription-renewal', emailData, 'subscription');
+        break;
+      case MailType.SUBSCRIPTION_RENEWAL_RECEIPT:
+        template = await this.buildTemplate(
+          'subscription-renewal-receipt',
+          emailData,
+          'subscription'
+        );
+        break;
       case MailType.MAINTENANCE_REQUEST_ASSIGNED:
         template = await this.buildTemplate(
           'maintenance-request-assigned',
@@ -183,6 +181,15 @@ export class MailService {
           'maintenance'
         );
         break;
+      case MailType.MAINTENANCE_CHARGE_CREATED:
+        template = await this.buildTemplate('maintenance-charge-created', emailData, 'maintenance');
+        break;
+      case MailType.MAINTENANCE_VENDOR_PAID:
+        template = await this.buildTemplate('maintenance-vendor-paid', emailData, 'maintenance');
+        break;
+      case MailType.PAYMENT_REQUEST_CREATED:
+        template = await this.buildTemplate('payment-request', emailData, 'payment');
+        break;
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
         break;
@@ -196,6 +203,9 @@ export class MailService {
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
+      case MailType.LEASE_ADMIN_UPDATED:
+        template = await this.buildTemplate('lease-admin-updated', emailData, 'lease');
+        break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
         break;
@@ -205,11 +215,17 @@ export class MailService {
       case MailType.LEASE_TERMINATED:
         template = await this.buildTemplate('lease-terminated', emailData, 'lease');
         break;
+      case MailType.PAYMENT_RECEIPT:
+        template = await this.buildTemplate('payment-receipt', emailData, 'payment');
+        break;
       case MailType.FORGOT_PASSWORD:
         template = await this.buildTemplate('forgotPassword', emailData);
         break;
       case MailType.LEASE_ACTIVATED:
         template = await this.buildTemplate('lease-activated', emailData, 'lease');
+        break;
+      case MailType.PAYMENT_FAILED:
+        template = await this.buildTemplate('payment-failed', emailData, 'payment');
         break;
       case MailType.PASSWORD_RESET:
         template = await this.buildTemplate('resetPassword', emailData);
@@ -243,13 +259,6 @@ export class MailService {
     return template;
   }
 
-  /**
-   * Build email template from EJS files
-   * @param filename Base filename for template
-   * @param data Template data
-   * @param subdir Optional subdirectory for template
-   * @returns Rendered email template
-   */
   private async buildTemplate(
     filename: string,
     data: EmailTemplateData,
@@ -296,23 +305,11 @@ export class MailService {
     }
   }
 
-  /**
-   * Render a template file with EJS
-   * @param relativePath Path to template file
-   * @param data Template data
-   * @returns Rendered template
-   */
   private async renderTemplateFile(relativePath: string, data: EmailTemplateData): Promise<string> {
     const fullPath = `${__dirname}/templates/${relativePath}`;
     return ejs.renderFile(fullPath, data);
   }
 
-  /**
-   * Render layout template
-   * @param content Main template content
-   * @param layoutData Layout data
-   * @returns Fully rendered template
-   */
   private async renderLayoutTemplate(
     content: string,
     layoutData: Record<string, any>
@@ -323,11 +320,6 @@ export class MailService {
     });
   }
 
-  /**
-   * Get default subject based on mail type
-   * @param mailType Type of email
-   * @returns Default subject line
-   */
   private getDefaultSubject(mailType: MailType): string {
     const defaultText = 'Notification from PropertyDesk';
 
@@ -347,21 +339,29 @@ export class MailService {
       [MailType.LEASE_SIGNOFF_REQUEST]: 'Lease Sign-off Request',
       [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
+      [MailType.PAYMENT_REQUEST_CREATED]: 'New Payment Request',
       [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
+      [MailType.LEASE_ADMIN_UPDATED]: 'Your Lease Has Been Updated',
       [MailType.LEASE_ENDING_SOON]: 'Your Lease is Ending Soon',
       [MailType.ACCOUNT_DISCONNECTED]: 'Your Account Connection Has Been Removed',
       [MailType.MAINTENANCE_REQUEST_CREATED]: 'Maintenance Request Submitted',
       [MailType.MAINTENANCE_REQUEST_ASSIGNED]: 'Maintenance Request Assigned',
       [MailType.MAINTENANCE_REQUEST_DECLINED]: 'Maintenance Request Assignment Declined',
+      [MailType.MAINTENANCE_CHARGE_CREATED]: 'Maintenance Charge Added to Your Account',
       [MailType.MAINTENANCE_INVOICE_SUBMITTED]: 'Invoice Submitted for Review',
       [MailType.MAINTENANCE_INVOICE_APPROVED]: 'Invoice Approved',
       [MailType.MAINTENANCE_INVOICE_REJECTED]: 'Invoice Rejected',
+      [MailType.MAINTENANCE_VENDOR_PAID]: 'Payout Initiated for Your Service',
       [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED]: 'Work Order Submitted — Review Required',
       [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: 'Work Order Submitted for Your Request',
       [MailType.MAINTENANCE_WORK_ORDER_APPROVED]: 'Work Order Approved — Proceed with Job',
       [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: 'Work Order Rejected — Revision Required',
       [MailType.MAINTENANCE_REQUEST_ACCEPTED]: 'Your Maintenance Request is Being Handled',
       [MailType.MAINTENANCE_REQUEST_COMPLETED]: 'Your Maintenance Request Has Been Completed',
+      [MailType.PAYMENT_RECEIPT]: 'Payment Receipt',
+      [MailType.PAYMENT_FAILED]: 'Payment Could Not Be Processed',
+      [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
+      [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
     };
 
     return subjectMap[mailType] || subjectMap.default;

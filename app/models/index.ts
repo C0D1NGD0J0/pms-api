@@ -1,6 +1,7 @@
 import User from '@models/user/user.model';
 import Lease from '@models/lease/lease.model';
 import Asset from '@models/asset/asset.model';
+import UnitModel from '@models/unit/unit.model';
 import Client from '@models/client/client.model';
 import Vendor from '@models/vendor/vendor.model';
 import Profile from '@models/profile/profile.model';
@@ -25,6 +26,7 @@ export {
   PropertyUnit,
   PaymentModel,
   Invitation,
+  UnitModel,
   Property,
   Profile,
   Client,

@@ -9,10 +9,29 @@ export enum MetricType {
 }
 
 export interface IDashboardStats {
+  payments: {
+    byCurrency: Array<{
+      currency: string;
+      totalRevenue: number;
+      monthRevenue: number;
+      pendingAmount: number;
+    }>;
+    /** Summed across all currencies — used by single-currency dashboard cards */
+    monthRevenue: number;
+    totalRevenue: number;
+    pendingAmount: number;
+    overdueCount: number;
+    totalCount: number;
+    onTimeRate: number;
+    avgPaymentDelayDays: number;
+  };
   maintenance: {
+    /** Total of open + assigned + inProgress + awaitingInvoice + pending (excludes completed/cancelled) */
+    activeCount: number;
     open: number;
     assigned: number;
     inProgress: number;
+    awaitingInvoice: number;
     completed: number;
     cancelled: number;
     pending: number;
@@ -20,17 +39,13 @@ export interface IDashboardStats {
     byPriority: Record<string, number>;
     byCategory: Record<string, number>;
   };
-  payments: {
-    totalRevenue: number;
-    monthRevenue: number;
-    pendingAmount: number;
-    overdueCount: number;
-    totalCount: number;
-    onTimeRate: number;
-    avgPaymentDelayDays: number;
-  };
+  leases: {
+    /** Sum of all active lease rent amounts across currencies — the monthly rent roll */
+    totalMonthlyRent: number;
+  } & ILeaseStats;
   properties: {
     total: number;
+    propertyCount: number;
     occupied: number;
     vacant: number;
     occupancyRate: number;
@@ -40,7 +55,6 @@ export interface IDashboardStats {
     tenants: number;
     staff: number;
   };
-  leases: ILeaseStats;
   generatedAt: Date;
 }
 
@@ -63,17 +77,14 @@ export interface IMetricsDelta {
     byPriority?: Record<string, number>;
     byCategory?: Record<string, number>;
   };
-  payments?: {
-    totalRevenue?: number;
-    monthRevenue?: number;
-    pendingAmount?: number;
-    overdueCount?: number;
-  };
   properties?: {
     occupied?: number;
     vacant?: number;
   };
   type: 'metrics:delta' | 'metrics:invalidate';
+  payments?: {
+    overdueCount?: number;
+  };
   leases?: {
     active?: number;
   };

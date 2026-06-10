@@ -10,8 +10,10 @@ import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
@@ -51,6 +53,7 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   notificationService: NotificationService;
+  featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
@@ -79,6 +82,7 @@ export class ClientService {
   private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly featureFlagService: FeatureFlagService;
   private readonly queueFactory: QueueFactory;
 
   constructor({
@@ -93,6 +97,7 @@ export class ClientService {
     subscriptionDAO,
     subscriptionService,
     notificationService,
+    featureFlagService,
     emitterService,
     paymentGatewayService,
     queueFactory,
@@ -111,6 +116,7 @@ export class ClientService {
     this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
     this.paymentGatewayService = paymentGatewayService;
+    this.featureFlagService = featureFlagService;
     this.queueFactory = queueFactory;
     this.setupEventListeners();
   }
@@ -389,7 +395,6 @@ export class ClientService {
         legalEntityName: client.companyProfile.legalEntityName,
         tradingName: client.companyProfile.tradingName,
         website: client.companyProfile.website,
-        industry: client.companyProfile.industry,
       };
     }
 
@@ -886,34 +891,6 @@ export class ClientService {
       throw new BadRequestError({ message: 'Account is already verified' });
     }
 
-    // Validate identification data
-    const identification = client.identification;
-    if (!identification) {
-      throw new BadRequestError({ message: 'Identification information is required' });
-    }
-
-    const VALID_ID_TYPES = ['passport', 'national-id', 'drivers-license', 'corporation-license'];
-    const verificationErrors: string[] = [];
-
-    if (!identification.idType || !VALID_ID_TYPES.includes(identification.idType)) {
-      verificationErrors.push('Invalid or missing ID type');
-    }
-    if (!identification.idNumber || identification.idNumber.trim() === '') {
-      verificationErrors.push('ID number is required');
-    }
-    if (!identification.dataProcessingConsent) {
-      verificationErrors.push('Data processing consent is required');
-    }
-    if (!identification.expiryDate || new Date(identification.expiryDate) <= new Date()) {
-      verificationErrors.push('Document has expired or expiry date is missing');
-    }
-
-    if (verificationErrors.length > 0) {
-      throw new BadRequestError({
-        message: `Verification failed: ${verificationErrors.join(', ')}`,
-      });
-    }
-
     // Update client to verified status
     const updatedClient = await this.clientDAO.updateById(client._id.toString(), {
       $set: {
@@ -1023,24 +1000,25 @@ export class ClientService {
         },
       });
 
-      this.sseService.sendToUser(client.accountAdmin.toString(), EventTypes.IDENTITY_VERIFIED, {
-        cuid: client.cuid,
-        isVerified: true,
-      });
+      await this.sseService.sendToUser(
+        client.accountAdmin.toString(),
+        client.cuid,
+        { isVerified: true },
+        EventTypes.IDENTITY_VERIFIED
+      );
     } else {
       await this.clientDAO.updateById(client._id.toString(), {
         $set: { 'identityVerification.sessionStatus': 'requires_input' },
       });
 
-      this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         client.accountAdmin.toString(),
-        EventTypes.IDENTITY_REQUIRES_INPUT,
-        { cuid: client.cuid, sessionStatus: 'requires_input' }
+        client.cuid,
+        { sessionStatus: 'requires_input' },
+        EventTypes.IDENTITY_REQUIRES_INPUT
       );
     }
   }
-
-  // ── Payment event listeners ───────────────────────────────────────────────
 
   private setupEventListeners(): void {
     this.emitterService.on(
@@ -1062,8 +1040,65 @@ export class ClientService {
   private async handlePaymentProcessorVerified({
     cuid,
     accountId,
+    ownerType,
+    vuid,
   }: PaymentProcessorVerifiedPayload): Promise<void> {
     try {
+      // Vendor payout account verified — notify the vendor's primary account holder for this client
+      if (ownerType === 'vendor' && vuid) {
+        const vendor = await this.vendorDAO.findFirst({ vuid, deletedAt: null });
+        const clientConn = vendor?.connectedClients?.find((c: any) => c.cuid === cuid);
+        const recipientId = clientConn?.primaryAccountHolderUserId?.toString();
+
+        if (!recipientId) {
+          this.log.warn(
+            { cuid, vuid },
+            'No vendor primary account holder found for payout verification'
+          );
+          return;
+        }
+
+        // Sync payout flags to vendor's per-client record so payVendor() passes
+        await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+          isSetup: true,
+          payoutsEnabled: true,
+          chargesEnabled: true,
+        });
+
+        await this.authCache.invalidateCurrentUser(recipientId, cuid);
+
+        await this.sseService.sendToUser(
+          recipientId,
+          cuid,
+          {
+            action: 'REFETCH_CURRENT_USER',
+            eventType: 'payout_account_verified',
+            message: 'Your payout account has been verified and is ready to receive payments.',
+            timestamp: new Date().toISOString(),
+          },
+          'payment_update'
+        );
+
+        await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          type: NotificationTypeEnum.PAYMENT,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: recipientId,
+          priority: NotificationPriorityEnum.HIGH,
+          title: 'Payout Account Verified',
+          message:
+            'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
+          cuid,
+          metadata: {},
+        });
+
+        this.log.info(
+          { cuid, vuid, recipientId, accountId },
+          'Payout account verified — vendor notified'
+        );
+        return;
+      }
+
+      // PM payout account verified — notify the PM account admin
       const client = await this.clientDAO.findFirst({ cuid });
       const adminId = client?.accountAdmin?.toString();
       if (!adminId) {
@@ -1087,13 +1122,13 @@ export class ClientService {
 
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
-        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: adminId,
         priority: NotificationPriorityEnum.HIGH,
         title: 'Payout Account Verified',
         message:
           'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
         cuid,
-        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: {},
       });
 
@@ -1188,6 +1223,10 @@ export class ClientService {
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    if (features.smsNotifications === true && !this.featureFlagService.isEnabled(FeatureFlag.SMS)) {
+      throw new ForbiddenError({ message: 'SMS feature is not available on this platform.' });
     }
 
     const allowedKeys: (keyof ITenantFeatureSettings)[] = [

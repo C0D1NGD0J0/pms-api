@@ -107,17 +107,58 @@ export const NotificationMessages = {
       message:
         'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
     },
+    requested: {
+      title: 'Payment Request Received',
+      message:
+        'A payment of {{amount}} is due on {{dueDate}}. Pay early or your linked bank account will be automatically charged on the due date.',
+    },
     succeeded: {
       title: 'Payment Received',
       message: 'A payment of {{amount}} has been successfully processed',
     },
+    overdue: {
+      title: 'Rent Payment Overdue',
+      message: 'A rent payment of {{amount}} due on {{dueDate}} is now overdue',
+    },
     failed: {
       title: 'Payment Failed',
-      message: 'A payment of {{amount}} could not be processed',
+      message:
+        'A payment of {{amount}} could not be processed — please review and follow up with the tenant',
+    },
+    failedTenant: {
+      title: 'Payment Could Not Be Processed',
+      message:
+        'Your payment of {{amount}} could not be processed. Please use the payment link provided or add a card to complete your payment.',
+    },
+    overdueTenant: {
+      title: 'Rent Payment Overdue',
+      message:
+        'Your rent payment of {{amount}} was due on {{dueDate}} and is now overdue. Please make your payment as soon as possible to avoid late fees.',
     },
     refunded: {
       title: 'Payment Refunded',
       message: 'A refund of {{amount}} has been issued',
+    },
+    cancelled: {
+      title: 'Payment Cancelled',
+      message: 'A payment of {{amount}} has been cancelled by your property manager.',
+    },
+    payoutFailed: {
+      title: 'Vendor Payout Failed',
+      message: 'A payout of {{amount}} to a vendor bank account failed. Reason: {{reason}}',
+    },
+    payoutPaid: {
+      title: 'Vendor Payout Completed',
+      message: 'A payout of {{amount}} has been successfully deposited to the vendor bank account',
+    },
+    invoiceOverdue: {
+      title: 'Invoice Overdue',
+      message: 'A rent invoice of {{amount}} is overdue',
+    },
+    subscriptionRenewalUpcoming: {
+      title: 'Subscription Renewal Upcoming',
+      message:
+        'Your {{planName}} plan renews on {{renewalDate}} — {{amount}} will be charged to your payment method on file.',
     },
   },
 
@@ -146,6 +187,14 @@ export const NotificationMessages = {
       title: 'Vendor Declined Request',
       message: 'A vendor has declined maintenance request {{mruid}}',
     },
+    workDone: {
+      title: 'Work Marked as Done',
+      message: 'Vendor has marked work complete on request {{mruid}} — awaiting invoice',
+    },
+    workDoneTenant: {
+      title: 'Work Complete on Your Request',
+      message: 'Work has been completed on your maintenance request {{mruid}}',
+    },
     requestCompleted: {
       title: 'Maintenance Request Completed',
       message: 'Maintenance request {{mruid}} has been marked as completed',
@@ -154,6 +203,10 @@ export const NotificationMessages = {
       title: 'Maintenance Request Cancelled',
       message: 'Maintenance request {{mruid}} has been cancelled',
     },
+    requestUpdatedByTenant: {
+      title: 'Tenant Updated Service Request',
+      message: 'A tenant has updated the details of maintenance request {{mruid}}',
+    },
     invoiceSubmitted: {
       title: 'Invoice Submitted for Approval',
       message: 'A vendor has submitted an invoice of {{amount}} for request {{mruid}}',
@@ -161,6 +214,26 @@ export const NotificationMessages = {
     invoiceApproved: {
       title: 'Invoice Approved',
       message: 'Your invoice for request {{mruid}} has been approved',
+    },
+    invoiceApprovedTenant: {
+      title: 'Service Request Update',
+      message:
+        'The invoice for your maintenance request {{mruid}} has been approved and work is being finalized.',
+    },
+    invoiceBillableNotice: {
+      title: 'Maintenance Charge Pending',
+      message:
+        'A maintenance invoice of {{amount}} for request {{mruid}} has been approved and will be charged to your account.',
+    },
+    chargeCreated: {
+      title: 'Maintenance Charge Added',
+      message:
+        'A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Due {{dueDate}} — pay now to avoid auto-debit.',
+    },
+    vendorPaid: {
+      title: 'Payout Received',
+      message:
+        'A payout of {{amount}} has been initiated for service request {{mruid}}. Funds will arrive per your payout schedule.',
     },
     invoiceRejected: {
       title: 'Invoice Rejected',
@@ -178,6 +251,16 @@ export const NotificationMessages = {
       title: 'Work Order Rejected',
       message: 'Your work order for request {{mruid}} was rejected',
     },
+    chargePaid: {
+      title: 'Tenant Payment Received',
+      message:
+        'Tenant payment of {{amount}} for maintenance request {{mruid}} has been received. Funds will be available for vendor payout in 1–2 business days.',
+    },
+    fundsAvailable: {
+      title: 'Funds Ready for Vendor Payout',
+      message:
+        'Payment for maintenance request {{mruid}} has settled in your account. You can now pay the vendor.',
+    },
   },
 
   lease: {
@@ -193,6 +276,11 @@ export const NotificationMessages = {
     pdfGenerationFailed: {
       title: 'Lease PDF Generation Failed',
       message: 'Failed to generate PDF for lease {{leaseNumber}}: {{errorMessage}}',
+    },
+    adminUpdated: {
+      title: 'Your Lease Has Been Updated',
+      message:
+        'Administrative details on your lease {{leaseNumber}} have been updated by your property manager. Please log in to review the current terms.',
     },
   },
 } as const;
@@ -225,23 +313,42 @@ export type NotificationMessageKey =
   | 'maintenance.requestAccepted'
   | 'maintenance.requestAcceptedTenant'
   | 'maintenance.requestDeclined'
+  | 'maintenance.workDone'
+  | 'maintenance.workDoneTenant'
   | 'maintenance.requestCompleted'
   | 'maintenance.requestCancelled'
   | 'maintenance.invoiceSubmitted'
   | 'maintenance.invoiceApproved'
+  | 'maintenance.invoiceApprovedTenant'
+  | 'maintenance.invoiceBillableNotice'
+  | 'maintenance.chargeCreated'
   | 'maintenance.invoiceRejected'
+  | 'maintenance.vendorPaid'
   | 'maintenance.workOrderSubmitted'
   | 'maintenance.workOrderApproved'
   | 'maintenance.workOrderRejected'
+  | 'maintenance.vendorScheduledVisit'
+  | 'maintenance.chargePaid'
+  | 'maintenance.fundsAvailable'
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
   | 'lease.pdfGenerationFailed'
+  | 'lease.adminUpdated'
   | 'payment.disputeCreated'
   | 'payment.disputeWon'
   | 'payment.payoutAccountVerified'
+  | 'payment.requested'
   | 'payment.succeeded'
+  | 'payment.overdue'
   | 'payment.failed'
-  | 'payment.refunded';
+  | 'payment.refunded'
+  | 'payment.cancelled'
+  | 'payment.payoutFailed'
+  | 'payment.payoutPaid'
+  | 'payment.invoiceOverdue'
+  | 'payment.subscriptionRenewalUpcoming'
+  | 'payment.failedTenant'
+  | 'payment.overdueTenant';
 
 /**
  * Helper function to get formatted notification message by key.

@@ -6,6 +6,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { MetricsDAO } from '@dao/metricsDAO';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
 import { calcPercentChange } from '@utils/math.utils';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
@@ -35,6 +36,7 @@ interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
+  propertyDAO: PropertyDAO;
   metricsDAO: MetricsDAO;
   paymentDAO: PaymentDAO;
   sseService: SSEService;
@@ -50,6 +52,7 @@ export class MetricsService implements ICronProvider {
   private readonly paymentDAO: PaymentDAO;
   private readonly userDAO: UserDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly emitterService: EventEmitterService;
@@ -72,6 +75,7 @@ export class MetricsService implements ICronProvider {
     this.paymentDAO = deps.paymentDAO;
     this.userDAO = deps.userDAO;
     this.clientDAO = deps.clientDAO;
+    this.propertyDAO = deps.propertyDAO;
     this.propertyUnitDAO = deps.propertyUnitDAO;
     this.maintenanceRequestDAO = deps.maintenanceRequestDAO;
     this.emitterService = deps.emitterService;
@@ -134,26 +138,15 @@ export class MetricsService implements ICronProvider {
 
   private async handlePaymentSucceeded(payload: PaymentSucceededPayload): Promise<void> {
     if (!payload?.cuid) return;
-    const isThisMonth = dayjs(payload.paidAt).isSame(dayjs(), 'month');
-
-    await this.pushDelta(payload.cuid, {
-      type: 'metrics:delta',
-      payments: {
-        totalRevenue: payload.amount,
-        monthRevenue: isThisMonth ? payload.amount : 0,
-        pendingAmount: -payload.amount,
-      },
-    });
+    // Revenue is now per-currency — push invalidate so clients re-fetch the full breakdown
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
   }
 
   private async handlePaymentOverdue(payload: PaymentOverduePayload): Promise<void> {
     if (!payload?.cuid) return;
     await this.pushDelta(payload.cuid, {
       type: 'metrics:delta',
-      payments: {
-        overdueCount: 1,
-        pendingAmount: -payload.amount,
-      },
+      payments: { overdueCount: 1 },
     });
   }
 
@@ -222,26 +215,46 @@ export class MetricsService implements ICronProvider {
     });
   }
 
-  // ─── Query methods ─────────────────────────────────────────────────────────
-
   async getDashboardStats(cuid: string): Promise<IDashboardStats> {
-    const [leases, payments, properties, users, maintenance] = await Promise.all([
+    const [leases, payments, unitCounts, propertyCount, users, maintenance] = await Promise.all([
       this.leaseDAO.getLeaseStats(cuid),
       this.paymentDAO.getPaymentStats(cuid),
       this.propertyUnitDAO.getPropertyUnitCounts(cuid),
+      this.propertyDAO.getPropertyCount(cuid),
       this.userDAO.getUserStats(cuid),
       this.maintenanceRequestDAO.getStats(cuid),
     ]);
 
+    const properties = { ...unitCounts, propertyCount };
+
     return {
-      leases,
-      payments,
+      leases: {
+        ...leases,
+        totalMonthlyRent: leases.monthlyRentByCurrency.reduce((sum, c) => sum + c.total, 0),
+      },
+      payments: {
+        byCurrency: payments.byCurrency,
+        monthRevenue: payments.byCurrency.reduce((sum, c) => sum + c.monthRevenue, 0),
+        totalRevenue: payments.byCurrency.reduce((sum, c) => sum + c.totalRevenue, 0),
+        pendingAmount: payments.byCurrency.reduce((sum, c) => sum + c.pendingAmount, 0),
+        overdueCount: payments.overdueCount,
+        totalCount: payments.totalCount,
+        onTimeRate: payments.onTimeRate,
+        avgPaymentDelayDays: payments.avgPaymentDelayDays,
+      },
       properties,
       users,
       maintenance: {
+        activeCount:
+          maintenance.open +
+          maintenance.assigned +
+          maintenance.inProgress +
+          maintenance.awaitingInvoice +
+          maintenance.pending,
         open: maintenance.open,
         assigned: maintenance.assigned,
         inProgress: maintenance.inProgress,
+        awaitingInvoice: maintenance.awaitingInvoice,
         completed: maintenance.completed,
         cancelled: maintenance.cancelled,
         pending: maintenance.pending,
@@ -281,13 +294,16 @@ export class MetricsService implements ICronProvider {
 
   private async captureLeaseSnapshot(cuid: string): Promise<void> {
     const stats = await this.leaseDAO.getLeaseStats(cuid);
-    await this.metricsDAO.insertSnapshot(cuid, MetricType.LEASE, {
+    const measurements: Record<string, number> = {
       totalLeases: stats.totalLeases,
       activeLeases: stats.leasesByStatus.active,
       occupancyRate: stats.occupancyRate,
-      totalMonthlyRent: stats.totalMonthlyRent,
       expiringIn30Days: stats.expiringIn30Days,
-    });
+    };
+    for (const item of stats.monthlyRentByCurrency) {
+      measurements[`totalMonthlyRent_${item.currency}`] = item.total;
+    }
+    await this.metricsDAO.insertSnapshot(cuid, MetricType.LEASE, measurements);
   }
 
   private async capturePropertySnapshot(cuid: string): Promise<void> {
@@ -302,13 +318,16 @@ export class MetricsService implements ICronProvider {
 
   private async capturePaymentSnapshot(cuid: string): Promise<void> {
     const stats = await this.paymentDAO.getPaymentStats(cuid);
-    await this.metricsDAO.insertSnapshot(cuid, MetricType.PAYMENT, {
-      totalRevenue: stats.totalRevenue,
-      monthRevenue: stats.monthRevenue,
-      pendingAmount: stats.pendingAmount,
+    const measurements: Record<string, number> = {
       overdueCount: stats.overdueCount,
       onTimeRate: stats.onTimeRate,
-    });
+    };
+    for (const item of stats.byCurrency) {
+      measurements[`totalRevenue_${item.currency}`] = item.totalRevenue;
+      measurements[`monthRevenue_${item.currency}`] = item.monthRevenue;
+      measurements[`pendingAmount_${item.currency}`] = item.pendingAmount;
+    }
+    await this.metricsDAO.insertSnapshot(cuid, MetricType.PAYMENT, measurements);
   }
 
   private async captureUserSnapshot(cuid: string): Promise<void> {
@@ -337,7 +356,7 @@ export class MetricsService implements ICronProvider {
   private getPrimaryMeasurementKey(metricType: MetricType): string {
     const map: Record<MetricType, string> = {
       [MetricType.LEASE]: 'activeLeases',
-      [MetricType.PAYMENT]: 'totalRevenue',
+      [MetricType.PAYMENT]: 'overdueCount',
       [MetricType.PROPERTY]: 'occupancyRate',
       [MetricType.USER]: 'total',
       [MetricType.MAINTENANCE]: 'open',

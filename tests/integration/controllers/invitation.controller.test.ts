@@ -11,7 +11,6 @@ import { InvitationController } from '@controllers/InvitationController';
 import { Invitation, Profile, Client, Vendor, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { InvitationDAO, ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import {
   createTestInvitation,
@@ -88,6 +87,7 @@ describe('InvitationController Integration Tests', () => {
       leaseDAO: {} as any,
       paymentProcessorDAO: {} as any,
       paymentGatewayService: {} as any,
+      paymentService: {} as any,
       subscriptionService: {} as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
     });

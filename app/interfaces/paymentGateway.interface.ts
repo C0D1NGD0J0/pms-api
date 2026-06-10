@@ -3,6 +3,17 @@ import { Stripe } from 'stripe';
 import { IPaymentGatewayProvider } from './subscription.interface';
 
 export interface IPaymentProvider {
+  getInvoicePaymentDetails(invoiceId: string): Promise<{
+    chargeId?: string;
+    paymentIntentId?: string;
+    lastPaymentError?: {
+      message?: string;
+      code?: string;
+      type?: string;
+      payment_method?: { type?: string };
+    };
+    paymentMethodType?: string;
+  }>;
   getProductsWithPrices(): Promise<
     Map<
       string,
@@ -12,6 +23,13 @@ export interface IPaymentProvider {
       }
     >
   >;
+  createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
+    sourceTransaction?: string;
+    metadata?: Record<string, string>;
+  }): Promise<{ transferId: string; amount: number }>;
   createCustomer(data: {
     email: string;
     name?: string;
@@ -26,17 +44,16 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
-  createTransfer(params: {
-    amountInCents: number;
-    currency: string;
-    destination: string;
-    metadata?: Record<string, string>;
-  }): Promise<{ transferId: string; amount: number }>;
   createRefund(params: {
     chargeId: string;
     amountInCents?: number;
     reason?: string;
   }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
+  updatePayoutSchedule(
+    accountId: string,
+    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
+    weeklyAnchor?: string
+  ): Promise<void>;
   createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
@@ -54,6 +71,8 @@ export interface IPaymentProvider {
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
+  payInvoice(invoiceId: string, opts?: { paymentMethod?: string; mandate?: string }): Promise<void>;
+  updateCustomerDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
@@ -64,9 +83,11 @@ export interface IPaymentProvider {
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
+  getPayoutSchedule(accountId: string): Promise<IPayoutSchedule>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
   getConnectAccount(accountId: string): Promise<any>;
+  voidInvoice(invoiceId: string): Promise<void>;
   getInvoice(invoiceId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
 }
@@ -97,11 +118,12 @@ export interface ICreateInvoiceInput {
   lineItems: Array<{
     description: string;
     amountInCents: number;
-    quantity?: number;
   }>;
   applicationFeeAmountInCents: number;
+  skipDestinationTransfer?: boolean;
   connectedAccountId: string;
   tenantCustomerId: string;
+  paymentMethodId?: string;
   autoChargeDueDate: Date;
   description: string;
   leaseUid?: string;
@@ -164,6 +186,13 @@ export interface IPaymentCustomer {
   customerId: string;
   createdAt?: Date;
   email: string;
+}
+
+export interface IPayoutSchedule {
+  interval: 'manual' | 'daily' | 'weekly' | 'monthly';
+  monthlyAnchor?: number;
+  weeklyAnchor?: string;
+  delayDays?: number;
 }
 
 export interface IIdentityVerificationReport {

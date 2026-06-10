@@ -208,8 +208,7 @@ describe('PropertyTypeManager', () => {
       const newDataWithRental: Partial<IProperty> = {
         occupancyStatus: 'occupied' as OccupancyStatus,
         fees: {
-          rentalAmount: 1500,
-          taxAmount: 100,
+          rentAmount: 1500,
           currency: CURRENCIES.USD,
           managementFees: 150,
         },

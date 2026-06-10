@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
 import {
@@ -5,6 +6,7 @@ import {
   PaymentRecordType,
   IPaymentDocument,
   PaymentMethod,
+  PaymentSource,
 } from '@interfaces/index';
 
 const PaymentSchema = new Schema<IPaymentDocument>(
@@ -56,6 +58,16 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       default: 0,
       min: [0, 'Processing fee cannot be negative'],
     },
+    applicationFee: {
+      type: Number,
+      default: 0,
+      min: [0, 'Application fee cannot be negative'],
+    },
+    platformRevenue: {
+      type: Number,
+      default: 0,
+      min: [0, 'Platform revenue cannot be negative'],
+    },
     gatewayPaymentId: {
       type: String,
     },
@@ -81,6 +93,12 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       reason: { type: String, trim: true },
       disputedAt: { type: Date },
     },
+    failure: {
+      retryCount: { type: Number, default: 0, min: 0 },
+      reason: { type: String, trim: true },
+      lastFailedAt: { type: Date },
+      pmNotifiedAt: { type: Date },
+    },
     status: {
       type: String,
       enum: Object.values(PaymentRecordStatus),
@@ -103,6 +121,13 @@ const PaymentSchema = new Schema<IPaymentDocument>(
         min: 2020,
       },
     },
+    currency: {
+      type: String,
+      required: true,
+      uppercase: true,
+      trim: true,
+      default: 'USD',
+    },
     description: String,
     receipt: {
       url: {
@@ -118,6 +143,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       key: { type: String },
       uploadedAt: { type: Date },
       uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    },
+    invoiceDocument: {
+      url: { type: String },
+      key: { type: String },
+      generatedAt: { type: Date },
     },
     vendorId: {
       type: Schema.Types.ObjectId,
@@ -137,6 +167,18 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       default: false,
       required: true,
     },
+    paymentSource: {
+      type: String,
+      enum: ['cron', 'pm_initiated', 'staff_initiated'] satisfies PaymentSource[],
+      index: true,
+    },
+    lineItems: [
+      {
+        description: { type: String, required: true, trim: true },
+        amountInCents: { type: Number, required: true, min: 0 },
+        _id: false,
+      },
+    ],
     notes: [
       {
         note: {
@@ -165,6 +207,13 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     toObject: { virtuals: true },
   }
 );
+
+PaymentSchema.virtual('maintenanceRequest', {
+  ref: 'MaintenanceRequest',
+  localField: 'maintenanceRequestUid',
+  foreignField: 'mruid',
+  justOne: true,
+});
 
 PaymentSchema.index({ cuid: 1, status: 1, dueDate: -1 });
 PaymentSchema.index({ tenant: 1, dueDate: -1 });
@@ -202,15 +251,14 @@ PaymentSchema.virtual('daysOverdue').get(function (this: IPaymentDocument) {
 
 // pre('validate') runs before Mongoose's required/unique checks,
 // ensuring invoiceNumber is always set before validation fires.
-PaymentSchema.pre('validate', function (next) {
+PaymentSchema.pre('validate', function () {
   if (!this.invoiceNumber) {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
-    const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+    const random = randomBytes(3).toString('hex').toUpperCase();
     this.invoiceNumber = `INV-${year}${month}-${random}`;
   }
-  next();
 });
 
 const PaymentModel = model<IPaymentDocument>('Payment', PaymentSchema);

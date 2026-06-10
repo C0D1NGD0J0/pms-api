@@ -53,7 +53,7 @@ export class ESignatureWorker {
   }
 
   sendForSignature = async (job: Job<BoldSignJobData>): Promise<BoldSignJobResult> => {
-    const { resource, cuid, luid, leaseId, senderInfo } = job.data;
+    const { resource, cuid, luid, leaseId, senderInfo, managedBy } = job.data;
     job.progress(10);
 
     try {
@@ -139,9 +139,12 @@ export class ESignatureWorker {
           role: 'landlord',
         });
       } else {
-        // PM signs (company_owned, self_owned, or authorized external_owner)
+        // PM signs (company_owned, self_owned, or authorized external_owner).
+        // Use lease-level managedBy override if present (set when PM is changed on the lease form),
+        // otherwise fall back to the property's assigned manager.
+        const pmUserId = managedBy || property.managedBy;
         const propertyManager = await this.profileDAO.findFirst(
-          { user: new Types.ObjectId(property.managedBy) },
+          { user: new Types.ObjectId(pmUserId) },
           { populate: 'user' }
         );
         if (!propertyManager || !propertyManager.user) {

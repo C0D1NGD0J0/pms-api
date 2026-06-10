@@ -37,7 +37,7 @@ const makeClient = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeVendor = (overrides: Record<string, any> = {}) => ({
+const _makeVendor = (overrides: Record<string, any> = {}) => ({
   _id: new Types.ObjectId(),
   vuid: VUID,
   cuid: CUID,
@@ -58,7 +58,7 @@ const makeProcessor = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeConnectAccountResult = (overrides: Record<string, any> = {}) => ({
+const _makeConnectAccountResult = (overrides: Record<string, any> = {}) => ({
   success: true,
   data: {
     accountId: ACCOUNT_ID,
@@ -75,18 +75,22 @@ const makeService = (
     clientDAO: jest.Mocked<ClientDAO>;
     paymentGatewayService: jest.Mocked<PaymentGatewayService>;
     paymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+    payoutAccountService: any;
   }> = {}
 ) =>
   new VendorService({
-    vendorDAO: (overrides.vendorDAO ?? {}) as jest.Mocked<VendorDAO>,
+    vendorDAO: (overrides.vendorDAO ?? { updateClientPayoutAccount: jest.fn(), findFirst: jest.fn() }) as jest.Mocked<VendorDAO>,
     clientDAO: (overrides.clientDAO ?? {}) as jest.Mocked<ClientDAO>,
     userDAO: {} as jest.Mocked<UserDAO>,
     profileDAO: {} as jest.Mocked<ProfileDAO>,
     vendorCache: {} as jest.Mocked<VendorCache>,
     permissionService: {} as jest.Mocked<PermissionService>,
     paymentGatewayService: (overrides.paymentGatewayService ?? {}) as jest.Mocked<PaymentGatewayService>,
+    payoutAccountService: (overrides.payoutAccountService ?? {}) as any,
     paymentProcessorDAO: (overrides.paymentProcessorDAO ?? {}) as jest.Mocked<PaymentProcessorDAO>,
     maintenanceRequestDAO: {} as any,
+    geoCoderService: {} as any,
+    userCache: {} as any,
   });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -96,21 +100,21 @@ const makeService = (
 describe('VendorService - initiatePayoutOnboarding', () => {
   let vendorService: VendorService;
   let mockClientDAO: { getClientByCuid: jest.Mock };
-  let mockVendorDAO: { findFirst: jest.Mock };
-  let mockPaymentGatewayService: { createConnectAccount: jest.Mock };
-  let mockPaymentProcessorDAO: { findByVuid: jest.Mock; upsertForVendor: jest.Mock };
+  let mockVendorDAO: { findFirst: jest.Mock; updateClientPayoutAccount: jest.Mock };
+  let mockPaymentProcessorDAO: { findByVuid: jest.Mock };
+  let mockPayoutAccountService: { initiateVendorAccount: jest.Mock };
 
   beforeEach(() => {
     mockClientDAO = { getClientByCuid: jest.fn() };
-    mockVendorDAO = { findFirst: jest.fn() };
-    mockPaymentGatewayService = { createConnectAccount: jest.fn() };
-    mockPaymentProcessorDAO = { findByVuid: jest.fn(), upsertForVendor: jest.fn() };
+    mockVendorDAO = { findFirst: jest.fn(), updateClientPayoutAccount: jest.fn() };
+    mockPaymentProcessorDAO = { findByVuid: jest.fn() };
+    mockPayoutAccountService = { initiateVendorAccount: jest.fn() };
 
     vendorService = makeService({
       clientDAO: mockClientDAO as any,
       vendorDAO: mockVendorDAO as any,
-      paymentGatewayService: mockPaymentGatewayService as any,
       paymentProcessorDAO: mockPaymentProcessorDAO as any,
+      payoutAccountService: mockPayoutAccountService,
     });
   });
 
@@ -123,7 +127,7 @@ describe('VendorService - initiatePayoutOnboarding', () => {
     // Act & Assert
     await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(NotFoundError);
     expect(mockClientDAO.getClientByCuid).toHaveBeenCalledWith(CUID);
-    expect(mockVendorDAO.findFirst).not.toHaveBeenCalled();
+    expect(mockPaymentProcessorDAO.findByVuid).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestError when client vendorPayoutMode is not "express"', async () => {
@@ -133,7 +137,7 @@ describe('VendorService - initiatePayoutOnboarding', () => {
 
     // Act & Assert
     await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
-    expect(mockVendorDAO.findFirst).not.toHaveBeenCalled();
+    expect(mockPaymentProcessorDAO.findByVuid).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestError when client has no vendorPayoutMode setting', async () => {
@@ -145,26 +149,13 @@ describe('VendorService - initiatePayoutOnboarding', () => {
     await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
   });
 
-  it('should throw NotFoundError when vendor is not found', async () => {
+  it('should return existing accountId and sync connectedClients when a processor record already exists (idempotent)', async () => {
     // Arrange
     const client = makeClient();
+    const processor = makeProcessor({ detailsSubmitted: true, payoutsEnabled: true, chargesEnabled: true });
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(null));
-
-    // Act & Assert
-    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(NotFoundError);
-    expect(mockVendorDAO.findFirst).toHaveBeenCalledWith({ vuid: VUID, cuid: CUID, deletedAt: null });
-    expect(mockPaymentProcessorDAO.findByVuid).not.toHaveBeenCalled();
-  });
-
-  it('should return existing accountId when a processor record already exists (idempotent)', async () => {
-    // Arrange
-    const client = makeClient();
-    const vendor = makeVendor();
-    const processor = makeProcessor();
-    mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
     mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
+    mockVendorDAO.updateClientPayoutAccount.mockReturnValue(Promise.resolve({}));
 
     // Act
     const result = await vendorService.initiatePayoutOnboarding(CUID, VUID);
@@ -172,138 +163,43 @@ describe('VendorService - initiatePayoutOnboarding', () => {
     // Assert
     expect(result.success).toBe(true);
     expect(result.data.accountId).toBe(ACCOUNT_ID);
-    expect(mockPaymentGatewayService.createConnectAccount).not.toHaveBeenCalled();
-    expect(mockPaymentProcessorDAO.upsertForVendor).not.toHaveBeenCalled();
-  });
-
-  it('should call createConnectAccount with the correct arguments when no processor exists', async () => {
-    // Arrange
-    const client = makeClient();
-    const vendor = makeVendor();
-    mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-    mockPaymentGatewayService.createConnectAccount.mockReturnValue(
-      Promise.resolve(makeConnectAccountResult())
-    );
-    mockPaymentProcessorDAO.upsertForVendor.mockReturnValue(Promise.resolve({}));
-
-    // Act
-    await vendorService.initiatePayoutOnboarding(CUID, VUID);
-
-    // Assert
-    expect(mockPaymentGatewayService.createConnectAccount).toHaveBeenCalledWith(
-      IPaymentGatewayProvider.STRIPE,
-      {
-        email: 'vendor@example.com',
-        country: 'CA',
-        businessType: 'individual',
-        metadata: { vuid: VUID, cuid: CUID },
-        cuid: CUID,
-      }
-    );
-  });
-
-  it('should call upsertForVendor with account data after successful createConnectAccount', async () => {
-    // Arrange
-    const client = makeClient();
-    const vendor = makeVendor();
-    const connectResult = makeConnectAccountResult({
+    expect(mockVendorDAO.updateClientPayoutAccount).toHaveBeenCalledWith(VUID, CUID, {
+      isSetup: true,
+      payoutsEnabled: true,
       chargesEnabled: true,
-      payoutsEnabled: false,
-      detailsSubmitted: false,
     });
-    mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-    mockPaymentGatewayService.createConnectAccount.mockReturnValue(Promise.resolve(connectResult));
-    mockPaymentProcessorDAO.upsertForVendor.mockReturnValue(Promise.resolve({}));
-
-    // Act
-    await vendorService.initiatePayoutOnboarding(CUID, VUID);
-
-    // Assert
-    expect(mockPaymentProcessorDAO.upsertForVendor).toHaveBeenCalledWith({
-      accountId: ACCOUNT_ID,
-      chargesEnabled: true,
-      payoutsEnabled: false,
-      detailsSubmitted: false,
-      ownerType: 'vendor',
-      client: client._id,
-      vuid: VUID,
-      cuid: CUID,
-    });
+    expect(mockPayoutAccountService.initiateVendorAccount).not.toHaveBeenCalled();
   });
 
-  it('should throw BadRequestError when createConnectAccount returns success: false', async () => {
+  it('should delegate to payoutAccountService.initiateVendorAccount when no processor exists', async () => {
     // Arrange
     const client = makeClient();
-    const vendor = makeVendor();
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
     mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-    mockPaymentGatewayService.createConnectAccount.mockReturnValue(
-      Promise.resolve({ success: false, data: null, message: 'Stripe error' })
+    mockPayoutAccountService.initiateVendorAccount.mockReturnValue(
+      Promise.resolve({ success: true, data: { accountId: ACCOUNT_ID } })
     );
-
-    // Act & Assert
-    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
-    expect(mockPaymentProcessorDAO.upsertForVendor).not.toHaveBeenCalled();
-  });
-
-  it('should throw BadRequestError when createConnectAccount returns success: true but data is null', async () => {
-    // Arrange
-    const client = makeClient();
-    const vendor = makeVendor();
-    mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-    mockPaymentGatewayService.createConnectAccount.mockReturnValue(
-      Promise.resolve({ success: true, data: null })
-    );
-
-    // Act & Assert
-    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
-  });
-
-  it('should return { success: true, data: { accountId } } on successful account creation', async () => {
-    // Arrange
-    const client = makeClient();
-    const vendor = makeVendor();
-    const connectResult = makeConnectAccountResult();
-    mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-    mockPaymentGatewayService.createConnectAccount.mockReturnValue(Promise.resolve(connectResult));
-    mockPaymentProcessorDAO.upsertForVendor.mockReturnValue(Promise.resolve({}));
 
     // Act
     const result = await vendorService.initiatePayoutOnboarding(CUID, VUID);
 
     // Assert
+    expect(mockPayoutAccountService.initiateVendorAccount).toHaveBeenCalledWith(CUID, VUID);
     expect(result.success).toBe(true);
-    expect(result.data).toEqual({ accountId: ACCOUNT_ID });
+    expect(result.data.accountId).toBe(ACCOUNT_ID);
   });
 
-  it('should use empty string for email when vendor has no contactPerson email', async () => {
+  it('should propagate errors thrown by payoutAccountService.initiateVendorAccount', async () => {
     // Arrange
     const client = makeClient();
-    const vendor = makeVendor({ contactPerson: {} });
-    const connectResult = makeConnectAccountResult();
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
-    mockVendorDAO.findFirst.mockReturnValue(Promise.resolve(vendor));
     mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-    mockPaymentGatewayService.createConnectAccount.mockReturnValue(Promise.resolve(connectResult));
-    mockPaymentProcessorDAO.upsertForVendor.mockReturnValue(Promise.resolve({}));
-
-    // Act
-    await vendorService.initiatePayoutOnboarding(CUID, VUID);
-
-    // Assert
-    expect(mockPaymentGatewayService.createConnectAccount).toHaveBeenCalledWith(
-      IPaymentGatewayProvider.STRIPE,
-      expect.objectContaining({ email: '' })
+    mockPayoutAccountService.initiateVendorAccount.mockReturnValue(
+      Promise.reject(new BadRequestError({ message: 'Failed to create payout account with provider.' }))
     );
+
+    // Act & Assert
+    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
   });
 });
 
@@ -313,85 +209,53 @@ describe('VendorService - initiatePayoutOnboarding', () => {
 
 describe('VendorService - getPayoutOnboardingLink', () => {
   let vendorService: VendorService;
-  let mockPaymentGatewayService: { createKycOnboardingLink: jest.Mock };
-  let mockPaymentProcessorDAO: { findByVuid: jest.Mock };
+  let mockPayoutAccountService: { getVendorKycOnboardingLink: jest.Mock };
 
   beforeEach(() => {
-    mockPaymentGatewayService = { createKycOnboardingLink: jest.fn() };
-    mockPaymentProcessorDAO = { findByVuid: jest.fn() };
+    mockPayoutAccountService = { getVendorKycOnboardingLink: jest.fn() };
 
     vendorService = makeService({
-      paymentGatewayService: mockPaymentGatewayService as any,
-      paymentProcessorDAO: mockPaymentProcessorDAO as any,
+      payoutAccountService: mockPayoutAccountService,
     });
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  it('should throw NotFoundError when no processor record is found', async () => {
+  it('should delegate to payoutAccountService.getVendorKycOnboardingLink with correct args', async () => {
     // Arrange
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
+    const onboardingUrl = 'https://connect.stripe.com/onboarding/abc';
+    mockPayoutAccountService.getVendorKycOnboardingLink.mockReturnValue(
+      Promise.resolve({ success: true, data: { url: onboardingUrl } })
+    );
+
+    // Act
+    const result = await vendorService.getPayoutOnboardingLink(CUID, VUID, RETURN_URL, REFRESH_URL);
+
+    // Assert
+    expect(mockPayoutAccountService.getVendorKycOnboardingLink).toHaveBeenCalledWith(
+      CUID, VUID, RETURN_URL, REFRESH_URL
+    );
+    expect(result.success).toBe(true);
+    expect(result.data).toEqual({ url: onboardingUrl });
+  });
+
+  it('should propagate errors from payoutAccountService.getVendorKycOnboardingLink', async () => {
+    // Arrange
+    mockPayoutAccountService.getVendorKycOnboardingLink.mockReturnValue(
+      Promise.reject(new NotFoundError({ message: 'Payout account not found.' }))
+    );
 
     // Act & Assert
     await expect(
       vendorService.getPayoutOnboardingLink(CUID, VUID, RETURN_URL, REFRESH_URL)
     ).rejects.toThrow(NotFoundError);
-    expect(mockPaymentProcessorDAO.findByVuid).toHaveBeenCalledWith(VUID, CUID);
-    expect(mockPaymentGatewayService.createKycOnboardingLink).not.toHaveBeenCalled();
-  });
-
-  it('should call createKycOnboardingLink with the correct arguments', async () => {
-    // Arrange
-    const processor = makeProcessor();
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createKycOnboardingLink.mockReturnValue(
-      Promise.resolve({ success: true, data: { url: 'https://connect.stripe.com/onboarding/abc' } })
-    );
-
-    // Act
-    await vendorService.getPayoutOnboardingLink(CUID, VUID, RETURN_URL, REFRESH_URL);
-
-    // Assert
-    expect(mockPaymentGatewayService.createKycOnboardingLink).toHaveBeenCalledWith(
-      IPaymentGatewayProvider.STRIPE,
-      { accountId: ACCOUNT_ID, returnUrl: RETURN_URL, refreshUrl: REFRESH_URL }
-    );
-  });
-
-  it('should throw BadRequestError when createKycOnboardingLink returns success: false', async () => {
-    // Arrange
-    const processor = makeProcessor();
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createKycOnboardingLink.mockReturnValue(
-      Promise.resolve({ success: false, data: null, message: 'Link generation failed' })
-    );
-
-    // Act & Assert
-    await expect(
-      vendorService.getPayoutOnboardingLink(CUID, VUID, RETURN_URL, REFRESH_URL)
-    ).rejects.toThrow(BadRequestError);
-  });
-
-  it('should throw BadRequestError when createKycOnboardingLink returns success: true but data is null', async () => {
-    // Arrange
-    const processor = makeProcessor();
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createKycOnboardingLink.mockReturnValue(
-      Promise.resolve({ success: true, data: null })
-    );
-
-    // Act & Assert
-    await expect(
-      vendorService.getPayoutOnboardingLink(CUID, VUID, RETURN_URL, REFRESH_URL)
-    ).rejects.toThrow(BadRequestError);
   });
 
   it('should return { success: true, data: { url } } on success', async () => {
     // Arrange
-    const processor = makeProcessor();
+    const _processor = makeProcessor();
     const onboardingUrl = 'https://connect.stripe.com/onboarding/abc123';
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createKycOnboardingLink.mockReturnValue(
+    mockPayoutAccountService.getVendorKycOnboardingLink.mockReturnValue(
       Promise.resolve({ success: true, data: { url: onboardingUrl } })
     );
 
@@ -403,24 +267,6 @@ describe('VendorService - getPayoutOnboardingLink', () => {
     expect(result.data).toEqual({ url: onboardingUrl });
   });
 
-  it('should use the processor accountId when calling createKycOnboardingLink', async () => {
-    // Arrange
-    const customAccountId = 'acct_differentAccount';
-    const processor = makeProcessor({ accountId: customAccountId });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createKycOnboardingLink.mockReturnValue(
-      Promise.resolve({ success: true, data: { url: 'https://stripe.com/link' } })
-    );
-
-    // Act
-    await vendorService.getPayoutOnboardingLink(CUID, VUID, RETURN_URL, REFRESH_URL);
-
-    // Assert
-    expect(mockPaymentGatewayService.createKycOnboardingLink).toHaveBeenCalledWith(
-      IPaymentGatewayProvider.STRIPE,
-      expect.objectContaining({ accountId: customAccountId })
-    );
-  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -450,7 +296,7 @@ describe('VendorService - syncPayoutAccountStatus', () => {
 
     // Act & Assert
     await expect(vendorService.syncPayoutAccountStatus(CUID, VUID)).rejects.toThrow(NotFoundError);
-    expect(mockPaymentProcessorDAO.findByVuid).toHaveBeenCalledWith(VUID, CUID);
+    expect(mockPaymentProcessorDAO.findByVuid).toHaveBeenCalledWith(VUID);
     expect(mockPaymentGatewayService.getConnectAccount).not.toHaveBeenCalled();
   });
 
@@ -646,89 +492,22 @@ describe('VendorService - syncPayoutAccountStatus', () => {
 
 describe('VendorService - getPayoutDashboardLink', () => {
   let vendorService: VendorService;
-  let mockPaymentGatewayService: { createDashboardLoginLink: jest.Mock };
-  let mockPaymentProcessorDAO: { findByVuid: jest.Mock };
+  let mockPayoutAccountService: { getVendorDashboardLink: jest.Mock };
 
   beforeEach(() => {
-    mockPaymentGatewayService = { createDashboardLoginLink: jest.fn() };
-    mockPaymentProcessorDAO = { findByVuid: jest.fn() };
+    mockPayoutAccountService = { getVendorDashboardLink: jest.fn() };
 
     vendorService = makeService({
-      paymentGatewayService: mockPaymentGatewayService as any,
-      paymentProcessorDAO: mockPaymentProcessorDAO as any,
+      payoutAccountService: mockPayoutAccountService,
     });
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  it('should throw NotFoundError when no processor record is found', async () => {
-    // Arrange
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
-
-    // Act & Assert
-    await expect(vendorService.getPayoutDashboardLink(CUID, VUID)).rejects.toThrow(NotFoundError);
-    expect(mockPaymentProcessorDAO.findByVuid).toHaveBeenCalledWith(VUID, CUID);
-    expect(mockPaymentGatewayService.createDashboardLoginLink).not.toHaveBeenCalled();
-  });
-
-  it('should throw BadRequestError when detailsSubmitted is false', async () => {
-    // Arrange
-    const processor = makeProcessor({ detailsSubmitted: false });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-
-    // Act & Assert
-    await expect(vendorService.getPayoutDashboardLink(CUID, VUID)).rejects.toThrow(BadRequestError);
-    expect(mockPaymentGatewayService.createDashboardLoginLink).not.toHaveBeenCalled();
-  });
-
-  it('should call createDashboardLoginLink with correct provider and accountId', async () => {
-    // Arrange
-    const processor = makeProcessor({ detailsSubmitted: true });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createDashboardLoginLink.mockReturnValue(
-      Promise.resolve({ success: true, data: { url: 'https://dashboard.stripe.com/login' } })
-    );
-
-    // Act
-    await vendorService.getPayoutDashboardLink(CUID, VUID);
-
-    // Assert
-    expect(mockPaymentGatewayService.createDashboardLoginLink).toHaveBeenCalledWith(
-      IPaymentGatewayProvider.STRIPE,
-      ACCOUNT_ID
-    );
-  });
-
-  it('should throw BadRequestError when createDashboardLoginLink returns success: false', async () => {
-    // Arrange
-    const processor = makeProcessor({ detailsSubmitted: true });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createDashboardLoginLink.mockReturnValue(
-      Promise.resolve({ success: false, data: null, message: 'Login link generation failed' })
-    );
-
-    // Act & Assert
-    await expect(vendorService.getPayoutDashboardLink(CUID, VUID)).rejects.toThrow(BadRequestError);
-  });
-
-  it('should throw BadRequestError when createDashboardLoginLink returns success: true but data is null', async () => {
-    // Arrange
-    const processor = makeProcessor({ detailsSubmitted: true });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createDashboardLoginLink.mockReturnValue(
-      Promise.resolve({ success: true, data: null })
-    );
-
-    // Act & Assert
-    await expect(vendorService.getPayoutDashboardLink(CUID, VUID)).rejects.toThrow(BadRequestError);
-  });
-
-  it('should return { success: true, data: { url } } on success', async () => {
+  it('should delegate to payoutAccountService.getVendorDashboardLink with correct args', async () => {
     // Arrange
     const dashboardUrl = 'https://dashboard.stripe.com/express/acct_1AbCdEfGhIjKlMn';
-    const processor = makeProcessor({ detailsSubmitted: true });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createDashboardLoginLink.mockReturnValue(
+    mockPayoutAccountService.getVendorDashboardLink.mockReturnValue(
       Promise.resolve({ success: true, data: { url: dashboardUrl } })
     );
 
@@ -736,26 +515,18 @@ describe('VendorService - getPayoutDashboardLink', () => {
     const result = await vendorService.getPayoutDashboardLink(CUID, VUID);
 
     // Assert
+    expect(mockPayoutAccountService.getVendorDashboardLink).toHaveBeenCalledWith(CUID, VUID);
     expect(result.success).toBe(true);
     expect(result.data).toEqual({ url: dashboardUrl });
   });
 
-  it('should use the processor accountId from the specific processor record', async () => {
+  it('should propagate errors from payoutAccountService.getVendorDashboardLink', async () => {
     // Arrange
-    const customAccountId = 'acct_customDashboard';
-    const processor = makeProcessor({ accountId: customAccountId, detailsSubmitted: true });
-    mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
-    mockPaymentGatewayService.createDashboardLoginLink.mockReturnValue(
-      Promise.resolve({ success: true, data: { url: 'https://stripe.com/dash' } })
+    mockPayoutAccountService.getVendorDashboardLink.mockReturnValue(
+      Promise.reject(new NotFoundError({ message: 'Payout account not found.' }))
     );
 
-    // Act
-    await vendorService.getPayoutDashboardLink(CUID, VUID);
-
-    // Assert
-    expect(mockPaymentGatewayService.createDashboardLoginLink).toHaveBeenCalledWith(
-      IPaymentGatewayProvider.STRIPE,
-      customAccountId
-    );
+    // Act & Assert
+    await expect(vendorService.getPayoutDashboardLink(CUID, VUID)).rejects.toThrow(NotFoundError);
   });
 });

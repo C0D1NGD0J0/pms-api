@@ -7,10 +7,11 @@ import { MetricsValidations, UtilsValidations, validateRequest } from '@shared/v
 
 const router = Router();
 
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 
 router.get(
   '/:cuid/dashboard',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper(async (req: AppRequest, res) => {
@@ -21,6 +22,7 @@ router.get(
 
 router.get(
   '/:cuid/history/:metricType',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid.merge(MetricsValidations.metricTypeParam),
@@ -34,6 +36,7 @@ router.get(
 
 router.get(
   '/:cuid/trend/:metricType',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid.merge(MetricsValidations.metricTypeParam),

@@ -73,7 +73,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         'commercial-office',
         'commercial-retail',
         'short-term-rental',
-      ],
+      ] as const,
       default: 'generic',
       required: [true, 'Template type is required'],
       index: true,
@@ -152,7 +152,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
     },
     fees: {
-      monthlyRent: {
+      rentAmount: {
         type: Number,
         required: [true, 'Monthly rent is required'],
         min: [0, 'Monthly rent cannot be negative'],
@@ -653,7 +653,7 @@ LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {
  * calculates total monthly fees including rent and pet fees
  */
 LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
-  let total = this.fees?.monthlyRent || 0;
+  let total = this.fees?.rentAmount || 0;
   if (this.petPolicy?.monthlyFee) {
     total += this.petPolicy.monthlyFee;
   }
@@ -690,7 +690,7 @@ LeaseSchema.virtual('propertyInfo', {
   justOne: true,
   options: {
     select:
-      'pid name address propertyType specifications owner maxAllowedUnits totalUnits managedBy',
+      'pid name address propertyType specifications owner maxAllowedUnits totalUnits managedBy fees',
   },
 });
 
@@ -708,7 +708,7 @@ LeaseSchema.virtual('propertyUnitInfo', {
   },
 });
 
-LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
+LeaseSchema.pre('save', async function (this: ILeaseDocument) {
   try {
     // Generate lease number on new document
     if (this.isNew && !this.leaseNumber) {
@@ -731,89 +731,77 @@ LeaseSchema.pre('save', async function (this: ILeaseDocument, next) {
     if (this.petPolicy?.allowed && this.petPolicy.maxPets === 0) {
       throw new Error('Maximum number of pets must be specified when pets are allowed');
     }
-
-    next();
   } catch (error) {
     logger.error('Pre-save validation error:', error);
-    next(error as Error);
+    throw error;
   }
 });
 
-LeaseSchema.pre('validate', function (this: ILeaseDocument, next) {
-  try {
-    // Validate eSignature provider is required when signingMethod is 'electronic'
-    if (this.signingMethod === 'electronic') {
-      if (!this.eSignature?.provider) {
-        throw new Error(
-          'E-signature provider is required when signing method is electronic. Please specify a provider (boldsign, hellosign, docusign, etc.)'
-        );
-      }
-    }
-
-    // Validate that active/pending_signature leases are approved
-    if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
-      if (this.approvalStatus !== 'approved') {
-        throw new Error(
-          `Cannot set lease status to '${this.status}'. Lease must be approved first. Current approval status: '${this.approvalStatus || 'draft'}'`
-        );
-      }
-    }
-
-    // Validate that active/pending_signature leases have required documents
-    if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
-      if (!this.leaseDocuments || this.leaseDocuments.length === 0) {
-        throw new Error('Lease document is required for active or pending signature leases');
-      }
-    }
-
-    if (this.status === LeaseStatus.ACTIVE) {
-      if (!this.signedDate) {
-        throw new Error('Signed date is required for active leases');
-      }
-
-      // Must have signing method set (not 'pending')
-      if (!this.signingMethod || this.signingMethod === 'pending') {
-        throw new Error(
-          'Signing method must be set to manual or electronic before activating lease'
-        );
-      }
-
-      // If electronic signing, must have completed e-signature
-      if (this.signingMethod === 'electronic') {
-        if (!this.eSignature?.status || this.eSignature.status !== 'signed') {
-          throw new Error(
-            'Electronic signature must be completed (status: signed) before activating lease'
-          );
-        }
-      }
-
-      if (!this.signatures || this.signatures.length === 0) {
-        throw new Error('At least one signature (tenant) is required to activate lease');
-      }
-
-      const tenantSigned = this.signatures.some(
-        (sig) =>
-          sig.userId?.toString() === this.tenantId.toString() &&
-          sig.role === 'tenant' &&
-          sig.signedAt
+LeaseSchema.pre('validate', function (this: ILeaseDocument) {
+  // Validate eSignature provider is required when signingMethod is 'electronic'
+  if (this.signingMethod === 'electronic') {
+    if (!this.eSignature?.provider) {
+      throw new Error(
+        'E-signature provider is required when signing method is electronic. Please specify a provider (boldsign, hellosign, docusign, etc.)'
       );
-      if (!tenantSigned) {
-        throw new Error('Tenant must sign the lease before it can be activated');
+    }
+  }
+
+  // Validate that active/pending_signature leases are approved
+  if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
+    if (this.approvalStatus !== 'approved') {
+      throw new Error(
+        `Cannot set lease status to '${this.status}'. Lease must be approved first. Current approval status: '${this.approvalStatus || 'draft'}'`
+      );
+    }
+  }
+
+  // Validate that active/pending_signature leases have required documents
+  if ([LeaseStatus.PENDING_SIGNATURE, LeaseStatus.ACTIVE].includes(this.status)) {
+    if (!this.leaseDocuments || this.leaseDocuments.length === 0) {
+      throw new Error('Lease document is required for active or pending signature leases');
+    }
+  }
+
+  if (this.status === LeaseStatus.ACTIVE) {
+    if (!this.signedDate) {
+      throw new Error('Signed date is required for active leases');
+    }
+
+    // Must have signing method set (not 'pending')
+    if (!this.signingMethod || this.signingMethod === 'pending') {
+      throw new Error('Signing method must be set to manual or electronic before activating lease');
+    }
+
+    // If electronic signing, must have completed e-signature
+    if (this.signingMethod === 'electronic') {
+      if (!this.eSignature?.status || this.eSignature.status !== 'signed') {
+        throw new Error(
+          'Electronic signature must be completed (status: signed) before activating lease'
+        );
       }
     }
 
-    if (this.status === LeaseStatus.TERMINATED) {
-      if (!this.duration?.terminationDate) {
-        throw new Error('Termination date is required for terminated leases');
-      }
-      if (!this.terminationReason) {
-        throw new Error('Termination reason is required for terminated leases');
-      }
+    if (!this.signatures || this.signatures.length === 0) {
+      throw new Error('At least one signature (tenant) is required to activate lease');
     }
 
-    next();
-  } catch (error) {
-    next(error as Error);
+    const tenantSigned = this.signatures.some(
+      (sig) =>
+        sig.userId?.toString() === this.tenantId.toString() && sig.role === 'tenant' && sig.signedAt
+    );
+    if (!tenantSigned) {
+      throw new Error('Tenant must sign the lease before it can be activated');
+    }
+  }
+
+  if (this.status === LeaseStatus.TERMINATED) {
+    if (!this.duration?.terminationDate) {
+      throw new Error('Termination date is required for terminated leases');
+    }
+    if (!this.terminationReason) {
+      throw new Error('Termination reason is required for terminated leases');
+    }
   }
 });
 
@@ -843,9 +831,9 @@ LeaseSchema.methods.softDelete = async function (userId: any) {
 LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
   const daysLate = options?.daysLate || 0;
 
-  const monthlyRent = this.fees?.monthlyRent || 0;
+  const rentAmount = this.fees?.rentAmount || 0;
   const petMonthlyFee = this.petPolicy?.monthlyFee || 0;
-  const totalMonthly = monthlyRent + petMonthlyFee;
+  const totalMonthly = rentAmount + petMonthlyFee;
 
   const securityDeposit = this.fees?.securityDeposit || 0;
   const petDeposit = this.petPolicy?.deposit || 0;
@@ -856,15 +844,15 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
 
   if (daysLate >= gracePeriod) {
     if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
-      lateFee = calcLateFee(monthlyRent, 'percentage', this.fees.lateFeePercentage);
+      lateFee = calcLateFee(rentAmount, 'percentage', this.fees.lateFeePercentage);
     } else {
-      lateFee = calcLateFee(monthlyRent, 'fixed', this.fees?.lateFeeAmount || 0);
+      lateFee = calcLateFee(rentAmount, 'fixed', this.fees?.lateFeeAmount || 0);
     }
   }
 
   return {
     monthly: {
-      rent: monthlyRent,
+      rent: rentAmount,
       petFee: petMonthlyFee,
       total: totalMonthly,
     },

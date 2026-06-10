@@ -1,8 +1,15 @@
 {
   "$schema": "./platform.config.schema.json",
   "version": "1.0.0",
-  "lastUpdated": "2026-02-11",
+  "lastUpdated": "2026-05-28",
   "description": "Platform configuration for subscription plans and payment gateway settings",
+
+  "achPercentRate": 1.75,
+
+  "manualPaymentRecords": {
+    "freeQuotaPerPeriod": 25,
+    "overageFeeCents": 95
+  },
 
   "paymentGateways": {
     "stripe": {
@@ -12,9 +19,14 @@
       "processingFee": {
         "percentRate": 2.9,
         "fixedFeeCents": 30,
-        "description": "Standard Stripe rate (2.9% + $0.30). Verify with your Stripe account dashboard."
+        "description": "Card rate (2.9% + $0.30). Used for card payments and as a fallback estimate. Verify with your Stripe account dashboard."
       },
-      "note": "This is an estimate for budgeting. Actual fees will be fetched from Stripe Balance Transaction API after payment and updated via webhook.",
+      "acssProcessingFee": {
+        "percentRate": 0,
+        "fixedFeeCents": 80,
+        "description": "ACSS debit (Canadian bank debit / PAD) flat fee of $0.80 CAD per transaction. Much cheaper than card for large rent amounts."
+      },
+      "note": "processingFee applies to card payments. acssProcessingFee applies when the payment method is acss_debit. Actual fees will be fetched from Stripe Balance Transaction API after payment and updated via webhook.",
       "applicationFeeSettings": {
         "payerType": "application",
         "description": "Platform pays Stripe fees from application fee (controller.fees.payer = 'application')"
@@ -57,7 +69,7 @@
           "savingsPercent": 0
         }
       },
-      "transactionFeePercent": 3.5,
+      "transactionFeePercent": 4.5,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 3,
@@ -68,21 +80,22 @@
       "limits": {
         "maxProperties": 3,
         "maxUnits": 10,
-        "maxVendors": -1
+        "maxVendors": -1,
+        "manualRecordQuota": 5
       },
       "features": {
         "eSignature": false,
-        "RepairRequestService": false,
+        "MaintenanceRequestService": false,
         "VisitorPassService": false,
         "reportingAnalytics": false,
-        "leaseTemplates": false
+        "leaseTemplates": false,
+        "vendorManagement": false,
+        "aiTriage": false,
+        "aiInvoiceScanning": false
       },
-      "featureList": [
-        "Tenant management",
-        "Rent collection",
-        "Vendor management"
-      ],
+      "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
+        "Vendor management",
         "E-Signature",
         "Reporting & Analytics",
         "Repair Request Service",
@@ -109,7 +122,7 @@
       "isFeatured": true,
       "featuredBadge": "Most Popular",
       "displayOrder": 2,
-      "transactionFeePercent": 3.0,
+      "transactionFeePercent": 4.0,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 10,
@@ -123,15 +136,19 @@
       },
       "limits": {
         "maxProperties": 15,
-        "maxUnits": 100,
-        "maxVendors": -1
+        "maxUnits": 50,
+        "maxVendors": -1,
+        "manualRecordQuota": 10
       },
       "features": {
         "eSignature": true,
-        "RepairRequestService": true,
+        "MaintenanceRequestService": true,
         "VisitorPassService": true,
         "reportingAnalytics": false,
-        "leaseTemplates": false
+        "leaseTemplates": false,
+        "vendorManagement": true,
+        "aiTriage": true,
+        "aiInvoiceScanning": true
       },
       "featureList": [
         "Online payments & AutoPay",
@@ -160,7 +177,7 @@
       "ctaText": "Start 14-Day Free Trial",
       "isFeatured": false,
       "displayOrder": 3,
-      "transactionFeePercent": 2.8,
+      "transactionFeePercent": 3.5,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 25,
@@ -174,16 +191,20 @@
       },
       "limits": {
         "maxProperties": 30,
-        "maxUnits": 300,
-        "maxVendors": -1
+        "maxUnits": 200,
+        "maxVendors": -1,
+        "manualRecordQuota": 25
       },
       "features": {
         "eSignature": true,
-        "RepairRequestService": true,
+        "MaintenanceRequestService": true,
         "VisitorPassService": true,
         "reportingAnalytics": true,
         "leaseTemplates": true,
-        "prioritySupport": true
+        "vendorManagement": true,
+        "prioritySupport": true,
+        "aiTriage": true,
+        "aiInvoiceScanning": true
       },
       "featureList": [
         "Everything in Growth",

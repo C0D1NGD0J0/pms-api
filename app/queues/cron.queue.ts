@@ -13,10 +13,6 @@ export class CronQueue extends BaseQueue {
       const cronWorker = container.resolve('cronWorker');
       return cronWorker.executeCronJob(job);
     });
-
-    if (process.env.PROCESS_TYPE === 'worker') {
-      this.cleanupOrphanedRepeatKeys();
-    }
   }
 
   /**
@@ -38,30 +34,30 @@ export class CronQueue extends BaseQueue {
   }
 
   /**
-   * Clean up orphaned repeat keys that accumulate over time
-   * This prevents Redis command timeouts caused by thousands of stale keys
+   * Remove repeatable jobs whose names are not in the registered set.
+   * Uses Bull's API (removeRepeatableByKey) so both the schedule entry
+   * and its data key are removed atomically — safe to call on every restart.
+   *
+   * Called by CronService after all cron jobs have been registered.
    */
-  private async cleanupOrphanedRepeatKeys(): Promise<void> {
+  async removeUnregisteredRepeatJobs(registeredJobNames: string[]): Promise<void> {
     try {
-      const client = await this.queue.client;
-      // Get all repeat:* keys (these are the job data keys)
-      const repeatKeys = await client.keys(`bull:${QUEUE_NAMES.CRON_QUEUE}:repeat:*`);
-      if (repeatKeys.length === 0) {
-        this.log.info('No orphaned repeat keys found');
-        return;
-      }
-
-      // Delete all repeat:* keys (Bull will recreate them for active jobs)
-      // The repeat sorted set contains the actual job definitions
-      // Batch deletions to avoid exceeding Redis argument limits
-      const BATCH_SIZE = 1000;
-      for (let i = 0; i < repeatKeys.length; i += BATCH_SIZE) {
-        const batch = repeatKeys.slice(i, i + BATCH_SIZE);
-        // eslint-disable-next-line @typescript-eslint/await-thenable
-        await client.del(...batch);
+      const repeatableJobs = await this.queue.getRepeatableJobs();
+      for (const job of repeatableJobs) {
+        // Bull populates job.name (the first arg to queue.add()) reliably.
+        // job.id is only set when repeat.jobId is used inside the repeat options,
+        // which we don't do — so job.id is always undefined for our jobs.
+        const jobName = job.name;
+        if (!jobName || !registeredJobNames.includes(jobName)) {
+          this.log.info(
+            { jobKey: job.key, jobName: job.name },
+            'CronQueue: removing unregistered repeat job'
+          );
+          await this.queue.removeRepeatableByKey(job.key);
+        }
       }
     } catch (error) {
-      this.log.error({ error }, 'Failed to cleanup orphaned repeat keys');
+      this.log.error({ error }, 'CronQueue: failed to remove unregistered repeat jobs');
     }
   }
 }

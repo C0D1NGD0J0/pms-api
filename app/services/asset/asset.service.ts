@@ -5,6 +5,7 @@ import { EventTypes } from '@interfaces/index';
 import { IAssetDocument } from '@models/asset/asset.model';
 import { EventEmitterService } from '@services/eventEmitter';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { UploadCompletedPayload } from '@interfaces/events.interface';
 import { ISuccessReturnData, UploadResult } from '@interfaces/utils.interface';
 
 interface IConstructor {
@@ -40,20 +41,19 @@ export class AssetService {
       const assets: IAssetDocument[] = [];
 
       for (const result of uploadResults) {
-        // Only create asset records for document library items
         const assetData = {
           originalName: result.filename,
           s3Info: {
             url: result.url,
             filename: result.filename,
-            key: result.publicuid,
+            key: result.key || '',
           },
           resource: {
-            name: result.resourceName || 'Property',
+            name: result.resourceName || 'property',
             id: result.resourceId,
           },
           size: result.size || 0,
-          mimeType: this.getMimeTypeFromUrl(result.url),
+          mimeType: result.mimeType || this.getMimeTypeFromKey(result.key || result.url),
           type: result.mediatype || 'document',
           fieldName: result.fieldName,
           uploadedBy: result.actorId || 'system',
@@ -300,24 +300,24 @@ export class AssetService {
   }
 
   /**
-   * Helper method to determine MIME type from URL (fallback)
+   * Derive MIME type from S3 key or URL extension — used only as a fallback
+   * when mimeType is not present on the UploadResult.
+   * Reads the extension from the end of the key/URL path segment before query params.
    */
-  private getMimeTypeFromUrl(url: string): string {
-    const extension = url.split('.').pop()?.toLowerCase();
+  private getMimeTypeFromKey(keyOrUrl: string): string {
+    const pathPart = keyOrUrl.split('?')[0];
+    const extension = pathPart.split('.').pop()?.toLowerCase();
     const mimeTypes: Record<string, string> = {
       jpg: 'image/jpeg',
       jpeg: 'image/jpeg',
       png: 'image/png',
-      gif: 'image/gif',
       webp: 'image/webp',
+      heic: 'image/heic',
       pdf: 'application/pdf',
-      doc: 'application/msword',
-      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       mp4: 'video/mp4',
-      avi: 'video/avi',
       mov: 'video/quicktime',
+      webm: 'video/webm',
     };
-
     return mimeTypes[extension || ''] || 'application/octet-stream';
   }
 
@@ -331,40 +331,37 @@ export class AssetService {
   }
 
   /**
-   * Handle upload completion events - process document library uploads
+   * Handle upload completion events - create asset records for document library resources.
+   * Maintenance and lease media are handled by their own services (serviceRequest / leasePdf).
+   * Profile avatars are handled by ProfileService.
    */
-  private async handleUploadCompleted(data: any): Promise<void> {
+  private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
     try {
-      // Only handle document library uploads (property documents, images, etc.)
-      // Skip profile/avatar uploads as they're handled by ProfileService
-      if (this.shouldCreateAssetRecord(data)) {
-        await this.createAssets(data.results);
-        this.logger.info(`Created ${data.results.length} asset records for document library`);
-      }
+      if (!this.shouldCreateAssetRecord(payload)) return;
+
+      await this.createAssets(payload.results);
+      this.logger.info(
+        {
+          resourceName: payload.resourceName,
+          resourceId: payload.resourceId,
+          count: payload.results.length,
+        },
+        'Created asset records for document library'
+      );
     } catch (error) {
       this.logger.error('Error handling upload completion in AssetService:', error);
     }
   }
 
   /**
-   * Determine if upload results should create asset records for document library
+   * Asset records are created only for document-library resources.
+   * Resources with their own media handlers (maintenance, lease, profile) are excluded.
    */
-  private shouldCreateAssetRecord(data: any): boolean {
-    // Must have valid results
-    if (!data.results?.length) {
-      return false;
-    }
+  private shouldCreateAssetRecord(payload: UploadCompletedPayload): boolean {
+    if (!payload.results?.length) return false;
 
-    // Skip profile-related uploads (handled by ProfileService)
-    if (data.resourceName === 'profile') {
-      return false;
-    }
-
-    // Handle property documents and other business document uploads
     const documentLibraryResources = ['property', 'client', 'vendor'];
-    const resourceName = data.resourceName?.toLowerCase();
-
-    return documentLibraryResources.includes(resourceName);
+    return documentLibraryResources.includes(payload.resourceName?.toLowerCase());
   }
 
   /**

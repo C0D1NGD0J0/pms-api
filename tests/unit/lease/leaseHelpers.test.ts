@@ -23,13 +23,13 @@ describe('Lease Helpers', () => {
   describe('validateAllowedFields', () => {
     it('should allow all fields for DRAFT status', () => {
       expect(() =>
-        validateAllowedFields({ fees: { monthlyRent: 1000 } } as any, LeaseStatus.DRAFT)
+        validateAllowedFields({ fees: { rentAmount: 1000 } } as any, LeaseStatus.DRAFT)
       ).not.toThrow();
     });
 
     it('should reject disallowed fields for ACTIVE status', () => {
       expect(() =>
-        validateAllowedFields({ fees: { monthlyRent: 1000 } } as any, LeaseStatus.ACTIVE)
+        validateAllowedFields({ fees: { rentAmount: 1000 } } as any, LeaseStatus.ACTIVE)
       ).toThrow(ValidationRequestError);
     });
 
@@ -46,7 +46,7 @@ describe('Lease Helpers', () => {
     });
 
     it('should return true for fees changes', () => {
-      expect(hasHighImpactChanges({ fees: { monthlyRent: 1500 } } as any)).toBe(true);
+      expect(hasHighImpactChanges({ fees: { rentAmount: 1500 } } as any)).toBe(true);
     });
 
     it('should return false for low-impact changes', () => {
@@ -56,7 +56,7 @@ describe('Lease Helpers', () => {
 
   describe('hasSignatureInvalidatingChanges', () => {
     it('should return true for fees changes', () => {
-      expect(hasSignatureInvalidatingChanges({ fees: { monthlyRent: 1500 } } as any)).toBe(true);
+      expect(hasSignatureInvalidatingChanges({ fees: { rentAmount: 1500 } } as any)).toBe(true);
     });
 
     it('should return true for duration changes', () => {

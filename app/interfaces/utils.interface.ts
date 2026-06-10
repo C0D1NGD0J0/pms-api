@@ -14,25 +14,33 @@ export enum MailType {
   MAINTENANCE_WORK_ORDER_REJECTED = 'MAINTENANCE_WORK_ORDER_REJECTED',
   MAINTENANCE_INVOICE_SUBMITTED = 'MAINTENANCE_INVOICE_SUBMITTED',
   MAINTENANCE_REQUEST_COMPLETED = 'MAINTENANCE_REQUEST_COMPLETED',
+  SUBSCRIPTION_RENEWAL_UPCOMING = 'SUBSCRIPTION_RENEWAL_UPCOMING',
+  SUBSCRIPTION_RENEWAL_RECEIPT = 'SUBSCRIPTION_RENEWAL_RECEIPT',
   MAINTENANCE_REQUEST_ACCEPTED = 'MAINTENANCE_REQUEST_ACCEPTED',
   MAINTENANCE_REQUEST_ASSIGNED = 'MAINTENANCE_REQUEST_ASSIGNED',
   MAINTENANCE_REQUEST_DECLINED = 'MAINTENANCE_REQUEST_DECLINED',
   MAINTENANCE_INVOICE_APPROVED = 'MAINTENANCE_INVOICE_APPROVED',
   MAINTENANCE_INVOICE_REJECTED = 'MAINTENANCE_INVOICE_REJECTED',
   MAINTENANCE_REQUEST_CREATED = 'MAINTENANCE_REQUEST_CREATED',
+  MAINTENANCE_CHARGE_CREATED = 'MAINTENANCE_CHARGE_CREATED',
   LEASE_APPLICATION_UPDATE = 'LEASE_APPLICATION_UPDATE',
+  MAINTENANCE_VENDOR_PAID = 'MAINTENANCE_VENDOR_PAID',
+  PAYMENT_REQUEST_CREATED = 'PAYMENT_REQUEST_CREATED',
   LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
   LEASE_SIGNOFF_REQUEST = 'LEASE_SIGNOFF_REQUEST',
   ACCOUNT_DISCONNECTED = 'ACCOUNT_DISCONNECTED',
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
   SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
   INVITATION_REMINDER = 'INVITATION_REMINDER',
+  LEASE_ADMIN_UPDATED = 'LEASE_ADMIN_UPDATED',
   ACCOUNT_ACTIVATION = 'ACCOUNT_ACTIVATION',
   LEASE_ENDING_SOON = 'LEASE_ENDING_SOON',
   USER_REGISTRATION = 'USER_REGISTRATION',
   LEASE_TERMINATED = 'LEASE_TERMINATED',
+  PAYMENT_RECEIPT = 'PAYMENT_RECEIPT',
   LEASE_ACTIVATED = 'LEASE_ACTIVATED',
   FORGOT_PASSWORD = 'FORGOT_PASSWORD',
+  PAYMENT_FAILED = 'PAYMENT_FAILED',
   PASSWORD_RESET = 'PASSWORD_RESET',
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
   USER_CREATED = 'USER_CREATED',
@@ -56,6 +64,29 @@ export enum PermissionAction {
   LIST = 'list',
   READ = 'read',
   SEND = 'send',
+}
+
+export enum CURRENCIES {
+  // Major / Stripe-supported
+  USD = 'USD',
+  EUR = 'EUR',
+  GBP = 'GBP',
+  CAD = 'CAD',
+  AUD = 'AUD',
+  JPY = 'JPY',
+  MXN = 'MXN',
+  SGD = 'SGD',
+  AED = 'AED',
+  CNY = 'CNY',
+  // Africa
+  NGN = 'NGN',
+  ZAR = 'ZAR',
+  // Europe (non-EUR)
+  CHF = 'CHF',
+  // Asia-Pacific
+  INR = 'INR',
+  // South America
+  BRL = 'BRL',
 }
 
 export enum PermissionResource {
@@ -84,15 +115,6 @@ export enum ResourceContext {
   CLIENT = 'client',
   VENDOR = 'vendor',
   LEASE = 'lease',
-}
-
-export enum CURRENCIES {
-  USD = 'USD',
-  EUR = 'EUR',
-  GBP = 'GBP',
-  CAD = 'CAD',
-  CNY = 'CNY',
-  NGN = 'NGN',
 }
 
 export enum PermissionScope {
@@ -191,11 +213,26 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
-  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance'; //name of the resource
+  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   fieldName: string; //name of the field
   actorId: string; //user who uploaded the file
+}
+
+export interface UploadResult {
+  mediatype?: 'image' | 'video' | 'document';
+  documentName?: string;
+  resourceName?: string;
+  resourceId: string;
+  fieldName: string;
+  publicuid: string;
+  mimeType?: string;
+  actorId?: string;
+  filename: string;
+  size?: number;
+  key?: string;
+  url: string;
 }
 
 export interface IPermissionCheck {
@@ -226,20 +263,6 @@ export type ExtractedMediaFile = {
   uploadedAt: Date;
   uploadedBy: string;
 };
-
-export interface UploadResult {
-  mediatype?: 'image' | 'video' | 'document';
-  documentName?: string;
-  resourceName?: string;
-  resourceId: string;
-  fieldName: string;
-  publicuid: string;
-  actorId?: string;
-  filename: string;
-  size?: number;
-  key?: string;
-  url: string;
-}
 
 export interface IPermissionConfig {
   resources: Record<
@@ -275,6 +298,15 @@ export interface IPaginateResult {
   total: number;
 }
 
+export type ISuccessReturnData<T = any> = {
+  errors?: [{ path: string; message: string }];
+  routeToCard?: boolean;
+  success: boolean;
+  message?: string;
+  error?: string;
+  data: T;
+};
+
 export interface IPaginationQuery {
   sort?: string | Record<string, 1 | -1 | { $meta: 'textScore' }>;
   sortBy?: string;
@@ -283,13 +315,12 @@ export interface IPaginationQuery {
   skip?: number;
 }
 
-export type ISuccessReturnData<T = any> = {
-  errors?: [{ path: string; message: string }];
-  success: boolean;
-  message?: string;
-  error?: string;
-  data: T;
-};
+export interface AppRequest extends Request {
+  scannedFiles?: ExtractedMediaFile[];
+  container: AwilixContainer;
+  context: IRequestContext;
+  rawBody: Buffer;
+}
 
 export interface UploadedFile {
   originalFileName?: string;
@@ -314,12 +345,6 @@ export type MulterFile =
       [fieldname: string]: Express.Multer.File[];
     }
   | undefined;
-
-export interface AppRequest extends Request {
-  container: AwilixContainer;
-  context: IRequestContext;
-  rawBody: Buffer;
-}
 
 export type AsyncRequestHandler = (
   req: AppRequest,

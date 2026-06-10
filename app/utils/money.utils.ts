@@ -53,11 +53,8 @@ export const MoneyUtils = {
 
     return {
       ...moneyData,
-      ...(moneyData.taxAmount !== undefined && {
-        taxAmount: MoneyUtils.centsToString(moneyData.taxAmount),
-      }),
-      ...(moneyData.rentalAmount !== undefined && {
-        rentalAmount: MoneyUtils.centsToString(moneyData.rentalAmount),
+      ...(moneyData.rentAmount !== undefined && {
+        rentAmount: MoneyUtils.centsToString(moneyData.rentAmount),
       }),
       ...(moneyData.managementFees !== undefined && {
         managementFees: MoneyUtils.centsToString(moneyData.managementFees),
@@ -65,8 +62,8 @@ export const MoneyUtils = {
       ...(moneyData.securityDeposit !== undefined && {
         securityDeposit: MoneyUtils.centsToString(moneyData.securityDeposit),
       }),
-      ...(moneyData.monthlyRent !== undefined && {
-        monthlyRent: MoneyUtils.centsToString(moneyData.monthlyRent),
+      ...(moneyData.rentAmount !== undefined && {
+        rentAmount: MoneyUtils.centsToString(moneyData.rentAmount),
       }),
       ...(moneyData.lateFeeAmount !== undefined && {
         lateFeeAmount: MoneyUtils.centsToString(moneyData.lateFeeAmount),
@@ -80,11 +77,8 @@ export const MoneyUtils = {
 
     return {
       ...moneyData,
-      ...(moneyData.taxAmount !== undefined && {
-        taxAmount: MoneyUtils.stringToCents(moneyData.taxAmount),
-      }),
-      ...(moneyData.rentalAmount !== undefined && {
-        rentalAmount: MoneyUtils.stringToCents(moneyData.rentalAmount),
+      ...(moneyData.rentAmount !== undefined && {
+        rentAmount: MoneyUtils.stringToCents(moneyData.rentAmount),
       }),
       ...(moneyData.managementFees !== undefined && {
         managementFees: MoneyUtils.stringToCents(moneyData.managementFees),
@@ -92,8 +86,8 @@ export const MoneyUtils = {
       ...(moneyData.securityDeposit !== undefined && {
         securityDeposit: MoneyUtils.stringToCents(moneyData.securityDeposit),
       }),
-      ...(moneyData.monthlyRent !== undefined && {
-        monthlyRent: MoneyUtils.stringToCents(moneyData.monthlyRent),
+      ...(moneyData.rentAmount !== undefined && {
+        rentAmount: MoneyUtils.stringToCents(moneyData.rentAmount),
       }),
       ...(moneyData.lateFeeAmount !== undefined && {
         lateFeeAmount: MoneyUtils.stringToCents(moneyData.lateFeeAmount),
@@ -102,7 +96,7 @@ export const MoneyUtils = {
   },
 
   isValidMoneyValue: (value: any): boolean => {
-    if (value == null) return true;
+    if (value == null || value === '') return true;
     if (typeof value === 'string') {
       const numericValue = parseFloat(value);
       return !isNaN(numericValue) && numericValue >= 0;
@@ -115,7 +109,7 @@ export const MoneyUtils = {
     if (!fees || typeof fees !== 'object') return fees;
     return {
       ...fees,
-      monthlyRent: MoneyUtils.centsToString(fees.monthlyRent),
+      rentAmount: MoneyUtils.centsToString(fees.rentAmount),
       securityDeposit: MoneyUtils.centsToString(fees.securityDeposit),
       ...(fees.lateFeeAmount !== undefined && {
         lateFeeAmount: MoneyUtils.centsToString(fees.lateFeeAmount),
@@ -127,7 +121,7 @@ export const MoneyUtils = {
     if (!fees || typeof fees !== 'object') return fees;
     return {
       ...fees,
-      monthlyRent: MoneyUtils.stringToCents(fees.monthlyRent),
+      rentAmount: MoneyUtils.stringToCents(fees.rentAmount),
       securityDeposit: MoneyUtils.stringToCents(fees.securityDeposit),
       ...(fees.lateFeeAmount !== undefined && {
         lateFeeAmount: MoneyUtils.stringToCents(fees.lateFeeAmount),

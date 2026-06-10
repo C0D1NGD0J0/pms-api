@@ -45,6 +45,10 @@ describe('AuthService Integration Tests', () => {
       vendorService,
       subscriptionService: mockSubscriptionService as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
+      leaseDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      paymentGatewayService: {} as any,
+      paymentService: {} as any,
     });
   });
 
@@ -441,7 +445,7 @@ describe('AuthService Integration Tests', () => {
       mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true });
       mockAuthCache.saveRefreshToken.mockResolvedValueOnce({ success: true });
 
-      const result = await authService.refreshToken({ refreshToken, userId });
+      const result = await authService.refreshToken({ refreshToken });
 
       expect(result.success).toBe(true);
       expect(result.data.accessToken).toBe('mock-access-token');
@@ -450,13 +454,12 @@ describe('AuthService Integration Tests', () => {
     });
 
     it('should reject invalid refresh token', async () => {
-      const userId = 'user-123';
       const refreshToken = 'invalid-token';
 
       // Decode fails first — no Redis lookup needed
       mockTokenService.verifyJwtToken.mockResolvedValueOnce({ success: false });
 
-      await expect(authService.refreshToken({ refreshToken, userId })).rejects.toThrow();
+      await expect(authService.refreshToken({ refreshToken })).rejects.toThrow();
     });
 
     it('should reject when token not found in cache', async () => {
@@ -469,7 +472,7 @@ describe('AuthService Integration Tests', () => {
       });
       mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: false });
 
-      await expect(authService.refreshToken({ refreshToken, userId })).rejects.toThrow();
+      await expect(authService.refreshToken({ refreshToken })).rejects.toThrow();
     });
   });
 

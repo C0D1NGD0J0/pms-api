@@ -8,6 +8,7 @@ import { ClamScannerService } from '@shared/config';
 export { preventTenantConflict } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { subscriptionPlanConfig } from '@services/subscription';
 import { LanguageService } from '@shared/languages/language.service';
 import { ITenantFeatureSettings } from '@interfaces/client.interface';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
@@ -107,6 +108,10 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
         if (_currentuser.client?.cuid !== payload.data.cuid) {
           return next(new UnauthorizedError({ message: 'Session context mismatch.' }));
         }
+        if (_currentuser.subscription?.plan?.name) {
+          const planConfig = subscriptionPlanConfig.getConfig(_currentuser.subscription.plan.name);
+          if (planConfig) _currentuser.subscription.entitlements = planConfig.features;
+        }
         await authCache.saveCurrentUser(_currentuser);
         req.context.currentuser = _currentuser;
       }
@@ -141,10 +146,16 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       // When a PM disables the tenant portal, ALL access is blocked — this is a hard suspension,
       // not read-only mode. Disconnected/former tenants (isConnected === false) are handled
       // separately in requireActiveTenant() and retain read-only access to their history.
+      // Exception: /me and /logout are always allowed so the frontend can load the user's
+      // identity, display the "portal suspended" screen, and let the tenant log out cleanly.
       if (req.context.currentuser?.client?.role === ROLES.TENANT) {
         const tenantFeatures = req.context.currentuser.client?.tenantFeatures;
         const isPortalSuspended = tenantFeatures?.tenantPortalActive === false;
-        if (isPortalSuspended) {
+        const isIdentityOrExitRoute =
+          req.originalUrl.endsWith('/me') ||
+          req.originalUrl.includes('/logout') ||
+          req.originalUrl.includes('/notifications');
+        if (isPortalSuspended && !isIdentityOrExitRoute) {
           return next(
             new ForbiddenError({
               message: 'Tenant portal access has been disabled by your property manager.',
@@ -204,11 +215,21 @@ export const scanFile = async (req: Request, _res: Response, next: NextFunction)
         { userId: req.context.currentuser.sub, fileCount: _files.length },
         'ClamAV scanner unavailable - skipping virus scan'
       );
-      req.body.scannedFiles = _files;
+      (req as AppRequest).scannedFiles = _files;
       return next();
     }
 
     const clamScanner: ClamScannerService = req.container.resolve('clamScanner');
+
+    if (!clamScanner.isReady()) {
+      logger.warn(
+        { userId: req.context.currentuser.sub, fileCount: _files.length },
+        'ClamAV scanner not ready - skipping virus scan'
+      );
+      (req as AppRequest).scannedFiles = _files;
+      return next();
+    }
+
     const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
 
@@ -235,7 +256,7 @@ export const scanFile = async (req: Request, _res: Response, next: NextFunction)
     }
 
     if (validFiles.length) {
-      req.body.scannedFiles = validFiles;
+      (req as AppRequest).scannedFiles = validFiles;
     }
 
     return next();
@@ -624,6 +645,23 @@ export const requireActiveSubscription = (req: Request, _res: Response, next: Ne
 };
 
 /**
+ * Blocks access when the client account is suspended.
+ * Must run after isAuthenticated. Do NOT apply to auth routes.
+ */
+export const requireNotSuspended = (req: Request, _res: Response, next: NextFunction) => {
+  const currentuser = validateUserAndConnection(req, next);
+  if (!currentuser) return;
+
+  if (currentuser.client.suspension?.isActive) {
+    return next(
+      new ForbiddenError({ message: 'This account has been suspended. Please contact support.' })
+    );
+  }
+
+  next();
+};
+
+/**
  * Ensures the client account is verified before allowing business-critical actions.
  * Must run after isAuthenticated.
  */
@@ -904,6 +942,20 @@ export const requireFeatureFlag = (flag: FeatureFlag) => {
     }
 
     next();
+  };
+};
+
+/**
+ * Restricts a route to users whose active client role is in the allowed list.
+ * Non-tenant roles only — this does not apply to tenant-scoped checks (use requireActiveTenant for those).
+ */
+export const requireRole = (roles: string[]) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const role = (req as AppRequest).context?.currentuser?.client?.role;
+    if (!role || !roles.includes(role)) {
+      return next(new ForbiddenError({ message: t('auth.errors.forbidden') }));
+    }
+    return next();
   };
 };
 

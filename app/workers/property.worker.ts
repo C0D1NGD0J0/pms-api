@@ -1,15 +1,17 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { PropertyDAO, ClientDAO } from '@dao/index';
 import { PropertyCsvProcessor } from '@services/csv';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SubscriptionDAO, PropertyDAO, ClientDAO } from '@dao/index';
 import { CsvProcessReturnData, CsvJobData } from '@interfaces/index';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 
 interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
   emitterService: EventEmitterService;
+  subscriptionDAO: SubscriptionDAO;
   propertyDAO: PropertyDAO;
   clientDAO: ClientDAO;
 }
@@ -18,12 +20,20 @@ export class PropertyWorker {
   log: Logger;
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly subscriptionDAO: SubscriptionDAO;
   private readonly emitterService: EventEmitterService;
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
 
-  constructor({ propertyDAO, clientDAO, emitterService, propertyCsvProcessor }: IConstructor) {
+  constructor({
+    propertyDAO,
+    clientDAO,
+    subscriptionDAO,
+    emitterService,
+    propertyCsvProcessor,
+  }: IConstructor) {
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
+    this.subscriptionDAO = subscriptionDAO;
     this.emitterService = emitterService;
     this.log = createLogger('PropertyWorker');
     this.propertyCsvProcessor = propertyCsvProcessor;
@@ -89,6 +99,35 @@ export class PropertyWorker {
         };
       }
 
+      // Enforce subscription property limit before batch insert
+      const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+      if (subscription) {
+        const config = subscriptionPlanConfig.getConfig(subscription.planName);
+        const maxProperties = config.limits.maxProperties;
+        if (maxProperties !== -1) {
+          const currentCount = await this.propertyDAO.countDocuments({ cuid, deletedAt: null });
+          const remaining = maxProperties - currentCount;
+          if (remaining <= 0) {
+            this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+            return {
+              success: false,
+              processId: job.id,
+              data: null,
+              finishedAt: new Date(),
+              errors: null,
+              message: `Property limit reached (${maxProperties}). Upgrade your plan to add more properties.`,
+            };
+          }
+          if (csvResult.validProperties.length > remaining) {
+            this.log.warn(
+              { cuid, requested: csvResult.validProperties.length, remaining },
+              'CSV import trimmed to subscription property limit'
+            );
+            csvResult.validProperties = csvResult.validProperties.slice(0, remaining);
+          }
+        }
+      }
+
       let totalInserted = 0;
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
@@ -115,6 +154,15 @@ export class PropertyWorker {
           ? 'Properties imported with some errors'
           : 'All properties imported successfully',
       } as CsvProcessReturnData & { message: string };
+
+      // Sync subscription.currentProperties so the atomic gate in addProperty() stays accurate
+      if (propertiesResult.totalInserted > 0 && subscription) {
+        await this.subscriptionDAO.updateResourceCount(
+          'property',
+          subscription.client,
+          propertiesResult.totalInserted
+        );
+      }
 
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
       job.progress(100);

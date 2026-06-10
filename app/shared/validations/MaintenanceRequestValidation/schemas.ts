@@ -152,7 +152,7 @@ export const MaintenanceSchemas = {
 
   assignmentBody: z
     .object({
-      action: z.enum(['accept', 'decline']),
+      action: z.enum(['accept', 'decline', 'abandon']),
       reason: z.string().max(500).optional(),
       technician: z
         .object({
@@ -181,12 +181,23 @@ export const MaintenanceSchemas = {
       )
       .optional(),
     notes: z.string().max(500).optional(),
+    scheduledDate: z
+      .string()
+      .datetime({ message: 'scheduledDate must be a valid ISO 8601 datetime' })
+      .refine((val) => new Date(val) > new Date(), {
+        message: 'Scheduled date must be in the future',
+      })
+      .optional(),
   }),
 
   workOrderReviewBody: z
     .object({
       action: z.enum(['approve', 'reject']),
-      rejectionReason: z.string().min(10, 'Provide at least 10 characters').max(500).optional(),
+      rejectionReason: z
+        .string()
+        .min(10, 'Provide a detailed reason of at least 10 characters')
+        .max(500)
+        .optional(),
     })
     .refine((d) => d.action !== 'reject' || !!d.rejectionReason, {
       message: 'Rejection reason is required when rejecting',
@@ -210,6 +221,12 @@ export const MaintenanceSchemas = {
     source: z.enum(['manual', 'quickbooks', 'freshbooks', 'jobber']).optional(),
     externalInvoiceId: z.string().optional(),
     externalInvoiceUrl: z.string().url().optional(),
+    attachment: z
+      .object({
+        url: z.string().url(),
+        key: z.string().min(1),
+      })
+      .optional(),
   }),
 
   invoiceReviewBody: z
@@ -218,7 +235,7 @@ export const MaintenanceSchemas = {
       isBillable: z.boolean().optional(),
       rejectionReason: z
         .string()
-        .min(10, 'Please provide a reason of at least 10 characters')
+        .min(10, 'Please provide a detailed reason of at least 10 characters')
         .optional(),
     })
     .refine((d) => d.action !== 'reject' || !!d.rejectionReason, {
@@ -250,23 +267,37 @@ export const MaintenanceSchemas = {
           options: z.array(z.nativeEnum(AvailabilityWindow)).optional().default([]),
         })
         .optional(),
+      mediaToRemove: z
+        .union([
+          z.array(z.string().min(1)),
+          z.string().transform((s) => {
+            try {
+              return JSON.parse(s) as string[];
+            } catch {
+              return [];
+            }
+          }),
+        ])
+        .optional(),
     })
     .refine((data) => Object.keys(data).length > 0, {
       message: 'At least one field must be provided',
     }),
 
   listQuery: z.object({
-    status: z.nativeEnum(MaintenanceRequestStatus).optional(),
-    priority: z.nativeEnum(MaintenanceRequestPriority).optional(),
-    category: z.nativeEnum(MaintenanceCategory).optional(),
     pid: z.string().optional(),
     puid: z.string().optional(),
+    dateTo: z.string().optional(),
+    dateFrom: z.string().optional(),
     vendorUid: z.string().optional(),
     tenantUid: z.string().optional(),
+    managedByUid: z.string().optional(),
     isBillable: z.coerce.boolean().optional(),
-    dateFrom: z.string().optional(),
-    dateTo: z.string().optional(),
+    assignedTechnicianSub: z.string().optional(),
     page: z.coerce.number().int().positive().optional(),
+    category: z.nativeEnum(MaintenanceCategory).optional(),
+    status: z.nativeEnum(MaintenanceRequestStatus).optional(),
+    priority: z.nativeEnum(MaintenanceRequestPriority).optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),
   }),
 
@@ -276,6 +307,7 @@ export const MaintenanceSchemas = {
 
   webhookBody: z.object({
     mruid: z.string().min(1, 'Maintenance request ID is required'),
+    cuid: z.string().min(1, 'Client ID is required for tenant isolation'),
     amount: z.number().int().positive('Amount must be a positive integer in cents'),
     currency: z.string().length(3, 'Currency must be a 3-character code'),
     description: z.string().min(1).max(500),
@@ -294,4 +326,15 @@ export const MaintenanceSchemas = {
       .optional(),
     rawPayload: z.record(z.unknown()).optional().default({}),
   }),
+
+  tenantFeedbackBody: z
+    .object({
+      status: z.enum(['confirmed', 'disputed']),
+      rating: z.number().int().min(1).max(5).optional(),
+      comment: z.string().max(1000).optional(),
+    })
+    .refine((data) => data.status !== 'confirmed' || data.rating !== undefined, {
+      message: 'Rating is required when confirming satisfaction',
+      path: ['rating'],
+    }),
 };

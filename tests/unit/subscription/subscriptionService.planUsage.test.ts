@@ -47,6 +47,9 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
       propertyDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
       propertyUnitDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
 

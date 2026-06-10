@@ -1,5 +1,7 @@
 import { IUserRole } from '@shared/constants/roles.constants';
+import { VendorServicesOffered } from '@interfaces/vendor.interface';
 import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
+import { MaintenanceCategory } from '@interfaces/maintenanceRequest.interface';
 
 export const httpStatusCodes = {
   OK: 200,
@@ -68,8 +70,10 @@ export const JOB_NAME = {
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
   INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
   LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
+  LEASE_ADMIN_UPDATED_JOB: 'leaseAdminUpdatedJob',
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
+  PAYMENT_REQUEST_EMAIL_JOB: 'paymentRequestEmailJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
   ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
   VENDOR_TEAM_DISCONNECT_JOB: 'vendorTeamDisconnectJob',
@@ -312,3 +316,23 @@ export const LEASE_CONSTANTS = {
   DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
   MINIMUM_ACTIVE_DURATION_DAYS: 30,
 } as const;
+
+/**
+ * Maps maintenance request categories to vendor servicesOffered boolean keys.
+ * Used by the vendor suggestion scoring algorithm to filter qualified vendors.
+ */
+export const CATEGORY_TO_VENDOR_SERVICE: Record<MaintenanceCategory, keyof VendorServicesOffered> =
+  {
+    [MaintenanceCategory.PLUMBING]: 'plumbing',
+    [MaintenanceCategory.ELECTRICAL]: 'electrical',
+    [MaintenanceCategory.HVAC]: 'hvac',
+    [MaintenanceCategory.APPLIANCE]: 'applianceRepair',
+    [MaintenanceCategory.STRUCTURAL]: 'carpentry',
+    [MaintenanceCategory.COSMETIC]: 'painting',
+    [MaintenanceCategory.PEST_CONTROL]: 'pestControl',
+    [MaintenanceCategory.LANDSCAPING]: 'landscaping',
+    [MaintenanceCategory.GENERAL]: 'maintenance',
+    [MaintenanceCategory.OTHER]: 'other',
+  };
+
+export const MAX_CHARGE_ATTEMPTS = 2;

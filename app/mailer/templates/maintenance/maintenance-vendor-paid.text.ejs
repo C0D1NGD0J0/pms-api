@@ -1,0 +1,11 @@
+PAYOUT INITIATED
+
+A payout has been initiated for the maintenance job below.
+
+Reference #: <%= mruid %>
+<% if (jobTitle) { %>Job: <%= jobTitle %>
+<% } %>Amount: $<%= (amountInCents / 100).toFixed(2) %> <%= currency.toUpperCase() %>
+Transfer ID: <%= transferId %>
+Date: <%= new Date().toLocaleDateString() %>
+
+Funds typically arrive within 1-2 business days depending on your bank and payout schedule.

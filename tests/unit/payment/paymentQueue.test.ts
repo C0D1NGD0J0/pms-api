@@ -9,7 +9,7 @@ jest.mock('@queues/base.queue', () => {
     BaseQueue: class MockBaseQueue {
       constructor(_opts: any) {}
       addJobToQueue = jest.fn().mockResolvedValue({ id: 'mock-job-id' });
-      processQueueJobs = jest.fn();
+      processAllQueueJobs = jest.fn();
     },
   };
 });
@@ -52,32 +52,41 @@ describe('PaymentQueue', () => {
   afterEach(() => jest.clearAllMocks());
 
   describe('constructor', () => {
-    it('should register job processors for all 3 job types', () => {
-      expect((queue as any).processQueueJobs).toHaveBeenCalledTimes(3);
+    it('should register a single wildcard processor with concurrency 3', () => {
+      expect((queue as any).processAllQueueJobs).toHaveBeenCalledTimes(1);
+      const [concurrency, handler] = (queue as any).processAllQueueJobs.mock.calls[0];
+      expect(concurrency).toBe(3);
+      expect(typeof handler).toBe('function');
     });
 
-    it('should register CREATE_RENT_INVOICE_JOB processor with concurrency 3', () => {
-      expect((queue as any).processQueueJobs).toHaveBeenCalledWith(
-        JOB_NAME.CREATE_RENT_INVOICE_JOB,
-        3,
-        mockWorker.handleCreateRentInvoice
-      );
+    it('should route CREATE_RENT_INVOICE_JOB to handleCreateRentInvoice', async () => {
+      const [, handler] = (queue as any).processAllQueueJobs.mock.calls[0];
+      const mockJob = { name: JOB_NAME.CREATE_RENT_INVOICE_JOB, data: {} };
+      mockWorker.handleCreateRentInvoice.mockResolvedValue(undefined as any);
+      await handler(mockJob);
+      expect(mockWorker.handleCreateRentInvoice).toHaveBeenCalledWith(mockJob);
     });
 
-    it('should register RETRY_FAILED_INVOICE_JOB processor', () => {
-      expect((queue as any).processQueueJobs).toHaveBeenCalledWith(
-        JOB_NAME.RETRY_FAILED_INVOICE_JOB,
-        1,
-        mockWorker.handleCreateRentInvoice
-      );
+    it('should route RETRY_FAILED_INVOICE_JOB to handleCreateRentInvoice', async () => {
+      const [, handler] = (queue as any).processAllQueueJobs.mock.calls[0];
+      const mockJob = { name: JOB_NAME.RETRY_FAILED_INVOICE_JOB, data: {} };
+      mockWorker.handleCreateRentInvoice.mockResolvedValue(undefined as any);
+      await handler(mockJob);
+      expect(mockWorker.handleCreateRentInvoice).toHaveBeenCalledWith(mockJob);
     });
 
-    it('should register CANCEL_PAYMENT_JOB processor with concurrency 3', () => {
-      expect((queue as any).processQueueJobs).toHaveBeenCalledWith(
-        JOB_NAME.CANCEL_PAYMENT_JOB,
-        3,
-        mockWorker.handleCancelPayment
-      );
+    it('should route CANCEL_PAYMENT_JOB to handleCancelPayment', async () => {
+      const [, handler] = (queue as any).processAllQueueJobs.mock.calls[0];
+      const mockJob = { name: JOB_NAME.CANCEL_PAYMENT_JOB, data: {} };
+      mockWorker.handleCancelPayment.mockResolvedValue(undefined as any);
+      await handler(mockJob);
+      expect(mockWorker.handleCancelPayment).toHaveBeenCalledWith(mockJob);
+    });
+
+    it('should throw for unknown job names', async () => {
+      const [, handler] = (queue as any).processAllQueueJobs.mock.calls[0];
+      const mockJob = { name: 'UNKNOWN_JOB', data: {} };
+      await expect(handler(mockJob)).rejects.toThrow('Unknown payment job: UNKNOWN_JOB');
     });
   });
 

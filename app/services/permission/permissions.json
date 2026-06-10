@@ -114,26 +114,27 @@
       "property": ["read:mine"],
       "user": ["read:mine", "update:mine"],
       "client": ["read:mine"],
-      "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine"],
+      "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine", "stats:mine"],
       "lease": ["read:mine", "list:mine", "update:mine"],
       "payment": ["read:mine", "create:mine", "list:mine"],
       "report": ["read:mine"]
     },
     "vendor": {
       "property": ["read:assigned"],
-      "user": ["read:mine", "update:mine"],
+      "user": ["read:mine", "read:any", "update:mine"],
       "client": ["read:mine"],
       "maintenance": [
         "read:mine",
         "list:mine",
         "update:mine",
+        "stats:mine",
         "read:assigned",
         "update:assigned",
         "list:assigned"
       ],
       "vendor": ["read:mine", "list:mine"],
       "lease": ["read:assigned"],
-      "payment": ["read:assigned"],
+      "payment": ["read:assigned", "list:mine"],
       "report": ["read:assigned"]
     }
   },

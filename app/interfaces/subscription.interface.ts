@@ -41,11 +41,14 @@ export interface ISubscriptionPlansConfig {
   };
   features: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   pricing: {
     monthly: {
@@ -62,6 +65,7 @@ export interface ISubscriptionPlansConfig {
     maxProperties: number;
     maxUnits: number;
     maxVendors: number;
+    manualRecordQuota?: number;
   };
   transactionFeePercent: number;
   disabledFeatures?: string[];
@@ -85,6 +89,14 @@ export interface ISubscriptionPlanUsage {
     maxAdditionalSeats: number;
     additionalSeatPriceCents: number;
     availableForPurchase: number;
+  };
+  manualRecords: {
+    countThisPeriod: number;
+    quota: number;
+    remaining: number;
+    overageFeeCents: number;
+    overageCount: number;
+    projectedOverageCents: number;
   };
   verification: {
     isVerified: boolean;
@@ -120,11 +132,18 @@ export interface ISubscriptionPlanUsage {
 export interface ISubscription {
   entitlements: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
+  };
+  manualRecords?: {
+    countThisPeriod: number;
+    periodStart: Date;
   };
   billingInterval: 'monthly' | 'annual';
   billing: ISubscriptionBilling;
@@ -148,11 +167,14 @@ export interface ISubscription {
 export interface ISubscriptionEntitlements {
   entitlements: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;

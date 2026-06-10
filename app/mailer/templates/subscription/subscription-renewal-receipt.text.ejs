@@ -1,0 +1,10 @@
+Subscription Renewed
+
+Hi <%= adminName %>,
+
+Your <%= planName %> plan has been renewed for <%= amount %>.
+<% if (typeof nextBillingDate !== 'undefined' && nextBillingDate) { %>
+Next billing date: <%= nextBillingDate %>
+<% } %>
+
+Thank you for being a PropertyDesk customer.

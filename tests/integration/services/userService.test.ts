@@ -61,7 +61,7 @@ const setupServices = () => {
     leaseDAO: {} as any,
     paymentDAO: {} as any,
     maintenanceRequestDAO: {} as any,
-    emitterService: {} as any,
+    emitterService: { on: jest.fn(), emit: jest.fn(), off: jest.fn() } as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });
 
@@ -82,15 +82,20 @@ describe('UserService Integration Tests - Write Operations', () => {
   });
 
   describe('updateUserInfo', () => {
-    it('should update user email successfully', async () => {
+    it('should update user email successfully when owner', async () => {
       const client = await createTestClient();
       const user = await createTestUser(client.cuid, {
         email: 'original@test.com',
       });
 
-      const result = await userService.updateUserInfo(user.uid, {
-        email: 'updated@test.com',
-      });
+      const currentuser = {
+        sub: user._id.toString(),
+        uid: user.uid,
+        email: user.email,
+        client: { cuid: client.cuid, role: ROLES.TENANT },
+      } as any;
+
+      const result = await userService.updateUserInfo(user.uid, { email: 'updated@test.com' }, currentuser);
 
       expect(result.success).toBe(true);
       expect(result.data.email).toBe('updated@test.com');
@@ -99,26 +104,67 @@ describe('UserService Integration Tests - Write Operations', () => {
 
     it('should fail when updating with existing email', async () => {
       const client = await createTestClient();
-      const user1 = await createTestUser(client.cuid, {
-        email: 'user1@test.com',
-      });
-      await createTestUser(client.cuid, {
-        email: 'user2@test.com',
-      });
+      const user1 = await createTestUser(client.cuid, { email: 'user1@test.com' });
+      await createTestUser(client.cuid, { email: 'user2@test.com' });
+
+      const currentuser = {
+        sub: user1._id.toString(),
+        uid: user1.uid,
+        email: user1.email,
+        client: { cuid: client.cuid, role: ROLES.TENANT },
+      } as any;
 
       await expect(
-        userService.updateUserInfo(user1.uid, {
-          email: 'user2@test.com',
-        })
+        userService.updateUserInfo(user1.uid, { email: 'user2@test.com' }, currentuser)
       ).rejects.toThrow('Email already exists');
     });
 
     it('should fail when user does not exist', async () => {
+      const client = await createTestClient();
+      const currentuser = {
+        sub: new (await import('mongoose')).Types.ObjectId().toString(),
+        uid: 'non-existent-uid',
+        email: 'ghost@test.com',
+        client: { cuid: client.cuid, role: ROLES.TENANT },
+      } as any;
+
       await expect(
-        userService.updateUserInfo('non-existent-uid', {
-          email: 'new@test.com',
-        })
+        userService.updateUserInfo('non-existent-uid', { email: 'new@test.com' }, currentuser)
       ).rejects.toThrow('User not found');
+    });
+
+    it('should throw ForbiddenError when non-owner tries to update another user', async () => {
+      const client = await createTestClient();
+      const target = await createTestUser(client.cuid, { email: 'target@test.com' });
+      const attacker = await createTestUser(client.cuid, { email: 'attacker@test.com' });
+
+      const attackerCurrentuser = {
+        sub: attacker._id.toString(),
+        uid: attacker.uid,
+        email: attacker.email,
+        client: { cuid: client.cuid, role: ROLES.TENANT },
+      } as any;
+
+      await expect(
+        userService.updateUserInfo(target.uid, { email: 'hacked@test.com' }, attackerCurrentuser)
+      ).rejects.toThrow('You can only update your own account information');
+    });
+
+    it('should allow admin to update any user info', async () => {
+      const client = await createTestClient();
+      const target = await createTestUser(client.cuid, { email: 'target@test.com' });
+      const admin = await createTestUser(client.cuid, { email: 'admin@test.com', roles: [ROLES.ADMIN] });
+
+      const adminCurrentuser = {
+        sub: admin._id.toString(),
+        uid: admin.uid,
+        email: admin.email,
+        client: { cuid: client.cuid, role: ROLES.ADMIN },
+      } as any;
+
+      const result = await userService.updateUserInfo(target.uid, { email: 'updated-by-admin@test.com' }, adminCurrentuser);
+      expect(result.success).toBe(true);
+      expect(result.data.email).toBe('updated-by-admin@test.com');
     });
   });
 });

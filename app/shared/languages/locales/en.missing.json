@@ -1,1 +1,64 @@
-{}
+{
+  "notifications": {
+    "payment": {
+      "requested": {
+        "title": "Payment Requested",
+        "message": "A payment of {{amount}} is due by {{dueDate}}"
+      },
+      "cancelled": {
+        "title": "Payment Cancelled",
+        "message": "A payment of {{amount}} has been cancelled"
+      },
+      "failedTenant": {
+        "title": "notifications.payment.failedTenant.title",
+        "message": "notifications.payment.failedTenant.message"
+      }
+    },
+    "maintenance": {
+      "chargeCreated": {
+        "title": "notifications.maintenance.chargeCreated.title",
+        "message": "notifications.maintenance.chargeCreated.message"
+      },
+      "invoiceBillableNotice": {
+        "title": "notifications.maintenance.invoiceBillableNotice.title",
+        "message": "notifications.maintenance.invoiceBillableNotice.message"
+      },
+      "requestUpdatedByTenant": {
+        "title": "Request Updated by Tenant",
+        "message": "Tenant has updated maintenance request {{mruid}}"
+      },
+      "workDone": {
+        "title": "notifications.maintenance.workDone.title",
+        "message": "notifications.maintenance.workDone.message"
+      },
+      "workDoneTenant": {
+        "title": "notifications.maintenance.workDoneTenant.title",
+        "message": "notifications.maintenance.workDoneTenant.message"
+      },
+      "invoiceApprovedTenant": {
+        "title": "notifications.maintenance.invoiceApprovedTenant.title",
+        "message": "notifications.maintenance.invoiceApprovedTenant.message"
+      },
+      "chargePaid": {
+        "title": "notifications.maintenance.chargePaid.title",
+        "message": "notifications.maintenance.chargePaid.message"
+      }
+    }
+  },
+  "notification": {
+    "success": {
+      "all_marked_as_read": "notification.success.all_marked_as_read",
+      "marked_as_read": "notification.success.marked_as_read"
+    }
+  },
+  "tenant": {
+    "success": {
+      "profileUpdated": "tenant.success.profileUpdated"
+    }
+  },
+  "maintenance": {
+    "success": {
+      "updated": "maintenance.success.updated"
+    }
+  }
+}

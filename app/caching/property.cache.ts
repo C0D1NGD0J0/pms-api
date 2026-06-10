@@ -343,6 +343,7 @@ export class PropertyCache extends BaseCache {
    */
   async cacheLeaseableProperties(
     cuid: string,
+    userId: string,
     fetchUnits: boolean,
     properties: any[],
     ttl: number = 300
@@ -356,7 +357,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const key = `leaseableProperties:${cuid}:units=${fetchUnits}`;
+      const key = `leaseableProperties:${cuid}:${userId}:units=${fetchUnits}`;
       return await this.setItem(key, JSON.stringify(properties), ttl);
     } catch (error) {
       this.log.error('Failed to cache leaseable properties:', error);
@@ -392,6 +393,7 @@ export class PropertyCache extends BaseCache {
 
   async getLeaseableProperties(
     cuid: string,
+    userId: string,
     fetchUnits: boolean
   ): Promise<ISuccessReturnData<any[] | null>> {
     try {
@@ -403,7 +405,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const key = `leaseableProperties:${cuid}:units=${fetchUnits}`;
+      const key = `leaseableProperties:${cuid}:${userId}:units=${fetchUnits}`;
       const result = await this.getItem<string>(key);
 
       if (result.success && result.data) {

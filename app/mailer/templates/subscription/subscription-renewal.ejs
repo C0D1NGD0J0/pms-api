@@ -1,0 +1,43 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Subscription Renewal Upcoming</h2>
+      <p>Hi <%= currentUser.firstName %>,</p>
+      <p>
+        Your <strong><%= planName %></strong> plan is scheduled to renew on
+        <strong><%= renewalDate %></strong>.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Renewal Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Plan</td>
+            <td class="detail-value" style="text-transform: capitalize;"><%= planName %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Renewal Date</td>
+            <td class="detail-value" style="font-weight: 600;"><%= renewalDate %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Amount</td>
+            <td class="detail-value" style="font-size: 20px; font-weight: 700; color: #062f4f;"><%= amount %></td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p>
+        This charge will be applied automatically to your payment method on file.
+        If you have any questions about your subscription, please contact support.
+      </p>
+    </td>
+  </tr>
+</table>

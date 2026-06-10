@@ -1,4 +1,4 @@
-import { ObjectId } from 'mongodb';
+import { Types } from 'mongoose';
 import sanitizeHtml from 'sanitize-html';
 import { createLogger } from '@utils/index';
 import { GeoCoderService } from '@services/external';
@@ -138,7 +138,7 @@ export class PropertyCsvProcessor {
     if (row.managedBy && row.managedBy.includes('@')) {
       const managerResolution = await this.validateAndResolveManagedBy(row.managedBy, context.cuid);
       if (managerResolution.valid && managerResolution.userId) {
-        managedBy = new ObjectId(managerResolution.userId);
+        managedBy = new Types.ObjectId(managerResolution.userId);
       }
     }
 
@@ -182,8 +182,7 @@ export class PropertyCsvProcessor {
       },
 
       fees: {
-        taxAmount: BaseCSVProcessorService.parseNumber(row.fees_taxamount, 0),
-        rentalAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalamount, 0),
+        rentAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalamount, 0),
         managementFees: BaseCSVProcessorService.parseNumber(row.fees_managementfees, 0),
         currency: (row.fees_currency || 'USD') as CURRENCIES,
       },
@@ -259,7 +258,7 @@ export class PropertyCsvProcessor {
 
       managedBy,
       cuid: context.cuid,
-      createdBy: new ObjectId(context.userId),
+      createdBy: new Types.ObjectId(context.userId),
     };
   };
 
@@ -566,14 +565,14 @@ export class PropertyCsvProcessor {
       documents.push({
         documentType,
         description,
-        uploadedBy: new ObjectId(context.userId),
+        uploadedBy: new Types.ObjectId(context.userId),
         uploadedAt: new Date(),
         photos: [
           {
             url: externalUrl,
             externalUrl: externalUrl,
             status: 'active',
-            uploadedBy: new ObjectId(context.userId),
+            uploadedBy: new Types.ObjectId(context.userId),
             uploadedAt: new Date(),
           },
         ],

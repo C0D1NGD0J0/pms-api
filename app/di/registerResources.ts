@@ -2,10 +2,12 @@ import { BaseIO } from '@sockets/index';
 import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { LanguageService } from '@shared/languages';
 import { GeoCoderService } from '@services/external';
+import InvoiceModel from '@models/invoice/invoice.model';
 import { ClamScannerService } from '@shared/config/index';
 import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
@@ -13,11 +15,13 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { ExpenseService } from '@services/expense/expense.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
+import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
+  NotificationCache,
   IdempotencyCache,
   PropertyCache,
   VendorCache,
@@ -107,30 +111,42 @@ import {
   DSARController,
 } from '@controllers/index';
 import {
+  SubscriptionWebhookService,
   MaintenanceRequestService,
+  MaintenanceInvoiceService,
+  MaintenancePaymentService,
+  VendorSuggestionService,
   PropertyApprovalService,
+  InvoiceTemplateRenderer,
   InvitationCsvProcessor,
   subscriptionPlanConfig,
   LeaseSignatureService,
   PaymentGatewayService,
+  PaymentWebhookService,
   PropertyCsvProcessor,
   PropertyStatsService,
   PropertyMediaService,
   LeaseDocumentService,
   LeaseTemplateService,
+  PayoutAccountService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
   LeaseRenewalService,
   SubscriptionService,
+  RentPaymentService,
   FeatureFlagService,
+  PaymentCronService,
   PermissionService,
   InvitationService,
+  AnthropicService,
   AuthTokenService,
+  InvoiceAIService,
   PropertyService,
   BoldSignService,
   LeasePdfService,
+  InvoiceService,
   MetricsService,
   PaymentService,
   ProfileService,
@@ -142,6 +158,7 @@ import {
   AuthService,
   CronService,
   SSEService,
+  AIService,
 } from '@services/index';
 
 const ControllerResources = {
@@ -182,6 +199,7 @@ const ModelResources = {
   maintenanceRequestModel: asValue(MaintenanceRequestModel),
   metricsSnapshotModel: asValue(MetricsSnapshot),
   expenseModel: asValue(ExpenseModel),
+  invoiceModel: asValue(InvoiceModel),
 };
 
 const ServiceResources = {
@@ -193,6 +211,8 @@ const ServiceResources = {
   mailerService: asClass(MailService).singleton(),
   leaseDocumentService: asClass(LeaseDocumentService).singleton(),
   leasePdfService: asClass(LeasePdfService).singleton(),
+  invoiceTemplateRenderer: asClass(InvoiceTemplateRenderer).singleton(),
+  invoiceService: asClass(InvoiceService).singleton(),
   leaseRenewalService: asClass(LeaseRenewalService).singleton(),
   leaseSignatureService: asClass(LeaseSignatureService).singleton(),
   leaseService: asClass(LeaseService).singleton(),
@@ -203,6 +223,7 @@ const ServiceResources = {
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
   subscriptionService: asClass(SubscriptionService).singleton(),
+  subscriptionWebhookService: asClass(SubscriptionWebhookService).singleton(),
   propertyApprovalService: asClass(PropertyApprovalService).singleton(),
   propertyStatsService: asClass(PropertyStatsService).singleton(),
   propertyMediaService: asClass(PropertyMediaService).singleton(),
@@ -218,12 +239,22 @@ const ServiceResources = {
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   subscriptionPlanConfig: asValue(subscriptionPlanConfig),
+  anthropicService: asClass(AnthropicService).singleton(),
+  aiService: asClass(AIService).singleton(),
+  invoiceAIService: asClass(InvoiceAIService).singleton(),
   stripeService: asClass(StripeService).singleton(),
+  paymentCronService: asClass(PaymentCronService).singleton(),
+  payoutAccountService: asClass(PayoutAccountService).singleton(),
+  paymentWebhookService: asClass(PaymentWebhookService).singleton(),
+  maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),
+  rentPaymentService: asClass(RentPaymentService).singleton(),
   paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   dsarService: asClass(DSARService).singleton(),
   maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
+  vendorSuggestionService: asClass(VendorSuggestionService).singleton(),
+  maintenanceInvoiceService: asClass(MaintenanceInvoiceService).singleton(),
   metricsService: asClass(MetricsService).singleton(),
   expenseService: asClass(ExpenseService).singleton(),
   leaseTemplateService: asClass(LeaseTemplateService).singleton(),
@@ -246,6 +277,7 @@ const DAOResources = {
   maintenanceRequestDAO: asClass(MaintenanceRequestDAO).singleton(),
   metricsDAO: asClass(MetricsDAO).singleton(),
   expenseDAO: asClass(ExpenseDAO).singleton(),
+  invoiceDAO: asClass(InvoiceDAO).singleton(),
 };
 
 const CacheResources = {
@@ -256,6 +288,7 @@ const CacheResources = {
   userCache: asClass(UserCache).singleton(),
   vendorCache: asClass(VendorCache).singleton(),
   idempotencyCache: asClass(IdempotencyCache).singleton(),
+  notificationCache: asClass(NotificationCache).singleton(),
 };
 
 const WorkerResources = {
@@ -288,7 +321,9 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
-  // Lazy-loaded services to reduce memory footprint
+  serviceAreaService: asFunction(() => {
+    return new ServiceAreaService(Profile, Vendor);
+  }).singleton(),
   geoCoderService: asFunction(() => {
     return new GeoCoderService();
   }).singleton(),
@@ -297,7 +332,6 @@ const UtilsResources = {
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
   s3Service: asFunction(() => {
-    // Only initialize S3Service when actually needed
     return new S3Service();
   }).singleton(),
   clamScanner: asClass(ClamScannerService).singleton(),

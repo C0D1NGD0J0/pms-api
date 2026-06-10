@@ -60,38 +60,37 @@ describe('MoneyUtils.isValidMoneyValue', () => {
 
 describe('MoneyUtils.formatMoneyDisplay', () => {
   it('converts all known money fields from cents to strings', () => {
-    const result = MoneyUtils.formatMoneyDisplay({ rentalAmount: 120000, monthlyRent: 120000, taxAmount: 500 });
-    expect(result).toMatchObject({ rentalAmount: '1200.00', monthlyRent: '1200.00', taxAmount: '5.00' });
+    const result = MoneyUtils.formatMoneyDisplay({ rentAmount: 120000, managementFees: 500 });
+    expect(result).toMatchObject({ rentAmount: '1200.00', managementFees: '5.00' });
   });
   it('does not inject absent fields', () => {
-    const result = MoneyUtils.formatMoneyDisplay({ rentalAmount: 100000 });
-    expect(result).toEqual({ rentalAmount: '1000.00' });
-    expect(result).not.toHaveProperty('taxAmount');
+    const result = MoneyUtils.formatMoneyDisplay({ rentAmount: 100000 });
+    expect(result).toEqual({ rentAmount: '1000.00' });
   });
   it('returns non-object input unchanged', () => expect(MoneyUtils.formatMoneyDisplay(null)).toBeNull());
 });
 
 describe('MoneyUtils.parseMoneyInput', () => {
   it('round-trips with formatMoneyDisplay', () => {
-    const original = { rentalAmount: 125050, securityDeposit: 250000, taxAmount: 999 };
+    const original = { rentAmount: 125050, securityDeposit: 250000, managementFees: 999 };
     expect(MoneyUtils.parseMoneyInput(MoneyUtils.formatMoneyDisplay(original))).toEqual(original);
   });
   it('returns 0 for an invalid string field', () => {
-    expect(MoneyUtils.parseMoneyInput({ rentalAmount: 'bad' }).rentalAmount).toBe(0);
+    expect(MoneyUtils.parseMoneyInput({ rentAmount: 'bad' }).rentAmount).toBe(0);
   });
 });
 
 describe('MoneyUtils.formatLeaseFees / parseLeaseFees', () => {
   it('converts lease fee fields to display strings', () => {
-    const result = MoneyUtils.formatLeaseFees({ monthlyRent: 120000, securityDeposit: 240000, lateFeeAmount: 5000 });
-    expect(result).toMatchObject({ monthlyRent: '1200.00', securityDeposit: '2400.00', lateFeeAmount: '50.00' });
+    const result = MoneyUtils.formatLeaseFees({ rentAmount: 120000, securityDeposit: 240000, lateFeeAmount: 5000 });
+    expect(result).toMatchObject({ rentAmount: '1200.00', securityDeposit: '2400.00', lateFeeAmount: '50.00' });
   });
   it('omits lateFeeAmount when absent', () => {
-    const result = MoneyUtils.formatLeaseFees({ monthlyRent: 100000, securityDeposit: 200000 });
+    const result = MoneyUtils.formatLeaseFees({ rentAmount: 100000, securityDeposit: 200000 });
     expect(result).not.toHaveProperty('lateFeeAmount');
   });
   it('round-trips with parseLeaseFees', () => {
-    const original = { monthlyRent: 125000, securityDeposit: 250000, lateFeeAmount: 7500 };
+    const original = { rentAmount: 125000, securityDeposit: 250000, lateFeeAmount: 7500 };
     expect(MoneyUtils.parseLeaseFees(MoneyUtils.formatLeaseFees(original))).toEqual(original);
   });
 });

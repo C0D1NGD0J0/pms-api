@@ -32,19 +32,19 @@ export class PaymentQueue extends BaseQueue {
     super({ queueName: QUEUE_NAMES.PAYMENT_QUEUE });
     this.paymentWorker = paymentWorker;
 
-    this.processQueueJobs(
-      JOB_NAME.CREATE_RENT_INVOICE_JOB,
-      3,
-      this.paymentWorker.handleCreateRentInvoice
-    );
-
-    this.processQueueJobs(
-      JOB_NAME.RETRY_FAILED_INVOICE_JOB,
-      1,
-      this.paymentWorker.handleCreateRentInvoice // same handler, different retry config
-    );
-
-    this.processQueueJobs(JOB_NAME.CANCEL_PAYMENT_JOB, 3, this.paymentWorker.handleCancelPayment);
+    // Use wildcard processor to avoid Bull's unreliable multi-named-processor routing
+    // (multiple queue.process() calls on one queue share a single bclient and can stall).
+    this.processAllQueueJobs(3, async (job) => {
+      switch (job.name) {
+        case JOB_NAME.RETRY_FAILED_INVOICE_JOB:
+        case JOB_NAME.CREATE_RENT_INVOICE_JOB:
+          return this.paymentWorker.handleCreateRentInvoice(job);
+        case JOB_NAME.CANCEL_PAYMENT_JOB:
+          return this.paymentWorker.handleCancelPayment(job);
+        default:
+          throw new Error(`Unknown payment job: ${job.name}`);
+      }
+    });
   }
 
   /**

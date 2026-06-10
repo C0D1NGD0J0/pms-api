@@ -15,6 +15,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { IInvitationData } from '@interfaces/invitation.interface';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { ProfileService, VendorService, SSEService } from '@services/index';
+import { SubscriptionService } from '@services/subscription/subscription.service';
 
 // Extended interface for CSV processing with vendor-specific metadata
 interface IInvitationCsvData extends IInvitationData {
@@ -42,6 +43,7 @@ import { InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 
 interface IConstructor {
   invitationCsvProcessor: InvitationCsvProcessor;
+  subscriptionService: SubscriptionService;
   emitterService: EventEmitterService;
   invitationDAO: InvitationDAO;
   vendorService: VendorService;
@@ -59,6 +61,7 @@ export class InvitationWorker {
   private readonly sseService: SSEService;
   private readonly emitterService: EventEmitterService;
   private readonly invitationCsvProcessor: InvitationCsvProcessor;
+  private readonly subscriptionService: SubscriptionService;
   private readonly invitationDAO: InvitationDAO;
   private readonly userDAO: UserDAO;
   private readonly clientDAO: ClientDAO;
@@ -72,6 +75,7 @@ export class InvitationWorker {
     sseService,
     emitterService,
     invitationCsvProcessor,
+    subscriptionService,
     invitationDAO,
     userDAO,
     clientDAO,
@@ -84,6 +88,7 @@ export class InvitationWorker {
     this.sseService = sseService;
     this.emitterService = emitterService;
     this.invitationCsvProcessor = invitationCsvProcessor;
+    this.subscriptionService = subscriptionService;
     this.invitationDAO = invitationDAO;
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -218,7 +223,56 @@ export class InvitationWorker {
         };
       }
 
-      const results = [];
+      const results: any[] = [];
+
+      // Enforce seat limits for employee roles before processing
+      const EMPLOYEE_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF];
+      const employeeRows = csvResult.validInvitations.filter((u: any) =>
+        EMPLOYEE_ROLES.includes(u.role as any)
+      );
+      if (employeeRows.length > 0) {
+        try {
+          const seatInfo = await this.subscriptionService.getAvailableSeats(clientInfo.cuid);
+          if (seatInfo.availableSeats < employeeRows.length) {
+            const allowed = Math.max(0, seatInfo.availableSeats);
+            let employeeCount = 0;
+            const trimmedInvitations = csvResult.validInvitations.filter((u: any) => {
+              if (!EMPLOYEE_ROLES.includes(u.role as any)) return true;
+              if (employeeCount < allowed) {
+                employeeCount++;
+                return true;
+              }
+              results.push({
+                email: u.inviteeEmail,
+                success: false,
+                error: `Seat limit reached. Plan allows ${seatInfo.totalAllowed} seats.`,
+                status: 'seat_limit_reached',
+              });
+              return false;
+            });
+            csvResult.validInvitations = trimmedInvitations;
+            this.log.warn(
+              { cuid: clientInfo.cuid, requested: employeeRows.length, allowed },
+              'Invitation CSV import trimmed to available seat count'
+            );
+          }
+        } catch (error) {
+          this.log.error(
+            { error, cuid: clientInfo.cuid },
+            'Error checking seat availability in invitation CSV import — aborting job'
+          );
+          this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+          return {
+            success: false,
+            processId: job.id,
+            data: null,
+            finishedAt: new Date(),
+            errors: null,
+            message: 'Unable to verify seat availability. Please try again.',
+          };
+        }
+      }
+
       let processed = 0;
 
       for (const invitationData of csvResult.validInvitations) {
@@ -255,7 +309,6 @@ export class InvitationWorker {
         const progress = 30 + Math.floor((processed / csvResult.validInvitations.length) * 60);
         job.progress(progress);
 
-        // delay to avoid rate limiting (2 seconds between emails)
         if (processed < csvResult.validInvitations.length) {
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
@@ -528,7 +581,57 @@ export class InvitationWorker {
         };
       }
 
-      const results = [];
+      const results: any[] = [];
+
+      // Enforce seat limits for employee roles before processing
+      const EMPLOYEE_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF];
+      const employeeRows = csvResult.validInvitations.filter((u) =>
+        EMPLOYEE_ROLES.includes(u.role as any)
+      );
+      if (employeeRows.length > 0) {
+        try {
+          const seatInfo = await this.subscriptionService.getAvailableSeats(clientInfo.cuid);
+          if (seatInfo.availableSeats < employeeRows.length) {
+            const allowed = Math.max(0, seatInfo.availableSeats);
+            let employeeCount = 0;
+            const trimmedInvitations = csvResult.validInvitations.filter((u) => {
+              if (!EMPLOYEE_ROLES.includes(u.role as any)) return true;
+              if (employeeCount < allowed) {
+                employeeCount++;
+                return true;
+              }
+              results.push({
+                email: u.inviteeEmail,
+                success: false,
+                error: `Seat limit reached. Plan allows ${seatInfo.totalAllowed} seats.`,
+                status: 'seat_limit_reached',
+              });
+              return false;
+            });
+            csvResult.validInvitations = trimmedInvitations;
+            this.log.warn(
+              { cuid: clientInfo.cuid, requested: employeeRows.length, allowed },
+              'Bulk user import trimmed to available seat count'
+            );
+          }
+        } catch (error) {
+          this.log.error(
+            { error, cuid: clientInfo.cuid },
+            'Error checking seat availability in bulk import worker — aborting job'
+          );
+          this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+          return {
+            success: false,
+            processId: job.id,
+            data: null,
+            finishedAt: new Date(),
+            errors: null,
+            message: 'Unable to verify seat availability. Please try again.',
+            mode: 'bulk_create',
+          };
+        }
+      }
+
       let processed = 0;
 
       for (const userData of csvResult.validInvitations) {
@@ -559,7 +662,6 @@ export class InvitationWorker {
         const progress = 30 + Math.floor((processed / csvResult.validInvitations.length) * 60);
         job.progress(progress);
 
-        // Small delay to avoid overwhelming the system
         if (processed < csvResult.validInvitations.length) {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }

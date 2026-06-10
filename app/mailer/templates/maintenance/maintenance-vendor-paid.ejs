@@ -1,0 +1,52 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Payout Initiated</h2>
+      <p>
+        A payout has been <strong style="color: #16a34a;">initiated</strong> for the maintenance job below. Funds will arrive in your bank account according to your payout schedule.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card success">
+        <h3 style="margin-top: 0;">Payout Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= mruid %></td>
+          </tr>
+          <% if (jobTitle) { %>
+          <tr>
+            <td class="detail-label">Job</td>
+            <td class="detail-value"><%= jobTitle %></td>
+          </tr>
+          <% } %>
+          <tr>
+            <td class="detail-label">Payout Amount</td>
+            <td class="detail-value" style="font-size: 18px; font-weight: 700; color: #16a34a;">
+              $<%= (amountInCents / 100).toFixed(2) %> <%= currency.toUpperCase() %>
+            </td>
+          </tr>
+          <tr>
+            <td class="detail-label">Transfer ID</td>
+            <td class="detail-value" style="font-family: monospace; font-size: 13px;"><%= transferId %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Date</td>
+            <td class="detail-value"><%= new Date().toLocaleDateString() %></td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p style="font-size: 14px; color: #64748b;">
+        Funds typically arrive within 1-2 business days depending on your bank and payout schedule. You can check your payout status in your account dashboard.
+      </p>
+    </td>
+  </tr>
+</table>

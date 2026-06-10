@@ -337,7 +337,7 @@ export class PropertyTypeManager {
 
     // Validate occupied properties have rental amount
     if (propertyData.occupancyStatus === 'occupied') {
-      const rentalValidation = this.validateRentalAmount(propertyData.fees?.rentalAmount);
+      const rentalValidation = this.validateRentalAmount(propertyData.fees?.rentAmount);
       if (!rentalValidation.isValid) {
         errors.push('Occupied properties must have a valid rental amount');
       }
@@ -628,7 +628,7 @@ export class PropertyTypeManager {
 
     if (newData.occupancyStatus === 'occupied' && existingData.occupancyStatus !== 'occupied') {
       // Check if rental amount is set
-      const hasRentalAmount = existingData.fees?.rentalAmount || newData.fees?.rentalAmount;
+      const hasRentalAmount = existingData.fees?.rentAmount || newData.fees?.rentAmount;
       if (!hasRentalAmount) {
         errors.push('Occupied properties must have a rental amount');
       }

@@ -37,8 +37,7 @@ export interface IProperty {
   fees: {
     currency: CURRENCIES;
     managementFees: number | string;
-    rentalAmount: number | string;
-    taxAmount: number;
+    rentAmount: number | string;
   };
   description?: {
     html?: string;
@@ -184,7 +183,7 @@ export type IPropertyWithUnitInfo = {
   unitInfo?: UnitInfo;
   hasLeaseHistory?: boolean;
   metrics?: {
-    monthlyRent: number;
+    rentAmount: number;
     annualRevenue: number;
     occupancyRate: number;
     monthlyNetIncome: number;

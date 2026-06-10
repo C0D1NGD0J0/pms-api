@@ -11,7 +11,6 @@ export class EventEmitterService {
   private readonly MAX_LISTENERS_PER_EVENT = 10;
   private memoryLeakDetectionInterval?: NodeJS.Timeout;
   private handlerMappings = new Map<(...args: any[]) => void, (...args: any[]) => void>();
-  private static processHandlersRegistered = false;
 
   constructor({ eventsRegistry }: { eventsRegistry: EventsRegistryCache }) {
     this.emitter = new EventEmitter();
@@ -19,11 +18,9 @@ export class EventEmitterService {
     this.eventsRegistry = eventsRegistry;
     this.log = createLogger('EventEmitterService');
     this.setupMemoryLeakDetection();
-    this.setupProcessExitHandlers();
   }
 
   private setupMemoryLeakDetection(): void {
-    // monitor for potential memory leaks
     this.memoryLeakDetectionInterval = setInterval(() => {
       const eventNames = this.emitter.eventNames();
       eventNames.forEach((eventName) => {
@@ -34,24 +31,7 @@ export class EventEmitterService {
           );
         }
       });
-    }, 60000); // every minute
-  }
-
-  private setupProcessExitHandlers(): void {
-    // Prevent duplicate registration across multiple instances
-    if (EventEmitterService.processHandlersRegistered) {
-      return;
-    }
-    EventEmitterService.processHandlersRegistered = true;
-
-    const cleanup = () => {
-      this.log.info('Process exit detected, cleaning up EventEmitter...');
-      this.destroy();
-    };
-
-    process.once('SIGINT', cleanup);
-    process.once('SIGTERM', cleanup);
-    process.once('exit', cleanup);
+    }, 60000).unref();
   }
 
   emit<T extends keyof EventPayloadMap>(eventType: T, payload: EventPayloadMap[T]): boolean {
@@ -197,11 +177,6 @@ export class EventEmitterService {
         clearInterval(this.memoryLeakDetectionInterval);
         this.memoryLeakDetectionInterval = undefined;
       }
-
-      // Remove process exit handlers to prevent multiple cleanup calls
-      process.removeAllListeners('SIGINT');
-      process.removeAllListeners('SIGTERM');
-      process.removeAllListeners('exit');
 
       this.log.info('EventEmitter service destroyed successfully');
     } catch (error) {

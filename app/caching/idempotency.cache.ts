@@ -5,7 +5,9 @@ import { BaseCache } from './base.cache';
 
 const WEBHOOK_PROCESSING_LOCK_TTL = 60 * 30; // 30 min — enough for one webhook job; expires if worker crashes
 const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24 * 3; // 72 hours — covers Stripe's full retry window
-const ROUTE_TTL = 60 * 60 * 24; // 24 hours
+// In production: 24 h keeps the window wide enough to catch all client retries.
+// In development: 5 min so developers can re-test the same form action without manually clearing Redis.
+const ROUTE_TTL = process.env.NODE_ENV === 'production' ? 60 * 60 * 24 : 60 * 5;
 
 export class IdempotencyCache extends BaseCache {
   constructor({ redisService }: { redisService: RedisService }) {
@@ -62,6 +64,17 @@ export class IdempotencyCache extends BaseCache {
       this.routeKey(method, routePath, userId, cuid, idempotencyKey)
     );
     return result.data ?? null;
+  }
+
+  /** Delete a cached route key — used by dev-only flush endpoint. */
+  async deleteRouteKey(
+    method: string,
+    routePath: string,
+    userId: string,
+    cuid: string,
+    idempotencyKey: string
+  ): Promise<void> {
+    await this.deleteItems([this.routeKey(method, routePath, userId, cuid, idempotencyKey)]);
   }
 
   /** Store a successful route response for replay on duplicate requests. */

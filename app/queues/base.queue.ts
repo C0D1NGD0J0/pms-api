@@ -58,13 +58,25 @@ const createSharedRedisConnection = (): Redis => {
 
     sharedIORedisClient.on('connect', () => {
       const logger = createLogger('IORedis');
-      logger.info('IORedis client connected for Bull queues');
+      logger.debug('IORedis client connected for Bull queues');
     });
   }
   return sharedIORedisClient;
 };
 
 // Production-optimized queue options for reduced network traffic
+// Attach an error handler to a duplicated ioredis connection.
+// Without this, any error event on the duplicate bubbles up as an unhandled
+// Node.js error and crashes the worker process.
+const createDuplicate = (type: string): Redis => {
+  const dup = createSharedRedisConnection().duplicate();
+  dup.on('error', (err) => {
+    const logger = createLogger(`Bull-${type}`);
+    logger.error({ error: err }, `Bull ${type} connection error`);
+  });
+  return dup;
+};
+
 const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 6,
@@ -74,13 +86,10 @@ const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   createClient: (type) => {
     switch (type) {
       case 'subscriber':
-        // Create duplicate for pub/sub
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('subscriber');
       case 'bclient':
-        // Create duplicate for blocking operations
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('bclient');
       case 'client':
-        // Use shared connection for commands
         return createSharedRedisConnection();
       default:
         return createSharedRedisConnection();
@@ -98,13 +107,10 @@ const DEVELOPMENT_QUEUE_OPTIONS: BullQueueOptions = {
   createClient: (type) => {
     switch (type) {
       case 'subscriber':
-        // Create duplicate for pub/sub
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('subscriber');
       case 'bclient':
-        // Create duplicate for blocking operations
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('bclient');
       case 'client':
-        // Use shared connection for commands
         return createSharedRedisConnection();
       default:
         return createSharedRedisConnection();
@@ -314,7 +320,7 @@ export class BaseQueue<T extends JobData = JobData> {
       );
       return;
     }
-    this.log.info(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
+    this.log.debug(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
     this.queue.process(name, concurrency, callback);
   }
 
@@ -340,7 +346,7 @@ export class BaseQueue<T extends JobData = JobData> {
       );
       return;
     }
-    this.log.info(
+    this.log.debug(
       `Registering wildcard processor (concurrency=${concurrency}) on queue '${this.queue.name}'`
     );
     this.queue.process('*', concurrency, callback);

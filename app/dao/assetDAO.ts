@@ -48,7 +48,7 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
         throw new Error('Asset ID missing.');
       }
 
-      const query = { _id: new Types.ObjectId(id), status: 'active' };
+      const query = { _id: new Types.ObjectId(id), status: 'active' as const };
       return await this.findFirst(query, opts);
     } catch (error) {
       this.logger.error(error.message || error);
@@ -65,7 +65,7 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
       const query = {
         'resource.name': resourceType,
         'resource.id': resourceId,
-        status: 'active',
+        status: 'active' as const,
       };
 
       return await this.list(query, opts);
@@ -86,7 +86,7 @@ export class AssetDAO extends BaseDAO<IAssetDocument> implements IAssetDAO {
         'resource.name': resourceType,
         'resource.id': resourceId,
         fieldName,
-        status: 'active',
+        status: 'active' as const,
       };
 
       const result = await this.list(query, opts);

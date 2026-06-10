@@ -4,7 +4,7 @@ import { UserController } from '@controllers/UserController';
 import { DSARController } from '@controllers/DSARController';
 import { ClientController } from '@controllers/ClientController';
 import { PropertyController } from '@controllers/PropertyController';
-import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
+import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
   PropertyValidations,
   ProfileValidations,
@@ -14,6 +14,7 @@ import {
   validateRequest,
 } from '@shared/validations';
 import {
+  requirePermissionWithContext,
   requireUserManagement,
   requireUserPermission,
   requirePermission,
@@ -158,7 +159,15 @@ router.get(
   '/:cuid/profile_details',
   basicLimiter(),
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    // uid is optional — if absent (tenant viewing own profile) fall back to currentuser.sub
+    // so scope resolves to MINE; managers pass another user's uid → ANY scope
+    (req: AppRequest) => ({
+      ownerId: (req.query?.uid as string | undefined) ?? req.context?.currentuser?.sub,
+    })
+  ),
   validateRequest({
     params: UtilsValidations.cuid,
     query: UserValidations.userIdParam,
@@ -173,7 +182,7 @@ router.get(
   '/:cuid/user_details/:uid',
   basicLimiter(),
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requireUserPermission(PermissionAction.READ),
   validateRequest({
     params: UserValidations.userUidParam,
   }),
@@ -187,7 +196,11 @@ router.patch(
   '/:cuid/update_profile',
   basicLimiter(),
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => ({ ownerId: req.context?.currentuser?.sub })
+  ),
   diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
   scanFile,
   validateRequest({
@@ -203,7 +216,14 @@ router.get(
   '/:cuid/notification-preferences',
   basicLimiter(),
   isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    // controller uses req.query.userId (not uid) and falls back to currentuser.sub
+    (req: AppRequest) => ({
+      ownerId: (req.query?.userId as string | undefined) ?? req.context?.currentuser?.sub,
+    })
+  ),
   validateRequest({
     params: UtilsValidations.cuid,
     query: UserValidations.userIdParam,
@@ -289,7 +309,7 @@ router
   .patch(
     basicLimiter(),
     isAuthenticated,
-    requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+    requireUserPermission(PermissionAction.UPDATE),
     diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
     scanFile,
     validateRequest({

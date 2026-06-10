@@ -29,9 +29,7 @@ interface FieldSizeConfig {
 
 export class DiskStorage {
   private readonly log: Logger = createLogger('DiskStorage');
-  private upload: multer.Multer;
   private readonly storagePath = 'uploads/';
-  private currentFieldPatterns: string[] = [];
   private readonly allowedExtensions = [
     'jpeg',
     'jpg',
@@ -106,10 +104,16 @@ export class DiskStorage {
       fileTypes: ['pdf'],
     },
     {
-      name: 'media[*].file', // Maintenance request media (photos/videos of the issue)
+      name: 'media[*][file]', // Maintenance request media (photos/videos of the issue)
       maxCount: 9, // up to 8 images + 1 video (matches frontend MAX_IMAGES + 1 video slot)
       maxSize: 150 * 1024 * 1024, // 150MB — matches frontend video limit; image size enforced at service layer
       fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'heic', 'mp4', 'mov', 'webm'],
+    },
+    {
+      name: 'invoice', // AI invoice scanning — single image or PDF
+      maxCount: 1,
+      maxSize: 10 * 1024 * 1024, // 10MB
+      fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'pdf'],
     },
   ];
 
@@ -123,8 +127,6 @@ export class DiskStorage {
   }
 
   uploadMiddleware = (fieldPatterns: string[]) => {
-    this.currentFieldPatterns = fieldPatterns;
-
     const matchedConfigs = fieldPatterns.map((p) =>
       this.fieldConfigs.find(
         (c) => c.name === p || this.matchesPattern(p, c.name) || this.matchesPattern(c.name, p)
@@ -135,18 +137,21 @@ export class DiskStorage {
       return max === null ? c.maxSize : Math.max(max, c.maxSize);
     }, null);
 
-    this.upload = multer({
+    // Build a closure-scoped filter so the singleton has no per-request mutable state.
+    const fieldFilter = this.buildFieldFilter(fieldPatterns);
+
+    const upload = multer({
       storage: this.createDiskStorage(),
-      fileFilter: this.fieldSpecificFilter,
+      fileFilter: fieldFilter,
       ...(maxFileSizeForPatterns !== null && { limits: { fileSize: maxFileSizeForPatterns } }),
     });
 
     return (req: Request, res: Response, next: NextFunction): void => {
       const fieldsArray = this.buildFieldsArray(fieldPatterns);
 
-      const upload = fieldsArray.length > 0 ? this.upload.fields(fieldsArray) : this.upload.none(); // If no fields, accept no files
+      const handler = fieldsArray.length > 0 ? upload.fields(fieldsArray) : upload.none();
 
-      upload(req, res, (err) => {
+      handler(req, res, (err: any) => {
         if (err) {
           let errorMessage = 'File upload error';
           const statusCode = 400;
@@ -154,13 +159,16 @@ export class DiskStorage {
           if (err instanceof multer.MulterError) {
             switch (err.code) {
               case 'LIMIT_UNEXPECTED_FILE':
-                errorMessage = `Unexpected field: ${err.field}`;
+                errorMessage =
+                  'One or more files could not be uploaded. Please check the file type and try again.';
                 break;
               case 'LIMIT_FILE_COUNT':
-                errorMessage = 'Too many files uploaded';
+                errorMessage =
+                  'Too many files uploaded. Please reduce the number of files and try again.';
                 break;
               case 'LIMIT_FILE_SIZE':
-                errorMessage = 'File exceeds the maximum allowed size';
+                errorMessage =
+                  'One or more files exceeds the maximum allowed size. Please use smaller files.';
                 break;
               default:
                 errorMessage = err.message;
@@ -334,38 +342,42 @@ export class DiskStorage {
       },
       filename: (req, file, cb) => {
         const timestamp = Date.now();
-        const fileName = `${timestamp}_${file.originalname}`;
-
-        cb(null, fileName);
+        // Strip directory traversal sequences and whittle down to safe characters
+        // before using the client-supplied name in a filesystem path.
+        const safeName = path
+          .basename(file.originalname)
+          .replace(/[^a-zA-Z0-9._-]/g, '_')
+          .slice(0, 200); // cap total length
+        cb(null, `${timestamp}_${safeName}`);
       },
     });
   }
 
-  private fieldSpecificFilter = (
-    req: Request,
-    file: Express.Multer.File,
-    cb: multer.FileFilterCallback
-  ) => {
-    const isAllowedField = this.currentFieldPatterns.some((pattern) => {
-      return this.matchesPattern(file.fieldname, pattern);
-    });
+  private buildFieldFilter(fieldPatterns: string[]): multer.Options['fileFilter'] {
+    return (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+      const isAllowedField = fieldPatterns.some((pattern) =>
+        this.matchesPattern(file.fieldname, pattern)
+      );
 
-    if (!isAllowedField) {
-      cb(new Error(`Unexpected field: ${file.fieldname}`));
-      return;
-    }
-    const fileExt = path.extname(file.originalname).replace('.', '').toLowerCase();
-    if (!fileExt || !this.allowedExtensions.includes(fileExt)) {
-      cb(new Error(`File type not supported. Allowed types: ${this.allowedExtensions.join(', ')}`));
-      return;
-    }
+      if (!isAllowedField) {
+        cb(new Error(`Unexpected field: ${file.fieldname}`));
+        return;
+      }
 
-    const fieldConfig = this.fieldConfigs.find(
-      (config) => config.name === file.fieldname || this.matchesPattern(file.fieldname, config.name)
-    );
+      const fileExt = path.extname(file.originalname).replace('.', '').toLowerCase();
+      if (!fileExt || !this.allowedExtensions.includes(fileExt)) {
+        cb(
+          new Error(`File type not supported. Allowed types: ${this.allowedExtensions.join(', ')}`)
+        );
+        return;
+      }
 
-    if (fieldConfig && fieldConfig.fileTypes && fieldConfig.fileTypes.length > 0) {
-      if (!fieldConfig.fileTypes.includes(fileExt)) {
+      const fieldConfig = this.fieldConfigs.find(
+        (config) =>
+          config.name === file.fieldname || this.matchesPattern(file.fieldname, config.name)
+      );
+
+      if (fieldConfig?.fileTypes?.length && !fieldConfig.fileTypes.includes(fileExt)) {
         cb(
           new Error(
             `For field "${file.fieldname}", only these file types are allowed: ${fieldConfig.fileTypes.join(', ')}`
@@ -373,10 +385,10 @@ export class DiskStorage {
         );
         return;
       }
-    }
 
-    cb(null, true);
-  };
+      cb(null, true);
+    };
+  }
 
   private matchesPattern(fieldName: string, pattern: string): boolean {
     if (fieldName === pattern) return true;

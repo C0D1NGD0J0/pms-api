@@ -12,11 +12,17 @@ import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { OwnershipType } from '@interfaces/property.interface';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES, createLogger } from '@utils/index';
-import { EventEmitterService, NotificationService, BoldSignService } from '@services/index';
+import {
+  EventEmitterService,
+  NotificationService,
+  BoldSignService,
+  SSEService,
+} from '@services/index';
 import {
   IPromiseReturnedData,
   ISuccessReturnData,
   IRequestContext,
+  ResourceContext,
 } from '@interfaces/utils.interface';
 import {
   LeaseESignatureFailedPayload,
@@ -47,6 +53,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
 }
@@ -63,6 +70,7 @@ export class LeaseSignatureService {
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
   private readonly notificationService: NotificationService;
+  private readonly sseService: SSEService;
 
   constructor({
     boldSignService,
@@ -75,6 +83,7 @@ export class LeaseSignatureService {
     propertyDAO,
     propertyUnitDAO,
     queueFactory,
+    sseService,
   }: IConstructor) {
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
@@ -87,6 +96,7 @@ export class LeaseSignatureService {
     this.boldSignService = boldSignService;
     this.log = createLogger('LeaseSignatureService');
     this.notificationService = notificationService;
+    this.sseService = sseService;
     this.setupEventListeners();
   }
 
@@ -212,6 +222,7 @@ export class LeaseSignatureService {
       cuid,
       luid,
       leaseId: lease._id.toString(),
+      managedBy: effectiveManagedBy?.toString(),
       senderInfo,
     });
 
@@ -275,11 +286,14 @@ export class LeaseSignatureService {
       }
     }
 
-    const updated = await this.leaseDAO.update(lease._id, {
-      'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
-      status: LeaseStatus.DRAFT,
-      updatedAt: new Date(),
-    });
+    const updated = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+        status: LeaseStatus.DRAFT,
+        updatedAt: new Date(),
+      }
+    );
 
     if (!updated) {
       throw new BadRequestError({ message: 'Failed to update lease status' });
@@ -407,12 +421,27 @@ export class LeaseSignatureService {
 
       switch (eventType) {
         case 'SendFailed':
-          result = await this.leaseDAO.update(lease._id, {
-            'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
-            'eSignature.errorMessage': data?.errorMessage || 'Send failed',
-            'eSignature.failedAt': new Date(),
-            status: LeaseStatus.DRAFT,
-            updatedAt: new Date(),
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
+              'eSignature.errorMessage': data?.errorMessage || 'Send failed',
+              'eSignature.failedAt': new Date(),
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
+          await this.notificationService.notifyLeaseESignatureFailed({
+            leaseNumber: lease.leaseNumber,
+            error: data?.errorMessage || 'Send failed',
+            propertyManagerId: lease.createdBy.toString(),
+            actorId: lease.createdBy.toString(),
+            cuid: lease.cuid,
+            resource: {
+              resourceId: lease._id.toString(),
+              resourceUid: lease.luid,
+              resourceType: ResourceContext.LEASE,
+            },
           });
           break;
 
@@ -439,6 +468,29 @@ export class LeaseSignatureService {
             completedAt: new Date(data?.completedDate || Date.now()),
             signers: data?.signers || [],
           });
+
+          // Push real-time SSE refresh signal to both tenant and PM so their
+          // lease list / lease detail pages refetch without a manual reload.
+          const ssePayload = {
+            resource: 'lease',
+            action: 'status-changed',
+            resourceUId: lease.luid,
+            status: LeaseStatus.ACTIVE,
+          };
+          await Promise.allSettled([
+            this.sseService.sendToUser(
+              lease.tenantId.toString(),
+              lease.cuid,
+              ssePayload,
+              'resource-event'
+            ),
+            this.sseService.sendToUser(
+              lease.createdBy.toString(),
+              lease.cuid,
+              ssePayload,
+              'resource-event'
+            ),
+          ]);
           break;
 
         case 'Declined':
@@ -465,11 +517,14 @@ export class LeaseSignatureService {
           break;
 
         case 'Revoked':
-          result = await this.leaseDAO.update(lease._id, {
-            'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
-            status: LeaseStatus.DRAFT,
-            updatedAt: new Date(),
-          });
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
           break;
 
         case 'Signed':

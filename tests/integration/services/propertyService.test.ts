@@ -208,7 +208,7 @@ describe('PropertyService Integration Tests', () => {
             totalArea: 5000,
           },
           fees: {
-            rentalAmount: '850',
+            rentAmount: '850',
             currency: 'USD',
           },
           occupancyStatus: 'vacant' as const,
@@ -281,7 +281,7 @@ describe('PropertyService Integration Tests', () => {
             totalArea: 2000,
           },
           fees: {
-            rentalAmount: '950',
+            rentAmount: '950',
             currency: 'USD',
           },
           occupancyStatus: 'vacant' as const,
@@ -328,7 +328,7 @@ describe('PropertyService Integration Tests', () => {
             totalArea: 1200,
           },
           fees: {
-            rentalAmount: '900',
+            rentAmount: '900',
             currency: 'USD',
           },
           occupancyStatus: 'vacant' as const,
@@ -379,7 +379,7 @@ describe('PropertyService Integration Tests', () => {
             totalArea: 2500,
           },
           fees: {
-            rentalAmount: '0', // Invalid for occupied property
+            rentAmount: '0', // Invalid for occupied property
             currency: 'USD',
           },
           occupancyStatus: 'occupied' as const,
@@ -694,7 +694,7 @@ describe('PropertyService Integration Tests', () => {
             endDate,
           },
           fees: {
-            monthlyRent: 1000,
+            rentAmount: 1000,
             securityDeposit: 1000,
             rentDueDay: 1,
             currency: 'USD',
@@ -762,19 +762,16 @@ describe('PropertyService Integration Tests', () => {
       property1 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Apartment Complex A',
         propertyType: 'apartment',
-        status: 'available',
       });
 
       property2 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Single Family Home',
         propertyType: 'house',
-        status: 'available',
       });
 
       _property3 = await createTestProperty(testClient.cuid, testClient._id, {
         name: 'Commercial Building',
         propertyType: 'commercial',
-        status: 'available',
       });
 
       // Ensure all are approved

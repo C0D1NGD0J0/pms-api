@@ -5,7 +5,6 @@ import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import { container } from '@di/index';
-import { QUEUE_RESOURCE_NAMES, SERVICE_RESOURCE_NAMES } from '@di/registerResources';
 import * as Sentry from '@sentry/node';
 import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
@@ -13,8 +12,10 @@ import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
 import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
+import { runSchemaSync } from '@database/schema-sync';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
+import { SERVICE_RESOURCE_NAMES, QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
 (global as any).rootDir = __dirname;
 
@@ -55,6 +56,9 @@ class Server {
     this.pidManager.check();
 
     await this.dbService.connect();
+
+    // Backfill missing fields on existing documents (idempotent, no-op when in sync)
+    await runSchemaSync();
 
     // Queues/workers run in separate worker_process.ts
     // Only load Bull Board UI (readonly) for monitoring via /admin/queues

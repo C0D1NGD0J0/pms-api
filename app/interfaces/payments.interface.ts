@@ -1,7 +1,19 @@
 import { Document, Types } from 'mongoose';
 
-import { ILeaseDocument } from './lease.interface';
-import { IProfileDocument } from './profile.interface';
+import { IPropertyDocument } from './property.interface';
+import { IPropertyUnitDocument } from './propertyUnit.interface';
+import { ILeaseDocument, ILeaseProperty } from './lease.interface';
+import { IProfileDocument, IProfileWithUser } from './profile.interface';
+
+export enum PaymentRecordStatus {
+  PROCESSING = 'processing', // charge submitted to bank, awaiting settlement (ACSS/bank transfer)
+  CANCELLED = 'cancelled',
+  REFUNDED = 'refunded',
+  PENDING = 'pending',
+  OVERDUE = 'overdue',
+  FAILED = 'failed',
+  PAID = 'paid',
+}
 
 export enum PaymentRecordType {
   SECURITY_DEPOSIT = 'security_deposit',
@@ -9,15 +21,6 @@ export enum PaymentRecordType {
   MAINTENANCE = 'maintenance',
   LATE_FEE = 'late_fee',
   RENT = 'rent',
-}
-
-export enum PaymentRecordStatus {
-  CANCELLED = 'cancelled',
-  REFUNDED = 'refunded',
-  PENDING = 'pending',
-  OVERDUE = 'overdue',
-  FAILED = 'failed',
-  PAID = 'paid',
 }
 
 export enum PaymentMethod {
@@ -44,6 +47,17 @@ export interface IPaymentDocument extends Document {
     uploadedAt?: Date;
     uploadedBy?: Types.ObjectId;
   };
+  failure?: {
+    retryCount: number;
+    reason?: string;
+    lastFailedAt?: Date;
+    pmNotifiedAt?: Date;
+  };
+  invoiceDocument?: {
+    url: string;
+    key: string;
+    generatedAt: Date;
+  };
   refund?: {
     refundedAt?: Date;
     amount?: number;
@@ -54,8 +68,13 @@ export interface IPaymentDocument extends Document {
     author: string;
     createdAt: Date;
   }[];
+  lineItems?: {
+    description: string;
+    amountInCents: number;
+  }[];
   paymentType: PaymentRecordType;
   maintenanceRequestUid?: string; // mruid — links maintenance expense/charge back to its request
+  paymentSource?: PaymentSource;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment
@@ -63,13 +82,17 @@ export interface IPaymentDocument extends Document {
   gatewayPaymentId?: string;
   gatewayChargeId?: string;
   period?: IPaymentPeriod;
+  platformRevenue: number; // Platform's net revenue after Stripe gateway fee (applicationFee − processingFee)
   lease?: Types.ObjectId;
   tenant: Types.ObjectId; // References Profile
   isManualEntry: boolean;
+  applicationFee: number; // Platform's application fee in cents (kept by platform; distinct from processingFee which is the Stripe gateway fee)
   invoiceNumber: string;
   processingFee: number;
   description?: string;
+  _id: Types.ObjectId;
   baseAmount: number;
+  currency: string; // ISO 4217 uppercase, e.g. 'USD', 'CAD', 'GBP'
   deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -77,6 +100,30 @@ export interface IPaymentDocument extends Document {
   dueDate: Date;
   paidAt?: Date;
   cuid: string;
+}
+
+/**
+ * Shape of each item returned by getPayments (list view).
+ */
+export interface IPaymentListItem {
+  failure?: { retryCount: number; reason?: string; lastFailedAt?: Date; pmNotifiedAt?: Date };
+  tenant: { firstName: string; lastName: string; fullName: string } | null;
+  lineItems: { description: string; amountInCents: number }[];
+  receipt?: { url?: string; filename?: string; key?: string };
+  paymentType: PaymentRecordType;
+  paymentMethod: PaymentMethod;
+  status: PaymentRecordStatus;
+  period?: IPaymentPeriod;
+  platformRevenue: number; // Platform's net revenue after Stripe gateway fee
+  applicationFee: number; // Platform's application fee in cents
+  processingFee: number;
+  baseAmount: number;
+  property: string;
+  currency: string;
+  pytuid: string;
+  amount: number;
+  dueDate: Date;
+  paidAt?: Date;
 }
 
 export interface IManualPaymentFormData {
@@ -97,9 +144,21 @@ export interface IManualPaymentFormData {
   paidAt: Date;
 }
 
+export interface IVendorEarningsResponse {
+  stats: {
+    totalPaidInCents: number;
+    pendingPayoutInCents: number;
+    completedJobs: number;
+    expectedEarningsInCents: number;
+  };
+  pagination: { total: number; page: number; limit: number; pages: number };
+  items: IVendorEarningItem[];
+}
+
 export interface IPaymentFormData {
   paymentType: PaymentRecordType;
   period?: IPaymentPeriod;
+  notifyByEmail?: boolean;
   description?: string;
   daysLate?: number; // For late fee calculations
   leaseId?: string;
@@ -107,15 +166,54 @@ export interface IPaymentFormData {
   dueDate: Date;
 }
 
+export interface IVendorEarningItem {
+  status: PaymentRecordStatus;
+  pytuid?: string | null;
+  amountInCents: number;
+  createdAt: Date;
+  invuid: string;
+  mruid: string;
+  title: string;
+  paidAt?: Date;
+}
+
+/**
+ * Fully populated payment: tenant includes the populated User doc,
+ * lease includes the populated Property and PropertyUnit docs.
+ * Used for single-payment detail queries (getPaymentByUid).
+ */
+export interface IPaymentFullyPopulated extends Omit<IPaymentDocument, 'tenant' | 'lease'> {
+  lease?: ILeaseDocumentPopulated;
+  tenant: IProfileWithUser;
+}
+
+/**
+ * ILeaseProperty with populated `id` (Property doc) and optional `unitId` (PropertyUnit doc).
+ * Used when the lease populate chain includes `property.id` and `property.unitId`.
+ */
+export interface ILeasePropertyPopulated extends Omit<ILeaseProperty, 'id' | 'unitId'> {
+  unitId?: IPropertyUnitDocument;
+  id: IPropertyDocument;
+}
+
 export interface IPaymentPopulated extends Omit<IPaymentDocument, 'tenant' | 'lease'> {
   tenant: IProfileDocument;
   lease?: ILeaseDocument;
+}
+
+/**
+ * ILeaseDocument with its embedded property sub-document fully populated.
+ */
+export interface ILeaseDocumentPopulated extends Omit<ILeaseDocument, 'property'> {
+  property: ILeasePropertyPopulated;
 }
 
 export interface IRefundPaymentData {
   amount?: number;
   reason?: string;
 }
+
+export type PaymentSource = 'cron' | 'pm_initiated' | 'staff_initiated';
 
 export interface IPaymentPeriod {
   month: number;

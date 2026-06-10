@@ -4,9 +4,9 @@ Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
 
 // ── Pro-ration ────────────────────────────────────────────────────────────────
 
-/** ceil((monthlyRent × daysCharged) / daysInMonth). Returns full month when startDay === 1. All values in cents. */
+/** ceil((rentAmount × daysCharged) / daysInMonth). Returns full month when startDay === 1. All values in cents. */
 export const proRateAmount = (
-  monthlyRentCents: number,
+  rentAmountCents: number,
   startDate: Date
 ): {
   amount: number;
@@ -20,10 +20,10 @@ export const proRateAmount = (
   const daysCharged = daysInMonth - startDay + 1;
 
   if (startDay === 1) {
-    return { amount: monthlyRentCents, daysCharged, daysInMonth, isFullMonth: true };
+    return { amount: rentAmountCents, daysCharged, daysInMonth, isFullMonth: true };
   }
 
-  const proRated = new Decimal(monthlyRentCents)
+  const proRated = new Decimal(rentAmountCents)
     .times(daysCharged)
     .div(daysInMonth)
     .toDecimalPlaces(0, Decimal.ROUND_CEIL)
@@ -32,16 +32,48 @@ export const proRateAmount = (
   return { amount: proRated, daysCharged, daysInMonth, isFullMonth: false };
 };
 
+/** ceil((rentAmount × daysCharged) / daysInMonth). Returns full month when endDay === daysInMonth. All values in cents. */
+export const proRateLastMonth = (
+  rentAmountCents: number,
+  endDate: Date
+): {
+  amount: number;
+  daysCharged: number;
+  daysInMonth: number;
+  dailyRate: number;
+  isFullMonth: boolean;
+} => {
+  const end = new Date(endDate);
+  const daysInMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+  const daysCharged = end.getDate();
+  const dailyRate = new Decimal(rentAmountCents)
+    .div(daysInMonth)
+    .toDecimalPlaces(0, Decimal.ROUND_CEIL)
+    .toNumber();
+
+  if (daysCharged === daysInMonth) {
+    return { amount: rentAmountCents, daysCharged, daysInMonth, dailyRate, isFullMonth: true };
+  }
+
+  const proRated = new Decimal(rentAmountCents)
+    .times(daysCharged)
+    .div(daysInMonth)
+    .toDecimalPlaces(0, Decimal.ROUND_CEIL)
+    .toNumber();
+
+  return { amount: proRated, daysCharged, daysInMonth, dailyRate, isFullMonth: false };
+};
+
 // ── Fee calculations ──────────────────────────────────────────────────────────
 
 /** 'percentage': round_half_up(rent × rate / 100). 'fixed': passthrough. All values in cents. */
 export const calcLateFee = (
-  monthlyRentCents: number,
+  rentAmountCents: number,
   type: 'percentage' | 'fixed',
   rateOrAmount: number
 ): number => {
   if (type === 'percentage') {
-    return new Decimal(monthlyRentCents)
+    return new Decimal(rentAmountCents)
       .times(rateOrAmount)
       .div(100)
       .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
@@ -75,6 +107,7 @@ export const calcApplicationFeeSplit = (
 } => {
   const applicationFee = new Decimal(totalAmountCents)
     .times(transactionFeePercent)
+    .div(100)
     .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
     .toNumber();
 
@@ -134,3 +167,55 @@ export const estimateNetIncome = (grossRentCents: number): number =>
     .times(NET_INCOME_FACTOR)
     .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
     .toNumber();
+
+// ── Lease monthly fee breakdown ───────────────────────────────────────────────
+
+/**
+ * Minimal shape required to compute monthly fees.
+ * Accepts both ILeaseDocument instances and plain toObject() results.
+ */
+export interface LeaseFeesInput {
+  petPolicy?: { monthlyFee?: number; deposit?: number } | null;
+  fees: { rentAmount: number; securityDeposit: number };
+  includeManagementFee?: boolean;
+  // These fields are Mongoose virtuals populated at runtime — typed loosely so
+  // both ILeaseDocument instances and plain toObject() results are accepted.
+  propertyInfo?: any;
+  property?: any;
+}
+
+export interface LeaseMonthlyFees {
+  totalMonthlyRent: number;
+  securityDeposit: number;
+  managementFee: number;
+  petMonthlyFee: number;
+  petDeposit: number;
+  baseRent: number;
+}
+
+/**
+ * Canonical lease fee breakdown used across services, helpers, and DAOs.
+ *
+ * Management fee is gated by `includeManagementFee`. Property fees are read
+ * from the `propertyInfo` virtual first, falling back to the `property.id`
+ * populated reference, so callers work regardless of which populate path they used.
+ */
+export function computeLeaseMonthlyFees(lease: LeaseFeesInput): LeaseMonthlyFees {
+  const baseRent = lease.fees.rentAmount;
+  const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
+  const petDeposit = lease.petPolicy?.deposit || 0;
+  const securityDeposit = lease.fees.securityDeposit;
+
+  const propertyFees = (lease as any).propertyInfo?.fees ?? (lease as any).property?.id?.fees;
+
+  const managementFee = lease.includeManagementFee ? Number(propertyFees?.managementFees ?? 0) : 0;
+
+  return {
+    baseRent,
+    managementFee,
+    petMonthlyFee,
+    petDeposit,
+    securityDeposit,
+    totalMonthlyRent: baseRent + petMonthlyFee + managementFee,
+  };
+}

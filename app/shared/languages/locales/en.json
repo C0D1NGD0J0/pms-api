@@ -189,7 +189,7 @@
       "unableToGetUnitsFromProperty": "Unable to get units from property, property not found.",
       "unableToUpdateUnit": "Unable to update property unit.",
       "cannotUpdateDueToStatus": "Cannot update unit, due to property status of {{status}}.",
-      "rentalAmountMustBeNonNegative": "Rental amount must be a non-negative number",
+      "rentAmountMustBeNonNegative": "Rental amount must be a non-negative number",
       "securityDepositMustBeNonNegative": "Security deposit must be a non-negative number",
       "cannotSetOccupiedWhenProperty": "Cannot set unit as occupied when property is {{status}}",
       "occupiedUnitsMustHaveRental": "Occupied units must have a rental amount",
@@ -282,8 +282,7 @@
       "marketValuePositive": "Market value must be a positive number",
       "propertyTaxNonNegative": "Property tax must be a non-negative number",
       "invalidAssessmentDate": "Invalid date format for last-assessment date",
-      "taxAmountNonNegative": "Tax amount must be a non-negative number",
-      "rentalAmountNonNegative": "Rental amount must be a non-negative number",
+      "rentAmountNonNegative": "Rental amount must be a non-negative number",
       "managementFeesNonNegative": "Management fees must be a non-negative number",
       "securityDepositNonNegative": "Security deposit must be a non-negative number",
       "invalidDocumentUrl": "Invalid URL format for document",
@@ -512,7 +511,8 @@
       "validationFailed": "Lease validation failed. Please check the details and try again.",
       "overlappingLease": "Lease dates overlap with an existing active lease for this unit",
       "cannotCreateOwnLease": "Cannot create a lease for yourself as the tenant - conflict of interest",
-      "cannotUpdateOwnLease": "Cannot update your own lease information - conflict of interest"
+      "cannotUpdateOwnLease": "Cannot update your own lease information - conflict of interest",
+      "propertyUnderMaintenance": "Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first."
     },
     "invalid_access": "You do not have permission to access this lease",
     "retrieved_successfully": "Lease retrieved successfully",
@@ -533,7 +533,7 @@
       "notYourUnit": "You do not have an active lease for this property",
       "staffCannotCreateForOwnUnit": "Staff cannot create maintenance requests for units they occupy",
       "vendorNotFound": "Vendor not found or not connected to this client",
-      "invoiceInvalidStatus": "Invoice can only be submitted on in-progress or completed requests",
+      "invoiceInvalidStatus": "Invoice can only be submitted when work is in progress or awaiting invoice",
       "invoiceForbidden": "Only the assigned vendor can submit an invoice",
       "noInvoice": "No invoice found on this request",
       "invoiceNotPending": "Invoice is not in pending status",
@@ -543,7 +543,13 @@
       "workOrderRejected": "Work order was rejected — please resubmit before starting",
       "workOrderNotFound": "No work order found on this request",
       "workOrderNotPending": "Work order is not in pending review status",
-      "workOrderForbidden": "Only the PM/manager can review work orders"
+      "workOrderForbidden": "Only the PM/manager can review work orders",
+      "workOrderRequired": "A work order must be submitted and approved before marking work as done",
+      "workOrderNotApproved": "The work order must be submitted and approved before this action can proceed",
+      "notCompleted": "Request must be completed before submitting feedback",
+      "notYourRequest": "You are not the tenant on this request",
+      "feedbackAlreadySubmitted": "Feedback has already been submitted for this request",
+      "editNotAllowed": "Request cannot be edited in its current status"
     },
     "success": {
       "created": "Maintenance request created successfully",
@@ -551,6 +557,7 @@
       "accepted": "Assignment accepted",
       "declined": "Assignment declined",
       "statusUpdated": "Status updated successfully",
+      "workDone": "Work marked as done. Please submit your invoice within 72 hours.",
       "completed": "Maintenance request completed",
       "cancelled": "Maintenance request cancelled",
       "invoiceSubmitted": "Invoice submitted successfully",
@@ -558,7 +565,8 @@
       "invoiceRejected": "Invoice rejected",
       "workOrderSubmitted": "Work order submitted successfully",
       "workOrderApproved": "Work order approved",
-      "workOrderRejected": "Work order rejected"
+      "workOrderRejected": "Work order rejected",
+      "feedbackSubmitted": "Thank you for your feedback"
     }
   },
 
@@ -696,9 +704,17 @@
         "title": "Work Order Submitted",
         "message": "A work order has been submitted for maintenance request {{mruid}}"
       },
+      "vendorScheduledVisit": {
+        "title": "Visit Scheduled",
+        "message": "Your vendor has scheduled a visit for request {{mruid}} on {{scheduledDate}}"
+      },
       "workOrderApproved": {
         "title": "Work Order Approved",
         "message": "Your work order for request {{mruid}} has been approved — proceed with the job"
+      },
+      "workOrderApprovedTenant": {
+        "title": "Work Confirmed",
+        "message": "The work plan for your request {{mruid}} has been approved. Your vendor will be in touch shortly."
       },
       "workOrderRejected": {
         "title": "Work Order Rejected",

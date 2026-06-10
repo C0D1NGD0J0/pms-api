@@ -477,6 +477,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         primaryRole: invitationData.role,
         clientDisplayName: client.displayName,
         linkedVendorUid: invitationData.role === ROLES.VENDOR ? linkedVendorUid : null,
+        requiresOnboarding: true,
       };
 
       const user = await this.insert(
@@ -549,6 +550,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           primaryRole: role,
           clientDisplayName: client.clientDisplayName || '',
           linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
+          requiresOnboarding: true,
         };
 
         return await this.updateById(
@@ -639,11 +641,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     opts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
+      // Include both team members (linkedVendorUid set) and the primary account
+      // holder (linkedVendorUid is null, primaryRole is 'vendor')
       const query: FilterQuery<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorUid': vendorUid,
         'cuids.isConnected': true,
         deletedAt: null,
+        $or: [
+          { 'cuids.linkedVendorUid': vendorUid },
+          { 'cuids.linkedVendorUid': null, 'cuids.primaryRole': 'vendor' },
+        ],
       };
 
       return await this.list(query, opts);
@@ -710,8 +717,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               phoneNumber: '',
               location: 'Unknown',
             },
-            lang: 'en',
-            timeZone: 'UTC',
+            settings: {
+              lang: 'en',
+              timeZone: 'UTC',
+            },
             policies: {
               tos: {
                 accepted: false,
@@ -893,7 +902,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                   status: 'active',
                 },
               },
-              { $project: { 'fees.monthlyRent': 1, 'property.id': 1 } },
+              { $project: { 'fees.rentAmount': 1, 'property.id': 1 } },
             ],
             as: 'activeLeasesDocs',
           },
@@ -960,7 +969,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               },
             },
             totalRent: {
-              $sum: { $sum: '$activeLeasesDocs.fees.monthlyRent' },
+              $sum: { $sum: '$activeLeasesDocs.fees.rentAmount' },
             },
             backgroundCheckDistribution: {
               $push: '$profile.tenantInfo.backgroundCheckStatus',
@@ -1112,6 +1121,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             email: 1,
             isActive: 1,
             createdAt: 1,
+            profileId: '$profile._id',
             isConnected: {
               $let: {
                 vars: {
@@ -1253,7 +1263,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           status: lease.status,
           propertyName: lease.property?.address || 'Unknown Property',
           unitNumber: lease.unit?.unitNumber || '',
-          monthlyRent: lease.fees?.monthlyRent || 0,
+          rentAmount: lease.fees?.rentAmount || 0,
           leaseStart: lease.duration?.startDate || lease.startDate,
           leaseEnd: lease.duration?.endDate || lease.endDate,
         }));

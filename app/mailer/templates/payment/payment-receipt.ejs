@@ -1,0 +1,31 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Payment Receipt</h2>
+      <p>Hi <%= tenantName %>,</p>
+      <p>
+        Your <strong><%= paymentType %></strong> payment of <strong><%= amount %></strong> has been successfully processed on <%= paidAt %>.
+      </p>
+    </td>
+  </tr>
+
+  <% if (typeof receiptUrl !== 'undefined' && receiptUrl) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: receiptUrl, label: "View Receipt", colorClass: "btn-success" }) %>
+      <p class="fallback-link">
+        Button not working? Copy and paste this link into your browser:<br />
+        <%= receiptUrl %>
+      </p>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <p>
+        Thank you for your payment.
+      </p>
+    </td>
+  </tr>
+</table>

@@ -2,24 +2,32 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { EventEmitterService } from '@services/index';
+import { SSEService } from '@services/sse/sse.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { UploadJobData, EventTypes } from '@interfaces/index';
+import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 
 interface IConstructor {
+  maintenanceRequestService: MaintenanceRequestService;
   emitterService: EventEmitterService;
+  sseService: SSEService;
   s3Service: S3Service;
 }
 
 export class UploadWorker {
   private readonly awsS3Service: S3Service;
   private readonly emitterService: EventEmitterService;
+  private readonly maintenanceRequestService: MaintenanceRequestService;
+  private readonly sseService: SSEService;
   private diskStorage: DiskStorage;
   private log: Logger;
 
-  constructor({ s3Service, emitterService }: IConstructor) {
+  constructor({ s3Service, emitterService, maintenanceRequestService, sseService }: IConstructor) {
     this.log = createLogger('FileUploadWorker');
     this.awsS3Service = s3Service;
+    this.sseService = sseService;
     this.emitterService = emitterService;
+    this.maintenanceRequestService = maintenanceRequestService;
   }
 
   uploadAsset = async (job: Job): Promise<void> => {
@@ -64,6 +72,43 @@ export class UploadWorker {
         resourceId: resource.resourceId,
         fieldName: resource.fieldName,
       });
+
+      // Direct dispatch for maintenance — the event-based listener in
+      // MaintenanceRequestService is never registered in the worker process
+      // (the service isn't in any queue's dependency chain), so we call it
+      // directly here, mirroring the PropertyMediaWorker pattern.
+      if (resource.resourceName === 'maintenance' && result.length > 0) {
+        this.log.info(
+          { mruid: resource.resourceId, fileCount: result.length },
+          '[UploadWorker] persisting maintenance media to DB'
+        );
+        const cuid = await this.maintenanceRequestService.persistUploadedMedia(
+          resource.resourceId,
+          result,
+          resource.actorId
+        );
+        this.log.info(
+          { mruid: resource.resourceId },
+          '[UploadWorker] maintenance media persisted successfully'
+        );
+        if (cuid) {
+          try {
+            await this.sseService.sendToUser(
+              resource.actorId,
+              cuid,
+              {
+                resource: 'maintenance',
+                action: 'media-updated',
+                resourceUId: resource.resourceId,
+                count: result.length,
+              },
+              'resource-event'
+            );
+          } catch (err) {
+            this.log.warn({ err }, '[UploadWorker] SSE notify failed (non-fatal)');
+          }
+        }
+      }
 
       job.progress(90);
 

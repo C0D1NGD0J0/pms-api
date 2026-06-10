@@ -9,6 +9,16 @@ const router = Router();
 router.use(isAuthenticated);
 
 router.patch(
+  '/:cuid/mark-all-read',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.markAllNotificationsAsRead(req, res);
+  })
+);
+
+router.patch(
   '/:cuid/mark-read/:nuid',
   basicLimiter(),
   validateRequest({
@@ -17,6 +27,28 @@ router.patch(
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<NotificationController>('notificationController');
     return controller.markNotificationAsRead(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/archive/:nuid',
+  basicLimiter(),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.nuid),
+  }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.archiveNotification(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/archive-all-read',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.archiveAllRead(req, res);
   })
 );
 

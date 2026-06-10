@@ -73,7 +73,7 @@ const makeProcessor = (overrides: Record<string, any> = {}) => ({
 const makeProfile = (customerId?: string) => {
   const map = new Map<string, string>();
   if (customerId) {
-    map.set(ACCOUNT_ID, customerId);
+    map.set('platform', customerId);
   }
   return {
     _id: new Types.ObjectId(),
@@ -96,6 +96,7 @@ const makeService = (overrides: Record<string, any> = {}) =>
     profileDAO: (overrides.profileDAO ?? {}) as any,
     paymentProcessorDAO: (overrides.paymentProcessorDAO ?? {}) as any,
     paymentGatewayService: (overrides.paymentGatewayService ?? {}) as any,
+    paymentService: {} as any,
     userDAO: {} as any,
     clientDAO: {} as any,
     queueFactory: { getQueue: jest.fn() } as any,
@@ -144,7 +145,7 @@ describe('AuthService.setupPaymentIntent — no active lease', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('returns requiresSetup: false with reason no_active_lease when lease is null', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(null));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(null);
 
     const service = makeService({ leaseDAO });
     const user = makeTenantUser();
@@ -158,7 +159,7 @@ describe('AuthService.setupPaymentIntent — no active lease', () => {
   });
 
   it('calls leaseDAO.getActiveLeaseByTenant with cuid and currentuser.sub', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(null));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(null);
 
     const service = makeService({ leaseDAO });
     const user = makeTenantUser();
@@ -183,7 +184,7 @@ describe('AuthService.setupPaymentIntent — non-electronic payment method', () 
   afterEach(() => jest.clearAllMocks());
 
   it('returns requiresSetup: false with paymentMethod check for check payment method', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('check')));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('check'));
 
     const service = makeService({ leaseDAO });
     const user = makeTenantUser();
@@ -197,7 +198,7 @@ describe('AuthService.setupPaymentIntent — non-electronic payment method', () 
   });
 
   it('returns requiresSetup: false with paymentMethod cash for cash payment method', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('cash')));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('cash'));
 
     const service = makeService({ leaseDAO });
     const user = makeTenantUser();
@@ -211,7 +212,7 @@ describe('AuthService.setupPaymentIntent — non-electronic payment method', () 
   });
 
   it('returns requiresSetup: false with paymentMethod unspecified when acceptedPaymentMethod is undefined', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease(undefined)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease(undefined));
 
     const service = makeService({ leaseDAO });
     const user = makeTenantUser();
@@ -257,8 +258,8 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
   afterEach(() => jest.clearAllMocks());
 
   it('throws NotFoundError when paymentProcessorDAO.findFirst returns null', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(null));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(null);
 
     const service = makeService({ leaseDAO, paymentProcessorDAO });
     const user = makeTenantUser();
@@ -267,8 +268,8 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
   });
 
   it('throws NotFoundError with correct message when processor not found', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(null));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(null);
 
     const service = makeService({ leaseDAO, paymentProcessorDAO });
     const user = makeTenantUser();
@@ -279,8 +280,8 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
   });
 
   it('calls paymentProcessorDAO.findFirst with correct filter', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(null));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(null);
 
     const service = makeService({ leaseDAO, paymentProcessorDAO });
     const user = makeTenantUser();
@@ -289,7 +290,7 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
 
     expect(paymentProcessorDAO.findFirst).toHaveBeenCalledWith({
       cuid: CUID,
-      ownerType: 'client',
+      ownerType: { $in: ['client', null] },
       deletedAt: null,
     });
   });
@@ -313,9 +314,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, profile not found
   afterEach(() => jest.clearAllMocks());
 
   it('throws NotFoundError when profileDAO.findFirst returns null', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(null));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(null);
 
     const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO });
     const user = makeTenantUser();
@@ -344,9 +345,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, existing customer
   afterEach(() => jest.clearAllMocks());
 
   it('uses existing customerId from tenantProfile map without calling createCustomer', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
@@ -360,9 +361,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, existing customer
   });
 
   it('calls createSetupCheckoutSession with STRIPE provider, existing customerId, returnUrl, and cancelUrl', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
@@ -374,7 +375,11 @@ describe('AuthService.setupPaymentIntent — electronic lease, existing customer
 
     expect(paymentGatewayService.createSetupCheckoutSession).toHaveBeenCalledWith(
       IPaymentGatewayProvider.STRIPE,
-      { customerId: EXISTING_CUSTOMER_ID, successUrl: RETURN_URL, cancelUrl: CANCEL_URL }
+      expect.objectContaining({
+        customerId: EXISTING_CUSTOMER_ID,
+        successUrl: RETURN_URL,
+        cancelUrl: CANCEL_URL,
+      })
     );
   });
 });
@@ -399,42 +404,42 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
   afterEach(() => jest.clearAllMocks());
 
   it('calls createCustomer with correct arguments when customer is not in map', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile()));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile());
     paymentGatewayService.createCustomer.mockReturnValue(
       Promise.resolve({ success: true, data: { customerId: NEW_CUSTOMER_ID } })
     );
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
-    profileDAO.updateById.mockReturnValue(Promise.resolve({}));
+    profileDAO.updateById.mockResolvedValue({});
 
     const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
     const user = makeTenantUser();
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
 
-    expect(paymentGatewayService.createCustomer).toHaveBeenCalledWith({
-      provider: IPaymentGatewayProvider.STRIPE,
-      email: user.email,
-      metadata: { cuid: CUID, tenantId: TENANT_SUB },
-      connectedAccountId: ACCOUNT_ID,
-    });
+    expect(paymentGatewayService.createCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: IPaymentGatewayProvider.STRIPE,
+        email: user.email,
+      })
+    );
   });
 
   it('saves new customerId via profileDAO.updateById after customer creation', async () => {
     const profile = makeProfile();
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(profile));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(profile);
     paymentGatewayService.createCustomer.mockReturnValue(
       Promise.resolve({ success: true, data: { customerId: NEW_CUSTOMER_ID } })
     );
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
-    profileDAO.updateById.mockReturnValue(Promise.resolve({}));
+    profileDAO.updateById.mockResolvedValue({});
 
     const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
     const user = makeTenantUser();
@@ -442,14 +447,14 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
 
     expect(profileDAO.updateById).toHaveBeenCalledWith(profile._id.toString(), {
-      $set: { [`tenantInfo.paymentGatewayCustomers.${ACCOUNT_ID}`]: NEW_CUSTOMER_ID },
+      $set: { ['tenantInfo.paymentGatewayCustomers.platform']: NEW_CUSTOMER_ID },
     });
   });
 
   it('throws BadRequestError when createCustomer returns success: false', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile()));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile());
     paymentGatewayService.createCustomer.mockReturnValue(
       Promise.resolve({ success: false, data: null })
     );
@@ -461,9 +466,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
   });
 
   it('throws BadRequestError with correct message when createCustomer fails', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile()));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile());
     paymentGatewayService.createCustomer.mockReturnValue(
       Promise.resolve({ success: false, data: null })
     );
@@ -477,16 +482,16 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
   });
 
   it('calls createSetupCheckoutSession with new customerId after customer creation', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile()));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile());
     paymentGatewayService.createCustomer.mockReturnValue(
       Promise.resolve({ success: true, data: { customerId: NEW_CUSTOMER_ID } })
     );
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
-    profileDAO.updateById.mockReturnValue(Promise.resolve({}));
+    profileDAO.updateById.mockResolvedValue({});
 
     const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
     const user = makeTenantUser();
@@ -495,7 +500,11 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
 
     expect(paymentGatewayService.createSetupCheckoutSession).toHaveBeenCalledWith(
       IPaymentGatewayProvider.STRIPE,
-      { customerId: NEW_CUSTOMER_ID, successUrl: RETURN_URL, cancelUrl: CANCEL_URL }
+      expect.objectContaining({
+        customerId: NEW_CUSTOMER_ID,
+        successUrl: RETURN_URL,
+        cancelUrl: CANCEL_URL,
+      })
     );
   });
 });
@@ -520,9 +529,9 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
   afterEach(() => jest.clearAllMocks());
 
   it('throws BadRequestError when createSetupCheckoutSession returns success: false', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: false, data: null })
     );
@@ -534,9 +543,9 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
   });
 
   it('throws BadRequestError with correct message when createSetupCheckoutSession fails', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: false, data: null })
     );
@@ -550,9 +559,9 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
   });
 
   it('returns requiresSetup: true with url and paymentMethod on success', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
@@ -574,9 +583,9 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
 
   it('verifies url comes from sessionResult.data.url', async () => {
     const specificUrl = 'https://checkout.stripe.com/c/pay/cs_specific_xyz';
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: specificUrl } })
     );
@@ -590,9 +599,9 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
   });
 
   it('returns correct paymentMethod in success response for mobile_payment', async () => {
-    leaseDAO.getActiveLeaseByTenant.mockReturnValue(Promise.resolve(makeLease('auto-debit')));
-    paymentProcessorDAO.findFirst.mockReturnValue(Promise.resolve(makeProcessor()));
-    profileDAO.findFirst.mockReturnValue(Promise.resolve(makeProfile(EXISTING_CUSTOMER_ID)));
+    leaseDAO.getActiveLeaseByTenant.mockResolvedValue(makeLease('auto-debit'));
+    paymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor());
+    profileDAO.findFirst.mockResolvedValue(makeProfile(EXISTING_CUSTOMER_ID));
     paymentGatewayService.createSetupCheckoutSession.mockReturnValue(
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );

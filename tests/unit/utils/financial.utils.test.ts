@@ -1,9 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   calcApplicationFeeSplit,
+  computeLeaseMonthlyFees,
   calcAnnualToMonthly,
   calcRentAdjustment,
   estimateNetIncome,
+  proRateLastMonth,
   calcGatewayFee,
   proRateAmount,
   calcSeatCost,
@@ -53,6 +55,63 @@ describe('proRateAmount', () => {
   });
 });
 
+describe('proRateLastMonth', () => {
+  it('returns full month when end day is the last day of the month', () => {
+    // March 31 — full month
+    const result = proRateLastMonth(200000, new Date(2024, 2, 31));
+    expect(result).toMatchObject({ amount: 200000, isFullMonth: true, daysCharged: 31, daysInMonth: 31 });
+  });
+
+  it('pro-rates mid-month in a 30-day month', () => {
+    // June 15: daysCharged=15; ceil(150000 × 15 / 30) = 75000
+    const result = proRateLastMonth(150000, new Date(2024, 5, 15));
+    expect(result).toMatchObject({ amount: 75000, isFullMonth: false, daysCharged: 15, daysInMonth: 30 });
+  });
+
+  it('pro-rates mid-month in a 31-day month with ceiling rounding', () => {
+    // March 15: daysCharged=15; ceil(200000 × 15 / 31) = 96775
+    const result = proRateLastMonth(200000, new Date(2024, 2, 15));
+    expect(result).toMatchObject({ amount: 96775, isFullMonth: false, daysCharged: 15, daysInMonth: 31 });
+  });
+
+  it('charges 1 day when ending on the first day of the month', () => {
+    // April 1: ceil(200000 × 1 / 30) = 6667
+    const result = proRateLastMonth(200000, new Date(2024, 3, 1));
+    expect(result).toMatchObject({ amount: 6667, daysCharged: 1, daysInMonth: 30 });
+  });
+
+  it('handles February (28 days, non-leap)', () => {
+    // Feb 14: daysCharged=14; ceil(120000 × 14 / 28) = 60000
+    const result = proRateLastMonth(120000, new Date(2023, 1, 14));
+    expect(result).toMatchObject({ amount: 60000, daysInMonth: 28, daysCharged: 14 });
+  });
+
+  it('handles February in a leap year (29 days)', () => {
+    // Feb 29 — full last month
+    const result = proRateLastMonth(180000, new Date(2024, 1, 29));
+    expect(result).toMatchObject({ isFullMonth: true, daysInMonth: 29, daysCharged: 29 });
+  });
+
+  it('returns dailyRate as ceil(rentAmount / daysInMonth)', () => {
+    // June: ceil(150000 / 30) = 5000
+    const result = proRateLastMonth(150000, new Date(2024, 5, 15));
+    expect(result.dailyRate).toBe(5000);
+  });
+
+  it('dailyRate uses ceiling when not evenly divisible', () => {
+    // March: ceil(200000 / 31) = 6452
+    const result = proRateLastMonth(200000, new Date(2024, 2, 15));
+    expect(result.dailyRate).toBe(6452);
+  });
+
+  it('mirrors proRateAmount symmetry: first-day start + last-day end = full month each', () => {
+    const first = proRateAmount(200000, new Date(2024, 2, 1));
+    const last = proRateLastMonth(200000, new Date(2024, 2, 31));
+    expect(first.isFullMonth).toBe(true);
+    expect(last.isFullMonth).toBe(true);
+  });
+});
+
 describe('first payment composition (proRateAmount + deposits)', () => {
   it('full first payment = pro-rated rent + security deposit + pet fee + pet deposit', () => {
     // June 15: daysCharged=16, ceil(150000 × 16/30) = 80000
@@ -88,19 +147,27 @@ describe('calcGatewayFee', () => {
 
 describe('calcApplicationFeeSplit', () => {
   it('splits charge into applicationFee, gatewayFee, and platformRevenue', () => {
-    const result = calcApplicationFeeSplit(20000, 0.02, () => 30);
+    // 2% of 20000 cents = 400 cents app fee
+    const result = calcApplicationFeeSplit(20000, 2, () => 30);
     expect(result).toEqual({ applicationFee: 400, gatewayFee: 30, platformRevenue: 370 });
   });
 
   it('platformRevenue can be negative when gatewayFee exceeds applicationFee', () => {
-    const result = calcApplicationFeeSplit(100, 0.005, () => 30);
+    // 0.5% of 100 cents = 1 cent app fee, gateway fee = 30 → negative
+    const result = calcApplicationFeeSplit(100, 0.5, () => 30);
     expect(result.platformRevenue).toBeLessThan(0);
   });
 
   it('passes the total amount to the gateway fee function', () => {
     let received = -1;
-    calcApplicationFeeSplit(15000, 0.02, (amt) => { received = amt; return 0; });
+    calcApplicationFeeSplit(15000, 2, (amt) => { received = amt; return 0; });
     expect(received).toBe(15000);
+  });
+
+  it('handles real plan config values (3.5% basic plan)', () => {
+    // 3.5% of 275000 cents (C$2,750) = 9625 cents ($96.25)
+    const result = calcApplicationFeeSplit(275000, 3.5, () => 0);
+    expect(result.applicationFee).toBe(9625);
   });
 });
 
@@ -137,4 +204,75 @@ describe('calcSeatCost', () => {
   it('returns 0 for 0 seats', () => expect(calcSeatCost(0, 1000)).toBe(0));
   it('returns negative cost for removal delta', () => expect(calcSeatCost(-3, 1000)).toBe(-3000));
   it('returns an integer (no fractional cents)', () => expect(Number.isInteger(calcSeatCost(3, 333))).toBe(true));
+});
+
+describe('computeLeaseMonthlyFees', () => {
+  function base(overrides: Record<string, any> = {}) {
+    return {
+      fees: { rentAmount: 200000, securityDeposit: 200000 },
+      petPolicy: null,
+      includeManagementFee: false,
+      ...overrides,
+    };
+  }
+
+  it('returns baseRent and totalMonthlyRent equal when no extras', () => {
+    const r = computeLeaseMonthlyFees(base());
+    expect(r.baseRent).toBe(200000);
+    expect(r.totalMonthlyRent).toBe(200000);
+    expect(r.managementFee).toBe(0);
+    expect(r.petMonthlyFee).toBe(0);
+  });
+
+  it('includes petMonthlyFee in totalMonthlyRent', () => {
+    const r = computeLeaseMonthlyFees(base({ petPolicy: { monthlyFee: 5000, deposit: 10000 } }));
+    expect(r.petMonthlyFee).toBe(5000);
+    expect(r.petDeposit).toBe(10000);
+    expect(r.totalMonthlyRent).toBe(205000);
+  });
+
+  it('reads management fee from propertyInfo virtual when includeManagementFee is true', () => {
+    const r = computeLeaseMonthlyFees(base({
+      includeManagementFee: true,
+      propertyInfo: { fees: { managementFees: 15000 } },
+    }));
+    expect(r.managementFee).toBe(15000);
+    expect(r.totalMonthlyRent).toBe(215000);
+  });
+
+  it('falls back to property.id populated ref when propertyInfo is absent', () => {
+    const r = computeLeaseMonthlyFees(base({
+      includeManagementFee: true,
+      property: { id: { fees: { managementFees: 8000 } } },
+    }));
+    expect(r.managementFee).toBe(8000);
+    expect(r.totalMonthlyRent).toBe(208000);
+  });
+
+  it('prefers propertyInfo over property.id when both are present', () => {
+    const r = computeLeaseMonthlyFees(base({
+      includeManagementFee: true,
+      propertyInfo: { fees: { managementFees: 12000 } },
+      property: { id: { fees: { managementFees: 99999 } } },
+    }));
+    expect(r.managementFee).toBe(12000);
+  });
+
+  it('excludes management fee when includeManagementFee is false', () => {
+    const r = computeLeaseMonthlyFees(base({
+      includeManagementFee: false,
+      propertyInfo: { fees: { managementFees: 15000 } },
+    }));
+    expect(r.managementFee).toBe(0);
+    expect(r.totalMonthlyRent).toBe(200000);
+  });
+
+  it('combines base rent + pet fee + management fee in totalMonthlyRent', () => {
+    const r = computeLeaseMonthlyFees(base({
+      includeManagementFee: true,
+      petPolicy: { monthlyFee: 5000, deposit: 10000 },
+      propertyInfo: { fees: { managementFees: 10000 } },
+    }));
+    expect(r.totalMonthlyRent).toBe(215000); // 200000 + 5000 + 10000
+  });
 });

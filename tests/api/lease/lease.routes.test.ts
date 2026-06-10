@@ -178,7 +178,7 @@ describe('Lease Routes - API Integration Tests', () => {
     //     type: 'fixed_term',
     //     startDate: '2025-01-01',
     //     endDate: '2026-01-01',
-    //     monthlyRent: 1500,
+    //     rentAmount: 1500,
     //     securityDeposit: 1500,
     //     rentDueDay: 1,
     //     currency: 'USD',

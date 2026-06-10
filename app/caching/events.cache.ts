@@ -53,8 +53,9 @@ export class EventsRegistryCache extends BaseCache {
       await this.client.sRem(key, eventType.toString());
       return { success: true };
     } catch (error) {
-      this.log.error('Failed to unregister event: ', eventType);
-      throw error;
+      // During shutdown Redis may close before all listeners are unregistered — not an error
+      this.log.warn({ eventType }, 'Failed to unregister event — Redis may be closing');
+      return { success: false };
     }
   }
 

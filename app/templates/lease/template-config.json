@@ -30,7 +30,7 @@
         "leaseType",
         "startDate",
         "endDate",
-        "monthlyRent",
+        "rentAmount",
         "securityDeposit",
         "rentDueDayOrdinal"
       ],
@@ -74,7 +74,7 @@
         "leaseType",
         "startDate",
         "endDate",
-        "monthlyRent",
+        "rentAmount",
         "securityDeposit",
         "rentDueDayOrdinal"
       ],
@@ -118,7 +118,7 @@
         "leaseType",
         "startDate",
         "endDate",
-        "monthlyRent",
+        "rentAmount",
         "securityDeposit",
         "rentDueDayOrdinal"
       ],
@@ -162,7 +162,7 @@
         "leaseType",
         "startDate",
         "endDate",
-        "monthlyRent",
+        "rentAmount",
         "securityDeposit",
         "rentDueDayOrdinal"
       ],
@@ -204,7 +204,7 @@
         "leaseType",
         "startDate",
         "endDate",
-        "monthlyRent",
+        "rentAmount",
         "securityDeposit",
         "rentDueDayOrdinal"
       ],
@@ -244,7 +244,7 @@
         "propertyAddress",
         "startDate",
         "endDate",
-        "monthlyRent",
+        "rentAmount",
         "securityDeposit"
       ],
       "optionalVariables": [

@@ -23,6 +23,18 @@ export interface IPaymentDAO {
   ): ListResultWithPagination<IPaymentDocument[]>;
 
   /**
+   * Aggregate paid income grouped by (currency, propertyId) for P&L reporting.
+   * @param cuid      Client unique ID
+   * @param dateMatch Mongoose date range filter applied to paidAt
+   */
+  getIncomeByPropertyAndCurrency(
+    cuid: string,
+    dateMatch: { $gte: Date; $lte: Date }
+  ): Promise<
+    Array<{ _id: { currency: string; propertyId: string }; total: number; propertyName: string }>
+  >;
+
+  /**
    * Find payments by tenant
    * @param tenantId - Tenant ID
    * @param cuid - Client ID

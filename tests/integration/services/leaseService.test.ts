@@ -9,7 +9,6 @@ import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
@@ -97,6 +96,7 @@ const setupServices = () => {
     leaseDAO,
     paymentDAO: {} as any,
     emitterService,
+    maintenanceRequestDAO: {} as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });
 
@@ -268,7 +268,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000, // in cents
+          rentAmount: 150000, // in cents
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -333,7 +333,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -394,7 +394,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -450,7 +450,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -496,7 +496,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -553,7 +553,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -568,7 +568,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const updateData = {
         fees: {
-          monthlyRent: 1750, // Increase rent (MoneyUtils will convert to cents)
+          rentAmount: 1750, // Increase rent (MoneyUtils will convert to cents)
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -595,11 +595,11 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const result = await leaseService.updateLease(mockContext, lease.luid, updateData as any);
 
       expect(result.success).toBe(true);
-      expect(result.data.lease.fees.monthlyRent).toBe(175000);
+      expect(result.data.lease.fees.rentAmount).toBe(175000);
 
       // Verify in database
       const updatedLease = await Lease.findOne({ luid: lease.luid });
-      expect(updatedLease?.fees.monthlyRent).toBe(175000);
+      expect(updatedLease?.fees.rentAmount).toBe(175000);
     });
 
     it('should block updates to immutable fields on active lease', async () => {
@@ -625,7 +625,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -712,7 +712,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -805,7 +805,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -852,7 +852,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -919,7 +919,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -981,7 +981,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1035,7 +1035,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1098,7 +1098,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-12-31'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1197,7 +1197,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-12-31'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1227,7 +1227,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any;
 
       await expect(
-        leaseService.updateLease(mockContext, lease.luid, { fees: { monthlyRent: 2000 } } as any)
+        leaseService.updateLease(mockContext, lease.luid, { fees: { rentAmount: 2000 } } as any)
       ).rejects.toThrow();
     });
 
@@ -1250,7 +1250,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const result = await leaseService.updateLease(
         mockContext,
         lease.luid,
-        { fees: { monthlyRent: 2000, securityDeposit: 4000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' } } as any
+        { fees: { rentAmount: 2000, securityDeposit: 4000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' } } as any
       );
       expect(result.success).toBe(true);
     });
@@ -1292,7 +1292,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         tenantId: dualRoleUser._id,
         property: { id: property._id, address: property.address.fullAddress },
         duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
-        fees: { monthlyRent: 150000, securityDeposit: 300000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+        fees: { rentAmount: 150000, securityDeposit: 300000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         type: LeaseType.FIXED_TERM,
@@ -1367,7 +1367,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         endDate: new Date('2026-01-01'),
       },
       fees: {
-        monthlyRent: 150000,
+        rentAmount: 150000,
         securityDeposit: 300000,
         rentDueDay: 1,
         currency: 'USD',
@@ -1514,7 +1514,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-06-01'), endDate: new Date('2026-06-01') },
-          fees: { monthlyRent: 120000, securityDeposit: 240000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          fees: { rentAmount: 120000, securityDeposit: 240000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
           status: LeaseStatus.DRAFT,
           approvalStatus: 'draft',
           type: LeaseType.FIXED_TERM,
@@ -1530,7 +1530,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-07-01'), endDate: new Date('2026-07-01') },
-          fees: { monthlyRent: 130000, securityDeposit: 260000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          fees: { rentAmount: 130000, securityDeposit: 260000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
           status: LeaseStatus.PENDING_SIGNATURE,
           approvalStatus: 'approved',
           type: LeaseType.FIXED_TERM,
@@ -1609,7 +1609,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           tenantId: otherTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-08-01'), endDate: new Date('2026-08-01') },
-          fees: { monthlyRent: 140000, securityDeposit: 280000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          fees: { rentAmount: 140000, securityDeposit: 280000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           type: LeaseType.FIXED_TERM,
@@ -1706,7 +1706,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           moveInDate: new Date('2025-01-01'),
         },
         fees: {
-          monthlyRent: 2000,
+          rentAmount: 2000,
           securityDeposit: 2000,
           rentDueDay: 1,
           currency: 'USD',

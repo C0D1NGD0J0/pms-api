@@ -16,7 +16,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['essential', 'growth', 'portfolio'],
+      enum: ['essential', 'growth', 'portfolio'] as const,
       required: true,
       default: 'essential',
       index: true,
@@ -56,11 +56,14 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     },
     entitlements: {
       eSignature: { type: Boolean, required: true, default: false },
-      RepairRequestService: { type: Boolean, required: true, default: false },
+      MaintenanceRequestService: { type: Boolean, required: true, default: false },
       VisitorPassService: { type: Boolean, required: true, default: false },
       reportingAnalytics: { type: Boolean, required: true, default: false },
       leaseTemplates: { type: Boolean, required: true, default: false },
+      vendorManagement: { type: Boolean, required: true, default: false },
       prioritySupport: { type: Boolean, default: false },
+      aiTriage: { type: Boolean, required: true, default: false },
+      aiInvoiceScanning: { type: Boolean, required: true, default: false },
     },
     billing: {
       customerId: {
@@ -109,6 +112,10 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     currentProperties: { type: Number, default: 0 },
     pendingDowngradeAt: { type: Date, index: true },
     currentUnits: { type: Number, default: 0 },
+    manualRecords: {
+      countThisPeriod: { type: Number, default: 0 },
+      periodStart: { type: Date, default: Date.now },
+    },
     canceledAt: { type: Date },
   },
   {

@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { BaseCSVProcessorService } from '@services/csv/base';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+
+const log = createLogger('PropertyValidation');
 
 const getContainer = async () => {
   const { container } = await import('@di/setup');
@@ -19,7 +23,7 @@ const isUniqueAddress = async (address: string, clientId: string) => {
     });
     return !existingProperty;
   } catch (error) {
-    console.error('Error checking address uniqueness', error);
+    log.error({ error }, 'Error checking address uniqueness');
     return false;
   }
 };
@@ -102,9 +106,8 @@ const FinancialDetailsSchema = z.object({
 });
 
 const FeesSchema = z.object({
-  currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).default('USD'),
-  taxAmount: z.number().min(0, 'Tax amount must be a non-negative number').default(0),
-  rentalAmount: z.number().min(0, 'Rental amount must be a non-negative number').default(0),
+  currency: z.nativeEnum(CURRENCIES).default(CURRENCIES.USD),
+  rentAmount: z.number().min(0, 'Rental amount must be a non-negative number').default(0),
   managementFees: z.number().min(0, 'Management fees must be a non-negative number').default(0),
   securityDeposit: z.number().min(0, 'Security deposit must be a non-negative number').default(0),
 });
@@ -401,11 +404,10 @@ export const PropertyCsvSchema = z.object({
     .optional(),
 
   // Fees
-  fees_taxAmount: z.coerce.number().min(0).optional(),
   fees_rentalAmount: z.coerce.number().min(0).optional(),
   fees_managementFees: z.coerce.number().min(0).optional(),
   fees_securityDeposit: z.coerce.number().min(0).optional(),
-  fees_currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).optional().default('USD'),
+  fees_currency: z.nativeEnum(CURRENCIES).optional().default(CURRENCIES.USD),
 
   // Utilities - using boolean validation
   utilities_water: z

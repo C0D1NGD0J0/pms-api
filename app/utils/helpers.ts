@@ -311,17 +311,17 @@ export const extractMulterFiles = (
 
   const result: ExtractedMediaFile[] = [];
   const extractFile = (file: any) => {
-    const mimeType = file.mimetype.split('/')[0];
+    const mimeTypePrefix = file.mimetype.split('/')[0];
 
-    if (allowedTypes && !allowedTypes.includes(mimeType as FileType)) {
+    if (allowedTypes && !allowedTypes.includes(mimeTypePrefix as FileType)) {
       throw new Error(
-        `File type '${mimeType}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
+        `File type '${mimeTypePrefix}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
       );
     }
 
     result.push({
       fieldName: file.fieldname,
-      mimeType,
+      mimeType: file.mimetype,
       path: file.path,
       originalFileName: file.originalname,
       filename: file.filename,
@@ -733,8 +733,8 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
  * @returns Safe MongoDB update object with dot notation for nested fields
  *
  * @example
- * // Input: { fees: { rentalAmount: 1200 }, name: "New Property" }
- * // Output: { "fees.rentalAmount": 1200, name: "New Property" }
+ * // Input: { fees: { rentAmount: 1200 }, name: "New Property" }
+ * // Output: { "fees.rentAmount": 1200, name: "New Property" }
  */
 export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<string, any> => {
   const result: Record<string, any> = {};

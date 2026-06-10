@@ -110,7 +110,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         query = query.lean();
       }
 
-      if (options?.sort) query = query.sort(options.sort);
+      query = query.sort(options?.sort || { createdAt: -1 });
       if (options?.skip) query = query.skip(options.skip);
       if (options?.limit) query = query.limit(options.limit);
       if (options?.projection) query = query.select(options.projection);
@@ -359,7 +359,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   async insert(data: Partial<T>, session?: ClientSession): Promise<T> {
     try {
-      const result = await this.model.create([{ ...data }], { session: session ?? null });
+      const result = await this.model.create([{ ...data } as any], { session: session ?? null });
       return result[0];
     } catch (error) {
       throw this.throwErrorHandler(error);

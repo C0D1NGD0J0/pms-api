@@ -152,12 +152,6 @@ const vendorInfoSchema = z
       .optional(),
     serviceAreas: z
       .object({
-        baseLocation: z
-          .object({
-            address: z.string().max(500, 'Base location address must be less than 500 characters'),
-            coordinates: z.tuple([z.number(), z.number()]),
-          })
-          .optional(),
         maxDistance: z.union([z.literal(10), z.literal(15), z.literal(25), z.literal(50)], {
           errorMap: () => ({ message: 'Max distance must be 10, 15, 25, or 50 km' }),
         }),

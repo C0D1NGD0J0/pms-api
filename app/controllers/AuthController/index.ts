@@ -125,16 +125,38 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  chargeFirstPayment = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.chargeFirstPayment(cuid, currentuser!);
+    res.status(httpStatusCodes.CREATED).json(result);
+  };
+
   setupPaymentIntent = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const currentuser = req.context?.currentuser;
-    const { returnUrl, cancelUrl } = req.body;
+    const { returnUrl, cancelUrl, paymentMethodType } = req.body;
     const result = await this.authService.setupPaymentIntent(
       cuid,
       currentuser!,
       returnUrl,
-      cancelUrl
+      cancelUrl,
+      paymentMethodType
     );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPaymentMethod = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.getPaymentMethod(cuid, currentuser!);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  removePaymentMethod = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.removePaymentMethod(cuid, currentuser!);
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -148,14 +170,12 @@ export class AuthController {
       });
     }
 
-    // Remove Bearer prefix if present
     if (refreshToken.startsWith('Bearer ')) {
       refreshToken = refreshToken.split(' ')[1];
     }
 
     const result = await this.authService.refreshToken({ refreshToken });
 
-    // Set new tokens as cookies
     res = setAuthCookies(
       {
         accessToken: result.data.accessToken,

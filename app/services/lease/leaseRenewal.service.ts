@@ -222,7 +222,14 @@ export class LeaseRenewalService {
           previousLeaseId: existingLease._id,
           cuid,
           deletedAt: null,
-          status: { $in: ['draft_renewal', 'pending_signature', 'active', 'ready_for_signature'] },
+          status: {
+            $in: [
+              LeaseStatus.DRAFT_RENEWAL,
+              LeaseStatus.PENDING_SIGNATURE,
+              LeaseStatus.ACTIVE,
+              LeaseStatus.READY_FOR_SIGNATURE,
+            ],
+          },
         },
         undefined,
         undefined,
@@ -275,7 +282,7 @@ export class LeaseRenewalService {
 
         // Validate fee amounts if provided
         if (renewalData.fees) {
-          if (renewalData.fees.monthlyRent !== undefined && renewalData.fees.monthlyRent < 0) {
+          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
             return {
               success: false,
               error: 'Monthly rent cannot be negative',
@@ -400,7 +407,7 @@ export class LeaseRenewalService {
       approvalStatus: renewalLease?.data?.approvalStatus || 'pending',
       startDate: renewalLease.data?.duration.startDate,
       endDate: renewalLease.data?.duration.endDate,
-      monthlyRent: renewalLease.data?.fees.monthlyRent || 0,
+      rentAmount: renewalLease.data?.fees.rentAmount || 0,
       tenantId: existingLease.tenantId.toString(),
       propertyId: existingLease.property.id.toString(),
       propertyUnitId: existingLease.property.unitId?.toString(),
@@ -426,7 +433,7 @@ export class LeaseRenewalService {
                 originalLeaseId: existingLease.luid,
                 renewalStartDate: renewalLease.data.duration.startDate,
                 renewalEndDate: renewalLease.data.duration.endDate,
-                monthlyRent: renewalLease.data.fees.monthlyRent,
+                rentAmount: renewalLease.data.fees.rentAmount,
                 isAutoRenewal: true,
                 actionRequired: true,
                 actionType: 'approve_renewal',
@@ -452,7 +459,7 @@ export class LeaseRenewalService {
                 originalLeaseId: existingLease.luid,
                 renewalStartDate: renewalLease.data.duration.startDate,
                 renewalEndDate: renewalLease.data.duration.endDate,
-                monthlyRent: renewalLease.data.fees.monthlyRent,
+                rentAmount: renewalLease.data.fees.rentAmount,
                 createdBy: userId,
                 createdByName: userName,
                 actionRequired: true,
@@ -699,7 +706,7 @@ export class LeaseRenewalService {
       // Find renewals in ready_for_signature status that are approved
       const readyRenewals = await this.leaseDAO.list(
         {
-          status: 'ready_for_signature',
+          status: LeaseStatus.READY_FOR_SIGNATURE,
           approvalStatus: 'approved',
           previousLeaseId: { $exists: true },
           deletedAt: null,
@@ -966,7 +973,7 @@ export class LeaseRenewalService {
 
         // Validate fee amounts if provided
         if (renewalData.fees) {
-          if (renewalData.fees.monthlyRent !== undefined && renewalData.fees.monthlyRent < 0) {
+          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
             return {
               success: false,
               error: 'Monthly rent cannot be negative',

@@ -1,0 +1,13 @@
+MAINTENANCE CHARGE ADDED
+
+A maintenance charge has been added to your account.
+
+Reference: <%= mruid %>
+<% if (jobTitle) { %>Job: <%= jobTitle %>
+<% } %>Amount Due: $<%= (amountInCents / 100).toFixed(2) %> <%= (currency || 'USD').toUpperCase() %>
+Due Date: <%= new Date(dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %>
+
+Pay now to avoid automatic debit:
+<%= process.env.APP_URL %>/tenants/<%= cuid %>/<%= pytuid %>/payments
+
+If you do not pay by the due date, the amount will be automatically charged to your payment method on file.

@@ -12,10 +12,11 @@ import {
 } from '@shared/middlewares';
 
 const router = Router();
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 
 router.get(
   '/:cuid/client_details',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -28,6 +29,7 @@ router.get(
 
 router.patch(
   '/:cuid/client_details',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -42,6 +44,7 @@ router.patch(
 
 router.post(
   '/:cuid/users/:uid/disconnect',
+  basicLimiter(),
   requireUserManagement(),
   idempotency,
   validateRequest({
@@ -55,6 +58,7 @@ router.post(
 
 router.post(
   '/:cuid/users/:uid/reconnect',
+  basicLimiter(),
   requireUserManagement(),
   idempotency,
   validateRequest({
@@ -68,6 +72,7 @@ router.post(
 
 router.patch(
   '/:cuid/users/:uid/department',
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -82,6 +87,7 @@ router.patch(
 
 router.post(
   '/:cuid/verify-account',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -95,6 +101,7 @@ router.post(
 
 router.post(
   '/:cuid/identity_verification/session',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
@@ -108,6 +115,7 @@ router.post(
 
 router.patch(
   '/:cuid/settings/tenant-features',
+  basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
   idempotency,
   validateRequest({

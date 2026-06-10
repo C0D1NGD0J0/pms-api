@@ -10,20 +10,12 @@ import { EventListenerSetup } from '@di/eventListenerSetup';
 class WorkerProcess {
   private log = createLogger('WorkerProcess');
   private pidManager = new PidManager('worker', this.log);
-  private queueNames = [
-    'emailQueue',
-    'uploadQueue',
-    'pdfGeneratorQueue',
-    'eSignatureQueue',
-    'propertyQueue',
-    'propertyUnitQueue',
-    'invitationQueue',
-    'propertyMediaQueue',
-    'eventBusQueue',
-    'cronQueue',
-  ];
 
   async start(): Promise<void> {
+    // Register process-level error handlers immediately — before any async work —
+    // so errors during startup are also captured and logged rather than crashing silently.
+    this.registerShutdownHandlers();
+
     try {
       this.pidManager.check();
 
@@ -44,28 +36,24 @@ class WorkerProcess {
       );
 
       container.resolve('cronService');
-      this.logRedisConnectionCount();
-      this.registerShutdownHandlers();
     } catch (error) {
-      this.log.error('❌ Worker startup failed:', error);
+      this.log.error({ err: error }, '❌ Worker startup failed');
       process.exit(1);
     }
-  }
-
-  private logRedisConnectionCount(): void {
-    setTimeout(() => {
-      this.log.info({
-        message: 'Redis connection monitoring',
-        tip: 'Check active connections with: lsof -i :6379 | grep ESTABLISHED | wc -l',
-        expectedConnections: `~${this.queueNames.length * 2}-${this.queueNames.length * 3} per worker (${this.queueNames.length} queues)`,
-        alert: 'If connections > 100, check for duplicate processes or connection leaks',
-      });
-    }, 2000);
   }
 
   private registerShutdownHandlers(): void {
     process.on('SIGTERM', () => this.shutdown('SIGTERM'));
     process.on('SIGINT', () => this.shutdown('SIGINT'));
+
+    process.on('unhandledRejection', (reason) => {
+      this.log.error({ reason }, 'Worker: unhandled promise rejection');
+    });
+
+    process.on('uncaughtException', (err) => {
+      this.log.error({ err }, 'Worker: uncaught exception — shutting down');
+      this.shutdown('uncaughtException');
+    });
   }
 
   private async shutdown(signal: string): Promise<void> {
@@ -79,10 +67,11 @@ class WorkerProcess {
     }, 10000).unref();
 
     try {
-      const { queueFactory } = container.cradle;
+      const { queueFactory, emitterService } = container.cradle;
       await queueFactory.shutdownAll();
+      emitterService.destroy();
     } catch (err) {
-      this.log.warn('Error during queue shutdown:', err);
+      this.log.error({ err }, '❌ Shutdown error — queue/emitter cleanup failed');
     }
 
     this.pidManager.cleanup();

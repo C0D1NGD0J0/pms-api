@@ -3,12 +3,16 @@ import { UserDAO } from '@dao/userDAO';
 import { faker } from '@faker-js/faker';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { VendorDAO } from '@dao/vendorDAO';
+import { InvoiceDAO } from '@dao/invoiceDAO';
+import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import InvoiceModel from '@models/invoice/invoice.model';
 import { ROLES } from '@shared/constants/roles.constants';
+import PaymentModel from '@models/payments/payments.model';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
-import { beforeEach, beforeAll, afterAll, describe, expect, it } from '@jest/globals';
+import type { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import {
   MaintenanceRequestModel,
@@ -25,7 +29,6 @@ import {
   InvoiceStatus,
 } from '@interfaces/maintenanceRequest.interface';
 
-import { mockQueueFactory } from '../../setup/externalMocks';
 import { mockRequestContext } from '../../helpers/mockRequestContext';
 import { disconnectTestDatabase, setupTestDatabase } from '../../setup/testDatabase';
 import {
@@ -55,24 +58,29 @@ const setupService = () => {
   } as any;
 
   const emitterService = new EventEmitterService({ eventsRegistry });
-  const emailQueue = mockQueueFactory.getQueue('email');
+  const invoiceDAO = new InvoiceDAO({ invoiceModel: InvoiceModel });
+  const paymentDAO = new PaymentDAO({ paymentModel: PaymentModel });
+  const aiService = { categorize: () => Promise.resolve(null) } as any;
 
   return new MaintenanceRequestService({
     maintenanceRequestDAO,
     propertyDAO,
     propertyUnitDAO,
+    invoiceDAO,
+    paymentDAO,
+    aiService,
     userDAO,
     leaseDAO,
     vendorDAO,
-    emailQueue: emailQueue as any,
     emitterService,
+    serviceAreaService: { isLocationInVendorServiceArea: jest.fn(), findVendorsNearLocation: jest.fn() } as unknown as ServiceAreaService,
   });
 };
 
 /**
  * Create a minimal valid Lease for a tenant on a property.
  * The Lease model requires: cuid, tenantId, property.id, property.address,
- * duration.startDate/endDate, fees.monthlyRent/securityDeposit/acceptedPaymentMethod/currency
+ * duration.startDate/endDate, fees.rentAmount/securityDeposit/acceptedPaymentMethod/currency
  */
 const createActiveLease = async (
   cuid: string,
@@ -100,7 +108,7 @@ const createActiveLease = async (
       endDate: new Date(Date.now() + 335 * 24 * 60 * 60 * 1000),
     },
     fees: {
-      monthlyRent: 150000,
+      rentAmount: 150000,
       securityDeposit: 150000,
       rentDueDay: 1,
       currency: 'USD',
@@ -301,7 +309,7 @@ describe('MaintenanceRequestService', () => {
           endDate: new Date(Date.now() + 335 * 24 * 60 * 60 * 1000),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 150000,
           rentDueDay: 1,
           currency: 'USD',
@@ -441,7 +449,9 @@ describe('MaintenanceRequestService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.items.length).toBe(1);
-      expect(result.data.items[0].propertyId.toString()).toBe(property1._id.toString());
+      expect((result.data.items[0].propertyId as any)._id.toString()).toBe(
+        property1._id.toString()
+      );
     });
 
     it('should return only own requests for tenant role', async () => {
@@ -478,7 +488,7 @@ describe('MaintenanceRequestService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.items.length).toBe(1);
-      expect(result.data.items[0].tenantId?.toString()).toBe(tenant1._id.toString());
+      expect((result.data.items[0].tenantId as any)?._id.toString()).toBe(tenant1._id.toString());
     });
   });
 
@@ -619,7 +629,9 @@ describe('MaintenanceRequestService', () => {
 
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
 
-      const result = await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
+      const result = await service.acceptAssignment(vendorCtx, created.data.mruid, {
+        action: 'accept',
+      });
 
       expect(result.success).toBe(true);
       expect(result.data.status).toBe(MaintenanceRequestStatus.IN_PROGRESS);
@@ -679,7 +691,9 @@ describe('MaintenanceRequestService', () => {
 
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord1.vuid });
 
-      await expect(service.acceptAssignment(vendor2Ctx, created.data.mruid, { action: 'accept' })).rejects.toThrow();
+      await expect(
+        service.acceptAssignment(vendor2Ctx, created.data.mruid, { action: 'accept' })
+      ).rejects.toThrow();
     });
   });
 
@@ -780,7 +794,7 @@ describe('MaintenanceRequestService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.invoice.status).toBe(InvoiceStatus.APPROVED);
+      expect(result.data.status).toBe(InvoiceStatus.APPROVED);
     });
 
     it('should reject invoice via unified method', async () => {
@@ -815,8 +829,8 @@ describe('MaintenanceRequestService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.invoice.status).toBe(InvoiceStatus.REJECTED);
-      expect(result.data.invoice.rejectionReason).toBe('Amount exceeds pre-approved budget');
+      expect(result.data.status).toBe(InvoiceStatus.REJECTED);
+      expect(result.data.review.rejectionReason).toBe('Amount exceeds pre-approved budget');
     });
   });
 
@@ -850,12 +864,12 @@ describe('MaintenanceRequestService', () => {
       });
 
       expect(invoiceResult.success).toBe(true);
-      expect(invoiceResult.data.invoice.status).toBe(InvoiceStatus.PENDING);
+      expect(invoiceResult.data.status).toBe(InvoiceStatus.PENDING);
 
       const approveResult = await service.approveInvoice(managerCtx, created.data.mruid);
 
       expect(approveResult.success).toBe(true);
-      expect(approveResult.data.invoice.status).toBe(InvoiceStatus.APPROVED);
+      expect(approveResult.data.status).toBe(InvoiceStatus.APPROVED);
     });
 
     it('manager should reject invoice with a reason', async () => {
@@ -889,8 +903,8 @@ describe('MaintenanceRequestService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.invoice.status).toBe(InvoiceStatus.REJECTED);
-      expect(result.data.invoice.rejectionReason).toBe(
+      expect(result.data.status).toBe(InvoiceStatus.REJECTED);
+      expect(result.data.review.rejectionReason).toBe(
         'Amount is higher than the pre-approved estimate'
       );
     });
@@ -925,12 +939,12 @@ describe('MaintenanceRequestService', () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
       const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
-      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
-      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+      // const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      // const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
 
       const service = setupService();
       const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
-      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+      // const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
 
       const created = await service.createRequest(managerCtx, {
         pid: property.pid,
@@ -940,14 +954,15 @@ describe('MaintenanceRequestService', () => {
         permissionToEnter: true,
         media: [],
       });
-      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
-      await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await service.completeRequest(vendorCtx, created.data.mruid, {});
+      // Force status to COMPLETED directly — the full in_progress → awaiting_invoice → completed
+      // flow requires work orders and invoices which are tested in dedicated suites.
+      await MaintenanceRequestModel.findOneAndUpdate(
+        { mruid: created.data.mruid },
+        { $set: { status: MaintenanceRequestStatus.COMPLETED } }
+      );
 
       // completed → cancel is not allowed
-      await expect(
-        service.cancelRequest(managerCtx, created.data.mruid, {})
-      ).rejects.toThrow();
+      await expect(service.cancelRequest(managerCtx, created.data.mruid, {})).rejects.toThrow();
     });
   });
 

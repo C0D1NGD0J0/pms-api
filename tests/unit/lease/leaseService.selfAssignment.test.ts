@@ -172,7 +172,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
           endDate: new Date(Date.now() + 86400000),
         },
         fees: {
-          monthlyRent: 1000,
+          rentAmount: 1000,
           securityDeposit: 2000,
         },
       } as any;
@@ -225,7 +225,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
           endDate: new Date(Date.now() + 86400000),
         },
         fees: {
-          monthlyRent: 1000,
+          rentAmount: 1000,
           securityDeposit: 2000,
         },
       } as any;
@@ -278,7 +278,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
           endDate: new Date(Date.now() + 86400000),
         },
         fees: {
-          monthlyRent: 1000,
+          rentAmount: 1000,
           securityDeposit: 2000,
         },
       } as any;
@@ -322,7 +322,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
 
       const updateData: Partial<ILeaseFormData> = {
-        fees: { monthlyRent: 500 } as ILeaseFormData['fees'],
+        fees: { rentAmount: 500 } as ILeaseFormData['fees'],
       };
 
       // Should fail even though user has staff role, because they're the tenant
@@ -364,11 +364,11 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
       mockLeaseDAO.update.mockResolvedValue({
         ...mockLease,
-        fees: { monthlyRent: 1200, securityDeposit: 2000 },
+        fees: { rentAmount: 1200, securityDeposit: 2000 },
       } as any);
 
       const updateData: Partial<ILeaseFormData> = {
-        fees: { monthlyRent: 1200 } as ILeaseFormData['fees'],
+        fees: { rentAmount: 1200 } as ILeaseFormData['fees'],
       };
 
       const result = await leaseService.updateLease(
@@ -407,7 +407,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         } as any,
       };
 
-      const updateData: Partial<ILeaseFormData> = { fees: { monthlyRent: 500 } as ILeaseFormData['fees'] };
+      const updateData: Partial<ILeaseFormData> = { fees: { rentAmount: 500 } as ILeaseFormData['fees'] };
 
       await expect(
         leaseService.updateLease(staffTenantContext as IRequestContext, testLuid, updateData)
@@ -428,7 +428,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
       mockLeaseDAO.update.mockResolvedValue(mockLease as any);
 
-      const updateData: Partial<ILeaseFormData> = { fees: { monthlyRent: 1200 } as ILeaseFormData['fees'] };
+      const updateData: Partial<ILeaseFormData> = { fees: { rentAmount: 1200 } as ILeaseFormData['fees'] };
 
       // This should succeed because lease tenant !== current user
       const result = await leaseService.updateLease(
@@ -478,7 +478,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
           endDate: new Date(Date.now() + 86400000),
         },
         fees: {
-          monthlyRent: 1000,
+          rentAmount: 1000,
           securityDeposit: 2000,
         },
       } as any;
@@ -650,7 +650,9 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       expect(capturedFilters.tenantId).toBe(mockUserId.toString());
     });
 
-    it('should preserve an explicitly provided tenantId for tenant callers', async () => {
+    it('should override explicitly provided tenantId with context.currentuser.sub for tenant callers', async () => {
+      // Security: tenants cannot supply an arbitrary tenantId to view other tenants' leases.
+      // The service always forces tenantId = context.currentuser.sub, ignoring any caller-supplied value.
       const explicitTenantId = new Types.ObjectId().toString();
 
       await leaseService.getFilteredLeases(
@@ -661,7 +663,9 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       );
 
       const [, capturedFilters] = (mockLeaseDAO as any).getFilteredLeases.mock.calls[0];
-      expect(capturedFilters.tenantId).toBe(explicitTenantId);
+      // Must be the caller's own sub, NOT the explicitly provided tenantId
+      expect(capturedFilters.tenantId).toBe(mockUserId.toString());
+      expect(capturedFilters.tenantId).not.toBe(explicitTenantId);
     });
   });
 });

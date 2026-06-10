@@ -177,7 +177,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       const result = await this.updateMany(
         {
           endDate: { $lt: expiredDate },
-          status: 'active',
+          status: ISubscriptionStatus.ACTIVE,
         },
         {
           $set: {
@@ -320,7 +320,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   async findPendingDowngrades(thresholdDate: Date): Promise<ISubscriptionDocument[]> {
     try {
       const result = await this.list({
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         pendingDowngradeAt: { $lte: thresholdDate },
       });
 

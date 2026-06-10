@@ -106,6 +106,13 @@ restartPolicyMaxRetries = 3
 # (Settings → Health Check → Path: /api/v1/healthcheck, Timeout: 300s)
 # The worker has no HTTP server so a shared healthcheck always kills it
 
+# Sleep: services go idle after inactivity to reduce pre-launch RAM costs.
+# pms-api  → sleeps after no HTTP traffic; wakes on first request (cold start ~5–10s).
+# pms-worker → sleeps when CPU is idle (no queued jobs); wakes when Bull detects a job.
+# ⚠️  DISABLE sleep for pms-worker in Railway Dashboard once real tenants/cron jobs matter:
+#     Service → Settings → Deploy → uncheck "Sleep Application"
+sleepApplication = true
+
 [env]
 NODE_ENV = "production"
 PROCESS_TYPE = "api"

@@ -220,6 +220,13 @@ export class LeaseService {
       throw new BadRequestError({ message: t('property.errors.notFound') });
     }
 
+    if (
+      property.operationalStatus === 'maintenance' ||
+      property.operationalStatus === 'construction'
+    ) {
+      throw new BadRequestError({ message: t('lease.errors.propertyUnderMaintenance') });
+    }
+
     if (!property.isManagementAuthorized()) {
       this.log.error(
         `Property with id ${data.property.id} is not authorized for management by client ${cuid}`
@@ -245,6 +252,9 @@ export class LeaseService {
           'Tenant information is required. Please provide either a valid tenant ID or email address with an existing invitation.',
       });
     }
+
+    // Always lock currency to the property's configured value — caller-supplied currency is ignored
+    data.fees.currency = (property.fees as any)?.currency ?? 'USD';
 
     // Prevent conflict of interest: user cannot create lease for themselves as tenant
     const tenantIdStr =
@@ -405,6 +415,15 @@ export class LeaseService {
         });
       }
 
+      // Reserve the unit so no second lease can be created for it while this draft exists
+      if (data.property.unitId) {
+        await this.propertyUnitDAO.updateById(
+          data.property.unitId.toString(),
+          { status: PropertyUnitStatusEnum.RESERVED },
+          session
+        );
+      }
+
       return { lease };
     });
 
@@ -463,6 +482,19 @@ export class LeaseService {
         status: safe.length ? safe : TENANT_VISIBLE_STATUSES,
         tenantId: context.currentuser.sub, // always scope to caller — never trust client-supplied tenantId
       };
+    }
+
+    // Resolve public puid → internal ObjectId so the DAO can filter by property.unitId
+    if (filters.unitPuid) {
+      const unit = await this.propertyUnitDAO.findFirst({
+        puid: filters.unitPuid,
+        cuid,
+        deletedAt: null,
+      });
+      if (unit) {
+        filters = { ...filters, unitId: unit._id };
+      }
+      delete (filters as any).unitPuid;
     }
 
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
@@ -661,6 +693,19 @@ export class LeaseService {
 
       if (cleanUpdateData.fees) {
         cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+
+        // Enforce currency from property — same rule as createLease (line ~256)
+        // Guard: only run if the lease has a property reference (may be absent in test fixtures / legacy data)
+        if ((lease.property as any)?.id) {
+          const property = await this.propertyDAO.findFirst(
+            { _id: new Types.ObjectId((lease.property as any).id), cuid, deletedAt: null },
+            { select: 'fees' }
+          );
+          if (property) {
+            // Always lock currency to the property's configured value — caller-supplied currency is ignored
+            cleanUpdateData.fees!.currency = (property.fees as any)?.currency ?? 'USD';
+          }
+        }
       }
 
       // Sanitize legalTerms HTML/text content
@@ -675,19 +720,6 @@ export class LeaseService {
           url: cleanUpdateData.legalTerms.url,
         };
       }
-
-      // Handle internalNotes separately - will append as new note to array
-      // let noteToAdd = null;
-      // if (cleanUpdateData.internalNotes && typeof cleanUpdateData.internalNotes === 'string') {
-      //   noteToAdd = {
-      //     note: cleanUpdateData.internalNotes.trim(),
-      //     author: currentUser.fullname || 'Unknown',
-      //     authorId: currentUser.sub,
-      //     timestamp: new Date(),
-      //   };
-      //   // Remove from main update data
-      //   delete cleanUpdateData.internalNotes;
-      // }
 
       validateImmutableFields(cleanUpdateData);
       let result = null;
@@ -728,6 +760,51 @@ export class LeaseService {
             this.profileDAO,
             this.leaseCache
           );
+          // Notify tenant (email + in-app) when an admin directly updates an active lease
+          if (result?.success && !result.data?.requiresApproval && lease.tenantId) {
+            const leaseUrl = `${envVariables.FRONTEND.URL}/tenants/${cuid}/${lease.tenantId}/lease`;
+            try {
+              const emailQueue = this.queueFactory.getQueue('emailQueue');
+              emailQueue.addJobToQueue(JOB_NAME.LEASE_ADMIN_UPDATED_JOB, {
+                emailType: MailType.LEASE_ADMIN_UPDATED,
+                subject: 'Your Lease Has Been Updated',
+                to: lease.tenantInfo?.email,
+                data: {
+                  tenantName: lease.tenantInfo?.fullname || 'Tenant',
+                  leaseNumber: lease.leaseNumber,
+                  propertyAddress: lease.property?.address || '',
+                  updatedBy: currentUser.fullname || 'Property Manager',
+                  leaseUrl,
+                },
+                client: { cuid },
+              });
+            } catch (error) {
+              this.log.error(`Failed to queue admin-update email for lease ${lease.luid}:`, error);
+            }
+
+            try {
+              await this.notificationService.createNotificationFromTemplate(
+                'lease.adminUpdated',
+                { leaseNumber: lease.leaseNumber },
+                lease.tenantId.toString(),
+                NotificationTypeEnum.LEASE,
+                NotificationPriorityEnum.MEDIUM,
+                cuid,
+                currentUser.sub,
+                {
+                  resourceName: ResourceContext.LEASE,
+                  resourceUid: lease.luid,
+                  resourceId: lease._id.toString(),
+                  metadata: { leaseUrl },
+                }
+              );
+            } catch (error) {
+              this.log.error(
+                `Failed to create in-app notification for lease ${lease.luid}:`,
+                error
+              );
+            }
+          }
           break;
         case LeaseStatus.DRAFT:
           result = await handleDraftUpdate(
@@ -745,25 +822,6 @@ export class LeaseService {
             message: `Cannot update lease with status: ${lease.status}`,
           });
       }
-
-      // If there's a note to add, append it now after main update
-      // if (noteToAdd && result?.success) {
-      //   await this.leaseDAO.update(
-      //     { luid, cuid, deletedAt: null },
-      //     {
-      //       $push: { internalNotes: noteToAdd }
-      //     }
-      //   );
-
-      //   // Refetch the lease to include the new note in response
-      //   const updatedLease = await this.leaseDAO.findOne({
-      //     filter: { luid, cuid, deletedAt: null }
-      //   });
-
-      //   if (result.data && updatedLease) {
-      //     result.data = updatedLease;
-      //   }
-      // }
 
       return result
         ? result
@@ -811,6 +869,13 @@ export class LeaseService {
     const deleted = await lease.softDelete(new Types.ObjectId(userId));
     if (!deleted) {
       throw new BadRequestError({ message: 'Failed to delete lease' });
+    }
+
+    // Release the unit reservation when a draft lease is deleted
+    if (lease.status === LeaseStatus.DRAFT && lease.property?.unitId) {
+      await this.propertyUnitDAO.updateById(lease.property.unitId.toString(), {
+        status: PropertyUnitStatusEnum.AVAILABLE,
+      });
     }
 
     // Invalidate lease cache
@@ -1222,7 +1287,7 @@ export class LeaseService {
       endDate: lease.duration.endDate.toISOString(),
       leaseType: lease.type,
 
-      monthlyRent: lease.fees.monthlyRent,
+      rentAmount: lease.fees.rentAmount,
       securityDeposit: lease.fees.securityDeposit,
       rentDueDay: lease.fees.rentDueDay,
       currency: lease.fees.currency,
@@ -1809,7 +1874,7 @@ export class LeaseService {
         const invitation = await this.invitationDAO.findFirst({
           inviteeEmail: leaseData.tenantInfo.email.toLowerCase(),
           clientId: client.id,
-          role: 'tenant',
+          role: IUserRole.TENANT,
         });
 
         if (!invitation) {
@@ -1883,6 +1948,11 @@ export class LeaseService {
               validationErrors['property.unitId'].push(
                 'Unit is currently occupied and cannot be leased'
               );
+            } else if (unit.status === PropertyUnitStatusEnum.RESERVED) {
+              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+              validationErrors['property.unitId'].push(
+                'Unit already has a draft lease and cannot be leased again until that draft is deleted'
+              );
             } else if (
               unit.status === PropertyUnitStatusEnum.MAINTENANCE ||
               unit.status === PropertyUnitStatusEnum.INACTIVE
@@ -1914,10 +1984,25 @@ export class LeaseService {
       );
     }
 
-    if (leaseData.fees.monthlyRent <= 0 || isNaN(leaseData.fees.monthlyRent)) {
-      if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
-      validationErrors['fees.monthlyRent'].push(t('lease.errors.rentMustBePositive'));
+    if (leaseData.fees.rentAmount <= 0 || isNaN(leaseData.fees.rentAmount)) {
+      if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
+      validationErrors['fees.rentAmount'].push(t('lease.errors.rentMustBePositive'));
     }
+
+    const baseRentCents = leaseData.property.unitId
+      ? unit?.fees?.rentAmount
+      : propertyRecord.fees?.rentAmount;
+
+    if (baseRentCents && Number(baseRentCents) > 0) {
+      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.rentAmount);
+      if (Number(proposedRentCents) < Number(baseRentCents)) {
+        if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
+        validationErrors['fees.rentAmount'].push(
+          `Monthly rent cannot be lower than the base rental fee of ${MoneyUtils.centsToDisplay(Number(baseRentCents))}`
+        );
+      }
+    }
+
     if (leaseData.fees.securityDeposit < 0 || isNaN(leaseData.fees.securityDeposit)) {
       if (!validationErrors['fees.securityDeposit']) validationErrors['fees.securityDeposit'] = [];
       validationErrors['fees.securityDeposit'].push(t('lease.errors.depositCannotBeNegative'));
@@ -2043,7 +2128,7 @@ export class LeaseService {
             unitNumber: property?.unitId?.unitNumber || null,
             startDate: lease.duration.startDate.toISOString(),
             endDate: lease.duration.endDate.toISOString(),
-            monthlyRent: MoneyUtils.formatCurrency(lease.fees.monthlyRent, lease.fees.currency),
+            rentAmount: MoneyUtils.formatCurrency(lease.fees.rentAmount, lease.fees.currency),
             firstPaymentDate: lease.duration.startDate.toLocaleDateString(),
             securityDepositInfo: lease.fees.securityDeposit
               ? MoneyUtils.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)

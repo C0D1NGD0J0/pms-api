@@ -416,7 +416,7 @@ export class PropertyValidationService {
 
     if (propertyData.fees) {
       errors.push(
-        ...this.validateCurrency(propertyData.fees.rentalAmount, 'rentalAmount', {
+        ...this.validateCurrency(propertyData.fees.rentAmount, 'rentAmount', {
           min: 0,
           max: 100000,
         })
@@ -427,15 +427,6 @@ export class PropertyValidationService {
           ...this.validateCurrency(propertyData.fees.managementFees, 'managementFees', {
             min: 0,
             max: 50000,
-          })
-        );
-      }
-
-      if (propertyData.fees.taxAmount) {
-        errors.push(
-          ...this.validateCurrency(propertyData.fees.taxAmount, 'taxAmount', {
-            min: 0,
-            max: 100000,
           })
         );
       }
@@ -528,12 +519,12 @@ export class PropertyValidationService {
     const { propertyType, occupancyStatus, maxAllowedUnits = 1, fees } = propertyData;
 
     if (occupancyStatus === 'occupied') {
-      const rentalAmount =
-        typeof fees?.rentalAmount === 'string' ? parseFloat(fees.rentalAmount) : fees?.rentalAmount;
+      const rentAmount =
+        typeof fees?.rentAmount === 'string' ? parseFloat(fees.rentAmount) : fees?.rentAmount;
 
-      if (!rentalAmount || rentalAmount <= 0) {
+      if (!rentAmount || rentAmount <= 0) {
         errors.push({
-          field: 'rentalAmount',
+          field: 'rentAmount',
           message: 'Occupied properties must have a rental amount greater than 0',
           code: 'BUSINESS_RULE_VIOLATION',
         });

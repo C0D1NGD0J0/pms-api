@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import Stripe from 'stripe';
 import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
@@ -19,6 +18,7 @@ import {
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
+  IPayoutSchedule,
 } from '@interfaces/paymentGateway.interface';
 
 export class StripeService implements IPaymentProvider {
@@ -215,11 +215,9 @@ export class StripeService implements IPaymentProvider {
     newPriceId: string
   ): Promise<Stripe.Subscription> {
     try {
-      // Get current subscription to find subscription item ID
       const subscription = await this.stripe.subscriptions.retrieve(subscriptionId);
       const subscriptionItemId = subscription.items.data[0].id;
 
-      // Update to new price with proration (charges immediately)
       const updated = await this.stripe.subscriptions.update(subscriptionId, {
         items: [
           {
@@ -362,6 +360,32 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getPaymentIntentReceiptUrl(paymentIntentId: string): Promise<string | null> {
+    return (await this.getPaymentIntentChargeInfo(paymentIntentId)).receiptUrl;
+  }
+
+  async getPaymentIntentChargeInfo(paymentIntentId: string): Promise<{
+    chargeId: string | null;
+    receiptUrl: string | null;
+    paymentMethodId: string | null;
+  }> {
+    try {
+      const pi = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge'],
+      });
+      const charge = pi.latest_charge as Stripe.Charge | null;
+      const pmId = typeof pi.payment_method === 'string' ? pi.payment_method : null;
+      return {
+        chargeId: charge?.id ?? null,
+        receiptUrl: charge?.receipt_url ?? null,
+        paymentMethodId: pmId,
+      };
+    } catch (error) {
+      this.log.error({ error, paymentIntentId }, 'Error retrieving charge info from PaymentIntent');
+      return { chargeId: null, receiptUrl: null, paymentMethodId: null };
+    }
+  }
+
   async createRefund(params: {
     chargeId: string;
     amountInCents?: number;
@@ -411,6 +435,7 @@ export class StripeService implements IPaymentProvider {
     amountInCents: number;
     currency: string;
     destination: string;
+    sourceTransaction?: string;
     metadata?: Record<string, string>;
   }): Promise<{ transferId: string; amount: number }> {
     try {
@@ -418,6 +443,7 @@ export class StripeService implements IPaymentProvider {
         amount: params.amountInCents,
         currency: params.currency,
         destination: params.destination,
+        ...(params.sourceTransaction && { source_transaction: params.sourceTransaction }),
         ...(params.metadata && { metadata: params.metadata }),
       });
       this.log.info(
@@ -479,9 +505,8 @@ export class StripeService implements IPaymentProvider {
         capabilities: {
           transfers: { requested: true },
         },
-        // Our architecture uses destination charges — PMs only receive payouts, never make
-        // direct charges. The recipient service agreement accurately reflects this and
-        // satisfies Stripe's requirement for countries like CA that enforce it.
+        // 'recipient' service agreement — only requires 'transfers' capability,
+        // works for all countries including those without full Stripe support (e.g. NG).
         tos_acceptance: { service_agreement: 'recipient' },
         controller: {
           fees: {
@@ -551,6 +576,38 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error, input }, 'Error creating Stripe Connect account');
+      throw error;
+    }
+  }
+
+  async updatePayoutSchedule(
+    accountId: string,
+    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
+    weeklyAnchor?: string
+  ): Promise<void> {
+    const schedule: Stripe.AccountUpdateParams.Settings.Payouts.Schedule = { interval };
+    if (interval === 'weekly' && weeklyAnchor) {
+      schedule.weekly_anchor =
+        weeklyAnchor as Stripe.AccountUpdateParams.Settings.Payouts.Schedule.WeeklyAnchor;
+    }
+    await this.stripe.accounts.update(accountId, {
+      settings: { payouts: { schedule } },
+    });
+    this.log.info({ accountId, interval }, 'Updated payout schedule');
+  }
+
+  async getPayoutSchedule(accountId: string): Promise<IPayoutSchedule> {
+    try {
+      const account = await this.stripe.accounts.retrieve(accountId);
+      const schedule = account.settings?.payouts?.schedule;
+      return {
+        interval: (schedule?.interval ?? 'weekly') as IPayoutSchedule['interval'],
+        weeklyAnchor: schedule?.weekly_anchor ?? undefined,
+        monthlyAnchor: schedule?.monthly_anchor ?? undefined,
+        delayDays: schedule?.delay_days ?? undefined,
+      };
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error fetching payout schedule');
       throw error;
     }
   }
@@ -659,28 +716,34 @@ export class StripeService implements IPaymentProvider {
         applicationFeeAmountInCents: applicationFeeAmount,
         currency,
         description,
-        autoChargeDueDate,
         lineItems,
+        paymentMethodId,
         cuid,
         leaseUid,
       } = input;
 
-      const daysUntilDue = Math.ceil(dayjs(autoChargeDueDate).diff(dayjs(), 'day', true));
-      const invoice = await this.stripe.invoices.create({
+      // Destination charges (rent): application_fee_amount is all-inclusive — Stripe takes
+      // its processing fee from it, platform keeps the rest.
+      // Separate charges (maintenance): charge stays on platform, no transfer_data.
+      // Vendor is paid later via source_transaction transfer.
+      const invoiceParams: Stripe.InvoiceCreateParams = {
         customer: tenantCustomerId,
-        auto_advance: true,
+        currency,
+        ...(paymentMethodId && { default_payment_method: paymentMethodId }),
+        auto_advance: false,
         collection_method: 'charge_automatically',
-        days_until_due: daysUntilDue > 0 ? daysUntilDue : 0,
         description,
         metadata: {
           cuid,
           ...(leaseUid ? { leaseUid } : {}),
         },
-        application_fee_amount: applicationFeeAmount,
-        transfer_data: {
-          destination: connectedAccountId,
-        },
-      });
+        ...(!input.skipDestinationTransfer && {
+          application_fee_amount: applicationFeeAmount,
+          transfer_data: { destination: connectedAccountId },
+        }),
+      };
+
+      const invoice = await this.stripe.invoices.create(invoiceParams);
 
       const itemResults = await Promise.allSettled(
         lineItems.map((item) =>
@@ -688,25 +751,29 @@ export class StripeService implements IPaymentProvider {
             customer: tenantCustomerId,
             invoice: invoice.id,
             amount: item.amountInCents,
-            quantity: item.quantity || 1,
             currency,
             description: item.description,
           })
         )
       );
 
-      const failedItems = itemResults.filter((result) => result.status === 'rejected');
-      const successfulItems = itemResults.filter((result) => result.status === 'fulfilled');
+      const failedItems = itemResults.reduce<{ index: number; reason: any }[]>((acc, r, i) => {
+        if (r.status === 'rejected') acc.push({ index: i, reason: r.reason });
+        return acc;
+      }, []);
+      const successCount = itemResults.filter((r) => r.status === 'fulfilled').length;
 
       if (failedItems.length > 0) {
         this.log.error(
           {
             invoiceId: invoice.id,
             failedCount: failedItems.length,
-            successfulCount: successfulItems.length,
-            failures: failedItems.map((r, i) => ({
-              item: lineItems[i],
-              error: r.status === 'rejected' ? r.reason : null,
+            successCount,
+            failures: failedItems.map(({ index, reason }) => ({
+              item: lineItems[index],
+              stripeCode: (reason as any)?.code ?? null,
+              stripeType: (reason as any)?.type ?? null,
+              stripeMessage: (reason as any)?.message ?? null,
             })),
           },
           'Some invoice items failed to create'
@@ -730,11 +797,71 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async createInvoiceItem(params: {
+    customerId: string;
+    amountInCents: number;
+    currency: string;
+    description: string;
+  }): Promise<Stripe.InvoiceItem> {
+    try {
+      const item = await this.stripe.invoiceItems.create({
+        customer: params.customerId,
+        amount: params.amountInCents,
+        currency: params.currency,
+        description: params.description,
+      });
+      this.log.info(
+        { customerId: params.customerId, amount: params.amountInCents },
+        'Pending invoice item created'
+      );
+      return item;
+    } catch (error) {
+      this.log.error({ error, params }, 'Error creating invoice item');
+      throw error;
+    }
+  }
+
+  async updateCustomerDefaultPaymentMethod(
+    customerId: string,
+    paymentMethodId: string
+  ): Promise<void> {
+    try {
+      await this.stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+    } catch (error) {
+      this.log.error(
+        { error, customerId, paymentMethodId },
+        'Error setting customer default payment method'
+      );
+      throw error;
+    }
+  }
+
+  async payInvoice(
+    invoiceId: string,
+    opts?: { paymentMethod?: string; mandate?: string }
+  ): Promise<void> {
+    try {
+      if (opts?.paymentMethod) {
+        await this.stripe.invoices.update(invoiceId, {
+          default_payment_method: opts.paymentMethod,
+        });
+      }
+
+      await this.stripe.invoices.pay(invoiceId, {
+        ...(opts?.mandate && { mandate: opts.mandate }),
+      });
+    } catch (error: any) {
+      if (error?.rawType === 'invoice_already_paid') return;
+      this.log.error({ error, invoiceId }, 'Error paying invoice');
+      throw error;
+    }
+  }
+
   async finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse> {
     try {
-      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId, {
-        auto_advance: true,
-      });
+      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId);
 
       return {
         invoiceId: invoice.id,
@@ -743,6 +870,27 @@ export class StripeService implements IPaymentProvider {
       };
     } catch (error) {
       this.log.error({ error, invoiceId }, 'Error finalizing invoice');
+      throw error;
+    }
+  }
+
+  async voidInvoice(invoiceId: string): Promise<void> {
+    try {
+      await this.stripe.invoices.voidInvoice(invoiceId);
+    } catch (error: any) {
+      // If the invoice is still in draft, delete it instead
+      if (error?.code === 'invoice_not_open' || error?.statusCode === 400) {
+        try {
+          await this.stripe.invoices.del(invoiceId);
+          return;
+        } catch (delError) {
+          this.log.error({ delError, invoiceId }, 'Error deleting draft invoice');
+          throw delError;
+        }
+      }
+      // Already voided — safe to ignore
+      if (error?.code === 'invoice_already_voided') return;
+      this.log.error({ error, invoiceId }, 'Error voiding invoice');
       throw error;
     }
   }
@@ -810,27 +958,268 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  /**
-   * Create a SetupIntent to collect and save a payment method without an immediate charge.
-   * Used during tenant onboarding to save the card via a hosted Stripe Checkout session.
-   */
   async createSetupCheckoutSession(
     customerId: string,
     successUrl: string,
-    cancelUrl: string
+    cancelUrl: string,
+    currency: string,
+    paymentMethodTypes?: string[],
+    metadata?: Record<string, string>
   ): Promise<{ url: string }> {
     try {
+      // Bank-debit types require mandate options so Stripe can enforce the charge schedule
+      const paymentMethodOptions: Record<string, any> = {};
+
+      if (paymentMethodTypes?.includes('acss_debit')) {
+        paymentMethodOptions.acss_debit = {
+          currency,
+          mandate_options: {
+            default_for: ['invoice', 'subscription'],
+            transaction_type: 'personal',
+          },
+          verification_method: 'automatic',
+        };
+      }
+
+      if (paymentMethodTypes?.includes('us_bank_account')) {
+        paymentMethodOptions.us_bank_account = {
+          verification_method: 'automatic',
+          financial_connections: {
+            permissions: ['payment_method'],
+          },
+        };
+      }
+
+      if (paymentMethodTypes?.includes('sepa_debit')) {
+        paymentMethodOptions.sepa_debit = {
+          mandate_options: {},
+        };
+      }
+
+      if (paymentMethodTypes?.includes('bacs_debit')) {
+        paymentMethodOptions.bacs_debit = {
+          mandate_options: {},
+        };
+      }
+
       const session = await this.stripe.checkout.sessions.create({
         mode: 'setup',
+        currency,
         customer: customerId,
         success_url: successUrl,
         cancel_url: cancelUrl,
+        ...(paymentMethodTypes && { payment_method_types: paymentMethodTypes as any }),
+        ...(Object.keys(paymentMethodOptions).length > 0 && {
+          payment_method_options: paymentMethodOptions,
+        }),
+        ...(metadata && {
+          metadata,
+          setup_intent_data: { metadata },
+        }),
       });
 
       this.log.info({ sessionId: session.id, customerId }, 'Created setup checkout session');
       return { url: session.url ?? '' };
+    } catch (error: any) {
+      this.log.error(
+        {
+          customerId,
+          stripeType: error?.type,
+          stripeCode: error?.code,
+          stripeMessage: error?.message,
+        },
+        'Error creating Stripe setup checkout session'
+      );
+      throw error;
+    }
+  }
+
+  async createPaymentCheckoutSession(params: {
+    customerEmail: string;
+    customerId?: string;
+    lineItems: Array<{
+      name: string;
+      description: string;
+      amountInCents: number;
+      currency: string;
+    }>;
+    applicationFeeAmount: number;
+    destinationAccountId: string;
+    metadata: Record<string, string>;
+    successUrl: string;
+    cancelUrl: string;
+    skipDestinationTransfer?: boolean;
+  }): Promise<Stripe.Checkout.Session> {
+    try {
+      const {
+        customerEmail,
+        customerId,
+        lineItems,
+        applicationFeeAmount,
+        destinationAccountId,
+        metadata,
+        successUrl,
+        cancelUrl,
+        skipDestinationTransfer,
+      } = params;
+      const currency = lineItems[0]?.currency ?? 'usd';
+
+      const session = await this.stripe.checkout.sessions.create({
+        mode: 'payment',
+        payment_method_types: ['card'],
+        ...(customerId ? { customer: customerId } : { customer_email: customerEmail }),
+        line_items: lineItems.map((item) => ({
+          price_data: {
+            currency: currency.toLowerCase(),
+            product_data: { name: item.name, description: item.description },
+            unit_amount: item.amountInCents,
+          },
+          quantity: 1,
+        })),
+        payment_intent_data: {
+          ...(!skipDestinationTransfer && {
+            application_fee_amount: applicationFeeAmount,
+            transfer_data: { destination: destinationAccountId },
+          }),
+          metadata,
+          // Save the card for future charges (e.g., ACSS-to-card retry)
+          ...(customerId && { setup_future_usage: 'off_session' as const }),
+        },
+        metadata,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+      });
+
+      this.log.info(
+        { sessionId: session.id, customerEmail, destinationAccountId },
+        'Created payment checkout session'
+      );
+      return session;
+    } catch (error: any) {
+      this.log.error(
+        {
+          customerEmail: params.customerEmail,
+          stripeType: error?.type,
+          stripeCode: error?.code,
+          stripeMessage: error?.message,
+        },
+        'Error creating Stripe payment checkout session'
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Retrieve payment details for a Stripe invoice by expanding the payments
+   * sub-object. Since API v2025-03-31.basil, `charge` and `payment_intent`
+   * were removed from the Invoice top-level and moved into `payments.data[]`.
+   */
+  async getInvoicePaymentDetails(invoiceId: string): Promise<{
+    chargeId?: string;
+    receiptUrl?: string;
+    paymentIntentId?: string;
+    lastPaymentError?: {
+      message?: string;
+      code?: string;
+      type?: string;
+      payment_method?: { type?: string };
+    };
+    paymentMethodType?: string;
+  }> {
+    try {
+      const invoice = await this.stripe.invoices.retrieve(invoiceId, {
+        expand: ['payments.data.payment.payment_intent'],
+      });
+
+      const firstPayment = (invoice as any).payments?.data?.[0];
+      const pi = firstPayment?.payment?.payment_intent;
+      const piObj = pi && typeof pi === 'object' ? pi : undefined;
+      const paymentIntentId = typeof pi === 'string' ? pi : piObj?.id;
+
+      // Extract charge ID from expanded PaymentIntent
+      let chargeId: string | undefined;
+      if (piObj?.latest_charge) {
+        chargeId =
+          typeof piObj.latest_charge === 'string' ? piObj.latest_charge : piObj.latest_charge.id;
+      }
+
+      // Fallback: if expansion didn't yield a charge (e.g. pi was a string),
+      // retrieve the PaymentIntent directly to get latest_charge.
+      if (!chargeId && paymentIntentId) {
+        try {
+          const piDirect = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+            expand: ['latest_charge'],
+          });
+          const charge = piDirect.latest_charge as Stripe.Charge | null;
+          chargeId =
+            charge?.id ??
+            (typeof piDirect.latest_charge === 'string' ? piDirect.latest_charge : undefined);
+        } catch (err) {
+          this.log.warn({ err, paymentIntentId }, 'Fallback PaymentIntent retrieve failed');
+        }
+      }
+
+      return {
+        chargeId,
+        paymentIntentId,
+        lastPaymentError: piObj?.last_payment_error ?? undefined,
+        paymentMethodType:
+          piObj?.last_payment_error?.payment_method?.type ?? piObj?.payment_method_types?.[0],
+      };
     } catch (error) {
-      this.log.error({ error, customerId }, 'Error creating Stripe setup checkout session');
+      this.log.warn({ error, invoiceId }, 'Could not retrieve invoice payment details');
+      return {};
+    }
+  }
+
+  async retrievePaymentMethod(
+    paymentMethodId: string
+  ): Promise<{ type: string; bankName?: string; last4?: string; accountType?: string }> {
+    try {
+      const pm = await this.stripe.paymentMethods.retrieve(paymentMethodId);
+
+      const type = pm.type;
+      let bankName: string | undefined;
+      let last4: string | undefined;
+      let accountType: string | undefined;
+
+      if (type === 'us_bank_account' && pm.us_bank_account) {
+        bankName = pm.us_bank_account.bank_name ?? undefined;
+        last4 = pm.us_bank_account.last4 ?? undefined;
+        accountType = pm.us_bank_account.account_type ?? undefined;
+      } else if (type === 'acss_debit' && pm.acss_debit) {
+        bankName = pm.acss_debit.bank_name ?? undefined;
+        last4 = pm.acss_debit.last4 ?? undefined;
+      } else if (type === 'sepa_debit' && pm.sepa_debit) {
+        bankName = pm.sepa_debit.bank_code ?? undefined;
+        last4 = pm.sepa_debit.last4 ?? undefined;
+      } else if (type === 'bacs_debit' && pm.bacs_debit) {
+        last4 = pm.bacs_debit.last4 ?? undefined;
+      } else if (type === 'card' && pm.card) {
+        bankName = pm.card.brand ?? undefined;
+        last4 = pm.card.last4 ?? undefined;
+      }
+
+      return { type, bankName, last4, accountType };
+    } catch (error) {
+      this.log.error({ error, paymentMethodId }, 'Error retrieving payment method');
+      throw error;
+    }
+  }
+
+  async retrieveSetupIntent(
+    setupIntentId: string
+  ): Promise<{ paymentMethodId: string; mandateId: string | null }> {
+    try {
+      const si = await this.stripe.setupIntents.retrieve(setupIntentId, {
+        expand: ['mandate', 'payment_method'],
+      });
+      const mandateId = typeof si.mandate === 'string' ? si.mandate : (si.mandate?.id ?? null);
+      const paymentMethodId =
+        typeof si.payment_method === 'string' ? si.payment_method : (si.payment_method?.id ?? '');
+      return { paymentMethodId, mandateId };
+    } catch (error) {
+      this.log.error({ error, setupIntentId }, 'Error retrieving setup intent');
       throw error;
     }
   }

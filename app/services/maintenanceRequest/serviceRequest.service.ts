@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
@@ -5,23 +6,29 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
+import { PaymentDAO } from '@dao/paymentDAO';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { EmailQueue } from '@queues/email.queue';
+import { CurrentUser } from '@utils/currentUserRole';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { EventTypes } from '@interfaces/events.interface';
+import { convertUserRoleToEnum } from '@utils/helpers';
 import { LeaseStatus } from '@interfaces/lease.interface';
-import { ICurrentUser } from '@interfaces/user.interface';
+import { UploadResult } from '@interfaces/utils.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
+import { assertRecordOwnership } from '@utils/authorization.utils';
+import { TenantPaymentStatus } from '@interfaces/invoice.interface';
 import ROLES, { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
+import { ISuccessReturnData, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
 import {
-  ISuccessReturnData,
-  IPaginationQuery,
-  IRequestContext,
-  MailType,
-} from '@interfaces/utils.interface';
+  MaintenanceVendorPaidPayload,
+  MaintenanceChargePaidPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
 import {
   ITenantMaintenanceRequestView,
   ICompleteMaintenancePayload,
@@ -32,44 +39,31 @@ import {
   IUpdateMaintenancePayload,
   ICancelMaintenancePayload,
   MaintenanceRequestStatus,
-  ISubmitWorkOrderPayload,
-  IReviewWorkOrderPayload,
-  IInvoiceWebhookPayload,
-  ISubmitInvoicePayload,
-  IRejectInvoicePayload,
+  MaintenanceRequestMedia,
   IAssignVendorPayload,
   IUpdateStatusPayload,
   IMaintenanceFilters,
   WorkOrderStatus,
-  InvoiceStatus,
-  InvoiceSource,
 } from '@interfaces/maintenanceRequest.interface';
 
-const ALLOWED_TRANSITIONS: Record<MaintenanceRequestStatus, MaintenanceRequestStatus[]> = {
-  [MaintenanceRequestStatus.PENDING]: [MaintenanceRequestStatus.OPEN],
-  [MaintenanceRequestStatus.OPEN]: [
-    MaintenanceRequestStatus.ASSIGNED,
-    MaintenanceRequestStatus.CANCELLED,
-  ],
-  [MaintenanceRequestStatus.ASSIGNED]: [
-    MaintenanceRequestStatus.IN_PROGRESS,
-    MaintenanceRequestStatus.OPEN,
-    MaintenanceRequestStatus.CANCELLED,
-  ],
-  [MaintenanceRequestStatus.IN_PROGRESS]: [
-    MaintenanceRequestStatus.COMPLETED,
-    MaintenanceRequestStatus.CANCELLED,
-  ],
-  [MaintenanceRequestStatus.COMPLETED]: [],
-  [MaintenanceRequestStatus.CANCELLED]: [],
-};
+import { VendorSuggestionService } from './vendorSuggestion.service';
+import { MaintenanceInvoiceService } from './maintenanceInvoice.service';
+import {
+  assertVendorAuthorized,
+  resolvePrimaryVendorId,
+  getRequestOrThrow,
+  assertTransition,
+} from './serviceRequest.helpers';
 
 interface IConstructor {
+  maintenanceInvoiceService: MaintenanceInvoiceService;
+  vendorSuggestionService: VendorSuggestionService;
   maintenanceRequestDAO: MaintenanceRequestDAO;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
-  emailQueue: EmailQueue;
+  invoiceDAO: InvoiceDAO;
+  paymentDAO: PaymentDAO;
   vendorDAO: VendorDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -80,79 +74,187 @@ export class MaintenanceRequestService {
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly vendorDAO: VendorDAO;
-  private readonly emailQueue: EmailQueue;
+  private readonly invoiceDAO: InvoiceDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly paymentDAO: PaymentDAO;
+  private readonly vendorSuggestionService: VendorSuggestionService;
+  private readonly maintenanceInvoiceService: MaintenanceInvoiceService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
 
   constructor({
     userDAO,
     leaseDAO,
     vendorDAO,
-    emailQueue,
+    invoiceDAO,
+    paymentDAO,
     propertyDAO,
     emitterService,
     propertyUnitDAO,
     maintenanceRequestDAO,
+    vendorSuggestionService,
+    maintenanceInvoiceService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.vendorDAO = vendorDAO;
-    this.emailQueue = emailQueue;
+    this.invoiceDAO = invoiceDAO;
+    this.paymentDAO = paymentDAO;
     this.propertyDAO = propertyDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
+    this.vendorSuggestionService = vendorSuggestionService;
+    this.maintenanceInvoiceService = maintenanceInvoiceService;
     this.log = createLogger('MaintenanceRequestService');
+
+    this.emitterService.on(EventTypes.MAINTENANCE_VENDOR_PAID, this.handleVendorPaid.bind(this));
+    this.emitterService.on(EventTypes.MAINTENANCE_CHARGE_PAID, this.handleChargePaid.bind(this));
   }
 
-  private async resolvePrimaryVendorId(currentuser: ICurrentUser): Promise<Types.ObjectId | null> {
-    const { linkedVendorUid } = currentuser.client;
-    if (!linkedVendorUid) return null;
-    const primaryVendor = await this.userDAO.findFirst({
-      uid: linkedVendorUid,
-      'cuids.cuid': currentuser.client.cuid,
-      deletedAt: null,
-    });
-    return primaryVendor ? primaryVendor._id : null;
+  async persistUploadedMedia(
+    mruid: string,
+    results: UploadResult[],
+    actorId: string
+  ): Promise<string | null> {
+    if (!results?.length) return null;
+
+    const mediaItems: MaintenanceRequestMedia[] = results.map((r) => ({
+      url: r.url,
+      key: r.key,
+      filename: r.filename,
+      uploadedBy: new Types.ObjectId(actorId),
+      uploadedAt: new Date(),
+      status: 'active',
+    }));
+
+    const updated = await this.maintenanceRequestDAO.update(
+      { mruid },
+      { $push: { media: { $each: mediaItems } } }
+    );
+
+    this.log.info(
+      { mruid, count: mediaItems.length },
+      '[MaintenanceRequestService] media persisted after S3 upload'
+    );
+
+    return updated?.cuid ?? null;
   }
+
+  /**
+   * When the Stripe webhook confirms a tenant maintenance charge is paid,
+   * auto-complete the SR so it moves from awaiting_invoice → completed.
+   */
+  private handleChargePaid = async (payload: MaintenanceChargePaidPayload): Promise<void> => {
+    try {
+      this.log.info(
+        { mruid: payload.mruid },
+        '[ServiceRequestService] Maintenance charge paid — persisting tenant payment status'
+      );
+
+      // Always persist tenantPaymentStatus on the invoice so the PM portal
+      // reflects payment without relying on a computed field at read time.
+      const invoice = await this.invoiceDAO.findByMaintenanceRequest(payload.mruid, payload.cuid);
+      if (invoice) {
+        await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
+          $set: { tenantPaymentStatus: TenantPaymentStatus.PAID },
+        });
+        this.log.info(
+          { mruid: payload.mruid },
+          '[ServiceRequestService] Invoice tenantPaymentStatus set to paid'
+        );
+      }
+
+      const request = await this.maintenanceRequestDAO.getByMruid(payload.mruid, payload.cuid);
+      if (!request) {
+        this.log.warn(
+          { mruid: payload.mruid },
+          '[ServiceRequestService] SR not found for charge-paid event'
+        );
+        return;
+      }
+      if (request.status !== MaintenanceRequestStatus.AWAITING_INVOICE) {
+        this.log.info(
+          { mruid: payload.mruid, status: request.status },
+          '[ServiceRequestService] SR not in awaiting_invoice — skipping auto-finalize'
+        );
+        return;
+      }
+
+      await this.maintenanceRequestDAO.updateById(request._id.toString(), {
+        $set: {
+          status: MaintenanceRequestStatus.COMPLETED,
+          completedAt: new Date(),
+          'tenantFeedback.status': 'pending',
+        },
+      });
+
+      this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
+        requestId: request._id.toString(),
+        mruid: request.mruid,
+        cuid: payload.cuid,
+        tenantId: request.tenantId?.toString() ?? '',
+        vendorId: request.vendorId?.toString(),
+        completedBy: 'system',
+      });
+
+      this.log.info(
+        { mruid: payload.mruid },
+        '[ServiceRequestService] SR auto-completed after tenant charge paid'
+      );
+    } catch (err: unknown) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        '[ServiceRequestService] Failed to auto-complete SR after charge paid'
+      );
+    }
+  };
+
+  /**
+   * When PaymentService emits MAINTENANCE_VENDOR_PAID after a successful Stripe transfer,
+   * mark the linked Invoice as paid so the frontend payout badge reflects it.
+   */
+  private handleVendorPaid = async (payload: MaintenanceVendorPaidPayload): Promise<void> => {
+    try {
+      this.log.info({ mruid: payload.mruid }, '[ServiceRequestService] Vendor paid event received');
+      const invoice = await this.invoiceDAO.findByMaintenanceRequest(payload.mruid, payload.cuid);
+      if (invoice) {
+        await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
+          $set: {
+            vendorPayoutStatus: 'paid',
+            vendorPaidAt: new Date(),
+            vendorPayoutTransferId: payload.transferId,
+          },
+        });
+      }
+    } catch (err: unknown) {
+      this.log.error(
+        { err, mruid: payload.mruid },
+        '[ServiceRequestService] Failed to update invoice vendor payout status'
+      );
+    }
+  };
 
   private async buildRoleFilter(ctx: IRequestContext): Promise<Record<string, any>> {
     const currentuser = ctx.currentuser;
-    if (currentuser.client.role === 'tenant') {
+
+    if (CurrentUser.isTenant(currentuser)) {
       return { tenantId: new Types.ObjectId(currentuser.sub) };
     }
-    if (currentuser.client.role === 'vendor') {
-      if (currentuser.client.linkedVendorUid) {
-        const primaryId = await this.resolvePrimaryVendorId(currentuser);
-        if (primaryId) {
-          return { vendorId: { $in: [primaryId, new Types.ObjectId(currentuser.sub)] } };
-        }
+
+    if (ROLE_GROUPS.PROPERTY_STAFF_ROLES.includes(currentuser.client.role as any)) {
+      return { assignedBy: new Types.ObjectId(currentuser.sub) };
+    }
+
+    if (CurrentUser.isPrimaryVendor(currentuser)) {
+      // Primary vendor account — scoped to MRs assigned to their organisation
+      const primaryId = await resolvePrimaryVendorId(this.vendorDAO, currentuser);
+      if (primaryId) {
+        return { vendorId: primaryId };
       }
-      return { vendorId: new Types.ObjectId(currentuser.sub) };
     }
     return {};
-  }
-
-  private async getRequestOrThrow(
-    mruid: string,
-    cuid: string
-  ): Promise<IMaintenanceRequestDocument> {
-    const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
-    return request;
-  }
-
-  private assertTransition(
-    current: MaintenanceRequestStatus,
-    next: MaintenanceRequestStatus
-  ): void {
-    if (!ALLOWED_TRANSITIONS[current].includes(next)) {
-      throw new BadRequestError({
-        message: t('maintenance.errors.invalidTransition', { current, next }),
-      });
-    }
   }
 
   async createRequest(
@@ -264,6 +366,71 @@ export class MaintenanceRequestService {
       );
     });
 
+    // ── Maintenance status toggle ──────────────────────────────────────────────
+    if (data.setMaintenanceStatus && currentuser.client.role !== ROLES.TENANT) {
+      const userRoleEnum = convertUserRoleToEnum(currentuser.client.role);
+
+      if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
+        // Manager/Admin → apply directly
+        await this.propertyDAO.updateById(property._id.toString(), {
+          $set: { operationalStatus: 'maintenance' },
+        });
+        if (unit) {
+          await (unit as any).prepareForMaintenance(
+            `SR ${request.mruid}: ${data.title}`,
+            currentuser.sub
+          );
+        }
+      } else if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
+        // Staff → submit for approval
+        await this.maintenanceRequestDAO.updateById(request._id.toString(), {
+          $set: {
+            pendingMaintenanceStatus: {
+              propertyId: property._id,
+              unitId: unit?._id,
+              requestedBy: new Types.ObjectId(currentuser.sub),
+              requestedAt: new Date(),
+              displayName: currentuser.fullname || currentuser.displayName,
+            },
+          },
+        });
+      }
+    }
+
+    // ── Optional vendor assignment on creation ──────────────────────────────────
+    if (data.vendorVuid && currentuser.client.role !== ROLES.TENANT) {
+      const vendorRecord = await this.vendorDAO.findFirst({
+        vuid: data.vendorVuid,
+        'connectedClients.cuid': cuid,
+        'connectedClients.isConnected': true,
+        deletedAt: null,
+      });
+      if (vendorRecord) {
+        const clientConn = vendorRecord.connectedClients.find((c) => c.cuid === cuid);
+        if (clientConn?.primaryAccountHolderUserId) {
+          const vendorUserId = clientConn.primaryAccountHolderUserId;
+          await this.maintenanceRequestDAO.updateById(request._id.toString(), {
+            $set: {
+              vendorId: vendorUserId,
+              assignedAt: new Date(),
+              assignedBy: new Types.ObjectId(currentuser.sub),
+              status: MaintenanceRequestStatus.ASSIGNED,
+              ...(data.scheduledDate && { scheduledDate: new Date(data.scheduledDate) }),
+              ...(data.estimatedCost !== undefined && { estimatedCost: data.estimatedCost }),
+            },
+          });
+
+          this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_ASSIGNED, {
+            requestId: request._id.toString(),
+            mruid: request.mruid,
+            cuid,
+            vendorId: vendorUserId.toString(),
+            assignedBy: currentuser.sub,
+          });
+        }
+      }
+    }
+
     this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_CREATED, {
       requestId: request._id.toString(),
       mruid: request.mruid,
@@ -276,12 +443,12 @@ export class MaintenanceRequestService {
       priority: request.priority,
     });
 
-    this.emailQueue.addToEmailQueue('maintenanceRequestCreated', {
-      to: currentuser.email,
-      emailType: MailType.MAINTENANCE_REQUEST_CREATED,
-      subject: '',
-      data: { request, currentuser },
-    });
+    // Fire-and-forget: AI triage runs async, never blocks the response
+    this.vendorSuggestionService
+      .runAITriage(request)
+      .catch((err) =>
+        this.log.error({ err, mruid: request.mruid }, 'AI triage background task failed')
+      );
 
     return { success: true, data: request, message: t('maintenance.success.created') };
   }
@@ -292,14 +459,21 @@ export class MaintenanceRequestService {
     pagination: IPaginationQuery
   ): Promise<ISuccessReturnData> {
     const { cuid } = ctx.request.params;
+    const currentuser = ctx.currentuser;
+
     const baseFilter: Record<string, any> = {
       cuid,
       deletedAt: null,
       ...(await this.buildRoleFilter(ctx)),
     };
+    const isTenant = CurrentUser.isTenant(currentuser);
+    const isVendorTeamMember = CurrentUser.isVendorTeamMember(currentuser);
 
     if (filters.status) {
       baseFilter.status = Array.isArray(filters.status) ? { $in: filters.status } : filters.status;
+    } else if (!isTenant) {
+      // PMs, staff, and vendors don't see cancelled requests unless they explicitly filter for them
+      baseFilter.status = { $ne: 'cancelled' };
     }
     if (filters.priority) baseFilter.priority = filters.priority;
     if (filters.category) baseFilter.category = filters.category;
@@ -311,7 +485,7 @@ export class MaintenanceRequestService {
     }
 
     // Resolve resource UIDs to ObjectIds for DB queries
-    const [property, unit, vendor, tenant] = await Promise.all([
+    const [property, unit, vendor, tenant, managedBy] = await Promise.all([
       filters.pid ? this.propertyDAO.findFirst({ pid: filters.pid, cuid, deletedAt: null }) : null,
       filters.puid ? this.propertyUnitDAO.findFirst({ puid: filters.puid, deletedAt: null }) : null,
       filters.vendorUid
@@ -320,26 +494,244 @@ export class MaintenanceRequestService {
       filters.tenantUid
         ? this.userDAO.findFirst({ uid: filters.tenantUid, deletedAt: null })
         : null,
+      filters.managedByUid
+        ? this.userDAO.findFirst({ uid: filters.managedByUid, deletedAt: null })
+        : null,
     ]);
     if (property) baseFilter.propertyId = property._id;
     if (unit) baseFilter.propertyUnitId = unit._id;
     if (vendor) baseFilter.vendorId = vendor._id;
     if (tenant) baseFilter.tenantId = tenant._id;
+    if (managedBy) baseFilter.managedBy = managedBy._id;
+
+    if (filters.assignedTechnicianSub) {
+      if (isVendorTeamMember && filters.assignedTechnicianSub !== currentuser.sub) {
+        throw new ForbiddenError({ message: t('client.errors.insufficientPermissions') });
+      }
+      baseFilter['assignedTechnician.userId'] = new Types.ObjectId(filters.assignedTechnicianSub);
+    }
 
     const result = await this.maintenanceRequestDAO.listWithDetails(baseFilter, pagination);
-    return { success: true, data: result };
+
+    const rawItems: any[] = ((result as any).items || []).map((item: any) =>
+      item.toObject ? item.toObject() : { ...item }
+    );
+
+    // Batch-resolve vendor company names — one query for the whole page
+    const vendorUserIds = [
+      ...new Set(
+        rawItems
+          .map((item: any) => item.vendorId?._id?.toString() ?? item.vendorId?.toString())
+          .filter(Boolean)
+      ),
+    ];
+    const vendorCompanyMap: Record<string, string> = {};
+    if (vendorUserIds.length > 0) {
+      const vendorDocs = await this.vendorDAO.list(
+        {
+          'connectedClients.primaryAccountHolderUserId': {
+            $in: vendorUserIds.map((id) => new Types.ObjectId(id)),
+          },
+        },
+        { projection: 'companyName connectedClients' }
+      );
+      for (const vDoc of (vendorDocs as any).items || []) {
+        for (const conn of vDoc.connectedClients || []) {
+          vendorCompanyMap[conn.primaryAccountHolderUserId.toString()] = vDoc.companyName;
+        }
+      }
+    }
+
+    // Project invoiceId (populated) → invoice object for list items
+    const items = rawItems.map((plain: any) => {
+      const invoiceDoc = plain.invoiceId;
+      if (typeof invoiceDoc === 'object' && invoiceDoc !== null) {
+        // An approved invoice on a completed SR means the tenant has paid
+        const rawStatus: string = invoiceDoc.status ?? 'pending';
+        const effectiveStatus =
+          rawStatus === 'approved' && plain.status === MaintenanceRequestStatus.COMPLETED
+            ? 'paid'
+            : rawStatus;
+        plain.invoice = {
+          invuid: invoiceDoc.invuid ?? null,
+          status: effectiveStatus,
+          amountInCents: invoiceDoc.amountInCents ?? null,
+          vendorPayoutStatus: invoiceDoc.vendorPayoutStatus ?? null,
+          submittedAt: invoiceDoc.submittedAt ?? null,
+        };
+      } else {
+        plain.invoice = null;
+      }
+      delete plain.invoiceId;
+
+      // Map populated vendorId (User doc) → vendorName + plain vendorId string
+      const vendorUser = plain.vendorId;
+      if (vendorUser && typeof vendorUser === 'object') {
+        const userId = vendorUser._id?.toString();
+        plain.vendorName =
+          (userId && vendorCompanyMap[userId]) ||
+          `${vendorUser?.profile?.personalInfo?.firstName || ''} ${vendorUser?.profile?.personalInfo?.lastName || ''}`.trim() ||
+          vendorUser.email ||
+          null;
+        plain.vendorId = userId ?? null;
+      }
+
+      return plain;
+    });
+
+    return { success: true, data: { ...(result as any), items } };
   }
 
   async getRequest(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
     const { cuid } = ctx.request.params;
-    const request = await this.maintenanceRequestDAO.findFirst({
-      mruid,
-      cuid,
-      deletedAt: null,
-      ...(await this.buildRoleFilter(ctx)),
-    });
+    const request = await this.maintenanceRequestDAO.findFirst(
+      {
+        mruid,
+        cuid,
+        deletedAt: null,
+        ...(await this.buildRoleFilter(ctx)),
+      },
+      {
+        populate: [
+          { path: 'propertyId', select: 'address pid name' },
+          { path: 'propertyUnitId', select: 'unitNumber puid' },
+          {
+            path: 'vendorId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+          {
+            path: 'tenantId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+          { path: 'invoiceId' },
+        ],
+      }
+    );
     if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
-    return { success: true, data: request };
+
+    const property = (request as any).propertyId as any;
+    const unit = (request as any).propertyUnitId as any;
+    const tenant = (request as any).tenantId as any;
+    const vendor = (request as any).vendorId as any;
+
+    const plain = request.toObject ? request.toObject() : { ...request };
+
+    // Map populated refs to flat display fields the frontend expects
+    plain.propertyAddress =
+      typeof property?.address === 'string'
+        ? property.address
+        : property?.address?.fullAddress || property?.name || '';
+
+    // Collapse propertyId back to a plain pid string (interface declares string)
+    plain.propertyId = property?.pid ?? '';
+
+    // Expose unit as a typed object so the frontend gets both unitNumber and puid
+    plain.propertyUnit =
+      unit && typeof unit === 'object'
+        ? { unitNumber: unit.unitNumber ?? null, puid: unit.puid ?? null }
+        : null;
+    delete plain.propertyUnitId;
+
+    const tenantProfile = tenant?.profile?.personalInfo;
+    if (tenantProfile) {
+      plain.tenantName =
+        `${tenantProfile.firstName || ''} ${tenantProfile.lastName || ''}`.trim() || tenant.email;
+    }
+    // Collapse tenantId back to a plain string after populate (like vendorId)
+    plain.tenantId = tenant?._id?.toString() ?? null;
+
+    // Resolve active lease end date for the property/unit so the frontend can cap scheduling
+    const leaseFilter: Record<string, any> = {
+      cuid,
+      'property.id': property?._id,
+      status: LeaseStatus.ACTIVE,
+      deletedAt: null,
+    };
+    if (unit?._id) leaseFilter['property.unitId'] = unit._id;
+    const activeLease = await this.leaseDAO.findFirst(leaseFilter, { select: 'duration.endDate' });
+    plain.leaseEndDate = activeLease?.duration?.endDate
+      ? dayjs(activeLease.duration.endDate).format('YYYY-MM-DD')
+      : undefined;
+
+    if (vendor) {
+      // vendorId refs User, not Vendor — look up the Vendor doc for companyName
+      const vendorDoc = await this.vendorDAO.findFirst({
+        'connectedClients.primaryAccountHolderUserId': vendor._id,
+        'connectedClients.cuid': cuid,
+      });
+      plain.vendorName =
+        vendorDoc?.companyName ||
+        `${vendor?.profile?.personalInfo?.firstName || ''} ${vendor?.profile?.personalInfo?.lastName || ''}`.trim() ||
+        vendor.email;
+    }
+    // Collapse vendorId back to a plain string after populate (interface declares string)
+    plain.vendorId = vendor?._id?.toString() ?? null;
+
+    const mapInvoiceDoc = (inv: any) => ({
+      invuid: inv.invuid,
+      submittedAt: inv.submittedAt,
+      amountInCents: inv.amountInCents,
+      currency: inv.currency,
+      description: inv.description,
+      status: inv.status,
+      source: inv.source?.type ?? 'manual',
+      lineItems: inv.lineItems ?? [],
+      attachmentUrl: inv.attachment?.url,
+      attachmentKey: inv.attachment?.key,
+      reviewedAt: inv.review?.reviewedAt,
+      rejectionReason: inv.review?.rejectionReason,
+      externalInvoiceId: inv.source?.externalId,
+      externalInvoiceUrl: inv.source?.externalUrl,
+      vendorPayoutStatus: inv.vendorPayoutStatus,
+      vendorPaidAt: inv.vendorPaidAt,
+      tenantPaymentStatus: inv.tenantPaymentStatus,
+      stripeReceiptUrl: inv.stripeReceiptUrl ?? null,
+    });
+
+    // Map populated invoiceId to `invoice` for frontend compatibility.
+    // Flatten the standalone Invoice document shape to match the MRInvoice interface.
+    if (plain.invoiceId && typeof plain.invoiceId === 'object') {
+      plain.invoice = mapInvoiceDoc(plain.invoiceId);
+      delete plain.invoiceId;
+    }
+
+    // Filter out soft-deleted media items before sending to client
+    if (Array.isArray(plain.media)) {
+      plain.media = plain.media.filter((m: any) => m.status !== 'deleted');
+    }
+
+    // Strip internal-only fields not consumed by any frontend view
+    delete plain.__v;
+    delete plain.assignedBy;
+    if (plain.workOrder) {
+      delete plain.workOrder.submittedBy;
+      delete plain.workOrder.reviewedBy;
+    }
+
+    // Augment invoice with tenant payment status so the frontend can gate "Pay Vendor".
+    // Prefer the persisted field (set by webhook handler); fall back to a live payment
+    // lookup for records created before the field was added.
+    if (plain.invoice?.status === 'approved') {
+      if (plain.invoice.tenantPaymentStatus) {
+        // Already persisted by the webhook handler — no extra query needed.
+      } else {
+        const tenantCharge = await this.paymentDAO.findFirst({
+          cuid,
+          maintenanceRequestUid: mruid,
+          paymentType: PaymentRecordType.MAINTENANCE,
+          vendorId: { $exists: false },
+          deletedAt: null,
+        });
+        plain.invoice.tenantPaymentStatus =
+          tenantCharge?.status === PaymentRecordStatus.PAID
+            ? TenantPaymentStatus.PAID
+            : TenantPaymentStatus.UNPAID;
+      }
+    }
+
+    return { success: true, data: plain };
   }
 
   async assignVendor(
@@ -349,10 +741,10 @@ export class MaintenanceRequestService {
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
     // OPEN → ASSIGNED (vendor must accept before work begins)
-    this.assertTransition(request.status, MaintenanceRequestStatus.ASSIGNED);
+    assertTransition(request.status, MaintenanceRequestStatus.ASSIGNED);
 
     const vendorRecord = await this.vendorDAO.findFirst({
       vuid: data.vuid,
@@ -396,14 +788,6 @@ export class MaintenanceRequestService {
       scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : undefined,
     });
 
-    // Notify vendor — they need to accept or decline
-    this.emailQueue.addToEmailQueue('maintenanceRequestAssigned', {
-      to: vendorUser.email,
-      emailType: MailType.MAINTENANCE_REQUEST_ASSIGNED,
-      subject: '',
-      data: { request: updated, vendor: vendorUser, assignedBy: currentuser },
-    });
-
     return { success: true, data: updated, message: t('maintenance.success.assigned') };
   }
 
@@ -414,20 +798,12 @@ export class MaintenanceRequestService {
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
     if (request.status !== MaintenanceRequestStatus.ASSIGNED) {
       throw new BadRequestError({ message: t('maintenance.errors.notAssigned') });
     }
-    const isAssignedVendor = request.vendorId?.toString() === currentuser.sub;
-    let authorized = isAssignedVendor;
-    if (!authorized && currentuser.client.linkedVendorUid) {
-      const primaryId = await this.resolvePrimaryVendorId(currentuser);
-      authorized = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-    }
-    if (!authorized) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
-    }
+    await this.assertIsAssignedVendor(request, currentuser);
 
     // Work-order guard: block acceptance if a work order is pending or rejected
     if (request.workOrder) {
@@ -441,6 +817,15 @@ export class MaintenanceRequestService {
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      if (!data.technician?.userId) {
+        data.technician = {
+          phone: '',
+          email: currentuser.email,
+          userId: currentuser.sub.toString(),
+          name: currentuser.fullname || currentuser.displayName || 'Assigned Technician',
+        };
+      }
+
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
         {
@@ -451,6 +836,10 @@ export class MaintenanceRequestService {
                 name: data.technician.name,
                 phone: data.technician.phone,
                 email: data.technician.email,
+                ...(data.technician.userId &&
+                  Types.ObjectId.isValid(data.technician.userId) && {
+                    userId: new Types.ObjectId(data.technician.userId),
+                  }),
               },
             }),
           },
@@ -468,22 +857,6 @@ export class MaintenanceRequestService {
       vendorId: currentuser.sub,
     });
 
-    // Notify tenant their request is now being actively worked on
-    if (request.tenantId) {
-      const tenantUser = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(request.tenantId.toString()),
-        deletedAt: null,
-      });
-      if (tenantUser?.email) {
-        this.emailQueue.addToEmailQueue('maintenanceRequestAccepted', {
-          to: tenantUser.email,
-          emailType: MailType.MAINTENANCE_REQUEST_ACCEPTED,
-          subject: '',
-          data: { request: updated, tenant: tenantUser, vendor: currentuser },
-        });
-      }
-    }
-
     return { success: true, data: updated, message: t('maintenance.success.accepted') };
   }
 
@@ -494,37 +867,19 @@ export class MaintenanceRequestService {
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
     if (request.status !== MaintenanceRequestStatus.ASSIGNED) {
       throw new BadRequestError({ message: t('maintenance.errors.notAssigned') });
     }
-    const isAssignedDecline = request.vendorId?.toString() === currentuser.sub;
-    let authorizedDecline = isAssignedDecline;
-    if (!authorizedDecline && currentuser.client.linkedVendorUid) {
-      const primaryId = await this.resolvePrimaryVendorId(currentuser);
-      authorizedDecline = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-    }
-    if (!authorizedDecline) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
-    }
+    await this.assertIsAssignedVendor(request, currentuser);
 
     // Unassign vendor and return to OPEN for PM to reassign
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
-        {
-          $set: { status: MaintenanceRequestStatus.OPEN },
-          $unset: {
-            vendorId: 1,
-            assignedAt: 1,
-            assignedBy: 1,
-            scheduledDate: 1,
-            assignedTechnician: 1,
-            workOrder: 1,
-          },
-        },
+        this.buildUnassignUpdate(),
         undefined,
         session
       );
@@ -539,14 +894,6 @@ export class MaintenanceRequestService {
       reason: data.reason,
     });
 
-    // Notify PM so they can reassign
-    this.emailQueue.addToEmailQueue('maintenanceRequestDeclined', {
-      to: '', // resolved by worker from cuid's admin users
-      emailType: MailType.MAINTENANCE_REQUEST_DECLINED,
-      subject: '',
-      data: { request: updated, vendorId: currentuser.sub, reason: data.reason },
-    });
-
     return { success: true, data: updated, message: t('maintenance.success.declined') };
   }
 
@@ -556,13 +903,61 @@ export class MaintenanceRequestService {
     body: {
       action: string;
       reason?: string;
-      technician?: { name: string; phone?: string; email?: string };
+      technician?: { name: string; phone?: string; email?: string; userId?: string };
     }
   ): Promise<ISuccessReturnData> {
     if (body.action === 'accept') {
       return this.acceptAssignment(ctx, mruid, { action: 'accept', technician: body.technician });
     }
+    if (body.action === 'abandon') {
+      return this.abandonAssignment(ctx, mruid);
+    }
     return this.declineAssignment(ctx, mruid, { reason: body.reason });
+  }
+
+  async abandonAssignment(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
+
+    if (request.status !== MaintenanceRequestStatus.IN_PROGRESS) {
+      throw new BadRequestError({ message: 'Assignment can only be released while in progress' });
+    }
+    if (request.workOrder?.status !== WorkOrderStatus.REJECTED) {
+      throw new BadRequestError({
+        message: 'Assignment can only be released after a work order has been rejected',
+      });
+    }
+
+    // Verify the caller is the assigned vendor
+    await this.assertIsAssignedVendor(request, currentuser);
+
+    // Unassign vendor, clear WO, return SR to OPEN for PM to reassign
+    const session = await this.maintenanceRequestDAO.startSession();
+    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      return this.maintenanceRequestDAO.updateById(
+        request._id.toString(),
+        this.buildUnassignUpdate(),
+        undefined,
+        session
+      );
+    });
+
+    // Reuse the declined event so PM receives a notification
+    this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_DECLINED, {
+      requestId: request._id.toString(),
+      mruid: request.mruid,
+      cuid,
+      tenantId: request.tenantId?.toString(),
+      vendorId: currentuser.sub,
+      reason: 'Vendor released assignment after work order was rejected',
+    });
+
+    return {
+      success: true,
+      data: updated,
+      message: 'Assignment released. The request has been returned for reassignment.',
+    };
   }
 
   async updateStatus(
@@ -570,9 +965,20 @@ export class MaintenanceRequestService {
     mruid: string,
     data: IUpdateStatusPayload
   ): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-    this.assertTransition(request.status, data.status);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
+
+    if (CurrentUser.isTenant(currentuser)) {
+      throw new ForbiddenError({ message: t('maintenance.errors.notAllowed') });
+    }
+    if (CurrentUser.isVendor(currentuser)) {
+      assertRecordOwnership(currentuser, request.vendorId, {
+        errorMessage: t('maintenance.errors.notYourAssignment'),
+      });
+    }
+
+    assertTransition(request.status, data.status);
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
@@ -595,20 +1001,53 @@ export class MaintenanceRequestService {
     return { success: true, data: updated, message: t('maintenance.success.statusUpdated') };
   }
 
-  async completeRequest(
+  /**
+   * Vendor marks work as done → transitions to AWAITING_INVOICE with 72hr deadline.
+   * Requires an approved work order (even for $0 jobs).
+   */
+  async markWorkDone(
     ctx: IRequestContext,
     mruid: string,
     data: ICompleteMaintenancePayload
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-    this.assertTransition(request.status, MaintenanceRequestStatus.COMPLETED);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
+    assertTransition(request.status, MaintenanceRequestStatus.AWAITING_INVOICE);
+
+    // Vendor ownership check: primary vendor always allowed; team member only if specifically assigned
+    if (CurrentUser.isVendor(currentuser)) {
+      const isDirectlyAssigned = request.vendorId?.toString() === currentuser.sub;
+      let authorized = isDirectlyAssigned;
+      if (!authorized && CurrentUser.isVendorTeamMember(currentuser)) {
+        const primaryId = await resolvePrimaryVendorId(this.vendorDAO, currentuser);
+        const resolvedToAssignedVendor =
+          !!primaryId && request.vendorId?.toString() === primaryId.toString();
+        if (resolvedToAssignedVendor) {
+          const assignedTechId = request.assignedTechnician?.userId?.toString();
+          authorized = assignedTechId ? assignedTechId === currentuser.sub : true;
+        }
+      }
+      if (!authorized) {
+        throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
+      }
+    }
+
+    // Mandatory work order guard
+    if (!request.workOrder) {
+      throw new BadRequestError({ message: t('maintenance.errors.workOrderRequired') });
+    }
+    if (request.workOrder.status !== WorkOrderStatus.APPROVED) {
+      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotApproved') });
+    }
+
+    const INVOICE_DEADLINE_HOURS = 72;
+    const invoiceDeadline = new Date(Date.now() + INVOICE_DEADLINE_HOURS * 60 * 60 * 1000);
 
     const updateQuery: Record<string, any> = {
       $set: {
-        status: MaintenanceRequestStatus.COMPLETED,
-        completedAt: new Date(),
+        status: MaintenanceRequestStatus.AWAITING_INVOICE,
+        invoiceDeadline,
         ...(data.actualCost !== undefined && { actualCost: data.actualCost }),
       },
     };
@@ -633,33 +1072,181 @@ export class MaintenanceRequestService {
       );
     });
 
+    this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_WORK_DONE, {
+      requestId: request._id.toString(),
+      mruid: request.mruid,
+      cuid,
+      tenantId: request.tenantId?.toString(),
+      vendorId: request.vendorId?.toString(),
+      completedBy: currentuser.sub,
+      invoiceDeadline: invoiceDeadline.toISOString(),
+    });
+
+    return { success: true, data: updated, message: t('maintenance.success.workDone') };
+  }
+
+  /**
+   * PM finalizes the request → transitions AWAITING_INVOICE → COMPLETED.
+   * Typically called after invoice is approved (or after 72hr expiry if PM decides to close).
+   */
+  async finalizeCompletion(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
+    assertTransition(request.status, MaintenanceRequestStatus.COMPLETED);
+
+    const session = await this.maintenanceRequestDAO.startSession();
+    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      return this.maintenanceRequestDAO.updateById(
+        request._id.toString(),
+        {
+          $set: {
+            status: MaintenanceRequestStatus.COMPLETED,
+            completedAt: new Date(),
+            'tenantFeedback.status': 'pending',
+          },
+        },
+        undefined,
+        session
+      );
+    });
+
     this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
       requestId: request._id.toString(),
       mruid: request.mruid,
       cuid,
       tenantId: request.tenantId?.toString() ?? '',
       vendorId: request.vendorId?.toString(),
+      technicianId: request.assignedTechnician?.userId?.toString(),
       completedBy: currentuser.sub,
-      actualCost: data.actualCost,
     });
 
-    // Notify tenant their request is complete
-    if (request.tenantId) {
-      const tenantUser = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(request.tenantId.toString()),
-        deletedAt: null,
-      });
-      if (tenantUser?.email) {
-        this.emailQueue.addToEmailQueue('maintenanceRequestCompleted', {
-          to: tenantUser.email,
-          emailType: MailType.MAINTENANCE_REQUEST_COMPLETED,
-          subject: '',
-          data: { request: updated, tenant: tenantUser },
+    // Auto-revert property/unit status if in maintenance and no other active SRs
+    if (request.propertyId) {
+      const property = await this.propertyDAO.findById(request.propertyId.toString());
+      if (property?.operationalStatus === 'maintenance') {
+        const otherActiveSRs = await this.maintenanceRequestDAO.list({
+          propertyId: request.propertyId,
+          status: {
+            $nin: [MaintenanceRequestStatus.COMPLETED, MaintenanceRequestStatus.CANCELLED],
+          },
+          _id: { $ne: request._id },
+          deletedAt: null,
         });
+
+        if ((otherActiveSRs.items || []).length === 0) {
+          await this.propertyDAO.updateById(property._id.toString(), {
+            $set: { operationalStatus: 'available' },
+          });
+          if (request.propertyUnitId) {
+            const unit = await this.propertyUnitDAO.findById(request.propertyUnitId.toString());
+            if (unit) await (unit as any).makeUnitAvailable(currentuser.sub);
+          }
+        }
       }
     }
 
     return { success: true, data: updated, message: t('maintenance.success.completed') };
+  }
+
+  /**
+   * Tenant submits satisfaction feedback after completion.
+   */
+  async submitTenantFeedback(
+    ctx: IRequestContext,
+    mruid: string,
+    data: { status: 'confirmed' | 'disputed'; rating?: number; comment?: string }
+  ): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
+
+    if (request.status !== MaintenanceRequestStatus.COMPLETED) {
+      throw new BadRequestError({ message: t('maintenance.errors.notCompleted') });
+    }
+
+    if (request.tenantId?.toString() !== currentuser.sub) {
+      throw new ForbiddenError({ message: t('maintenance.errors.notYourRequest') });
+    }
+
+    if ((request as any).tenantFeedback?.submittedAt) {
+      throw new BadRequestError({ message: t('maintenance.errors.feedbackAlreadySubmitted') });
+    }
+
+    const updated = await this.maintenanceRequestDAO.updateById(request._id.toString(), {
+      $set: {
+        'tenantFeedback.status': data.status,
+        'tenantFeedback.rating': data.rating,
+        'tenantFeedback.comment': data.comment,
+        'tenantFeedback.submittedAt': new Date(),
+      },
+    });
+
+    this.emitterService.emit(EventTypes.MAINTENANCE_FEEDBACK_SUBMITTED, {
+      requestId: request._id.toString(),
+      mruid: request.mruid,
+      cuid,
+      tenantId: currentuser.sub,
+      vendorId: request.vendorId?.toString(),
+      feedbackStatus: data.status,
+      rating: data.rating,
+    });
+
+    // If confirmed with rating, update vendor's average rating
+    if (data.status === 'confirmed' && data.rating && request.vendorId) {
+      await this.updateVendorRating(request.vendorId.toString());
+    }
+
+    return { success: true, data: updated, message: t('maintenance.success.feedbackSubmitted') };
+  }
+
+  private async assertIsAssignedVendor(
+    request: { vendorId?: any },
+    currentuser: any
+  ): Promise<void> {
+    await assertVendorAuthorized(this.vendorDAO, currentuser, request);
+  }
+
+  private buildUnassignUpdate() {
+    return {
+      $set: { status: MaintenanceRequestStatus.OPEN },
+      $unset: {
+        vendorId: 1,
+        assignedAt: 1,
+        assignedBy: 1,
+        scheduledDate: 1,
+        assignedTechnician: 1,
+        workOrder: 1,
+      },
+    };
+  }
+
+  private async updateVendorRating(vendorUserId: string): Promise<void> {
+    try {
+      const requests = await this.maintenanceRequestDAO.list({
+        vendorId: new Types.ObjectId(vendorUserId),
+        'tenantFeedback.status': 'confirmed',
+        'tenantFeedback.rating': { $exists: true },
+        deletedAt: null,
+      });
+
+      const items = requests.items || [];
+      if (items.length === 0) return;
+
+      const totalRating = items.reduce(
+        (sum: number, r: any) => sum + (r.tenantFeedback?.rating || 0),
+        0
+      );
+      const avgRating = (totalRating / items.length).toFixed(1);
+
+      // Update vendor profile stats
+      await this.vendorDAO.updateMany(
+        { 'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorUserId) },
+        { $set: { 'stats.rating': avgRating, 'stats.reviewCount': items.length } }
+      );
+    } catch (error) {
+      this.log.error('Failed to update vendor rating:', error);
+    }
   }
 
   async cancelRequest(
@@ -667,9 +1254,22 @@ export class MaintenanceRequestService {
     mruid: string,
     data: ICancelMaintenancePayload
   ): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-    this.assertTransition(request.status, MaintenanceRequestStatus.CANCELLED);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
+
+    if (CurrentUser.isTenant(currentuser)) {
+      assertRecordOwnership(currentuser, request.tenantId, {
+        errorMessage: t('maintenance.errors.notYourRequest'),
+      });
+    }
+    if (CurrentUser.isVendor(currentuser)) {
+      assertRecordOwnership(currentuser, request.vendorId, {
+        errorMessage: t('maintenance.errors.notYourAssignment'),
+      });
+    }
+
+    assertTransition(request.status, MaintenanceRequestStatus.CANCELLED);
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
@@ -687,6 +1287,7 @@ export class MaintenanceRequestService {
       cuid,
       tenantId: request.tenantId?.toString() ?? '',
       vendorId: request.vendorId?.toString(),
+      technicianId: request.assignedTechnician?.userId?.toString(),
       reason: data.reason,
     });
 
@@ -698,16 +1299,75 @@ export class MaintenanceRequestService {
     mruid: string,
     data: IUpdateMaintenancePayload
   ): Promise<ISuccessReturnData> {
+    const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
+    const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
-    if (
-      ![MaintenanceRequestStatus.PENDING, MaintenanceRequestStatus.OPEN].includes(request.status)
-    ) {
-      throw new ForbiddenError({
-        message: 'Request can only be edited when status is pending or open',
+    if (CurrentUser.isTenant(currentuser)) {
+      assertRecordOwnership(currentuser, request.tenantId, {
+        errorMessage: t('maintenance.errors.notYourRequest'),
       });
     }
+    if (CurrentUser.isVendor(currentuser)) {
+      const isAssigned = request.vendorId?.toString() === currentuser.sub;
+      let authorized = isAssigned;
+      if (!authorized && CurrentUser.isVendorTeamMember(currentuser)) {
+        const primaryId = await resolvePrimaryVendorId(this.vendorDAO, currentuser);
+        authorized = !!primaryId && request.vendorId?.toString() === primaryId.toString();
+      }
+      if (!authorized) {
+        throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
+      }
+    }
+
+    const isFullyEditable = [
+      MaintenanceRequestStatus.PENDING,
+      MaintenanceRequestStatus.OPEN,
+    ].includes(request.status);
+    const isLimitedEditable = [
+      MaintenanceRequestStatus.IN_PROGRESS,
+      MaintenanceRequestStatus.ASSIGNED,
+    ].includes(request.status);
+
+    if (!isFullyEditable && !isLimitedEditable) {
+      throw new ForbiddenError({ message: t('maintenance.errors.editNotAllowed') });
+    }
+
+    // Limited-edit path: only hasPet, preferredDate, availabilityInfo are accepted.
+    // All other fields are ignored and AI re-triage is skipped.
+    if (isLimitedEditable) {
+      const limitedFields: Record<string, unknown> = {};
+      if (data.hasPet !== undefined) limitedFields.hasPet = data.hasPet;
+      if (data.availabilityInfo !== undefined)
+        limitedFields.availabilityInfo = data.availabilityInfo;
+
+      const updated = await this.maintenanceRequestDAO.updateById(
+        request._id.toString(),
+        { $set: limitedFields },
+        undefined,
+        undefined
+      );
+
+      this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_UPDATED, {
+        requestId: request._id.toString(),
+        mruid: request.mruid,
+        cuid,
+        previousStatus: request.status,
+        newStatus: request.status,
+        managedBy: request.managedBy?.toString(),
+        propertyId: request.propertyId?.toString(),
+      });
+
+      return { success: true, data: updated, message: t('maintenance.success.updated') };
+    }
+
+    const titleChanged = data.title !== undefined && data.title !== request.title;
+    const descriptionChanged =
+      data.description !== undefined &&
+      (data.description as any)?.text !==
+        (typeof request.description === 'string'
+          ? request.description
+          : (request.description as any)?.text);
 
     const updateFields: Record<string, unknown> = {};
     if (data.title !== undefined) updateFields.title = data.title;
@@ -721,8 +1381,35 @@ export class MaintenanceRequestService {
     if (data.hasPet !== undefined) updateFields.hasPet = data.hasPet;
     if (data.availabilityInfo !== undefined) updateFields.availabilityInfo = data.availabilityInfo;
 
+    // Clear stale AI results when re-triageable content changes so the panel
+    // doesn't show a suggestion based on the old title/description.
+    const shouldRetriage =
+      (titleChanged || descriptionChanged) && request.aiAnalysis?.accepted !== true;
+    if (shouldRetriage) {
+      updateFields['aiAnalysis'] = {};
+    }
+
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+      const ops: Record<string, unknown> = { $set: updateFields };
+
+      if (data.mediaToRemove?.length) {
+        // Soft-delete: mark matching media items as 'deleted' so they are
+        // excluded from future queries without immediately purging from S3.
+        ops['$set'] = {
+          ...updateFields,
+          'media.$[elem].status': 'deleted',
+        };
+        return this.maintenanceRequestDAO.updateById(
+          request._id.toString(),
+          ops,
+          {
+            arrayFilters: [{ 'elem.key': { $in: data.mediaToRemove } }],
+          } as any,
+          session
+        );
+      }
+
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
         { $set: updateFields },
@@ -730,6 +1417,16 @@ export class MaintenanceRequestService {
         session
       );
     });
+
+    // Re-run AI triage when title or description changed and no suggestion was
+    // previously accepted. Fire-and-forget — never blocks the response.
+    if (shouldRetriage && updated) {
+      this.vendorSuggestionService
+        .runAITriage(updated)
+        .catch((err) =>
+          this.log.error({ err, mruid: request.mruid }, 'AI re-triage on edit failed')
+        );
+    }
 
     this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_UPDATED, {
       requestId: request._id.toString(),
@@ -737,6 +1434,8 @@ export class MaintenanceRequestService {
       cuid,
       previousStatus: request.status,
       newStatus: request.status,
+      managedBy: request.managedBy?.toString(),
+      propertyId: request.propertyId?.toString(),
     });
 
     return { success: true, data: updated, message: t('maintenance.success.updated') };
@@ -744,457 +1443,29 @@ export class MaintenanceRequestService {
 
   async getStats(ctx: IRequestContext, pid?: string): Promise<ISuccessReturnData> {
     const { cuid } = ctx.request.params;
+    const currentuser = ctx.currentuser;
+
     let propertyObjectId: string | undefined;
     if (pid) {
       const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
       propertyObjectId = property?._id?.toString();
     }
-    const stats = await this.maintenanceRequestDAO.getStats(cuid, { propertyId: propertyObjectId });
+
+    const tenantUserId = currentuser.client.role === 'tenant' ? currentuser.sub : undefined;
+    const assignedTechnicianUserId = CurrentUser.isVendorTeamMember(currentuser)
+      ? currentuser.sub
+      : undefined;
+
+    const stats = await this.maintenanceRequestDAO.getStats(cuid, {
+      propertyId: propertyObjectId,
+      tenantUserId,
+      assignedTechnicianUserId,
+    });
     return { success: true, data: stats };
   }
 
-  async submitInvoice(
-    ctx: IRequestContext,
-    mruid: string,
-    data: ISubmitInvoicePayload
-  ): Promise<ISuccessReturnData> {
-    const currentuser = ctx.currentuser;
-    const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-
-    if (
-      ![MaintenanceRequestStatus.IN_PROGRESS, MaintenanceRequestStatus.COMPLETED].includes(
-        request.status
-      )
-    ) {
-      throw new BadRequestError({ message: t('maintenance.errors.invoiceInvalidStatus') });
-    }
-    if (currentuser.client.role === 'vendor') {
-      const isAssignedInvoice = request.vendorId?.toString() === currentuser.sub;
-      let authorizedInvoice = isAssignedInvoice;
-      if (!authorizedInvoice && currentuser.client.linkedVendorUid) {
-        const primaryId = await this.resolvePrimaryVendorId(currentuser);
-        authorizedInvoice = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-      }
-      if (!authorizedInvoice) {
-        throw new ForbiddenError({ message: t('maintenance.errors.invoiceForbidden') });
-      }
-    }
-
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        {
-          $set: {
-            invoice: {
-              submittedBy: new Types.ObjectId(currentuser.sub),
-              submittedAt: new Date(),
-              amountInCents: data.amount,
-              currency: (data.currency || 'usd').toLowerCase(),
-              description: data.description,
-              lineItems: data.lineItems,
-              status: InvoiceStatus.PENDING,
-              source: data.source || 'manual',
-              externalInvoiceId: data.externalInvoiceId,
-              externalInvoiceUrl: data.externalInvoiceUrl,
-            },
-          },
-        },
-        undefined,
-        session
-      );
-    });
-
-    this.emitterService.emit(EventTypes.MAINTENANCE_INVOICE_SUBMITTED, {
-      requestId: request._id.toString(),
-      mruid: request.mruid,
-      cuid,
-      vendorId: currentuser.sub,
-      amount: data.amount,
-      currency: data.currency || 'usd',
-    });
-
-    this.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
-      to: '', // resolved by worker from cuid's admin users
-      emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
-      subject: '',
-      data: { request: updated, vendorId: currentuser.sub, amount: data.amount },
-    });
-
-    return { success: true, data: updated, message: t('maintenance.success.invoiceSubmitted') };
-  }
-
-  async approveInvoice(
-    ctx: IRequestContext,
-    mruid: string,
-    options?: { isBillable?: boolean }
-  ): Promise<ISuccessReturnData> {
-    const currentuser = ctx.currentuser;
-    const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-
-    if (!request.invoice) throw new BadRequestError({ message: t('maintenance.errors.noInvoice') });
-    if (request.invoice.status !== InvoiceStatus.PENDING) {
-      throw new BadRequestError({ message: t('maintenance.errors.invoiceNotPending') });
-    }
-
-    const updateFields: Record<string, any> = {
-      'invoice.status': InvoiceStatus.APPROVED,
-      'invoice.reviewedBy': new Types.ObjectId(currentuser.sub),
-      'invoice.reviewedAt': new Date(),
-    };
-    if (options?.isBillable !== undefined) {
-      updateFields.isBillable = options.isBillable;
-    }
-
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        { $set: updateFields },
-        undefined,
-        session
-      );
-    });
-
-    const isBillable = options?.isBillable ?? request.isBillable;
-
-    // Expense integration seam — expense service listens for this event
-    this.emitterService.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
-      requestId: request._id.toString(),
-      mruid: request.mruid,
-      title: request.title,
-      cuid,
-      vendorId: request.vendorId?.toString(),
-      tenantId: request.tenantId?.toString(),
-      isBillable,
-      amount: request.invoice.amountInCents,
-      currency: request.invoice.currency,
-      approvedBy: currentuser.sub,
-    });
-
-    this.emailQueue.addToEmailQueue('maintenanceInvoiceApproved', {
-      to: '', // resolved by worker from vendorId
-      emailType: MailType.MAINTENANCE_INVOICE_APPROVED,
-      subject: '',
-      data: { request: updated, approvedBy: currentuser },
-    });
-
-    return { success: true, data: updated, message: t('maintenance.success.invoiceApproved') };
-  }
-
-  async rejectInvoice(
-    ctx: IRequestContext,
-    mruid: string,
-    data: IRejectInvoicePayload
-  ): Promise<ISuccessReturnData> {
-    const currentuser = ctx.currentuser;
-    const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-
-    if (!request.invoice) throw new BadRequestError({ message: t('maintenance.errors.noInvoice') });
-    if (request.invoice.status !== InvoiceStatus.PENDING) {
-      throw new BadRequestError({ message: t('maintenance.errors.invoiceNotPending') });
-    }
-
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        {
-          $set: {
-            'invoice.status': InvoiceStatus.REJECTED,
-            'invoice.reviewedBy': new Types.ObjectId(currentuser.sub),
-            'invoice.reviewedAt': new Date(),
-            'invoice.rejectionReason': data.rejectionReason,
-          },
-        },
-        undefined,
-        session
-      );
-    });
-
-    this.emitterService.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
-      requestId: request._id.toString(),
-      mruid: request.mruid,
-      cuid,
-      vendorId: request.vendorId?.toString(),
-      rejectionReason: data.rejectionReason,
-    });
-
-    this.emailQueue.addToEmailQueue('maintenanceInvoiceRejected', {
-      to: '', // resolved by worker from vendorId
-      emailType: MailType.MAINTENANCE_INVOICE_REJECTED,
-      subject: '',
-      data: { request: updated, rejectionReason: data.rejectionReason, rejectedBy: currentuser },
-    });
-
-    return { success: true, data: updated, message: t('maintenance.success.invoiceRejected') };
-  }
-
-  async reviewInvoice(
-    ctx: IRequestContext,
-    mruid: string,
-    body: { action: string; rejectionReason?: string; isBillable?: boolean }
-  ): Promise<ISuccessReturnData> {
-    if (body.action === 'approve') {
-      return this.approveInvoice(ctx, mruid, { isBillable: body.isBillable });
-    }
-    return this.rejectInvoice(ctx, mruid, { rejectionReason: body.rejectionReason ?? '' });
-  }
-
-  async submitWorkOrder(
-    ctx: IRequestContext,
-    mruid: string,
-    data: ISubmitWorkOrderPayload
-  ): Promise<ISuccessReturnData> {
-    const currentuser = ctx.currentuser;
-    const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-
-    if (request.status !== MaintenanceRequestStatus.ASSIGNED) {
-      throw new BadRequestError({ message: t('maintenance.errors.notAssigned') });
-    }
-    if (currentuser.client.role !== 'vendor') {
-      throw new ForbiddenError({ message: t('maintenance.errors.workOrderForbidden') });
-    }
-    const isAssignedWorkOrder = request.vendorId?.toString() === currentuser.sub;
-    let authorizedWorkOrder = isAssignedWorkOrder;
-    if (!authorizedWorkOrder && currentuser.client.linkedVendorUid) {
-      const primaryId = await this.resolvePrimaryVendorId(currentuser);
-      authorizedWorkOrder = !!primaryId && request.vendorId?.toString() === primaryId.toString();
-    }
-    if (!authorizedWorkOrder) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notYourAssignment') });
-    }
-
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        {
-          $set: {
-            workOrder: {
-              status: WorkOrderStatus.PENDING_REVIEW,
-              submittedBy: new Types.ObjectId(currentuser.sub),
-              submittedAt: new Date(),
-              scope: data.scope,
-              estimatedCostInCents: data.estimatedCostInCents,
-              lineItems: data.lineItems,
-              notes: data.notes,
-            },
-          },
-        },
-        undefined,
-        session
-      );
-    });
-
-    this.emitterService.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
-      requestId: request._id.toString(),
-      mruid: request.mruid,
-      cuid,
-      vendorId: currentuser.sub,
-      estimatedCostInCents: data.estimatedCostInCents,
-    });
-
-    this.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmitted', {
-      to: '',
-      emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED,
-      subject: '',
-      data: { request: updated, workOrder: updated?.workOrder, vendorId: currentuser.sub },
-    } as any);
-
-    if (request.tenantId) {
-      const tenant = await this.userDAO.findFirst({ _id: request.tenantId });
-      if (tenant) {
-        this.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmittedTenant', {
-          to: tenant.email,
-          emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT,
-          subject: '',
-          data: { request: updated, workOrder: updated?.workOrder },
-        } as any);
-      }
-    }
-
-    return { success: true, data: updated, message: t('maintenance.success.workOrderSubmitted') };
-  }
-
-  async reviewWorkOrder(
-    ctx: IRequestContext,
-    mruid: string,
-    data: IReviewWorkOrderPayload
-  ): Promise<ISuccessReturnData> {
-    const currentuser = ctx.currentuser;
-    const { cuid } = ctx.request.params;
-    const request = await this.getRequestOrThrow(mruid, cuid);
-
-    if (!request.workOrder) {
-      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotFound') });
-    }
-    if (request.workOrder.status !== WorkOrderStatus.PENDING_REVIEW) {
-      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotPending') });
-    }
-    if (currentuser.client.role === 'vendor') {
-      throw new ForbiddenError({ message: t('maintenance.errors.workOrderForbidden') });
-    }
-
-    const approved = data.action === 'approve';
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        {
-          $set: {
-            'workOrder.status': approved ? WorkOrderStatus.APPROVED : WorkOrderStatus.REJECTED,
-            'workOrder.reviewedBy': new Types.ObjectId(currentuser.sub),
-            'workOrder.reviewedAt': new Date(),
-            ...(!approved &&
-              data.rejectionReason && {
-                'workOrder.rejectionReason': data.rejectionReason,
-              }),
-          },
-        },
-        undefined,
-        session
-      );
-    });
-
-    if (approved) {
-      this.emitterService.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
-        requestId: request._id.toString(),
-        mruid: request.mruid,
-        cuid,
-        vendorId: request.vendorId?.toString(),
-        approvedBy: currentuser.sub,
-      });
-
-      if (request.vendorId) {
-        const vendor = await this.userDAO.findFirst({ _id: request.vendorId });
-        if (vendor) {
-          this.emailQueue.addToEmailQueue('maintenanceWorkOrderApproved', {
-            to: vendor.email,
-            emailType: MailType.MAINTENANCE_WORK_ORDER_APPROVED,
-            subject: '',
-            data: { request: updated, workOrder: updated?.workOrder, approvedBy: currentuser },
-          } as any);
-        }
-      }
-    } else {
-      this.emitterService.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
-        requestId: request._id.toString(),
-        mruid: request.mruid,
-        cuid,
-        vendorId: request.vendorId?.toString(),
-        rejectedBy: currentuser.sub,
-        rejectionReason: data.rejectionReason!,
-      });
-
-      if (request.vendorId) {
-        const vendor = await this.userDAO.findFirst({ _id: request.vendorId });
-        if (vendor) {
-          this.emailQueue.addToEmailQueue('maintenanceWorkOrderRejected', {
-            to: vendor.email,
-            emailType: MailType.MAINTENANCE_WORK_ORDER_REJECTED,
-            subject: '',
-            data: {
-              request: updated,
-              workOrder: updated?.workOrder,
-              rejectionReason: data.rejectionReason,
-              rejectedBy: currentuser,
-            },
-          } as any);
-        }
-      }
-    }
-
-    const msg = approved
-      ? t('maintenance.success.workOrderApproved')
-      : t('maintenance.success.workOrderRejected');
-    return { success: true, data: updated, message: msg };
-  }
-
-  async handleInvoiceWebhook(
-    source: InvoiceSource,
-    rawBody: Buffer,
-    headers: Record<string, string>,
-    payload: IInvoiceWebhookPayload
-  ): Promise<ISuccessReturnData> {
-    if (!this.validateWebhookSignature(source, headers, rawBody)) {
-      throw new ForbiddenError({ message: t('maintenance.errors.webhookSignatureInvalid') });
-    }
-
-    const request = await this.maintenanceRequestDAO.findFirst({
-      mruid: payload.mruid,
-      deletedAt: null,
-    });
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
-
-    const submittedBy = request.vendorId;
-    if (!submittedBy) {
-      throw new BadRequestError({ message: t('maintenance.errors.noVendorAssigned') });
-    }
-
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        {
-          $set: {
-            invoice: {
-              submittedBy,
-              submittedAt: new Date(),
-              amountInCents: payload.amount,
-              currency: payload.currency,
-              description: payload.description,
-              lineItems: payload.lineItems,
-              status: InvoiceStatus.PENDING,
-              source: payload.source,
-              externalInvoiceId: payload.externalInvoiceId,
-              externalInvoiceUrl: payload.externalInvoiceUrl,
-            },
-          },
-        },
-        undefined,
-        session
-      );
-    });
-
-    this.emitterService.emit(EventTypes.MAINTENANCE_INVOICE_SUBMITTED, {
-      requestId: request._id.toString(),
-      mruid: request.mruid,
-      cuid: request.cuid,
-      vendorId: submittedBy.toString(),
-      amount: payload.amount,
-      currency: payload.currency,
-    });
-
-    return { success: true, data: updated };
-  }
-
-  private validateWebhookSignature(
-    source: InvoiceSource,
-    _headers: Record<string, string>,
-    _rawBody: Buffer
-  ): boolean {
-    // TODO (Phase 2): Verify HMAC signature before processing
-    // Until implemented, this endpoint should NOT be exposed in production without network-level protection
-    switch (source) {
-      case 'quickbooks':
-        // TODO (Phase 2): verify headers['intuit-signature'] with HMAC-SHA256
-        return true;
-      case 'freshbooks':
-        // TODO (Phase 2): verify headers['x-freshbooks-hmac-sha256']
-        return true;
-      case 'jobber':
-        // TODO (Phase 2): verify headers['x-jobber-hmac-sha256']
-        return true;
-      case 'manual':
-      default:
-        return true;
-    }
-  }
+  // submitInvoice, approveInvoice, rejectInvoice, reviewInvoice, submitWorkOrder,
+  // reviewWorkOrder, handleInvoiceWebhook → MaintenanceInvoiceService
 
   async getTenantRequests(
     cuid: string,
@@ -1295,4 +1566,6 @@ export class MaintenanceRequestService {
       media: (req.media || []).map((m: any) => ({ url: m.url, filename: m.filename })),
     };
   }
+
+  // acceptAISuggestion, dismissAISuggestion, runAITriage, suggestVendor → VendorSuggestionService
 }

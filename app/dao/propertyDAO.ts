@@ -176,31 +176,31 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         if (opts.sortBy) {
           switch (opts.sortBy) {
             case 'occupancyStatus':
-              opts.sort = { occupancyStatus: sortDirection };
+              opts.sort = { occupancyStatus: sortDirection, _id: sortDirection };
               break;
             case 'propertyType':
-              opts.sort = { propertyType: sortDirection };
+              opts.sort = { propertyType: sortDirection, _id: sortDirection };
               break;
             case 'createdAt':
-              opts.sort = { createdAt: sortDirection };
+              opts.sort = { createdAt: sortDirection, _id: sortDirection };
               break;
             case 'status':
-              opts.sort = { status: sortDirection };
+              opts.sort = { status: sortDirection, _id: sortDirection };
               break;
             case 'price':
-              opts.sort = { 'financialDetails.marketValue': sortDirection };
+              opts.sort = { 'financialDetails.marketValue': sortDirection, _id: sortDirection };
               break;
             case 'name':
-              opts.sort = { name: sortDirection };
+              opts.sort = { name: sortDirection, _id: sortDirection };
               break;
             case 'area':
-              opts.sort = { 'specifications.totalArea': sortDirection };
+              opts.sort = { 'specifications.totalArea': sortDirection, _id: sortDirection };
               break;
             default:
-              opts.sort = { createdAt: sortDirection };
+              opts.sort = { createdAt: sortDirection, _id: sortDirection };
           }
         } else {
-          opts.sort = { createdAt: sortDirection };
+          opts.sort = { createdAt: sortDirection, _id: sortDirection };
         }
       }
       return await this.list(filter, opts);
@@ -208,6 +208,10 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       this.logger.error('Error in getPropertiesByClientId:', error);
       throw this.throwErrorHandler(error);
     }
+  }
+
+  async getPropertyCount(cuid: string): Promise<number> {
+    return this.countDocuments({ cuid, deletedAt: null, isArchived: { $ne: true } });
   }
 
   async updatePropertyDocument(

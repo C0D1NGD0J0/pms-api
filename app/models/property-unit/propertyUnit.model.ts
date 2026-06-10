@@ -244,14 +244,13 @@ PropertyUnitSchema.virtual('maintenanceRequests', {
   foreignField: 'unitId',
 });
 
-PropertyUnitSchema.pre('save', function (this: IPropertyUnitDocument, next) {
+PropertyUnitSchema.pre('save', function (this: IPropertyUnitDocument) {
   if (this.isModified('inspections') && this.inspections && this.inspections.length > 0) {
     const sortedInspections = [...this.inspections].sort(
       (a, b) => b.inspectionDate.getTime() - a.inspectionDate.getTime()
     );
     this.lastInspectionDate = sortedInspections[0].inspectionDate;
   }
-  next();
 });
 
 PropertyUnitSchema.methods.calculateRentAdjustment = function (percentage: number) {

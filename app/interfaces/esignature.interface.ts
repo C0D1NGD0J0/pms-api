@@ -33,6 +33,18 @@ export interface IDocumentStatus {
   documentId: string;
 }
 
+export interface BoldSignJobData {
+  senderInfo?: {
+    email: string;
+    name: string;
+  };
+  resource: ResourceInfo;
+  managedBy?: string; // lease-level PM override — takes precedence over property.managedBy
+  leaseId: string;
+  cuid: string;
+  luid: string;
+}
+
 export interface ISendDocumentParams {
   senderInfo?: {
     email: string;
@@ -55,17 +67,6 @@ export interface BoldSignJobResult {
   documentId?: string; // BoldSign document ID
   success: boolean;
   error?: string;
-}
-
-export interface BoldSignJobData {
-  senderInfo?: {
-    email: string;
-    name: string;
-  };
-  resource: ResourceInfo;
-  leaseId: string;
-  cuid: string;
-  luid: string;
 }
 
 export interface ISigner {

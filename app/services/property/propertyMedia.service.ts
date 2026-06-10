@@ -1,5 +1,4 @@
 import Logger from 'bunyan';
-import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
@@ -108,7 +107,7 @@ export class PropertyMediaService {
    */
   async markDocumentsAsFailed(propertyId: string, errorMessage: string): Promise<void> {
     try {
-      const property = await this.propertyDAO.findById(propertyId);
+      const property = await this.propertyDAO.findFirst({ pid: propertyId, deletedAt: null });
       if (!property || !property.documents) return;
 
       const updateOperations: any = {};
@@ -125,10 +124,7 @@ export class PropertyMediaService {
       });
 
       if (Object.keys(updateOperations).length > 0) {
-        await this.propertyDAO.update(
-          { _id: new Types.ObjectId(propertyId) },
-          { $set: updateOperations }
-        );
+        await this.propertyDAO.update({ pid: propertyId }, { $set: updateOperations });
 
         this.log.warn(`Marked documents as failed for property ${propertyId}`, { errorMessage });
       }

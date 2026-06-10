@@ -351,7 +351,7 @@ export class AuthService {
           planId: signupData.accountType.planId,
           totalMonthlyPrice: signupData.accountType.totalMonthlyPrice,
         },
-        session
+        session as any
       );
 
       if (!subscriptionResult.success) {

@@ -286,11 +286,14 @@ export class LeaseSignatureService {
       }
     }
 
-    const updated = await this.leaseDAO.update(lease._id, {
-      'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
-      status: LeaseStatus.DRAFT,
-      updatedAt: new Date(),
-    });
+    const updated = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+        status: LeaseStatus.DRAFT,
+        updatedAt: new Date(),
+      }
+    );
 
     if (!updated) {
       throw new BadRequestError({ message: 'Failed to update lease status' });
@@ -418,13 +421,16 @@ export class LeaseSignatureService {
 
       switch (eventType) {
         case 'SendFailed':
-          result = await this.leaseDAO.update(lease._id, {
-            'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
-            'eSignature.errorMessage': data?.errorMessage || 'Send failed',
-            'eSignature.failedAt': new Date(),
-            status: LeaseStatus.DRAFT,
-            updatedAt: new Date(),
-          });
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
+              'eSignature.errorMessage': data?.errorMessage || 'Send failed',
+              'eSignature.failedAt': new Date(),
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
           await this.notificationService.notifyLeaseESignatureFailed({
             leaseNumber: lease.leaseNumber,
             error: data?.errorMessage || 'Send failed',
@@ -511,11 +517,14 @@ export class LeaseSignatureService {
           break;
 
         case 'Revoked':
-          result = await this.leaseDAO.update(lease._id, {
-            'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
-            status: LeaseStatus.DRAFT,
-            updatedAt: new Date(),
-          });
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
           break;
 
         case 'Signed':

@@ -1874,7 +1874,7 @@ export class LeaseService {
         const invitation = await this.invitationDAO.findFirst({
           inviteeEmail: leaseData.tenantInfo.email.toLowerCase(),
           clientId: client.id,
-          role: 'tenant',
+          role: IUserRole.TENANT,
         });
 
         if (!invitation) {

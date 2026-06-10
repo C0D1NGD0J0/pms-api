@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { envVariables } from '@shared/config';
 import { IPaymentGatewayProvider } from '@interfaces/index';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -135,7 +136,7 @@ export class PayoutAccountService {
       }
 
       const adminProfile = client.accountAdmin
-        ? await this.profileDAO.findFirst({ user: client.accountAdmin })
+        ? await this.profileDAO.findFirst({ user: client.accountAdmin as Types.ObjectId })
         : null;
 
       const isEnterprise = client.accountType.isEnterpriseAccount;

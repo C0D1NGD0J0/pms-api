@@ -1132,13 +1132,18 @@ export class NotificationService {
   ): Promise<ISuccessReturnData<{ modifiedCount: number }>> {
     try {
       const individualResult = await this.notificationDAO.updateMany(
-        { recipientType: 'individual', recipient: userId, cuid, isRead: false },
+        { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: userId, cuid, isRead: false },
         { $set: { isRead: true, readAt: new Date() } }
       );
 
       const userObjectId = new Types.ObjectId(userId);
       const announcementResult = await this.notificationDAO.updateMany(
-        { recipientType: 'announcement', cuid, readBy: { $ne: userObjectId }, deletedAt: null },
+        {
+          recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+          cuid,
+          readBy: { $ne: userObjectId },
+          deletedAt: null,
+        },
         { $addToSet: { readBy: userObjectId } }
       );
 
@@ -1210,7 +1215,7 @@ export class NotificationService {
       // Archive read individual notifications
       const individualResult = await this.notificationDAO.updateMany(
         {
-          recipientType: 'individual',
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
           recipient: userObjectId,
           cuid,
           isRead: true,
@@ -1223,7 +1228,7 @@ export class NotificationService {
       // Archive read announcements (user is in readBy but not in archivedBy)
       const announcementResult = await this.notificationDAO.updateMany(
         {
-          recipientType: 'announcement',
+          recipientType: RecipientTypeEnum.ANNOUNCEMENT,
           cuid,
           readBy: userObjectId,
           archivedBy: { $ne: userObjectId },

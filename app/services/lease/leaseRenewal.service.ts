@@ -222,7 +222,14 @@ export class LeaseRenewalService {
           previousLeaseId: existingLease._id,
           cuid,
           deletedAt: null,
-          status: { $in: ['draft_renewal', 'pending_signature', 'active', 'ready_for_signature'] },
+          status: {
+            $in: [
+              LeaseStatus.DRAFT_RENEWAL,
+              LeaseStatus.PENDING_SIGNATURE,
+              LeaseStatus.ACTIVE,
+              LeaseStatus.READY_FOR_SIGNATURE,
+            ],
+          },
         },
         undefined,
         undefined,
@@ -699,7 +706,7 @@ export class LeaseRenewalService {
       // Find renewals in ready_for_signature status that are approved
       const readyRenewals = await this.leaseDAO.list(
         {
-          status: 'ready_for_signature',
+          status: LeaseStatus.READY_FOR_SIGNATURE,
           approvalStatus: 'approved',
           previousLeaseId: { $exists: true },
           deletedAt: null,

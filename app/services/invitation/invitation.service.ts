@@ -10,9 +10,9 @@ import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
-import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
+import { ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { PaymentGatewayService, VendorService, UserService } from '@services/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
 import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
@@ -119,7 +119,7 @@ export class InvitationService {
       if (!client.isVerified && validatedData.role === ROLES.TENANT) {
         const pendingTenantInvitations = await this.invitationDAO.countDocuments({
           client: client._id,
-          role: ROLES.TENANT,
+          role: IUserRole.TENANT,
           status: 'pending',
         });
         if (pendingTenantInvitations >= 5) {

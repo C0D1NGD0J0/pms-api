@@ -254,10 +254,10 @@ export class PaymentService implements ICronProvider {
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean);
-        query.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
+        query.status = (statuses.length === 1 ? statuses[0] : { $in: statuses }) as any;
       }
       if (filters?.type) {
-        query.paymentType = filters.type;
+        query.paymentType = filters.type as any;
       }
 
       // tenantUserId (User._id) takes precedence — resolve to Profile._id
@@ -530,15 +530,13 @@ export class PaymentService implements ICronProvider {
                 .findOne({ vuid: vendorVuid, deletedAt: null }, { projection: { companyName: 1 } });
             } else if (clientEntry?.primaryRole === 'vendor') {
               // Primary account holder — look up org by primaryAccountHolderUserId
-              vendorOrg = await mongoose.connection.db
-                ?.collection('vendors')
-                .findOne(
-                  {
-                    'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
-                    deletedAt: null,
-                  },
-                  { projection: { companyName: 1 } }
-                );
+              vendorOrg = await mongoose.connection.db?.collection('vendors').findOne(
+                {
+                  'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
+                  deletedAt: null,
+                },
+                { projection: { companyName: 1 } }
+              );
             }
             vendorName = vendorOrg?.companyName || '';
           }
@@ -761,7 +759,7 @@ export class PaymentService implements ICronProvider {
         tenant: tenantProfile._id,
         deletedAt: null,
       };
-      if (filters.status) query.status = filters.status;
+      if (filters.status) query.status = filters.status as any;
       if (filters.from || filters.to) {
         query.dueDate = {};
         if (filters.from) query.dueDate.$gte = dayjs(filters.from).toDate();

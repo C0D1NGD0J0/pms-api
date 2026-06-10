@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { ROLES } from '@shared/constants/roles.constants';
 import { IInvitationData } from '@interfaces/invitation.interface';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { InvitationDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import {
@@ -435,7 +435,7 @@ export class InvitationCsvProcessor {
       if (tenantRowsInBatch.length > 0) {
         const pendingCount = await this.invitationDAO.countDocuments({
           client: client._id,
-          role: ROLES.TENANT,
+          role: IUserRole.TENANT,
           status: 'pending',
         });
         const allowed = Math.max(0, 5 - pendingCount);

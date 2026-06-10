@@ -1,10 +1,13 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/helpers';
-import uniqueValidator from 'mongoose-unique-validator';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 
 const VendorSchema = new Schema<IVendorDocument>(
   {
+    isprimaryAccountHolderUserId: {
+      type: Boolean,
+      default: false,
+    },
     connectedClients: [
       {
         cuid: {
@@ -15,10 +18,19 @@ const VendorSchema = new Schema<IVendorDocument>(
           type: Boolean,
           default: false,
         },
-        primaryAccountHolder: {
+        primaryAccountHolderUserId: {
           type: Schema.Types.ObjectId,
           ref: 'User',
           required: true,
+        },
+        payoutAccount: {
+          isSetup: { type: Boolean, default: false },
+          payoutsEnabled: { type: Boolean, default: false },
+          chargesEnabled: { type: Boolean, default: false },
+          payoutsBlocked: { type: Boolean, default: false },
+          payoutsBlockedReason: { type: String },
+          payoutsBlockedAt: { type: Date },
+          payoutsBlockedBy: { type: Schema.Types.ObjectId, ref: 'User' },
         },
       },
     ],
@@ -95,19 +107,6 @@ const VendorSchema = new Schema<IVendorDocument>(
       },
     },
     serviceAreas: {
-      baseLocation: {
-        address: { type: String },
-        coordinates: {
-          type: [Number],
-          validate: {
-            validator: function (v: number[]) {
-              if (!v || v.length === 0) return true;
-              return v.length === 2 && v[0] >= -180 && v[0] <= 180 && v[1] >= -90 && v[1] <= 90;
-            },
-            message: 'Base location coordinates must be [longitude, latitude] with valid ranges',
-          },
-        },
-      },
       maxDistance: {
         type: Number,
         enum: [10, 15, 25, 50],
@@ -124,7 +123,6 @@ const VendorSchema = new Schema<IVendorDocument>(
       jobTitle: { type: String, trim: true },
       email: { type: String, trim: true },
       phone: { type: String, trim: true },
-      department: { type: String, trim: true },
     },
     vuid: {
       required: true,
@@ -151,10 +149,7 @@ VendorSchema.index({ 'connectedClients.cuid': 1 });
 VendorSchema.index({ companyName: 1 });
 VendorSchema.index({ registrationNumber: 1 }, { unique: true });
 VendorSchema.index({ 'address.city': 1, 'address.state': 1 });
-
-VendorSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
+VendorSchema.index({ 'address.computedLocation': '2dsphere' });
 
 const VendorModel = model<IVendorDocument>('Vendor', VendorSchema);
 

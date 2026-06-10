@@ -6,12 +6,20 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { ClientSession, Types } from 'mongoose';
+import { UserCache } from '@caching/user.cache';
 import { VendorCache } from '@caching/vendor.cache';
+import { CurrentUser } from '@utils/currentUserRole';
+import { GeoCoderService } from '@services/external';
 import { PermissionService } from '@services/permission';
+import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IVendorFilterOptions } from '@dao/interfaces/vendorDAO.interface';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { PayoutAccountService } from '@services/payments/payoutAccount.service';
 import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import {
   FilteredUserTableData,
@@ -28,9 +36,15 @@ import {
   IPaginateResult,
 } from '@interfaces/utils.interface';
 interface IConstructor {
+  paymentGatewayService: PaymentGatewayService;
+  maintenanceRequestDAO: MaintenanceRequestDAO;
+  payoutAccountService: PayoutAccountService;
+  paymentProcessorDAO: PaymentProcessorDAO;
   permissionService: PermissionService;
+  geoCoderService: GeoCoderService;
   vendorCache: VendorCache;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
@@ -43,7 +57,13 @@ export class VendorService {
   private clientDAO: ClientDAO;
   private profileDAO: ProfileDAO;
   private vendorCache: VendorCache;
+  private userCache: UserCache;
   private permissionService: PermissionService;
+  private geoCoderService: GeoCoderService;
+  private paymentGatewayService: PaymentGatewayService;
+  private payoutAccountService: PayoutAccountService;
+  private paymentProcessorDAO: PaymentProcessorDAO;
+  private maintenanceRequestDAO: MaintenanceRequestDAO;
 
   constructor({
     vendorDAO,
@@ -51,14 +71,26 @@ export class VendorService {
     clientDAO,
     profileDAO,
     vendorCache,
+    userCache,
     permissionService,
+    geoCoderService,
+    paymentGatewayService,
+    payoutAccountService,
+    paymentProcessorDAO,
+    maintenanceRequestDAO,
   }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
     this.vendorCache = vendorCache;
+    this.userCache = userCache;
     this.permissionService = permissionService;
+    this.geoCoderService = geoCoderService;
+    this.paymentGatewayService = paymentGatewayService;
+    this.payoutAccountService = payoutAccountService;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.logger = createLogger('VendorService');
   }
 
@@ -192,9 +224,27 @@ export class VendorService {
 
   async getVendorByUserId(userId: string): Promise<IVendorDocument | null> {
     try {
-      return await this.vendorDAO.getVendorByPrimaryAccountHolder(userId);
+      return await this.vendorDAO.getVendorByprimaryAccountHolderUserId(userId);
     } catch (error) {
       this.logger.error(`Error getting vendor for user ${userId}: ${error}`);
+      throw error;
+    }
+  }
+
+  async disconnectFromClient(vendorId: string, cuid: string): Promise<void> {
+    try {
+      await this.vendorDAO.disconnectClient(vendorId, cuid);
+    } catch (error) {
+      this.logger.error(`Error disconnecting vendor ${vendorId} from client ${cuid}: ${error}`);
+      throw error;
+    }
+  }
+
+  async reconnectToClient(vendorId: string, cuid: string): Promise<void> {
+    try {
+      await this.vendorDAO.reconnectClient(vendorId, cuid);
+    } catch (error) {
+      this.logger.error(`Error reconnecting vendor ${vendorId} to client ${cuid}: ${error}`);
       throw error;
     }
   }
@@ -202,18 +252,50 @@ export class VendorService {
   async updateVendorInfo(
     vendorId: string,
     updateData: Partial<IVendor>,
-    session?: ClientSession
+    session?: ClientSession,
+    callerUserId?: string
   ): Promise<ISuccessReturnData<IVendorDocument>> {
     try {
-      const vendor = await this.vendorDAO.updateVendor(vendorId, updateData, session);
+      if (callerUserId) {
+        const existing = await this.vendorDAO.getVendorByVuid(vendorId);
+        if (existing) {
+          const clientConn = existing.connectedClients?.find(
+            (cc) => cc.primaryAccountHolderUserId?.toString() === callerUserId
+          );
+          if (!clientConn) {
+            throw new ForbiddenError({
+              message: 'Only primary account holders can update vendor business information.',
+            });
+          }
+        }
+      }
 
+      if (updateData.address?.fullAddress) {
+        const geoResult = await this.geoCoderService.parseLocation(updateData.address.fullAddress);
+        if (geoResult.success && geoResult.data) {
+          const { street, city, state, postCode, country, coordinates } = geoResult.data;
+          updateData.address = {
+            ...updateData.address,
+            street: street || updateData.address.street,
+            city: city || updateData.address.city,
+            state: state || updateData.address.state,
+            postCode: postCode || updateData.address.postCode,
+            country: country || updateData.address.country,
+            computedLocation: { type: 'Point', coordinates },
+          } as typeof updateData.address;
+        } else {
+          this.logger.warn(
+            `Could not geocode vendor address: "${updateData.address.fullAddress}" — saving without coordinates`
+          );
+        }
+      }
+
+      const vendor = await this.vendorDAO.updateVendor(vendorId, updateData, session);
       if (!vendor) {
         throw new NotFoundError({
           message: 'Vendor not found',
         });
       }
-
-      this.logger.info(`Vendor updated successfully: ${vendor.vuid}`);
 
       return {
         success: true,
@@ -246,17 +328,17 @@ export class VendorService {
 
   async createVendorFromCompanyProfile(
     cuid: string,
-    primaryAccountHolder: string,
+    primaryAccountHolderUserId: string,
     companyProfile: any
   ): Promise<IVendorDocument> {
     try {
       const vendorData: NewVendor = {
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         connectedClients: [
           {
             cuid,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(primaryAccountHolder),
+            primaryAccountHolderUserId: new Types.ObjectId(primaryAccountHolderUserId),
           },
         ],
         companyName: companyProfile.legalEntityName || companyProfile.companyName,
@@ -337,7 +419,7 @@ export class VendorService {
 
           // Get user data for the primary account holder
           const user = await this.userDAO.getUserById(
-            clientVendorConnection!.primaryAccountHolder.toString(),
+            clientVendorConnection!.primaryAccountHolderUserId.toString(),
             { populate: 'profile' }
           );
 
@@ -415,7 +497,11 @@ export class VendorService {
         throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
       }
 
-      const vendor = await this.vendorDAO.findFirst({ vuid });
+      const vendor = await this.vendorDAO.findFirst({
+        vuid,
+        'connectedClients.cuid': cuid,
+        deletedAt: null,
+      });
       if (!vendor) {
         throw new NotFoundError({ message: t('vendor.errors.notFound') });
       }
@@ -430,9 +516,11 @@ export class VendorService {
         currentuser.client.role as IUserRole
       );
       const isPrimaryVendor =
-        vendorConnection.primaryAccountHolder.toString() === currentuser.sub.toString();
+        vendorConnection.primaryAccountHolderUserId.toString() === currentuser.sub.toString();
+      const primaryVendorUserId = vendorConnection.primaryAccountHolderUserId.toString();
+      const isTeamMember = CurrentUser.isVendorTeamMemberOf(currentuser, vuid, primaryVendorUserId);
 
-      if (!allowedRoles && !isPrimaryVendor) {
+      if (!allowedRoles && !isPrimaryVendor && !isTeamMember) {
         throw new ForbiddenError({
           message: t('client.errors.insufficientPermissions', {
             action: 'view',
@@ -441,20 +529,22 @@ export class VendorService {
         });
       }
 
-      // Check permissions
-      const canAccess = await this.permissionService.canAccessResource(
-        currentuser,
-        PermissionResource.VENDOR,
-        PermissionAction.READ,
-        vendor
-      );
-      if (!canAccess) {
-        throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
-            action: 'view',
-            resource: 'vendor team',
-          }),
-        });
+      // For admin/manager roles, verify vendor:read:any permission
+      if (allowedRoles) {
+        const canAccess = await this.permissionService.canAccessResource(
+          currentuser,
+          PermissionResource.VENDOR,
+          PermissionAction.READ,
+          vendor
+        );
+        if (!canAccess) {
+          throw new ForbiddenError({
+            message: t('client.errors.insufficientPermissions', {
+              action: 'view',
+              resource: 'vendor team',
+            }),
+          });
+        }
       }
 
       // Fetch linked vendor users
@@ -479,6 +569,7 @@ export class VendorService {
 
         return {
           uid: member.uid,
+          sub: member._id.toString(),
           email: member.email,
           displayName:
             memberConnection?.clientDisplayName ||
@@ -494,33 +585,6 @@ export class VendorService {
           lastLogin: member.lastLogin || null,
         };
       });
-
-      // Get vendor entity and profile info for context
-      const vendorEntity = await this.getVendorByUserId(
-        vendorConnection.primaryAccountHolder.toString()
-      );
-
-      // Get the primary account holder user for additional profile data
-      const primaryUser = await this.userDAO.getUserById(
-        vendorConnection.primaryAccountHolder.toString(),
-        { populate: 'profile' }
-      );
-
-      const vendorProfile = (primaryUser?.profile as any) || {};
-      const _vendorInfo = {
-        vendorId: vendor.vuid,
-        companyName:
-          vendorEntity?.companyName ||
-          vendorProfile.personalInfo?.displayName ||
-          primaryUser?.email ||
-          'Unknown Company',
-        primaryContact:
-          vendorEntity?.contactPerson?.name ||
-          vendorProfile.personalInfo?.displayName ||
-          `${vendorProfile.personalInfo?.firstName || ''} ${vendorProfile.personalInfo?.lastName || ''}`.trim() ||
-          primaryUser?.email ||
-          'Unknown Contact',
-      };
 
       return {
         success: true,
@@ -567,7 +631,7 @@ export class VendorService {
 
       // Get user data for the primary account holder with profile populated
       const user = await this.userDAO.getUserById(
-        clientConnection.primaryAccountHolder.toString(),
+        clientConnection.primaryAccountHolderUserId.toString(),
         { populate: 'profile' }
       );
       if (!user) {
@@ -611,21 +675,33 @@ export class VendorService {
         }
       }
 
+      // Fetch real maintenance stats for this vendor
+      const maintenanceStats = await this.maintenanceRequestDAO.getStats(cuid, {
+        vendorUserId: user._id.toString(),
+      });
+
       // Build the vendor detail info (nested in vendorInfo property)
       const vendorDetailInfo: IVendorDetailInfo = {
+        vuid: vendor.vuid,
         companyName: vendor?.companyName || (_personalInfo as any).displayName || fullName || '',
         businessType: vendor?.businessType || 'General Contractor',
         yearsInBusiness: vendor?.yearsInBusiness || 0,
         registrationNumber: vendor?.registrationNumber || '',
         taxId: vendor?.taxId || '',
 
+        address: {
+          fullAddress: vendor?.address?.fullAddress || '',
+          street: vendor?.address?.street || '',
+          city: vendor?.address?.city || '',
+          state: vendor?.address?.state || '',
+          country: vendor?.address?.country || '',
+          postCode: vendor?.address?.postCode || '',
+        },
+
         // Services
         servicesOffered: vendor?.servicesOffered || {},
 
-        // Service areas - baseLocation should be a string
         serviceAreas: {
-          baseLocation:
-            vendor?.serviceAreas?.baseLocation?.address || vendor?.address?.fullAddress || '',
           maxDistance: vendor?.serviceAreas?.maxDistance || 25,
         },
 
@@ -645,10 +721,9 @@ export class VendorService {
           phone: vendor?.contactPerson?.phone || (_personalInfo as any).phoneNumber || '',
         },
 
-        // Vendor statistics (placeholder)
         stats: {
-          completedJobs: 0,
-          activeJobs: 0,
+          completedJobs: maintenanceStats.completed,
+          activeJobs: maintenanceStats.assigned + maintenanceStats.inProgress,
           rating: '0',
           responseTime: '24h',
           onTimeRate: '0%',
@@ -669,18 +744,20 @@ export class VendorService {
       const userData: IUserDetailResponse = {
         profile: {
           id: profile?._id?.toString() || '',
+          uid: user?.uid || '',
           firstName: firstName || '',
           lastName: lastName || '',
           fullName: fullName || '',
           avatar: (_personalInfo as any).avatar?.url || '',
           phoneNumber: (_personalInfo as any).phoneNumber || '',
-          email: user.email || '',
+          email: user?.email || '',
           about: (_personalInfo as any).bio || '',
           contact: {
             phone: (_personalInfo as any).phoneNumber || '',
-            email: user.email || '',
+            email: user?.email || '',
           },
           roles: roles,
+          isActive: user?.isActive,
           userType: ROLES.VENDOR,
         },
         vendorInfo: vendorDetailInfo,
@@ -749,7 +826,11 @@ export class VendorService {
   ): Promise<ISuccessReturnData<any>> {
     const currentuser = cxt.currentuser!;
     try {
-      const vendor = await this.vendorDAO.findFirst({ vuid });
+      const vendor = await this.vendorDAO.findFirst({
+        vuid,
+        'connectedClients.cuid': cuid,
+        deletedAt: null,
+      });
       if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
 
       const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
@@ -761,7 +842,7 @@ export class VendorService {
         currentuser.client.role as IUserRole
       );
       const isPrimaryVendor =
-        vendorConnection.primaryAccountHolder.toString() === currentuser.sub.toString();
+        vendorConnection.primaryAccountHolderUserId.toString() === currentuser.sub.toString();
 
       if (!allowedRoles && !isPrimaryVendor) {
         throw new ForbiddenError({
@@ -772,7 +853,7 @@ export class VendorService {
         });
       }
 
-      const user = await this.userDAO.findFirst({ uid });
+      const user = await this.userDAO.findFirst({ uid, 'cuids.cuid': cuid });
       if (!user) throw new NotFoundError({ message: t('user.errors.notFound') });
 
       // Update top-level User fields
@@ -821,7 +902,11 @@ export class VendorService {
   ): Promise<ISuccessReturnData<any>> {
     const currentuser = cxt.currentuser!;
     try {
-      const vendor = await this.vendorDAO.findFirst({ vuid });
+      const vendor = await this.vendorDAO.findFirst({
+        vuid,
+        'connectedClients.cuid': cuid,
+        deletedAt: null,
+      });
       if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
 
       const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
@@ -833,7 +918,7 @@ export class VendorService {
         currentuser.client.role as IUserRole
       );
       const isPrimaryVendor =
-        vendorConnection.primaryAccountHolder.toString() === currentuser.sub.toString();
+        vendorConnection.primaryAccountHolderUserId.toString() === currentuser.sub.toString();
 
       if (!allowedRoles && !isPrimaryVendor) {
         throw new ForbiddenError({
@@ -844,7 +929,7 @@ export class VendorService {
         });
       }
 
-      const user = await this.userDAO.findFirst({ uid });
+      const user = await this.userDAO.findFirst({ uid, 'cuids.cuid': cuid });
       if (!user) throw new NotFoundError({ message: t('user.errors.notFound') });
 
       if (user.uid === currentuser.uid) {
@@ -902,5 +987,137 @@ export class VendorService {
       this.logger.error(`Error getting vendor stats for client ${cuid}: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Initiate payout account onboarding for a primary vendor.
+   * Guard: client.settings.vendorPayoutMode must be 'express'.
+   */
+  async initiatePayoutOnboarding(
+    cuid: string,
+    vuid: string
+  ): Promise<ISuccessReturnData<{ accountId: string }>> {
+    try {
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      if (!client) throw new NotFoundError({ message: t('client.errors.notFound') });
+
+      if ((client.settings as any)?.vendorPayoutMode !== 'express') {
+        throw new BadRequestError({
+          message: 'Payout account setup is not enabled for this client.',
+        });
+      }
+
+      // Idempotent: vendor has one Stripe account regardless of which client invited them
+      const existing = await this.paymentProcessorDAO.findByVuid(vuid);
+      if (existing) {
+        // Ensure this client's connectedClients entry reflects the existing Stripe account status
+        await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+          isSetup: existing.detailsSubmitted || false,
+          payoutsEnabled: existing.payoutsEnabled || false,
+          chargesEnabled: existing.chargesEnabled || false,
+        });
+        return { success: true, data: { accountId: existing.accountId } };
+      }
+
+      return this.payoutAccountService.initiateVendorAccount(cuid, vuid);
+    } catch (error: any) {
+      this.logger.error({ error: error.message, cuid, vuid }, 'Error initiating payout onboarding');
+      throw error;
+    }
+  }
+
+  /**
+   * Return the provider-hosted KYC onboarding link for a vendor's payout account.
+   */
+  async getPayoutOnboardingLink(
+    cuid: string,
+    vuid: string,
+    returnUrl: string,
+    refreshUrl: string
+  ): Promise<ISuccessReturnData<{ url: string }>> {
+    return this.payoutAccountService.getVendorKycOnboardingLink(cuid, vuid, returnUrl, refreshUrl);
+  }
+
+  /**
+   * Sync payout account status from the provider and update the PaymentProcessor record.
+   */
+  async syncPayoutAccountStatus(
+    cuid: string,
+    vuid: string
+  ): Promise<
+    ISuccessReturnData<{ isSetup: boolean; payoutsEnabled: boolean; chargesEnabled: boolean }>
+  > {
+    try {
+      const processor = await this.paymentProcessorDAO.findByVuid(vuid);
+      if (!processor) {
+        throw new NotFoundError({ message: 'Payout account not found.' });
+      }
+
+      const result = await this.paymentGatewayService.getConnectAccount(
+        IPaymentGatewayProvider.STRIPE,
+        processor.accountId
+      );
+
+      if (!result.success || !result.data) {
+        throw new BadRequestError({ message: 'Failed to retrieve payout account status.' });
+      }
+
+      const account = result.data;
+      const justVerified = !processor.payoutsEnabled && account.payouts_enabled;
+
+      await this.paymentProcessorDAO.upsertForVendor({
+        accountId: processor.accountId,
+        chargesEnabled: account.charges_enabled || false,
+        payoutsEnabled: account.payouts_enabled || false,
+        detailsSubmitted: account.details_submitted || false,
+        ...(justVerified ? { onboardedAt: new Date() } : {}),
+        ownerType: 'vendor',
+        vuid,
+        cuid,
+      });
+
+      // Sync per-client payout state into connectedClients
+      await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+        isSetup: account.details_submitted || false,
+        payoutsEnabled: account.payouts_enabled || false,
+        chargesEnabled: account.charges_enabled || false,
+      });
+
+      // Invalidate cached user data so /me returns fresh payoutAccount status
+      const vendorRecord = await this.vendorDAO.findFirst({ vuid, deletedAt: null });
+      if (vendorRecord) {
+        const clientConn = vendorRecord.connectedClients.find((c) => c.cuid === cuid);
+        if (clientConn?.primaryAccountHolderUserId) {
+          const vendorUser = await this.userDAO.findFirst({
+            _id: clientConn.primaryAccountHolderUserId,
+          });
+          if (vendorUser?.uid) {
+            await this.userCache.invalidateUserDetail(cuid, vendorUser.uid);
+          }
+        }
+      }
+
+      return {
+        success: true,
+        data: {
+          isSetup: account.details_submitted || false,
+          payoutsEnabled: account.payouts_enabled || false,
+          chargesEnabled: account.charges_enabled || false,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(
+        { error: error.message, cuid, vuid },
+        'Error syncing payout account status'
+      );
+      throw error;
+    }
+  }
+
+  async getPayoutDashboardLink(
+    cuid: string,
+    vuid: string
+  ): Promise<ISuccessReturnData<{ url: string }>> {
+    return this.payoutAccountService.getVendorDashboardLink(cuid, vuid);
   }
 }

@@ -131,7 +131,7 @@ export class PidManager {
     if (fs.existsSync(this.pidFile)) {
       try {
         fs.unlinkSync(this.pidFile);
-        this.log.info('PID file cleaned up');
+        this.log.debug('PID file cleaned up');
       } catch (err) {
         this.log.warn('Failed to remove PID file:', err);
       }

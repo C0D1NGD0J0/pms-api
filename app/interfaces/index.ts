@@ -9,6 +9,7 @@ export * from './payments.interface';
 export * from './property.interface';
 export * from './profile.interface';
 export * from './service.interface';
+export * from './expense.interface';
 export * from './vendor.interface';
 export * from './client.interface';
 export * from './events.interface';

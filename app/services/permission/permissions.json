@@ -30,7 +30,14 @@
       "tenant": ["create:any", "read:any", "update:any", "list:any"],
       "vendor": ["create:any", "read:any", "update:any", "list:any"],
       "lease": ["create:any", "list:any", "read:any", "update:any"],
-      "maintenance": ["create:mine", "delete:mine", "list:any", "read:any", "update:any"],
+      "maintenance": [
+        "create:mine",
+        "delete:mine",
+        "list:any",
+        "read:any",
+        "update:any",
+        "stats:any"
+      ],
       "payment": ["read:any", "create:any", "list:any"],
       "report": ["read:any", "create:any", "list:any"],
       "invitation": [
@@ -80,7 +87,14 @@
         },
         "management": {
           "property": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
-          "maintenance": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
+          "maintenance": [
+            "create:any",
+            "read:any",
+            "update:any",
+            "delete:any",
+            "list:any",
+            "stats:any"
+          ],
           "lease": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "tenant": ["read:any", "update:any", "list:any"],
           "payment": ["read:any", "list:any", "create:any"],
@@ -90,6 +104,7 @@
         },
         "security": {
           "property": ["read:any", "list:any"],
+          "visitor_pass": ["read:any", "list:any"],
           "user": ["read:mine", "update:mine"],
           "client": ["read:mine"]
         }
@@ -99,18 +114,27 @@
       "property": ["read:mine"],
       "user": ["read:mine", "update:mine"],
       "client": ["read:mine"],
-      "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine"],
-      "lease": ["read:mine", "update:mine"],
+      "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine", "stats:mine"],
+      "lease": ["read:mine", "list:mine", "update:mine"],
       "payment": ["read:mine", "create:mine", "list:mine"],
       "report": ["read:mine"]
     },
     "vendor": {
       "property": ["read:assigned"],
-      "user": ["read:mine", "update:mine"],
+      "user": ["read:mine", "read:any", "update:mine"],
       "client": ["read:mine"],
-      "maintenance": ["read:assigned", "update:assigned", "list:assigned"],
+      "maintenance": [
+        "read:mine",
+        "list:mine",
+        "update:mine",
+        "stats:mine",
+        "read:assigned",
+        "update:assigned",
+        "list:assigned"
+      ],
+      "vendor": ["read:mine", "list:mine"],
       "lease": ["read:assigned"],
-      "payment": ["read:assigned"],
+      "payment": ["read:assigned", "list:mine"],
       "report": ["read:assigned"]
     }
   },
@@ -146,7 +170,7 @@
       "description": "Vendor management operations"
     },
     "maintenance": {
-      "actions": ["create", "read", "update", "delete", "list"],
+      "actions": ["create", "read", "update", "delete", "list", "stats"],
       "scopes": ["any", "mine", "assigned"],
       "description": "Maintenance request operations"
     },
@@ -179,6 +203,11 @@
       "actions": ["read", "update", "manage"],
       "scopes": ["any", "mine"],
       "description": "Billing and payment processing operations"
+    },
+    "visitor_pass": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine", "assigned"],
+      "description": "Visitor pass and access request operations"
     }
   },
   "scopes": {

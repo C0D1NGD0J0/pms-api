@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 11px;
+      color: #1f2937;
+      background: #ffffff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .page {
+      padding: 48px 56px;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    /* ── Accent bar ── */
+    .accent-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 5px;
+      background: linear-gradient(90deg, <%= accentColor %> 0%, <%= accentColorLight %> 100%);
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding-bottom: 28px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .brand-name {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      color: #111827;
+    }
+    .brand-sub {
+      font-size: 10px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-weight: 500;
+    }
+
+    .invoice-meta {
+      text-align: right;
+    }
+    .invoice-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #9ca3af;
+      font-weight: 600;
+    }
+    .invoice-number {
+      font-size: 16px;
+      font-weight: 700;
+      color: #111827;
+      margin-top: 2px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-top: 8px;
+      background: <%= statusBadge.bg %>;
+      color: <%= statusBadge.fg %>;
+    }
+
+    /* ── Parties grid ── */
+    .parties {
+      display: flex;
+      gap: 48px;
+      margin-bottom: 32px;
+    }
+    .party {
+      flex: 1;
+    }
+    .party-label {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: <%= accentColor %>;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .party-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 4px;
+    }
+    .party-detail {
+      font-size: 11px;
+      color: #4b5563;
+      line-height: 1.7;
+    }
+
+    /* ── Details section ── */
+    .section {
+      margin-bottom: 28px;
+    }
+    .section-title {
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #9ca3af;
+      font-weight: 600;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 4px;
+    }
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-key { color: #6b7280; }
+    .detail-value { font-weight: 600; color: #111827; }
+
+    /* ── Line items table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    thead tr {
+      background: #f9fafb;
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      font-weight: 600;
+    }
+    th:last-child { text-align: right; }
+    td {
+      padding: 13px 14px;
+      border-bottom: 1px solid #f3f4f6;
+      color: #1f2937;
+    }
+    td:last-child {
+      text-align: right;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Totals ── */
+    .totals-container {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+    .totals {
+      width: 260px;
+    }
+    .totals-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 14px;
+      font-size: 11px;
+    }
+    .totals-row .label { color: #6b7280; }
+    .totals-row .value {
+      font-weight: 600;
+      color: #111827;
+      font-variant-numeric: tabular-nums;
+    }
+    .totals-row.grand-total {
+      border-top: 2px solid #111827;
+      margin-top: 4px;
+      padding-top: 12px;
+    }
+    .totals-row.grand-total .label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #111827;
+    }
+    .totals-row.grand-total .value {
+      font-size: 13px;
+      font-weight: 800;
+      color: <%= accentColor %>;
+    }
+
+    /* ── Notes ── */
+    .notes {
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-top: 28px;
+      font-size: 10px;
+      color: #6b7280;
+      line-height: 1.6;
+    }
+    .notes-label {
+      font-weight: 700;
+      color: #4b5563;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      font-size: 9px;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 40px;
+      padding-top: 16px;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .footer-note {
+      font-size: 9px;
+      color: #9ca3af;
+      line-height: 1.7;
+    }
+    .footer-right {
+      font-size: 9px;
+      color: #d1d5db;
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="accent-bar"></div>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="brand">
+      <div class="brand-name"><%= companyName %></div>
+      <div class="brand-sub"><%= documentTitle %></div>
+    </div>
+    <div class="invoice-meta">
+      <div class="invoice-label">Invoice Number</div>
+      <div class="invoice-number"><%= invoiceNumber %></div>
+      <span class="badge"><%= statusLabel %></span>
+    </div>
+  </div>
+
+  <!-- Parties -->
+  <div class="parties">
+    <div class="party">
+      <div class="party-label"><%= billTo.label %></div>
+      <div class="party-name"><%= billTo.name %></div>
+      <div class="party-detail"><%= billTo.address %></div>
+    </div>
+    <div class="party">
+      <div class="party-label"><%= reference.label %></div>
+      <div class="party-detail">
+        <% reference.entries.forEach(function(entry) { %>
+          <%= entry.key %>&nbsp;&nbsp;<strong><%= entry.value %></strong><br>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Details -->
+  <% if (details && details.length > 0) { %>
+  <div class="section">
+    <div class="section-title"><%= detailsTitle %></div>
+    <% details.forEach(function(d) { %>
+      <div class="detail-row">
+        <span class="detail-key"><%= d.key %></span>
+        <span class="detail-value"><%= d.value %></span>
+      </div>
+    <% }); %>
+  </div>
+  <% } %>
+
+  <!-- Line items -->
+  <div class="section">
+    <div class="section-title"><%= lineItemsTitle %></div>
+    <table>
+      <thead>
+        <tr><th>Description</th><th>Amount</th></tr>
+      </thead>
+      <tbody>
+        <% lineItems.forEach(function(item) { %>
+          <tr>
+            <td><%= item.description %></td>
+            <td><%= item.amount %></td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+
+    <div class="totals-container">
+      <div class="totals">
+        <% if (subtotals && subtotals.length > 0) { %>
+          <% subtotals.forEach(function(s) { %>
+            <div class="totals-row">
+              <span class="label"><%= s.label %></span>
+              <span class="value"><%= s.amount %></span>
+            </div>
+          <% }); %>
+        <% } %>
+        <div class="totals-row grand-total">
+          <span class="label">Total</span>
+          <span class="value"><%= totalAmount %></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <% if (notes) { %>
+  <div class="notes">
+    <div class="notes-label">Notes</div>
+    <%= notes %>
+  </div>
+  <% } %>
+
+  <!-- Footer -->
+  <div class="footer">
+    <div class="footer-note">
+      <% if (footerNote) { %><%- footerNote %><% } %>
+      <% if (!footerNote) { %>Generated on <%= generatedDate %>.<% } %>
+    </div>
+    <div class="footer-right"><%= invoiceNumber %></div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { BaseCSVProcessorService } from '@services/csv/base';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+
+const log = createLogger('PropertyValidation');
 
 const getContainer = async () => {
   const { container } = await import('@di/setup');
@@ -19,7 +23,7 @@ const isUniqueAddress = async (address: string, clientId: string) => {
     });
     return !existingProperty;
   } catch (error) {
-    console.error('Error checking address uniqueness', error);
+    log.error({ error }, 'Error checking address uniqueness');
     return false;
   }
 };
@@ -102,9 +106,8 @@ const FinancialDetailsSchema = z.object({
 });
 
 const FeesSchema = z.object({
-  currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).default('USD'),
-  taxAmount: z.number().min(0, 'Tax amount must be a non-negative number').default(0),
-  rentalAmount: z.number().min(0, 'Rental amount must be a non-negative number').default(0),
+  currency: z.nativeEnum(CURRENCIES).default(CURRENCIES.USD),
+  rentAmount: z.number().min(0, 'Rental amount must be a non-negative number').default(0),
   managementFees: z.number().min(0, 'Management fees must be a non-negative number').default(0),
   securityDeposit: z.number().min(0, 'Security deposit must be a non-negative number').default(0),
 });
@@ -184,6 +187,25 @@ const DescriptionSchema = z.object({
   html: z.string().max(2000, 'Description HTML must be at most 2000 characters').optional(),
 });
 
+const OwnerSchema = z.object({
+  type: z.enum(['company_owned', 'external_owner', 'self_owned']).default('company_owned'),
+  name: z.string().trim().max(200, 'Owner name must be at most 200 characters').optional(),
+  email: z.string().trim().email('Invalid owner email format').optional(),
+  phone: z.string().trim().max(20, 'Phone number must be at most 20 characters').optional(),
+  taxId: z.string().trim().max(50, 'Tax ID must be at most 50 characters').optional(),
+  notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),
+});
+
+const AuthorizationSchema = z.object({
+  isActive: z.boolean().default(true),
+  expiresAt: z.union([z.string(), z.date(), z.null()]).optional().nullable(),
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Authorization notes must be at most 500 characters')
+    .optional(),
+});
+
 const CreatePropertySchema = z.object({
   name: z
     .string()
@@ -248,6 +270,8 @@ const CreatePropertySchema = z.object({
       })
     )
     .optional(),
+  owner: OwnerSchema.optional(),
+  authorization: AuthorizationSchema.optional(),
 });
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(
@@ -380,11 +404,10 @@ export const PropertyCsvSchema = z.object({
     .optional(),
 
   // Fees
-  fees_taxAmount: z.coerce.number().min(0).optional(),
   fees_rentalAmount: z.coerce.number().min(0).optional(),
   fees_managementFees: z.coerce.number().min(0).optional(),
   fees_securityDeposit: z.coerce.number().min(0).optional(),
-  fees_currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']).optional().default('USD'),
+  fees_currency: z.nativeEnum(CURRENCIES).optional().default(CURRENCIES.USD),
 
   // Utilities - using boolean validation
   utilities_water: z

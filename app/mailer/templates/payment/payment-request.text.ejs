@@ -1,0 +1,19 @@
+New Payment Request
+
+Hi <%= tenantName %>,
+
+Your property manager has created a new payment request for <%= propertyAddress %>.
+
+Payment Details:
+- Property: <%= propertyAddress %><% if (unitNumber) { %>
+- Unit: <%= unitNumber %><% } %>
+- Type: <%= paymentType %>
+- Amount Due: <%= amountDue %>
+- Due Date: <%= new Date(dueDate).toLocaleDateString() %><% if (description) { %>
+- Note: <%= description %><% } %>
+
+<% if (paymentUrl) { %>
+Pay now: <%= paymentUrl %>
+<% } %>
+
+If you have any questions about this charge, please contact your property manager directly.

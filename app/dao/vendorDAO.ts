@@ -2,7 +2,12 @@ import Logger from 'bunyan';
 import { ClientSession, Types, Model } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { calcPercentage, createLogger, escapeRegExp } from '@utils/index';
-import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
+import {
+  IVendorPayoutAccount,
+  IVendorDocument,
+  NewVendor,
+  IVendor,
+} from '@interfaces/vendor.interface';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions } from './interfaces/baseDAO.interface';
@@ -124,7 +129,10 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  async getVendorById(vendorId: string | Types.ObjectId): Promise<IVendorDocument | null> {
+  async getVendorById(
+    vendorId: string | Types.ObjectId,
+    cuid?: string
+  ): Promise<IVendorDocument | null> {
     try {
       const vendorIdStr = vendorId.toString();
 
@@ -132,11 +140,18 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       const isObjectId = /^[0-9a-fA-F]{24}$/.test(vendorIdStr);
 
       if (isObjectId) {
-        // Use _id directly
-        return await this.findById(vendorId);
+        // Scope by cuid to prevent cross-tenant access via ObjectId
+        const query: Record<string, any> = {
+          _id: new Types.ObjectId(vendorIdStr),
+          deletedAt: null,
+        };
+        if (cuid) query['connectedClients.cuid'] = cuid;
+        return await this.findFirst(query);
       } else {
         // It's a vuid
-        return await this.findFirst({ vuid: vendorIdStr, deletedAt: null });
+        const query: Record<string, any> = { vuid: vendorIdStr, deletedAt: null };
+        if (cuid) query['connectedClients.cuid'] = cuid;
+        return await this.findFirst(query);
       }
     } catch (error) {
       this.logger.error(`Error getting vendor by ID ${vendorId}: ${error}`);
@@ -153,11 +168,11 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
-  async getVendorByPrimaryAccountHolder(
+  async getVendorByprimaryAccountHolderUserId(
     userId: string | Types.ObjectId
   ): Promise<IVendorDocument | null> {
     try {
-      return await this.findFirst({ 'connectedClients.primaryAccountHolder': userId });
+      return await this.findFirst({ 'connectedClients.primaryAccountHolderUserId': userId });
     } catch (error) {
       this.logger.error(`Error getting vendor by primary account holder ${userId}: ${error}`);
       throw error;
@@ -230,6 +245,79 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     }
   }
 
+  async disconnectClient(vendorId: string, cuid: string): Promise<void> {
+    try {
+      await this.updateById(vendorId, { $set: { 'connectedClients.$[elem].isConnected': false } }, {
+        arrayFilters: [{ 'elem.cuid': cuid }],
+      } as any);
+      this.logger.info(`Vendor ${vendorId} disconnected from client ${cuid}`);
+    } catch (error) {
+      this.logger.error(`Error disconnecting vendor ${vendorId} from client ${cuid}: ${error}`);
+      throw error;
+    }
+  }
+
+  async reconnectClient(vendorId: string, cuid: string): Promise<void> {
+    try {
+      await this.updateById(vendorId, { $set: { 'connectedClients.$[elem].isConnected': true } }, {
+        arrayFilters: [{ 'elem.cuid': cuid }],
+      } as any);
+      this.logger.info(`Vendor ${vendorId} reconnected to client ${cuid}`);
+    } catch (error) {
+      this.logger.error(`Error reconnecting vendor ${vendorId} to client ${cuid}: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Sync per-client payout account status into the matching connectedClients entry.
+   * Uses the positional $ operator — requires both vuid and connectedClients.cuid in the filter.
+   */
+  async updateClientPayoutAccount(
+    vuid: string,
+    cuid: string,
+    data: Partial<Pick<IVendorPayoutAccount, 'isSetup' | 'payoutsEnabled' | 'chargesEnabled'>>
+  ): Promise<IVendorDocument | null> {
+    const $set: Record<string, any> = {};
+    for (const [k, v] of Object.entries(data)) {
+      $set[`connectedClients.$.payoutAccount.${k}`] = v;
+    }
+    return this.update({ vuid, 'connectedClients.cuid': cuid }, { $set });
+  }
+
+  /**
+   * Set or clear a per-client payout block on a vendor.
+   * Only affects the matching connectedClients entry — other clients are unaffected.
+   */
+  async setClientPayoutBlock(
+    vuid: string,
+    cuid: string,
+    blocked: boolean,
+    opts?: { reason?: string; blockedBy?: Types.ObjectId }
+  ): Promise<IVendorDocument | null> {
+    const updateOperation = blocked
+      ? {
+          $set: {
+            'connectedClients.$.payoutAccount.payoutsBlocked': true,
+            'connectedClients.$.payoutAccount.payoutsBlockedReason':
+              opts?.reason ?? 'Blocked by admin',
+            'connectedClients.$.payoutAccount.payoutsBlockedAt': new Date(),
+            ...(opts?.blockedBy
+              ? { 'connectedClients.$.payoutAccount.payoutsBlockedBy': opts.blockedBy }
+              : {}),
+          },
+        }
+      : {
+          $set: { 'connectedClients.$.payoutAccount.payoutsBlocked': false },
+          $unset: {
+            'connectedClients.$.payoutAccount.payoutsBlockedReason': '',
+            'connectedClients.$.payoutAccount.payoutsBlockedAt': '',
+            'connectedClients.$.payoutAccount.payoutsBlockedBy': '',
+          },
+        };
+    return this.update({ vuid, 'connectedClients.cuid': cuid }, updateOperation as any);
+  }
+
   async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {
     try {
       // Find vendors where connectedClients contains this cuid
@@ -280,7 +368,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
           {
             $lookup: {
               from: 'users',
-              localField: 'primaryAccountHolder',
+              localField: 'primaryAccountHolderUserId',
               foreignField: '_id',
               as: 'user',
             },

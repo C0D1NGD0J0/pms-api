@@ -10,9 +10,9 @@ import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
-import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
+import { ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { PaymentGatewayService, VendorService, UserService } from '@services/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
 import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
@@ -114,6 +114,20 @@ export class InvitationService {
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
+      }
+
+      if (!client.isVerified && validatedData.role === ROLES.TENANT) {
+        const pendingTenantInvitations = await this.invitationDAO.countDocuments({
+          client: client._id,
+          role: IUserRole.TENANT,
+          status: 'pending',
+        });
+        if (pendingTenantInvitations >= 5) {
+          throw new BadRequestError({
+            message:
+              'Verify your account to invite more tenants. Unverified accounts are limited to 5 pending tenant invitations.',
+          });
+        }
       }
 
       const inviterUser = await this.userDAO.getUserById(inviterUserId);
@@ -400,22 +414,21 @@ export class InvitationService {
       );
     }
 
-    if (result.invitation.role === 'tenant') {
-      await this.maybeCreateTenantPaymentCustomer(result.user, result.invitation, cuid);
+    if (result.invitation.role === ROLES.TENANT) {
+      await this.createTenantPaymentCustomer(result.user, cuid);
     }
   }
 
-  private async maybeCreateTenantPaymentCustomer(
-    user: any,
-    invitation: IInvitationDocument,
-    cuid: string
-  ): Promise<void> {
+  private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-      if (!paymentProcessor || !paymentProcessor.chargesEnabled) {
+      const existingProfile = await this.profileDAO.findFirst({ user: user._id });
+      const existingCustomerId =
+        existingProfile?.tenantInfo?.paymentGatewayCustomers?.get('platform');
+
+      if (existingCustomerId) {
         this.log.info(
-          { cuid },
-          'PM has no active payment processor — skipping tenant Stripe customer creation'
+          { cuid, userId: user._id, customerId: existingCustomerId },
+          'Platform Stripe customer already exists — skipping'
         );
         return;
       }
@@ -423,19 +436,17 @@ export class InvitationService {
       const result = await this.paymentGatewayService.createCustomer({
         provider: IPaymentGatewayProvider.STRIPE,
         email: user.email,
-        name: invitation.inviteeFullName || user.email,
-        connectedAccountId: paymentProcessor.accountId,
       });
 
       if (!result.success || !result.data) {
         this.log.warn(
           { cuid, userId: user._id },
-          'Stripe customer creation returned no data for tenant — skipping'
+          'Stripe customer creation returned no data — skipping'
         );
         return;
       }
 
-      // Initialize tenantInfo if null — MongoDB cannot set nested paths through null
+      // MongoDB cannot $set nested paths through a null parent document
       await this.profileDAO.update(
         { user: user._id, tenantInfo: null },
         { $set: { tenantInfo: {} } }
@@ -445,21 +456,19 @@ export class InvitationService {
         { user: user._id },
         {
           $set: {
-            [`tenantInfo.paymentGatewayCustomers.${paymentProcessor.accountId}`]:
-              result.data.customerId,
+            ['tenantInfo.paymentGatewayCustomers.platform']: result.data.customerId,
           },
         }
       );
 
       this.log.info(
         { cuid, userId: user._id, customerId: result.data.customerId },
-        'Tenant Stripe customer created and stored on profile'
+        'Platform Stripe customer created for tenant'
       );
     } catch (error) {
-      // Do not throw — invitation acceptance must succeed even if customer creation fails
       this.log.error(
         { error, cuid, userId: user._id },
-        'Error creating Stripe customer for tenant — invitation accepted without customer record'
+        'Error creating Stripe customer — invitation accepted without customer record'
       );
     }
   }
@@ -490,7 +499,6 @@ export class InvitationService {
 
       await this.invitationDAO.acceptInvitation(invitationData.token, user._id.toString(), session);
 
-      // this fixes issue where leases created using invitationId as userId cause the userid hadn't been generated when the leases are created
       if (invitation.role === 'tenant') {
         await this.migrateLeasesFromInvitationToUser(invitation._id, user._id, session);
       }
@@ -983,6 +991,15 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
+      // Pre-check: reject if no seats available and can't purchase more — avoids queueing a job that will fully fail
+      const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
+      if (seatInfo.availableSeats <= 0 && !seatInfo.canPurchaseMore) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+        throw new BadRequestError({
+          message: `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`,
+        });
+      }
+
       const jobData = {
         userId,
         csvFilePath,
@@ -1020,6 +1037,19 @@ export class InvitationService {
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
+      }
+
+      // Early exit if no seats are available at all — avoids queuing a job that will fully fail
+      try {
+        const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
+        if (seatInfo.availableSeats <= 0 && !seatInfo.canPurchaseMore) {
+          throw new BadRequestError({
+            message: `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Upgrade your plan or archive users to free up seats.`,
+          });
+        }
+      } catch (error) {
+        if (error instanceof BadRequestError) throw error;
+        this.log.error({ error, cuid }, 'Error checking seat availability before bulk user import');
       }
 
       const jobData = {

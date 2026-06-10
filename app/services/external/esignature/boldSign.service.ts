@@ -1,6 +1,11 @@
+import dayjs from 'dayjs';
+import crypto from 'crypto';
 import { Readable } from 'stream';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import { ForbiddenError } from '@shared/customErrors';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { DocumentSigner, RevokeDocument, DocumentApi, SendForSign } from 'boldsign';
 import {
   IBoldSignDocumentResponse,
@@ -26,11 +31,13 @@ export class BoldSignService {
   private readonly apiUrl: string;
   private readonly webhookSecret: string;
   private readonly documentApi: DocumentApi;
+  private readonly featureFlagService: FeatureFlagService;
 
-  constructor() {
+  constructor({ featureFlagService }: { featureFlagService: FeatureFlagService }) {
     this.apiKey = envVariables.BOLDSIGN.API_KEY;
     this.apiUrl = envVariables.BOLDSIGN.API_URL;
     this.webhookSecret = envVariables.BOLDSIGN.WEBHOOK_SECRET;
+    this.featureFlagService = featureFlagService;
 
     this.documentApi = new DocumentApi(this.apiUrl);
     this.documentApi.setApiKey(this.apiKey);
@@ -40,6 +47,9 @@ export class BoldSignService {
    * Send document for signature via BoldSign
    */
   async sendDocumentForSignature(params: ISendDocumentParams): Promise<IBoldSignDocumentResponse> {
+    if (!this.featureFlagService.isEnabled(FeatureFlag.ESIGNATURE)) {
+      throw new ForbiddenError({ message: 'E-signature feature is currently unavailable.' });
+    }
     try {
       const documentSigners: DocumentSigner[] = params.signers.map((signer) => {
         const documentSigner = new DocumentSigner();
@@ -61,7 +71,7 @@ export class BoldSignService {
       (fileStream as any).path = params.pdfFileName;
       sendForSign.files = [fileStream as any];
 
-      sendForSign.expiryDays = params.expiryDays || 30;
+      sendForSign.expiryDays = params.expiryDays || 3;
       sendForSign.reminderSettings = {
         reminderDays: 5,
         reminderCount: 3,
@@ -156,6 +166,50 @@ export class BoldSignService {
         : undefined,
       completedSignerEmails: completedSigners.map((s: any) => s.signerEmail),
     };
+  }
+
+  verifyWebhookSignature(rawBody: Buffer | string, signatureHeader: string): void {
+    if (!signatureHeader) {
+      throw new Error('Missing BoldSign signature header');
+    }
+
+    const parts: { timestamp: string; signatures: string[] } = { timestamp: '', signatures: [] };
+    for (const part of signatureHeader.split(',')) {
+      const [key, value] = part.trim().split('=', 2);
+      if (key === 't') parts.timestamp = value;
+      else if (key === 's0' || key === 's1') parts.signatures.push(value);
+    }
+
+    if (!parts.timestamp || parts.signatures.length === 0) {
+      throw new Error('Invalid BoldSign signature header format');
+    }
+
+    const payload = `${parts.timestamp}.${rawBody.toString()}`;
+    const expected = crypto
+      .createHmac('sha256', this.webhookSecret)
+      .update(payload, 'utf8')
+      .digest('hex');
+
+    const isValid = parts.signatures.some((sig) => {
+      try {
+        return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(sig, 'hex'));
+      } catch {
+        return false;
+      }
+    });
+
+    if (!isValid) {
+      throw new Error('BoldSign webhook signature verification failed');
+    }
+
+    const timestamp = parseInt(parts.timestamp, 10);
+    if (!Number.isFinite(timestamp)) {
+      throw new Error('BoldSign webhook timestamp is invalid');
+    }
+    const age = dayjs().unix() - timestamp;
+    if (age < 0 || age > 300) {
+      throw new Error('BoldSign webhook timestamp outside allowed window');
+    }
   }
 
   async revokeDocument(documentId: string, reason: string) {

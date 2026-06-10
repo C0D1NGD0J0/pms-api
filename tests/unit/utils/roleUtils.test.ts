@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
+import { preventTenantConflict } from '@utils/index';
 import { ForbiddenError } from '@shared/customErrors';
-import { preventTenantConflict } from '@shared/middlewares';
 import { resolveHighestRole, ROLE_PRIORITY } from '@shared/constants/roles.constants';
 
 describe('resolveHighestRole', () => {
@@ -54,7 +54,9 @@ describe('preventTenantConflict', () => {
   });
 
   it('throws with custom message when supplied', () => {
-    expect(() => preventTenantConflict(userId, tenantId, 'Custom message')).toThrow('Custom message');
+    expect(() => preventTenantConflict(userId, tenantId, 'Custom message')).toThrow(
+      'Custom message'
+    );
   });
 
   it('does NOT throw when the requesting user is NOT the tenant', () => {

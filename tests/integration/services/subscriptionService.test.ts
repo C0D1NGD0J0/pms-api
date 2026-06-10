@@ -10,7 +10,8 @@ describe('SubscriptionService Integration Tests', () => {
   let subscriptionDAO: SubscriptionDAO;
   let mockStripeService: any;
 
-  beforeAll(async () => { subscriptionDAO = new SubscriptionDAO();
+  beforeAll(async () => {
+    subscriptionDAO = new SubscriptionDAO();
 
     // Mock Stripe service to avoid real API calls - Updated with correct CAD pricing
     mockStripeService = {
@@ -85,10 +86,16 @@ describe('SubscriptionService Integration Tests', () => {
       emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
       sseService: { sendToUser: jest.fn() } as any,
       clientDAO: {} as any,
-      authCache: { client: { DEL: jest.fn(), GET: jest.fn(), SETEX: jest.fn() }, invalidateCurrentUser: jest.fn() } as any,
+      authCache: {
+        client: { DEL: jest.fn(), GET: jest.fn(), SETEX: jest.fn() },
+        invalidateCurrentUser: jest.fn(),
+      } as any,
       userDAO: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
   beforeEach(async () => {
@@ -153,9 +160,7 @@ describe('SubscriptionService Integration Tests', () => {
     });
 
     it('should fallback to config prices when Stripe fails', async () => {
-      mockStripeService.getProductsWithPrices.mockRejectedValueOnce(
-        new Error('Stripe API error')
-      );
+      mockStripeService.getProductsWithPrices.mockRejectedValueOnce(new Error('Stripe API error'));
 
       const result = await subscriptionService.getSubscriptionPlans();
 
@@ -418,7 +423,10 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionEntitlements('client-active', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements(
+        'client-active',
+        'super-admin'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
@@ -458,7 +466,10 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionEntitlements('client-pending', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements(
+        'client-pending',
+        'super-admin'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow!.requiresPayment).toBe(true);
@@ -527,7 +538,10 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionEntitlements('client-grace', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements(
+        'client-grace',
+        'super-admin'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow!.requiresPayment).toBe(true);
@@ -561,7 +575,10 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionEntitlements('client-expired', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements(
+        'client-expired',
+        'super-admin'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data?.paymentFlow!.requiresPayment).toBe(true);
@@ -593,7 +610,10 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
       });
 
-      const result = await subscriptionService.getSubscriptionEntitlements('client-starter', 'super-admin');
+      const result = await subscriptionService.getSubscriptionEntitlements(
+        'client-starter',
+        'super-admin'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data?.plan.name).toBe('growth');
@@ -873,7 +893,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
         entitlements: {
           eSignature: true,
-          RepairRequestService: true,
+          MaintenanceRequestService: true,
           VisitorPassService: true,
           reportingAnalytics: true,
         },
@@ -918,7 +938,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 3995,
         entitlements: {
           eSignature: true,
-          RepairRequestService: true,
+          MaintenanceRequestService: true,
           VisitorPassService: true,
           reportingAnalytics: true,
         },
@@ -959,7 +979,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 1598,
         entitlements: {
           eSignature: true,
-          RepairRequestService: true,
+          MaintenanceRequestService: true,
           VisitorPassService: true,
           reportingAnalytics: true,
         },
@@ -995,7 +1015,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 15980,
         entitlements: {
           eSignature: true,
-          RepairRequestService: true,
+          MaintenanceRequestService: true,
           VisitorPassService: true,
           reportingAnalytics: true,
         },
@@ -1032,7 +1052,7 @@ describe('SubscriptionService Integration Tests', () => {
         additionalSeatsCost: 0,
         entitlements: {
           eSignature: true,
-          RepairRequestService: true,
+          MaintenanceRequestService: true,
           VisitorPassService: true,
           reportingAnalytics: true,
         },

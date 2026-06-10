@@ -57,7 +57,7 @@ export class MediaUploadService {
       await this.handleDeletions(req, context);
 
       // Then handle uploads
-      const files = req.body.scannedFiles as ExtractedMediaFile[] | undefined;
+      const files = req.scannedFiles;
 
       if (!files || files.length === 0) {
         this.logger.debug('No files found in request');
@@ -261,7 +261,7 @@ export class MediaUploadService {
       resourceContext?: ResourceContext;
     }
   ): {
-    resourceName: 'property' | 'profile' | 'client' | 'lease';
+    resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice';
     resourceId: string;
     fieldName: string;
   } {
@@ -278,6 +278,14 @@ export class MediaUploadService {
         resourceName: 'profile',
         resourceId: context.primaryResourceId,
         fieldName: 'avatar',
+      };
+    }
+
+    if (fieldName.includes('invoiceDocument') || fieldName.startsWith('invoiceDocument.')) {
+      return {
+        resourceName: 'payment-invoice',
+        resourceId: context.primaryResourceId,
+        fieldName: 'invoiceDocument',
       };
     }
 
@@ -321,6 +329,14 @@ export class MediaUploadService {
       };
     }
 
+    if (context.resourceContext === ResourceContext.MAINTENANCE) {
+      return {
+        resourceName: 'maintenance',
+        resourceId: context.primaryResourceId,
+        fieldName: 'media',
+      };
+    }
+
     return {
       resourceName: 'property',
       resourceId: context.primaryResourceId,
@@ -358,6 +374,8 @@ export class MediaUploadService {
       primaryResourceId: string;
       uploadedBy: string;
       resourceContext?: ResourceContext;
+      /** Optional field name override — used to route to a custom resourceName (e.g. 'invoiceDocument'). */
+      fieldName?: string;
     }
   ): Promise<MediaOperationResult> {
     try {
@@ -382,7 +400,7 @@ export class MediaUploadService {
 
       // Create ExtractedMediaFile object
       const file: ExtractedMediaFile = {
-        fieldName: 'document',
+        fieldName: context.fieldName ?? 'document',
         originalFileName: fileName,
         filename: fileName,
         path: tempPath,

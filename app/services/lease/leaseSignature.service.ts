@@ -2,7 +2,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { LeaseCache } from '@caching/index';
-import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -10,13 +9,20 @@ import { BadRequestError } from '@shared/customErrors';
 import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { EventTypes } from '@interfaces/events.interface';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
+import { OwnershipType } from '@interfaces/property.interface';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES, createLogger } from '@utils/index';
-import { EventEmitterService, NotificationService, BoldSignService } from '@services/index';
+import {
+  EventEmitterService,
+  NotificationService,
+  BoldSignService,
+  SSEService,
+} from '@services/index';
 import {
   IPromiseReturnedData,
   ISuccessReturnData,
   IRequestContext,
+  ResourceContext,
 } from '@interfaces/utils.interface';
 import {
   LeaseESignatureFailedPayload,
@@ -31,9 +37,11 @@ import {
   fetchPropertyManagerWithUser,
   validateResourceAvailable,
   fetchTenantWithUser,
+  findActiveLeasePDF,
   fetchPropertyUnit,
   validateUserRole,
   fetchLeaseByLuid,
+  buildSenderInfo,
 } from './leaseHelpers';
 
 interface IConstructor {
@@ -45,6 +53,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
 }
@@ -61,6 +70,7 @@ export class LeaseSignatureService {
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
   private readonly notificationService: NotificationService;
+  private readonly sseService: SSEService;
 
   constructor({
     boldSignService,
@@ -73,6 +83,7 @@ export class LeaseSignatureService {
     propertyDAO,
     propertyUnitDAO,
     queueFactory,
+    sseService,
   }: IConstructor) {
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
@@ -85,6 +96,7 @@ export class LeaseSignatureService {
     this.boldSignService = boldSignService;
     this.log = createLogger('LeaseSignatureService');
     this.notificationService = notificationService;
+    this.sseService = sseService;
     this.setupEventListeners();
   }
 
@@ -117,6 +129,16 @@ export class LeaseSignatureService {
     }
 
     const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid);
+
+    // Heal stale DRAFT+approved leases created before the status-transition fix
+    if (lease.status === LeaseStatus.DRAFT && lease.approvalStatus === 'approved') {
+      await this.leaseDAO.update(
+        { _id: lease._id },
+        { $set: { status: LeaseStatus.READY_FOR_SIGNATURE } }
+      );
+      lease.status = LeaseStatus.READY_FOR_SIGNATURE;
+    }
+
     validateLeaseReadyForSignature(lease);
     if (lease.signingMethod !== 'electronic') {
       throw new BadRequestError({
@@ -126,7 +148,10 @@ export class LeaseSignatureService {
 
     await fetchTenantWithUser(this.profileDAO, lease.tenantId);
 
-    const property = await this.propertyDAO.findFirst({ _id: lease.property.id, deletedAt: null });
+    const property = await this.propertyDAO.findFirst(
+      { _id: lease.property.id, deletedAt: null },
+      { select: '+owner +authorization' }
+    );
     if (!property) {
       throw new BadRequestError({ message: 'Property not found' });
     }
@@ -139,28 +164,26 @@ export class LeaseSignatureService {
       validateResourceAvailable(propertyUnit, 'unit');
     }
 
-    if (property.managedBy) {
-      await fetchPropertyManagerWithUser(this.profileDAO, property.managedBy);
+    // Pre-flight: if external owner must sign directly, ensure they have an email
+    const isExternalOwner = property.owner?.type === OwnershipType.EXTERNAL_OWNER;
+    const isPmAuthorized = property.isManagementAuthorized();
+    if (isExternalOwner && !isPmAuthorized && !property.owner?.email) {
+      throw new BadRequestError({
+        message:
+          'This property has an external owner who must sign the lease, ' +
+          'but no email address is on file. Please update the property owner ' +
+          "email or grant PM authorization to sign on the owner's behalf.",
+      });
     }
 
-    let senderInfo: { email: string; name: string } = {
-      email: envVariables.BOLDSIGN.DEFAULT_SENDER_EMAIL,
-      name: envVariables.BOLDSIGN.DEFAULT_SENDER_NAME,
-    };
-    if (
-      client.accountType?.isEnterpriseAccount &&
-      client.companyProfile?.companyEmail &&
-      client.companyProfile?.legalEntityName
-    ) {
-      senderInfo = {
-        email: client.companyProfile.companyEmail,
-        name: client.companyProfile.legalEntityName,
-      };
+    const effectiveManagedBy = lease.property.managedBy || property.managedBy;
+    if (effectiveManagedBy) {
+      await fetchPropertyManagerWithUser(this.profileDAO, effectiveManagedBy);
     }
 
-    const leasePDF = lease.leaseDocuments?.find(
-      (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
-    );
+    const senderInfo = buildSenderInfo(client);
+
+    const leasePDF = findActiveLeasePDF(lease);
     if (!leasePDF || !leasePDF.key) {
       const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
       await pdfGeneratorQueue.addToPdfQueue({
@@ -199,6 +222,7 @@ export class LeaseSignatureService {
       cuid,
       luid,
       leaseId: lease._id.toString(),
+      managedBy: effectiveManagedBy?.toString(),
       senderInfo,
     });
 
@@ -228,12 +252,55 @@ export class LeaseSignatureService {
    * Cancel an e-signature request
    */
   async cancelSignature(
-    _cuid: string,
+    cuid: string,
     leaseId: string,
     _userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
     this.log.info(`Cancelling signature for lease ${leaseId}`);
-    throw new Error('cancelSignature not yet implemented');
+
+    const lease = await this.leaseDAO.findFirst({ luid: leaseId, cuid });
+    if (!lease) {
+      throw new BadRequestError({ message: 'Lease not found' });
+    }
+
+    if (lease.status !== LeaseStatus.PENDING_SIGNATURE) {
+      throw new BadRequestError({
+        message: 'Lease is not pending signature and cannot be cancelled',
+      });
+    }
+
+    const envelopeId = lease.eSignature?.envelopeId;
+    if (envelopeId) {
+      try {
+        await this.boldSignService.revokeDocument(
+          envelopeId,
+          'Signature request cancelled by manager'
+        );
+      } catch (revokeError: any) {
+        // Log but don't throw — the envelope may already be revoked or expired in BoldSign.
+        // We still need to revert the lease status locally.
+        this.log.warn('BoldSign revoke failed during cancel (proceeding to revert lease status)', {
+          envelopeId,
+          error: revokeError?.message || revokeError,
+        });
+      }
+    }
+
+    const updated = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+        status: LeaseStatus.DRAFT,
+        updatedAt: new Date(),
+      }
+    );
+
+    if (!updated) {
+      throw new BadRequestError({ message: 'Failed to update lease status' });
+    }
+
+    this.log.info(`Signature cancelled, lease ${leaseId} reverted to draft`);
+    return { success: true, data: updated };
   }
 
   /**
@@ -354,12 +421,27 @@ export class LeaseSignatureService {
 
       switch (eventType) {
         case 'SendFailed':
-          result = await this.leaseDAO.update(lease._id, {
-            'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
-            'eSignature.errorMessage': data?.errorMessage || 'Send failed',
-            'eSignature.failedAt': new Date(),
-            status: LeaseStatus.DRAFT,
-            updatedAt: new Date(),
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.VOIDED,
+              'eSignature.errorMessage': data?.errorMessage || 'Send failed',
+              'eSignature.failedAt': new Date(),
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
+          await this.notificationService.notifyLeaseESignatureFailed({
+            leaseNumber: lease.leaseNumber,
+            error: data?.errorMessage || 'Send failed',
+            propertyManagerId: lease.createdBy.toString(),
+            actorId: lease.createdBy.toString(),
+            cuid: lease.cuid,
+            resource: {
+              resourceId: lease._id.toString(),
+              resourceUid: lease.luid,
+              resourceType: ResourceContext.LEASE,
+            },
           });
           break;
 
@@ -386,6 +468,29 @@ export class LeaseSignatureService {
             completedAt: new Date(data?.completedDate || Date.now()),
             signers: data?.signers || [],
           });
+
+          // Push real-time SSE refresh signal to both tenant and PM so their
+          // lease list / lease detail pages refetch without a manual reload.
+          const ssePayload = {
+            resource: 'lease',
+            action: 'status-changed',
+            resourceUId: lease.luid,
+            status: LeaseStatus.ACTIVE,
+          };
+          await Promise.allSettled([
+            this.sseService.sendToUser(
+              lease.tenantId.toString(),
+              lease.cuid,
+              ssePayload,
+              'resource-event'
+            ),
+            this.sseService.sendToUser(
+              lease.createdBy.toString(),
+              lease.cuid,
+              ssePayload,
+              'resource-event'
+            ),
+          ]);
           break;
 
         case 'Declined':
@@ -412,11 +517,14 @@ export class LeaseSignatureService {
           break;
 
         case 'Revoked':
-          result = await this.leaseDAO.update(lease._id, {
-            'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
-            status: LeaseStatus.DRAFT,
-            updatedAt: new Date(),
-          });
+          result = await this.leaseDAO.update(
+            { _id: lease._id },
+            {
+              'eSignature.status': ILeaseESignatureStatusEnum.DRAFT,
+              status: LeaseStatus.DRAFT,
+              updatedAt: new Date(),
+            }
+          );
           break;
 
         case 'Signed':
@@ -431,6 +539,7 @@ export class LeaseSignatureService {
           let signerId: Types.ObjectId | undefined;
           let signerRole: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager' = 'tenant';
           let coTenantInfo: { name: string; email: string } | undefined;
+          let landlordInfo: { name: string; email: string; phone?: string } | undefined;
 
           if (lease.tenantId) {
             const tenant = await this.profileDAO.findFirst(
@@ -456,18 +565,38 @@ export class LeaseSignatureService {
             }
           }
 
-          if (!signerId && lease.property?.id) {
-            const property = await this.propertyDAO.findFirst({ _id: lease.property.id });
-            if (property?.managedBy) {
+          if (!signerId && !coTenantInfo && lease.property?.id) {
+            const property = await this.propertyDAO.findFirst(
+              { _id: lease.property.id },
+              { select: '+owner' }
+            );
+
+            // Check if signer is the PM — lease-level managedBy overrides property-level
+            const effectivePmId = lease.property.managedBy || property?.managedBy;
+            if (effectivePmId) {
               const pm = await this.profileDAO.findFirst(
-                { user: property.managedBy },
+                { user: effectivePmId },
                 { populate: 'user' }
               );
               const pmUser = pm?.user && typeof pm.user === 'object' ? (pm.user as any) : null;
               if (pmUser?.email === recentSigner.email) {
-                signerId = property.managedBy as Types.ObjectId;
+                signerId = effectivePmId as Types.ObjectId;
                 signerRole = 'property_manager';
               }
+            }
+
+            // Check if signer is the external landlord/owner
+            if (
+              !signerId &&
+              property?.owner?.type === OwnershipType.EXTERNAL_OWNER &&
+              property.owner.email === recentSigner.email
+            ) {
+              signerRole = 'landlord';
+              landlordInfo = {
+                name: property.owner.name || recentSigner.name,
+                email: property.owner.email,
+                phone: property.owner.phone,
+              };
             }
           }
 
@@ -477,6 +606,7 @@ export class LeaseSignatureService {
             signedAt: recentSigner.signedAt,
             ...(signerId ? { userId: signerId } : {}),
             ...(coTenantInfo ? { coTenantInfo } : {}),
+            ...(landlordInfo ? { landlordInfo } : {}),
           };
 
           // check if signature already exists to prevent duplicates
@@ -490,6 +620,11 @@ export class LeaseSignatureService {
             // For co-tenants without userId, check by email
             signatureExists =
               lease.signatures?.some((sig) => sig.coTenantInfo?.email === coTenantInfo.email) ||
+              false;
+          } else if (landlordInfo) {
+            // For landlords without userId, check by email
+            signatureExists =
+              lease.signatures?.some((sig) => sig.landlordInfo?.email === landlordInfo!.email) ||
               false;
           }
 

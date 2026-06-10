@@ -51,6 +51,33 @@ export class NotificationController {
     });
   };
 
+  markAllNotificationsAsRead = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const result = await this.notificationService.markAllAsRead(userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result.data,
+      message: t('notification.success.all_marked_as_read'),
+    });
+  };
+
   getMyNotificationsStream = async (req: AppRequest, res: Response): Promise<void> => {
     try {
       const { cuid } = req.params;
@@ -64,13 +91,16 @@ export class NotificationController {
         throw new BadRequestError({ message: 'Invalid client context' });
       }
 
-      const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
+      const { type, priority, isRead, last7days, last30days, since } = req.query as Record<
+        string,
+        string
+      >;
       const filters: INotificationFilters = {
-        type,
-        priority,
-        isRead: isRead ? isRead === ('true' as unknown as boolean) : undefined,
-        last7days: last7days ? last7days === ('true' as unknown as boolean) : undefined,
-        last30days: last30days ? last30days === ('true' as unknown as boolean) : undefined,
+        type: type as INotificationFilters['type'],
+        priority: priority as INotificationFilters['priority'],
+        isRead: isRead ? isRead === 'true' : undefined,
+        last7days: last7days ? last7days === 'true' : undefined,
+        last30days: last30days ? last30days === 'true' : undefined,
       };
 
       const pagination: IPaginationQuery = {
@@ -79,20 +109,28 @@ export class NotificationController {
         sortBy: (req.query.sortBy as string) || 'createdAt',
       };
 
-      const initialData = await this.notificationService.getNotifications(
-        cuid,
-        userId,
-        filters,
-        pagination
-      );
+      const validSince = since && !isNaN(Date.parse(since)) ? since : undefined;
+
+      const [initialData, missedData] = await Promise.all([
+        this.notificationService.getNotifications(cuid, userId, filters, pagination),
+        validSince
+          ? this.notificationService.getNotifications(
+              cuid,
+              userId,
+              { since: validSince },
+              { page: 1, limit: 50, sortBy: 'createdAt' }
+            )
+          : Promise.resolve(null),
+      ]);
 
       const session = await this.sseService.connect(req, res, userId, cuid, 'individual');
+
+      if (missedData?.success && missedData.data?.notifications?.length) {
+        session.push({ ...missedData.data, isInitial: false, isMissed: true }, 'my-notifications');
+      }
+
       if (initialData.success && initialData.data) {
-        const initialPayload = {
-          ...initialData.data,
-          isInitial: true,
-        };
-        session.push(initialPayload, 'my-notifications');
+        session.push({ ...initialData.data, isInitial: true }, 'my-notifications');
       }
     } catch (error) {
       this.log.error('Failed to start personal notifications SSE stream', { error });
@@ -113,13 +151,16 @@ export class NotificationController {
         throw new BadRequestError({ message: 'Invalid client context' });
       }
 
-      const { type, priority, isRead, last7days, last30days }: INotificationFilters = req.query;
+      const { type, priority, isRead, last7days, last30days, since } = req.query as Record<
+        string,
+        string
+      >;
       const filters: INotificationFilters = {
-        type,
-        priority,
-        isRead: isRead ? isRead === ('true' as unknown as boolean) : undefined,
-        last7days: last7days ? last7days === ('true' as unknown as boolean) : undefined,
-        last30days: last30days ? last30days === ('true' as unknown as boolean) : undefined,
+        type: type as INotificationFilters['type'],
+        priority: priority as INotificationFilters['priority'],
+        isRead: isRead ? isRead === 'true' : undefined,
+        last7days: last7days ? last7days === 'true' : undefined,
+        last30days: last30days ? last30days === 'true' : undefined,
       };
 
       const pagination: IPaginationQuery = {
@@ -128,24 +169,93 @@ export class NotificationController {
         sortBy: (req.query.sortBy as string) || 'createdAt',
       };
 
-      const initialData = await this.notificationService.getAnnouncements(
-        cuid,
+      const validSince = since && !isNaN(Date.parse(since)) ? since : undefined;
+
+      const [initialData, missedData] = await Promise.all([
+        this.notificationService.getAnnouncements(cuid, userId, filters, pagination),
+        validSince
+          ? this.notificationService.getAnnouncements(
+              cuid,
+              userId,
+              { since: validSince },
+              { page: 1, limit: 50, sortBy: 'createdAt' }
+            )
+          : Promise.resolve(null),
+      ]);
+
+      const userRole = req.context?.currentuser?.client?.role;
+      const session = await this.sseService.connect(
+        req,
+        res,
         userId,
-        filters,
-        pagination
+        cuid,
+        'announcement',
+        userRole
       );
 
-      const session = await this.sseService.connect(req, res, userId, cuid, 'announcement');
+      if (missedData?.success && missedData.data?.notifications?.length) {
+        session.push({ ...missedData.data, isInitial: false, isMissed: true }, 'announcements');
+      }
+
       if (initialData.success && initialData.data) {
-        const initialPayload = {
-          ...initialData.data,
-          isInitial: true,
-        };
-        session.push(initialPayload, 'announcements');
+        session.push({ ...initialData.data, isInitial: true }, 'announcements');
       }
     } catch (error) {
       this.log.error('Failed to start announcements SSE stream', { error });
       throw error;
     }
+  };
+
+  archiveNotification = async (req: AppRequest, res: Response) => {
+    const { cuid, nuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const result = await this.notificationService.archiveNotification(nuid, userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: result.message || t('notification.success.archived'),
+    });
+  };
+
+  archiveAllRead = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    const result = await this.notificationService.archiveAllRead(userId, cuid);
+    if (!result.success) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: result.message,
+      });
+    }
+
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: result.data,
+      message: result.message || t('notification.success.all_read_archived'),
+    });
   };
 }

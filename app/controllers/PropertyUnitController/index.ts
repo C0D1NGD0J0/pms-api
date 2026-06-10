@@ -69,16 +69,13 @@ export class PropertyUnitController {
   };
 
   addDocumentToUnit = async (req: AppRequest, res: Response) => {
-    if (!req.body.scannedFiles) {
+    if (!req.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('propertyUnit.errors.noDocumentFileUploaded'),
       });
     }
-    const result = await this.propertyUnitService.addDocumentToUnit(
-      req.context,
-      req.body.scannedFiles
-    );
+    const result = await this.propertyUnitService.addDocumentToUnit(req.context, req.scannedFiles);
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -98,27 +95,27 @@ export class PropertyUnitController {
   };
 
   validateUnitsCsv = async (req: AppRequest, res: Response) => {
-    if (!req.body.scannedFiles || !req.body.scannedFiles.length) {
+    if (!req.scannedFiles || !req.scannedFiles.length) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('propertyUnit.errors.noCsvFileUploaded'),
       });
     }
 
-    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const csvFile: ExtractedMediaFile = req.scannedFiles[0];
     const result = await this.propertyUnitService.validateUnitsCsv(req.context, csvFile);
     res.status(httpStatusCodes.OK).json(result);
   };
 
   importUnitsFromCsv = async (req: AppRequest, res: Response) => {
-    if (!req.body.scannedFiles || !req.body.scannedFiles.length) {
+    if (!req.scannedFiles || !req.scannedFiles.length) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('propertyUnit.errors.noCsvFileUploaded'),
       });
     }
 
-    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const csvFile: ExtractedMediaFile = req.scannedFiles[0];
     const result = await this.propertyUnitService.importUnitsFromCsv(req.context, csvFile);
     res.status(httpStatusCodes.OK).json(result);
   };

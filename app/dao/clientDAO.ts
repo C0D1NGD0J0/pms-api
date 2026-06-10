@@ -1,8 +1,9 @@
 import Logger from 'bunyan';
+import { calcPercentage } from '@utils/math.utils';
 import { IUserDocument } from '@interfaces/user.interface';
 import { ListResultWithPagination } from '@interfaces/index';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
@@ -211,11 +212,11 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         rolesToQuery = employeeRoles;
       }
 
-      const baseQuery: FilterQuery<IUserDocument> = {
+      const baseQuery: QueryFilter<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
         deletedAt: null,
-        'cuids.roles': { $in: rolesToQuery },
+        'cuids.roles': { $in: rolesToQuery } as any,
         ...(status && { isActive: status === 'active' }),
       };
 
@@ -288,8 +289,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         .map((roleName) => ({
           name: roleName.charAt(0).toUpperCase() + roleName.slice(1),
           value: roleCountMap[roleName] || 0,
-          percentage:
-            totalEmployees > 0 ? Math.round((roleCountMap[roleName] / totalEmployees) * 100) : 0,
+          percentage: calcPercentage(roleCountMap[roleName] || 0, totalEmployees),
         }))
         .filter((r) => r.value > 0)
         .sort((a, b) => b.value - a.value);
@@ -298,7 +298,7 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         .map((dept: any) => ({
           name: dept._id.charAt(0).toUpperCase() + dept._id.slice(1),
           value: dept.count,
-          percentage: totalEmployees > 0 ? Math.round((dept.count / totalEmployees) * 100) : 0,
+          percentage: calcPercentage(dept.count, totalEmployees),
         }))
         .sort((a, b) => b.value - a.value);
 
@@ -309,6 +309,28 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
       };
     } catch (error) {
       this.logger.error(`Error getting employee stats for client ${cuid}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async getActiveCuids(): Promise<string[]> {
+    const results = await this.aggregate([
+      { $match: { isArchived: { $ne: true }, deletedAt: null } },
+      { $project: { cuid: 1, _id: 0 } },
+    ]);
+    return (results as any[]).map((c) => c.cuid).filter(Boolean);
+  }
+
+  async getDistinctTimezones(): Promise<string[]> {
+    try {
+      const results = await this.aggregate([
+        { $match: { isArchived: { $ne: true }, deletedAt: null } },
+        { $group: { _id: '$settings.timeZone' } },
+        { $match: { _id: { $nin: [null, ''] } } },
+      ]);
+      return (results as unknown as Array<{ _id: string }>).map((r) => r._id).filter(Boolean);
+    } catch (error) {
+      this.logger.error(error);
       throw this.throwErrorHandler(error);
     }
   }

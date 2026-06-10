@@ -29,25 +29,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   ): Promise<IProfileDocument | null>;
 
   /**
-   * Updates identification documents for a profile.
-   *
-   * @param profileId - The ID of the profile to update
-   * @param identificationData - Object containing identification details
-   * @returns A promise that resolves to the updated profile or null if profile not found
-   */
-  updateIdentification(
-    profileId: string,
-    identificationData: {
-      idType: string;
-      issueDate: Date;
-      expiryDate: Date;
-      idNumber: string;
-      authority?: string;
-      issuingState: string;
-    }
-  ): Promise<IProfileDocument | null>;
-
-  /**
    * Updates vendor reference information (vendorId, linkedVendorUid, isLinkedAccount).
    * Note: Vendor business data is now stored in the vendor collection.
    * This method only updates vendor reference fields in the profile.
@@ -259,6 +240,16 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   getProfileByUserId(userId: string | Types.ObjectId): Promise<IProfileDocument | null>;
 
   /**
+   * Retrieves the currently authenticated user along with their profile information.
+   * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
+   *
+   * @param userId - The unique identifier for the user.
+   * @param activecuid - The active client/company ID (optional).
+   * @returns A promise that resolves to a ICurrentUser object or null if no user is found.
+   */
+  generateCurrentUserInfo(userId: string, cuid?: string): Promise<ICurrentUser | null>;
+
+  /**
    * Gets basic user information for a specific client context.
    * Lightweight alternative to generateCurrentUserInfo() for cases where only
    * basic contact/profile info is needed (e.g., email notifications, user lists).
@@ -268,16 +259,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
    * @returns A promise that resolves to basic user info or null if not found
    */
   getUserBasicInfo(userId: string, cuid: string): Promise<IUserBasicInfo | null>;
-
-  /**
-   * Retrieves the currently authenticated user along with their profile information.
-   * Uses MongoDB aggregation to join user data with their profile data and formats it into a CurrentUser object.
-   *
-   * @param userId - The unique identifier for the user.
-   * @param activecuid - The active client/company ID (optional).
-   * @returns A promise that resolves to a ICurrentUser object or null if no user is found.
-   */
-  generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null>;
 
   /**
    * Gets the user ID associated with a profile.

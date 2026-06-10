@@ -1,27 +1,18 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
-import { FilterQuery, Types } from 'mongoose';
 import { PropertyQueue } from '@queues/index';
 import { PropertyCache } from '@caching/index';
 import { QueueFactory } from '@services/queue';
+import { type QueryFilter, Types } from 'mongoose';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
+import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
-import {
-  PropertyUnitDAO,
-  SubscriptionDAO,
-  PropertyDAO,
-  ProfileDAO,
-  ClientDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -29,6 +20,16 @@ import {
   ForbiddenError,
   NotFoundError,
 } from '@shared/customErrors';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  PaymentDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
@@ -51,6 +52,7 @@ import {
   PROPERTY_APPROVAL_ROLES,
   createSafeMongoUpdate,
   convertUserRoleToEnum,
+  getCurrencyForCountry,
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
   calcOccupancyRate,
@@ -67,6 +69,7 @@ import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
 import {
+  validatePropertyLeaseImmutableFields,
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
   filterPropertyByDepartment,
@@ -86,10 +89,10 @@ interface IConstructor {
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
-  paymentDAO: any;
 }
 
 export class PropertyService {
@@ -110,7 +113,7 @@ export class PropertyService {
   private readonly leaseDAO: LeaseDAO;
   private readonly notificationService: NotificationService;
   private readonly subscriptionDAO: SubscriptionDAO;
-  private readonly paymentDAO: any;
+  private readonly paymentDAO: PaymentDAO;
 
   constructor({
     clientDAO,
@@ -454,6 +457,13 @@ export class PropertyService {
         });
       }
 
+      if (cleanPropertyData.address?.country) {
+        cleanPropertyData.fees = cleanPropertyData.fees ?? {};
+        cleanPropertyData.fees.currency = getCurrencyForCountry(
+          cleanPropertyData.address.country
+        ) as any;
+      }
+
       const property = await this.propertyDAO.createProperty(
         {
           ...cleanPropertyData,
@@ -549,10 +559,10 @@ export class PropertyService {
     }
 
     if (propertyData.occupancyStatus === 'occupied') {
-      const rentalAmount =
-        typeof fees?.rentalAmount === 'string' ? parseFloat(fees.rentalAmount) : fees?.rentalAmount;
+      const rentAmount =
+        typeof fees?.rentAmount === 'string' ? parseFloat(fees.rentAmount) : fees?.rentAmount;
 
-      if (!rentalAmount || rentalAmount <= 0) {
+      if (!rentAmount || rentAmount <= 0) {
         errors.push('Occupied properties must have a valid rental amount');
       }
     }
@@ -577,6 +587,22 @@ export class PropertyService {
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: 'Unable to add property to this account.' });
+    }
+
+    // Pre-check: reject immediately if already at the property limit — avoids queueing a job that will fully fail
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    if (subscription) {
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      const maxProperties = config.limits.maxProperties;
+      if (maxProperties !== -1) {
+        const currentCount = await this.propertyDAO.countDocuments({ cuid, deletedAt: null });
+        if (currentCount >= maxProperties) {
+          this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+          throw new BadRequestError({
+            message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties. Upgrade to add more.`,
+          });
+        }
+      }
     }
 
     const jobData = {
@@ -649,7 +675,7 @@ export class PropertyService {
     }
 
     const { pagination, filters } = queryParams || {};
-    const filter: FilterQuery<IPropertyDocument> = {
+    const filter: QueryFilter<IPropertyDocument> = {
       cuid,
       deletedAt: null,
       operationalStatus: { $ne: 'inactive' },
@@ -668,11 +694,11 @@ export class PropertyService {
 
     if (filters) {
       if (filters.propertyType) {
-        filter.propertyType = { $in: filters.propertyType };
+        filter.propertyType = { $in: filters.propertyType } as any;
       }
 
       if (filters.operationalStatus) {
-        filter.operationalStatus = { $in: filters.operationalStatus };
+        filter.operationalStatus = { $in: filters.operationalStatus } as any;
       }
 
       if (filters.occupancyStatus) {
@@ -741,13 +767,21 @@ export class PropertyService {
       }
 
       if (filters.searchTerm && filters.searchTerm.trim()) {
-        filter.$or = [
+        const searchOr = [
           { name: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { pid: { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { 'address.city': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { 'address.state': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
           { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
         ];
+
+        if (filter.$or) {
+          const approvalOr = filter.$or;
+          delete filter.$or;
+          filter.$and = [{ $or: approvalOr }, { $or: searchOr }];
+        } else {
+          filter.$or = searchOr;
+        }
       }
 
       if (filters.managedBy) {
@@ -764,6 +798,16 @@ export class PropertyService {
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+
+    const propertyIds = properties.items.map((p) => (p as any)._id);
+    const unitCounts = (propertyIds.length
+      ? await this.propertyUnitDAO.aggregate([
+          { $match: { propertyId: { $in: propertyIds } } },
+          { $group: { _id: '$propertyId', count: { $sum: 1 } } },
+        ])
+      : []) as unknown as { _id: Types.ObjectId; count: number }[];
+    const unitCountMap = new Map(unitCounts.map((u) => [u._id.toString(), u.count]));
+
     const department = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
     const itemsWithPreview = properties.items.map((property) => {
       const propertyObj = property.toObject ? property.toObject() : property;
@@ -773,6 +817,10 @@ export class PropertyService {
         ...propertyObj,
         ...(pendingChangesPreview && { pendingChangesPreview }),
         fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
+        unitInfo: {
+          currentUnits: unitCountMap.get(propertyObj._id.toString()) ?? 0,
+          maxAllowedUnits: propertyObj.maxAllowedUnits ?? 0,
+        },
       };
 
       return filterPropertyByDepartment(enriched as IPropertyDocument, department);
@@ -812,6 +860,33 @@ export class PropertyService {
       throw new NotFoundError({ message: t('property.errors.notFound') });
     }
 
+    if (currentUser?.client?.role === ROLES.TENANT) {
+      const tenantLease = await this.leaseDAO.findFirst({
+        'property.id': property._id,
+        tenantId: new Types.ObjectId(currentUser.sub),
+        cuid,
+        deletedAt: null,
+      });
+
+      if (!tenantLease) {
+        throw new NotFoundError({ message: t('property.errors.notFound') });
+      }
+
+      const cuidsEntry = currentUser.clients?.find((c: any) => c.cuid === cuid);
+      if (cuidsEntry?.isFormerTenant) {
+        return {
+          success: true,
+          data: {
+            pid: property.pid,
+            name: property.name,
+            address: property.address,
+            propertyType: property.propertyType,
+          } as any,
+          message: 'Property retrieved',
+        };
+      }
+    }
+
     const unitInfo = await this.getUnitInfoForProperty(property);
 
     // Fetch property manager details
@@ -836,14 +911,19 @@ export class PropertyService {
     }
 
     // Calculate property metrics
-    const metrics = await this.calculatePropertyMetrics(cuid, property._id.toString(), unitInfo);
+    const metrics = await this.calculatePropertyMetrics(
+      cuid,
+      property._id.toString(),
+      unitInfo,
+      property
+    );
 
     // Conditionally fetch payment history
     let paymentHistory: any[] | undefined;
     if (include?.includes('payments') || include?.includes('all')) {
       const leasesResult = await this.leaseDAO.list(
         {
-          'property.id': property._id.toString(),
+          'property.id': new Types.ObjectId(property._id.toString()),
           cuid,
           deletedAt: null,
         },
@@ -880,6 +960,11 @@ export class PropertyService {
       maintenanceHistory = [];
     }
 
+    const hasLeaseHistory = await this.leaseDAO.hasNonDraftLeaseForProperty(
+      property._id.toString(),
+      cuid
+    );
+
     const propertyObj = property.toObject ? property.toObject() : property;
     const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
@@ -901,6 +986,7 @@ export class PropertyService {
       success: true,
       data: {
         property: filteredProperty as IPropertyDocument,
+        hasLeaseHistory,
         unitInfo: isSecurityDept ? undefined : unitInfo,
         metrics: isSecurityDept ? undefined : metrics,
         ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
@@ -949,6 +1035,35 @@ export class PropertyService {
       cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
     }
 
+    // Keep currency in sync with country when address changes — but block if active leases exist
+    if (cleanUpdateData.address?.country) {
+      const newCurrency = getCurrencyForCountry(cleanUpdateData.address.country);
+      const existingCurrency = (property.fees as any)?.currency;
+
+      if (newCurrency !== existingCurrency) {
+        const activeLeaseCount = await this.leaseDAO.countDocuments({
+          'property.id': property._id,
+          cuid,
+          deletedAt: null,
+          status: {
+            $in: [
+              LeaseStatus.ACTIVE,
+              LeaseStatus.PENDING_SIGNATURE,
+              LeaseStatus.READY_FOR_SIGNATURE,
+            ],
+          },
+        });
+        if (activeLeaseCount > 0) {
+          throw new BadRequestError({
+            message: 'Cannot change property currency while active leases exist.',
+          });
+        }
+      }
+
+      cleanUpdateData.fees = cleanUpdateData.fees ?? ({} as any);
+      cleanUpdateData.fees!.currency = newCurrency as any;
+    }
+
     // Sanitize HTML content
     if (cleanUpdateData.description?.text) {
       cleanUpdateData.description = {
@@ -984,6 +1099,9 @@ export class PropertyService {
     if (cleanUpdateData.occupancyStatus) {
       validateOccupancyStatusChange(property, cleanUpdateData);
     }
+
+    // Enforce lease-history immutability (applies to all roles — no admin bypass)
+    await validatePropertyLeaseImmutableFields(property, cuid, cleanUpdateData, this.leaseDAO);
 
     // Smart Approval Workflow Logic
     const hasPendingChanges = !!property.pendingChanges;
@@ -1224,7 +1342,7 @@ export class PropertyService {
       pagination: IPaginationQuery;
     }
   ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
-    const filter: FilterQuery<IPropertyDocument> = {
+    const filter: QueryFilter<IPropertyDocument> = {
       cuid,
       deletedAt: null,
       createdBy: new Types.ObjectId(currentuser.sub),
@@ -1498,9 +1616,10 @@ export class PropertyService {
   async calculatePropertyMetrics(
     cuid: string,
     propertyId: string,
-    unitInfo: any
+    unitInfo: any,
+    property: any
   ): Promise<{
-    monthlyRent: number;
+    rentAmount: number;
     annualRevenue: number;
     occupancyRate: number;
     monthlyNetIncome: number;
@@ -1509,7 +1628,7 @@ export class PropertyService {
       // Get all active leases for this property
       const leasesResult = await this.leaseDAO.list(
         {
-          'property.id': propertyId,
+          'property.id': new Types.ObjectId(propertyId),
           cuid,
           status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.RENEWED] },
           deletedAt: null,
@@ -1520,51 +1639,38 @@ export class PropertyService {
 
       const activeLeases = leasesResult.items || [];
 
-      // Calculate monthly rent from active leases
-      let monthlyRent = activeLeases.reduce((sum: number, lease: any) => {
-        return sum + (lease.rentAmount || 0);
+      // Sum rent + pet monthly fee from each active lease
+      const monthlyGrossIncome = activeLeases.reduce((sum: number, lease: any) => {
+        const rent = lease.fees?.rentAmount || 0;
+        const petFee = lease.petPolicy?.monthlyFee || 0;
+        return sum + rent + petFee;
       }, 0);
 
-      // If no active leases, calculate potential rent from occupied units
-      if (monthlyRent === 0 && unitInfo.unitStats?.occupied > 0) {
-        try {
-          const unitsResult = await this.propertyUnitDAO.findUnitsByPropertyId(propertyId, {
-            page: 1,
-            limit: 1000,
-          });
+      // Monthly expenses from property-level fees (all stored in cents)
+      const monthlyManagementFees = property?.fees?.managementFees || 0;
+      const monthlyExpenses = monthlyManagementFees;
 
-          monthlyRent = unitsResult.items
-            .filter((unit: any) => unit.status === 'occupied')
-            .reduce((sum: number, unit: any) => {
-              return sum + (unit.fees?.rentAmount || 0);
-            }, 0);
-        } catch (err) {
-          this.log.warn('Error calculating rent from units:', err);
-        }
-      }
+      // Net income = gross income minus actual known expenses
+      const monthlyNetIncome = Math.max(0, monthlyGrossIncome - monthlyExpenses);
 
-      // Calculate annual revenue
-      const annualRevenue = monthlyRent * 12;
+      // Annual revenue = gross monthly × 12 (before expenses)
+      const annualRevenue = monthlyGrossIncome * 12;
 
-      // Calculate occupancy rate
+      // Occupancy rate
       const totalUnits = unitInfo.totalUnits || 1;
       const occupiedUnits = unitInfo.unitStats?.occupied || activeLeases.length;
       const occupancyRate = calcOccupancyRate(occupiedUnits, totalUnits);
 
-      // Calculate net income (simplified: rent minus 10% for management/maintenance)
-      const monthlyNetIncome = Math.round(monthlyRent * 0.9);
-
       return {
-        monthlyRent,
+        rentAmount: monthlyGrossIncome,
         annualRevenue,
         occupancyRate,
         monthlyNetIncome,
       };
     } catch (error) {
       this.log.error('Error calculating property metrics:', error);
-      // Return zero metrics on error instead of failing
       return {
-        monthlyRent: 0,
+        rentAmount: 0,
         annualRevenue: 0,
         occupancyRate: 0,
         monthlyNetIncome: 0,
@@ -1578,9 +1684,6 @@ export class PropertyService {
     filters: IAssignableUsersFilter
   ): Promise<ISuccessReturnData<{ items: IAssignableUser[]; pagination?: IPaginateResult }>> {
     try {
-      this.log.info('Fetching assignable users for client', { cuid, filters });
-
-      // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         throw new NotFoundError({ message: t('client.errors.notFound') });
@@ -1620,7 +1723,7 @@ export class PropertyService {
       if (filters.department) {
         pipeline.push({
           $match: {
-            'profile.employeeInfo.department': filters.department,
+            'profile.employeeInfo.department': 'management',
           },
         });
       }
@@ -1759,7 +1862,7 @@ export class PropertyService {
         address: string;
         propertyType: string;
         financialInfo?: {
-          monthlyRent?: number;
+          rentAmount?: number;
           securityDeposit?: number;
           currency?: string;
         };
@@ -1768,7 +1871,7 @@ export class PropertyService {
           unitNumber: string;
           status: string;
           financialInfo?: {
-            monthlyRent?: number;
+            rentAmount?: number;
             securityDeposit?: number;
             currency?: string;
           };
@@ -1791,7 +1894,11 @@ export class PropertyService {
         throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
       }
 
-      const cachedResult = await this.propertyCache.getLeaseableProperties(cuid, fetchUnits);
+      const cachedResult = await this.propertyCache.getLeaseableProperties(
+        cuid,
+        currentuser.sub,
+        fetchUnits
+      );
       if (cachedResult.success && cachedResult.data) {
         this.log.info('Returning leaseable properties from cache', { cuid, fetchUnits });
         return {
@@ -1813,7 +1920,7 @@ export class PropertyService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      const filter: FilterQuery<IPropertyDocument> = {
+      const filter: QueryFilter<IPropertyDocument> = {
         cuid,
         deletedAt: null,
         operationalStatus: 'available',
@@ -1882,7 +1989,7 @@ export class PropertyService {
         // Add financial info if available
         if (propertyObj.fees) {
           result.financialInfo = {
-            monthlyRent: propertyObj.fees.monthlyRent,
+            rentAmount: propertyObj.fees.rentAmount,
             securityDeposit: propertyObj.fees.securityDeposit,
             currency: propertyObj.fees.currency || 'USD',
           };
@@ -1906,14 +2013,14 @@ export class PropertyService {
               // Add unit financial info if available (units can override property fees)
               if (unitObj.fees) {
                 unitData.financialInfo = {
-                  monthlyRent: unitObj.fees.monthlyRent,
+                  rentAmount: unitObj.fees.rentAmount,
                   securityDeposit: unitObj.fees.securityDeposit,
                   currency: unitObj.fees.currency || propertyObj.fees?.currency || 'USD',
                 };
               } else if (propertyObj.fees) {
                 // Use property fees as fallback
                 unitData.financialInfo = {
-                  monthlyRent: propertyObj.fees.monthlyRent,
+                  rentAmount: propertyObj.fees.rentAmount,
                   securityDeposit: propertyObj.fees.securityDeposit,
                   currency: propertyObj.fees.currency || 'USD',
                 };
@@ -1928,7 +2035,12 @@ export class PropertyService {
       }
 
       // Cache the result (5 minutes TTL)
-      await this.propertyCache.cacheLeaseableProperties(cuid, fetchUnits, leaseableProperties);
+      await this.propertyCache.cacheLeaseableProperties(
+        cuid,
+        currentuser.sub,
+        fetchUnits,
+        leaseableProperties
+      );
 
       this.log.info(
         `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`,

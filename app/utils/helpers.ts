@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import { envVariables } from '@shared/config';
 import { parsePhoneNumber } from 'libphonenumber-js';
+import { ForbiddenError } from '@shared/customErrors';
 import { Country, State, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -120,9 +121,10 @@ export function createLogger(name: string) {
     write: () => {},
   };
 
+  const resolvedEnv = envVariables.SERVER.ENV;
   const stream =
-    process.env.NODE_ENV === 'development' ||
-    process.env.NODE_ENV === 'dev' ||
+    resolvedEnv === 'development' ||
+    resolvedEnv === 'dev' ||
     Boolean(process.env.ENABLE_CONSOLE_LOGS)
       ? customStream
       : nullStream;
@@ -309,17 +311,17 @@ export const extractMulterFiles = (
 
   const result: ExtractedMediaFile[] = [];
   const extractFile = (file: any) => {
-    const mimeType = file.mimetype.split('/')[0];
+    const mimeTypePrefix = file.mimetype.split('/')[0];
 
-    if (allowedTypes && !allowedTypes.includes(mimeType as FileType)) {
+    if (allowedTypes && !allowedTypes.includes(mimeTypePrefix as FileType)) {
       throw new Error(
-        `File type '${mimeType}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
+        `File type '${mimeTypePrefix}' is not allowed. Allowed types: ${allowedTypes.join(', ')}`
       );
     }
 
     result.push({
       fieldName: file.fieldname,
-      mimeType,
+      mimeType: file.mimetype,
       path: file.path,
       originalFileName: file.originalname,
       filename: file.filename,
@@ -731,8 +733,8 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
  * @returns Safe MongoDB update object with dot notation for nested fields
  *
  * @example
- * // Input: { fees: { rentalAmount: 1200 }, name: "New Property" }
- * // Output: { "fees.rentalAmount": 1200, name: "New Property" }
+ * // Input: { fees: { rentAmount: 1200 }, name: "New Property" }
+ * // Output: { "fees.rentAmount": 1200, name: "New Property" }
  */
 export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<string, any> => {
   const result: Record<string, any> = {};
@@ -755,177 +757,7 @@ export const createSafeMongoUpdate = (updateData: Record<string, any>): Record<s
   return result;
 };
 
-export const MoneyUtils = {
-  /**
-   * Converts cents (integer) to dollar string format
-   * @param cents - The amount in cents (e.g., 450000)
-   * @param decimalPlaces - Number of decimal places (default: 2)
-   * @returns Formatted string (e.g., "4500.00")
-   */
-  centsToString: (cents: number | null | undefined, decimalPlaces = 2): string => {
-    if (cents == null) return '0.00';
-    if (typeof cents !== 'number' || isNaN(cents)) return '0.00';
-    return (cents / 100).toFixed(decimalPlaces);
-  },
-
-  /**
-   * Converts dollar string to cents (integer)
-   * @param dollarString - The amount as string (e.g., "4500.00")
-   * @returns Amount in cents (e.g., 450000)
-   */
-  stringToCents: (dollarString: string | number): number => {
-    if (dollarString == null) return 0;
-    const numericValue = typeof dollarString === 'string' ? parseFloat(dollarString) : dollarString;
-    if (isNaN(numericValue)) return 0;
-    return Math.round(numericValue * 100);
-  },
-
-  /**
-   * Formats a dollar amount with currency symbol
-   * @param cents - The amount in cents
-   * @param currency - Currency code (default: 'USD')
-   * @param locale - Locale for formatting (default: 'en-US')
-   * @returns Formatted currency string (e.g., "$4,500.00")
-   */
-  formatCurrency: (
-    cents: number | null | undefined,
-    currency = 'USD',
-    locale = 'en-US'
-  ): string => {
-    if (cents == null)
-      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
-    if (typeof cents !== 'number' || isNaN(cents))
-      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
-
-    const dollars = cents / 100;
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-    }).format(dollars);
-  },
-
-  /**
-   * Transforms a money object from database format (cents) to frontend format (strings) for display
-   * @param moneyData - The money object from database (fees, rent, lease amounts, etc.)
-   * @returns Transformed money object with string values for frontend display
-   */
-  formatMoneyDisplay: (moneyData: any): any => {
-    if (!moneyData || typeof moneyData !== 'object') return moneyData;
-
-    return {
-      ...moneyData,
-      // Property-related fields
-      ...(moneyData.taxAmount !== undefined && {
-        taxAmount: MoneyUtils.centsToString(moneyData.taxAmount),
-      }),
-      ...(moneyData.rentalAmount !== undefined && {
-        rentalAmount: MoneyUtils.centsToString(moneyData.rentalAmount),
-      }),
-      ...(moneyData.managementFees !== undefined && {
-        managementFees: MoneyUtils.centsToString(moneyData.managementFees),
-      }),
-      ...(moneyData.securityDeposit !== undefined && {
-        securityDeposit: MoneyUtils.centsToString(moneyData.securityDeposit),
-      }),
-      // Lease fee fields
-      ...(moneyData.monthlyRent !== undefined && {
-        monthlyRent: MoneyUtils.centsToString(moneyData.monthlyRent),
-      }),
-      ...(moneyData.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.centsToString(moneyData.lateFeeAmount),
-      }),
-    };
-  },
-
-  /**
-   * Parses a money object from frontend format (strings) to database format (cents) for storage
-   * @param moneyData - The money object from frontend (fees, rent, lease amounts, etc.)
-   * @returns Parsed money object with cent values for database storage
-   */
-  parseMoneyInput: (moneyData: any): any => {
-    if (!moneyData || typeof moneyData !== 'object') return moneyData;
-
-    return {
-      ...moneyData,
-      // Property-related fields
-      ...(moneyData.taxAmount !== undefined && {
-        taxAmount: MoneyUtils.stringToCents(moneyData.taxAmount),
-      }),
-      ...(moneyData.rentalAmount !== undefined && {
-        rentalAmount: MoneyUtils.stringToCents(moneyData.rentalAmount),
-      }),
-      ...(moneyData.managementFees !== undefined && {
-        managementFees: MoneyUtils.stringToCents(moneyData.managementFees),
-      }),
-      ...(moneyData.securityDeposit !== undefined && {
-        securityDeposit: MoneyUtils.stringToCents(moneyData.securityDeposit),
-      }),
-      // Lease fee fields
-      ...(moneyData.monthlyRent !== undefined && {
-        monthlyRent: MoneyUtils.stringToCents(moneyData.monthlyRent),
-      }),
-      ...(moneyData.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.stringToCents(moneyData.lateFeeAmount),
-      }),
-    };
-  },
-
-  /**
-   * Validates that a money value is properly formatted
-   * @param value - The value to validate
-   * @returns true if valid, false otherwise
-   */
-  isValidMoneyValue: (value: any): boolean => {
-    if (value == null || value === '') return true; // allow empty values
-
-    if (typeof value === 'string') {
-      const numericValue = parseFloat(value);
-      return !isNaN(numericValue) && numericValue >= 0;
-    }
-
-    if (typeof value === 'number') {
-      return !isNaN(value) && value >= 0;
-    }
-
-    return false;
-  },
-
-  /**
-   * Formats lease fees object from database format (cents) to display format (strings)
-   * @param fees - The ILeaseFees object from database
-   * @returns Formatted lease fees object for frontend display
-   */
-  formatLeaseFees: (fees: any): any => {
-    if (!fees || typeof fees !== 'object') return fees;
-
-    return {
-      ...fees,
-      monthlyRent: MoneyUtils.centsToString(fees.monthlyRent),
-      securityDeposit: MoneyUtils.centsToString(fees.securityDeposit),
-      ...(fees.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.centsToString(fees.lateFeeAmount),
-      }),
-    };
-  },
-
-  /**
-   * Parses lease fees object from frontend format (strings) to database format (cents)
-   * @param fees - The lease fees object from frontend
-   * @returns Parsed lease fees object for database storage
-   */
-  parseLeaseFees: (fees: any): any => {
-    if (!fees || typeof fees !== 'object') return fees;
-
-    return {
-      ...fees,
-      monthlyRent: MoneyUtils.stringToCents(fees.monthlyRent),
-      securityDeposit: MoneyUtils.stringToCents(fees.securityDeposit),
-      ...(fees.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.stringToCents(fees.lateFeeAmount),
-      }),
-    };
-  },
-};
+export { MoneyUtils } from './money.utils';
 
 export const determineTemplateType = (propertyType: string): string => {
   const typeMapping: Record<string, string> = {
@@ -951,3 +783,21 @@ export const getPaymentProcessorUrls = (baseUrl: string, cuid: string) => ({
 });
 
 export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Throws ForbiddenError if the requesting user is the tenant on the resource.
+ * Prevents dual-role users (e.g. staff+tenant) from modifying records where
+ * they are personally the tenant — a conflict-of-interest guard.
+ *
+ * @param requestingUserId - The User `_id` ObjectId as a string (from `currentuser.sub`)
+ * @param tenantId - The lease/record `tenantId` field (User `_id` ObjectId or string)
+ */
+export function preventTenantConflict(
+  requestingUserId: string,
+  tenantId: Types.ObjectId | string | null | undefined,
+  message = 'You cannot modify a record where you are the tenant.'
+): void {
+  if (tenantId && requestingUserId === tenantId.toString()) {
+    throw new ForbiddenError({ message });
+  }
+}

@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 describe('SubscriptionDAO - updateResourceCount', () => {
   let subscriptionDAO: SubscriptionDAO;
@@ -216,7 +217,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       await Subscription.updateOne({ client: testClientId }, { status: 'pending_payment' });
       const subscription = await Subscription.findOne({ client: testClientId });
 
-      const result = await subscriptionDAO.updateStatus(subscription!._id, 'active');
+      const result = await subscriptionDAO.updateStatus(subscription!._id, ISubscriptionStatus.ACTIVE);
 
       expect(result?.status).toBe('active');
     });
@@ -224,7 +225,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
     it('should transition to inactive', async () => {
       const subscription = await Subscription.findOne({ client: testClientId });
 
-      const result = await subscriptionDAO.updateStatus(subscription!._id, 'inactive');
+      const result = await subscriptionDAO.updateStatus(subscription!._id, ISubscriptionStatus.INACTIVE);
 
       expect(result?.status).toBe('inactive');
     });

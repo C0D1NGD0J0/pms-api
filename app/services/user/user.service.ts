@@ -1,18 +1,36 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { EmailQueue } from '@queues/index';
-import { EventTypes } from '@interfaces/index';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
+import { EmailQueue, UserQueue } from '@queues/index';
+import { IVendor } from '@interfaces/vendor.interface';
+import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { PaymentRecordType } from '@interfaces/payments.interface';
 import { EventEmitterService, VendorService } from '@services/index';
+import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
-import { calcDaysElapsed, createLogger, JOB_NAME, daysInMs } from '@utils/index';
+import { LeaseExpiredPayload, IProfileDocument, EventTypes } from '@interfaces/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
-import { PropertyDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  assertRecordOwnership,
+  calcDaysElapsed,
+  createLogger,
+  JOB_NAME,
+  daysInMs,
+} from '@utils/index';
+import {
+  MaintenanceRequestDAO,
+  PropertyDAO,
+  ProfileDAO,
+  PaymentDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ISuccessReturnData,
   PermissionResource,
@@ -31,11 +49,13 @@ import {
   ITenantDetailInfo,
   IPaginatedResult,
   IUserProperty,
+  IUserDocument,
   ICurrentUser,
   IUserStats,
 } from '@interfaces/user.interface';
 
 interface IConstructor {
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   permissionService: PermissionService;
   emitterService: EventEmitterService;
   vendorService: VendorService;
@@ -58,6 +78,7 @@ export class UserService {
   private readonly propertyDAO: PropertyDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly paymentDAO: PaymentDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -71,6 +92,7 @@ export class UserService {
     propertyDAO,
     leaseDAO,
     paymentDAO,
+    maintenanceRequestDAO,
     vendorService,
     emitterService,
     permissionService,
@@ -79,6 +101,7 @@ export class UserService {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.paymentDAO = paymentDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -317,11 +340,11 @@ export class UserService {
                 businessType: vendorEntity.businessType || 'General Contractor',
                 serviceType: vendorEntity.businessType || 'General Contractor',
                 contactPerson: vendorEntity.contactPerson?.name || fullName,
-                rating: 4.5, // placeholder
-                reviewCount: 15, // placeholder
-                completedJobs: 25, // placeholder
-                averageServiceCost: 250, // placeholder
-                averageResponseTime: '2h', // placeholder
+                rating: 0,
+                reviewCount: 0,
+                completedJobs: 0,
+                averageServiceCost: 0,
+                averageResponseTime: 'N/A',
                 isLinkedAccount: !!clientConnection.linkedVendorUid,
                 isPrimaryVendor: !clientConnection.linkedVendorUid,
                 linkedVendorUid: clientConnection.linkedVendorUid || null,
@@ -436,6 +459,7 @@ export class UserService {
       return properties.map((property: any) => ({
         name: property.name || '',
         propertyId: property.id || '',
+        pid: property.pid || '',
         location: this.formatPropertyLocation(property.address),
         units: property.maxAllowedUnits || 0,
         occupancy: this.formatOccupancy(property.occupancyStatus),
@@ -498,7 +522,8 @@ export class UserService {
           user,
           profile,
           response.roles,
-          response.properties
+          response.properties,
+          clientId
         );
         break;
 
@@ -514,7 +539,8 @@ export class UserService {
           user,
           profile,
           response.roles,
-          response.properties
+          response.properties,
+          clientId
         );
         break;
 
@@ -536,10 +562,11 @@ export class UserService {
   }
 
   private async buildEmployeeInfo(
-    user: any,
-    profile: any,
+    user: IUserDocument,
+    profile: { contactInfo?: any } & IProfileDocument,
     roles: any,
-    userManagedProperties: IUserProperty[]
+    userManagedProperties: IUserProperty[],
+    cuid: string
   ): Promise<IEmployeeDetailInfo> {
     const employeeInfo = profile.employeeInfo || {};
     const contactInfo = profile.contactInfo || {};
@@ -547,21 +574,46 @@ export class UserService {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
-    // Resolve supervisor name: reportsTo may be stored as a MongoDB ObjectId string
-    let directManager = employeeInfo.reportsTo || '';
-    if (directManager && /^[a-f0-9]{24}$/i.test(directManager)) {
-      try {
-        const supervisor = await this.userDAO.findFirst(
-          { _id: new Types.ObjectId(directManager) },
-          { populate: [{ path: 'profile', select: 'personalInfo' }] }
-        );
-        if (supervisor?.profile?.personalInfo) {
-          const { firstName, lastName } = supervisor.profile.personalInfo as any;
-          const resolvedName = `${firstName || ''} ${lastName || ''}`.trim();
-          if (resolvedName) directManager = resolvedName;
+    // Resolve supervisor name + uid from reportsTo (ObjectId or uid string).
+    // Always validates that the supervisor belongs to the same client (cuid)
+    // to prevent cross-tenant data leakage.
+    let directManager = '';
+    let supervisorUid = '';
+    const reportsToId = employeeInfo.reportsTo;
+    if (reportsToId) {
+      const idStr = reportsToId.toString();
+      if (Types.ObjectId.isValid(idStr)) {
+        // Legacy path: stored as MongoDB ObjectId
+        const [supervisorProfile, supervisorUser] = await Promise.all([
+          this.profileDAO.findFirst({ user: new Types.ObjectId(idStr) }),
+          this.userDAO.getUserById(idStr),
+        ]);
+        // Verify supervisor belongs to the same client before exposing their info.
+        const belongsToClient = supervisorUser?.cuids?.some((c: any) => c.cuid === cuid);
+        if (belongsToClient) {
+          if (supervisorProfile?.personalInfo) {
+            const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
+            directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
+          }
+          if (supervisorUser?.uid) {
+            supervisorUid = supervisorUser.uid;
+          }
         }
-      } catch {
-        // keep raw ID if supervisor lookup fails
+      } else {
+        // New path: stored as uid string
+        const supervisorUser = await this.userDAO.getUserByUId(idStr);
+        // Verify supervisor belongs to the same client before exposing their info.
+        const belongsToClient = supervisorUser?.cuids?.some((c: any) => c.cuid === cuid);
+        if (supervisorUser && belongsToClient) {
+          supervisorUid = idStr;
+          const supervisorProfile = await this.profileDAO.findFirst({
+            user: supervisorUser._id,
+          });
+          if (supervisorProfile?.personalInfo) {
+            const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
+            directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
+          }
+        }
       }
     }
 
@@ -569,18 +621,66 @@ export class UserService {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
       tenure: tenure,
-      employmentType: employeeInfo.employmentType || 'Full-Time',
+      employmentType: 'Full-Time',
       department: employeeInfo.department || 'operations',
       position: this.determinePrimaryRole(roles),
       directManager,
+      supervisorUid,
 
-      // Skills and expertise
-      skills: employeeInfo.skills || [
-        'Property Management',
-        'Tenant Relations',
-        'Maintenance Coordination',
-        'Financial Reporting',
-      ],
+      // Skills and expertise — keyed by department
+      skills: (() => {
+        const dept = (employeeInfo.department || 'other') as string;
+        const DEPT_SKILLS: Record<string, string[]> = {
+          maintenance: [
+            'HVAC Systems',
+            'Plumbing & Electrical',
+            'Preventive Maintenance',
+            'Work Order Management',
+            'Safety Compliance',
+            'Vendor Coordination',
+          ],
+          operations: [
+            'Property Management',
+            'Tenant Relations',
+            'Lease Administration',
+            'Facility Oversight',
+            'Move-In / Move-Out Coordination',
+            'Vendor Management',
+          ],
+          accounting: [
+            'Rent Collection',
+            'Financial Reporting',
+            'Accounts Payable / Receivable',
+            'Budgeting & Forecasting',
+            'Reconciliation',
+            'Compliance & Auditing',
+          ],
+          management: [
+            'Strategic Planning',
+            'Team Leadership',
+            'Portfolio Management',
+            'Stakeholder Communication',
+            'Policy Development',
+            'Performance Oversight',
+          ],
+          security: [
+            'Access Control',
+            'Incident Reporting',
+            'Surveillance Monitoring',
+            'Emergency Response',
+            'Patrol Coordination',
+            'Safety Inspections',
+          ],
+          other: [
+            'Administrative Support',
+            'Communication',
+            'Record Keeping',
+            'Customer Service',
+            'Problem Solving',
+          ],
+        };
+        return DEPT_SKILLS[dept] ?? DEPT_SKILLS['other'];
+      })(),
 
       // Office information
       officeInfo: {
@@ -603,18 +703,18 @@ export class UserService {
           (sum: number, p: any) => sum + (p.units || 0),
           0
         ),
-        tasksCompleted: 47, // placeholder
-        onTimeRate: '98%', // placeholder
-        rating: '4.8', // placeholder
-        activeTasks: 8, // placeholder
+        tasksCompleted: 0,
+        onTimeRate: 'N/A',
+        rating: 'N/A',
+        activeTasks: 0,
       },
 
       // Performance metrics
       performance: {
-        taskCompletionRate: '98%',
-        tenantSatisfaction: '4.8/5',
-        avgOccupancyRate: '92%',
-        avgResponseTime: '12h',
+        taskCompletionRate: 'N/A',
+        tenantSatisfaction: 'N/A',
+        avgOccupancyRate: 'N/A',
+        avgResponseTime: 'N/A',
       },
 
       // Employment tags/badges
@@ -657,20 +757,30 @@ export class UserService {
       }
     }
 
+    const clientConn = vendorInfo?.connectedClients?.find((c: any) => c.cuid === cuid);
+    const payoutAccount = clientConn?.payoutAccount;
+
     return {
+      vuid: vendorInfo?.vuid || '',
       companyName: vendorInfo?.companyName || _personalInfo.displayName || '',
       businessType: vendorInfo?.businessType || 'General Contractor',
       yearsInBusiness: vendorInfo?.yearsInBusiness || 0,
       registrationNumber: vendorInfo?.registrationNumber || '',
       taxId: vendorInfo?.taxId || '',
 
+      address: {
+        fullAddress: vendorInfo?.address?.fullAddress || '',
+        street: vendorInfo?.address?.street || '',
+        city: vendorInfo?.address?.city || '',
+        state: vendorInfo?.address?.state || '',
+        country: vendorInfo?.address?.country || '',
+        postCode: vendorInfo?.address?.postCode || '',
+      },
+
       // Services
       servicesOffered: vendorInfo?.servicesOffered || {},
 
-      // Service areas - baseLocation should be a string
       serviceAreas: {
-        baseLocation:
-          vendorInfo?.serviceAreas?.baseLocation?.address || vendorInfo?.address?.fullAddress || '',
         maxDistance: vendorInfo?.serviceAreas?.maxDistance || 25,
       },
 
@@ -706,6 +816,15 @@ export class UserService {
       isLinkedAccount: !!clientConnection.linkedVendorUid,
       linkedVendorUid: clientConnection.linkedVendorUid || null,
       isPrimaryVendor: !clientConnection.linkedVendorUid,
+
+      // Per-client payout account status (read from connectedClients, not PaymentProcessor)
+      payoutAccount: payoutAccount
+        ? {
+            isSetup: payoutAccount.isSetup ?? false,
+            payoutsEnabled: payoutAccount.payoutsEnabled ?? false,
+            chargesEnabled: payoutAccount.chargesEnabled ?? false,
+          }
+        : undefined,
 
       // Linked users (only for primary vendors)
       ...(linkedUsers.length > 0 ? { linkedUsers } : {}),
@@ -747,7 +866,11 @@ export class UserService {
     };
   }
 
-  private generateVendorTags(vendorInfo: any, clientConnection: any): string[] {
+  private generateVendorTags(
+    vendorInfo: IVendor | null,
+    clientConnection: IClientUserConnections
+  ): string[] {
+    if (!vendorInfo) return [];
     const tags = [];
 
     if (vendorInfo.businessType) {
@@ -761,7 +884,7 @@ export class UserService {
       }
     }
 
-    if (vendorInfo.yearsInBusiness > 5) {
+    if ((vendorInfo.yearsInBusiness ?? 0) > 5) {
       tags.push('Established');
     }
 
@@ -772,7 +895,9 @@ export class UserService {
     }
 
     const services = vendorInfo.servicesOffered || {};
-    const activeServices = Object.keys(services).filter((key) => services[key]);
+    const activeServices = Object.keys(services).filter(
+      (key) => (services as Record<string, unknown>)[key]
+    );
     if (activeServices.length > 0) {
       tags.push(`${activeServices.length} Services`);
     }
@@ -890,8 +1015,6 @@ export class UserService {
     // Certifications (placeholder)
     if (employeeInfo.certifications && employeeInfo.certifications.length > 0) {
       tags.push('Certified');
-    } else {
-      tags.push('Certified'); // Default for demo
     }
 
     // Access levels (placeholder)
@@ -1164,7 +1287,8 @@ export class UserService {
 
   async updateUserInfo(
     userId: string,
-    userInfo: { email?: string }
+    userInfo: { email?: string },
+    currentuser: ICurrentUser
   ): Promise<ISuccessReturnData<any>> {
     try {
       if (!userId) {
@@ -1176,6 +1300,12 @@ export class UserService {
       if (!existingUser) {
         throw new NotFoundError({ message: 'User not found' });
       }
+
+      // Ownership: currentuser.sub is the MongoDB _id; compare against the fetched user's _id
+      assertRecordOwnership(currentuser, existingUser._id, {
+        bypassRoles: ROLE_GROUPS.MANAGEMENT_ROLES,
+        errorMessage: 'You can only update your own account information.',
+      });
 
       // If email is being updated, check for uniqueness
       if (userInfo.email && userInfo.email !== existingUser.email) {
@@ -1337,7 +1467,7 @@ export class UserService {
           const activeLeases = await this.leaseDAO.list({
             cuid,
             tenantId: tenant._id, // Use tenant._id from aggregation result
-            status: { $in: ['active', 'pending_signature'] },
+            status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
             deletedAt: null,
           });
 
@@ -1358,7 +1488,7 @@ export class UserService {
               cuid,
               tenant: tenant._id,
               lease: activeLease._id,
-              paymentType: 'rent',
+              paymentType: PaymentRecordType.RENT,
               limit: 1,
               sortBy: 'dueDate',
               sort: 'desc',
@@ -1385,7 +1515,7 @@ export class UserService {
               leaseStatus: activeLease.status,
               propertyName: propertyAddress, // Frontend expects propertyName
               propertyAddress, // Keep for backwards compatibility
-              monthlyRent: activeLease.fees?.monthlyRent, // Keep in cents - frontend formatCurrency will convert
+              rentAmount: activeLease.fees?.rentAmount, // Keep in cents - frontend formatCurrency will convert
               rentStatus,
             };
           } else {
@@ -1550,20 +1680,22 @@ export class UserService {
         });
       }
 
-      // Fetch payment metrics and history using PaymentDAO (proper separation of concerns)
       const includeAll = !include || include.includes('all');
       const includePaymentHistory = includeAll || include.includes('payments');
-      const tenantId = (rawTenantDetails as any)._id?.toString();
+      const profileId = (rawTenantDetails as any).profileId?.toString();
+      const userId = (rawTenantDetails as any)._id?.toString();
 
-      if (tenantId) {
-        const paymentData = await this.paymentDAO.getTenantPaymentMetrics(cuid, tenantId, {
-          includeHistory: includePaymentHistory,
-          historyLimit: 50,
-        });
+      if (profileId || userId) {
+        const [paymentData, maintenanceStats] = await Promise.all([
+          this.paymentDAO.getTenantPaymentMetrics(cuid, profileId || userId!, {
+            includeHistory: includePaymentHistory,
+            historyLimit: 50,
+          }),
+          this.maintenanceRequestDAO.getStats(cuid, { tenantUserId: userId! }),
+        ]);
 
-        // Update tenant metrics with payment data
         rawTenantDetails.tenantMetrics = {
-          totalMaintenanceRequests: rawTenantDetails.tenantMetrics?.totalMaintenanceRequests || 0,
+          totalMaintenanceRequests: maintenanceStats.total,
           currentRentStatus: rawTenantDetails.tenantMetrics?.currentRentStatus || 'no_lease',
           daysCurrentLease: rawTenantDetails.tenantMetrics?.daysCurrentLease || 0,
           totalRentPaid: paymentData.metrics.totalRentPaid,
@@ -1571,7 +1703,6 @@ export class UserService {
           averagePaymentDelay: paymentData.metrics.averagePaymentDelay,
         };
 
-        // Add payment history if requested
         if (includePaymentHistory) {
           rawTenantDetails.tenantInfo.paymentHistory = paymentData.payments;
         }
@@ -1582,12 +1713,22 @@ export class UserService {
           firstName: (rawTenantDetails as any).firstName || '',
           lastName: (rawTenantDetails as any).lastName || '',
           fullName: (rawTenantDetails as any).fullName || '',
+          displayName: (rawTenantDetails as any).displayName || '',
           avatar: (rawTenantDetails as any).avatar?.url || (rawTenantDetails as any).avatar || '',
           phoneNumber: (rawTenantDetails as any).phoneNumber || '',
           email: (rawTenantDetails as any).email || '',
+          location: (rawTenantDetails as any).location || '',
+          dob: (rawTenantDetails as any).dob || null,
+          headline: (rawTenantDetails as any).headline || '',
+          bio: (rawTenantDetails as any).bio || '',
+          settings: (rawTenantDetails as any).settings || {},
+          policies: (rawTenantDetails as any).policies || {},
           roles: ['tenant'],
           uid: (rawTenantDetails as any).uid || '',
-          id: (rawTenantDetails as any)._id?.toString() || '',
+          id:
+            (rawTenantDetails as any).profileId?.toString() ||
+            (rawTenantDetails as any)._id?.toString() ||
+            '',
           isActive: (rawTenantDetails as any).isActive ?? true,
           userType: 'tenant' as const,
         },
@@ -1596,6 +1737,7 @@ export class UserService {
         roles: ['tenant'],
         tenantInfo: rawTenantDetails.tenantInfo,
         tenantMetrics: rawTenantDetails.tenantMetrics,
+        isFormerTenant: (rawTenantDetails as any).isFormerTenant ?? false,
         joinedDate: (rawTenantDetails as any).joinedDate || (rawTenantDetails as any).createdAt,
       };
 
@@ -1767,6 +1909,12 @@ export class UserService {
         }
       }
 
+      if (updateData.settings?.notifications) {
+        for (const [key, value] of Object.entries(updateData.settings.notifications)) {
+          profileUpdateFields[`settings.notifications.${key}`] = value;
+        }
+      }
+
       if (Object.keys(profileUpdateFields).length > 0 && user.profile) {
         await this.profileDAO.updateById(user.profile._id.toString(), {
           $set: profileUpdateFields,
@@ -1922,6 +2070,36 @@ export class UserService {
         }
       }
 
+      // Check for active tenants if user is a PM/admin/manager
+      const PM_ROLES = ['super-admin', 'admin', 'manager'];
+      if (roles.some((r) => PM_ROLES.includes(r))) {
+        const managedPropsForGuard = await this.propertyDAO.getPropertiesByClientId(
+          cuid,
+          { managedBy: user._id.toString(), deletedAt: null },
+          { limit: 1000 }
+        );
+
+        if (managedPropsForGuard.items.length > 0) {
+          const propertyIds = managedPropsForGuard.items.map((p: any) => p._id);
+          const activeTenantLeases = await this.leaseDAO.list(
+            {
+              cuid,
+              'property.id': { $in: propertyIds },
+              status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+              deletedAt: null,
+            },
+            {},
+            true
+          );
+
+          if (activeTenantLeases.items.length > 0) {
+            throw new BadRequestError({
+              message: `Cannot archive user. They manage properties with ${activeTenantLeases.items.length} active lease(s). Reassign properties or terminate leases first.`,
+            });
+          }
+        }
+      }
+
       const managedProperties = await this.propertyDAO.getPropertiesByClientId(
         cuid,
         { managedBy: user._id.toString(), deletedAt: null },
@@ -1981,35 +2159,35 @@ export class UserService {
             const linkedUsers = await this.userDAO.getLinkedVendorUsers(user._id.toString(), cuid);
 
             if (linkedUsers.items.length > 0) {
-              this.log.info('Archiving linked vendor accounts', {
+              this.log.info('Queueing background disconnect for linked vendor team members', {
                 uid,
                 vendorId: vendor.vuid,
                 linkedAccountCount: linkedUsers.items.length,
               });
 
-              // Disconnect all linked vendor accounts (soft delete - preserve data)
-              for (const linkedUser of linkedUsers.items) {
-                // Only disconnect - no hard delete for compliance/audit
-                await this.userDAO.updateById(
-                  linkedUser._id.toString(),
-                  {
-                    $set: { 'cuids.$[elem].isConnected': false },
-                  },
-                  {
-                    arrayFilters: [{ 'elem.cuid': cuid }],
-                  } as any
-                );
+              const companyName =
+                client.displayName ||
+                (client as any).companyProfile?.legalEntityName ||
+                'your account';
 
-                // Invalidate cache for linked user
-                await this.userCache.invalidateUserDetail(cuid, linkedUser.uid);
-              }
+              const userQueue = this.queueFactory.getQueue('userQueue') as UserQueue;
+              await userQueue.addVendorTeamDisconnectJob({
+                primaryVendorUserId: user._id.toString(),
+                vendorId: vendor._id.toString(),
+                cuid,
+                clientId: client._id.toString(),
+                companyName,
+              });
 
               archivalSummary.actions.push({
-                action: 'linked_vendor_accounts_archived',
+                action: 'linked_vendor_accounts_queued_for_disconnect',
                 count: linkedUsers.items.length,
                 vendorId: vendor.vuid,
               });
             }
+
+            // Disconnect vendor from this client in the Vendor document
+            await this.vendorService.disconnectFromClient(vendor._id.toString(), cuid);
 
             // Note: Vendor entity itself is not deleted, just marked inactive via user deletion
             archivalSummary.actions.push({
@@ -2061,16 +2239,32 @@ export class UserService {
         });
       }
 
+      // Build the disconnect $set — add former-tenant metadata when applicable
+      const disconnectFields: Record<string, any> = {
+        'cuids.$[elem].isConnected': false,
+      };
+
+      if (roles.includes('tenant')) {
+        const lastLeaseResult = await this.leaseDAO.list(
+          {
+            cuid,
+            tenantId: user._id,
+            status: {
+              $in: [LeaseStatus.EXPIRED, LeaseStatus.TERMINATED, LeaseStatus.CANCELLED],
+            },
+            deletedAt: null,
+          },
+          { sort: { 'duration.endDate': -1 }, limit: 1 }
+        );
+        disconnectFields['cuids.$[elem].isFormerTenant'] = true;
+        disconnectFields['cuids.$[elem].leaseExpiredAt'] =
+          (lastLeaseResult.items[0] as any)?.duration?.endDate || new Date();
+      }
+
       // Disconnect from THIS client (happens for both multi-tenant and single-tenant)
-      await this.userDAO.updateById(
-        user._id.toString(),
-        {
-          $set: { 'cuids.$[elem].isConnected': false },
-        },
-        {
-          arrayFilters: [{ 'elem.cuid': cuid }],
-        } as any
-      );
+      await this.userDAO.updateById(user._id.toString(), { $set: disconnectFields }, {
+        arrayFilters: [{ 'elem.cuid': cuid }],
+      } as any);
 
       await this.userCache.invalidateUserDetail(cuid, uid);
       await this.userCache.invalidateUserLists(cuid);
@@ -2226,12 +2420,30 @@ export class UserService {
         });
       }
 
+      // Look up the most recent ended lease so we can record when the tenant's lease expired
+      const lastLeaseResult = await this.leaseDAO.list(
+        {
+          cuid,
+          tenantId: user._id,
+          status: {
+            $in: [LeaseStatus.EXPIRED, LeaseStatus.TERMINATED, LeaseStatus.CANCELLED],
+          },
+          deletedAt: null,
+        },
+        { sort: { 'duration.endDate': -1 }, limit: 1 }
+      );
+      const leaseExpiredAt = (lastLeaseResult.items[0] as any)?.duration?.endDate || new Date();
+
       // 1. Disconnect tenant from this client (per-client only — no global soft delete,
       //    so the re-invite flow can find and reconnect the same user account)
       await this.userDAO.updateById(
         user._id.toString(),
         {
-          $set: { 'cuids.$[elem].isConnected': false },
+          $set: {
+            'cuids.$[elem].isConnected': false,
+            'cuids.$[elem].isFormerTenant': true,
+            'cuids.$[elem].leaseExpiredAt': leaseExpiredAt,
+          },
         },
         {
           arrayFilters: [{ 'elem.cuid': cuid }],
@@ -2241,6 +2453,8 @@ export class UserService {
       deactivationSummary.actions.push({
         action: 'tenant_disconnected_from_client',
         cuid,
+        isFormerTenant: true,
+        leaseExpiredAt,
         timestamp: new Date(),
       });
 
@@ -2278,6 +2492,45 @@ export class UserService {
   }
 
   private setupEventListeners(): void {
-    // Reserved for future event listeners
+    this.emitterService.on(EventTypes.LEASE_EXPIRED, this.handleLeaseExpired.bind(this));
+  }
+
+  private async handleLeaseExpired(payload: LeaseExpiredPayload): Promise<void> {
+    const { tenantId, cuid, expiredAt } = payload;
+    try {
+      // Guard: if tenant has any ongoing lease (including drafts in preparation), skip deactivation
+      const ongoingLeases = await this.leaseDAO.list({
+        tenantId: new Types.ObjectId(tenantId),
+        cuid,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
+        deletedAt: null,
+      });
+
+      if ((ongoingLeases as any).items?.length > 0) {
+        this.log.info(
+          { tenantId, cuid },
+          'Tenant has ongoing leases — skipping former tenant transition'
+        );
+        return;
+      }
+
+      await this.userDAO.update(
+        { _id: new Types.ObjectId(tenantId), 'cuids.cuid': cuid },
+        {
+          $set: {
+            'cuids.$.isFormerTenant': true,
+            'cuids.$.leaseExpiredAt': expiredAt,
+            'cuids.$.isConnected': false,
+          },
+        }
+      );
+
+      const user = await this.userDAO.getUserById(tenantId);
+      if (user) await this.userCache.invalidateUserDetail(cuid, user.uid);
+
+      this.log.info({ tenantId, cuid }, 'Tenant auto-deactivated: no active lease remaining');
+    } catch (error) {
+      this.log.error({ error, tenantId, cuid }, 'Error handling lease expired event');
+    }
   }
 }

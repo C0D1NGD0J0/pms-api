@@ -8,7 +8,7 @@ export class QueueFactory {
   private readonly log = createLogger('QueueFactory');
 
   constructor() {
-    this.log.info('QueueFactory initialized');
+    this.log.debug('QueueFactory initialized');
   }
 
   /**
@@ -83,7 +83,8 @@ export class QueueFactory {
       'paymentQueue',
     ];
 
-    this.log.info('Force initializing all queues (workers auto-injected via DI)');
+    const processType = process.env.PROCESS_TYPE ?? 'unknown';
+    this.log.debug(`Force initializing all queues [${processType}] (workers auto-injected via DI)`);
 
     const initializedQueues: string[] = [];
     const failed: string[] = [];

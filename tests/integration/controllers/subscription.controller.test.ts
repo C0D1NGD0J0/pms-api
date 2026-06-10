@@ -103,6 +103,9 @@ describe('SubscriptionController Integration Tests', () => {
       userDAO: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
 
     subscriptionController = new SubscriptionController({ subscriptionService });

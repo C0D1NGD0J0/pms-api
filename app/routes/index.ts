@@ -5,12 +5,15 @@ import leaseRoutes from './lease.routes';
 import clientRoutes from './client.routes';
 import vendorRoutes from './vendors.routes';
 import webhookRoutes from './webhook.routes';
+import expenseRoutes from './expense.routes';
+import metricsRoutes from './metrics.routes';
 import paymentRoutes from './payments.routes';
 import propertyRoutes from './property.routes';
 import invitationRoutes from './invitation.routes';
 import notificationRoutes from './notification.routes';
 import subscriptionRoutes from './subscription.routes';
 import emailTemplateRoutes from './emailTemplate.routes';
+import maintenanceRequestRoutes from './maintenanceRequest.routes';
 
 export const routes = {
   adminRoutes,
@@ -26,4 +29,7 @@ export const routes = {
   subscriptionRoutes,
   notificationRoutes,
   emailTemplateRoutes,
+  maintenanceRequestRoutes,
+  metricsRoutes,
+  expenseRoutes,
 };

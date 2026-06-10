@@ -4,15 +4,26 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { IUserDocument } from '@interfaces/user.interface';
 import { ILeaseDocument } from '@interfaces/lease.interface';
 import { IClientDocument } from '@interfaces/client.interface';
+import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { PropertyUnit, Invitation, Property, Profile, Client, Lease, User } from '@models/index';
+import {
+  PropertyUnit,
+  Invitation,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  Lease,
+  User,
+} from '@models/index';
 
 export interface CreateClientOptions {
   status?: 'active' | 'inactive' | 'suspended';
   displayName?: string;
+  isVerified?: boolean;
   cuid?: string;
 }
 
@@ -46,6 +57,7 @@ export const createTestClient = async (
     cuid,
     displayName: options.displayName || faker.company.name(),
     status: options.status || 'active',
+    isVerified: options.isVerified ?? false,
     accountAdmin: adminUser._id,
     accountType: {
       category: 'individual',
@@ -106,7 +118,10 @@ export const createTestUser = async (
   });
 };
 
-export const createTestAdminUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+export const createTestAdminUser = async (
+  clientCuid: string,
+  clientId?: string | Types.ObjectId
+): Promise<IUserDocument> => {
   const user = await createTestUser(clientCuid, { roles: [ROLES.ADMIN] });
   // Create profile for user
   if (clientId) {
@@ -115,7 +130,10 @@ export const createTestAdminUser = async (clientCuid: string, clientId?: string 
   return user;
 };
 
-export const createTestManagerUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+export const createTestManagerUser = async (
+  clientCuid: string,
+  clientId?: string | Types.ObjectId
+): Promise<IUserDocument> => {
   const user = await createTestUser(clientCuid, { roles: [ROLES.MANAGER] });
   // Create profile for user
   if (clientId) {
@@ -124,7 +142,10 @@ export const createTestManagerUser = async (clientCuid: string, clientId?: strin
   return user;
 };
 
-export const createTestTenantUser = async (clientCuid: string, clientId?: string | Types.ObjectId): Promise<IUserDocument> => {
+export const createTestTenantUser = async (
+  clientCuid: string,
+  clientId?: string | Types.ObjectId
+): Promise<IUserDocument> => {
   const user = await createTestUser(clientCuid, { roles: [ROLES.TENANT] });
   // Create profile for user
   if (clientId) {
@@ -151,7 +172,10 @@ export const createTestInvitation = async (
 
   if (typeof clientIdOrDoc === 'object' && '_id' in clientIdOrDoc) {
     clientId = clientIdOrDoc._id;
-  } else if (typeof clientIdOrDoc === 'object' && (clientIdOrDoc as object) instanceof Types.ObjectId) {
+  } else if (
+    typeof clientIdOrDoc === 'object' &&
+    (clientIdOrDoc as object) instanceof Types.ObjectId
+  ) {
     clientId = clientIdOrDoc;
   } else {
     clientId = new Types.ObjectId(clientIdOrDoc as string);
@@ -239,7 +263,7 @@ export const createTestProperty = async (
 
 export interface CreatePropertyUnitOptions {
   status?: 'available' | 'occupied' | 'maintenance' | 'reserved';
-  monthlyRent?: number;
+  rentAmount?: number;
   unitNumber?: string;
   bathrooms?: number;
   bedrooms?: number;
@@ -252,8 +276,8 @@ export const createTestPropertyUnit = async (
   options: CreatePropertyUnitOptions = {}
 ): Promise<IPropertyUnitDocument> => {
   const squareFeet = faker.number.int({ min: 500, max: 2000 });
-  // monthlyRent is in dollars, will be converted to cents by model setter
-  const monthlyRent = options.monthlyRent || faker.number.int({ min: 1000, max: 3000 });
+  // rentAmount is in dollars, will be converted to cents by model setter
+  const rentAmount = options.rentAmount || faker.number.int({ min: 1000, max: 3000 });
 
   return PropertyUnit.create({
     puid: `unit-${faker.string.alphanumeric(12)}`,
@@ -264,7 +288,7 @@ export const createTestPropertyUnit = async (
     status: options.status || 'available',
     floor: options.floor || 1,
     fees: {
-      rentAmount: monthlyRent, // In dollars - model setter converts to cents
+      rentAmount: rentAmount, // In dollars - model setter converts to cents
       currency: 'USD',
     },
     specifications: {
@@ -317,7 +341,7 @@ export const createTestProfile = async (
 
 export interface CreateLeaseOptions {
   status?: 'draft' | 'pending' | 'active' | 'expired' | 'terminated';
-  monthlyRent?: number;
+  rentAmount?: number;
   startDate?: Date;
   endDate?: Date;
 }
@@ -344,7 +368,7 @@ export const createTestLease = async (
       type: 'fixed',
     },
     fees: {
-      monthlyRent: options.monthlyRent || faker.number.int({ min: 1000, max: 3000 }), // In dollars - model setter converts to cents
+      rentAmount: options.rentAmount || faker.number.int({ min: 1000, max: 3000 }), // In dollars - model setter converts to cents
       currency: 'USD',
       securityDeposit: faker.number.int({ min: 500, max: 2000 }), // In dollars - model setter converts to cents
     },
@@ -404,6 +428,38 @@ export const createTestLeaseScenario = async (): Promise<TestLeaseScenario> => {
   const unit = await createTestPropertyUnit(client.cuid, property._id);
 
   return { client, manager, property, tenant, unit };
+};
+
+export interface CreateVendorOptions {
+  isConnected?: boolean;
+}
+
+/**
+ * Create a test Vendor record connected to a client.
+ * The `primaryAccountHolderUserId` is the User ID of the vendor user.
+ */
+export const createTestVendor = async (
+  cuid: string,
+  primaryAccountHolderUserId: string | Types.ObjectId,
+  options: CreateVendorOptions = {}
+): Promise<IVendorDocument> => {
+  return Vendor.create({
+    companyName: faker.company.name(),
+    businessType: 'General Contractor',
+    registrationNumber: `REG-${faker.string.alphanumeric(10)}`,
+    connectedClients: [
+      {
+        cuid,
+        isConnected: options.isConnected ?? true,
+        primaryAccountHolderUserId:
+          typeof primaryAccountHolderUserId === 'string'
+            ? new Types.ObjectId(primaryAccountHolderUserId)
+            : primaryAccountHolderUserId,
+      },
+    ],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  });
 };
 
 export const generateUniqueEmail = (): string => {

@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import uniqueValidator from 'mongoose-unique-validator';
 import { UpdateQuery, Schema, Query, model } from 'mongoose';
 import { IUserDocument, IUser } from '@interfaces/user.interface';
 
@@ -29,6 +28,8 @@ const UserSchema = new Schema<IUserDocument>(
         isConnected: { type: Boolean, required: true, default: false },
         requiresOnboarding: { type: Boolean, default: false },
         primaryRole: { type: String, default: null },
+        isFormerTenant: { type: Boolean, default: false },
+        leaseExpiredAt: { type: Date, default: null },
         _id: false,
       },
     ],
@@ -53,22 +54,19 @@ const UserSchema = new Schema<IUserDocument>(
   }
 );
 
-UserSchema.pre('save', async function (this: IUserDocument, next) {
+UserSchema.pre('save', async function (this: IUserDocument) {
   if (this.isModified('password')) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }
-  next();
 });
 
-UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next) {
+UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function () {
   const update = this.getUpdate() as UpdateQuery<IUser>;
   if (update.password) {
     const salt = await bcrypt.genSalt(10);
     update.password = await bcrypt.hash(update.password, salt);
   }
-
-  next();
 });
 
 UserSchema.virtual('profile', {
@@ -76,10 +74,6 @@ UserSchema.virtual('profile', {
   localField: '_id',
   foreignField: 'user',
   justOne: true,
-});
-
-UserSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
 });
 
 UserSchema.virtual('fullname').get(function () {

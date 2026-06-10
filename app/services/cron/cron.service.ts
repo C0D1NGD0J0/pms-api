@@ -4,6 +4,7 @@ import { CronQueue } from '@queues/cron.queue';
 import { QueueFactory } from '@services/queue';
 import { LeaseService } from '@services/lease';
 import { NotificationService } from '@services/notification';
+import { MetricsService } from '@services/metrics/metrics.service';
 import { PaymentService } from '@services/payments/payments.service';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
@@ -11,6 +12,7 @@ import { SubscriptionService } from '@services/subscription/subscription.service
 interface IConstructor {
   notificationService?: NotificationService;
   subscriptionService: SubscriptionService;
+  metricsService: MetricsService;
   paymentService: PaymentService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
@@ -27,43 +29,61 @@ export class CronService {
   private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
 
-  constructor({ queueFactory, leaseService, subscriptionService, paymentService }: IConstructor) {
+  constructor({
+    queueFactory,
+    leaseService,
+    subscriptionService,
+    paymentService,
+    metricsService,
+  }: IConstructor) {
     this.log = createLogger('CronService');
     this.queueFactory = queueFactory;
 
     // collects cron jobs from all services that implement ICronProvider
-    const services: ICronProvider[] = [leaseService, subscriptionService, paymentService].filter(
-      Boolean
-    );
+    const services: ICronProvider[] = [
+      leaseService,
+      subscriptionService,
+      paymentService,
+      metricsService,
+    ].filter(Boolean);
 
-    this.registerAllCronJobs(services);
+    // Async init: register jobs then clean up stale schedules
+    setImmediate(() =>
+      this.registerAllCronJobs(services)
+        .then(() => {
+          if (process.env.PROCESS_TYPE === 'worker') {
+            return this.cleanupUnregisteredJobs();
+          }
+        })
+        .catch((err) =>
+          this.log.error({ err }, 'CronService: failed during async cron initialisation')
+        )
+    );
   }
 
   /**
    * Register cron jobs from all services
    */
-  private registerAllCronJobs(services: ICronProvider[]): void {
-    this.log.info(`Registering cron jobs from ${services.length} services`);
-
-    services.forEach((service) => {
+  private async registerAllCronJobs(services: ICronProvider[]): Promise<void> {
+    for (const service of services) {
       const serviceName = service.constructor.name;
 
       try {
         if (typeof service.getCronJobs !== 'function') {
           this.log.warn(`Service ${serviceName} does not implement getCronJobs()`);
-          return;
+          continue;
         }
 
-        const jobs = service.getCronJobs();
+        const jobs = await service.getCronJobs();
         jobs.forEach((job) => {
           this.registerCronJob(job);
         });
       } catch (error) {
         this.log.error(`Error registering cron jobs from ${serviceName}:`, error);
       }
-    });
+    }
 
-    this.log.info(`Total cron jobs registered: ${this.cronJobs.size}`);
+    this.log.info(`${this.cronJobs.size} cron jobs registered across ${services.length} services`);
   }
 
   /**
@@ -97,6 +117,12 @@ export class CronService {
         timeout: cronJob.timeout || 300000, // 5 min default
       }
     );
+  }
+
+  private async cleanupUnregisteredJobs(): Promise<void> {
+    const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
+    const registeredJobNames = Array.from(this.cronJobs.keys());
+    await cronQueue.removeUnregisteredRepeatJobs(registeredJobNames);
   }
 
   getJobHandler(jobName: string): (() => Promise<void>) | undefined {

@@ -10,7 +10,7 @@ import {
 describe('Lease Helpers', () => {
   describe('validateImmutableFields', () => {
     it('should pass when no immutable fields updated', () => {
-      expect(() => validateImmutableFields({ internalNotes: 'Test' })).not.toThrow();
+      expect(() => validateImmutableFields({ internalNotes: [] })).not.toThrow();
     });
 
     it('should throw error for immutable field updates', () => {
@@ -23,19 +23,19 @@ describe('Lease Helpers', () => {
   describe('validateAllowedFields', () => {
     it('should allow all fields for DRAFT status', () => {
       expect(() =>
-        validateAllowedFields({ fees: { monthlyRent: 1000 } } as any, LeaseStatus.DRAFT)
+        validateAllowedFields({ fees: { rentAmount: 1000 } } as any, LeaseStatus.DRAFT)
       ).not.toThrow();
     });
 
     it('should reject disallowed fields for ACTIVE status', () => {
       expect(() =>
-        validateAllowedFields({ fees: { monthlyRent: 1000 } } as any, LeaseStatus.ACTIVE)
+        validateAllowedFields({ fees: { rentAmount: 1000 } } as any, LeaseStatus.ACTIVE)
       ).toThrow(ValidationRequestError);
     });
 
     it('should allow internalNotes for ACTIVE status', () => {
       expect(() =>
-        validateAllowedFields({ internalNotes: 'Test' }, LeaseStatus.ACTIVE)
+        validateAllowedFields({ internalNotes: [] }, LeaseStatus.ACTIVE)
       ).not.toThrow();
     });
   });
@@ -46,17 +46,17 @@ describe('Lease Helpers', () => {
     });
 
     it('should return true for fees changes', () => {
-      expect(hasHighImpactChanges({ fees: { monthlyRent: 1500 } } as any)).toBe(true);
+      expect(hasHighImpactChanges({ fees: { rentAmount: 1500 } } as any)).toBe(true);
     });
 
     it('should return false for low-impact changes', () => {
-      expect(hasHighImpactChanges({ internalNotes: 'Test' } as any)).toBe(false);
+      expect(hasHighImpactChanges({ internalNotes: [] } as any)).toBe(false);
     });
   });
 
   describe('hasSignatureInvalidatingChanges', () => {
     it('should return true for fees changes', () => {
-      expect(hasSignatureInvalidatingChanges({ fees: { monthlyRent: 1500 } } as any)).toBe(true);
+      expect(hasSignatureInvalidatingChanges({ fees: { rentAmount: 1500 } } as any)).toBe(true);
     });
 
     it('should return true for duration changes', () => {

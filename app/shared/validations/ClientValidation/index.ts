@@ -2,6 +2,7 @@ import { ValidateCuidSchema } from '../UtilsValidation';
 import {
   EnterpriseClientValidationSchema,
   TenantDetailsIncludeQuerySchema,
+  UpdateTenantFeaturesSchema,
   ClientIdentificationSchema,
   UpdateClientDetailsSchema,
   UpdateTenantProfileSchema,
@@ -32,4 +33,5 @@ export class ClientValidations {
   static tenantDetailsIncludeQuery = TenantDetailsIncludeQuerySchema;
   static updateTenantProfile = UpdateTenantProfileSchema;
   static enterpriseValidation = EnterpriseClientValidationSchema;
+  static updateTenantFeatures = UpdateTenantFeaturesSchema;
 }

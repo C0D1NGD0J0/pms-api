@@ -125,7 +125,7 @@ export class VendorController {
       }
 
       // Check if current user is the primary account holder
-      if (clientConnection.primaryAccountHolder?.toString() !== currentUser.uid) {
+      if (clientConnection.primaryAccountHolderUserId?.toString() !== currentUser.sub) {
         res.status(httpStatusCodes.FORBIDDEN).json({
           success: false,
           message: 'Only primary account holders can access vendor edit data',
@@ -147,7 +147,7 @@ export class VendorController {
         insuranceInfo: vendorDoc.insuranceInfo,
         yearsInBusiness: vendorDoc.yearsInBusiness,
         isConnected: clientConnection.isConnected,
-        primaryAccountHolder: clientConnection.primaryAccountHolder,
+        primaryAccountHolderUserId: clientConnection.primaryAccountHolderUserId,
       };
 
       res.status(httpStatusCodes.OK).json({
@@ -190,41 +190,58 @@ export class VendorController {
   };
 
   updateVendorDetails = async (req: AppRequest, res: Response): Promise<void> => {
-    const { cuid, vuid } = req.params;
+    const { vuid } = req.params;
     const updateData = req.body;
     const currentUser = req.context.currentuser!;
 
-    // Check if user is primary account holder for this vendor
-    const vendorDoc = await this.vendorService.getVendorById(vuid);
-    if (!vendorDoc) {
-      res.status(httpStatusCodes.NOT_FOUND).json({
-        success: false,
-        message: 'Vendor not found',
-      });
-      return;
-    }
+    const result = await this.vendorService.updateVendorInfo(
+      vuid,
+      updateData,
+      undefined,
+      currentUser.sub
+    );
 
-    // Find the client connection for this vendor
-    const clientConnection = vendorDoc.connectedClients?.find((cc: any) => cc.cuid === cuid);
-    if (!clientConnection) {
-      res.status(httpStatusCodes.NOT_FOUND).json({
-        success: false,
-        message: 'Vendor is not connected to this client',
-      });
-      return;
-    }
+    res.status(httpStatusCodes.OK).json(result);
+  };
 
-    // Check if current user is the primary account holder
-    if (clientConnection.primaryAccountHolder?.toString() !== currentUser.uid) {
-      res.status(httpStatusCodes.FORBIDDEN).json({
-        success: false,
-        message: 'Only primary account holders can update vendor business information',
-      });
-      return;
-    }
+  initiatePayoutOnboarding = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
 
-    // Update vendor information
-    const result = await this.vendorService.updateVendorInfo(vuid, updateData);
+    const result = await this.vendorService.initiatePayoutOnboarding(
+      cuid as string,
+      vuid as string
+    );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPayoutOnboardingLink = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+    const queryParams = (req.query.params || req.query) as Record<string, string>;
+    const { returnUrl, refreshUrl } = queryParams;
+
+    const result = await this.vendorService.getPayoutOnboardingLink(
+      cuid as string,
+      vuid as string,
+      returnUrl as string,
+      refreshUrl as string
+    );
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  syncPayoutAccountStatus = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+
+    const result = await this.vendorService.syncPayoutAccountStatus(cuid as string, vuid as string);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPayoutDashboardLink = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+
+    const result = await this.vendorService.getPayoutDashboardLink(cuid as string, vuid as string);
 
     res.status(httpStatusCodes.OK).json(result);
   };

@@ -115,7 +115,8 @@ export class ProfileService {
     profileId: string,
     cuid: string,
     vendorInfo: any,
-    userRole: IUserRoleType
+    userRole: IUserRoleType,
+    callerUserId: string
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
       if (userRole !== ROLES.VENDOR) {
@@ -139,8 +140,13 @@ export class ProfileService {
         });
       }
 
-      // Update the vendor entity with new information
-      await this.vendorService.updateVendorInfo(vendor._id.toString(), vendorInfo);
+      // Update the vendor entity with new information — ownership enforced in vendorService
+      await this.vendorService.updateVendorInfo(
+        vendor._id.toString(),
+        vendorInfo,
+        undefined,
+        callerUserId
+      );
 
       // Update profile vendorInfo to maintain reference (if needed)
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
@@ -308,12 +314,12 @@ export class ProfileService {
   ): Promise<{ profile: IProfileDocument; createdVendor?: any }> {
     try {
       const vendorData = {
-        isPrimaryAccountHolder: true,
+        isprimaryAccountHolderUserId: true,
         connectedClients: [
           {
             cuid: context.cuid,
             isConnected: true,
-            primaryAccountHolder: new Types.ObjectId(context.userId),
+            primaryAccountHolderUserId: new Types.ObjectId(context.userId),
           },
         ],
         ...vendorEntityData,
@@ -472,7 +478,6 @@ export class ProfileService {
           email: userDoc.data.profile.email,
           isActive: true,
         },
-        identification: profileDoc.personalInfo.identification,
         settings: {
           ...profileDoc.settings,
           timeZone: profileDoc.settings.timeZone || 'UTC',
@@ -549,7 +554,8 @@ export class ProfileService {
     profileId: string,
     userId: string,
     cuid: string,
-    userRole: IUserRoleType
+    userRole: IUserRoleType,
+    currentuser: ICurrentUser
   ): Promise<{ result: IProfileDocument | null; hasUpdates: boolean }> {
     const validation = ProfileValidations.profileUpdate.safeParse(profileData);
     if (!validation.success) {
@@ -570,7 +576,7 @@ export class ProfileService {
         });
       }
 
-      await this.userService.updateUserInfo(userId, userValidation.data);
+      await this.userService.updateUserInfo(userId, userValidation.data, currentuser);
       hasUpdates = true;
     }
 
@@ -644,7 +650,8 @@ export class ProfileService {
         profileId,
         cuid,
         profileData.vendorInfo,
-        userRole
+        userRole,
+        currentuser.sub
       );
       result = vendorResult.data;
       hasUpdates = true;
@@ -660,11 +667,15 @@ export class ProfileService {
       const policiesUpdate: Record<string, unknown> = {};
       if (profileData.policies.tos?.accepted !== undefined) {
         policiesUpdate['policies.tos.accepted'] = profileData.policies.tos.accepted;
-        policiesUpdate['policies.tos.acceptedOn'] = profileData.policies.tos.accepted ? new Date() : null;
+        policiesUpdate['policies.tos.acceptedOn'] = profileData.policies.tos.accepted
+          ? new Date()
+          : null;
       }
       if (profileData.policies.marketing?.accepted !== undefined) {
         policiesUpdate['policies.marketing.accepted'] = profileData.policies.marketing.accepted;
-        policiesUpdate['policies.marketing.acceptedOn'] = profileData.policies.marketing.accepted ? new Date() : null;
+        policiesUpdate['policies.marketing.acceptedOn'] = profileData.policies.marketing.accepted
+          ? new Date()
+          : null;
       }
       if (Object.keys(policiesUpdate).length > 0) {
         result = await this.profileDAO.updateById(profileId, { $set: policiesUpdate });
@@ -699,7 +710,8 @@ export class ProfileService {
         profileId,
         userId,
         cuid,
-        userRole
+        userRole,
+        context.currentuser!
       );
 
       const finalProfile =

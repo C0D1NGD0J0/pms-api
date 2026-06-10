@@ -23,12 +23,16 @@ export interface IVendorDAO {
     updateData: Partial<IVendor>,
     session?: ClientSession
   ): Promise<IVendorDocument | null>;
-  getVendorByPrimaryAccountHolder(userId: string | Types.ObjectId): Promise<IVendorDocument | null>;
+  getVendorByprimaryAccountHolderUserId(
+    userId: string | Types.ObjectId
+  ): Promise<IVendorDocument | null>;
   createVendor(vendorData: NewVendor, session?: ClientSession): Promise<IVendorDocument>;
   findByRegistrationNumber(registrationNumber: string): Promise<IVendorDocument | null>;
   getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>>;
   getVendorById(vendorId: string | Types.ObjectId): Promise<IVendorDocument | null>;
+  disconnectClient(vendorId: string, cuid: string): Promise<void>;
   getVendorByVuid(vuid: string): Promise<IVendorDocument | null>;
+  reconnectClient(vendorId: string, cuid: string): Promise<void>;
 }
 
 export interface IVendorFilterOptions {

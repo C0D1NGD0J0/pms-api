@@ -1,15 +1,14 @@
 import { Document, Types } from 'mongoose';
 
-/**
- * Main Vendor Interface
- */
 export interface IVendor {
   connectedClients: {
     cuid: string;
     isConnected: boolean;
-    primaryAccountHolder: Types.ObjectId; // References the user who owns this vendor account
+    primaryAccountHolderUserId: Types.ObjectId; // References the user who owns this vendor account
+    payoutAccount?: IVendorPayoutAccount;
   }[];
   servicesOffered?: VendorServicesOffered;
+  isprimaryAccountHolderUserId: boolean;
   insuranceInfo?: VendorInsuranceInfo;
   contactPerson?: VendorContactPerson;
   serviceAreas?: VendorServiceAreas;
@@ -59,6 +58,19 @@ export interface VendorAddress {
 }
 
 /**
+ * Main Vendor Interface
+ */
+export interface IVendorPayoutAccount {
+  payoutsBlockedBy?: Types.ObjectId;
+  payoutsBlockedReason?: string;
+  payoutsEnabled: boolean;
+  chargesEnabled: boolean;
+  payoutsBlocked: boolean;
+  payoutsBlockedAt?: Date;
+  isSetup: boolean;
+}
+
+/**
  * Vendor Document Interface (extends Mongoose Document)
  */
 export interface IVendorDocument extends Document, IVendor {
@@ -68,17 +80,6 @@ export interface IVendorDocument extends Document, IVendor {
   updatedAt: Date;
   vuid: string; // vendor UID
   id: string;
-}
-
-/**
- * Vendor service areas
- */
-export interface VendorServiceAreas {
-  baseLocation?: {
-    address: string;
-    coordinates: [number, number]; // [longitude, latitude]
-  };
-  maxDistance: 10 | 15 | 25 | 50; // km
 }
 
 /**
@@ -95,7 +96,6 @@ export interface VendorInsuranceInfo {
  * Vendor contact person information
  */
 export interface VendorContactPerson {
-  department?: string;
   jobTitle: string;
   email?: string;
   phone?: string;
@@ -103,6 +103,13 @@ export interface VendorContactPerson {
 }
 
 /**
+ * Vendor service areas
+ */
+export interface VendorServiceAreas {
+  maxDistance: 10 | 15 | 25 | 50; // km
+}
+
+/**
  * New Vendor Type (for creation)
  */
-export type NewVendor = { isPrimaryAccountHolder: boolean } & Omit<IVendor, 'vid'>;
+export type NewVendor = Omit<IVendor, 'vid'>;

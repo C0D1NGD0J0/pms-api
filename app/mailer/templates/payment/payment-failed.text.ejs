@@ -1,0 +1,13 @@
+Payment Could Not Be Processed
+
+Hi <%= tenantName %>,
+
+Your payment of <%= amount %> could not be processed.
+<% if (typeof failureReason !== 'undefined' && failureReason) { %>
+Reason: <%= failureReason %>
+<% } %>
+<% if (typeof hostedInvoiceUrl !== 'undefined' && hostedInvoiceUrl) { %>
+Pay now: <%= hostedInvoiceUrl %>
+<% } %>
+
+If you need help, contact your property manager.

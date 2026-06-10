@@ -6,7 +6,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       const config = subscriptionPlanConfig.getConfig('essential');
 
       expect(config.name).toBe('Essential');
-      expect(config.transactionFeePercent).toBe(3.5);
+      expect(config.transactionFeePercent).toBe(4.5);
       expect(config.limits.maxProperties).toBe(3);
       expect(config.features.eSignature).toBe(false);
     });
@@ -15,7 +15,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       const config = subscriptionPlanConfig.getConfig('growth');
 
       expect(config.name).toBe('Growth');
-      expect(config.transactionFeePercent).toBe(3.0);
+      expect(config.transactionFeePercent).toBe(4.0);
       expect(config.limits.maxProperties).toBe(15);
       expect(config.features.eSignature).toBe(true);
     });
@@ -24,7 +24,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       const config = subscriptionPlanConfig.getConfig('portfolio');
 
       expect(config.name).toBe('Portfolio');
-      expect(config.transactionFeePercent).toBe(2.8);
+      expect(config.transactionFeePercent).toBe(3.5);
       expect(config.limits.maxProperties).toBe(30);
       expect(config.seatPricing.includedSeats).toBe(25);
     });
@@ -114,9 +114,9 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
   describe('getTransactionFeePercent', () => {
     it('should return correct fees for each plan', () => {
-      expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(3.5);
-      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(3.0);
-      expect(subscriptionPlanConfig.getTransactionFeePercent('portfolio')).toBe(2.8);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(4.5);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(4.0);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('portfolio')).toBe(3.5);
     });
   });
 

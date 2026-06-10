@@ -47,6 +47,9 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
       propertyDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
       propertyUnitDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
     });
   });
 
@@ -78,11 +81,11 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
 
-      expect(result.data.verification).toBeDefined();
-      expect(result.data.verification.isVerified).toBe(true);
-      expect(result.data.verification.requiresVerification).toBe(false);
-      expect(result.data.verification.gracePeriodExpired).toBe(false);
-      expect(result.data.verification.daysRemaining).toBeNull();
+      expect(result.data!.verification).toBeDefined();
+      expect(result.data!.verification.isVerified).toBe(true);
+      expect(result.data!.verification.requiresVerification).toBe(false);
+      expect(result.data!.verification.gracePeriodExpired).toBe(false);
+      expect(result.data!.verification.daysRemaining).toBeNull();
     });
 
     it('should calculate grace period correctly for unverified account within 5 days', async () => {
@@ -112,11 +115,11 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
 
-      expect(result.data.verification).toBeDefined();
-      expect(result.data.verification.isVerified).toBe(false);
-      expect(result.data.verification.requiresVerification).toBe(true);
-      expect(result.data.verification.gracePeriodExpired).toBe(false);
-      expect(result.data.verification.daysRemaining).toBe(2); // 5 - 3 = 2 days remaining
+      expect(result.data!.verification).toBeDefined();
+      expect(result.data!.verification.isVerified).toBe(false);
+      expect(result.data!.verification.requiresVerification).toBe(true);
+      expect(result.data!.verification.gracePeriodExpired).toBe(false);
+      expect(result.data!.verification.daysRemaining).toBe(2); // 5 - 3 = 2 days remaining
     });
 
     it('should indicate grace period expired for unverified account older than 5 days', async () => {
@@ -146,11 +149,11 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
 
-      expect(result.data.verification).toBeDefined();
-      expect(result.data.verification.isVerified).toBe(false);
-      expect(result.data.verification.requiresVerification).toBe(true);
-      expect(result.data.verification.gracePeriodExpired).toBe(true);
-      expect(result.data.verification.daysRemaining).toBe(0);
+      expect(result.data!.verification).toBeDefined();
+      expect(result.data!.verification.isVerified).toBe(false);
+      expect(result.data!.verification.requiresVerification).toBe(true);
+      expect(result.data!.verification.gracePeriodExpired).toBe(true);
+      expect(result.data!.verification.daysRemaining).toBe(0);
     });
 
     it('should handle exactly 5 days old account (boundary case)', async () => {
@@ -180,11 +183,11 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
 
-      expect(result.data.verification).toBeDefined();
-      expect(result.data.verification.isVerified).toBe(false);
-      expect(result.data.verification.requiresVerification).toBe(true);
-      expect(result.data.verification.gracePeriodExpired).toBe(false);
-      expect(result.data.verification.daysRemaining).toBe(0);
+      expect(result.data!.verification).toBeDefined();
+      expect(result.data!.verification.isVerified).toBe(false);
+      expect(result.data!.verification.requiresVerification).toBe(true);
+      expect(result.data!.verification.gracePeriodExpired).toBe(false);
+      expect(result.data!.verification.daysRemaining).toBe(0);
     });
 
     it('should handle brand new account (0 days old)', async () => {
@@ -213,11 +216,21 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
 
-      expect(result.data.verification).toBeDefined();
-      expect(result.data.verification.isVerified).toBe(false);
-      expect(result.data.verification.requiresVerification).toBe(true);
-      expect(result.data.verification.gracePeriodExpired).toBe(false);
-      expect(result.data.verification.daysRemaining).toBe(5);
+      expect(result.data!.verification).toBeDefined();
+      expect(result.data!.verification.isVerified).toBe(false);
+      expect(result.data!.verification.requiresVerification).toBe(true);
+      expect(result.data!.verification.gracePeriodExpired).toBe(false);
+      expect(result.data!.verification.daysRemaining).toBe(5);
+    });
+
+    it('should return null data when subscription record not found', async () => {
+      mockSubscriptionDAO.findFirst.mockResolvedValue(null);
+      mockClientDAO.findFirst.mockResolvedValue(null);
+
+      const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeNull();
     });
 
     it('should throw BadRequestError when client not found', async () => {
@@ -264,8 +277,8 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
 
-      expect(result.data.verification).toBeDefined();
-      expect(result.data.verification.accountCreatedAt).toEqual(createdAt);
+      expect(result.data!.verification).toBeDefined();
+      expect(result.data!.verification.accountCreatedAt).toEqual(createdAt);
     });
   });
 });

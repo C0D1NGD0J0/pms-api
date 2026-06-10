@@ -132,7 +132,7 @@ export class LeaseTemplateService {
         leaseType: previewData.leaseType || 'Fixed Term Residential Lease',
         startDate: this.formatDate(previewData.startDate),
         endDate: this.formatDate(previewData.endDate),
-        monthlyRent: MoneyUtils.formatCurrency(previewData.monthlyRent, previewData.currency),
+        rentAmount: MoneyUtils.formatCurrency(previewData.rentAmount, previewData.currency),
         securityDeposit: MoneyUtils.formatCurrency(
           previewData.securityDeposit,
           previewData.currency

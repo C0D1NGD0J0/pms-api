@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
-import { ClientSession, FilterQuery, Model, Types } from 'mongoose';
+import { calcOccupancyRate, createLogger } from '@utils/index';
+import { type QueryFilter, ClientSession, Model, Types } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   PropertyUnitStatusEnum,
@@ -33,7 +33,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Property ID is required');
       }
 
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         propertyId: new Types.ObjectId(propertyId),
         deletedAt: null,
       };
@@ -56,10 +56,10 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         populate: [
           {
             path: 'currentLease',
-            select: 'luid tenantId',
+            select: 'luid leaseNumber status duration fees tenantId',
             populate: {
               path: 'tenantId',
-              select: 'uid userId personalInfo.firstName personalInfo.lastName',
+              select: 'uid userId email personalInfo.firstName personalInfo.lastName',
             },
           },
         ],
@@ -82,7 +82,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Unit number and property ID are required');
       }
 
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         unitNumber,
         propertyId: new Types.ObjectId(propertyId),
         deletedAt: null,
@@ -97,7 +97,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
 
   async findAvailableUnits(propertyId?: string): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         status: PropertyUnitStatusEnum.AVAILABLE,
         isActive: true,
         deletedAt: null,
@@ -127,7 +127,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Status is required');
       }
 
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         status,
         isActive: true,
         deletedAt: null,
@@ -150,7 +150,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
 
   async getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>> {
     try {
-      const match: FilterQuery<IPropertyUnitDocument> = {
+      const match: QueryFilter<IPropertyUnitDocument> = {
         isActive: true,
         deletedAt: null,
       };
@@ -591,5 +591,38 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
       default:
         return '101'; // Default floor-based
     }
+  }
+
+  async getPropertyUnitCounts(cuid: string): Promise<{
+    total: number;
+    occupied: number;
+    vacant: number;
+    occupancyRate: number;
+  }> {
+    const results = await this.aggregate([
+      { $match: { cuid, deletedAt: null, isArchived: { $ne: true } } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          occupied: {
+            $sum: { $cond: [{ $eq: ['$status', PropertyUnitStatusEnum.OCCUPIED] }, 1, 0] },
+          },
+          vacant: {
+            $sum: { $cond: [{ $eq: ['$status', PropertyUnitStatusEnum.AVAILABLE] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const row = results[0] as any;
+    if (!row) return { total: 0, occupied: 0, vacant: 0, occupancyRate: 0 };
+
+    return {
+      total: row.total,
+      occupied: row.occupied,
+      vacant: row.vacant,
+      occupancyRate: calcOccupancyRate(row.occupied, row.total),
+    };
   }
 }

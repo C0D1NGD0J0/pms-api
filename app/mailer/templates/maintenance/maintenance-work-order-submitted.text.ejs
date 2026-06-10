@@ -1,0 +1,22 @@
+Work Order Submitted — Review Required
+========================================
+
+A vendor has submitted a work order for request <%= request.mruid %>.
+Your approval is required before they can begin work.
+
+WORK ORDER DETAILS
+------------------
+Request #:     <%= request.mruid %>
+Title:         <%= request.title %>
+Estimated Cost: $<%= (workOrder.estimatedCostInCents / 100).toFixed(2) %>
+Scope of Work: <%= workOrder.scope %>
+<% if (workOrder.notes) { %>Notes:         <%= workOrder.notes %>
+<% } %>
+<% if (workOrder.lineItems && workOrder.lineItems.length > 0) { %>
+LINE ITEMS
+----------
+<% workOrder.lineItems.forEach(function(item) { %>- <%= item.description %> | Qty: <%= item.quantity %> | $<%= (item.unitPriceInCents / 100).toFixed(2) %> each | Total: $<%= (item.amountInCents / 100).toFixed(2) %>
+<% }); %>
+<% } %>
+Log in to the portal to approve or reject this work order.
+

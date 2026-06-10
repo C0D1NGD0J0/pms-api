@@ -1,6 +1,6 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
-import { ISubscriptionDocument } from '@interfaces/index';
+import { ISubscriptionDocument, ISubscriptionStatus } from '@interfaces/index';
 
 const SubscriptionSchema = new Schema<ISubscriptionDocument>(
   {
@@ -16,16 +16,16 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['essential', 'growth', 'portfolio'],
+      enum: ['essential', 'growth', 'portfolio'] as const,
       required: true,
       default: 'essential',
       index: true,
     },
     status: {
       type: String,
-      enum: ['active', 'inactive', 'pending_payment'],
+      enum: Object.values(ISubscriptionStatus),
       required: true,
-      default: 'active',
+      default: ISubscriptionStatus.ACTIVE,
       index: true,
     },
     startDate: { type: Date, required: true },
@@ -33,11 +33,15 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       type: Date,
       required: false,
       validate: {
-        validator: function (this: ISubscriptionDocument, value: Date | undefined) {
-          if (this.planName === 'essential') return true;
+        validator: function (this: unknown, value: Date | undefined) {
+          // In Mongoose 9, `this` can be a Query (update context) or a Document
+          if (!this || typeof this !== 'object' || !('planName' in this)) return true;
+
+          const doc = this as ISubscriptionDocument;
+          if (doc.planName === 'essential') return true;
 
           // paid plans with active status must have endDate
-          if (this.status === 'active') {
+          if (doc.status === 'active') {
             return value !== undefined && value !== null;
           }
 
@@ -56,11 +60,14 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     },
     entitlements: {
       eSignature: { type: Boolean, required: true, default: false },
-      RepairRequestService: { type: Boolean, required: true, default: false },
+      MaintenanceRequestService: { type: Boolean, required: true, default: false },
       VisitorPassService: { type: Boolean, required: true, default: false },
       reportingAnalytics: { type: Boolean, required: true, default: false },
       leaseTemplates: { type: Boolean, required: true, default: false },
+      vendorManagement: { type: Boolean, required: true, default: false },
       prioritySupport: { type: Boolean, default: false },
+      aiTriage: { type: Boolean, required: true, default: false },
+      aiInvoiceScanning: { type: Boolean, required: true, default: false },
     },
     billing: {
       customerId: {
@@ -109,6 +116,10 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     currentProperties: { type: Number, default: 0 },
     pendingDowngradeAt: { type: Date, index: true },
     currentUnits: { type: Number, default: 0 },
+    manualRecords: {
+      countThisPeriod: { type: Number, default: 0 },
+      periodStart: { type: Date, default: Date.now },
+    },
     canceledAt: { type: Date },
   },
   {

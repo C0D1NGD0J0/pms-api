@@ -278,7 +278,7 @@ describe('UserDAO Integration Tests', () => {
           unitNumber: '101',
         },
         fees: {
-          monthlyRent: 200000,
+          rentAmount: 200000,
         },
         duration: {
           startDate: new Date('2024-01-01'),
@@ -293,7 +293,7 @@ describe('UserDAO Integration Tests', () => {
       expect(tenant?.tenantInfo?.leaseHistory).toHaveLength(1);
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.luid).toBe('LEASE_001');
       expect(tenant?.tenantInfo?.leaseHistory?.[0]?.leaseNumber).toBe('L2024-001');
-      expect(tenant?.tenantInfo?.leaseHistory?.[0]?.monthlyRent).toBe(200000);
+      expect(tenant?.tenantInfo?.leaseHistory?.[0]?.rentAmount).toBe(200000);
     });
   });
 
@@ -698,6 +698,104 @@ describe('UserDAO Integration Tests', () => {
       );
 
       expect(result.items).toHaveLength(0);
+    });
+  });
+
+  describe('createUserFromInvitation', () => {
+    it('should set requiresOnboarding to true on the cuid entry for a tenant invite', async () => {
+      const client = await createTestClient();
+      const invitation = {
+        role: ROLES.TENANT,
+        inviteeEmail: `invite-tenant-${Date.now()}@example.com`,
+      } as any;
+      const userData = { password: '$2b$10$hashedPasswordForTesting' };
+
+      const user = await userDAO.createUserFromInvitation(
+        { cuid: client.cuid, displayName: client.displayName },
+        invitation,
+        userData
+      );
+
+      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
+      expect(cuidEntry).toBeDefined();
+      expect(cuidEntry!.requiresOnboarding).toBe(true);
+    });
+
+    it('should set requiresOnboarding to true for all invited roles', async () => {
+      const client = await createTestClient();
+
+      for (const role of [ROLES.STAFF, ROLES.MANAGER, ROLES.VENDOR]) {
+        const invitation = {
+          role,
+          inviteeEmail: `invite-${role}-${Date.now()}@example.com`,
+        } as any;
+        const user = await userDAO.createUserFromInvitation(
+          { cuid: client.cuid, displayName: client.displayName },
+          invitation,
+          { password: '$2b$10$hashedPasswordForTesting' }
+        );
+        const entry = user.cuids.find((c) => c.cuid === client.cuid);
+        expect(entry!.requiresOnboarding).toBe(true);
+      }
+    });
+  });
+
+  describe('addUserToClient — requiresOnboarding on new connection', () => {
+    it('sets requiresOnboarding to true when adding a brand-new cuid connection', async () => {
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-onboard-new-${Date.now()}`,
+        email: `onboard-new-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [],
+      });
+
+      await userDAO.addUserToClient(user._id.toString(), ROLES.TENANT, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      expect(entry).toBeDefined();
+      expect(entry!.requiresOnboarding).toBe(true);
+    });
+
+    it('does not overwrite requiresOnboarding when updating an existing connection', async () => {
+      // Existing connection — user has already been onboarded (requiresOnboarding: false)
+      const client = await createTestClient();
+      const user = await User.create({
+        uid: `uid-onboard-exist-${Date.now()}`,
+        email: `onboard-exist-${Date.now()}@example.com`,
+        password: '$2b$10$hashedPasswordForTesting',
+        isActive: true,
+        activecuid: client.cuid,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.TENANT],
+            primaryRole: ROLES.TENANT,
+            isConnected: true,
+            clientDisplayName: client.displayName,
+            requiresOnboarding: false,
+          },
+        ],
+      });
+
+      // Adding the same role again — hits the "existing connection" branch
+      await userDAO.addUserToClient(user._id.toString(), ROLES.TENANT, {
+        cuid: client.cuid,
+        clientDisplayName: client.displayName,
+        id: client._id.toString(),
+      });
+
+      const updated = await User.findById(user._id);
+      const entry = updated!.cuids.find((c) => c.cuid === client.cuid);
+      // requiresOnboarding must NOT be reset to true for an existing connection
+      expect(entry!.requiresOnboarding).toBe(false);
     });
   });
 });

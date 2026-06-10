@@ -1,0 +1,15 @@
+Work Order Submitted for Your Request
+=======================================
+
+The vendor assigned to your maintenance request <%= request.mruid %> has submitted a work order.
+The property manager is reviewing it — no action is required from you at this time.
+
+SUMMARY
+-------
+Request #:      <%= request.mruid %>
+Title:          <%= request.title %>
+Estimated Cost: $<%= (workOrder.estimatedCostInCents / 100).toFixed(2) %>
+Scope:          <%= workOrder.scope %>
+
+You'll receive another update once the work order is reviewed and the vendor is ready to begin.
+

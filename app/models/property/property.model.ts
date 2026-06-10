@@ -1,5 +1,4 @@
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
 
@@ -186,11 +185,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
     },
     fees: {
       currency: { type: String, required: true, default: 'USD' },
-      taxAmount: {
-        default: 0,
-        type: Number,
-      },
-      rentalAmount: {
+      rentAmount: {
         default: 0,
         type: Number,
       },
@@ -389,12 +384,8 @@ PropertySchema.index(
 );
 
 PropertySchema.index({ computedLocation: '2dsphere' });
-PropertySchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
-
 PropertySchema.virtual('units', {
-  ref: 'Unit',
+  ref: 'PropertyUnit',
   localField: '_id',
   foreignField: 'propertyId',
 });
@@ -506,23 +497,21 @@ PropertySchema.methods.getAuthorizationStatus = function (this: IPropertyDocumen
  */
 PropertySchema.methods.calculateFees = function () {
   // Monthly fees (in cents - stored values)
-  const rentalAmount = this.fees?.rentalAmount || 0;
+  const rentAmount = this.fees?.rentAmount || 0;
   const managementFees = this.fees?.managementFees || 0;
-  const taxAmount = this.fees?.taxAmount || 0;
-  const totalMonthly = rentalAmount + managementFees + taxAmount;
+  const totalMonthly = rentAmount + managementFees;
 
   // Annual calculation
   const totalAnnual = totalMonthly * 12;
 
   // Management fee percentage (if rental amount exists)
   const managementFeePercentage =
-    rentalAmount > 0 ? ((managementFees / rentalAmount) * 100).toFixed(2) : '0.00';
+    rentAmount > 0 ? ((managementFees / rentAmount) * 100).toFixed(2) : '0.00';
 
   return {
     monthly: {
-      rental: rentalAmount, // cents
+      rental: rentAmount, // cents
       management: managementFees, // cents
-      tax: taxAmount, // cents
       total: totalMonthly, // cents
     },
     annual: {
@@ -539,7 +528,7 @@ PropertySchema.methods.calculateFees = function () {
 };
 
 // hook to prevent duplicate properties
-PropertySchema.pre('validate', async function (next) {
+PropertySchema.pre('validate', async function () {
   try {
     // this runs if the address or location has changed, or it's a new property
     if (this.isNew || this.isModified('address') || this.isModified('computedLocation')) {
@@ -558,7 +547,7 @@ PropertySchema.pre('validate', async function (next) {
         });
 
         if (addressQuery) {
-          return next(new Error('A property with this address already exists for this client'));
+          throw new Error('A property with this address already exists for this client');
         }
       }
 
@@ -569,17 +558,13 @@ PropertySchema.pre('validate', async function (next) {
         });
 
         if (locationQuery) {
-          return next(
-            new Error('A property with these coordinates already exists for this client')
-          );
+          throw new Error('A property with these coordinates already exists for this client');
         }
       }
     }
-
-    next();
   } catch (error) {
     logger.error('Error in property pre-save hook:', error);
-    next(error);
+    throw error;
   }
 });
 

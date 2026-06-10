@@ -118,16 +118,6 @@ export const UserSignupSchema = z
           })
           .optional(),
         registrationNumber: z.string().min(1, 'Business registration number is required'),
-        identification: z
-          .object({
-            idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-            idNumber: z.string().min(1, 'ID number is required'),
-            authority: z.string().min(1, 'Issuing authority is required'),
-            issueDate: z.string().or(z.date()),
-            expiryDate: z.string().or(z.date()),
-            issuingState: z.string().min(1, 'Issuing state is required'),
-          })
-          .optional(),
       })
       .partial()
       .optional(),
@@ -198,16 +188,6 @@ export const ClientUpdateSchema = z.object({
     })
     .optional(),
   businessRegistrationNumber: z.string(),
-  identification: z
-    .object({
-      idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-      idNumber: z.string(),
-      authority: z.string(),
-      issueDate: z.string().or(z.date()),
-      expiryDate: z.string().or(z.date()),
-      issuingState: z.string(),
-    })
-    .optional(),
   userId: z.string().optional(),
   admin: z.string().optional(),
   subscription: z.string().optional(),
@@ -387,6 +367,16 @@ export const completeOnboardingSchema = z
     path: ['confirmPassword'],
   });
 
+export const SwitchClientAccountSchema = z.object({
+  clientId: z.string({ message: 'clientId is required' }).min(1, 'clientId cannot be empty'),
+});
+
+export const SetupPaymentIntentSchema = z.object({
+  returnUrl: z.string({ message: 'returnUrl is required' }).url('returnUrl must be a valid URL'),
+  cancelUrl: z.string({ message: 'cancelUrl is required' }).url('cancelUrl must be a valid URL'),
+  paymentMethodType: z.enum(['bank', 'card']).optional().default('bank'),
+});
+
 export const ClientSchema = z.object({
   admin: z.string(),
   accountType: z.object({
@@ -408,16 +398,6 @@ export const ClientSchema = z.object({
         })
         .optional(),
       businessRegistrationNumber: z.string(),
-      identification: z
-        .object({
-          idType: z.enum(['passport', 'national-id', 'drivers-license', 'corporation-license']),
-          idNumber: z.string(),
-          authority: z.string(),
-          issueDate: z.string().or(z.date()),
-          expiryDate: z.string().or(z.date()),
-          issuingState: z.string(),
-        })
-        .optional(),
     })
     .optional(),
 });

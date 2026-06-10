@@ -10,9 +10,10 @@ import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
 import { EventEmitterService } from '@services/eventEmitter';
 import { getRequestDuration, createLogger } from '@utils/index';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { IClientDocument, IClientStats } from '@interfaces/client.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
@@ -20,8 +21,20 @@ import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.s
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
-import { SubscriptionDAO, PropertyUnitDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
+import {
+  ITenantFeatureSettings,
+  IClientDocument,
+  IClientStats,
+} from '@interfaces/client.interface';
+import {
+  SubscriptionDAO,
+  PropertyUnitDAO,
+  PropertyDAO,
+  ClientDAO,
+  VendorDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
@@ -40,6 +53,7 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   notificationService: NotificationService;
+  featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
@@ -47,6 +61,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   sseService: SSEService;
+  vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   authCache: AuthCache;
   userDAO: UserDAO;
@@ -57,6 +72,7 @@ export class ClientService {
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly vendorDAO: VendorDAO;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
@@ -66,12 +82,14 @@ export class ClientService {
   private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly featureFlagService: FeatureFlagService;
   private readonly queueFactory: QueueFactory;
 
   constructor({
     clientDAO,
     propertyDAO,
     propertyUnitDAO,
+    vendorDAO,
     userDAO,
     profileDAO,
     authCache,
@@ -79,6 +97,7 @@ export class ClientService {
     subscriptionDAO,
     subscriptionService,
     notificationService,
+    featureFlagService,
     emitterService,
     paymentGatewayService,
     queueFactory,
@@ -87,6 +106,7 @@ export class ClientService {
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.vendorDAO = vendorDAO;
     this.emitterService = emitterService;
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
@@ -96,6 +116,7 @@ export class ClientService {
     this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
     this.paymentGatewayService = paymentGatewayService;
+    this.featureFlagService = featureFlagService;
     this.queueFactory = queueFactory;
     this.setupEventListeners();
   }
@@ -322,6 +343,10 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
     }
 
+    if (cuid !== currentuser.client.cuid) {
+      throw new ForbiddenError({ message: t('client.errors.insufficientPermissions') });
+    }
+
     const responseData: any = {
       cuid: client.cuid,
       displayName: client.displayName,
@@ -345,6 +370,14 @@ export class ClientService {
         notificationPreferences: client.settings.notificationPreferences,
         timeZone: client.settings.timeZone,
         lang: client.settings.lang,
+        vendorPayoutMode: client.settings.vendorPayoutMode,
+        tenantFeatures: {
+          tenantPortalActive: client.settings.tenantFeatures?.tenantPortalActive ?? true,
+          onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? true,
+          maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? true,
+          smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? true,
+          visitorPass: client.settings.tenantFeatures?.visitorPass ?? true,
+        },
       },
       clientStats: {
         totalProperties: propertiesResult,
@@ -362,7 +395,21 @@ export class ClientService {
         legalEntityName: client.companyProfile.legalEntityName,
         tradingName: client.companyProfile.tradingName,
         website: client.companyProfile.website,
-        industry: client.companyProfile.industry,
+      };
+    }
+
+    // Return seat info for all authenticated users when subscription exists
+    if (subscription) {
+      const config = subscriptionPlanConfig.getConfig(subscription.planName);
+      responseData.currentSeats = subscription.currentSeats;
+      responseData.seatInfo = {
+        includedSeats: config.seatPricing.includedSeats,
+        additionalSeats: subscription.additionalSeatsCount,
+        totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
+        maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
+        availableForPurchase:
+          config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+        additionalSeatCost: subscription.additionalSeatsCost,
       };
     }
 
@@ -424,7 +471,7 @@ export class ClientService {
       throw new BadRequestError({ message: t('client.errors.invalidRole') });
     }
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -434,19 +481,18 @@ export class ClientService {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
     }
 
-    if (clientConnection.roles.includes(role as IUserRole)) {
-      throw new BadRequestError({ message: t('client.errors.userAlreadyHasRole', { role }) });
+    // Idempotent: if role already exists, return success without duplicating
+    if (!clientConnection.roles.includes(role as IUserRole)) {
+      await this.userDAO.updateById(
+        user._id.toString(),
+        {
+          $addToSet: { 'cuids.$[elem].roles': role },
+        },
+        {
+          arrayFilters: [{ 'elem.cuid': clientId }],
+        }
+      );
     }
-
-    await this.userDAO.updateById(
-      targetUserId,
-      {
-        $addToSet: { 'cuids.$[elem].roles': role },
-      },
-      {
-        arrayFilters: [{ 'elem.cuid': clientId }],
-      }
-    );
 
     this.log.info(
       {
@@ -474,6 +520,26 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
+    const user = await this.userDAO.getUserByUId(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (!clientConnection.roles.includes(role as IUserRole)) {
+      throw new NotFoundError({ message: t('client.errors.roleNotFound') });
+    }
+
+    if (clientConnection.roles.length <= 1) {
+      throw new BadRequestError({
+        message: 'User must have at least one role.',
+      });
+    }
+
     if (role === ROLES.ADMIN) {
       const adminUsers = await this.userDAO.list({
         cuids: {
@@ -493,7 +559,7 @@ export class ClientService {
     }
 
     await this.userDAO.updateById(
-      targetUserId,
+      user._id.toString(),
       {
         $pull: { 'cuids.$[elem].roles': role },
       },
@@ -527,7 +593,7 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -548,7 +614,7 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -556,6 +622,10 @@ export class ClientService {
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
     if (!clientConnection) {
       throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (!clientConnection.isConnected) {
+      throw new BadRequestError({ message: 'User is already disconnected.' });
     }
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
@@ -577,7 +647,7 @@ export class ClientService {
     }
 
     await this.userDAO.updateById(
-      targetUserId,
+      user._id.toString(),
       {
         $set: { 'cuids.$[elem].isConnected': false },
       },
@@ -665,8 +735,22 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
+    const user = await this.userDAO.getUserByUId(targetUserId);
+    if (!user) {
+      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+    }
+
+    const clientConnection = user.cuids.find((c) => c.cuid === clientId);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('client.errors.userNotInClient') });
+    }
+
+    if (clientConnection.isConnected) {
+      throw new BadRequestError({ message: 'User is already connected.' });
+    }
+
     await this.userDAO.updateById(
-      targetUserId,
+      user._id.toString(),
       {
         $set: { 'cuids.$[elem].isConnected': true },
       },
@@ -674,6 +758,19 @@ export class ClientService {
         arrayFilters: [{ 'elem.cuid': clientId }],
       }
     );
+
+    // If this is a primary vendor, restore the Vendor document's connection status
+    const isVendor = clientConnection?.roles?.includes(IUserRole.VENDOR as any);
+    const isPrimaryVendor = isVendor && !clientConnection?.linkedVendorUid;
+
+    if (isPrimaryVendor) {
+      const vendor = await this.vendorDAO.getVendorByprimaryAccountHolderUserId(
+        user._id.toString()
+      );
+      if (vendor) {
+        await this.vendorDAO.reconnectClient(vendor._id.toString(), clientId);
+      }
+    }
 
     this.log.info(
       {
@@ -704,8 +801,12 @@ export class ClientService {
     const currentuser = cxt.currentuser!;
     const clientId = currentuser.client.cuid;
 
+    if (!Object.values(EmployeeDepartment).includes(department)) {
+      throw new BadRequestError({ message: 'Invalid department value' });
+    }
+
     // Get user and validate
-    const user = await this.userDAO.getUserById(targetUserId);
+    const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
       throw new NotFoundError({ message: t('client.errors.userNotFound') });
     }
@@ -729,6 +830,10 @@ export class ClientService {
       throw new NotFoundError({ message: 'User profile not found' });
     }
 
+    // Initialize employeeInfo if null to avoid MongoDB PathNotViable error
+    if (!profile.employeeInfo) {
+      await this.profileDAO.updateById(profile._id.toString(), { $set: { employeeInfo: {} } });
+    }
     await this.profileDAO.updateCommonEmployeeInfo(profile._id.toString(), {
       department: department,
     });
@@ -895,24 +1000,25 @@ export class ClientService {
         },
       });
 
-      this.sseService.sendToUser(client.accountAdmin.toString(), EventTypes.IDENTITY_VERIFIED, {
-        cuid: client.cuid,
-        isVerified: true,
-      });
+      await this.sseService.sendToUser(
+        client.accountAdmin.toString(),
+        client.cuid,
+        { isVerified: true },
+        EventTypes.IDENTITY_VERIFIED
+      );
     } else {
       await this.clientDAO.updateById(client._id.toString(), {
         $set: { 'identityVerification.sessionStatus': 'requires_input' },
       });
 
-      this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         client.accountAdmin.toString(),
-        EventTypes.IDENTITY_REQUIRES_INPUT,
-        { cuid: client.cuid, sessionStatus: 'requires_input' }
+        client.cuid,
+        { sessionStatus: 'requires_input' },
+        EventTypes.IDENTITY_REQUIRES_INPUT
       );
     }
   }
-
-  // ── Payment event listeners ───────────────────────────────────────────────
 
   private setupEventListeners(): void {
     this.emitterService.on(
@@ -934,8 +1040,65 @@ export class ClientService {
   private async handlePaymentProcessorVerified({
     cuid,
     accountId,
+    ownerType,
+    vuid,
   }: PaymentProcessorVerifiedPayload): Promise<void> {
     try {
+      // Vendor payout account verified — notify the vendor's primary account holder for this client
+      if (ownerType === 'vendor' && vuid) {
+        const vendor = await this.vendorDAO.findFirst({ vuid, deletedAt: null });
+        const clientConn = vendor?.connectedClients?.find((c: any) => c.cuid === cuid);
+        const recipientId = clientConn?.primaryAccountHolderUserId?.toString();
+
+        if (!recipientId) {
+          this.log.warn(
+            { cuid, vuid },
+            'No vendor primary account holder found for payout verification'
+          );
+          return;
+        }
+
+        // Sync payout flags to vendor's per-client record so payVendor() passes
+        await this.vendorDAO.updateClientPayoutAccount(vuid, cuid, {
+          isSetup: true,
+          payoutsEnabled: true,
+          chargesEnabled: true,
+        });
+
+        await this.authCache.invalidateCurrentUser(recipientId, cuid);
+
+        await this.sseService.sendToUser(
+          recipientId,
+          cuid,
+          {
+            action: 'REFETCH_CURRENT_USER',
+            eventType: 'payout_account_verified',
+            message: 'Your payout account has been verified and is ready to receive payments.',
+            timestamp: new Date().toISOString(),
+          },
+          'payment_update'
+        );
+
+        await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+          type: NotificationTypeEnum.PAYMENT,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: recipientId,
+          priority: NotificationPriorityEnum.HIGH,
+          title: 'Payout Account Verified',
+          message:
+            'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
+          cuid,
+          metadata: {},
+        });
+
+        this.log.info(
+          { cuid, vuid, recipientId, accountId },
+          'Payout account verified — vendor notified'
+        );
+        return;
+      }
+
+      // PM payout account verified — notify the PM account admin
       const client = await this.clientDAO.findFirst({ cuid });
       const adminId = client?.accountAdmin?.toString();
       if (!adminId) {
@@ -959,13 +1122,13 @@ export class ClientService {
 
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
-        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: adminId,
         priority: NotificationPriorityEnum.HIGH,
         title: 'Payout Account Verified',
         message:
           'Your payout account has been verified. You can now receive rent payments directly to your bank account.',
         cuid,
-        targetRoles: [ROLES.ADMIN],
         metadata: {},
       });
 
@@ -993,7 +1156,7 @@ export class ClientService {
         title: 'Payment Dispute Opened',
         message: `A dispute of ${amountFormatted} was filed for invoice ${invoiceNumber}. The transfer has been reversed pending resolution.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency, reason },
       });
     } catch (error) {
@@ -1018,7 +1181,7 @@ export class ClientService {
         title: 'Dispute Resolved — Funds Returned',
         message: `The dispute for invoice ${invoiceNumber} was resolved in your favor. ${amountFormatted} has been re-transferred to your account.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
       });
     } catch (error) {
@@ -1043,12 +1206,54 @@ export class ClientService {
         title: 'Dispute Lost — Payouts Blocked',
         message: `The dispute for invoice ${invoiceNumber} was lost. ${amountFormatted} has been debited from the platform account. Payouts have been blocked pending review.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, chargeId, invoiceNumber, amount, currency },
       });
     } catch (error) {
       this.log.error({ error, cuid }, 'Failed to handle dispute lost event');
     }
+  }
+
+  async updateTenantFeatures(
+    cxt: IRequestContext,
+    features: Partial<ITenantFeatureSettings>
+  ): Promise<ISuccessReturnData<IClientDocument>> {
+    const { cuid } = cxt.request.params;
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    if (features.smsNotifications === true && !this.featureFlagService.isEnabled(FeatureFlag.SMS)) {
+      throw new ForbiddenError({ message: 'SMS feature is not available on this platform.' });
+    }
+
+    const allowedKeys: (keyof ITenantFeatureSettings)[] = [
+      'tenantPortalActive',
+      'maintenanceRequests',
+      'onlinePayments',
+      'smsNotifications',
+      'visitorPass',
+    ];
+
+    const updateSet: Record<string, boolean> = {};
+    for (const key of allowedKeys) {
+      if (key in features && typeof features[key] === 'boolean') {
+        updateSet[`settings.tenantFeatures.${key}`] = features[key] as boolean;
+      }
+    }
+
+    if (Object.keys(updateSet).length === 0) {
+      throw new BadRequestError({ message: 'At least one tenant feature must be provided' });
+    }
+
+    const updated = await this.clientDAO.updateById(client._id.toString(), { $set: updateSet });
+    if (!updated) {
+      throw new NotFoundError({ message: t('client.errors.notFound') });
+    }
+
+    return { success: true, data: updated };
   }
 
   private async handleDisputeReversalFailed({
@@ -1067,7 +1272,7 @@ export class ClientService {
         title: 'Dispute Transfer Reversal Failed — Payouts Blocked',
         message: `The transfer reversal for dispute ${disputeId} failed (${amountFormatted}). Payouts have been blocked automatically. Manual review required.`,
         cuid,
-        targetRoles: [ROLES.ADMIN, ROLES.MANAGER],
+        targetRoles: [ROLES.SUPER_ADMIN],
         metadata: { disputeId, transferId, amount, currency },
       });
     } catch (error) {

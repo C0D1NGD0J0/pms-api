@@ -1,4 +1,6 @@
 import {
+  SwitchClientAccountSchema,
+  SetupPaymentIntentSchema,
   completeOnboardingSchema,
   AccountActivationSchema,
   ResendActivationSchema,
@@ -13,6 +15,8 @@ export class AuthValidations {
   static activationToken = AccountActivationSchema;
   static consentBody = ConsentBodySchema;
   static resendActivation = ResendActivationSchema;
+  static switchClientAccount = SwitchClientAccountSchema;
+  static setupPaymentIntent = SetupPaymentIntentSchema;
   static emailValidation = ForgotPasswordSchema;
   static resetPassword = ResetPasswordSchema;
   static signup = UserSignupSchema;

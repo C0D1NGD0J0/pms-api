@@ -1,0 +1,16 @@
+Invoice Approved
+================
+
+Your invoice for the maintenance job below has been approved.
+Payment will be processed according to the agreed terms.
+
+APPROVAL DETAILS
+----------------
+Reference #:    <%= request.mruid %>
+Job:            <%= request.title %>
+<% if (request.invoice) { %>Approved Amount: $<%= (request.invoice.amount / 100).toFixed(2) %> <%= request.invoice.currency.toUpperCase() %>
+Approved By:    <%= approvedBy.firstName || approvedBy.email %>
+Approved On:    <%= new Date().toLocaleDateString() %>
+<% } %>
+For questions about payment timing, contact the property manager directly.
+

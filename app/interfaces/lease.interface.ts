@@ -52,6 +52,102 @@ export enum LeaseType {
 }
 
 /**
+ * Main Lease Interface
+ * Core lease data structure
+ */
+export interface ILease {
+  autoSendInfo?: {
+    sent: boolean;
+    failedAt: Date;
+    failureReason: 'not_approved' | 'auto_send_disabled';
+  };
+  pendingChanges?: IPendingLeaseChanges | null;
+  generateFirstPaymentOnActivation?: boolean;
+  previousLeaseId?: Types.ObjectId | string;
+  approvalDetails?: ILeaseApprovalEntry[];
+  signingMethod: SigningMethod | string;
+  leaseDocuments?: ILeaseDocumentItem[];
+  approvalStatus?: LeaseApprovalStatus;
+  useInvitationIdAsTenantId?: boolean;
+  createdBy: Types.ObjectId | string;
+  lastModifiedBy?: ILastModifiedBy[];
+  utilitiesIncluded?: UtilityType[];
+  tenantId: Types.ObjectId | string;
+  renewalOptions?: IRenewalOptions;
+  templateType: LeaseTemplateType;
+  internalNotes?: IInternalNote[];
+  includeManagementFee?: boolean;
+  requiresNotarization?: boolean;
+  signatures?: ILeaseSignature[];
+  metadata?: Record<string, any>; // Store enriched data for lease generation
+  eSignature?: ILeaseESignature;
+  includeParkingInfo?: boolean;
+  terminationReason?: string;
+  deletedBy?: Types.ObjectId;
+  property: ILeaseProperty;
+  duration: ILeaseDuration;
+  legalTerms?: ILegalTerms;
+  coTenants?: ICoTenant[];
+  petPolicy?: IPetPolicy;
+  leaseNumber: string;
+  status: LeaseStatus;
+  signedDate?: Date;
+  fees: ILeaseFees;
+  deletedAt?: Date;
+  type: LeaseType;
+  cuid: string;
+}
+
+/**
+ * Lease Financial Summary Interface
+ * Financial information and payment tracking
+ */
+export interface ILeaseFinancialSummary {
+  acceptedPaymentMethod?: PaymentMethodType;
+  proRatedLastMonthDaysInMonth: number;
+  proRatedFirstMonthFormatted: string;
+  proRatedManagementFeeAmount: number;
+  firstPaymentAmountFormatted: string;
+  proRatedLastMonthFormatted: string;
+  proRatedLastMonthDailyRate: number;
+  // First-payment breakdown
+  proRatedFirstMonthAmount: number;
+  // Last-month breakdown
+  proRatedLastMonthAmount: number;
+  isFirstMonthFullMonth: boolean;
+  proRatedLastMonthDays: number;
+  isLastMonthFullMonth: boolean;
+  lastPaymentDate: Date | null;
+  proRatedDaysInMonth: number;
+  securityDepositRaw: number; // Raw amount in cents
+  firstPaymentAmount: number;
+  lateFeeType?: LateFeeType;
+  firstPaymentMonth: string;
+  managementFeeRaw: number;
+  securityDeposit: string; // Formatted currency string
+  lateFeeAmount?: number;
+  // Management fee (sourced from property, billed when lease.includeManagementFee is true)
+  managementFee?: string;
+  firstPaymentDate: Date;
+  rentAmountRaw: number; // Raw amount in cents
+  totalExpected: number;
+  nextPaymentDate: Date;
+  lateFeeDays?: number;
+  proRatedDays: number;
+  rentAmount: string; // Formatted currency string
+  rentDueDay: number; // 1-31
+  totalPaid: number;
+  totalOwed: number;
+  currency: string;
+}
+
+/**
+ * ============================================================================
+ * ENUMS
+ * ============================================================================
+ */
+
+/**
  * Legacy interface - keeping for backward compatibility
  * Use ILeasePreviewRequest instead (will deprecate later)
  */
@@ -88,7 +184,7 @@ export type LeasePreviewData = {
   currentDate?: string;
   tenantEmail?: string;
   tenantPhone?: string;
-  monthlyRent?: number;
+  rentAmount?: number;
   unitNumber?: string;
   signedDate?: string;
   tenantName?: string;
@@ -96,55 +192,6 @@ export type LeasePreviewData = {
   leaseType?: string;
   currency?: string;
 };
-
-/**
- * Main Lease Interface
- * Core lease data structure
- */
-export interface ILease {
-  autoSendInfo?: {
-    sent: boolean;
-    failedAt: Date;
-    failureReason: 'not_approved' | 'auto_send_disabled';
-  };
-  pendingChanges?: IPendingLeaseChanges | null;
-  previousLeaseId?: Types.ObjectId | string;
-  approvalDetails?: ILeaseApprovalEntry[];
-  signingMethod: SigningMethod | string;
-  leaseDocuments?: ILeaseDocumentItem[];
-  approvalStatus?: LeaseApprovalStatus;
-  useInvitationIdAsTenantId?: boolean;
-  createdBy: Types.ObjectId | string;
-  lastModifiedBy?: ILastModifiedBy[];
-  utilitiesIncluded?: UtilityType[];
-  tenantId: Types.ObjectId | string;
-  renewalOptions?: IRenewalOptions;
-  templateType: LeaseTemplateType;
-  internalNotes?: IInternalNote[];
-  requiresNotarization?: boolean;
-  signatures?: ILeaseSignature[];
-  metadata?: Record<string, any>; // Store enriched data for lease generation
-  eSignature?: ILeaseESignature;
-  terminationReason?: string;
-  property: ILeaseProperty;
-  duration: ILeaseDuration;
-  legalTerms?: ILegalTerms;
-  coTenants?: ICoTenant[];
-  petPolicy?: IPetPolicy;
-  leaseNumber: string;
-  status: LeaseStatus;
-  signedDate?: Date;
-  fees: ILeaseFees;
-  deletedAt?: Date;
-  type: LeaseType;
-  cuid: string;
-}
-
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
 
 /**
  * Lease Form Data Interface
@@ -159,7 +206,7 @@ export interface ILeaseFormData {
   };
   fees: Pick<
     ILeaseFees,
-    | 'monthlyRent'
+    | 'rentAmount'
     | 'securityDeposit'
     | 'rentDueDay'
     | 'currency'
@@ -177,12 +224,14 @@ export interface ILeaseFormData {
   utilitiesIncluded?: UtilityType[];
   renewalOptions?: IRenewalOptions;
   templateType?: LeaseTemplateType;
+  internalNotes?: IInternalNote[];
+  includeManagementFee?: boolean;
   requiresNotarization?: boolean;
   signingMethod?: SigningMethod;
+  includeParkingInfo?: boolean;
   legalTerms?: ILegalTerms;
   coTenants?: ICoTenant[];
   petPolicy?: IPetPolicy;
-  internalNotes?: string;
   leaseNumber: string;
   type: LeaseType;
 }
@@ -269,12 +318,18 @@ export interface ILeasePreviewRequest {
   unitNumber?: string;
   tenantEmail: string;
   tenantPhone: string;
-  monthlyRent: number;
+  rentAmount: number;
   propertyId: string;
   tenantName: string;
   rentDueDay: number;
   currency: string;
 }
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
 
 /**
  * Lease Filter Options Interface
@@ -294,38 +349,11 @@ export interface ILeaseFilterOptions {
   createdAfter?: Date;
   startDateTo?: Date;
   endDateFrom?: Date;
+  unitPuid?: string;
   endDateTo?: Date;
   minRent?: number;
   maxRent?: number;
   search?: string; // For lease number or tenant name search
-}
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Lease Financial Summary Interface
- * Financial information and payment tracking
- */
-export interface ILeaseFinancialSummary {
-  acceptedPaymentMethod?: PaymentMethodType;
-  lastPaymentDate: Date | null;
-  securityDepositRaw: number; // Raw amount in cents
-  lateFeeType?: LateFeeType;
-  securityDeposit: string; // Formatted currency string
-  monthlyRentRaw: number; // Raw amount in cents
-  lateFeeAmount?: number;
-  totalExpected: number;
-  nextPaymentDate: Date;
-  lateFeeDays?: number;
-  monthlyRent: string; // Formatted currency string
-  rentDueDay: number; // 1-31
-  totalPaid: number;
-  totalOwed: number;
-  currency: string;
 }
 
 /**
@@ -341,12 +369,36 @@ export interface ILeaseProperty {
     parkingSpaces?: number;
     floors?: number;
   };
+  managedBy?: Types.ObjectId | string;
   unitId?: Types.ObjectId | string;
   propertyType?: LeasePropertyType;
   address: AddressDetails | string; // Support both detailed address object and simple string
   id: Types.ObjectId | string;
   unitNumber?: string; // Unit/Suite number from property unit
   name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
+}
+
+/**
+ * Lease Stats Interface
+ * Statistics for reporting
+ */
+export interface ILeaseStats {
+  leasesByStatus: {
+    draft: number;
+    pending_signature: number;
+    active: number;
+    expired: number;
+    terminated: number;
+    cancelled: number;
+  };
+  /** Per-currency breakdown of active lease rent totals. Replaces the old single `totalMonthlyRent` number. */
+  monthlyRentByCurrency: Array<{ currency: string; total: number }>;
+  averageLeaseDuration: number;
+  expiringIn30Days: number;
+  expiringIn60Days: number;
+  expiringIn90Days: number;
+  occupancyRate: number;
+  totalLeases: number;
 }
 
 /**
@@ -424,28 +476,6 @@ export interface ILeaseDetailResponse {
 }
 
 /**
- * Lease Stats Interface
- * Statistics for reporting
- */
-export interface ILeaseStats {
-  leasesByStatus: {
-    draft: number;
-    pending_signature: number;
-    active: number;
-    expired: number;
-    terminated: number;
-    cancelled: number;
-  };
-  averageLeaseDuration: number;
-  totalMonthlyRent: number;
-  expiringIn30Days: number;
-  expiringIn60Days: number;
-  expiringIn90Days: number;
-  occupancyRate: number;
-  totalLeases: number;
-}
-
-/**
  * Rent Roll Item Interface
  * Individual entry in rent roll report
  */
@@ -458,12 +488,54 @@ export interface IRentRollItem {
   leaseNumber: string;
   tenantEmail: string;
   unitNumber?: string;
-  monthlyRent: number;
   status: LeaseStatus;
+  rentAmount: number;
   tenantName: string;
+  currency: string;
   startDate: Date;
   endDate: Date;
   luid: string;
+}
+
+/**
+ * Signature Interface
+ * Individual signature tracking
+ */
+export interface ILeaseSignature {
+  landlordInfo?: {
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  coTenantInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  signatureMethod: 'manual' | 'electronic';
+  userId?: Types.ObjectId | string;
+  providerSignatureId?: string;
+  ipAddress?: string;
+  role: SignerRole;
+  signedAt?: Date;
+}
+
+/**
+ * Rent Roll Report Interface
+ * Complete rent roll with summary
+ */
+export interface IRentRollReport {
+  summary: {
+    totalLeases: number;
+    monthlyRentByCurrency: Array<{ currency: string; total: number }>;
+    totalSecurityDeposits: number;
+    activeLeases: number;
+    expiringLeases: number;
+  };
+  propertyId?: Types.ObjectId | string;
+  items: IRentRollItem[];
+  propertyName?: string;
+  generatedAt: Date;
 }
 
 export interface LeaseESignatureCompletedPayload {
@@ -502,6 +574,26 @@ export interface ILeaseUserPermissions {
   canEdit: boolean;
 }
 
+/**
+ * Lease List Item Interface
+ * Simplified lease data for list views
+ */
+export interface ILeaseListItem {
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  gracePeriodDays: number;
+  leaseNumber: string;
+  status: LeaseStatus;
+  unitNumber?: string;
+  rentAmount: number;
+  tenantName: string;
+  tenantUid: string;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
 export interface LeaseESignatureSentPayload {
   signers: Array<{
     name: string;
@@ -518,63 +610,31 @@ export interface LeaseESignatureSentPayload {
 }
 
 /**
- * Rent Roll Report Interface
- * Complete rent roll with summary
+ * ============================================================================
+ * MAIN LEASE INTERFACE
+ * ============================================================================
  */
-export interface IRentRollReport {
-  summary: {
-    totalLeases: number;
-    totalMonthlyRent: number;
-    totalSecurityDeposits: number;
-    activeLeases: number;
-    expiringLeases: number;
-  };
-  propertyId?: Types.ObjectId | string;
-  items: IRentRollItem[];
-  propertyName?: string;
-  generatedAt: Date;
-}
 
 /**
- * Lease List Item Interface
- * Simplified lease data for list views
+ * Lease Document Item Interface
+ * Tracks uploaded lease documents
  */
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  leaseNumber: string;
-  monthlyRent: number;
-  status: LeaseStatus;
-  unitNumber?: string;
-  tenantName: string;
-  tenantUid: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
-}
-
-/**
- * Signature Interface
- * Individual signature tracking
- */
-export interface ILeaseSignature {
-  coTenantInfo?: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-  signatureMethod: 'manual' | 'electronic';
-  userId?: Types.ObjectId | string;
-  providerSignatureId?: string;
-  ipAddress?: string;
-  role: SignerRole;
-  signedAt?: Date;
+export interface ILeaseDocumentItem {
+  status: 'active' | 'inactive' | 'failed' | 'deleted';
+  documentType?: 'lease_agreement' | 'other';
+  uploadedBy: Types.ObjectId | string;
+  mimeType?: string;
+  uploadedAt?: Date;
+  filename: string;
+  error?: string;
+  size?: number;
+  url: string;
+  key: string;
 }
 
 /**
  * ============================================================================
- * MAIN LEASE INTERFACE
+ * FORM DATA INTERFACES
  * ============================================================================
  */
 
@@ -589,16 +649,10 @@ export interface ILeaseFees {
   securityDeposit: number;
   lateFeeAmount?: number;
   lateFeeDays?: number;
-  monthlyRent: number;
+  rentAmount: number;
   rentDueDay: number; // 1-31
   currency: string;
 }
-
-/**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
 
 /**
  * E-Signature Interface
@@ -614,22 +668,6 @@ export interface ILeaseESignature {
   completedAt?: Date;
   failedAt?: Date;
   sentAt?: Date;
-}
-
-/**
- * Lease Document Item Interface
- * Tracks uploaded lease documents
- */
-export interface ILeaseDocumentItem {
-  documentType?: 'lease_agreement' | 'other';
-  uploadedBy: Types.ObjectId | string;
-  status: 'active' | 'inactive';
-  mimeType?: string;
-  uploadedAt?: Date;
-  filename: string;
-  size?: number;
-  url: string;
-  key: string;
 }
 
 export interface LeaseTerminatedPayload {
@@ -818,33 +856,21 @@ export interface LeaseESignatureRequestedPayload {
  */
 
 /**
- * Payment Method Types
+ * Lease Template Types
  */
-export type PaymentMethodType =
-  | 'bank_transfer'
-  | 'e-transfer'
-  | 'auto-debit'
-  | 'check'
-  | 'cash'
-  | 'credit_card'
-  | 'debit_card'
-  | 'mobile_payment';
+export type LeaseTemplateType =
+  | 'generic'
+  | 'residential-single-family'
+  | 'residential-apartment'
+  | 'commercial-office'
+  | 'commercial-retail'
+  | 'short-term-rental';
 
 /**
  * ============================================================================
  * E-SIGNATURE PAYLOAD INTERFACES
  * ============================================================================
  */
-
-/**
- * Lease Template Types
- */
-export type LeaseTemplateType =
-  | 'residential-single-family'
-  | 'residential-apartment'
-  | 'commercial-office'
-  | 'commercial-retail'
-  | 'short-term-rental';
 
 /**
  * Lease Termination Data Interface
@@ -919,12 +945,6 @@ export interface ILeaseDuration {
 }
 
 /**
- * ============================================================================
- * ACTION DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Pet Policy Interface
  * Defines pet rules and associated fees
  */
@@ -935,6 +955,12 @@ export interface IPetPolicy {
   types?: string[];
   maxPets?: number;
 }
+
+/**
+ * ============================================================================
+ * ACTION DATA INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Property Types (for lease context)
@@ -958,12 +984,6 @@ export interface ILeaseActivationData {
 }
 
 /**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
  * Co-Tenant Interface
  * Additional tenants on the lease
  */
@@ -973,6 +993,12 @@ export interface ICoTenant {
   phone: string;
   name: string;
 }
+
+/**
+ * ============================================================================
+ * QUERY & FILTER INTERFACES
+ * ============================================================================
+ */
 
 /**
  * Legal Terms Interface
@@ -985,21 +1011,26 @@ export interface ILegalTerms {
 }
 
 /**
+ * Signer/Participant Role Types
+ */
+export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
+
+/**
  * ============================================================================
  * REPORTING INTERFACES
  * ============================================================================
  */
 
 /**
- * Signer/Participant Role Types
- */
-export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
-
-/**
  * Lease Approval Status Type
  * Tracks the approval state of a lease
  */
 export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
+
+/**
+ * Payment Method Types
+ */
+export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
 
 /**
  * Late Fee Types

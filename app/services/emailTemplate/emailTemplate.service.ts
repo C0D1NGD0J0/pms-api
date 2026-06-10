@@ -289,7 +289,7 @@ export class EmailTemplateService {
       // Add layout variables
       const templateVariables = {
         ...variables,
-        appName: 'Property Management System',
+        appName: 'PropertyDesk',
         year: new Date().getFullYear(),
       };
 

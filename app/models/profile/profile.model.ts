@@ -1,6 +1,5 @@
 import md5 from 'md5';
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { ProfileBackgroundCheckStatus, IProfileDocument } from '@interfaces/profile.interface';
 
 const ProfileSchema = new Schema<IProfileDocument>(
@@ -61,47 +60,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
         minlength: 2,
         trim: true,
       },
-      identification: {
-        idType: {
-          type: String,
-          enum: ['passport', 'drivers-license', 'national-id', 'corporation-license'],
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.identification');
-          },
-        },
-        issueDate: {
-          type: Date,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.issueDate');
-          },
-        },
-        expiryDate: {
-          type: Date,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.expiryDate');
-          },
-        },
-        idNumber: {
-          type: String,
-          trim: true,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.idNumber');
-          },
-        },
-        authority: { type: String, trim: true },
-        issuingState: {
-          type: String,
-          trim: true,
-          required: function (this: IProfileDocument) {
-            if (this.isNew) return false;
-            return this.isModified('accountType.issuingState');
-          },
-        },
-      },
     },
     user: {
       required: true,
@@ -129,7 +87,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         },
         retentionExpiryDate: {
           type: Date,
-          default: () => new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 7), // 7 years default
+          default: () => new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 7),
         },
         dataProcessingConsent: {
           type: Boolean,
@@ -163,7 +121,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
           ref: 'Vendor',
         },
         linkedVendorUid: {
-          // this is the primary vendor (user -> uid)
           type: String,
           trim: true,
         },
@@ -184,11 +141,9 @@ const ProfileSchema = new Schema<IProfileDocument>(
             if (this.vendorInfo?.isLinkedAccount) {
               return false;
             }
-            // not required if employeeInfo doesn't exist or is being set
             if (!this.employeeInfo || Object.keys(this.employeeInfo).length === 0) {
               return false;
             }
-            // only required for actual employees (when employeeInfo is present and not a vendor)
             return !!(this.employeeInfo.department || this.employeeInfo.jobTitle);
           },
           type: Schema.Types.ObjectId,
@@ -262,6 +217,21 @@ const ProfileSchema = new Schema<IProfileDocument>(
           of: String,
           default: undefined,
         },
+        paymentMethods: {
+          type: Map,
+          of: String,
+          default: {},
+        },
+        paymentMandates: {
+          type: Map,
+          of: String,
+          default: {},
+        },
+        cardPaymentMethods: {
+          type: Map,
+          of: String,
+          default: {},
+        },
       },
       default: null,
     },
@@ -289,10 +259,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
 
 ProfileSchema.index({ user: 1 }, { unique: true });
 
-ProfileSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
-
 ProfileSchema.virtual('fullname').get(function (this: IProfileDocument) {
   return `${this.personalInfo.firstName} ${this.personalInfo.lastName}`;
 });
@@ -302,7 +268,7 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
 
-ProfileSchema.pre('save', function (this: IProfileDocument, next) {
+ProfileSchema.pre('save', function (this: IProfileDocument) {
   if (this.isModified('settings.dataRetentionPolicy')) {
     const today = new Date();
     switch (this.settings?.gdprSettings?.dataRetentionPolicy) {
@@ -324,8 +290,6 @@ ProfileSchema.pre('save', function (this: IProfileDocument, next) {
         break;
     }
   }
-
-  next();
 });
 
 const ProfileModel = model<IProfileDocument>('Profile', ProfileSchema);

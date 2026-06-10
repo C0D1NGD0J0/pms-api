@@ -134,7 +134,7 @@ describe('VendorController Integration Tests', () => {
         {
           cuid: testClient.cuid,
           isConnected: true,
-          primaryAccountHolder: vendorUser._id,
+          primaryAccountHolderUserId: vendorUser._id,
         },
       ],
       yearsInBusiness: 5,

@@ -1,5 +1,4 @@
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import {
   PaymentProcessorAccountType,
@@ -65,11 +64,44 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     payoutsBlockedAt: {
       type: Date,
     },
+    payoutsBlockedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    payoutsPaused: {
+      type: Boolean,
+      default: false,
+    },
+    payoutsPausedReason: {
+      type: String,
+    },
+    payoutsPausedAt: {
+      type: Date,
+    },
+    disputeStats: {
+      total: { type: Number, default: 0 },
+      open: { type: Number, default: 0 },
+      lastDisputeAt: { type: Date },
+    },
     onboardedAt: {
       type: Date,
     },
     deletedAt: {
       type: Date,
+    },
+    vendor: {
+      type: Schema.Types.ObjectId,
+      ref: 'Vendor',
+      index: true,
+    },
+    vuid: {
+      type: String,
+      index: true,
+    },
+    ownerType: {
+      type: String,
+      enum: ['client', 'vendor'],
+      default: 'client',
     },
   },
   {
@@ -79,16 +111,12 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
   }
 );
 
-PaymentProcessorSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
-
 PaymentProcessorSchema.index({ cuid: 1 });
 PaymentProcessorSchema.index({ accountId: 1 }, { unique: true });
+PaymentProcessorSchema.index({ vuid: 1, cuid: 1 });
 
-PaymentProcessorSchema.pre('save', function (next) {
+PaymentProcessorSchema.pre('save', function () {
   logger.info({ ppuid: this.ppuid, cuid: this.cuid }, 'Saving payment processor');
-  next();
 });
 
 export const PaymentProcessor = model<IPaymentProcessorDocument>(

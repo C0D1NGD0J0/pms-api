@@ -32,7 +32,7 @@ const createSharedRedisConnection = (): Redis => {
       // Bull requires maxRetriesPerRequest to be null for bclient/subscriber
       // See: https://github.com/OptimalBits/bull/issues/1873
       maxRetriesPerRequest: null,
-      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 15000, // 15s in dev
+      commandTimeout: envVariables.SERVER.ENV === 'production' ? 30000 : 30000, // 30s — prevents bclient brpoplpush timeouts when concurrency > 1
       // Enable offline queue to buffer commands until Redis connects
       enableOfflineQueue: true,
       // Bull requires enableReadyCheck to be false
@@ -58,13 +58,25 @@ const createSharedRedisConnection = (): Redis => {
 
     sharedIORedisClient.on('connect', () => {
       const logger = createLogger('IORedis');
-      logger.info('IORedis client connected for Bull queues');
+      logger.debug('IORedis client connected for Bull queues');
     });
   }
   return sharedIORedisClient;
 };
 
 // Production-optimized queue options for reduced network traffic
+// Attach an error handler to a duplicated ioredis connection.
+// Without this, any error event on the duplicate bubbles up as an unhandled
+// Node.js error and crashes the worker process.
+const createDuplicate = (type: string): Redis => {
+  const dup = createSharedRedisConnection().duplicate();
+  dup.on('error', (err) => {
+    const logger = createLogger(`Bull-${type}`);
+    logger.error({ error: err }, `Bull ${type} connection error`);
+  });
+  return dup;
+};
+
 const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 6,
@@ -74,13 +86,10 @@ const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
   createClient: (type) => {
     switch (type) {
       case 'subscriber':
-        // Create duplicate for pub/sub
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('subscriber');
       case 'bclient':
-        // Create duplicate for blocking operations
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('bclient');
       case 'client':
-        // Use shared connection for commands
         return createSharedRedisConnection();
       default:
         return createSharedRedisConnection();
@@ -92,19 +101,16 @@ const PRODUCTION_QUEUE_OPTIONS: BullQueueOptions = {
 const DEVELOPMENT_QUEUE_OPTIONS: BullQueueOptions = {
   settings: {
     maxStalledCount: 3,
-    lockDuration: 300000, // 5 minutes
-    stalledInterval: 60000, // 1 minute - faster detection of stale connections
+    lockDuration: 60000, // 1 minute (down from 5m — stale jobs detected faster on dev restart)
+    stalledInterval: 15000, // 15s — quickly un-jam jobs left active by a crashed worker
   },
   createClient: (type) => {
     switch (type) {
       case 'subscriber':
-        // Create duplicate for pub/sub
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('subscriber');
       case 'bclient':
-        // Create duplicate for blocking operations
-        return createSharedRedisConnection().duplicate();
+        return createDuplicate('bclient');
       case 'client':
-        // Use shared connection for commands
         return createSharedRedisConnection();
       default:
         return createSharedRedisConnection();
@@ -301,7 +307,7 @@ export class BaseQueue<T extends JobData = JobData> {
   }
 
   /**
-   * Process jobs in the queue
+   * Process named jobs in the queue
    */
   processQueueJobs(
     name: string,
@@ -314,12 +320,36 @@ export class BaseQueue<T extends JobData = JobData> {
       );
       return;
     }
-    this.log.info(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
-    const wrappedCallback: Queue.ProcessCallbackFunction<T> = async (job) => {
-      this.log.debug(`[DISPATCH] Bull dispatched job ${job.id} (${job.name}) to processor`);
-      return callback(job);
-    };
-    this.queue.process(name, concurrency, wrappedCallback);
+    this.log.debug(`Registering processor for job '${name}' on queue '${this.queue.name}'`);
+    this.queue.process(name, concurrency, callback);
+  }
+
+  /**
+   * Register a wildcard ('*') processor that handles ALL named jobs in the queue.
+   *
+   * Bull's job dispatch (queue.js line 1203):
+   *   const handler = this.handlers[job.name] || this.handlers['*'];
+   *
+   * Registering with name '*' means every named job that has no specific handler
+   * falls back to this one. Using queue.process(concurrency, cb) WITHOUT a name
+   * registers as handlers['__default__'] — which is NOT the wildcard fallback —
+   * so named jobs would fail with "Missing process handler".
+   *
+   * Use this instead of multiple processQueueJobs() calls on the same queue —
+   * Bull's named-processor routing can be unreliable when multiple named
+   * processors share one bclient.
+   */
+  processAllQueueJobs(concurrency = 5, callback: (job: Queue.Job<T>) => Promise<any>): void {
+    if (process.env.PROCESS_TYPE !== 'worker') {
+      this.log.debug(
+        `Queue processing for ${this.queue.name} is disabled (PROCESS_TYPE='${process.env.PROCESS_TYPE}').`
+      );
+      return;
+    }
+    this.log.debug(
+      `Registering wildcard processor (concurrency=${concurrency}) on queue '${this.queue.name}'`
+    );
+    this.queue.process('*', concurrency, callback);
   }
 
   /**

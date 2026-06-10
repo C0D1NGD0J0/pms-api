@@ -2,11 +2,12 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { IPaginationQuery } from '@interfaces/utils.interface';
-import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import {
   INotificationDocument,
   INotificationFilters,
   NotificationTypeEnum,
+  RecipientTypeEnum,
   INotification,
 } from '@interfaces/notification.interface';
 
@@ -41,7 +42,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
 
   async findByNuid(nuid: string, cuid: string): Promise<INotificationDocument | null> {
     try {
-      const filter: FilterQuery<INotificationDocument> = { nuid, cuid };
+      const filter: QueryFilter<INotificationDocument> = { nuid, cuid };
       return await this.findFirst(filter);
     } catch (error) {
       this.logger.error('Error finding notification by NUID:', error);
@@ -63,39 +64,42 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     cuid: string,
     targetingInfo: { roles: string[]; vendorId?: string },
     filters?: INotificationFilters,
-    pagination?: IPaginationQuery
+    pagination?: IPaginationQuery,
+    extraFilter?: QueryFilter<INotificationDocument>
   ): Promise<{ data: INotificationDocument[]; total: number }> {
     try {
       // Build $or conditions based on recipientType filter
-      let orConditions: FilterQuery<INotificationDocument>[] = [];
+      let orConditions: QueryFilter<INotificationDocument>[] = [];
 
       if (filters?.recipientType) {
         // Filter by specific recipientType
         if (filters.recipientType === 'individual') {
           // Only individual notifications for this user
-          orConditions = [{ recipientType: 'individual', recipient: new Types.ObjectId(userId) }];
+          orConditions = [
+            { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
+          ];
         } else if (filters.recipientType === 'announcement') {
           // Only announcement notifications
           orConditions = [
             {
-              recipientType: 'announcement',
+              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
               targetRoles: { $exists: false },
               targetVendor: { $exists: false },
             },
             ...(targetingInfo.roles.length > 0
               ? [
                   {
-                    recipientType: 'announcement',
+                    recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                     targetRoles: { $in: targetingInfo.roles },
-                  },
+                  } as QueryFilter<INotificationDocument>,
                 ]
               : []),
             ...(targetingInfo.vendorId
               ? [
                   {
-                    recipientType: 'announcement',
+                    recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                     targetVendor: targetingInfo.vendorId,
-                  },
+                  } as QueryFilter<INotificationDocument>,
                 ]
               : []),
           ];
@@ -104,35 +108,36 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
         // No recipientType filter - include both individual and announcements (existing behavior)
         orConditions = [
           // Individual notifications for this user
-          { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
+          { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
           {
-            recipientType: 'announcement',
+            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
             targetRoles: { $exists: false },
             targetVendor: { $exists: false },
           },
           ...(targetingInfo.roles.length > 0
             ? [
                 {
-                  recipientType: 'announcement',
+                  recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                   targetRoles: { $in: targetingInfo.roles },
-                },
+                } as QueryFilter<INotificationDocument>,
               ]
             : []),
           ...(targetingInfo.vendorId
             ? [
                 {
-                  recipientType: 'announcement',
+                  recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                   targetVendor: targetingInfo.vendorId,
-                },
+                } as QueryFilter<INotificationDocument>,
               ]
             : []),
         ];
       }
 
-      const filter: FilterQuery<INotificationDocument> = {
+      const filter: QueryFilter<INotificationDocument> = {
         cuid,
         $or: orConditions,
         deletedAt: null,
+        ...extraFilter,
       };
 
       if (filters) {
@@ -162,12 +167,24 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
             filter.createdAt.$gte = dayjs().subtract(30, 'days').toDate();
           }
         }
+        if (filters.since) {
+          filter.createdAt = {
+            ...((filter.createdAt as object) || {}),
+            $gt: new Date(filters.since),
+          };
+        }
       }
 
       const options = {
         ...pagination,
         sort: pagination?.sort || { createdAt: -1 },
-        populate: [{ path: 'recipient', select: 'firstName lastName email' }],
+        populate: [
+          {
+            path: 'recipient',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+        ],
       };
 
       const result = await this.list(filter, options);
@@ -187,11 +204,11 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     filters?: INotificationFilters
   ): Promise<number> {
     try {
-      const filter: FilterQuery<INotificationDocument> = {
+      const filter: QueryFilter<INotificationDocument> = {
         cuid,
         $or: [
-          { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
-          { recipientType: 'announcement' },
+          { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
+          { recipientType: RecipientTypeEnum.ANNOUNCEMENT },
         ],
         isRead: false,
         deletedAt: null,
@@ -266,9 +283,9 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
 
   async markAllAsReadForUser(userId: string, cuid: string): Promise<{ modifiedCount: number }> {
     try {
-      const filter: FilterQuery<INotificationDocument> = {
+      const filter: QueryFilter<INotificationDocument> = {
         cuid,
-        recipientType: 'individual',
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
         recipient: new Types.ObjectId(userId),
         isRead: false,
         deletedAt: null,
@@ -293,9 +310,9 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     cuid: string
   ): Promise<INotificationDocument[]> {
     try {
-      const filter: FilterQuery<INotificationDocument> = {
+      const filter: QueryFilter<INotificationDocument> = {
         cuid,
-        'resourceInfo.resourceName': resourceName,
+        'resourceInfo.resourceName': resourceName as any,
         'resourceInfo.resourceId': new Types.ObjectId(resourceId),
         deletedAt: null,
       };
@@ -334,7 +351,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
-      const filter: FilterQuery<INotificationDocument> = {
+      const filter: QueryFilter<INotificationDocument> = {
         $or: [{ deletedAt: { $lt: cutoffDate } }, { expiresAt: { $lt: new Date() } }],
       };
 

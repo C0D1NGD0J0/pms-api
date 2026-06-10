@@ -19,7 +19,7 @@ export class EventListenerSetup {
       // Register infrastructure event listeners only
       emitterService.on(EventTypes.DELETE_LOCAL_ASSET, diskStorage.deleteFiles);
 
-      this.log.info('Registered infrastructure event listeners.');
+      this.log.debug('Registered infrastructure event listeners.');
     } catch (error) {
       this.log.error({ err: error }, 'Failed to register infrastructure event listeners');
       throw new Error(

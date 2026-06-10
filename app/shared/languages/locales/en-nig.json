@@ -74,6 +74,7 @@
       "userAlreadyHasRole": "User already get role {{role}}",
       "cannotRemoveLastAdmin": "We no fit remove admin role from the last administrator",
       "cannotDisconnectLastAdmin": "We no fit disconnect the last administrator",
+      "roleNotFound": "User no get the role wey you specify",
       "cannotDeleteAccountOwner": "We no fit delete account owner. Please transfer ownership to another admin or close your account instead.",
       "clientIdRequired": "Client ID dey needed",
       "identitySessionFailed": "We no fit start identity verification. Please try again.",
@@ -163,7 +164,7 @@
       "unableToGetUnitsFromProperty": "We no fit get units from property, property no dey found.",
       "unableToUpdateUnit": "We no fit update property unit.",
       "cannotUpdateDueToStatus": "We no fit update unit, because property status na {{status}}.",
-      "rentalAmountMustBeNonNegative": "Rental amount must be non-negative number",
+      "rentAmountMustBeNonNegative": "Rental amount must be non-negative number",
       "securityDepositMustBeNonNegative": "Security deposit must be non-negative number",
       "cannotSetOccupiedWhenProperty": "We no fit set unit as occupied when property dey {{status}}",
       "occupiedUnitsMustHaveRental": "Occupied units must get rental amount",
@@ -260,8 +261,7 @@
       "marketValuePositive": "Market value must be positive number",
       "propertyTaxNonNegative": "Property tax must be non-negative number",
       "invalidAssessmentDate": "Last-assessment date format no correct",
-      "taxAmountNonNegative": "Tax amount must be non-negative number",
-      "rentalAmountNonNegative": "Rental amount must be non-negative number",
+      "rentAmountNonNegative": "Rental amount must be non-negative number",
       "managementFeesNonNegative": "Management fees must be non-negative number",
       "securityDepositNonNegative": "Security deposit must be non-negative number",
       "invalidDocumentUrl": "Document URL format no correct",
@@ -375,7 +375,7 @@
     "forgotPassword": {
       "subject": "Reset Your Password",
       "greeting": "Hello {{fullname}},",
-      "message": "We receive request to reset your password. Click the button below to set new password for your Property Solutions account.",
+      "message": "We receive request to reset your password. Click the button below to set new password for your PropertyDesk account.",
       "buttonText": "Reset Password",
       "alternativeText": "If the button no work, copy and paste dis link for your browser:",
       "expiryText": "Dis link go expire for 1 hour. If you no request password reset, please ignore dis email."
@@ -383,7 +383,7 @@
     "registration": {
       "subject": "Activate Your Account",
       "greeting": "Hello {{fullname}},",
-      "message": "Welcome to Property Solutions! To complete your account setup, please click the button below to activate your account.",
+      "message": "Welcome to PropertyDesk! To complete your account setup, please click the button below to activate your account.",
       "buttonText": "Activate Account",
       "alternativeText": "If the button no work, copy and paste dis link for your browser:",
       "expiryText": "Dis link go expire for 2 hours. If you no create account, please ignore dis email."

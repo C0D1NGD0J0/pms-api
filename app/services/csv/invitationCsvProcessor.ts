@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { ROLES } from '@shared/constants/roles.constants';
 import { IInvitationData } from '@interfaces/invitation.interface';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { InvitationDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import {
@@ -349,7 +349,7 @@ export class InvitationCsvProcessor {
 
   private postProcessInvitations = async (
     invitations: IInvitationCsvData[],
-    _context: InvitationProcessingContext
+    context: InvitationProcessingContext
   ): Promise<{ validItems: IInvitationCsvData[]; invalidItems: any[] }> => {
     const validItems: IInvitationCsvData[] = [];
     const invalidItems: any[] = [];
@@ -427,6 +427,32 @@ export class InvitationCsvProcessor {
       // Others maintain original order
       return 0;
     });
+
+    // Tenant invitation cap: unverified accounts may have at most 5 pending tenant invitations
+    const client = await this.clientDAO.getClientByCuid(context.cuid);
+    if (client && !client.isVerified) {
+      const tenantRowsInBatch = validItems.filter((inv) => inv.role === ROLES.TENANT);
+      if (tenantRowsInBatch.length > 0) {
+        const pendingCount = await this.invitationDAO.countDocuments({
+          client: client._id,
+          role: IUserRole.TENANT,
+          status: 'pending',
+        });
+        const allowed = Math.max(0, 5 - pendingCount);
+        if (tenantRowsInBatch.length > allowed) {
+          const toReject = tenantRowsInBatch.slice(allowed);
+          toReject.forEach((inv) => {
+            const idx = validItems.indexOf(inv);
+            if (idx !== -1) validItems.splice(idx, 1);
+            invalidItems.push({
+              email: inv.inviteeEmail,
+              error:
+                'Unverified account limit: max 5 pending tenant invitations. Verify your account to invite more.',
+            });
+          });
+        }
+      }
+    }
 
     return {
       validItems,

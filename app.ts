@@ -87,7 +87,9 @@ export class App implements IAppSetup {
         verify: (req: any, res, buf) => {
           if (
             req.originalUrl === '/api/v1/webhooks/stripe' ||
-            req.originalUrl === '/api/v1/webhooks/stripe/connect'
+            req.originalUrl === '/api/v1/webhooks/stripe/connect' ||
+            req.originalUrl === '/api/v1/webhooks/boldsign' ||
+            req.originalUrl.startsWith('/api/v1/webhooks/invoices/')
           ) {
             req.rawBody = buf;
           }
@@ -110,11 +112,7 @@ export class App implements IAppSetup {
     app.use(contextBuilder);
     app.use(detectLanguage);
     app.use(setUserLanguage);
-    app.use(
-      `${this.BASE_PATH}/webhooks`,
-      // express.raw({ type: 'application/json' }),
-      routes.webhookRoutes
-    );
+    app.use(`${this.BASE_PATH}/webhooks`, routes.webhookRoutes);
     app.use(`${this.BASE_PATH}/healthcheck`, async (req, res) => {
       try {
         const redisService = req.container.resolve<RedisService>('redisService');
@@ -162,13 +160,15 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);
     app.use(`${this.BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${this.BASE_PATH}/vendors`, routes.vendorRoutes);
+    app.use(`${this.BASE_PATH}/metrics`, routes.metricsRoutes);
+    app.use(`${this.BASE_PATH}/expenses`, routes.expenseRoutes);
+    app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${this.BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${this.BASE_PATH}/notifications`, routes.notificationRoutes);
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
-    app.use(`${this.BASE_PATH}/payments`, routes.paymentRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);
-    // app.use(`${this.BASE_PATH}/service-requests`, routes.serviceRequestRoutes);
+    app.use(`${this.BASE_PATH}/maintenance_requests`, routes.maintenanceRequestRoutes);
     app.all('*', (req: Request, res: Response) => {
       res.status(httpStatusCodes.NOT_FOUND).json({ message: 'Invalid endpoint.' });
     });

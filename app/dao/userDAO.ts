@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Lease } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
-import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import { hashGenerator, createLogger, escapeRegExp } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
@@ -132,7 +132,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         throw new Error('User ID or email is required to create activation token.');
       }
       const token = hashGenerator({});
-      const filter: FilterQuery<IUserDocument> = { deletedAt: null, isActive: false };
+      const filter: QueryFilter<IUserDocument> = { deletedAt: null, isActive: false };
       if (userId && email) {
         filter.$or = [{ _id: userId }, { email }];
       } else if (userId) {
@@ -230,7 +230,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
   async getUsersByClientId(
     clientId: string,
-    filter: FilterQuery<IUserDocument> = {},
+    filter: QueryFilter<IUserDocument> = {},
     opts?: IFindOptions
   ): ListResultWithPagination<IUserDocument[]> {
     try {
@@ -282,7 +282,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const { role, department, status, search } = filterOptions;
 
-      const query: FilterQuery<IUserDocument> = {
+      const query: QueryFilter<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
         deletedAt: null,
@@ -477,6 +477,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         primaryRole: invitationData.role,
         clientDisplayName: client.displayName,
         linkedVendorUid: invitationData.role === ROLES.VENDOR ? linkedVendorUid : null,
+        requiresOnboarding: true,
       };
 
       const user = await this.insert(
@@ -549,6 +550,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           primaryRole: role,
           clientDisplayName: client.clientDisplayName || '',
           linkedVendorUid: role === ROLES.VENDOR ? linkedVendorUid : null,
+          requiresOnboarding: true,
         };
 
         return await this.updateById(
@@ -639,11 +641,16 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     opts?: IFindOptions
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
-      const query: FilterQuery<IUserDocument> = {
+      // Include both team members (linkedVendorUid set) and the primary account
+      // holder (linkedVendorUid is null, primaryRole is 'vendor')
+      const query: QueryFilter<IUserDocument> = {
         'cuids.cuid': cuid,
-        'cuids.linkedVendorUid': vendorUid,
         'cuids.isConnected': true,
         deletedAt: null,
+        $or: [
+          { 'cuids.linkedVendorUid': vendorUid },
+          { 'cuids.linkedVendorUid': null, 'cuids.primaryRole': 'vendor' },
+        ],
       };
 
       return await this.list(query, opts);
@@ -666,7 +673,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }> {
     try {
       // Get all users (optionally filtered by client)
-      const userQuery: FilterQuery<IUserDocument> = { deletedAt: null };
+      const userQuery: QueryFilter<IUserDocument> = { deletedAt: null };
       if (cuid) {
         userQuery['cuids.cuid'] = cuid;
       }
@@ -710,8 +717,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               phoneNumber: '',
               location: 'Unknown',
             },
-            lang: 'en',
-            timeZone: 'UTC',
+            settings: {
+              lang: 'en',
+              timeZone: 'UTC',
+            },
             policies: {
               tos: {
                 accepted: false,
@@ -893,7 +902,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                   status: 'active',
                 },
               },
-              { $project: { 'fees.monthlyRent': 1, 'property.id': 1 } },
+              { $project: { 'fees.rentAmount': 1, 'property.id': 1 } },
             ],
             as: 'activeLeasesDocs',
           },
@@ -960,7 +969,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
               },
             },
             totalRent: {
-              $sum: { $sum: '$activeLeasesDocs.fees.monthlyRent' },
+              $sum: { $sum: '$activeLeasesDocs.fees.rentAmount' },
             },
             backgroundCheckDistribution: {
               $push: '$profile.tenantInfo.backgroundCheckStatus',
@@ -1112,6 +1121,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             email: 1,
             isActive: 1,
             createdAt: 1,
+            profileId: '$profile._id',
             isConnected: {
               $let: {
                 vars: {
@@ -1126,6 +1136,22 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
                   },
                 },
                 in: { $ifNull: ['$$conn.isConnected', false] },
+              },
+            },
+            isFormerTenant: {
+              $let: {
+                vars: {
+                  conn: {
+                    $first: {
+                      $filter: {
+                        input: { $ifNull: ['$cuids', []] },
+                        as: 'c',
+                        cond: { $eq: ['$$c.cuid', cuid] },
+                      },
+                    },
+                  },
+                },
+                in: { $ifNull: ['$$conn.isFormerTenant', false] },
               },
             },
             firstName: { $ifNull: ['$profile.personalInfo.firstName', ''] },
@@ -1151,6 +1177,12 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             },
             phoneNumber: '$profile.personalInfo.phoneNumber',
             avatar: '$profile.personalInfo.avatar',
+            location: { $ifNull: ['$profile.personalInfo.location', ''] },
+            dob: '$profile.personalInfo.dob',
+            headline: { $ifNull: ['$profile.personalInfo.headline', ''] },
+            bio: { $ifNull: ['$profile.personalInfo.bio', ''] },
+            settings: { $ifNull: ['$profile.settings', {}] },
+            policies: { $ifNull: ['$profile.policies', {}] },
             joinedDate: '$createdAt',
             tenantInfo: {
               employerInfo: {
@@ -1231,7 +1263,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
           status: lease.status,
           propertyName: lease.property?.address || 'Unknown Property',
           unitNumber: lease.unit?.unitNumber || '',
-          monthlyRent: lease.fees?.monthlyRent || 0,
+          rentAmount: lease.fees?.rentAmount || 0,
           leaseStart: lease.duration?.startDate || lease.startDate,
           leaseEnd: lease.duration?.endDate || lease.endDate,
         }));
@@ -1257,5 +1289,56 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       this.logger.error('Error clearing onboarding flag:', error);
       throw this.throwErrorHandler(error);
     }
+  }
+
+  async getUserStats(cuid: string): Promise<{ total: number; tenants: number; staff: number }> {
+    const results = await this.aggregate([
+      {
+        $match: {
+          'cuids.cuid': cuid,
+          'cuids.isConnected': true,
+          deletedAt: null,
+        },
+      },
+      { $unwind: '$cuids' },
+      { $match: { 'cuids.cuid': cuid, 'cuids.isConnected': true } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          tenants: {
+            $sum: { $cond: [{ $in: [ROLES.TENANT, '$cuids.roles'] }, 1, 0] },
+          },
+          staff: {
+            $sum: {
+              $cond: [
+                {
+                  $gt: [
+                    {
+                      $size: {
+                        $setIntersection: [
+                          '$cuids.roles',
+                          [ROLES.ADMIN, ROLES.STAFF, ROLES.SUPER_ADMIN],
+                        ],
+                      },
+                    },
+                    0,
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const row = (results[0] || {}) as any;
+    return {
+      total: row.total || 0,
+      tenants: row.tenants || 0,
+      staff: row.staff || 0,
+    };
   }
 }

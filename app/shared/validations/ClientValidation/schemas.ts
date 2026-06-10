@@ -1,6 +1,19 @@
 import { z } from 'zod';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
+const TenantFeaturesSchema = z.object({
+  tenantPortalActive: z.boolean().optional(),
+  onlinePayments: z.boolean().optional(),
+  maintenanceRequests: z.boolean().optional(),
+  smsNotifications: z.boolean().optional(),
+  visitorPass: z.boolean().optional(),
+});
+
+export const UpdateTenantFeaturesSchema = TenantFeaturesSchema.refine(
+  (data) => Object.keys(data).length > 0,
+  { message: 'At least one tenant feature must be provided' }
+);
+
 export const ClientSettingsSchema = z.object({
   notificationPreferences: z
     .object({
@@ -28,6 +41,8 @@ export const ClientSettingsSchema = z.object({
     .string()
     .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code format')
     .optional(),
+  vendorPayoutMode: z.enum(['express', 'platform_hold']).optional(),
+  tenantFeatures: TenantFeaturesSchema.optional(),
 });
 
 export const CompanyProfileSchema = z.object({
@@ -46,7 +61,6 @@ export const CompanyProfileSchema = z.object({
     .trim()
     .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
     .optional(),
-  industry: z.string().trim().optional(),
   contactInfo: z
     .object({
       email: z.string().email('Invalid email format').optional(),
@@ -253,6 +267,20 @@ export const UpdateTenantProfileSchema = z.object({
             notes: z.string().trim().optional(),
           })
         )
+        .optional(),
+    })
+    .optional(),
+  settings: z
+    .object({
+      notifications: z
+        .object({
+          emailNotifications: z.boolean().optional(),
+          inAppNotifications: z.boolean().optional(),
+          maintenance: z.boolean().optional(),
+          payments: z.boolean().optional(),
+          system: z.boolean().optional(),
+          announcements: z.boolean().optional(),
+        })
         .optional(),
     })
     .optional(),

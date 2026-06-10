@@ -1,10 +1,22 @@
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { envVariables } from '@shared/config';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PropertyUnitDAO, ProfileDAO, LeaseDAO } from '@dao/index';
+import { IClientDocument } from '@interfaces/client.interface';
+import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
+// Pro-ration logic lives in the canonical financial utility.
+// Re-exported here so existing call sites need no changes.
+export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
+export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
-import { IPropertyUnitDocument, IPropertyDocument, IProfileWithUser } from '@interfaces/index';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
+import {
+  IPropertyUnitDocument,
+  IPropertyDocument,
+  IProfileWithUser,
+  OwnershipType,
+} from '@interfaces/index';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -28,6 +40,7 @@ import {
   PROPERTY_STAFF_ROLES,
   calcDaysRemaining,
   calcLeaseProgress,
+  LEASE_CONSTANTS,
   calcDaysElapsed,
   MoneyUtils,
 } from '@utils/index';
@@ -136,7 +149,7 @@ export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => 
   }
 
   // Check rent amount
-  if (!lease.fees?.monthlyRent || lease.fees.monthlyRent <= 0) {
+  if (!lease.fees?.rentAmount || lease.fees.rentAmount <= 0) {
     errors.rentAmount = ['Monthly rent amount is required and must be greater than 0'];
   }
 
@@ -269,6 +282,30 @@ export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
   ) {
     throw new ValidationRequestError({
       message: 'Lease has already been sent for signatures',
+    });
+  }
+
+  // Date guard 1: no backdated start dates
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const startDate = new Date(lease.duration.startDate);
+  startDate.setHours(0, 0, 0, 0);
+
+  if (startDate < today) {
+    throw new ValidationRequestError({
+      message:
+        'Lease start date cannot be in the past. Update the start date before sending for signature.',
+    });
+  }
+
+  // Date guard 2: end date must leave a meaningful remaining term
+  const endDate = new Date(lease.duration.endDate);
+  const remainingDays = Math.floor((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (remainingDays < LEASE_CONSTANTS.MINIMUM_ACTIVE_DURATION_DAYS) {
+    throw new ValidationRequestError({
+      message: `Lease end date leaves only ${remainingDays} day(s) remaining. At least ${LEASE_CONSTANTS.MINIMUM_ACTIVE_DURATION_DAYS} days are required from today.`,
     });
   }
 };
@@ -861,9 +898,9 @@ export const fetchLeaseByLuid = async (
  * Calculate financial summary for a lease
  */
 export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
-  const totalMonthlyRent = (lease as any).totalMonthlyFees || lease.fees.monthlyRent;
-  const petMonthlyFee = lease.petPolicy?.monthlyFee || 0;
-  const securityDeposit = lease.fees.securityDeposit;
+  const { baseRent, managementFee, petMonthlyFee, petDeposit, securityDeposit, totalMonthlyRent } =
+    computeLeaseMonthlyFees(lease);
+  const currency = lease.fees.currency || 'USD';
 
   const now = new Date();
   const startDate = new Date(lease.duration.startDate);
@@ -872,43 +909,92 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
   );
 
+  // Pro-rate only the base rent; pet fee and management fee are added as flat/separate items below.
+  const proRated = proRateAmount(baseRent, startDate);
+  const proRatedManagementFee =
+    managementFee > 0 ? proRateAmount(managementFee, startDate).amount : 0;
+
+  // First payment = pro-rated base rent + pro-rated management fee (if opted in)
+  //               + pet monthly fee (flat, first month) + pet deposit + security deposit
+  const firstPaymentCents =
+    proRated.amount + proRatedManagementFee + petMonthlyFee + petDeposit + securityDeposit;
+
+  const endDate = new Date(lease.duration.endDate);
+  const lastMonthProRated = proRateLastMonth(baseRent, endDate);
+
+  const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
+
   return {
-    monthlyRent: MoneyUtils.formatCurrency(totalMonthlyRent, lease.fees.currency || 'USD'),
-    monthlyRentRaw: totalMonthlyRent,
-    petFee:
-      petMonthlyFee > 0
-        ? MoneyUtils.formatCurrency(petMonthlyFee, lease.fees.currency || 'USD')
-        : undefined,
+    rentAmount: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
+    rentAmountRaw: totalMonthlyRent,
+    baseRentRaw: baseRent,
+    petFee: petMonthlyFee > 0 ? MoneyUtils.formatCurrency(petMonthlyFee, currency) : undefined,
     petFeeRaw: petMonthlyFee,
-    securityDeposit: MoneyUtils.formatCurrency(securityDeposit, lease.fees.currency || 'USD'),
+    petDeposit: petDeposit > 0 ? MoneyUtils.formatCurrency(petDeposit, currency) : undefined,
+    petDepositRaw: petDeposit,
+    managementFee:
+      managementFee > 0 ? MoneyUtils.formatCurrency(managementFee, currency) : undefined,
+    managementFeeRaw: managementFee,
+    securityDeposit: MoneyUtils.formatCurrency(securityDeposit, currency),
     securityDepositRaw: securityDeposit,
-    currency: lease.fees.currency || 'USD',
+    currency,
     rentDueDay: lease.fees.rentDueDay,
     lateFeeAmount: lease.fees.lateFeeAmount,
     lateFeeDays: lease.fees.lateFeeDays,
     lateFeeType: lease.fees.lateFeeType,
+    lateFeePercentage: lease.fees.lateFeePercentage,
     acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
     totalExpected: totalMonthlyRent * monthsElapsed,
     totalPaid: 0,
     totalOwed: 0,
     lastPaymentDate: null,
-    nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay),
+    nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay, startDate),
+    // First-payment breakdown (pro-rated base rent at move-in — pet fee and management fee separate)
+    proRatedFirstMonthAmount: proRated.amount,
+    proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRated.amount, currency),
+    proRatedManagementFeeAmount: proRatedManagementFee,
+    proRatedDays: proRated.daysCharged,
+    proRatedDaysInMonth: proRated.daysInMonth,
+    isFirstMonthFullMonth: proRated.isFullMonth,
+    firstPaymentAmount: firstPaymentCents,
+    firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentCents, currency),
+    firstPaymentDate: startDate,
+    firstPaymentMonth: startMonth,
+    // Last-month breakdown (pro-rated base rent based on lease end date)
+    proRatedLastMonthAmount: lastMonthProRated.amount,
+    proRatedLastMonthFormatted: MoneyUtils.formatCurrency(lastMonthProRated.amount, currency),
+    proRatedLastMonthDays: lastMonthProRated.daysCharged,
+    proRatedLastMonthDaysInMonth: lastMonthProRated.daysInMonth,
+    proRatedLastMonthDailyRate: lastMonthProRated.dailyRate,
+    isLastMonthFullMonth: lastMonthProRated.isFullMonth,
   };
 };
 
 /**
- * Calculate next payment date based on rent due day
+ * Calculate next payment date based on rent due day and lease start date.
+ *
+ * - If the lease hasn't started yet (startDate >= today): first payment is due on move-in day.
+ * - Otherwise: next occurrence of rentDueDay from today.
  */
-export const calculateNextPaymentDate = (rentDueDay: number): Date => {
-  const now = new Date();
-  const nextPayment = new Date(now.getFullYear(), now.getMonth(), rentDueDay);
+export const calculateNextPaymentDate = (rentDueDay: number, startDate: Date): Date => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  if (nextPayment < now) {
-    nextPayment.setMonth(nextPayment.getMonth() + 1);
+  const start = new Date(startDate);
+  start.setHours(0, 0, 0, 0);
+
+  if (start >= today) {
+    return new Date(startDate);
   }
 
+  const nextPayment = new Date(today.getFullYear(), today.getMonth(), rentDueDay);
+  if (nextPayment <= today) {
+    nextPayment.setMonth(nextPayment.getMonth() + 1);
+  }
   return nextPayment;
 };
+
+export type { LeaseMonthlyFees } from '@utils/financial.utils';
 
 /**
  * Get user permissions for a lease based on role
@@ -1107,7 +1193,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       moveInDate: renewalStartDate.toISOString().split('T')[0],
     },
     fees: {
-      monthlyRent: lease.fees?.monthlyRent || 0,
+      rentAmount: lease.fees?.rentAmount || 0,
       currency: lease.fees?.currency || 'USD',
       rentDueDay: lease.fees?.rentDueDay || 1,
       securityDeposit: lease.fees?.securityDeposit || 0,
@@ -1159,5 +1245,162 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     },
     // renewalFormData is now available via separate endpoint: GET /leases/:cuid/:luid/renewal-form-data
     renewalFormData: includeFormData ? renewalFormData : undefined,
+  };
+}
+
+// SECTION 7: PDF & SIGNATURE HELPERS
+
+/**
+ * Returns the active lease agreement PDF document item, if one exists.
+ */
+export const findActiveLeasePDF = (lease: ILeaseDocument) =>
+  lease.leaseDocuments?.find(
+    (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
+  );
+
+/**
+ * Builds BoldSign sender info from client profile.
+ * Falls back to env defaults for non-enterprise accounts.
+ */
+export const buildSenderInfo = (client: IClientDocument): { email: string; name: string } => {
+  if (
+    client.accountType?.isEnterpriseAccount &&
+    client.companyProfile?.companyEmail &&
+    client.companyProfile?.legalEntityName
+  ) {
+    return {
+      email: client.companyProfile.companyEmail,
+      name: client.companyProfile.legalEntityName,
+    };
+  }
+  return {
+    email: envVariables.BOLDSIGN.DEFAULT_SENDER_EMAIL,
+    name: envVariables.BOLDSIGN.DEFAULT_SENDER_NAME,
+  };
+};
+
+/**
+ * Creates a system-level request context for cron/background calls
+ * that need to invoke service methods expecting IRequestContext.
+ */
+export const createSystemContext = (cuid: string, luid: string): IRequestContext =>
+  ({
+    request: { params: { cuid, luid } } as any,
+    currentuser: { uid: 'system', sub: 'system', client: { cuid, role: 'admin' } } as any,
+  }) as IRequestContext;
+
+export type LandlordInfo = {
+  landlordName?: string;
+  landlordAddress?: string;
+  landlordEmail?: string;
+  landlordPhone?: string;
+  isExternalOwner?: boolean;
+  managementCompanyName?: string;
+  managementCompanyAddress?: string;
+  managementCompanyEmail?: string;
+  managementCompanyPhone?: string;
+};
+
+interface LandlordInfoDAOs {
+  propertyDAO: PropertyDAO;
+  profileDAO: ProfileDAO;
+  clientDAO: ClientDAO;
+}
+
+/**
+ * Resolves landlord / management company info for a property.
+ * Pass `requireManagementAuth: true` when the caller needs the property
+ * to be explicitly authorized for management (e.g. lease creation).
+ */
+export async function buildLandlordInfo(
+  cuid: string,
+  propertyId: string,
+  daos: LandlordInfoDAOs,
+  options?: { requireManagementAuth?: boolean }
+): Promise<LandlordInfo> {
+  const { clientDAO, propertyDAO, profileDAO } = daos;
+
+  const client = await clientDAO.getClientByCuid(cuid);
+  if (!client) {
+    throw new BadRequestError({ message: 'Client not found' });
+  }
+
+  const property = await propertyDAO.findFirst(
+    { _id: propertyId, cuid, deletedAt: null },
+    { select: '+owner +authorization' }
+  );
+
+  if (!property) {
+    throw new BadRequestError({ message: 'Property not found' });
+  }
+
+  if (options?.requireManagementAuth && !property.isManagementAuthorized()) {
+    throw new BadRequestError({
+      message: 'Property has not been authorized for management.',
+    });
+  }
+
+  let managementInfo;
+  if (client.accountType.isEnterpriseAccount && client.companyProfile) {
+    managementInfo = {
+      managementCompanyName: client.companyProfile?.legalEntityName,
+      managementCompanyAddress: client.companyProfile?.companyAddress,
+      managementCompanyEmail: client.companyProfile?.companyEmail,
+      managementCompanyPhone: client.companyProfile?.companyPhone,
+    };
+
+    if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
+      return {
+        ...managementInfo,
+        landlordName: property.owner.name,
+        landlordAddress: property.owner.notes || 'N/A',
+        landlordEmail: property.owner.email || 'N/A',
+        landlordPhone: property.owner.phone || 'N/A',
+        isExternalOwner: true,
+      };
+    }
+
+    if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
+      return {
+        landlordName: client.companyProfile?.legalEntityName || 'N/A',
+        landlordAddress: client.companyProfile?.companyAddress || 'N/A',
+        landlordEmail: client.companyProfile?.companyEmail || 'N/A',
+        landlordPhone: client.companyProfile?.companyPhone || 'N/A',
+        isExternalOwner: false,
+      };
+    }
+  }
+
+  if (!client.accountType.isEnterpriseAccount) {
+    if (
+      (property.owner?.type === OwnershipType.SELF_OWNED ||
+        property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
+      property.owner.name
+    ) {
+      return {
+        landlordName: property.owner.name,
+        landlordAddress: property.owner.notes || 'N/A',
+        landlordEmail: property.owner.email || 'N/A',
+        landlordPhone: property.owner.phone || 'N/A',
+        isExternalOwner: false,
+      };
+    }
+  }
+
+  const profile = (await profileDAO.findFirst(
+    { user: client.accountAdmin.toString() },
+    { populate: 'user' }
+  )) as unknown as IProfileWithUser;
+
+  return {
+    landlordName:
+      client.companyProfile?.legalEntityName ||
+      `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
+    landlordAddress:
+      client.companyProfile?.companyAddress || profile.personalInfo.location || 'N/A',
+    landlordEmail: client.companyProfile?.companyEmail || `${profile.user.email || 'N/A'}`,
+    landlordPhone:
+      client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
+    isExternalOwner: false,
   };
 }

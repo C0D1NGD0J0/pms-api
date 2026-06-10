@@ -1,0 +1,20 @@
+Your Request is Being Handled
+==============================
+
+Hi <%= tenant && (tenant.firstName || tenant.email) ? (tenant.firstName || tenant.email) : 'Resident' %>,
+
+Good news — a vendor has accepted your maintenance request and will be in touch to schedule the work.
+
+REQUEST DETAILS
+---------------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Category:    <%= request.category.replace(/_/g, ' ') %>
+Priority:    <%= request.priority.toUpperCase() %>
+<% if (request.assignedTechnician && request.assignedTechnician.name) { %>Technician:  <%= request.assignedTechnician.name %><% if (request.assignedTechnician.phone) { %> — <%= request.assignedTechnician.phone %><% } %>
+<% } %><% if (request.scheduledDate) { %>Scheduled:   <%= new Date(request.scheduledDate).toLocaleDateString() %>
+<% } %>
+You will be contacted to confirm the schedule. Please ensure access is available at the agreed time.
+
+Log in to the resident portal to track the status of your request.
+

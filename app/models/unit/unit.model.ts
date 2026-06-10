@@ -1,5 +1,6 @@
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
+import { MoneyUtils } from '@utils/money.utils';
+import { calcRentAdjustment } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
 import {
   PropertyUnitStatusEnum as UnitStatusEnum,
@@ -61,19 +62,15 @@ const UnitSchema = new Schema<IUnitDocument>(
         type: Number,
         required: true,
         min: 0,
-        get: (val: number) => {
-          return (val / 100).toFixed(2);
-        },
-        set: (val: number) => val * 100,
+        get: (val: number) => MoneyUtils.centsToDisplay(val),
+        set: (val: number) => MoneyUtils.toCents(val),
       },
       securityDeposit: {
         type: Number,
         min: 0,
         default: 0,
-        get: (val: number) => {
-          return (val / 100).toFixed(2);
-        },
-        set: (val: number) => val * 100,
+        get: (val: number) => MoneyUtils.centsToDisplay(val),
+        set: (val: number) => MoneyUtils.toCents(val),
       },
     },
     specifications: {
@@ -211,10 +208,6 @@ const UnitSchema = new Schema<IUnitDocument>(
 UnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
 UnitSchema.index({ cuid: 1, status: 1 });
 
-UnitSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
-
 UnitSchema.virtual('leases', {
   ref: 'Lease',
   localField: '_id',
@@ -227,7 +220,7 @@ UnitSchema.virtual('maintenanceRequests', {
   foreignField: 'unitId',
 });
 
-UnitSchema.pre('save', function (this: IUnitDocument, next) {
+UnitSchema.pre('save', function (this: IUnitDocument) {
   if (
     this.isModified('inspections') &&
     this.inspections &&
@@ -239,7 +232,6 @@ UnitSchema.pre('save', function (this: IUnitDocument, next) {
     );
     this.lastInspectionDate = sortedInspections[0].inspectionDate;
   }
-  next();
 });
 
 UnitSchema.methods.softDelete = async function (userId: string) {
@@ -309,16 +301,11 @@ UnitSchema.methods.calculateRentAdjustment = function (percentage: number) {
   if (percentage <= 0) {
     throw new Error('Adjustment percentage must be positive');
   }
-
-  const currentRent = parseFloat(this.fees.rentAmount);
-  const newRent = currentRent * (1 + percentage / 100);
-
-  return {
-    oldAmount: currentRent,
-    newAmount: newRent,
-    difference: newRent - currentRent,
-    percentageApplied: percentage,
-  };
+  const currentRentCents = this.get('fees.rentAmount', null, { getters: false });
+  if (typeof currentRentCents !== 'number') {
+    throw new Error('Unit rent amount must be stored as a numeric cents value');
+  }
+  return calcRentAdjustment(currentRentCents, percentage);
 };
 
 UnitSchema.methods.applyRentAdjustment = async function (percentage: number, userId: string) {
@@ -328,7 +315,7 @@ UnitSchema.methods.applyRentAdjustment = async function (percentage: number, use
   return this;
 };
 
-UnitSchema.pre('validate', async function (next) {
+UnitSchema.pre('validate', async function () {
   try {
     if (this.isNew || this.isModified('propertyId')) {
       const PropertyModel = model('Property');
@@ -339,13 +326,12 @@ UnitSchema.pre('validate', async function (next) {
       });
 
       if (!property) {
-        return next(new Error('Associated property does not exist or has been deleted'));
+        throw new Error('Associated property does not exist or has been deleted');
       }
     }
-    next();
   } catch (error) {
     logger.error('Error in unit pre-validate hook:', error);
-    next(error);
+    throw error;
   }
 });
 

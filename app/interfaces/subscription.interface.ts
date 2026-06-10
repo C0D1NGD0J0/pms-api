@@ -1,16 +1,17 @@
 import { Document, Types } from 'mongoose';
 
+export enum ISubscriptionStatus {
+  PENDING_PAYMENT = 'pending_payment',
+  PAST_DUE = 'past_due',
+  INACTIVE = 'inactive',
+  ACTIVE = 'active',
+}
+
 export enum IPaymentGatewayProvider {
   PAYSTACK = 'paystack',
   STRIPE = 'stripe',
   PAYPAL = 'paypal',
   NONE = 'none',
-}
-
-export enum ISubscriptionStatus {
-  PENDING_PAYMENT = 'pending_payment',
-  INACTIVE = 'inactive',
-  ACTIVE = 'active',
 }
 
 export interface ISubscriptionPlansConfig {
@@ -40,11 +41,14 @@ export interface ISubscriptionPlansConfig {
   };
   features: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   pricing: {
     monthly: {
@@ -61,6 +65,7 @@ export interface ISubscriptionPlansConfig {
     maxProperties: number;
     maxUnits: number;
     maxVendors: number;
+    manualRecordQuota?: number;
   };
   transactionFeePercent: number;
   disabledFeatures?: string[];
@@ -84,6 +89,14 @@ export interface ISubscriptionPlanUsage {
     maxAdditionalSeats: number;
     additionalSeatPriceCents: number;
     availableForPurchase: number;
+  };
+  manualRecords: {
+    countThisPeriod: number;
+    quota: number;
+    remaining: number;
+    overageFeeCents: number;
+    overageCount: number;
+    projectedOverageCents: number;
   };
   verification: {
     isVerified: boolean;
@@ -119,11 +132,18 @@ export interface ISubscriptionPlanUsage {
 export interface ISubscription {
   entitlements: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
+  };
+  manualRecords?: {
+    countThisPeriod: number;
+    periodStart: Date;
   };
   billingInterval: 'monthly' | 'annual';
   billing: ISubscriptionBilling;
@@ -147,15 +167,18 @@ export interface ISubscription {
 export interface ISubscriptionEntitlements {
   entitlements: {
     eSignature: boolean;
-    RepairRequestService: boolean;
+    MaintenanceRequestService: boolean;
     VisitorPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
+    vendorManagement: boolean;
     prioritySupport?: boolean;
+    aiTriage: boolean;
+    aiInvoiceScanning: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;
-    reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+    reason: 'pending_signup' | 'expired' | 'grace_period' | 'past_due' | null;
     gracePeriodEndsAt: Date | null;
     daysUntilDowngrade: number | null;
   };

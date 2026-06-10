@@ -7,8 +7,10 @@ import {
   FilterLeasesSchema,
   LeasePreviewSchema,
   LeaseIdParamSchema,
+  ApproveLeaseSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
+  RejectLeaseSchema,
   RenewLeaseSchema,
 } from './schemas';
 
@@ -24,4 +26,6 @@ export class LeaseValidations {
   static previewLease = LeasePreviewSchema;
   static renewLease = RenewLeaseSchema;
   static leaseIdParam = LeaseIdParamSchema;
+  static approveLease = ApproveLeaseSchema;
+  static rejectLease = RejectLeaseSchema;
 }

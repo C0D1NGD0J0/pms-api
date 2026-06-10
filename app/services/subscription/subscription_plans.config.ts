@@ -1,8 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { calcGatewayFee } from '@utils/financial.utils';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
-const CONFIG_PATH = path.join(process.cwd(), 'configs', 'platform.config.json');
+const CONFIG_PATH = path.join(__dirname, 'platform.config.json');
 let platformConfig: any;
 
 try {
@@ -122,6 +123,15 @@ export class SubscriptionPlanConfig {
     return config.transactionFeePercent;
   }
 
+  public getAchPercentRate(): number {
+    return platformConfig.achPercentRate ?? 1.75;
+  }
+
+  public calculateAchApplicationFee(amountInCents: number): number {
+    const rate = this.getAchPercentRate();
+    return Math.round(amountInCents * (rate / 100));
+  }
+
   public getFormattedPrice(
     planName: PlanName,
     billingInterval: 'monthly' | 'annual' = 'monthly'
@@ -236,15 +246,25 @@ export class SubscriptionPlanConfig {
    * Calculate payment gateway processing fee (ESTIMATION ONLY)
    * @param amountInCents - Transaction amount in cents
    * @param provider - Payment gateway provider
+   * @param paymentMethodType - 'auto-debit' for ACH/ACSS bank debit, anything else uses card rate
    * @returns Estimated processing fee in cents
    *
    * IMPORTANT: This is an ESTIMATE for budgeting purposes.
    * Actual fees vary by card type, country, etc.
    * Update payment record with actual fees from gateway API after payment succeeds.
    */
-  public calculatePaymentGatewayFee(amountInCents: number, provider: string = 'stripe'): number {
-    const fees = this.getPaymentGatewayFees(provider);
-    return Math.round((amountInCents * fees.percentRate) / 100) + fees.fixedFeeCents;
+  public calculatePaymentGatewayFee(
+    amountInCents: number,
+    provider: string = 'stripe',
+    paymentMethodType?: string
+  ): number {
+    const gateway = platformConfig.paymentGateways[provider];
+    if (!gateway) {
+      throw new Error(`Payment gateway not found: ${provider}`);
+    }
+    const isAch = paymentMethodType === 'auto-debit';
+    const fees = isAch ? gateway.acssProcessingFee : gateway.processingFee;
+    return calcGatewayFee(amountInCents, fees.percentRate, fees.fixedFeeCents);
   }
 
   /**
@@ -254,6 +274,27 @@ export class SubscriptionPlanConfig {
     return Object.keys(platformConfig.paymentGateways).filter(
       (key) => platformConfig.paymentGateways[key].isActive
     );
+  }
+
+  /**
+   * Free manual payment records allowed per billing period for a given plan.
+   * Falls back to the top-level manualPaymentRecords.freeQuotaPerPeriod if the
+   * plan does not define its own quota.
+   */
+  public getManualRecordQuota(planName: PlanName): number {
+    const config = this.getConfig(planName);
+    return (
+      config.limits.manualRecordQuota ??
+      platformConfig.manualPaymentRecords?.freeQuotaPerPeriod ??
+      25
+    );
+  }
+
+  /**
+   * Per-record fee (in cents) charged when a PM exceeds the free quota.
+   */
+  public getManualRecordOverageFeeCents(): number {
+    return platformConfig.manualPaymentRecords?.overageFeeCents ?? 95;
   }
 
   /**

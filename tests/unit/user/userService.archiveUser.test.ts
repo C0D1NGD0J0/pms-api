@@ -15,7 +15,9 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockPropertyDAO: jest.Mocked<PropertyDAO>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
+  let mockVendorService: { getVendorByUserId: jest.Mock; disconnectFromClient: jest.Mock };
   let mockAddToEmailQueue: jest.Mock;
+  let mockAddVendorTeamDisconnectJob: jest.Mock;
 
   const testCuid = 'client123';
   const testUid = 'user123';
@@ -53,9 +55,11 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
     mockEmitterService = {
       emit: jest.fn(),
+      on: jest.fn(),
     } as any;
 
     mockAddToEmailQueue = jest.fn();
+    mockAddVendorTeamDisconnectJob = jest.fn().mockResolvedValue(undefined);
 
     const mockPermissionService = {
       canAccessResource: jest.fn().mockResolvedValue(true),
@@ -67,7 +71,17 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
     };
 
     const mockQueueFactory = {
-      getQueue: jest.fn().mockReturnValue({ addToEmailQueue: mockAddToEmailQueue }),
+      getQueue: jest.fn().mockImplementation((name: string) => {
+        if (name === 'userQueue') {
+          return { addVendorTeamDisconnectJob: mockAddVendorTeamDisconnectJob };
+        }
+        return { addToEmailQueue: mockAddToEmailQueue };
+      }),
+    };
+
+    mockVendorService = {
+      getVendorByUserId: jest.fn().mockResolvedValue(null),
+      disconnectFromClient: jest.fn().mockResolvedValue(undefined),
     };
 
     userService = new UserService({
@@ -77,8 +91,9 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       propertyDAO: mockPropertyDAO,
       profileDAO: {} as any,
       paymentDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
       userCache: mockUserCache as any,
-      vendorService: {} as any,
+      vendorService: mockVendorService as any,
       emitterService: mockEmitterService,
       permissionService: mockPermissionService as any,
       queueFactory: mockQueueFactory as any,
@@ -531,6 +546,140 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
       // Should succeed (idempotent operation)
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Vendor Cascade', () => {
+    const mockVendorObjectId = new Types.ObjectId();
+
+    it('should call vendorService.disconnectFromClient() when a primary vendor is archived', async () => {
+      const vendorUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'vendor@example.com',
+        fullname: 'Acme Plumbing',
+        cuids: [{ cuid: testCuid, roles: ['vendor'], isConnected: true, linkedVendorUid: null }],
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(vendorUser as any);
+      mockUserDAO.updateById.mockResolvedValue(vendorUser as any);
+      mockVendorService.getVendorByUserId.mockResolvedValue({
+        _id: mockVendorObjectId,
+        vuid: 'V001',
+      } as any);
+      // No linked users
+      mockUserDAO.getLinkedVendorUsers = jest.fn().mockResolvedValue({ items: [] });
+
+      await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      expect(mockVendorService.disconnectFromClient).toHaveBeenCalledWith(
+        mockVendorObjectId.toString(),
+        testCuid
+      );
+    });
+
+    it('should enqueue a background job to disconnect linked team members', async () => {
+      const vendorUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'vendor@example.com',
+        fullname: 'Acme Plumbing',
+        cuids: [{ cuid: testCuid, roles: ['vendor'], isConnected: true, linkedVendorUid: null }],
+      };
+      const linkedUser1 = { _id: new Types.ObjectId(), uid: 'team1', email: 'team1@example.com', fullname: 'Team One' };
+      const linkedUser2 = { _id: new Types.ObjectId(), uid: 'team2', email: 'team2@example.com', fullname: 'Team Two' };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(vendorUser as any);
+      mockUserDAO.updateById.mockResolvedValue(vendorUser as any);
+      mockVendorService.getVendorByUserId.mockResolvedValue({
+        _id: mockVendorObjectId,
+        vuid: 'V001',
+      } as any);
+      mockUserDAO.getLinkedVendorUsers = jest.fn().mockResolvedValue({
+        items: [linkedUser1, linkedUser2],
+      });
+
+      await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      // Team member disconnection is handled asynchronously via the UserQueue
+      expect(mockAddVendorTeamDisconnectJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          primaryVendorUserId: mockUserId.toString(),
+          vendorId: mockVendorObjectId.toString(),
+          cuid: testCuid,
+          clientId: mockClientId.toString(),
+        })
+      );
+
+      // Team members are NOT updated synchronously in archiveUser anymore
+      expect(mockUserDAO.updateById).not.toHaveBeenCalledWith(
+        linkedUser1._id.toString(),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
+    it('should include companyName in the enqueued team disconnect job payload', async () => {
+      const vendorUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'vendor@example.com',
+        fullname: 'Acme Plumbing',
+        cuids: [{ cuid: testCuid, roles: ['vendor'], isConnected: true, linkedVendorUid: null }],
+      };
+      const linkedUser = { _id: new Types.ObjectId(), uid: 'team1', email: 'team1@example.com', fullname: 'Team Member' };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(vendorUser as any);
+      mockUserDAO.updateById.mockResolvedValue(vendorUser as any);
+      mockVendorService.getVendorByUserId.mockResolvedValue({
+        _id: mockVendorObjectId,
+        vuid: 'V001',
+      } as any);
+      mockUserDAO.getLinkedVendorUsers = jest.fn().mockResolvedValue({ items: [linkedUser] });
+      mockClientDAO.getClientByCuid.mockResolvedValue({
+        _id: mockClientId,
+        cuid: testCuid,
+        displayName: 'Acme Properties',
+        accountAdmin: new Types.ObjectId(),
+      } as any);
+
+      await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      expect(mockAddVendorTeamDisconnectJob).toHaveBeenCalledWith(
+        expect.objectContaining({ companyName: 'Acme Properties' })
+      );
+    });
+
+    it('should NOT call vendorService.disconnectFromClient() for non-vendor users', async () => {
+      const staffUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'staff@example.com',
+        cuids: [{ cuid: testCuid, roles: ['staff'], isConnected: true }],
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(staffUser as any);
+      mockUserDAO.updateById.mockResolvedValue(staffUser as any);
+
+      await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      expect(mockVendorService.disconnectFromClient).not.toHaveBeenCalled();
+    });
+
+    it('should NOT call vendorService.disconnectFromClient() for linked vendor team members', async () => {
+      const linkedVendorUser = {
+        _id: mockUserId,
+        uid: testUid,
+        email: 'team@example.com',
+        cuids: [{ cuid: testCuid, roles: ['vendor'], isConnected: true, linkedVendorUid: 'V001' }],
+      };
+
+      mockUserDAO.getUserByUId.mockResolvedValue(linkedVendorUser as any);
+      mockUserDAO.updateById.mockResolvedValue(linkedVendorUser as any);
+
+      await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
+
+      expect(mockVendorService.disconnectFromClient).not.toHaveBeenCalled();
     });
   });
 });

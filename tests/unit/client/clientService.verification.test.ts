@@ -44,6 +44,8 @@ describe('ClientService - Account Verification', () => {
       notificationService: {} as any,
       sseService: {} as any,
       paymentGatewayService: {} as any,
+      vendorDAO: {} as any,
+      featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
   });
@@ -53,17 +55,20 @@ describe('ClientService - Account Verification', () => {
       _id: mockClientId,
       cuid: 'TEST123',
       isVerified: false,
-      dataProcessingConsent: true,
-      identityVerification: {
-        sessionId: 'vs_test_123',
-        sessionStatus: 'stripe_verified',
-        documentType: 'passport',
-        issuingCountry: 'US',
+      identification: {
+        idType: 'passport',
+        idNumber: 'AB123456',
+        dataProcessingConsent: true,
+        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
       },
-    };
+    } as any;
 
-    it('should successfully verify account when Stripe session is verified', async () => {
-      const mockUpdatedClient = { ...stripeVerifiedClient, isVerified: true, identityVerification: { ...stripeVerifiedClient.identityVerification, verifiedAt: new Date(), verifiedBy: mockUserId } };
+    it('should successfully verify account when identification data is present and valid', async () => {
+      const mockUpdatedClient = {
+        ...stripeVerifiedClient,
+        isVerified: true,
+        identityVerification: { verifiedAt: new Date(), verifiedBy: mockUserId },
+      };
       mockClientDAO.getClientByCuid.mockResolvedValue(stripeVerifiedClient as IClientDocument);
       mockClientDAO.updateById.mockResolvedValue(mockUpdatedClient as IClientDocument);
 
@@ -74,7 +79,10 @@ describe('ClientService - Account Verification', () => {
       expect(mockClientDAO.updateById).toHaveBeenCalledWith(
         mockClientId.toString(),
         expect.objectContaining({
-          $set: expect.objectContaining({ isVerified: true, 'identityVerification.verifiedBy': mockUserId }),
+          $set: expect.objectContaining({
+            isVerified: true,
+            'identityVerification.verifiedBy': mockUserId,
+          }),
         })
       );
     });

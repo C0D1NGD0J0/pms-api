@@ -5,7 +5,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
-import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, ClientSession, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
 import { IUserBasicInfo, IFindOptions, IProfileDAO } from './interfaces/index';
@@ -109,31 +109,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       return await this.updateById(profileId, { $set: updateFields });
     } catch (error) {
       this.logger.error(`Error updating tenant info for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
-  }
-
-  async updateIdentification(
-    profileId: string,
-    identificationData: {
-      idType: string;
-      issueDate: Date;
-      expiryDate: Date;
-      idNumber: string;
-      authority?: string;
-      issuingState: string;
-    }
-  ): Promise<IProfileDocument | null> {
-    try {
-      if (identificationData.expiryDate <= identificationData.issueDate) {
-        throw new Error('Expiry date must be after issue date');
-      }
-
-      return await this.updateById(profileId, {
-        $set: { 'personalInfo.identification': identificationData },
-      });
-    } catch (error) {
-      this.logger.error(`Error updating identification for profile ${profileId}:`, error);
       throw this.throwErrorHandler(error);
     }
   }
@@ -251,7 +226,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   ): ListResultWithPagination<IProfileDocument[]> {
     try {
       // Create a search filter that looks across various fields
-      const filter: FilterQuery<IProfileDocument> = {
+      const filter: QueryFilter<IProfileDocument> = {
         $or: [
           { 'personalInfo.displayName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
           { 'personalInfo.firstName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
@@ -286,15 +261,17 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
    * @param userId - The unique identifier for the user.
    * @returns A promise that resolves to a CurrentUser object or null if no user is found.
    */
-  async generateCurrentUserInfo(userId: string): Promise<ICurrentUser | null> {
+  async generateCurrentUserInfo(userId: string, cuid?: string): Promise<ICurrentUser | null> {
     try {
-      const pipeline: PipelineStage[] = [
-        {
-          $match: {
-            user: new Types.ObjectId(userId),
-          },
-        },
+      // When cuid is provided (e.g. from JWT in the auth middleware), use it to select the
+      // active client context. This prevents concurrent sessions from loading the wrong client
+      // when user.activecuid in the DB has been updated by a different session.
+      const activeCuidExpr: any = cuid ? { $literal: cuid } : '$userData.activecuid';
 
+      const pipeline: PipelineStage[] = [
+        { $match: { user: new Types.ObjectId(userId) } },
+
+        // ── User data ─────────────────────────────────────────────────────────
         {
           $lookup: {
             from: 'users',
@@ -305,23 +282,21 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
         },
         { $unwind: '$userData' },
 
-        // add client information for all the user's clients
+        // Fetch only the active client document — no need for the full list
         {
           $lookup: {
             from: 'clients',
-            let: { cuidList: '$userData.cuids.cuid' },
+            let: { activeCuid: activeCuidExpr },
             pipeline: [
-              {
-                $match: {
-                  $expr: { $in: ['$cuid', '$$cuidList'] },
-                },
-              },
+              { $match: { $expr: { $eq: ['$cuid', '$$activeCuid'] } } },
               {
                 $project: {
                   _id: 0,
-                  cuid: '$cuid',
-                  clientDisplayName: '$displayName',
+                  cuid: 1,
                   isVerified: 1,
+                  vendorPayoutMode: '$settings.vendorPayoutMode',
+                  tenantFeatures: '$settings.tenantFeatures',
+                  suspension: 1,
                 },
               },
             ],
@@ -329,79 +304,94 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           },
         },
 
-        // Add active client role as a field for easier access
+        // Derive active role once — used by subscription, employeeInfo, paymentProcessor guards
         {
           $addFields: {
             activeClientRole: {
               $let: {
                 vars: {
-                  activeClientData: {
+                  ac: {
                     $arrayElemAt: [
                       {
                         $filter: {
                           input: '$userData.cuids',
-                          as: 'client',
-                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
+                          as: 'c',
+                          cond: { $eq: ['$$c.cuid', activeCuidExpr] },
                         },
                       },
                       0,
                     ],
                   },
                 },
-                in: {
-                  $ifNull: [
-                    '$$activeClientData.primaryRole',
-                    { $arrayElemAt: ['$$activeClientData.roles', 0] },
-                  ],
-                },
+                in: { $ifNull: ['$$ac.primaryRole', { $arrayElemAt: ['$$ac.roles', 0] }] },
               },
             },
           },
         },
 
-        // Add subscription lookup for active client
+        // ── Lookups ───────────────────────────────────────────────────────────
         {
           $lookup: {
             from: 'subscriptions',
-            let: { activeCuid: '$userData.activecuid' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ['$cuid', '$$activeCuid'] },
-                },
-              },
-            ],
+            let: { activeCuid: activeCuidExpr },
+            pipeline: [{ $match: { $expr: { $eq: ['$cuid', '$$activeCuid'] } } }],
             as: 'subscriptionData',
           },
         },
-        {
-          $addFields: {
-            subscriptionInfo: { $arrayElemAt: ['$subscriptionData', 0] },
-          },
-        },
-
-        // Add payment processor lookup for active client (SUPER_ADMIN only)
+        // Payment processor for active client (super-admin only)
         {
           $lookup: {
             from: 'paymentprocessors',
-            let: { activeCuid: '$userData.activecuid' },
-            pipeline: [
-              {
-                $match: {
-                  $expr: { $eq: ['$cuid', '$$activeCuid'] },
-                },
-              },
-            ],
+            let: { activeCuid: activeCuidExpr },
+            pipeline: [{ $match: { $expr: { $eq: ['$cuid', '$$activeCuid'] } } }],
             as: 'paymentProcessorData',
           },
         },
+        // Vendor document — resolves vuid for vendor portal routing
         {
-          $addFields: {
-            paymentProcessorInfo: { $arrayElemAt: ['$paymentProcessorData', 0] },
+          $lookup: {
+            from: 'vendors',
+            localField: 'vendorInfo.vendorId',
+            foreignField: '_id',
+            as: 'vendorDocData',
           },
         },
 
-        // transform data into ICurrentUser structure
+        // Extract first-element results in a single stage; vendorDoc must be set before the payout lookup below
+        {
+          $addFields: {
+            subscriptionInfo: { $arrayElemAt: ['$subscriptionData', 0] },
+            paymentProcessorInfo: {
+              $ifNull: [{ $arrayElemAt: ['$paymentProcessorData', 0] }, null],
+            },
+            vendorDoc: { $arrayElemAt: ['$vendorDocData', 0] },
+          },
+        },
+
+        // Vendor payout processor — depends on vendorDoc.vuid resolved above
+        {
+          $lookup: {
+            from: 'paymentprocessors',
+            let: { vuid: '$vendorDoc.vuid', activeCuid: activeCuidExpr },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$vuid', '$$vuid'] },
+                      { $eq: ['$cuid', '$$activeCuid'] },
+                      { $eq: ['$ownerType', 'vendor'] },
+                    ],
+                  },
+                },
+              },
+            ],
+            as: 'vendorPayoutData',
+          },
+        },
+        { $addFields: { vendorPayoutInfo: { $arrayElemAt: ['$vendorPayoutData', 0] } } },
+
+        // ── Shape ICurrentUser output ─────────────────────────────────────────
         {
           $project: {
             _id: 0,
@@ -413,89 +403,76 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             fullname: {
               $concat: ['$personalInfo.firstName', ' ', '$personalInfo.lastName'],
             },
-            avatarUrl: {
-              $ifNull: ['$personalInfo.avatar.url', ''],
-            },
+            avatarUrl: { $ifNull: ['$personalInfo.avatar.url', ''] },
 
-            // preferences
             preferences: {
               theme: { $ifNull: ['$settings.theme', 'light'] },
-              lang: { $ifNull: ['$lang', 'en'] },
-              timezone: { $ifNull: ['$timeZone', 'UTC'] },
+              lang: { $ifNull: ['$settings.lang', 'en'] },
+              timezone: { $ifNull: ['$settings.timeZone', 'UTC'] },
             },
 
-            // active client information
+            // Active client — resolved via $let to avoid re-filtering userData.cuids
             client: {
               $let: {
                 vars: {
-                  activeClient: {
+                  ac: {
                     $arrayElemAt: [
                       {
                         $filter: {
                           input: '$userData.cuids',
-                          as: 'client',
-                          cond: { $eq: ['$$client.cuid', '$userData.activecuid'] },
+                          as: 'c',
+                          cond: { $eq: ['$$c.cuid', activeCuidExpr] },
                         },
                       },
                       0,
                     ],
                   },
-                  activeClientData: {
-                    $arrayElemAt: [
-                      {
-                        $filter: {
-                          input: '$clientsData',
-                          as: 'cd',
-                          cond: { $eq: ['$$cd.cuid', '$userData.activecuid'] },
-                        },
-                      },
-                      0,
-                    ],
-                  },
+                  // clientsData is now a single-element array (active client only)
+                  acd: { $arrayElemAt: ['$clientsData', 0] },
                 },
                 in: {
-                  cuid: '$$activeClient.cuid',
-                  clientDisplayName: '$$activeClient.clientDisplayName',
-                  role: {
-                    $ifNull: [
-                      '$$activeClient.primaryRole',
-                      { $arrayElemAt: ['$$activeClient.roles', 0] },
-                    ],
+                  cuid: '$$ac.cuid',
+                  clientDisplayName: '$$ac.clientDisplayName',
+                  role: '$activeClientRole',
+                  linkedVendorUid: '$$ac.linkedVendorUid',
+                  isVerified: { $ifNull: ['$$acd.isVerified', false] },
+                  requiresOnboarding: { $ifNull: ['$$ac.requiresOnboarding', false] },
+                  isFormerTenant: { $ifNull: ['$$ac.isFormerTenant', false] },
+                  tenantFeatures: { $ifNull: ['$$acd.tenantFeatures', '$$REMOVE'] },
+                  suspension: { $ifNull: ['$$acd.suspension', '$$REMOVE'] },
+                  // vendor-only fields
+                  vendorPayoutMode: {
+                    $cond: {
+                      if: { $in: [ROLES.VENDOR, '$$ac.roles'] },
+                      then: { $ifNull: ['$$acd.vendorPayoutMode', 'platform_hold'] },
+                      else: '$$REMOVE',
+                    },
                   },
-                  linkedVendorUid: '$$activeClient.linkedVendorUid',
-                  isVerified: { $ifNull: ['$$activeClientData.isVerified', false] },
-                  requiresOnboarding: { $ifNull: ['$$activeClient.requiresOnboarding', false] },
                   isPrimaryVendor: {
                     $cond: {
-                      if: {
-                        $and: [
-                          { $in: [ROLES.VENDOR, '$$activeClient.roles'] },
-                          { $not: '$$activeClient.linkedVendorUid' },
-                        ],
-                      },
-                      then: true,
-                      else: false,
+                      if: { $in: [ROLES.VENDOR, '$$ac.roles'] },
+                      then: { $cond: { if: '$$ac.linkedVendorUid', then: false, else: true } },
+                      else: '$$REMOVE',
                     },
                   },
                 },
               },
             },
 
-            // all client connections
+            // All client connections (account switcher)
             clients: {
               $map: {
                 input: '$userData.cuids',
                 as: 'conn',
                 in: {
                   cuid: '$$conn.cuid',
-                  clientDisplayName: '$$conn.displayName',
+                  clientDisplayName: '$$conn.clientDisplayName',
                   roles: '$$conn.roles',
                   isConnected: '$$conn.isConnected',
                 },
               },
             },
 
-            // gdpr settings if available
             gdpr: {
               $cond: {
                 if: '$settings.gdprSettings',
@@ -509,15 +486,13 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // Role-specific information - only include data relevant to the user's active role
+            // PM staff only
             employeeInfo: {
               $cond: {
                 if: {
                   $and: [
                     '$employeeInfo',
-                    {
-                      $in: ['$activeClientRole', [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF]],
-                    },
+                    { $in: ['$activeClientRole', [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF]] },
                   ],
                 },
                 then: {
@@ -530,35 +505,102 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
+            // Vendor only
             vendorInfo: {
               $cond: {
                 if: '$vendorInfo',
                 then: {
                   vendorId: { $toString: '$vendorInfo.vendorId' },
+                  vuid: '$vendorDoc.vuid',
                   linkedVendorUid: '$vendorInfo.linkedVendorUid',
-                  isPrimaryVendor: '$vendorInfo.isPrimaryVendor',
+                  // primary vendor = the originally invited account owner (no linkedVendorUid)
+                  // null isLinkedAccount defaults true → isPrimaryVendor false (safe fallback)
+                  isPrimaryVendor: { $not: { $ifNull: ['$vendorInfo.isLinkedAccount', true] } },
                   isLinkedAccount: '$vendorInfo.isLinkedAccount',
+                  payoutAccount: {
+                    $cond: {
+                      if: '$vendorPayoutInfo',
+                      then: {
+                        isSetup: { $ifNull: ['$vendorPayoutInfo.detailsSubmitted', false] },
+                        payoutsEnabled: { $ifNull: ['$vendorPayoutInfo.payoutsEnabled', false] },
+                        chargesEnabled: { $ifNull: ['$vendorPayoutInfo.chargesEnabled', false] },
+                      },
+                      else: { isSetup: false, payoutsEnabled: false, chargesEnabled: false },
+                    },
+                  },
                 },
                 else: '$$REMOVE',
               },
             },
 
+            // Tenant only — $let filters activeLeases once for both hasActiveLease and activeLease
             tenantInfo: {
               $cond: {
                 if: '$tenantInfo',
                 then: {
-                  hasActiveLease: { $ifNull: ['$tenantInfo.hasActiveLease', false] },
-                  backgroundCheckStatus: '$tenantInfo.backgroundCheckStatus',
-                  activeLease: { $ifNull: ['$tenantInfo.activeLease', null] },
+                  $let: {
+                    vars: {
+                      activeLeaseForCuid: {
+                        $arrayElemAt: [
+                          {
+                            $filter: {
+                              input: { $ifNull: ['$tenantInfo.activeLeases', []] },
+                              as: 'al',
+                              cond: { $eq: ['$$al.cuid', activeCuidExpr] },
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                      latestCheck: {
+                        $arrayElemAt: [
+                          {
+                            $filter: {
+                              input: { $ifNull: ['$tenantInfo.backgroundChecks', []] },
+                              as: 'bc',
+                              cond: { $eq: ['$$bc.cuid', activeCuidExpr] },
+                            },
+                          },
+                          -1,
+                        ],
+                      },
+                      employerInfoForCuid: {
+                        $filter: {
+                          input: { $ifNull: ['$tenantInfo.employerInfo', []] },
+                          as: 'emp',
+                          cond: { $eq: ['$$emp.cuid', activeCuidExpr] },
+                        },
+                      },
+                    },
+                    in: {
+                      hasActiveLease: {
+                        $cond: { if: '$$activeLeaseForCuid', then: true, else: false },
+                      },
+                      backgroundCheckStatus: { $ifNull: ['$$latestCheck.status', null] },
+                      activeLease: { $ifNull: ['$$activeLeaseForCuid', '$$REMOVE'] },
+                      employerInfo: '$$employerInfoForCuid',
+                    },
+                  },
                 },
                 else: '$$REMOVE',
               },
             },
 
-            // Subscription information for active client
+            // Subscription information — only for PM roles (admin, manager, staff, super-admin)
+            // Tenants and vendors use tenantFeatures / vendorInfo for their feature access
             subscription: {
               $cond: {
-                if: '$subscriptionInfo',
+                if: {
+                  $and: [
+                    '$subscriptionInfo',
+                    {
+                      $in: [
+                        '$activeClientRole',
+                        [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF, 'super-admin'],
+                      ],
+                    },
+                  ],
+                },
                 then: {
                   $let: {
                     vars: {
@@ -588,10 +630,12 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                           '$$sub.entitlements',
                           {
                             eSignature: false,
-                            RepairRequestService: false,
+                            MaintenanceRequestService: false,
                             VisitorPassService: false,
                             reportingAnalytics: false,
                             leaseTemplates: false,
+                            vendorManagement: false,
+                            prioritySupport: false,
                           },
                         ],
                       },
@@ -711,6 +755,26 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 },
                 else: '$$REMOVE',
               },
+            },
+
+            // Feature flags for every role — lets vendor/tenant portals gate
+            // client-plan-dependent features (AI, eSign, etc.) without leaking
+            // billing details (plan name, status, paymentFlow) to external users.
+            clientEntitlements: {
+              $ifNull: [
+                '$subscriptionInfo.entitlements',
+                {
+                  eSignature: false,
+                  MaintenanceRequestService: false,
+                  VisitorPassService: false,
+                  reportingAnalytics: false,
+                  leaseTemplates: false,
+                  vendorManagement: false,
+                  prioritySupport: false,
+                  aiTriage: false,
+                  aiInvoiceScanning: false,
+                },
+              ],
             },
 
             // Payment processor status — only exposed for SUPER_ADMIN

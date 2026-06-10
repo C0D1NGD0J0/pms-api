@@ -1,22 +1,33 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { VendorController } from '@controllers/VendorController';
-import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
-import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
   ClientValidations,
   VendorValidations,
   UtilsValidations,
   validateRequest,
 } from '@shared/validations';
+import {
+  requirePermissionWithContext,
+  subscriptionEntitlements,
+  requirePrimaryVendor,
+  requirePermission,
+  isAuthenticated,
+  requireFeature,
+  basicLimiter,
+  idempotency,
+} from '@shared/middlewares';
 
 const router = Router();
-router.use(basicLimiter());
+router.use(isAuthenticated);
 
 router.get(
   '/:cuid/vendors/stats',
-  isAuthenticated,
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
+  subscriptionEntitlements,
+  requireFeature('vendorManagement'),
   validateRequest({
     params: ClientValidations.clientIdParam,
     query: VendorValidations.vendorFilterQuery,
@@ -29,8 +40,10 @@ router.get(
 
 router.get(
   '/:cuid/filteredVendors',
-  isAuthenticated,
+  basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('vendorManagement'),
   validateRequest({
     params: ClientValidations.clientIdParam,
     query: VendorValidations.vendorFilterQuery,
@@ -41,11 +54,20 @@ router.get(
   })
 );
 
-// Single vendor details endpoint
+// Single vendor details endpoint — vendors read their own record (mine), managers use any
 router.get(
   '/:cuid/vendor_details/:vuid',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  basicLimiter(),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.vuid),
   }),
@@ -55,10 +77,20 @@ router.get(
   })
 );
 
+// Team members — managers use vendor:list:any; primary vendor uses vendor:list:mine
 router.get(
   '/:cuid/team_members/:vuid',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  basicLimiter(),
+  requirePermissionWithContext(
+    PermissionResource.VENDOR,
+    PermissionAction.LIST,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { ownerId: req.context.currentuser.sub };
+      }
+      return {};
+    }
+  ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
   }),
@@ -68,11 +100,20 @@ router.get(
   })
 );
 
-// Get vendor business data for editing (primaryAccountHolder only)
+// Get vendor business data for editing (primaryAccountHolderUserId only)
 router.get(
   '/:cuid/vendor/:vuid/edit',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  basicLimiter(),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
   }),
@@ -82,13 +123,25 @@ router.get(
   })
 );
 
-// Update team member profile fields (ADMIN/MANAGER or primaryAccountHolder)
+// Update team member profile fields (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  basicLimiter(),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.uid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.uid };
+    }
+  ),
+  idempotency,
   validateRequest({
-    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    params: ClientValidations.clientIdParam
+      .merge(UtilsValidations.vuid)
+      .merge(UtilsValidations.uid),
     body: VendorValidations.updateTeamMember,
   }),
   asyncWrapper((req, res) => {
@@ -97,14 +150,25 @@ router.patch(
   })
 );
 
-// Toggle team member active status (ADMIN/MANAGER or primaryAccountHolder)
+// Toggle team member active status (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
   '/:cuid/vendor/:vuid/team_members/:uid/status',
   basicLimiter(),
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.uid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.uid };
+    }
+  ),
+  idempotency,
   validateRequest({
-    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    params: ClientValidations.clientIdParam
+      .merge(UtilsValidations.vuid)
+      .merge(UtilsValidations.uid),
     body: VendorValidations.toggleTeamMemberStatus,
   }),
   asyncWrapper((req, res) => {
@@ -113,11 +177,21 @@ router.patch(
   })
 );
 
-// Update vendor business details (primaryAccountHolder only)
+// Update vendor business details (primaryAccountHolderUserId only)
 router.patch(
   '/:cuid/vendor/:vuid',
-  isAuthenticated,
-  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  basicLimiter(),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.UPDATE,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
     body: VendorValidations.updateVendor,
@@ -125,6 +199,62 @@ router.patch(
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
     return vendorController.updateVendorDetails(req, res);
+  })
+);
+
+// ── Payout account endpoints ──────────────────────────────────────────────────
+
+// Initiate payout account onboarding (creates provider account record)
+// Restricted to primary vendor account holders only
+router.post(
+  '/:cuid/vendor/:vuid/payout_account/initiate',
+  basicLimiter(),
+  requirePrimaryVendor,
+  idempotency,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.initiatePayoutOnboarding(req, res);
+  })
+);
+
+// Get provider-hosted KYC onboarding link
+// Restricted to primary vendor account holders only
+router.get(
+  '/:cuid/vendor/:vuid/payout_account/link',
+  basicLimiter(),
+  requirePrimaryVendor,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getPayoutOnboardingLink(req, res);
+  })
+);
+
+// Sync payout account status from provider
+// Restricted to primary vendor account holders only
+router.post(
+  '/:cuid/vendor/:vuid/payout_account/sync',
+  basicLimiter(),
+  requirePrimaryVendor,
+  idempotency,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.syncPayoutAccountStatus(req, res);
+  })
+);
+
+// Get Stripe Express Dashboard login link for payout management
+// Restricted to primary vendor account holders only
+router.get(
+  '/:cuid/vendor/:vuid/payout_account/dashboard',
+  basicLimiter(),
+  requirePrimaryVendor,
+  validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getPayoutDashboardLink(req, res);
   })
 );
 

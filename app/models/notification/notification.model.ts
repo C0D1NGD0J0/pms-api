@@ -1,8 +1,8 @@
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ResourceContext } from '@interfaces/utils.interface';
 import {
+  NotificationPriorityEnum,
   INotificationDocument,
   NotificationTypeEnum,
   RecipientTypeEnum,
@@ -76,8 +76,8 @@ const NotificationSchema = new Schema<INotificationDocument>(
     },
     priority: {
       type: String,
-      enum: ['low', 'medium', 'high', 'urgent'],
-      default: 'medium',
+      enum: Object.values(NotificationPriorityEnum),
+      default: NotificationPriorityEnum.MEDIUM,
     },
     resourceInfo: {
       type: ResourceSchema,
@@ -108,6 +108,18 @@ const NotificationSchema = new Schema<INotificationDocument>(
     targetVendor: {
       type: String,
       trim: true,
+    },
+    readBy: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    archivedBy: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+    },
+    archivedAt: {
+      type: Date,
+      default: null,
     },
     expiresAt: {
       type: Date,
@@ -144,15 +156,16 @@ NotificationSchema.index({ recipientType: 1, recipient: 1, cuid: 1, isRead: 1 })
 NotificationSchema.index({ recipientType: 1, cuid: 1, type: 1, createdAt: -1 }); // Announcements by client/type
 NotificationSchema.index({ cuid: 1, type: 1, createdAt: -1 }); // Client notifications by type
 NotificationSchema.index({ 'resourceInfo.resourceName': 1, 'resourceInfo.resourceId': 1, cuid: 1 }); // Resource-specific queries
+NotificationSchema.index({ readBy: 1, cuid: 1 }); // Announcement read status lookups
+NotificationSchema.index({ archivedBy: 1, cuid: 1 }); // Archive filtering
 
 // set expiration date if not provided (default 30 days)
-NotificationSchema.pre('save', function (this: INotificationDocument, next) {
+NotificationSchema.pre('save', function (this: INotificationDocument) {
   if (this.isNew && !this.expiresAt) {
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     this.expiresAt = thirtyDaysFromNow;
   }
-  next();
 });
 
 // static method to clean up soft-deleted notifications
@@ -180,10 +193,6 @@ NotificationSchema.methods.softDelete = function () {
   this.deletedAt = new Date();
   return this.save();
 };
-
-NotificationSchema.plugin(uniqueValidator, {
-  message: 'Error, {PATH} must be unique.',
-});
 
 // virtual for checking if notification is expired
 NotificationSchema.virtual('isExpired').get(function (this: INotificationDocument) {

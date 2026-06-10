@@ -10,7 +10,6 @@ import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { AuthController } from '@controllers/AuthController';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { VendorService } from '@services/vendor/vendor.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { clearTestDatabase, createTestClient, createTestUser } from '@tests/helpers';
 import { setupAllExternalMocks, mockQueueFactory, mockAuthCache } from '@tests/setup/externalMocks';
 
@@ -127,6 +126,10 @@ describe('AuthController Integration Tests', () => {
       tokenService,
       authCache: mockAuthCache as any,
       vendorService,
+      leaseDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      paymentGatewayService: {} as any,
+      paymentService: {} as any,
       subscriptionService: {} as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
     });

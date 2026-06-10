@@ -49,7 +49,7 @@ export class AuthController {
     }
 
     return res.status(httpStatusCodes.OK).json({
-      success: 200,
+      success: true,
       data: currentuser,
     });
   };
@@ -125,6 +125,41 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  chargeFirstPayment = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.chargeFirstPayment(cuid, currentuser!);
+    res.status(httpStatusCodes.CREATED).json(result);
+  };
+
+  setupPaymentIntent = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const { returnUrl, cancelUrl, paymentMethodType } = req.body;
+    const result = await this.authService.setupPaymentIntent(
+      cuid,
+      currentuser!,
+      returnUrl,
+      cancelUrl,
+      paymentMethodType
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getPaymentMethod = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.getPaymentMethod(cuid, currentuser!);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  removePaymentMethod = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const currentuser = req.context?.currentuser;
+    const result = await this.authService.removePaymentMethod(cuid, currentuser!);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   refreshToken = async (req: Request, res: Response) => {
     let refreshToken = req.cookies?.[JWT_KEY_NAMES.REFRESH_TOKEN];
 
@@ -135,24 +170,12 @@ export class AuthController {
       });
     }
 
-    // Remove Bearer prefix if present
     if (refreshToken.startsWith('Bearer ')) {
       refreshToken = refreshToken.split(' ')[1];
     }
 
-    // Extract user ID from the refresh token
-    const decoded = this.authService['tokenService'].decodeJwt(refreshToken);
-    if (!decoded.success || !decoded.data?.data?.sub) {
-      return res.status(httpStatusCodes.UNAUTHORIZED).json({
-        success: false,
-        message: t('auth.errors.invalidRefreshToken'),
-      });
-    }
+    const result = await this.authService.refreshToken({ refreshToken });
 
-    const userId = decoded.data.data.sub;
-    const result = await this.authService.refreshToken({ refreshToken, userId });
-
-    // Set new tokens as cookies
     res = setAuthCookies(
       {
         accessToken: result.data.accessToken,

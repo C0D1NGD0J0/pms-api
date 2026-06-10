@@ -4,6 +4,7 @@ import { t } from '@shared/languages';
 import { QueueFactory } from '@services/queue';
 import { PropertyCache } from '@caching/property.cache';
 import { PropertyUnitCsvProcessor } from '@services/csv';
+import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -12,13 +13,20 @@ import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.serv
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
-import { PropertyUnitDAO, SubscriptionDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import {
   ValidationRequestError,
   BadRequestError,
   ForbiddenError,
   NotFoundError,
 } from '@shared/customErrors';
+import {
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+} from '@dao/index';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
@@ -37,6 +45,8 @@ import {
   megabytes,
 } from '@utils/index';
 
+import { validateUnitLeaseImmutableFields } from './propertyUnitHelpers';
+
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
   emitterService: EventEmitterService;
@@ -47,6 +57,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  leaseDAO: LeaseDAO;
 }
 
 interface BatchUnitData {
@@ -58,6 +69,7 @@ interface BatchUnitData {
 export class PropertyUnitService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly queueFactory: QueueFactory;
@@ -69,6 +81,7 @@ export class PropertyUnitService {
 
   constructor({
     clientDAO,
+    leaseDAO,
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
@@ -79,6 +92,7 @@ export class PropertyUnitService {
     unitNumberingService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
+    this.leaseDAO = leaseDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyCache = propertyCache;
@@ -195,9 +209,6 @@ export class PropertyUnitService {
     }
   }
 
-  /**
-   * Extract high-impact unit changes that require approval
-   */
   private extractHighImpactUnitChanges(updateData: any): any {
     const highImpactChanges: any = {};
     HIGH_IMPACT_UNIT_FIELDS.forEach((field) => {
@@ -208,9 +219,6 @@ export class PropertyUnitService {
     return highImpactChanges;
   }
 
-  /**
-   * Extract operational unit changes that can be applied directly
-   */
   private extractOperationalUnitChanges(updateData: any): any {
     const operationalChanges: any = {};
     OPERATIONAL_UNIT_FIELDS.forEach((field) => {
@@ -225,9 +233,6 @@ export class PropertyUnitService {
     return operationalChanges;
   }
 
-  /**
-   * Helper to check if nested property exists
-   */
   private hasNestedProperty(obj: any, path: string): boolean {
     try {
       const value = path.split('.').reduce((current, key) => {
@@ -240,16 +245,10 @@ export class PropertyUnitService {
     }
   }
 
-  /**
-   * Helper to get nested property value
-   */
   private getNestedProperty(obj: any, path: string): any {
     return path.split('.').reduce((current, key) => current && current[key], obj);
   }
 
-  /**
-   * Helper to set nested property value
-   */
   private setNestedProperty(obj: any, path: string, value: any): void {
     const keys = path.split('.');
     const lastKey = keys.pop()!;
@@ -359,8 +358,33 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
+    const unitObj = unit.toObject ? unit.toObject() : { ...unit };
+    let resolvedLease =
+      typeof unitObj.currentLease === 'object' && unitObj.currentLease !== null
+        ? unitObj.currentLease
+        : null;
+
+    if (!resolvedLease) {
+      const activeLease = await this.leaseDAO.findFirst({
+        cuid,
+        'property.unitId': unit._id,
+        status: LeaseStatus.ACTIVE,
+        deletedAt: null,
+      });
+      if (activeLease) {
+        resolvedLease = {
+          luid: activeLease.luid,
+          leaseNumber: activeLease.leaseNumber,
+          status: activeLease.status,
+          duration: activeLease.duration,
+          fees: activeLease.fees,
+          tenantId: activeLease.tenantId,
+        };
+      }
+    }
+
     return {
-      data: unit,
+      data: { ...unitObj, currentLease: resolvedLease },
       success: true,
       message: t('propertyUnit.success.unitRetrieved'),
     };
@@ -412,8 +436,43 @@ export class PropertyUnitService {
     };
 
     const units = await this.propertyDAO.getPropertyUnits(property.id, opts);
+
+    const unitIds = units.items.map((u: any) => (u.toObject ? u.toObject() : u)._id);
+    const activeLeases = unitIds.length
+      ? await this.leaseDAO.list(
+          {
+            cuid,
+            'property.unitId': { $in: unitIds },
+            status: LeaseStatus.ACTIVE,
+            deletedAt: null,
+          },
+          { limit: unitIds.length }
+        )
+      : { items: [] };
+
+    const leaseByUnitId = new Map(
+      (activeLeases.items ?? []).map((l: any) => [l.property?.unitId?.toString(), l])
+    );
+
+    const enrichedItems = units.items.map((unit: any) => {
+      const unitObj = unit.toObject ? unit.toObject() : { ...unit };
+      const activeLease = leaseByUnitId.get(unitObj._id.toString());
+      if (activeLease && !unitObj.currentLease) {
+        unitObj.currentLease = {
+          luid: activeLease.luid,
+          leaseNumber: activeLease.leaseNumber,
+          status: activeLease.status,
+          duration: activeLease.duration,
+          fees: activeLease.fees,
+          tenantId: activeLease.tenantId,
+        };
+        unitObj.status = 'occupied';
+      }
+      return unitObj;
+    });
+
     return {
-      data: units,
+      data: { items: enrichedItems, pagination: units.pagination },
       success: true,
       message: t('propertyUnit.success.unitsRetrieved'),
     };
@@ -478,6 +537,9 @@ export class PropertyUnitService {
       );
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
+
+    // Enforce lease-history immutability (applies to all roles — no admin bypass)
+    await validateUnitLeaseImmutableFields(unit, cuid, updateData, this.leaseDAO);
 
     if (property.operationalStatus === 'inactive' || property.deletedAt) {
       this.log.error(
@@ -569,7 +631,6 @@ export class PropertyUnitService {
     }
 
     if (Object.keys(validationErrors).length > 0) {
-      // add suggestion to error message if available
       if (unitNumberSuggestion && validationErrors['unitNumber']) {
         validationErrors['unitNumber'].push(`Suggested unit number: ${unitNumberSuggestion}`);
       }
@@ -694,13 +755,25 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
     }
 
-    // Business Rule: Cannot archive unit with active lease
-    if (unit.currentLease) {
+    // Business Rule: Cannot archive unit with active or pending leases
+    // Query LeaseDAO directly instead of relying on unit.currentLease (which can be stale)
+    const blockingLeases = await this.leaseDAO.list(
+      {
+        cuid,
+        'property.unitId': unit._id,
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+        deletedAt: null,
+      },
+      {},
+      true
+    );
+
+    if (blockingLeases.items.length > 0) {
       throw new ValidationRequestError({
-        message: 'Cannot archive unit with active lease',
+        message: 'Cannot archive unit with active or pending leases',
         errorInfo: {
           unit: [
-            'This unit has an active lease. Please terminate or cancel the lease before archiving the unit.',
+            `This unit has ${blockingLeases.items.length} active or pending lease(s). Terminate or cancel before archiving.`,
           ],
         },
       });
@@ -835,6 +908,26 @@ export class PropertyUnitService {
     const currentuser = cxt.currentuser!;
     const { cuid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
+
+    // Check subscription-level unit limit before property-level check
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    if (subscription) {
+      const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
+      if (maxUnits !== -1) {
+        const currentUnits = subscription.currentUnits;
+        if (currentUnits >= maxUnits) {
+          throw new BadRequestError({
+            message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,
+          });
+        }
+        const remaining = maxUnits - currentUnits;
+        if (data.units.length > remaining) {
+          throw new BadRequestError({
+            message: `Cannot add ${data.units.length} units. Your ${subscription.planName} plan allows ${maxUnits} units (${remaining} remaining). Upgrade to add more.`,
+          });
+        }
+      }
+    }
 
     const session = await this.propertyUnitDAO.startSession();
     const result = await this.propertyUnitDAO.withTransaction(session, async (session) => {
@@ -1076,6 +1169,18 @@ export class PropertyUnitService {
     if (!property) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
       throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+    }
+
+    // Pre-check: reject immediately if already at subscription unit limit
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    if (subscription) {
+      const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
+      if (maxUnits !== -1 && subscription.currentUnits >= maxUnits) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
+        throw new BadRequestError({
+          message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,
+        });
+      }
     }
 
     const csvProcessor = new PropertyUnitCsvProcessor();

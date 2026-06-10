@@ -2,7 +2,7 @@ import Zod from 'zod';
 import { Schema, model } from 'mongoose';
 import { isValidPhoneNumber } from '@utils/index';
 import { IClientDocument } from '@interfaces/index';
-import uniqueValidator from 'mongoose-unique-validator';
+import { CURRENCIES } from '@interfaces/utils.interface';
 
 const ClientSchema = new Schema<IClientDocument>(
   {
@@ -190,6 +190,18 @@ const ClientSchema = new Schema<IClientDocument>(
           default: true,
         },
       },
+      vendorPayoutMode: {
+        type: String,
+        enum: ['express', 'platform_hold'],
+        default: 'platform_hold',
+      },
+      tenantFeatures: {
+        tenantPortalActive: { type: Boolean, default: true },
+        onlinePayments: { type: Boolean, default: true },
+        maintenanceRequests: { type: Boolean, default: true },
+        smsNotifications: { type: Boolean, default: true },
+        visitorPass: { type: Boolean, default: true },
+      },
       timeZone: {
         type: String,
         default: 'UTC',
@@ -217,6 +229,19 @@ const ClientSchema = new Schema<IClientDocument>(
           message: 'Invalid language code',
         },
       },
+      defaultCurrency: {
+        type: String,
+        uppercase: true,
+        trim: true,
+        default: 'USD',
+        enum: Object.values(CURRENCIES),
+      },
+    },
+    suspension: {
+      isActive: { type: Boolean, default: false, index: true, select: false },
+      reason: { type: String, select: false },
+      at: { type: Date, select: false },
+      by: { type: Schema.Types.ObjectId, ref: 'User', select: false },
     },
     lastModifiedBy: {
       type: Schema.Types.ObjectId,
@@ -235,9 +260,6 @@ const ClientSchema = new Schema<IClientDocument>(
   }
 );
 
-ClientSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 ClientSchema.virtual('fullCompanyName').get(function (this: IClientDocument) {
   return this.companyProfile?.tradingName || this.companyProfile?.legalEntityName || 'Unknown';
 });
@@ -249,7 +271,6 @@ ClientSchema.virtual('verificationDeadline').get(function (this: IClientDocument
 
 // Soft deletion method
 ClientSchema.methods.softDelete = async function (userId: string) {
-  this.status = 'deleted';
   this.deletedAt = new Date();
   this.lastModifiedBy = userId;
   return await this.save();

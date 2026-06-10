@@ -9,8 +9,11 @@ import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { IInvoiceWebhookPayload, InvoiceSource } from '@interfaces/maintenanceRequest.interface';
+import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 
 interface IConstructor {
+  maintenanceInvoiceService: MaintenanceInvoiceService;
   subscriptionService: SubscriptionService;
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
@@ -28,6 +31,7 @@ export class WebhookController {
   private paymentService: PaymentService;
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
+  private maintenanceInvoiceService: MaintenanceInvoiceService;
   private log: Logger;
 
   constructor({
@@ -38,6 +42,7 @@ export class WebhookController {
     paymentService,
     clientService,
     idempotencyCache,
+    maintenanceInvoiceService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
@@ -46,11 +51,21 @@ export class WebhookController {
     this.paymentService = paymentService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
+    this.maintenanceInvoiceService = maintenanceInvoiceService;
     this.log = createLogger('WebhookController');
   }
 
   handleBoldSignWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
+      const signature = req.headers['x-boldsign-signature'];
+      if (!signature || typeof signature !== 'string') {
+        this.log.warn('Missing BoldSign signature header');
+        return res.status(400).json({ success: false, message: 'Missing signature' });
+      }
+
+      const rawBody = (req as any).rawBody ?? req.body;
+      this.boldSignService.verifyWebhookSignature(rawBody, signature);
+
       const { event, data } = req.body;
 
       if (event.eventType == 'Verification') {
@@ -67,10 +82,25 @@ export class WebhookController {
         });
       }
 
-      const processedData = this.boldSignService.processWebhookData(req.body);
-      await this.leaseService.handleESignatureWebhook(eventType, documentId, data, processedData);
+      // Deduplicate: BoldSign retries the same event if we don't respond in time.
+      // Key = documentId + eventType so different events on the same doc are processed independently.
+      const idempotencyKey = `boldsign:${documentId}:${eventType}`;
+      const claimed = await this.idempotencyCache.claimWebhookEvent(idempotencyKey);
+      if (!claimed) {
+        this.log.info({ documentId, eventType }, 'Duplicate BoldSign webhook — skipping');
+        return res.status(200).json({ success: true, received: true });
+      }
 
-      return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      try {
+        const processedData = this.boldSignService.processWebhookData(req.body);
+        await this.leaseService.handleESignatureWebhook(eventType, documentId, data, processedData);
+
+        await this.idempotencyCache.markWebhookProcessed(idempotencyKey);
+        return res.status(200).json({ success: true, message: 'Webhook processed successfully' });
+      } catch (processingError: any) {
+        await this.idempotencyCache.releaseWebhookClaim(idempotencyKey);
+        throw processingError;
+      }
     } catch (error: any) {
       this.log.error('Error processing BoldSign webhook', {
         error: error.message,
@@ -84,10 +114,6 @@ export class WebhookController {
     }
   };
 
-  /**
-   * Handle all Stripe webhook events
-   * POST /api/webhooks/stripe
-   */
   handleStripeWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
       const signature = req.headers['stripe-signature'];
@@ -114,21 +140,12 @@ export class WebhookController {
             break;
           }
 
-          // ── Identity verification ─────────────────────────────────────────────
           case 'identity.verification_session.verified': {
             const session = event.data.object as any;
             await this.clientService.handleIdentityWebhookEvent('verified', session.id);
             break;
           }
 
-          // ── Dispute events ────────────────────────────────────────────────────
-          case 'charge.dispute.funds_reinstated': {
-            const dispute = event.data.object as any;
-            await this.paymentService.handleDisputeWon(dispute.id, dispute);
-            break;
-          }
-
-          // ── Subscription lifecycle ────────────────────────────────────────────
           case 'customer.subscription.created': {
             const subscription = event.data.object as any;
             await this.subscriptionService.handleSubscriptionCreated({
@@ -146,6 +163,7 @@ export class WebhookController {
               status: subscription.status,
               currentPeriodStart: subscription.current_period_start,
               currentPeriodEnd: subscription.current_period_end,
+              items: subscription.items?.data,
             });
             break;
           }
@@ -159,12 +177,19 @@ export class WebhookController {
             break;
           }
 
-          case 'invoice.payment_succeeded': {
-            const invoice = event.data.object as any;
-            // Rent invoices have no subscription ID
-            if (!invoice.subscription) {
-              await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
+          case 'checkout.session.completed': {
+            const session = event.data.object as any;
+            if (session.mode === 'setup') {
+              await this.paymentService.handleSetupSessionCompleted(session, 'platform');
+            } else if (session.mode === 'payment' && session.metadata?.pytuid) {
+              await this.paymentService.handleCardPaymentSessionCompleted(session);
             }
+            break;
+          }
+
+          case 'setup_intent.succeeded': {
+            const setupIntent = event.data.object as any;
+            await this.paymentService.handleSetupIntentSucceeded(setupIntent);
             break;
           }
 
@@ -176,13 +201,8 @@ export class WebhookController {
 
           case 'invoice.payment_failed': {
             const invoice = event.data.object as any;
-            const hasSubscription =
-              !!invoice.subscription || !!invoice.parent?.subscription_details?.subscription;
-            if (hasSubscription) {
-              await this.subscriptionService.handleInvoicePaymentFailed(invoice);
-            } else {
-              await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
-            }
+            await this.subscriptionService.handleInvoicePaymentFailed(invoice);
+            await this.paymentService.handleInvoicePaymentFailed(invoice.id, invoice);
             break;
           }
 
@@ -196,17 +216,28 @@ export class WebhookController {
             break;
           }
 
-          // ── Rent payment events ───────────────────────────────────────────────
+          case 'invoice.upcoming': {
+            const invoice = event.data.object as any;
+            await this.paymentService.handleInvoiceUpcoming(invoice);
+            break;
+          }
+
+          case 'invoice.overdue': {
+            const invoice = event.data.object as any;
+            await this.paymentService.handleInvoiceOverdue(invoice.id, invoice);
+            break;
+          }
+
           case 'charge.refunded': {
             const charge = event.data.object as any;
             await this.paymentService.handleChargeRefunded(charge.id, charge);
             break;
           }
 
-          // ── Invoice events (subscription vs rent distinguished by invoice.subscription) ──
           case 'invoice.paid': {
             const invoice = event.data.object as any;
             await this.subscriptionService.handleInvoicePaid(invoice);
+            await this.paymentService.handleInvoicePaymentSucceeded(invoice.id, invoice);
             break;
           }
 
@@ -232,11 +263,6 @@ export class WebhookController {
     }
   };
 
-  /**
-   * Handle Stripe Connect webhook events (connected account events)
-   * POST /api/webhooks/stripe/connect
-   * Requires a separate Stripe webhook endpoint configured with "Listen to events on Connected accounts"
-   */
   handleStripeConnectWebhook = async (req: Request, res: Response): Promise<Response> => {
     try {
       const signature = req.headers['stripe-signature'];
@@ -269,7 +295,6 @@ export class WebhookController {
             await this.paymentService.handleAccountUpdated(account.id, account);
             break;
           }
-
           case 'person.updated': {
             const person = event.data.object as any;
             this.log.info(
@@ -280,6 +305,18 @@ export class WebhookController {
               },
               'Stripe person verification updated'
             );
+            break;
+          }
+
+          case 'payout.failed': {
+            const payout = event.data.object as any;
+            await this.paymentService.handlePayoutFailed(payout.id, payout, event.account);
+            break;
+          }
+
+          case 'payout.paid': {
+            const payout = event.data.object as any;
+            await this.paymentService.handlePayoutPaid(payout.id, payout, event.account);
             break;
           }
 
@@ -303,5 +340,27 @@ export class WebhookController {
         message: error.message || 'Webhook processing failed',
       });
     }
+  };
+
+  handleInvoiceWebhook = async (req: Request, res: Response): Promise<void> => {
+    const source = req.params.source as InvoiceSource;
+    const rawBody = (req as any).rawBody as Buffer;
+    const headers = req.headers as Record<string, string>;
+
+    if (!rawBody) {
+      res.status(400).json({ success: false, error: 'Raw body unavailable' });
+      return;
+    }
+
+    const parsed = req.body;
+    const payload: IInvoiceWebhookPayload = { ...parsed, source, rawPayload: parsed };
+
+    res.status(200).json({ received: true });
+
+    this.maintenanceInvoiceService
+      .handleInvoiceWebhook(source, rawBody, headers, payload)
+      .catch((err: unknown) => {
+        this.log.error('[WebhookController] invoice webhook processing error', err);
+      });
   };
 }

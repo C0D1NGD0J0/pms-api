@@ -1,25 +1,33 @@
+import { z } from 'zod';
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseController } from '@controllers/LeaseController';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
   subscriptionEntitlements,
   requireVerifiedClient,
+  requireNotSuspended,
+  requireActiveTenant,
+  requireFeatureFlag,
   requirePermission,
   isAuthenticated,
   requireFeature,
   basicLimiter,
+  requireRole,
   idempotency,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
 
 const router = Router();
-router.use(isAuthenticated, basicLimiter());
+router.use(isAuthenticated);
 
 router.get(
   '/:cuid/stats',
+  basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -34,6 +42,7 @@ router.get(
 router.get(
   '/:cuid/expiring',
   // Get leases expiring within X days
+  basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid,
@@ -46,7 +55,10 @@ router.get(
 
 router.get(
   '/:cuid/templates',
+  basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('leaseTemplates'),
   validateRequest({
     params: UtilsValidations.cuid,
   }),
@@ -59,6 +71,7 @@ router.get(
 router
   .route('/:cuid')
   .get(
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
     validateRequest({
       params: UtilsValidations.cuid,
@@ -70,6 +83,8 @@ router
     })
   )
   .post(
+    basicLimiter(),
+    requireNotSuspended,
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
     idempotency,
@@ -102,9 +117,13 @@ router.post(
 );
 
 router.get(
-  '/pdf-status/:jobId',
+  '/:cuid/pdf-status/:jobId',
   // Get PDF generation job status
+  basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(z.object({ jobId: z.string().min(1) })),
+  }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
     return controller.getPdfJobStatus(req, res);
@@ -114,6 +133,7 @@ router.get(
 router
   .route('/:cuid/:luid')
   .get(
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -125,6 +145,7 @@ router
     })
   )
   .patch(
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
     scanFile,
@@ -139,6 +160,7 @@ router
     })
   )
   .delete(
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.DELETE),
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -172,6 +194,7 @@ router.post(
   // Terminate lease early (tenant moves out before end date)
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveTenant(),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -188,6 +211,7 @@ router
   .route('/:cuid/:luid/document')
   .post(
     // Upload additional lease document (e.g., addendum, manual signed copy)
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     diskUpload(['document']),
     scanFile,
@@ -202,9 +226,10 @@ router
   )
   .get(
     // Get/download lease document
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -213,9 +238,10 @@ router
   )
   .delete(
     // Remove lease document
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     validateRequest({
-      params: UtilsValidations.cuid,
+      params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<LeaseController>('leaseController');
@@ -230,6 +256,8 @@ router
     // Send for e-signature OR mark as manually signed OR cancel signing
     basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+    requireActiveTenant(),
+    requireFeatureFlag(FeatureFlag.ESIGNATURE),
     subscriptionEntitlements,
     requireFeature('eSignature'),
     idempotency,
@@ -246,6 +274,7 @@ router
   .get(
     // Get signature status + signing URL
     // Returns: { status, signUrl, signers, completedAt, sentAt }
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -275,6 +304,7 @@ router.post(
 router.get(
   '/:cuid/:luid/pdf/download',
   // Download generated PDF (triggers browser download)
+  basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -288,6 +318,7 @@ router.get(
 router.get(
   '/:cuid/:luid/preview_lease',
   // Preview lease document HTML with provided data
+  basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -303,6 +334,7 @@ router
   .route('/:cuid/:luid/lease_renewal')
   .get(
     // Get pre-calculated renewal form data for a lease
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.READ),
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -313,7 +345,9 @@ router
     })
   )
   .post(
+    basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
+    requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN]),
     requireVerifiedClient,
     idempotency,
     validateRequest({
@@ -325,5 +359,34 @@ router
       return controller.renewLease(req, res);
     })
   );
+
+// Lease Approval Routes
+router.post(
+  '/:cuid/:luid/approve',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.approveLease,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.approveLease(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/:luid/reject',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.rejectLease,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<LeaseController>('leaseController');
+    return controller.rejectLease(req, res);
+  })
+);
 
 export default router;

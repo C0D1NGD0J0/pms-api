@@ -53,13 +53,13 @@ export class PropertyController {
       });
     }
 
-    if (!req.body.scannedFiles) {
+    if (!req.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('property.errors.noCsvFileUploaded'),
       });
     }
-    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const csvFile: ExtractedMediaFile = req.scannedFiles[0];
     const result = await this.propertyService.validateCsv(cuid, csvFile, currentuser);
     res.status(httpStatusCodes.OK).json(result);
   };
@@ -73,13 +73,13 @@ export class PropertyController {
         message: 'User not authenticated',
       });
     }
-    if (!req.body.scannedFiles) {
+    if (!req.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('property.errors.noCsvFileUploaded'),
       });
     }
-    const csvFile: ExtractedMediaFile = req.body.scannedFiles[0];
+    const csvFile: ExtractedMediaFile = req.scannedFiles[0];
     const result = await this.propertyService.addPropertiesFromCsv(
       cuid,
       csvFile.path,

@@ -8,11 +8,9 @@ import { UserService } from '@services/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
-import { preventTenantConflict } from '@shared/middlewares';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IPropertyDocument, ICronJob } from '@interfaces/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
-import { convertUserRoleToEnum, LEASE_CONSTANTS, createLogger } from '@utils/index';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { ILeaseDocument, ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 import { EventEmitterService, NotificationService, InvitationService } from '@services/index';
@@ -26,8 +24,16 @@ import {
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  convertUserRoleToEnum,
+  preventTenantConflict,
+  calcDaysRemaining,
+  calcDaysElapsed,
+  LEASE_CONSTANTS,
+  createLogger,
+} from '@utils/index';
 
-import { calculateRenewalMetadata } from './leaseHelpers';
+import { calculateRenewalMetadata, createSystemContext, findActiveLeasePDF } from './leaseHelpers';
 
 interface IConstructor {
   notificationService: NotificationService;
@@ -198,6 +204,17 @@ export class LeaseRenewalService {
       });
     }
 
+    if (!isSystemCall) {
+      const renewalMeta = calculateRenewalMetadata(existingLease);
+      if (!renewalMeta?.isEligible) {
+        throw new BadRequestError({
+          message:
+            renewalMeta?.ineligibilityReason ??
+            'This lease is not eligible for renewal at this time',
+        });
+      }
+    }
+
     const session = await this.leaseDAO.startSession();
     const renewalLease = await this.leaseDAO.withTransaction(session, async (session) => {
       const existingRenewal = await this.leaseDAO.findFirst(
@@ -205,7 +222,14 @@ export class LeaseRenewalService {
           previousLeaseId: existingLease._id,
           cuid,
           deletedAt: null,
-          status: { $in: ['draft_renewal', 'pending_signature', 'active', 'ready_for_signature'] },
+          status: {
+            $in: [
+              LeaseStatus.DRAFT_RENEWAL,
+              LeaseStatus.PENDING_SIGNATURE,
+              LeaseStatus.ACTIVE,
+              LeaseStatus.READY_FOR_SIGNATURE,
+            ],
+          },
         },
         undefined,
         undefined,
@@ -258,7 +282,7 @@ export class LeaseRenewalService {
 
         // Validate fee amounts if provided
         if (renewalData.fees) {
-          if (renewalData.fees.monthlyRent !== undefined && renewalData.fees.monthlyRent < 0) {
+          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
             return {
               success: false,
               error: 'Monthly rent cannot be negative',
@@ -383,7 +407,7 @@ export class LeaseRenewalService {
       approvalStatus: renewalLease?.data?.approvalStatus || 'pending',
       startDate: renewalLease.data?.duration.startDate,
       endDate: renewalLease.data?.duration.endDate,
-      monthlyRent: renewalLease.data?.fees.monthlyRent || 0,
+      rentAmount: renewalLease.data?.fees.rentAmount || 0,
       tenantId: existingLease.tenantId.toString(),
       propertyId: existingLease.property.id.toString(),
       propertyUnitId: existingLease.property.unitId?.toString(),
@@ -409,7 +433,7 @@ export class LeaseRenewalService {
                 originalLeaseId: existingLease.luid,
                 renewalStartDate: renewalLease.data.duration.startDate,
                 renewalEndDate: renewalLease.data.duration.endDate,
-                monthlyRent: renewalLease.data.fees.monthlyRent,
+                rentAmount: renewalLease.data.fees.rentAmount,
                 isAutoRenewal: true,
                 actionRequired: true,
                 actionType: 'approve_renewal',
@@ -435,7 +459,7 @@ export class LeaseRenewalService {
                 originalLeaseId: existingLease.luid,
                 renewalStartDate: renewalLease.data.duration.startDate,
                 renewalEndDate: renewalLease.data.duration.endDate,
-                monthlyRent: renewalLease.data.fees.monthlyRent,
+                rentAmount: renewalLease.data.fees.rentAmount,
                 createdBy: userId,
                 createdByName: userName,
                 actionRequired: true,
@@ -514,9 +538,7 @@ export class LeaseRenewalService {
           const daysBeforeExpiry =
             lease.renewalOptions?.daysBeforeExpiryToGenerateRenewal ||
             LEASE_CONSTANTS.DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY;
-          const daysUntilExpiry = Math.ceil(
-            (lease.duration.endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-          );
+          const daysUntilExpiry = calcDaysRemaining(lease.duration.endDate, today);
 
           // Check if we're in the creation window (within 1 day tolerance)
           if (daysUntilExpiry < daysBeforeExpiry - 1 || daysUntilExpiry > daysBeforeExpiry + 1) {
@@ -648,9 +670,7 @@ export class LeaseRenewalService {
               errorMessage: error.message,
               metadata: {
                 leaseId: lease.luid,
-                daysUntilExpiry: Math.ceil(
-                  (lease.duration.endDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
-                ),
+                daysUntilExpiry: calcDaysRemaining(lease.duration.endDate),
               },
             });
           }
@@ -683,12 +703,10 @@ export class LeaseRenewalService {
     this.log.info('Starting auto-send renewals for signature');
 
     try {
-      const today = new Date();
-
       // Find renewals in ready_for_signature status that are approved
       const readyRenewals = await this.leaseDAO.list(
         {
-          status: 'ready_for_signature',
+          status: LeaseStatus.READY_FOR_SIGNATURE,
           approvalStatus: 'approved',
           previousLeaseId: { $exists: true },
           deletedAt: null,
@@ -748,67 +766,60 @@ export class LeaseRenewalService {
             continue;
           }
 
-          // Calculate when to send
-          const daysBeforeSend =
-            renewal.renewalOptions?.daysBeforeExpiryToAutoSendSignature ||
-            originalLease.renewalOptions?.daysBeforeExpiryToAutoSendSignature ||
-            LEASE_CONSTANTS.DEFAULT_SEND_FOR_SIGNATURE_DAYS;
-
-          const targetSendDate = dayjs(originalLease.duration.endDate)
-            .subtract(daysBeforeSend, 'days')
-            .toDate();
-          const daysUntilExpiry = Math.ceil(
-            (originalLease.duration.endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-          );
-
-          // Validation 4: Check if original lease expired too long ago (grace period)
-          if (daysUntilExpiry < -7) {
-            // Original lease expired beyond grace period - likely a data issue or missed timing
-            // Mark as failure so admin can investigate why renewal wasn't sent earlier
+          // Validation 4: Check renewal eligibility using shared helper
+          const renewalMeta = calculateRenewalMetadata(originalLease);
+          if (!renewalMeta) {
             this.log.warn(
-              `Skipping ${renewal.luid} - original lease expired ${Math.abs(daysUntilExpiry)} days ago (beyond grace period). ` +
+              `Skipping renewal ${renewal.luid} - original lease has invalid or missing end date`
+            );
+            errorCount++;
+            continue;
+          }
+
+          // Validation 5: Check if original lease expired too long ago (grace period)
+          const daysElapsed = calcDaysElapsed(originalLease.duration.endDate);
+          if (daysElapsed > LEASE_CONSTANTS.GRACE_PERIOD_DAYS) {
+            this.log.warn(
+              `Skipping ${renewal.luid} - original lease expired ${daysElapsed} days ago (beyond grace period). ` +
                 'Renewal may need manual review.'
             );
             await this.leaseDAO.updateById(renewal._id.toString(), {
               'autoSendInfo.failureReason': 'original_lease_expired',
               'autoSendInfo.failedAt': new Date(),
             });
-            errorCount++; // Count as error since this indicates missed timing
+            errorCount++;
             continue;
           }
 
-          // Check if it's time to send
-          if (today >= targetSendDate) {
+          // Validation 6: Ensure a PDF exists before attempting to send for signature
+          const leasePDF = findActiveLeasePDF(renewal);
+          if (!leasePDF?.key) {
+            this.log.warn(
+              `Skipping renewal ${renewal.luid} - no active lease PDF found. Generate PDF first.`
+            );
+            skippedCount++;
+            continue;
+          }
+
+          // Calculate when to send
+          const daysBeforeSend =
+            renewal.renewalOptions?.daysBeforeExpiryToAutoSendSignature ||
+            originalLease.renewalOptions?.daysBeforeExpiryToAutoSendSignature ||
+            LEASE_CONSTANTS.DEFAULT_SEND_FOR_SIGNATURE_DAYS;
+
+          // Check if it's time to send using normalised daysUntilExpiry from shared helper
+          if (renewalMeta.daysUntilExpiry <= daysBeforeSend) {
             this.log.info(
-              `Auto-sending renewal ${renewal.luid} for signature (${daysUntilExpiry} days until original lease expires)`
+              `Auto-sending renewal ${renewal.luid} for signature (${renewalMeta.daysUntilExpiry} days until original lease expires)`
             );
 
-            // Create mock context for system call
-            const mockContext = {
-              request: {
-                params: {
-                  cuid: renewal.cuid,
-                  luid: renewal.luid,
-                },
-              },
-              currentuser: {
-                uid: 'system',
-                sub: 'system',
-                client: {
-                  cuid: renewal.cuid,
-                  role: 'admin',
-                },
-              },
-            } as any;
-
-            // Call sendLeaseForSignature
-            await sendLeaseForSignatureFn(mockContext);
+            await sendLeaseForSignatureFn(createSystemContext(renewal.cuid, renewal.luid));
 
             sentCount++;
             this.log.info(`Successfully sent renewal ${renewal.luid} for signature`);
           } else {
             this.log.info(
-              `Renewal ${renewal.luid} scheduled to send on ${targetSendDate.toISOString()} (${daysBeforeSend} days before expiry)`
+              `Renewal ${renewal.luid} not yet due - ${renewalMeta.daysUntilExpiry} days remaining, sends at ${daysBeforeSend} days`
             );
             skippedCount++;
           }
@@ -962,7 +973,7 @@ export class LeaseRenewalService {
 
         // Validate fee amounts if provided
         if (renewalData.fees) {
-          if (renewalData.fees.monthlyRent !== undefined && renewalData.fees.monthlyRent < 0) {
+          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
             return {
               success: false,
               error: 'Monthly rent cannot be negative',

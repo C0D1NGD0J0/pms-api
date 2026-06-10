@@ -9,10 +9,6 @@ import { IContactInfoType, IBaseUserProfile, IUserDocument, IAccountType } from 
  * ============================================================================
  */
 
-/**
- * Main Client Interface
- * Core client data structure
- */
 export interface IClient {
   identityVerification?: {
     sessionId?: string;
@@ -28,16 +24,25 @@ export interface IClient {
   companyProfile?: ICompanyProfile;
   dataProcessingConsent?: boolean;
   lastModifiedBy: Types.ObjectId;
+  /** Populated only when explicitly selected via .select('+suspension') */
+  suspension?: IClientSuspension;
   settings: IClientSettings;
   accountType: IAccountType;
   displayName: string;
 }
 
 /**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
+ * Client Settings Interface
+ * User preferences and configuration
  */
+export interface IClientSettings {
+  notificationPreferences: NotificationPreferences;
+  vendorPayoutMode?: 'express' | 'platform_hold';
+  tenantFeatures?: ITenantFeatureSettings;
+  defaultCurrency?: string; // ISO 4217 — display preference and property creation pre-fill
+  timeZone: string;
+  lang: string;
+}
 
 /**
  * Client Document Interface (extends Mongoose Document)
@@ -55,6 +60,28 @@ export interface IClientDocument extends Document, IClient {
 }
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
+ * Client User Connections Interface
+ * Represents the connection between a user and a client
+ */
+export interface IClientUserConnections {
+  requiresOnboarding?: boolean;
+  primaryRole: IUserRoleType;
+  clientDisplayName: string;
+  linkedVendorUid?: string;
+  isFormerTenant?: boolean;
+  roles: IUserRoleType[];
+  leaseExpiredAt?: Date;
+  isConnected: boolean;
+  cuid: string;
+}
+
+/**
  * Company Profile Interface
  * Business entity information for corporate clients
  */
@@ -66,22 +93,18 @@ export interface ICompanyProfile {
   companyPhone?: string;
   companyEmail?: string;
   tradingName?: string;
-  industry?: string;
   website?: string;
 }
 
 /**
- * Client User Connections Interface
- * Represents the connection between a user and a client
+ * Tenant portal feature flags
  */
-export interface IClientUserConnections {
-  requiresOnboarding?: boolean;
-  primaryRole: IUserRoleType;
-  clientDisplayName: string;
-  linkedVendorUid?: string;
-  roles: IUserRoleType[];
-  isConnected: boolean;
-  cuid: string;
+export interface ITenantFeatureSettings {
+  maintenanceRequests: boolean;
+  tenantPortalActive: boolean;
+  smsNotifications: boolean;
+  onlinePayments: boolean;
+  visitorPass: boolean;
 }
 
 /**
@@ -115,14 +138,11 @@ export type IPopulatedClientDocument = {
  * ============================================================================
  */
 
-/**
- * Client Settings Interface
- * User preferences and configuration
- */
-export interface IClientSettings {
-  notificationPreferences: NotificationPreferences;
-  timeZone: string;
-  lang: string;
+export interface IClientSuspension {
+  by?: Types.ObjectId;
+  isActive: boolean;
+  reason?: string;
+  at?: Date;
 }
 
 /**

@@ -116,6 +116,14 @@ export class PermissionService {
         return true;
       }
 
+      // :any implies :mine — if the role can do action on any resource, it can do it on its own
+      if (permission.endsWith(':mine')) {
+        const anyEquivalent = permission.replace(':mine', ':any');
+        if (Array.isArray(rolePermissions) && rolePermissions.includes(anyEquivalent)) {
+          return true;
+        }
+      }
+
       // Check inherited permissions
       if (roleConfig.$extend) {
         for (const inheritedRole of roleConfig.$extend) {
@@ -166,6 +174,26 @@ export class PermissionService {
     // CLIENT resource - always use MINE scope since users can only access their own client
     if (resource === PermissionResource.CLIENT) {
       scope = PermissionScope.MINE;
+    }
+
+    // External roles (tenant, vendor) never have :any permissions — resolve the scope
+    // they actually hold for this resource/action so the permission check uses the right key.
+    if (
+      scope === PermissionScope.ANY &&
+      resource !== PermissionResource.USER &&
+      resource !== PermissionResource.CLIENT &&
+      RoleHelpers.isExternalRole(userRole as any)
+    ) {
+      const roleConfig = this.permissionConfig.roles[userRole];
+      if (roleConfig) {
+        const permsForResource: string[] = Array.isArray(roleConfig[resource as string])
+          ? (roleConfig[resource as string] as string[])
+          : [];
+        const match = permsForResource.find((p) => p.startsWith(`${action}:`));
+        if (match) {
+          scope = match.split(':')[1] as PermissionScope;
+        }
+      }
     }
 
     const permissionCheckData = {

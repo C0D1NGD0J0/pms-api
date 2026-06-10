@@ -1,6 +1,5 @@
 import { Schema, model, Types } from 'mongoose';
 import { ConflictError } from '@shared/customErrors';
-import uniqueValidator from 'mongoose-unique-validator';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
@@ -159,15 +158,11 @@ InvitationSchema.index({ clientId: 1, status: 1 });
 InvitationSchema.index({ inviteeEmail: 1, clientId: 1 });
 InvitationSchema.index({ expiresAt: 1 });
 
-InvitationSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
-
 InvitationSchema.virtual('inviteeFullName').get(function (this: IInvitationDocument) {
   return `${this.personalInfo.firstName} ${this.personalInfo.lastName}`;
 });
 
-InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
+InvitationSchema.pre('save', async function (this: IInvitationDocument) {
   try {
     if (this.isNew && ['pending', 'draft', 'sent'].includes(this.status)) {
       const InvitationModel = model<IInvitationDocument>('Invitation');
@@ -180,11 +175,9 @@ InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
       });
 
       if (existingInvitation) {
-        return next(
-          new ConflictError({
-            message: 'An active invitation already exists for this email and client',
-          })
-        );
+        throw new ConflictError({
+          message: 'An active invitation already exists for this email and client',
+        });
       }
     }
 
@@ -192,11 +185,9 @@ InvitationSchema.pre('save', async function (this: IInvitationDocument, next) {
       this.status = 'expired';
       logger.info(`Auto-expired invitation ${this.iuid}`);
     }
-
-    next();
   } catch (error) {
     logger.error('Error in invitation pre-save hook:', error);
-    next(error);
+    throw error;
   }
 });
 

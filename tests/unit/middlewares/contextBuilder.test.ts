@@ -43,7 +43,7 @@ function buildMockRequest(
 ): Partial<Request> {
   return {
     headers: {},
-    header: jest.fn((name: string) => (overrides.headers ?? {})[name]),
+    header: jest.fn((name: string) => (overrides.headers ?? {})[name]) as any,
     method: 'GET',
     path: '/test',
     originalUrl: '/test',

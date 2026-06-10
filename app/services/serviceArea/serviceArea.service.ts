@@ -8,15 +8,14 @@ export interface ServiceAreaLocation {
   address: string;
 }
 
-export interface ServiceAreaConfig {
-  baseLocation?: ServiceAreaLocation;
-  maxDistance: 10 | 15 | 25 | 50; // km
-}
-
 export interface GeospatialQueryResult {
   profile: IProfileDocument;
   distance: number;
   _id: string;
+}
+
+export interface ServiceAreaConfig {
+  maxDistance: 10 | 15 | 25 | 50; // km
 }
 
 /**
@@ -166,7 +165,8 @@ export class ServiceAreaService {
         targetCoords = targetLocation;
       }
 
-      // Use MongoDB's $geoNear to calculate distance
+      // Use MongoDB's $geoNear to calculate distance.
+      // key is required when the collection has more than one 2dsphere index.
       const result = await this.vendorModel.aggregate([
         {
           $geoNear: {
@@ -175,6 +175,7 @@ export class ServiceAreaService {
               coordinates: targetCoords,
             },
             distanceField: 'distance',
+            key: 'address.computedLocation',
             maxDistance: vendor.serviceAreas.maxDistance * 1000, // Convert km to meters
             spherical: true,
             query: { _id: vendor._id },
@@ -202,6 +203,10 @@ export class ServiceAreaService {
         message: `Location is within service area (${distance.toFixed(2)}km from vendor)`,
       };
     } catch (error) {
+      console.error(
+        `isLocationInVendorServiceArea failed for vendor ${vendorId}:`,
+        error instanceof Error ? error.message : error
+      );
       return {
         isInRange: false,
         message: `Error checking service area: ${error instanceof Error ? error.message : 'Unknown error'}`,

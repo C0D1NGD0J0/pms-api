@@ -7,6 +7,7 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { EventEmitterService } from '@services/index';
 import { EventTypes } from '@interfaces/events.interface';
+import { OwnershipType } from '@interfaces/property.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { BoldSignJobResult, BoldSignJobData } from '@interfaces/esignature.interface';
@@ -52,7 +53,7 @@ export class ESignatureWorker {
   }
 
   sendForSignature = async (job: Job<BoldSignJobData>): Promise<BoldSignJobResult> => {
-    const { resource, cuid, luid, leaseId, senderInfo } = job.data;
+    const { resource, cuid, luid, leaseId, senderInfo, managedBy } = job.data;
     job.progress(10);
 
     try {
@@ -104,52 +105,78 @@ export class ESignatureWorker {
       }
       job.progress(60);
 
-      const property = await this.propertyDAO.findFirst({
-        _id: new Types.ObjectId(lease.property.id),
-      });
+      const property = await this.propertyDAO.findFirst(
+        { _id: new Types.ObjectId(lease.property.id) },
+        { select: '+owner +authorization' }
+      );
       if (!property) {
         throw new Error('Property not found');
       }
 
-      const propertyManager = await this.profileDAO.findFirst(
-        { user: new Types.ObjectId(property.managedBy) },
-        { populate: 'user' }
-      );
-      if (!propertyManager || !propertyManager.user) {
-        throw new Error('Property manager information not found');
-      }
+      // Determine who signs on the landlord/owner side
+      const isExternalOwner = property.owner?.type === OwnershipType.EXTERNAL_OWNER;
+      const isPmAuthorized = property.isManagementAuthorized();
+      const landlordSigns = isExternalOwner && !isPmAuthorized;
 
-      const pmUser =
-        typeof propertyManager.user === 'object' ? (propertyManager.user as any) : null;
-      if (!pmUser || !pmUser.email) {
-        throw new Error('Property manager email not found');
-      }
-      job.progress(70);
-
-      // order is important: property manager signs first, then tenant, then co-tenants
       const signers: Array<{
         name: string;
         email: string;
-        role: 'tenant' | 'co_tenant' | 'property_manager';
+        role: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
         userId?: Types.ObjectId;
-      }> = [
-        {
+      }> = [];
+
+      if (landlordSigns) {
+        // External owner signs directly — PM is not authorized to sign on their behalf
+        if (!property.owner?.email) {
+          throw new Error(
+            'External owner email is required for direct landlord signing. ' +
+              'Please update the property owner information or authorize PM to sign on behalf.'
+          );
+        }
+        signers.push({
+          name: property.owner.name || 'Property Owner',
+          email: property.owner.email,
+          role: 'landlord',
+        });
+      } else {
+        // PM signs (company_owned, self_owned, or authorized external_owner).
+        // Use lease-level managedBy override if present (set when PM is changed on the lease form),
+        // otherwise fall back to the property's assigned manager.
+        const pmUserId = managedBy || property.managedBy;
+        const propertyManager = await this.profileDAO.findFirst(
+          { user: new Types.ObjectId(pmUserId) },
+          { populate: 'user' }
+        );
+        if (!propertyManager || !propertyManager.user) {
+          throw new Error('Property manager information not found');
+        }
+
+        const pmUser =
+          typeof propertyManager.user === 'object' ? (propertyManager.user as any) : null;
+        if (!pmUser || !pmUser.email) {
+          throw new Error('Property manager email not found');
+        }
+
+        signers.push({
           name:
             `${propertyManager.personalInfo?.firstName || ''} ${propertyManager.personalInfo?.lastName || ''}`.trim() ||
             'Property Manager',
           email: pmUser.email,
           role: 'property_manager',
           userId: propertyManager._id,
-        },
-        {
-          name:
-            `${tenant.personalInfo?.firstName || ''} ${tenant.personalInfo?.lastName || ''}`.trim() ||
-            'Tenant',
-          email: tenantUser.email,
-          role: 'tenant',
-          userId: tenant._id,
-        },
-      ];
+        });
+      }
+      job.progress(70);
+
+      // Tenant always signs
+      signers.push({
+        name:
+          `${tenant.personalInfo?.firstName || ''} ${tenant.personalInfo?.lastName || ''}`.trim() ||
+          'Tenant',
+        email: tenantUser.email,
+        role: 'tenant',
+        userId: tenant._id,
+      });
 
       if (lease.coTenants && lease.coTenants.length > 0) {
         lease.coTenants.forEach((coTenant, index) => {

@@ -67,7 +67,7 @@ router.patch(
   isAuthenticated,
   basicLimiter(),
   validateRequest({
-    body: AuthValidations.resendActivation,
+    body: AuthValidations.switchClientAccount,
   }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -125,6 +125,49 @@ router.post(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.completeOnboarding(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/charge_first_payment',
+  isAuthenticated,
+  basicLimiter({ max: 3, windowMs: 60 * 60 * 1000 }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.chargeFirstPayment(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/setup_payment_intent',
+  isAuthenticated,
+  basicLimiter(),
+  validateRequest({
+    body: AuthValidations.setupPaymentIntent,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.setupPaymentIntent(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/payment_method',
+  isAuthenticated,
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.getPaymentMethod(req, res);
+  })
+);
+
+router.delete(
+  '/:cuid/payment_method',
+  isAuthenticated,
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.removePaymentMethod(req, res);
   })
 );
 

@@ -10,6 +10,7 @@ describe('WebhookController - Stripe Webhooks', () => {
   let webhookController: WebhookController;
   let mockStripeService: jest.Mocked<StripeService>;
   let mockSubscriptionService: jest.Mocked<SubscriptionService>;
+  let mockPaymentService: any;
   let mockLeaseService: jest.Mocked<LeaseService>;
   let mockBoldSignService: jest.Mocked<BoldSignService>;
   let mockIdempotencyCache: jest.Mocked<IdempotencyCache>;
@@ -28,6 +29,15 @@ describe('WebhookController - Stripe Webhooks', () => {
       handleSubscriptionUpdated: jest.fn(),
       handleSubscriptionCanceled: jest.fn(),
     } as any;
+
+    mockPaymentService = {
+      handleInvoicePaymentSucceeded: jest.fn().mockResolvedValue(undefined),
+      handleInvoicePaymentFailed: jest.fn().mockResolvedValue(undefined),
+      handleInvoiceOverdue: jest.fn().mockResolvedValue(undefined),
+      handleInvoiceUpcoming: jest.fn().mockResolvedValue(undefined),
+      handlePayoutPaid: jest.fn().mockResolvedValue(undefined),
+      handlePayoutFailed: jest.fn().mockResolvedValue(undefined),
+    };
 
     mockLeaseService = {} as any;
     mockBoldSignService = {} as any;
@@ -48,9 +58,10 @@ describe('WebhookController - Stripe Webhooks', () => {
       subscriptionService: mockSubscriptionService,
       leaseService: mockLeaseService,
       boldSignService: mockBoldSignService,
-      paymentService: {} as any,
+      paymentService: mockPaymentService,
       clientService: {} as any,
       idempotencyCache: mockIdempotencyCache,
+      maintenanceInvoiceService: {} as any,
     });
 
     mockRequest = {
@@ -104,6 +115,9 @@ describe('WebhookController - Stripe Webhooks', () => {
     });
 
     it('should handle customer.subscription.updated event with full params', async () => {
+      const mockItems = [
+        { id: 'si_base', price: { lookup_key: 'growth_monthly_price' }, quantity: 1 },
+      ];
       const mockEvent = {
         id: 'evt_test123',
         type: 'customer.subscription.updated',
@@ -114,6 +128,7 @@ describe('WebhookController - Stripe Webhooks', () => {
             status: 'active',
             current_period_start: 1700000000,
             current_period_end: 1702592000,
+            items: { data: mockItems },
           },
         },
       };
@@ -133,6 +148,7 @@ describe('WebhookController - Stripe Webhooks', () => {
         status: 'active',
         currentPeriodStart: 1700000000,
         currentPeriodEnd: 1702592000,
+        items: mockItems,
       });
       expect(mockResponse.status).toHaveBeenCalledWith(200);
     });
@@ -165,7 +181,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(200);
     });
 
-    it('should handle invoice.paid event by delegating raw invoice to service', async () => {
+    it('should handle invoice.paid by calling both subscriptionService and paymentService', async () => {
       const mockInvoice = {
         id: 'in_test123',
         customer: 'cus_test123',
@@ -186,11 +202,12 @@ describe('WebhookController - Stripe Webhooks', () => {
       await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleInvoicePaid).toHaveBeenCalledWith(mockInvoice);
+      expect(mockPaymentService.handleInvoicePaymentSucceeded).toHaveBeenCalledWith(mockInvoice.id, mockInvoice);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
     });
 
-    it('should handle invoice.payment_failed event by delegating raw invoice to service', async () => {
+    it('should handle invoice.payment_failed by calling both subscriptionService and paymentService', async () => {
       const mockInvoice = {
         id: 'in_test123',
         customer: 'cus_test123',
@@ -210,6 +227,54 @@ describe('WebhookController - Stripe Webhooks', () => {
       await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleInvoicePaymentFailed).toHaveBeenCalledWith(mockInvoice);
+      expect(mockPaymentService.handleInvoicePaymentFailed).toHaveBeenCalledWith(mockInvoice.id, mockInvoice);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
+    });
+
+    it('should handle invoice.overdue by calling paymentService.handleInvoiceOverdue', async () => {
+      const mockInvoice = {
+        id: 'in_overdue123',
+        amount_due: 150000,
+        currency: 'cad',
+        customer: 'cus_test123',
+      };
+      const mockEvent = {
+        id: 'evt_overdue123',
+        type: 'invoice.overdue',
+        data: { object: mockInvoice },
+      };
+
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockPaymentService.handleInvoiceOverdue).toHaveBeenCalledWith(mockInvoice.id, mockInvoice);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
+    });
+
+    it('should handle invoice.upcoming by calling paymentService.handleInvoiceUpcoming', async () => {
+      const mockInvoice = {
+        id: 'in_upcoming123',
+        subscription: 'sub_test123',
+        amount_due: 9900,
+        currency: 'cad',
+        period_start: 1700000000,
+      };
+      const mockEvent = {
+        id: 'evt_upcoming123',
+        type: 'invoice.upcoming',
+        data: { object: mockInvoice },
+      };
+
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockPaymentService.handleInvoiceUpcoming).toHaveBeenCalledWith(mockInvoice);
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
     });
@@ -248,6 +313,70 @@ describe('WebhookController - Stripe Webhooks', () => {
         success: false,
         message: 'Invalid signature',
       });
+    });
+  });
+
+  describe('handleStripeConnectWebhook', () => {
+    it('should handle payout.paid by calling paymentService.handlePayoutPaid with event.account', async () => {
+      const mockPayout = {
+        id: 'po_test123',
+        amount: 50000,
+        currency: 'cad',
+        arrival_date: 1700000000,
+        destination: 'ba_test123',
+        status: 'paid',
+      };
+      const mockEvent = {
+        id: 'evt_connect_paid',
+        type: 'payout.paid',
+        account: 'acct_vendor123',
+        data: { object: mockPayout },
+      };
+
+      mockRequest.headers = { 'stripe-signature': 'test_connect_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
+
+      await webhookController.handleStripeConnectWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockPaymentService.handlePayoutPaid).toHaveBeenCalledWith(
+        mockPayout.id,
+        mockPayout,
+        'acct_vendor123'
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
+    });
+
+    it('should handle payout.failed by calling paymentService.handlePayoutFailed with event.account', async () => {
+      const mockPayout = {
+        id: 'po_fail123',
+        amount: 50000,
+        currency: 'cad',
+        arrival_date: 1700000000,
+        destination: 'ba_test123',
+        failure_code: 'insufficient_funds',
+        failure_reason: 'The bank account has insufficient funds.',
+        status: 'failed',
+      };
+      const mockEvent = {
+        id: 'evt_connect_failed',
+        type: 'payout.failed',
+        account: 'acct_vendor123',
+        data: { object: mockPayout },
+      };
+
+      mockRequest.headers = { 'stripe-signature': 'test_connect_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
+
+      await webhookController.handleStripeConnectWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockPaymentService.handlePayoutFailed).toHaveBeenCalledWith(
+        mockPayout.id,
+        mockPayout,
+        'acct_vendor123'
+      );
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
     });
   });
 });

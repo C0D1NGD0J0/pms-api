@@ -27,5 +27,5 @@ export interface ICronExecutionLog {
  * Interface for services that provide cron jobs
  */
 export interface ICronProvider {
-  getCronJobs(): ICronJob[]; // Return array of cron jobs this service wants to register
+  getCronJobs(): ICronJob[] | Promise<ICronJob[]>; // Return array of cron jobs this service wants to register
 }

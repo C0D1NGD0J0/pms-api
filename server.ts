@@ -12,8 +12,10 @@ import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
 import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
+import { runSchemaSync } from '@database/schema-sync';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { DatabaseService, Environments } from '@database/index';
+import { SERVICE_RESOURCE_NAMES, QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
 (global as any).rootDir = __dirname;
 
@@ -55,6 +57,9 @@ class Server {
 
     await this.dbService.connect();
 
+    // Backfill missing fields on existing documents (idempotent, no-op when in sync)
+    await runSchemaSync();
+
     // Queues/workers run in separate worker_process.ts
     // Only load Bull Board UI (readonly) for monitoring via /admin/queues
     const isWorkerProcess = process.env.PROCESS_TYPE === 'worker';
@@ -69,10 +74,14 @@ class Server {
     // Queues are otherwise lazy-loaded (only initialized when first used), which causes
     // Bull Board to appear empty after a server restart until the first job is enqueued.
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
-      const { queueFactory } = container.cradle;
-      queueFactory.initializeAllQueues().catch((err: any) => {
-        this.log.warn('Queue pre-initialization for Bull Board failed (non-fatal):', err?.message);
-      });
+      for (const name of QUEUE_RESOURCE_NAMES) {
+        try {
+          if (container.hasRegistration(name)) container.resolve(name);
+        } catch (err: any) {
+          this.log.warn(`Queue pre-init failed for ${name} (non-fatal): ${err?.message}`);
+        }
+      }
+      this.log.info('Queues pre-initialized for Bull Board');
     }
 
     await this.startServers(this.expApp);
@@ -111,7 +120,7 @@ class Server {
     }
 
     httpServer.listen(this.PORT, '0.0.0.0', () => {
-      this.log.info('Server initialized...');
+      this.log.info('Server initialized...', { port: this.PORT });
     });
 
     httpServer.on('error', (error: any) => {
@@ -247,28 +256,20 @@ class Server {
     this.log.info('Cleaning up DI container and services...');
 
     try {
-      const servicesWithCleanup = [
-        'emitterService',
-        'propertyService',
-        'redisService',
-        'propertyUnitService',
-        'subscriptionService',
-        'authService',
-        'leaseService',
-        'clientService',
-      ];
-
-      // clean up services that have destroy/cleanup methods
-      for (const serviceName of servicesWithCleanup) {
+      // Dynamically clean up all registered services — checks destroy/cleanupEventListeners/cleanup
+      for (const serviceName of SERVICE_RESOURCE_NAMES) {
         try {
           if (container.hasRegistration(serviceName)) {
-            const service = container.resolve(serviceName);
+            const service = container.resolve(serviceName) as any;
             if (service && typeof service.destroy === 'function') {
               await service.destroy();
               this.log.info(`Cleaned up ${serviceName}`);
             } else if (service && typeof service.cleanupEventListeners === 'function') {
               service.cleanupEventListeners();
               this.log.info(`Cleaned up event listeners for ${serviceName}`);
+            } else if (service && typeof service.cleanup === 'function') {
+              await service.cleanup();
+              this.log.info(`Cleaned up ${serviceName}`);
             }
           }
         } catch (error) {
@@ -276,12 +277,20 @@ class Server {
         }
       }
 
-      // Clean up queues - dynamically discover all registered queues
-      const queueNames = Object.keys(container.registrations).filter((name) =>
-        name.endsWith('Queue')
-      );
+      try {
+        if (container.hasRegistration('baseIO')) {
+          const baseIO = container.resolve('baseIO') as any;
+          if (baseIO && typeof baseIO.disconnectAll === 'function') {
+            baseIO.disconnectAll();
+            this.log.info('Disconnected all Socket.IO clients');
+          }
+        }
+      } catch (error) {
+        this.log.warn('Failed to disconnect Socket.IO clients:', error);
+      }
+
       let queueCount = 0;
-      for (const queueName of queueNames) {
+      for (const queueName of QUEUE_RESOURCE_NAMES) {
         try {
           if (container.hasRegistration(queueName)) {
             const queue = container.resolve(queueName);
@@ -312,7 +321,7 @@ class Server {
 
     process.on('unhandledRejection', (reason, promise) => {
       this.log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-      // Don't shut down for unhandled rejections in production
+      // don't shut down for unhandled rejections in production
       if (this.SERVER_ENV === 'development') {
         this.shutdown(1);
       }
@@ -325,7 +334,7 @@ class Server {
 
     process.on('warning', (warning) => {
       if (warning.name === 'HeapSizeLimit' || warning.name === 'MemoryLimitError') {
-        console.warn('----WARNIGN----', warning);
+        console.warn('----WARNING----', warning);
       }
     });
 

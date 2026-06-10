@@ -7,7 +7,7 @@ import { computeProfileCompletion } from '@utils/profileCompletion';
 
 function makeClient(overrides: Partial<IClientDocument> = {}): IClientDocument {
   return {
-    accountType: { isEnterpriseAccount: false },
+    accountType: { isEnterpriseAccount: false, category: 'business' as const },
     ...overrides,
   } as unknown as IClientDocument;
 }
@@ -188,7 +188,7 @@ describe('computeProfileCompletion — tenant section', () => {
 
 describe('computeProfileCompletion — enterprise section', () => {
   const enterpriseClient = makeClient({
-    accountType: { isEnterpriseAccount: true },
+    accountType: { isEnterpriseAccount: true, category: 'business' as const },
     companyProfile: {} as any,
   });
 
@@ -219,7 +219,7 @@ describe('computeProfileCompletion — enterprise section', () => {
 
   it('enterprise section scores correctly when all fields filled', () => {
     const client = makeClient({
-      accountType: { isEnterpriseAccount: true },
+      accountType: { isEnterpriseAccount: true, category: 'business' as const },
       companyProfile: {
         legalEntityName: 'Acme Ltd',
         companyEmail: 'info@acme.com',

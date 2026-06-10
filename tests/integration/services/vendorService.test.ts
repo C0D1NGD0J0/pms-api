@@ -1,18 +1,20 @@
+import { ForbiddenError } from '@shared/customErrors';
 import { ROLES } from '@shared/constants/roles.constants';
 import { Profile, Client, Vendor, User } from '@models/index';
 import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { ProfileDAO, VendorDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 
-import { setupAllExternalMocks,
-
+import {
+  setupAllExternalMocks,
   clearTestDatabase,
   createTestClient,
+  createTestVendor,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '../../helpers';
+  seedTestData,
+} from '../../helpers';
 
 const setupServices = () => {
   const vendorDAO = new VendorDAO({ vendorModel: Vendor });
@@ -32,6 +34,10 @@ const setupServices = () => {
     saveFilteredVendors: jest.fn().mockResolvedValue(undefined),
   } as any;
 
+  const geoCoderService = {
+    parseLocation: jest.fn().mockReturnValue(Promise.resolve({ success: false })),
+  } as any;
+
   const vendorService = new VendorService({
     vendorDAO,
     userDAO,
@@ -39,22 +45,26 @@ const setupServices = () => {
     profileDAO,
     vendorCache,
     permissionService,
+    geoCoderService,
+    maintenanceRequestDAO: {} as any,
     queueFactory: mockQueueFactory as any,
     emitterService: {} as any,
   } as any);
 
-  return { vendorService, vendorDAO, userDAO, clientDAO, profileDAO };
+  return { vendorService, vendorDAO, userDAO, clientDAO, profileDAO, geoCoderService };
 };
 
 describe('VendorService Integration Tests - Write Operations', () => {
   let vendorService: VendorService;
   let _vendorDAO: VendorDAO;
+  let geoCoderService: any;
 
   beforeAll(async () => {
     setupAllExternalMocks();
     const services = setupServices();
     vendorService = services.vendorService;
     _vendorDAO = services.vendorDAO;
+    geoCoderService = services.geoCoderService;
   });
 
   beforeEach(async () => {
@@ -76,7 +86,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id.toString(),
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id.toString(),
+            primaryAccountHolderUserId: user._id.toString(),
           },
         ],
       };
@@ -104,7 +114,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id.toString(),
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id.toString(),
+            primaryAccountHolderUserId: user._id.toString(),
           },
         ],
       };
@@ -131,7 +141,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id,
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id,
+            primaryAccountHolderUserId: user._id,
           },
         ],
       });
@@ -147,7 +157,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client2._id.toString(),
             cuid: client2.cuid,
             isActive: true,
-            primaryAccountHolder: user._id.toString(),
+            primaryAccountHolderUserId: user._id.toString(),
           },
         ],
       };
@@ -179,7 +189,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
             clientId: client._id,
             cuid: client.cuid,
             isActive: true,
-            primaryAccountHolder: user._id,
+            primaryAccountHolderUserId: user._id,
           },
         ],
       });
@@ -204,6 +214,142 @@ describe('VendorService Integration Tests - Write Operations', () => {
       await expect(vendorService.updateVendorInfo('non-existent-vuid', updateData)).rejects.toThrow(
         'Vendor not found'
       );
+    });
+
+    it('geocodes address.fullAddress and populates computedLocation when provided', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+
+      const vendor = await Vendor.create({
+        vuid: `vendor-${Date.now()}`,
+        userId: user._id,
+        companyName: 'Geo Test Company',
+        businessType: 'Plumber',
+        registrationNumber: 'REG-GEO-001',
+        connectedClients: [
+          {
+            clientId: client._id,
+            cuid: client.cuid,
+            isActive: true,
+            primaryAccountHolderUserId: user._id,
+          },
+        ],
+      });
+
+      geoCoderService.parseLocation.mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: {
+            street: '123 Main',
+            city: 'Vancouver',
+            state: 'BC',
+            postCode: 'V5K 0A1',
+            country: 'Canada',
+            coordinates: [-123.1, 49.2],
+          },
+        })
+      );
+
+      const result = await vendorService.updateVendorInfo(vendor.vuid, {
+        address: { fullAddress: '123 Main St, Vancouver, BC' } as any,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.address?.computedLocation?.coordinates).toEqual([-123.1, 49.2]);
+      expect(result.data.address?.city).toBe('Vancouver');
+    });
+
+    it('saves address without coordinates when geocoding fails', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+
+      const vendor = await Vendor.create({
+        vuid: `vendor-${Date.now()}`,
+        userId: user._id,
+        companyName: 'Geo Fail Company',
+        businessType: 'Electrician',
+        registrationNumber: 'REG-GEO-002',
+        connectedClients: [
+          {
+            clientId: client._id,
+            cuid: client.cuid,
+            isActive: true,
+            primaryAccountHolderUserId: user._id,
+          },
+        ],
+      });
+
+      geoCoderService.parseLocation.mockReturnValue(
+        Promise.resolve({ success: false })
+      );
+
+      const result = await vendorService.updateVendorInfo(vendor.vuid, {
+        address: { fullAddress: 'Unknown Address 999' } as any,
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should allow primary account holder to update when callerUserId matches', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+
+      const vendor = await Vendor.create({
+        vuid: `vendor-owner-${Date.now()}`,
+        userId: user._id,
+        companyName: 'Owner Test Co',
+        businessType: 'Plumber',
+        registrationNumber: `REG-OWN-${Date.now()}`,
+        connectedClients: [
+          {
+            clientId: client._id,
+            cuid: client.cuid,
+            isActive: true,
+            primaryAccountHolderUserId: user._id,
+          },
+        ],
+      });
+
+      const result = await vendorService.updateVendorInfo(
+        vendor.vuid,
+        { companyName: 'Owner Updated Co' },
+        undefined,
+        user._id.toString()
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.companyName).toBe('Owner Updated Co');
+    });
+
+    it('should throw ForbiddenError when callerUserId does not match primaryAccountHolderUserId', async () => {
+      const client = await createTestClient();
+      const owner = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const attacker = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+
+      const vendor = await Vendor.create({
+        vuid: `vendor-secured-${Date.now()}`,
+        userId: owner._id,
+        companyName: 'Secured Co',
+        businessType: 'Plumber',
+        registrationNumber: `REG-SEC-${Date.now()}`,
+        connectedClients: [
+          {
+            clientId: client._id,
+            cuid: client.cuid,
+            isActive: true,
+            primaryAccountHolderUserId: owner._id,
+          },
+        ],
+      });
+
+      await expect(
+        vendorService.updateVendorInfo(
+          vendor.vuid,
+          { companyName: 'Hacked Co' },
+          undefined,
+          attacker._id.toString()
+        )
+      ).rejects.toThrow('Only primary account holders can update vendor business information');
     });
   });
 
@@ -311,7 +457,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
         {
           cuid: testClient.cuid,
           isConnected: true,
-          primaryAccountHolder: testVendorUser._id,
+          primaryAccountHolderUserId: testVendorUser._id,
         },
       ],
     });
@@ -327,7 +473,9 @@ describe('VendorService Integration Tests - Read Operations', () => {
       // Verify the user is in connectedClients
       const clientConnection = result?.connectedClients.find((cc) => cc.cuid === testClient.cuid);
       expect(clientConnection).toBeDefined();
-      expect(clientConnection?.primaryAccountHolder.toString()).toBe(testVendorUser._id.toString());
+      expect(clientConnection?.primaryAccountHolderUserId.toString()).toBe(
+        testVendorUser._id.toString()
+      );
     });
 
     it('should return null when vendor not found', async () => {
@@ -519,5 +667,216 @@ describe('VendorService Integration Tests - Read Operations', () => {
         vendorService.getVendorTeamMembers(mockContext, testClient.cuid, 'non-existent-vuid')
       ).rejects.toThrow();
     });
+  });
+});
+
+// ===========================================================================
+// getVendorTeamMembers — auth-guard scenarios
+// ===========================================================================
+
+describe('VendorService.getVendorTeamMembers — auth guard', () => {
+  let vendorService: VendorService;
+  let client: any;
+  let primaryVendorUser: any;
+  let vendor: any;
+
+  beforeAll(async () => {
+    setupAllExternalMocks();
+    vendorService = setupServices().vendorService;
+  });
+
+  beforeEach(async () => {
+    await clearTestDatabase();
+
+    client = await createTestClient();
+    primaryVendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+    vendor = await createTestVendor(client.cuid, primaryVendorUser._id);
+  });
+
+  /**
+   * Build a minimal IRequestContext-compatible object.
+   * The clients array must include an isConnected entry for the cuid so that
+   * PermissionService.canAccessResource() finds an active connection.
+   */
+  function buildContext(overrides: {
+    sub: string;
+    uid: string;
+    role: string;
+    cuid: string;
+    linkedVendorUid?: string;
+    vendorInfo?: Record<string, any>;
+  }) {
+    return {
+      currentuser: {
+        sub: overrides.sub,
+        uid: overrides.uid,
+        email: 'test@example.com',
+        client: {
+          cuid: overrides.cuid,
+          displayname: 'Test Client',
+          role: overrides.role,
+          isVerified: true,
+          linkedVendorUid: overrides.linkedVendorUid,
+        },
+        clients: [
+          {
+            cuid: overrides.cuid,
+            roles: [overrides.role],
+            isConnected: true,
+          },
+        ],
+        vendorInfo: overrides.vendorInfo,
+        permissions: [],
+        preferences: {},
+        clientEntitlements: {},
+        fullname: 'Test User',
+        displayName: 'Test User',
+        avatarUrl: '',
+        isActive: true,
+      },
+    } as any;
+  }
+
+  it('admin can retrieve vendor team members', async () => {
+    const adminUser = await createTestUser(client.cuid, { roles: [ROLES.ADMIN] });
+
+    const ctx = buildContext({
+      sub: adminUser._id.toString(),
+      uid: adminUser.uid,
+      role: ROLES.ADMIN,
+      cuid: client.cuid,
+    });
+
+    const result = await vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid);
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data.items)).toBe(true);
+  });
+
+  it('manager can retrieve vendor team members', async () => {
+    const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+    const ctx = buildContext({
+      sub: managerUser._id.toString(),
+      uid: managerUser.uid,
+      role: ROLES.MANAGER,
+      cuid: client.cuid,
+    });
+
+    const result = await vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid);
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data.items)).toBe(true);
+  });
+
+  it('primary vendor (account owner) can retrieve their own team members', async () => {
+    // primaryVendorUser._id matches vendorConnection.primaryAccountHolderUserId
+    const ctx = buildContext({
+      sub: primaryVendorUser._id.toString(),
+      uid: primaryVendorUser.uid,
+      role: ROLES.VENDOR,
+      cuid: client.cuid,
+      // No linkedVendorUid — they are the primary account holder
+    });
+
+    const result = await vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid);
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data.items)).toBe(true);
+  });
+
+  it('team member linked via vuid (CSV invite path) can retrieve team members', async () => {
+    // linkedVendorUid stores the vendor's vuid on the CSV path
+    const teamMember = await createTestUser(client.cuid, {
+      roles: [ROLES.VENDOR],
+      cuids: [
+        {
+          cuid: client.cuid,
+          roles: [ROLES.VENDOR],
+          isConnected: true,
+          clientDisplayName: client.displayName,
+          linkedVendorUid: vendor.vuid,
+        },
+      ],
+    });
+
+    const ctx = buildContext({
+      sub: teamMember._id.toString(),
+      uid: teamMember.uid,
+      role: ROLES.VENDOR,
+      cuid: client.cuid,
+      linkedVendorUid: vendor.vuid,
+      vendorInfo: { isLinkedAccount: true },
+    });
+
+    const result = await vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid);
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data.items)).toBe(true);
+  });
+
+  it('team member linked via primary account holder User._id (single-invite path) can retrieve team members', async () => {
+    // linkedVendorUid stores the primary vendor's User._id hex string on the single-invite path
+    const primaryUserId = primaryVendorUser._id.toString();
+    const teamMember = await createTestUser(client.cuid, {
+      roles: [ROLES.VENDOR],
+      cuids: [
+        {
+          cuid: client.cuid,
+          roles: [ROLES.VENDOR],
+          isConnected: true,
+          clientDisplayName: client.displayName,
+          linkedVendorUid: primaryUserId,
+        },
+      ],
+    });
+
+    const ctx = buildContext({
+      sub: teamMember._id.toString(),
+      uid: teamMember.uid,
+      role: ROLES.VENDOR,
+      cuid: client.cuid,
+      linkedVendorUid: primaryUserId,
+      vendorInfo: { isLinkedAccount: true },
+    });
+
+    const result = await vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid);
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.data.items)).toBe(true);
+  });
+
+  it('unrelated vendor from a different org is forbidden', async () => {
+    // A vendor whose linkedVendorUid doesn't match either vuid or primaryUserId
+    const unrelatedVendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+
+    const ctx = buildContext({
+      sub: unrelatedVendorUser._id.toString(),
+      uid: unrelatedVendorUser.uid,
+      role: ROLES.VENDOR,
+      cuid: client.cuid,
+      // linkedVendorUid points to some completely different vendor
+      linkedVendorUid: 'COMPLETELY_DIFFERENT_ORG',
+      vendorInfo: { isLinkedAccount: true },
+    });
+
+    await expect(
+      vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('tenant is forbidden from retrieving vendor team members', async () => {
+    const tenantUser = await createTestUser(client.cuid, { roles: [ROLES.TENANT] });
+
+    const ctx = buildContext({
+      sub: tenantUser._id.toString(),
+      uid: tenantUser.uid,
+      role: ROLES.TENANT,
+      cuid: client.cuid,
+    });
+
+    await expect(
+      vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)
+    ).rejects.toThrow(ForbiddenError);
   });
 });

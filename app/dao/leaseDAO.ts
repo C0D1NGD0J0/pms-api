@@ -1,6 +1,8 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { ClientSession, FilterQuery, Model } from 'mongoose';
+import { computeLeaseMonthlyFees } from '@utils/financial.utils';
+import { type QueryFilter, ClientSession, Model } from 'mongoose';
+import { calcPercentage, roundToDecimal } from '@utils/math.utils';
 import { paginateResult, createLogger, escapeRegExp } from '@utils/index';
 import {
   ListResultWithPagination,
@@ -56,7 +58,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
 
-      const query: FilterQuery<ILeaseDocument> = {
+      const query: QueryFilter<ILeaseDocument> = {
         _id: leaseId,
         cuid,
         deletedAt: null,
@@ -77,7 +79,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting filtered leases for client ${cuid}`, { filters, pagination });
 
-      const query: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null };
+      const query: QueryFilter<ILeaseDocument> = { cuid, deletedAt: null };
 
       if (filters.approvalStatus) {
         query.approvalStatus = Array.isArray(filters.approvalStatus)
@@ -130,12 +132,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       }
 
       if (filters.minRent || filters.maxRent) {
-        query['fees.monthlyRent'] = {};
+        query['fees.rentAmount'] = {};
         if (filters.minRent) {
-          query['fees.monthlyRent'].$gte = filters.minRent;
+          query['fees.rentAmount'].$gte = filters.minRent;
         }
         if (filters.maxRent) {
-          query['fees.monthlyRent'].$lte = filters.maxRent;
+          query['fees.rentAmount'].$lte = filters.maxRent;
         }
       }
 
@@ -185,7 +187,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           skip,
           limit,
           projection:
-            'luid leaseNumber status duration.startDate duration.endDate fees.monthlyRent property.unitId tenantId signingMethod eSignature.status',
+            'luid leaseNumber status duration.startDate duration.endDate fees.rentAmount fees.currency fees.lateFeeDays fees.rentDueDay fees.acceptedPaymentMethod property.unitId tenantId signingMethod eSignature.status includeManagementFee petPolicy.monthlyFee',
           populate: [
             {
               path: 'tenantId',
@@ -195,8 +197,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
                 select: 'personalInfo.firstName personalInfo.lastName',
               },
             },
-            { path: 'property.id', select: 'pid name address.fullAddress' },
-            { path: 'property.unitId', select: 'unitNumber' },
+            { path: 'property.id', select: 'pid name address.fullAddress fees.managementFees' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
           ],
         }),
         this.countDocuments(query),
@@ -215,6 +217,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         const propertyAddress = leaseObj.property?.id?.address?.fullAddress || 'N/A';
         const propertyName = leaseObj.property?.id?.name || 'Unknown Property';
         const unitNumber = leaseObj.property?.unitId?.unitNumber || null;
+        const unitPuid = leaseObj.property?.unitId?.puid || null;
+
+        const { totalMonthlyRent } = computeLeaseMonthlyFees(leaseObj);
 
         return {
           luid: leaseObj.luid,
@@ -223,7 +228,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           tenantUid: tenant?._id?.toString() || '',
           propertyAddress,
           unitNumber,
-          monthlyRent: leaseObj.fees?.monthlyRent,
+          unitPuid,
+          rentAmount: totalMonthlyRent,
+          currency: leaseObj.fees?.currency ?? 'USD',
+          gracePeriodDays: leaseObj.fees?.lateFeeDays ?? 5,
+          rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
+          acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,
           endDate: leaseObj.duration?.endDate,
           status: leaseObj.status,
@@ -308,7 +318,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const overlaps: ILeaseDocument[] = [];
 
       if (unitId) {
-        const query: FilterQuery<ILeaseDocument> = {
+        const query: QueryFilter<ILeaseDocument> = {
           cuid,
           'property.unitId': unitId,
           deletedAt: null,
@@ -340,7 +350,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       // Case 2: Creating PROPERTY-level lease (entire property)
       else {
         // Check 2a: Other property-level leases
-        const propertyQuery: FilterQuery<ILeaseDocument> = {
+        const propertyQuery: QueryFilter<ILeaseDocument> = {
           cuid,
           'property.id': propertyId,
           'property.unitId': { $exists: false },
@@ -391,7 +401,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         `Checking for property-level lease on property ${propertyId} from ${startDate} to ${endDate}`
       );
 
-      const query: FilterQuery<ILeaseDocument> = {
+      const query: QueryFilter<ILeaseDocument> = {
         cuid,
         'property.id': propertyId,
         $or: [{ 'property.unitId': { $exists: false } }, { 'property.unitId': null }],
@@ -427,7 +437,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         `Checking for active unit-level leases on property ${propertyId} from ${startDate} to ${endDate}`
       );
 
-      const query: FilterQuery<ILeaseDocument> = {
+      const query: QueryFilter<ILeaseDocument> = {
         cuid,
         'property.id': propertyId,
         'property.unitId': { $exists: true, $ne: null },
@@ -482,7 +492,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           deletedAt: null,
         },
         {
-          populate: { path: 'tenantId', select: 'firstName lastName email' },
+          populate: {
+            path: 'tenantId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
         }
       );
     } catch (error: any) {
@@ -511,7 +525,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         },
         {
           populate: [
-            { path: 'tenantId', select: 'firstName lastName email' },
+            {
+              path: 'tenantId',
+              select: 'email uid',
+              populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+            },
             { path: 'property.id', select: 'name address' },
           ],
           sort: { 'duration.endDate': 1 },
@@ -589,11 +607,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     }
   }
 
-  async getLeaseStats(cuid: string, filters?: FilterQuery<ILeaseDocument>): Promise<ILeaseStats> {
+  async getLeaseStats(cuid: string, filters?: QueryFilter<ILeaseDocument>): Promise<ILeaseStats> {
     try {
       this.log.info(`Getting lease stats for client ${cuid}`, { filters });
 
-      const baseQuery: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null, ...filters };
+      const baseQuery: QueryFilter<ILeaseDocument> = { cuid, deletedAt: null, ...filters };
 
       const today = new Date();
       const thirtyDaysFromNow = new Date();
@@ -636,8 +654,8 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           { $match: { ...baseQuery, status: LeaseStatus.ACTIVE } },
           {
             $group: {
-              _id: null,
-              totalRent: { $sum: '$fees.monthlyRent' },
+              _id: '$fees.currency',
+              total: { $sum: '$fees.rentAmount' },
             },
           },
         ]),
@@ -673,8 +691,6 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         cancelled: 0,
       };
 
-      this.log.info('leasesByStatus aggregation result:', { leasesByStatus, baseQuery });
-
       leasesByStatus.forEach((item: any) => {
         statusMap[item._id] = item.count;
       });
@@ -684,19 +700,22 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           ? (avgDuration[0] as any).avgDurationMs / (1000 * 60 * 60 * 24 * 30)
           : 0;
 
-      const totalMonthlyRent = totalRent.length > 0 ? (totalRent[0] as any).totalRent : 0;
+      const monthlyRentByCurrency = (totalRent as any[]).map((r) => ({
+        currency: r._id as string,
+        total: r.total as number,
+      }));
 
-      const occupancyRate = totalUnits > 0 ? (occupiedUnits / totalUnits) * 100 : 0;
+      const occupancyRate = calcPercentage(occupiedUnits, totalUnits);
 
       return {
         totalLeases,
         leasesByStatus: statusMap,
         averageLeaseDuration: Math.round(averageLeaseDuration),
-        totalMonthlyRent,
+        monthlyRentByCurrency,
         expiringIn30Days: expiring30,
         expiringIn60Days: expiring60,
         expiringIn90Days: expiring90,
-        occupancyRate: Math.round(occupancyRate * 100) / 100,
+        occupancyRate: roundToDecimal(occupancyRate, 2),
       };
     } catch (error: any) {
       this.log.error('Error getting lease stats:', error);
@@ -708,7 +727,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting rent roll data for client ${cuid}`, { propertyId });
 
-      const matchQuery: FilterQuery<ILeaseDocument> = {
+      const matchQuery: QueryFilter<ILeaseDocument> = {
         cuid,
         deletedAt: null,
         status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
@@ -779,8 +798,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             propertyName: '$propertyDetails.name',
             propertyAddress: '$property.address',
             unitNumber: 1,
-            monthlyRent: '$fees.monthlyRent',
+            rentAmount: '$fees.rentAmount',
             securityDeposit: '$fees.securityDeposit',
+            currency: '$fees.currency',
             startDate: '$duration.startDate',
             endDate: '$duration.endDate',
             daysUntilExpiry: { $ceil: '$daysUntilExpiry' },
@@ -802,37 +822,62 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   async updateLeaseDocuments(
     leaseId: string,
     uploadResults: UploadResult[],
-    userId: string
+    userId: string,
+    cuid?: string
   ): Promise<ILeaseDocument | null> {
     try {
       if (!leaseId || !uploadResults.length) {
         throw new Error('Lease ID and upload results are required');
       }
 
-      const lease = await this.findFirst({ _id: new Types.ObjectId(leaseId), deletedAt: null });
+      const baseQuery: Record<string, any> = { _id: new Types.ObjectId(leaseId), deletedAt: null };
+      if (cuid) baseQuery.cuid = cuid;
+      const lease = await this.findFirst(baseQuery);
       if (!lease) {
         throw new Error('Lease not found');
       }
 
-      // Process lease document uploads
-      const processedDocuments = uploadResults.map((upload) => {
-        // Derive mimeType from filename extension
-        const ext = upload.filename.split('.').pop()?.toLowerCase();
-        let mimeType = 'application/pdf'; // default
-        if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-        else if (ext === 'png') mimeType = 'image/png';
+      // Deduplicate: skip documents whose S3 key already exists in the lease
+      const existingKeys = new Set(
+        (lease.leaseDocuments || []).map((doc: any) => doc.key).filter(Boolean)
+      );
 
-        return {
-          documentType: (upload as any).documentType || 'lease_agreement',
-          filename: upload.filename,
-          url: upload.url,
-          key: upload.key,
-          mimeType,
-          size: upload.size,
-          uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
-          uploadedAt: new Date(),
-        };
-      });
+      // Process lease document uploads
+      const processedDocuments = uploadResults
+        .filter((upload) => {
+          if (existingKeys.has(upload.key)) {
+            this.log.warn('Skipping duplicate document (key already exists)', {
+              leaseId,
+              key: upload.key,
+            });
+            return false;
+          }
+          return true;
+        })
+        .map((upload) => {
+          // Derive mimeType from filename extension
+          const ext = upload.filename.split('.').pop()?.toLowerCase();
+          let mimeType = 'application/pdf'; // default
+          if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+          else if (ext === 'png') mimeType = 'image/png';
+
+          return {
+            documentType: (upload as any).documentType || 'lease_agreement',
+            status: 'active',
+            filename: upload.filename,
+            url: upload.url,
+            key: upload.key,
+            mimeType,
+            size: upload.size,
+            uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
+            uploadedAt: new Date(),
+          };
+        });
+
+      if (processedDocuments.length === 0) {
+        this.log.info('All documents already exist, skipping update', { leaseId });
+        return lease;
+      }
 
       // Check if any of the new documents is a lease_agreement
       const hasLeaseAgreement = processedDocuments.some(
@@ -846,7 +891,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         });
 
         await this.update(
-          { _id: new Types.ObjectId(leaseId), deletedAt: null },
+          baseQuery,
           {
             $set: {
               'leaseDocuments.$[elem].status': 'inactive',
@@ -884,10 +929,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         hasLeaseAgreement,
       });
 
-      return await this.update(
-        { _id: new Types.ObjectId(leaseId), deletedAt: null },
-        updateOperation
-      );
+      return await this.update(baseQuery, updateOperation);
     } catch (error: any) {
       this.log.error('Error updating lease documents:', error);
       throw error;
@@ -900,15 +942,16 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   async updateLeaseDocumentStatus(
     leaseId: string,
     status: 'active' | 'failed' | 'deleted',
-    errorMessage?: string
+    errorMessage?: string,
+    cuid?: string
   ): Promise<ILeaseDocument | null> {
     try {
       const updateData: any = {
-        'leaseDocument.$[].status': status,
+        'leaseDocuments.$[].status': status,
       };
 
       if (errorMessage) {
-        updateData['leaseDocument.$[].error'] = errorMessage;
+        updateData['leaseDocuments.$[].error'] = errorMessage;
       }
 
       this.log.info('Updating lease document status', {
@@ -918,9 +961,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       });
 
       // leaseId could be either luid or _id, try to determine which
-      const query = Types.ObjectId.isValid(leaseId)
+      const query: Record<string, any> = Types.ObjectId.isValid(leaseId)
         ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
         : { luid: leaseId, deletedAt: null };
+
+      if (cuid) query.cuid = cuid;
 
       return await this.update(query, { $set: updateData });
     } catch (error: any) {
@@ -931,6 +976,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
 
   /**
    * Get tenant information for a lease (handles both invitation and user)
+   */
+  /**
+   * Internal-only helper: lease must already be fetched with cuid scoping before calling this.
+   * `lease.tenantId` is the User or Invitation _id (ObjectId). This method does NOT re-verify
+   * tenant ownership — it relies on the caller having already scoped the lease query by cuid.
    */
   async getTenantInfo(lease: ILeaseDocument): Promise<{
     type: 'invitation' | 'user';
@@ -987,6 +1037,36 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       return result.items;
     } catch (error: any) {
       this.log.error('Error getting leases pending tenant acceptance:', error);
+      throw error;
+    }
+  }
+
+  async hasNonDraftLeaseForProperty(propertyObjectId: string, cuid: string): Promise<boolean> {
+    try {
+      const count = await this.countDocuments({
+        'property.id': new Types.ObjectId(propertyObjectId),
+        status: { $nin: [LeaseStatus.DRAFT] },
+        deletedAt: null,
+        cuid,
+      });
+      return count > 0;
+    } catch (error: any) {
+      this.log.error('Error checking lease history for property:', error);
+      throw error;
+    }
+  }
+
+  async hasNonDraftLeaseForUnit(unitObjectId: string, cuid: string): Promise<boolean> {
+    try {
+      const count = await this.countDocuments({
+        'property.unitId': new Types.ObjectId(unitObjectId),
+        status: { $nin: [LeaseStatus.DRAFT] },
+        deletedAt: null,
+        cuid,
+      });
+      return count > 0;
+    } catch (error: any) {
+      this.log.error('Error checking lease history for unit:', error);
       throw error;
     }
   }

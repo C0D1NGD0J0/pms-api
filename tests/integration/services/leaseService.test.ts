@@ -9,7 +9,6 @@ import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
-import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
@@ -68,6 +67,14 @@ const setupServices = () => {
 
   const permissionService = new PermissionService();
 
+  const eventsRegistry = {
+    trackEvent: jest.fn().mockResolvedValue(undefined),
+    getEventLog: jest.fn().mockResolvedValue([]),
+    registerEvent: jest.fn().mockResolvedValue(undefined),
+  } as any;
+
+  const emitterService = new EventEmitterService({ eventsRegistry });
+
   const vendorService = new VendorService({
     vendorDAO,
     clientDAO,
@@ -75,7 +82,7 @@ const setupServices = () => {
     profileDAO,
     permissionService,
     queueFactory: mockQueueFactory as any,
-    emitterService: {} as any,
+    emitterService,
   } as any);
 
   const userService = new UserService({
@@ -88,17 +95,10 @@ const setupServices = () => {
     vendorService,
     leaseDAO,
     paymentDAO: {} as any,
-    emitterService: {} as any,
+    emitterService,
+    maintenanceRequestDAO: {} as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });
-
-  const eventsRegistry = {
-    trackEvent: jest.fn().mockResolvedValue(undefined),
-    getEventLog: jest.fn().mockResolvedValue([]),
-    registerEvent: jest.fn().mockResolvedValue(undefined),
-  } as any;
-
-  const emitterService = new EventEmitterService({ eventsRegistry });
 
   const mailerService = {
     sendEmail: jest.fn().mockResolvedValue({ success: true }),
@@ -155,7 +155,6 @@ const setupServices = () => {
 
   const leaseDocumentService = new LeaseDocumentService({
     leaseDAO,
-    emitterService,
   } as any);
 
   const leasePdfService = new LeasePdfService({
@@ -182,6 +181,7 @@ const setupServices = () => {
     profileDAO,
     clientDAO,
     leaseDAO,
+    sseService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve(true)) } as any,
   });
 
   const leaseService = new LeaseService({
@@ -195,7 +195,6 @@ const setupServices = () => {
     userService,
     invitationService,
     notificationService,
-    pdfGeneratorService,
     mediaUploadService,
     boldSignService,
     mailerService,
@@ -269,7 +268,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000, // in cents
+          rentAmount: 150000, // in cents
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -295,7 +294,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect(result.data.luid).toBeDefined();
-      expect(result.data.status).toBe(LeaseStatus.DRAFT);
+      expect(result.data.status).toBe(LeaseStatus.READY_FOR_SIGNATURE); // Auto-approved → ready for signature
       expect(result.data.approvalStatus).toBe('approved'); // Manager auto-approves
 
       // Verify lease was saved to database
@@ -334,7 +333,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -395,7 +394,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -451,7 +450,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -476,6 +475,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.approvalStatus).toBe('pending');
+      expect(result.data.status).toBe(LeaseStatus.DRAFT); // Staff-created lease stays DRAFT until approved
     });
 
     it('should reject lease creation with invalid property', async () => {
@@ -496,7 +496,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -553,7 +553,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -568,7 +568,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const updateData = {
         fees: {
-          monthlyRent: 1750, // Increase rent (MoneyUtils will convert to cents)
+          rentAmount: 1750, // Increase rent (MoneyUtils will convert to cents)
           securityDeposit: 3000,
           rentDueDay: 1,
           currency: 'USD',
@@ -595,11 +595,11 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const result = await leaseService.updateLease(mockContext, lease.luid, updateData as any);
 
       expect(result.success).toBe(true);
-      expect(result.data.lease.fees.monthlyRent).toBe(175000);
+      expect(result.data.lease.fees.rentAmount).toBe(175000);
 
       // Verify in database
       const updatedLease = await Lease.findOne({ luid: lease.luid });
-      expect(updatedLease?.fees.monthlyRent).toBe(175000);
+      expect(updatedLease?.fees.rentAmount).toBe(175000);
     });
 
     it('should block updates to immutable fields on active lease', async () => {
@@ -625,7 +625,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -712,7 +712,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -805,7 +805,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -852,7 +852,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -919,7 +919,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -951,10 +951,12 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.approvalStatus).toBe('approved');
+      expect(result.data.status).toBe(LeaseStatus.READY_FOR_SIGNATURE); // DRAFT → READY_FOR_SIGNATURE on approval
 
       // Verify in database
       const approvedLease = await Lease.findOne({ luid: lease.luid });
       expect(approvedLease?.approvalStatus).toBe('approved');
+      expect(approvedLease?.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
     });
 
     it('should reject approval by non-admin', async () => {
@@ -979,7 +981,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1033,7 +1035,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-01-01'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1096,7 +1098,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-12-31'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1195,7 +1197,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           endDate: new Date('2026-12-31'),
         },
         fees: {
-          monthlyRent: 150000,
+          rentAmount: 150000,
           securityDeposit: 300000,
           rentDueDay: 1,
           currency: 'USD',
@@ -1225,7 +1227,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any;
 
       await expect(
-        leaseService.updateLease(mockContext, lease.luid, { fees: { monthlyRent: 2000 } } as any)
+        leaseService.updateLease(mockContext, lease.luid, { fees: { rentAmount: 2000 } } as any)
       ).rejects.toThrow();
     });
 
@@ -1248,7 +1250,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const result = await leaseService.updateLease(
         mockContext,
         lease.luid,
-        { fees: { monthlyRent: 2000, securityDeposit: 4000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' } } as any
+        { fees: { rentAmount: 2000, securityDeposit: 4000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' } } as any
       );
       expect(result.success).toBe(true);
     });
@@ -1290,7 +1292,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         tenantId: dualRoleUser._id,
         property: { id: property._id, address: property.address.fullAddress },
         duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
-        fees: { monthlyRent: 150000, securityDeposit: 300000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+        fees: { rentAmount: 150000, securityDeposit: 300000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         type: LeaseType.FIXED_TERM,
@@ -1365,7 +1367,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         endDate: new Date('2026-01-01'),
       },
       fees: {
-        monthlyRent: 150000,
+        rentAmount: 150000,
         securityDeposit: 300000,
         rentDueDay: 1,
         currency: 'USD',
@@ -1498,6 +1500,173 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         expect(lease.status).toBe(LeaseStatus.ACTIVE);
       });
     });
+
+    describe('tenant context enforcement', () => {
+      let draftLease: any;
+      let pendingSignatureLease: any;
+
+      beforeEach(async () => {
+        // Seed a DRAFT lease belonging to the testTenant
+        draftLease = await Lease.create({
+          luid: `lease-draft-tenant-${Date.now()}`,
+          cuid: testClient.cuid,
+          clientId: testClient._id,
+          tenantId: testTenant._id,
+          property: { id: testProperty._id, address: testProperty.address.fullAddress },
+          duration: { startDate: new Date('2025-06-01'), endDate: new Date('2026-06-01') },
+          fees: { rentAmount: 120000, securityDeposit: 240000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          status: LeaseStatus.DRAFT,
+          approvalStatus: 'draft',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-DRAFT-CTX-${Date.now()}`,
+          createdBy: testManager._id,
+        });
+
+        // Seed a PENDING_SIGNATURE lease belonging to the testTenant
+        pendingSignatureLease = await Lease.create({
+          luid: `lease-pending-sig-${Date.now()}`,
+          cuid: testClient.cuid,
+          clientId: testClient._id,
+          tenantId: testTenant._id,
+          property: { id: testProperty._id, address: testProperty.address.fullAddress },
+          duration: { startDate: new Date('2025-07-01'), endDate: new Date('2026-07-01') },
+          fees: { rentAmount: 130000, securityDeposit: 260000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          status: LeaseStatus.PENDING_SIGNATURE,
+          approvalStatus: 'approved',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-PENDING-CTX-${Date.now()}`,
+          createdBy: testManager._id,
+          leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key-pending', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
+        });
+      });
+
+      afterEach(async () => {
+        if (draftLease) await Lease.findByIdAndDelete(draftLease._id);
+        if (pendingSignatureLease) await Lease.findByIdAndDelete(pendingSignatureLease._id);
+      });
+
+      it('should exclude DRAFT leases when called with a tenant context', async () => {
+        const tenantContext = {
+          currentuser: {
+            uid: testTenant.uid,
+            sub: testTenant._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.TENANT },
+          },
+        } as any;
+
+        const result = await leaseService.getFilteredLeases(
+          testClient.cuid,
+          {},
+          { limit: 50, skip: 0 },
+          tenantContext
+        );
+
+        expect(result.items).toBeInstanceOf(Array);
+        const statuses = result.items.map((l: any) => l.status);
+        expect(statuses).not.toContain(LeaseStatus.DRAFT);
+        expect(statuses).not.toContain(LeaseStatus.PENDING_SIGNATURE);
+        expect(statuses).not.toContain(LeaseStatus.DRAFT_RENEWAL);
+        expect(statuses).not.toContain(LeaseStatus.CANCELLED);
+        expect(statuses).not.toContain(LeaseStatus.READY_FOR_SIGNATURE);
+      });
+
+      it('should strip DRAFT from explicit status filter for tenant callers and fall back to allowed list', async () => {
+        const tenantContext = {
+          currentuser: {
+            uid: testTenant.uid,
+            sub: testTenant._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.TENANT },
+          },
+        } as any;
+
+        // Requesting only DRAFT — should be overridden to full allowed list
+        const result = await leaseService.getFilteredLeases(
+          testClient.cuid,
+          { status: LeaseStatus.DRAFT },
+          { limit: 50, skip: 0 },
+          tenantContext
+        );
+
+        expect(result.items).toBeInstanceOf(Array);
+        result.items.forEach((lease: any) => {
+          expect([
+            LeaseStatus.ACTIVE,
+            LeaseStatus.EXPIRED,
+            LeaseStatus.TERMINATED,
+            LeaseStatus.RENEWED,
+          ]).toContain(lease.status);
+        });
+      });
+
+      it('should scope results to the tenant\'s own leases via tenantId enforcement', async () => {
+        // Create a second tenant to verify isolation
+        const otherTenant = await createTestTenantUser(testClient.cuid, testClient._id);
+
+        const otherTenantLease = await Lease.create({
+          luid: `lease-other-tenant-${Date.now()}`,
+          cuid: testClient.cuid,
+          clientId: testClient._id,
+          tenantId: otherTenant._id,
+          property: { id: testProperty._id, address: testProperty.address.fullAddress },
+          duration: { startDate: new Date('2025-08-01'), endDate: new Date('2026-08-01') },
+          fees: { rentAmount: 140000, securityDeposit: 280000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          status: LeaseStatus.ACTIVE,
+          approvalStatus: 'approved',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-OTHER-TENANT-${Date.now()}`,
+          createdBy: testManager._id,
+          signedDate: new Date(),
+          signingMethod: 'electronic',
+          eSignature: { status: 'signed', provider: 'boldsign' },
+          signatures: [{ userId: otherTenant._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
+          leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
+        });
+
+        try {
+          const tenantContext = {
+            currentuser: {
+              uid: testTenant.uid,
+              sub: testTenant._id.toString(),
+              client: { cuid: testClient.cuid, role: ROLES.TENANT },
+            },
+          } as any;
+
+          const result = await leaseService.getFilteredLeases(
+            testClient.cuid,
+            {},
+            { limit: 50, skip: 0 },
+            tenantContext
+          );
+
+          // tenantUid is the ObjectId stringified from the DAO transformation
+          const returnedTenantIds = result.items.map((l: any) => l.tenantUid);
+
+          // Should only include leases belonging to testTenant
+          returnedTenantIds.forEach((tid: string) => {
+            expect(tid).toBe(testTenant._id.toString());
+          });
+
+          // The other tenant's lease should not appear
+          const returnedLuids = result.items.map((l: any) => l.luid);
+          expect(returnedLuids).not.toContain(otherTenantLease.luid);
+        } finally {
+          await Lease.findByIdAndDelete(otherTenantLease._id);
+        }
+      });
+
+      it('should not enforce tenant restrictions when caller is admin (no context)', async () => {
+        const result = await leaseService.getFilteredLeases(
+          testClient.cuid,
+          {},
+          { limit: 50, skip: 0 }
+        );
+
+        expect(result.items).toBeInstanceOf(Array);
+        const statuses = result.items.map((l: any) => l.status);
+        // DRAFT lease seeded in beforeEach should be visible
+        expect(statuses).toContain(LeaseStatus.DRAFT);
+      });
+    });
   });
 
   describe('getLeaseStats', () => {
@@ -1537,7 +1706,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           moveInDate: new Date('2025-01-01'),
         },
         fees: {
-          monthlyRent: 2000,
+          rentAmount: 2000,
           securityDeposit: 2000,
           rentDueDay: 1,
           currency: 'USD',

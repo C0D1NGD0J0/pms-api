@@ -1,23 +1,20 @@
 import bunyan from 'bunyan';
-import { Types } from 'mongoose';
 import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
+export { preventTenantConflict } from '@utils/helpers';
 import { NextFunction, Response, Request } from 'express';
-import { ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { subscriptionPlanConfig } from '@services/subscription';
 import { LanguageService } from '@shared/languages/language.service';
+import { ITenantFeatureSettings } from '@interfaces/client.interface';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
-import {
-  EventEmitterService,
-  SubscriptionService,
-  AuthTokenService,
-  DiskStorage,
-} from '@services/index';
 import {
   RateLimitOptions,
   IPermissionCheck,
@@ -25,6 +22,13 @@ import {
   AppRequest,
   TokenType,
 } from '@interfaces/utils.interface';
+import {
+  EventEmitterService,
+  SubscriptionService,
+  FeatureFlagService,
+  AuthTokenService,
+  DiskStorage,
+} from '@services/index';
 import {
   ISubscriptionEntitlements,
   ISubscriptionStatus,
@@ -96,8 +100,18 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
     );
     if (!currentUserResp.success) {
       logger.error('User not found in cache, fetching from database...');
-      const _currentuser = await profileDAO.generateCurrentUserInfo(payload.data?.sub as string);
+      const _currentuser = await profileDAO.generateCurrentUserInfo(
+        payload.data?.sub as string,
+        payload.data.cuid
+      );
       if (_currentuser) {
+        if (_currentuser.client?.cuid !== payload.data.cuid) {
+          return next(new UnauthorizedError({ message: 'Session context mismatch.' }));
+        }
+        if (_currentuser.subscription?.plan?.name) {
+          const planConfig = subscriptionPlanConfig.getConfig(_currentuser.subscription.plan.name);
+          if (planConfig) _currentuser.subscription.entitlements = planConfig.features;
+        }
         await authCache.saveCurrentUser(_currentuser);
         req.context.currentuser = _currentuser;
       }
@@ -107,21 +121,47 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       req.context.currentuser = currentUserResp.data as ICurrentUser;
     }
 
-    // Validate connection status
     if (req.context.currentuser) {
       const activeConnection = req.context.currentuser.clients.find(
         (c: any) => c.cuid === req.context.currentuser!.client.cuid
       );
 
       if (!activeConnection || !activeConnection.isConnected) {
-        return next(new UnauthorizedError({ message: 'User connection inactive' }));
+        const isVendor = activeConnection?.roles?.includes('vendor');
+        const isVendorPayoutRoute = /\/vendor[s]?\/[^/]+\/payout/.test(req.path);
+        const isCurrentUserRoute = /\/auth\/[^/]+\/me$/.test(req.path);
+        if (isVendor && (isVendorPayoutRoute || isCurrentUserRoute)) {
+          // Disconnected vendors retain access to payout routes and their own user context
+        } else {
+          return next(new UnauthorizedError({ message: 'User connection inactive' }));
+        }
       }
 
-      // Populate user permissions using PermissionService
       if (permissionService) {
         req.context.currentuser = await permissionService.populateUserPermissions(
           req.context.currentuser
         );
+      }
+
+      // When a PM disables the tenant portal, ALL access is blocked — this is a hard suspension,
+      // not read-only mode. Disconnected/former tenants (isConnected === false) are handled
+      // separately in requireActiveTenant() and retain read-only access to their history.
+      // Exception: /me and /logout are always allowed so the frontend can load the user's
+      // identity, display the "portal suspended" screen, and let the tenant log out cleanly.
+      if (req.context.currentuser?.client?.role === ROLES.TENANT) {
+        const tenantFeatures = req.context.currentuser.client?.tenantFeatures;
+        const isPortalSuspended = tenantFeatures?.tenantPortalActive === false;
+        const isIdentityOrExitRoute =
+          req.originalUrl.endsWith('/me') ||
+          req.originalUrl.includes('/logout') ||
+          req.originalUrl.includes('/notifications');
+        if (isPortalSuspended && !isIdentityOrExitRoute) {
+          return next(
+            new ForbiddenError({
+              message: 'Tenant portal access has been disabled by your property manager.',
+            })
+          );
+        }
       }
     }
 
@@ -153,7 +193,7 @@ export const diskUpload =
     });
   };
 
-export const scanFile = async (req: Request, res: Response, next: NextFunction) => {
+export const scanFile = async (req: Request, _res: Response, next: NextFunction) => {
   const logger = createLogger('ScanFileMiddleware');
   const { emitterService }: { emitterService: EventEmitterService } = req.container.cradle;
 
@@ -175,11 +215,21 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
         { userId: req.context.currentuser.sub, fileCount: _files.length },
         'ClamAV scanner unavailable - skipping virus scan'
       );
-      req.body.scannedFiles = _files;
+      (req as AppRequest).scannedFiles = _files;
       return next();
     }
 
     const clamScanner: ClamScannerService = req.container.resolve('clamScanner');
+
+    if (!clamScanner.isReady()) {
+      logger.warn(
+        { userId: req.context.currentuser.sub, fileCount: _files.length },
+        'ClamAV scanner not ready - skipping virus scan'
+      );
+      (req as AppRequest).scannedFiles = _files;
+      return next();
+    }
+
     const foundViruses: { fileName: string; viruses: string[]; createdAt: string }[] = [];
     const validFiles = [];
 
@@ -206,7 +256,7 @@ export const scanFile = async (req: Request, res: Response, next: NextFunction) 
     }
 
     if (validFiles.length) {
-      req.body.scannedFiles = validFiles;
+      (req as AppRequest).scannedFiles = validFiles;
     }
 
     return next();
@@ -539,6 +589,26 @@ export const requirePermission = (
 };
 
 /**
+ * Restrict access to primary vendor users only.
+ * Must be placed after isAuthenticated.
+ */
+export const requirePrimaryVendor = (req: Request, _res: Response, next: NextFunction) => {
+  const currentUser = req.context?.currentuser;
+  if (!currentUser?.vendorInfo?.isPrimaryVendor) {
+    return next(
+      new ForbiddenError({
+        message: t('auth.errors.insufficientPermissions', {
+          resource: 'payout',
+          action: 'manage',
+          reason: 'Only primary vendor account holders can manage payout settings',
+        }),
+      })
+    );
+  }
+  next();
+};
+
+/**
  * Check if the current user's subscription entitles them to a specific feature.
  * Requires `subscriptionEntitlements` middleware to have run first.
  */
@@ -570,6 +640,24 @@ export const requireActiveSubscription = (req: Request, _res: Response, next: Ne
   if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {
     return next(new ForbiddenError({ message: t('auth.errors.subscriptionInactive') }));
   }
+  // PAST_DUE is allowed through — grace period is active, banner shown on frontend
+  next();
+};
+
+/**
+ * Blocks access when the client account is suspended.
+ * Must run after isAuthenticated. Do NOT apply to auth routes.
+ */
+export const requireNotSuspended = (req: Request, _res: Response, next: NextFunction) => {
+  const currentuser = validateUserAndConnection(req, next);
+  if (!currentuser) return;
+
+  if (currentuser.client.suspension?.isActive) {
+    return next(
+      new ForbiddenError({ message: 'This account has been suspended. Please contact support.' })
+    );
+  }
+
   next();
 };
 
@@ -699,14 +787,19 @@ export const requirePermissionWithContext = (
           const extractedContext = contextExtractor(req);
           // Auto-determine scope: if ownerId matches the current user, use MINE scope
           const ownerId = extractedContext?.ownerId;
+          const isOwner = ownerId
+            ? ownerId === currentuser.uid || ownerId === currentuser.sub
+            : false;
           if (ownerId) {
-            const isOwner = ownerId === currentuser.uid || ownerId === currentuser.sub;
             scope = isOwner ? PermissionScope.MINE : PermissionScope.ANY;
           }
           context = {
             clientId: currentuser.client.cuid,
             userId: currentuser.sub,
-            resourceOwnerId: extractedContext?.ownerId,
+            // When ownership is confirmed via uid or sub, normalize resourceOwnerId to sub
+            // so validateMineScope's resourceOwnerId === userId comparison always works
+            // regardless of which identifier type (uid hash vs ObjectId) was in the URL param.
+            resourceOwnerId: isOwner ? currentuser.sub : extractedContext?.ownerId,
             ...extractedContext,
           };
         } catch (error) {
@@ -785,19 +878,86 @@ export const requireUserPermission = (action: PermissionAction | string) => {
 };
 
 /**
- * Throws ForbiddenError if the requesting user is the tenant on the resource.
- * Prevents dual-role users (e.g. staff+tenant) from modifying records where
- * they are personally the tenant — a conflict-of-interest guard.
+ * Guard for tenant-role users: blocks write actions for former (disconnected) tenants
+ * and optionally gates a specific PM-controlled feature toggle.
+ * Fails open when tenantFeatures is absent to protect existing sessions.
  */
-export function preventTenantConflict(
-  requestingUserId: string,
-  tenantId: Types.ObjectId | string | null | undefined,
-  message = 'You cannot modify a record where you are the tenant.'
-): void {
-  if (tenantId && requestingUserId === tenantId.toString()) {
-    throw new ForbiddenError({ message });
-  }
-}
+export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const currentUser = req.context?.currentuser;
+    if (!currentUser) {
+      return next(new UnauthorizedError({ message: t('auth.errors.unauthorized') }));
+    }
+
+    // Only applies to tenant-role users; all other roles pass through
+    if (currentUser.client?.role !== ROLES.TENANT) {
+      return next();
+    }
+
+    // Block former (disconnected) tenants from write-like actions
+    const activeConnection = currentUser.clients?.find(
+      (c: any) => c.cuid === currentUser.client.cuid
+    );
+    if (!activeConnection?.isConnected) {
+      return next(
+        new ForbiddenError({
+          message: t('auth.errors.connectionInactive'),
+        })
+      );
+    }
+
+    // Optionally gate a PM-controlled feature toggle
+    if (tenantFeature) {
+      const tenantFeatures = currentUser.client?.tenantFeatures;
+      // Fails open if tenantFeatures is absent (protects existing sessions)
+      if (tenantFeatures && tenantFeatures[tenantFeature] === false) {
+        return next(
+          new ForbiddenError({
+            message: 'This feature has been disabled by your property manager.',
+          })
+        );
+      }
+    }
+
+    next();
+  };
+};
+
+/**
+ * Sync middleware that blocks requests when a platform-level feature flag is disabled.
+ * Reads env-var-based flags via FeatureFlagService; known flags default to enabled
+ * (disabled only when the corresponding FEATURE_* env var is explicitly set to 'false').
+ * Unknown/unregistered flags throw — add a case to FeatureFlagService before using.
+ */
+export const requireFeatureFlag = (flag: FeatureFlag) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const { featureFlagService }: { featureFlagService: FeatureFlagService } = req.container.cradle;
+
+    if (!featureFlagService.isEnabled(flag)) {
+      return next(
+        new ForbiddenError({
+          message: 'This feature is currently unavailable.',
+        })
+      );
+    }
+
+    next();
+  };
+};
+
+/**
+ * Restricts a route to users whose active client role is in the allowed list.
+ * Non-tenant roles only — this does not apply to tenant-scoped checks (use requireActiveTenant for those).
+ */
+export const requireRole = (roles: string[]) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const role = (req as AppRequest).context?.currentuser?.client?.role;
+    if (!role || !roles.includes(role)) {
+      return next(new ForbiddenError({ message: t('auth.errors.forbidden') }));
+    }
+    return next();
+  };
+};
 
 export const idempotency = async (
   req: AppRequest,

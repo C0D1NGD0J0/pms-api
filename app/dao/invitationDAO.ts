@@ -1,12 +1,13 @@
 import dayjs from 'dayjs';
 import { Invitation } from '@models/index';
 import { hashGenerator } from '@utils/index';
-import { ClientSession, FilterQuery, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/index';
+import { type QueryFilter, ClientSession, Types } from 'mongoose';
 import {
   IInvitationListQuery,
   IInvitationDocument,
   IInvitationStats,
+  InvitationStatus,
   IInvitationData,
 } from '@interfaces/invitation.interface';
 
@@ -136,7 +137,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     query: IInvitationListQuery
   ): ListResultWithPagination<IInvitationDocument[]> {
     try {
-      const filter: FilterQuery<IInvitationDocument> = {};
+      const filter: QueryFilter<IInvitationDocument> = {};
 
       if (query.clientId) {
         filter.clientId = new Types.ObjectId(query.clientId);
@@ -432,7 +433,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       const cutoffDate = new Date(Date.now() - daysSinceCreated * 24 * 60 * 60 * 1000);
 
       const filter = {
-        status: { $in: ['pending', 'sent'] },
+        status: { $in: ['pending', 'sent'] as InvitationStatus[] },
         expiresAt: { $gt: new Date() },
         createdAt: { $lte: cutoffDate },
         'metadata.remindersSent': { $lt: maxReminders },

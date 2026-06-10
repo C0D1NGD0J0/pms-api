@@ -8,13 +8,14 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  idempotency,
 } from '@shared/middlewares';
 
 const router = Router();
+router.use(isAuthenticated);
 
 router.get(
   '/:cuid/client_details',
-  isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
@@ -28,9 +29,9 @@ router.get(
 
 router.patch(
   '/:cuid/client_details',
-  isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam,
     body: ClientValidations.updateClientDetails,
@@ -43,9 +44,9 @@ router.patch(
 
 router.post(
   '/:cuid/users/:uid/disconnect',
-  isAuthenticated,
   basicLimiter(),
   requireUserManagement(),
+  idempotency,
   validateRequest({
     params: ClientValidations.userIdParam,
   }),
@@ -57,9 +58,9 @@ router.post(
 
 router.post(
   '/:cuid/users/:uid/reconnect',
-  isAuthenticated,
   basicLimiter(),
   requireUserManagement(),
+  idempotency,
   validateRequest({
     params: ClientValidations.userIdParam,
   }),
@@ -71,9 +72,9 @@ router.post(
 
 router.patch(
   '/:cuid/users/:uid/department',
-  isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.userIdParam,
     body: ClientValidations.assignDepartment,
@@ -86,9 +87,9 @@ router.patch(
 
 router.post(
   '/:cuid/verify-account',
-  isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam,
   }),
@@ -100,15 +101,30 @@ router.post(
 
 router.post(
   '/:cuid/identity_verification/session',
-  isAuthenticated,
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam,
   }),
   asyncWrapper((req, res) => {
     const clientController = req.container.resolve<ClientController>('clientController');
     return clientController.initiateIdentityVerification(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/settings/tenant-features',
+  basicLimiter(),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
+  idempotency,
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+    body: ClientValidations.updateTenantFeatures,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.updateTenantFeatures(req, res);
   })
 );
 

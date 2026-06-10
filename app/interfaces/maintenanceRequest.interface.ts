@@ -1,0 +1,361 @@
+import { Document, Types } from 'mongoose';
+
+import { IInvoice } from './invoice.interface';
+import { MediaDocumentStatus } from './property.interface';
+
+export enum MaintenanceCategory {
+  PEST_CONTROL = 'pest_control',
+  LANDSCAPING = 'landscaping',
+  ELECTRICAL = 'electrical',
+  STRUCTURAL = 'structural',
+  APPLIANCE = 'appliance',
+  PLUMBING = 'plumbing',
+  COSMETIC = 'cosmetic',
+  GENERAL = 'general',
+  OTHER = 'other',
+  HVAC = 'hvac',
+}
+
+export enum MaintenanceRequestStatus {
+  AWAITING_INVOICE = 'awaiting_invoice',
+  IN_PROGRESS = 'in_progress',
+  CANCELLED = 'cancelled',
+  COMPLETED = 'completed',
+  ASSIGNED = 'assigned',
+  PENDING = 'pending',
+  OPEN = 'open',
+}
+
+export enum AvailabilityWindow {
+  WEEKDAYS_ONLY = 'weekdays_only',
+  WEEKENDS_ONLY = 'weekends_only',
+  AFTERNOON = 'afternoon',
+  MORNING = 'morning',
+  EVENING = 'evening',
+  ALL_DAY = 'all_day',
+}
+
+export enum WorkOrderStatus {
+  PENDING_REVIEW = 'pending_review',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+}
+
+export enum MaintenanceRequestPriority {
+  MEDIUM = 'medium',
+  URGENT = 'urgent',
+  HIGH = 'high',
+  LOW = 'low',
+}
+
+export enum InvoiceStatus {
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  PENDING = 'pending',
+}
+
+export interface IMaintenanceRequest {
+  pendingMaintenanceStatus?: {
+    propertyId: Types.ObjectId;
+    unitId?: Types.ObjectId;
+    requestedBy: Types.ObjectId;
+    requestedAt: Date;
+    displayName: string;
+  };
+  availabilityInfo?: {
+    preferredDate?: Date; // specific dates tenant prefers
+    options: AvailabilityWindow[]; // when tenant is available
+  };
+  tenantFeedback?: {
+    status: 'pending' | 'confirmed' | 'disputed';
+    rating?: number;
+    comment?: string;
+    submittedAt?: Date;
+  };
+  completionNotes?: { author: Types.ObjectId | string; note: string; createdAt: Date }[];
+  description: {
+    text: string;
+    html?: string;
+  };
+  propertyUnitId?: Types.ObjectId | string;
+  priority: MaintenanceRequestPriority;
+  assignedBy?: Types.ObjectId | string; // User who assigned the request
+  managedBy?: Types.ObjectId | string;
+  propertyId: Types.ObjectId | string;
+  tenantId?: Types.ObjectId | string; // User with role=tenant
+  vendorId?: Types.ObjectId | string; // User with role=vendor
+  status: MaintenanceRequestStatus;
+  media: MaintenanceRequestMedia[];
+  assignedTechnician?: ITechnician;
+  workOrderHistory?: IWorkOrder[];
+  category: MaintenanceCategory;
+  locationDescription?: string;
+  invoiceId?: Types.ObjectId;
+  permissionToEnter: boolean;
+  aiAnalysis?: IAIAnalysis;
+  estimatedCost?: number;
+  workOrder?: IWorkOrder;
+  invoiceDeadline?: Date;
+  scheduledDate?: Date;
+  actualCost?: number;
+  isBillable: boolean; // billing seam for expense integration
+  invoice?: IInvoice; // populated from invoiceId ref via mapInvoiceDoc()
+  completedAt?: Date;
+  assignedAt?: Date;
+  hasPet?: boolean;
+  mruid: string;
+  title: string;
+  cuid: string;
+}
+
+export interface ICreateMaintenanceRequest {
+  availabilityInfo?: {
+    preferredDate?: Date; // specific dates tenant prefers
+    options: AvailabilityWindow[]; // when tenant is available
+  };
+  description: {
+    text: string;
+    html?: string;
+  };
+  priority?: MaintenanceRequestPriority;
+  media: MaintenanceRequestMedia[];
+  setMaintenanceStatus?: boolean; // Take property/unit offline for maintenance
+  category: MaintenanceCategory;
+  locationDescription?: string;
+  permissionToEnter: boolean;
+  estimatedCost?: number; // Initial estimate (optional)
+  scheduledDate?: Date; // When vendor should come (optional)
+  vendorVuid?: string; // Optionally assign vendor on creation
+  hasPet?: boolean;
+  puid?: string; // property unit resource UID
+  title: string;
+  pid: string; // property resource UID
+}
+
+export interface IMaintenanceFilters {
+  status?: MaintenanceRequestStatus | MaintenanceRequestStatus[];
+  priority?: MaintenanceRequestPriority;
+  category?: MaintenanceCategory;
+  assignedTechnicianSub?: string; // MongoDB _id of technician; filters by assignedTechnician.userId
+  managedByUid?: string; // user resource UID of the staff member managing the property
+  isBillable?: boolean;
+  vendorUid?: string; // user resource UID of vendor
+  tenantUid?: string; // user resource UID of tenant
+  dateFrom?: string;
+  dateTo?: string;
+  puid?: string; // property unit resource UID
+  pid?: string; // property resource UID
+}
+
+export interface IAIAnalysis {
+  suggestedPriority?: MaintenanceRequestPriority;
+  suggestedVendorId?: Types.ObjectId | string;
+  suggestedCategory?: MaintenanceCategory;
+  suggestedVendorReasoning?: string; // Claude's context-aware explanation for the vendor pick
+  suggestedVendorName?: string;
+  confidence?: number;
+  reasoning?: string;
+  processedAt?: Date;
+  modelUsed?: string;
+  accepted?: boolean; // true = PM accepted, false = PM dismissed, undefined = pending review
+}
+
+export interface ITenantMaintenanceRequestView {
+  media: Array<{ url: string; filename?: string }>;
+  priority: MaintenanceRequestPriority;
+  timeline: IMaintenanceTimelineStep[];
+  status: MaintenanceRequestStatus;
+  category: MaintenanceCategory;
+  propertyAddress: string;
+  completionNote?: string;
+  scheduledDate?: Date;
+  description: string;
+  unitNumber?: string;
+  completedAt?: Date;
+  submittedAt: Date;
+  mruid: string;
+  title: string;
+}
+
+export interface IUpdateMaintenancePayload {
+  availabilityInfo?: { preferredDate?: string; options?: AvailabilityWindow[] };
+  description?: { text: string; html?: string };
+  priority?: MaintenanceRequestPriority;
+  category?: MaintenanceCategory;
+  locationDescription?: string;
+  permissionToEnter?: boolean;
+  /** S3 keys of media items the user wants removed */
+  mediaToRemove?: string[];
+  hasPet?: boolean;
+  title?: string;
+}
+
+export interface IMaintenanceStats {
+  byCategory: Record<string, number>;
+  byPriority: Record<string, number>;
+  avgResolutionDays: number;
+  pendingInvoices: number;
+  awaitingInvoice: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  assigned: number;
+  pending: number;
+  total: number;
+  open: number;
+}
+
+export interface IWorkOrder {
+  scope: { text: string; html?: string };
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  submittedBy: Types.ObjectId;
+  reviewedBy?: Types.ObjectId;
+  rejectionReason?: string;
+  status: WorkOrderStatus;
+  submittedAt: Date;
+  reviewedAt?: Date;
+  notes?: string;
+}
+
+export interface ISubmitWorkOrderPayload {
+  lineItems?: IWorkOrderLineItem[];
+  estimatedCostInCents: number;
+  scheduledDate?: Date; // Vendor-confirmed visit date/time within tenant's availability window
+  notes?: string;
+  scope: string; // HTML from rich text editor — backend stores as { text, html }
+}
+
+export interface IInvoiceWebhookPayload {
+  rawPayload: Record<string, unknown>;
+  lineItems?: IInvoiceLineItem[];
+  externalInvoiceUrl?: string;
+  externalInvoiceId: string;
+  source: InvoiceSource;
+  description: string;
+  currency: string;
+  amount: number;
+  mruid: string;
+  cuid: string;
+}
+
+export interface IRespondToAssignmentPayload {
+  technician?: { name: string; phone?: string; email?: string; userId?: string }; // optional on accept
+  action: 'accept' | 'decline';
+  reason?: string; // required when action === 'decline'
+}
+
+export interface IVendorSuggestion {
+  companyName: string;
+  reasoning?: string; // Claude's context-aware explanation (absent when AI is off or only 1 candidate)
+  reasons: string[];
+  vendorId: string;
+  score: number;
+  vuid: string;
+}
+
+export interface MaintenanceRequestMedia {
+  status: MediaDocumentStatus;
+  uploadedBy: Types.ObjectId;
+  _id?: Types.ObjectId;
+  description?: string;
+  filename?: string;
+  uploadedAt: Date;
+  key?: string;
+  url: string;
+}
+
+export interface ISubmitInvoicePayload {
+  lineItems?: IInvoiceLineItem[];
+  externalInvoiceUrl?: string;
+  externalInvoiceId?: string;
+  source?: InvoiceSource;
+  description: string;
+  currency?: string;
+  amount: number;
+}
+
+export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {
+  _id: Types.ObjectId;
+  deletedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  id: string;
+}
+
+export interface IVendorStats {
+  avgCompletionDays?: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  assigned: number;
+  total: number;
+}
+
+export interface IMaintenanceTimelineStep {
+  status: MaintenanceRequestStatus;
+  reached: boolean;
+  timestamp?: Date;
+  label: string;
+  note?: string;
+}
+
+export interface IReviewInvoicePayload {
+  action: 'approve' | 'reject';
+  rejectionReason?: string; // required when action === 'reject'
+}
+
+export interface IWorkOrderLineItem {
+  unitPriceInCents: number;
+  amountInCents: number;
+  description: string;
+  quantity: number;
+}
+
+export interface IInvoiceLineItem {
+  unitPriceInCents: number;
+  amountInCents: number;
+  description: string;
+  quantity: number;
+}
+
+export interface IAssignVendorPayload {
+  scheduledDate?: string;
+  estimatedCost?: number;
+  vuid: string; // vendor resource UID
+}
+
+export interface ITechnician {
+  userId?: Types.ObjectId | string;
+  phone?: string;
+  email?: string;
+  name: string;
+}
+
+export interface IReviewWorkOrderPayload {
+  action: 'approve' | 'reject';
+  rejectionReason?: string;
+}
+
+export interface ICompleteMaintenancePayload {
+  completionNotes?: string;
+  actualCost?: number;
+}
+
+export type InvoiceSource = 'manual' | 'quickbooks' | 'freshbooks' | 'jobber';
+
+export interface IUpdateStatusPayload {
+  status: MaintenanceRequestStatus;
+}
+
+export interface IRejectInvoicePayload {
+  rejectionReason: string;
+}
+
+export interface ICancelMaintenancePayload {
+  reason?: string;
+}
+
+export interface IDeclineAssignmentPayload {
+  reason?: string;
+}

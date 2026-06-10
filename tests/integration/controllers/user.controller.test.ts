@@ -92,6 +92,7 @@ describe('UserController Integration Tests', () => {
       emitterService: {} as any,
       paymentDAO: {} as any,
       leaseDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
@@ -138,6 +139,8 @@ describe('UserController Integration Tests', () => {
       notificationService: {} as any,
       sseService: {} as any,
       paymentGatewayService: {} as any,
+      featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+      vendorDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 

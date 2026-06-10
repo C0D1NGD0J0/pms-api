@@ -2,22 +2,26 @@ import { BaseIO } from '@sockets/index';
 import { AssetDAO } from '@dao/assetDAO';
 import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
+import { LanguageService } from '@shared/languages';
 import { GeoCoderService } from '@services/external';
+import InvoiceModel from '@models/invoice/invoice.model';
 import { ClamScannerService } from '@shared/config/index';
 import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
-import { LanguageService } from '@shared/languages/language.service';
-import { PaymentService } from '@services/payments/payments.service';
+import { ExpenseService } from '@services/expense/expense.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
+import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
+  NotificationCache,
   IdempotencyCache,
   PropertyCache,
   VendorCache,
@@ -25,21 +29,6 @@ import {
   AuthCache,
   UserCache,
 } from '@caching/index';
-import {
-  NotificationModel,
-  PaymentProcessor,
-  PaymentModel,
-  PropertyUnit,
-  Subscription,
-  Invitation,
-  Property,
-  Profile,
-  Client,
-  Vendor,
-  Lease,
-  Asset,
-  User,
-} from '@models/index';
 import {
   PropertyMediaWorker,
   PropertyUnitWorker,
@@ -50,6 +39,7 @@ import {
   UploadWorker,
   EmailWorker,
   CronWorker,
+  UserWorker,
   PdfWorker,
 } from '@workers/index';
 import {
@@ -63,17 +53,39 @@ import {
   UploadQueue,
   EmailQueue,
   CronQueue,
+  UserQueue,
   PdfQueue,
 } from '@queues/index';
 import {
+  MaintenanceRequestModel,
+  NotificationModel,
+  PaymentProcessor,
+  MetricsSnapshot,
+  PaymentModel,
+  PropertyUnit,
+  Subscription,
+  ExpenseModel,
+  Invitation,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  Lease,
+  Asset,
+  User,
+} from '@models/index';
+import {
+  MaintenanceRequestDAO,
   PaymentProcessorDAO,
   PropertyUnitDAO,
   NotificationDAO,
   SubscriptionDAO,
   InvitationDAO,
   PropertyDAO,
+  MetricsDAO,
   PaymentDAO,
   ProfileDAO,
+  ExpenseDAO,
   ClientDAO,
   VendorDAO,
   LeaseDAO,
@@ -83,10 +95,13 @@ import {
   NotificationController,
   SubscriptionController,
   PropertyUnitController,
+  MaintenanceController,
   InvitationController,
   PropertyController,
+  MetricsController,
   WebhookController,
   PaymentController,
+  ExpenseController,
   ClientController,
   VendorController,
   LeaseController,
@@ -96,27 +111,44 @@ import {
   DSARController,
 } from '@controllers/index';
 import {
+  SubscriptionWebhookService,
+  MaintenanceRequestService,
+  MaintenanceInvoiceService,
+  MaintenancePaymentService,
+  VendorSuggestionService,
   PropertyApprovalService,
+  InvoiceTemplateRenderer,
   InvitationCsvProcessor,
   subscriptionPlanConfig,
   LeaseSignatureService,
   PaymentGatewayService,
+  PaymentWebhookService,
   PropertyCsvProcessor,
   PropertyStatsService,
   PropertyMediaService,
   LeaseDocumentService,
+  LeaseTemplateService,
+  PayoutAccountService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
   PropertyUnitService,
   LeaseRenewalService,
   SubscriptionService,
+  RentPaymentService,
+  FeatureFlagService,
+  PaymentCronService,
   PermissionService,
   InvitationService,
+  AnthropicService,
   AuthTokenService,
+  InvoiceAIService,
   PropertyService,
   BoldSignService,
   LeasePdfService,
+  InvoiceService,
+  MetricsService,
+  PaymentService,
   ProfileService,
   StripeService,
   ClientService,
@@ -126,9 +158,12 @@ import {
   AuthService,
   CronService,
   SSEService,
+  AIService,
 } from '@services/index';
 
 const ControllerResources = {
+  metricsController: asClass(MetricsController).scoped(),
+  maintenanceController: asClass(MaintenanceController).scoped(),
   adminController: asClass(AdminController).scoped(),
   authController: asClass(AuthController).scoped(),
   userController: asClass(UserController).scoped(),
@@ -144,6 +179,7 @@ const ControllerResources = {
   webhookController: asClass(WebhookController).scoped(),
   paymentController: asClass(PaymentController).scoped(),
   dsarController: asClass(DSARController).scoped(),
+  expenseController: asClass(ExpenseController).scoped(),
 };
 
 const ModelResources = {
@@ -160,6 +196,10 @@ const ModelResources = {
   notificationModel: asValue(NotificationModel),
   paymentModel: asValue(PaymentModel),
   paymentProcessorModel: asValue(PaymentProcessor),
+  maintenanceRequestModel: asValue(MaintenanceRequestModel),
+  metricsSnapshotModel: asValue(MetricsSnapshot),
+  expenseModel: asValue(ExpenseModel),
+  invoiceModel: asValue(InvoiceModel),
 };
 
 const ServiceResources = {
@@ -171,6 +211,8 @@ const ServiceResources = {
   mailerService: asClass(MailService).singleton(),
   leaseDocumentService: asClass(LeaseDocumentService).singleton(),
   leasePdfService: asClass(LeasePdfService).singleton(),
+  invoiceTemplateRenderer: asClass(InvoiceTemplateRenderer).singleton(),
+  invoiceService: asClass(InvoiceService).singleton(),
   leaseRenewalService: asClass(LeaseRenewalService).singleton(),
   leaseSignatureService: asClass(LeaseSignatureService).singleton(),
   leaseService: asClass(LeaseService).singleton(),
@@ -181,9 +223,11 @@ const ServiceResources = {
   languageService: asClass(LanguageService).singleton(),
   propertyService: asClass(PropertyService).singleton(),
   subscriptionService: asClass(SubscriptionService).singleton(),
+  subscriptionWebhookService: asClass(SubscriptionWebhookService).singleton(),
   propertyApprovalService: asClass(PropertyApprovalService).singleton(),
   propertyStatsService: asClass(PropertyStatsService).singleton(),
   propertyMediaService: asClass(PropertyMediaService).singleton(),
+  featureFlagService: asClass(FeatureFlagService).singleton(),
   boldSignService: asClass(BoldSignService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
@@ -195,11 +239,25 @@ const ServiceResources = {
   propertyCsvProcessor: asClass(PropertyCsvProcessor).singleton(),
   unitNumberingService: asClass(UnitNumberingService).singleton(),
   subscriptionPlanConfig: asValue(subscriptionPlanConfig),
+  anthropicService: asClass(AnthropicService).singleton(),
+  aiService: asClass(AIService).singleton(),
+  invoiceAIService: asClass(InvoiceAIService).singleton(),
   stripeService: asClass(StripeService).singleton(),
+  paymentCronService: asClass(PaymentCronService).singleton(),
+  payoutAccountService: asClass(PayoutAccountService).singleton(),
+  paymentWebhookService: asClass(PaymentWebhookService).singleton(),
+  maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),
+  rentPaymentService: asClass(RentPaymentService).singleton(),
   paymentService: asClass(PaymentService).singleton(),
   paymentGatewayService: asClass(PaymentGatewayService).singleton(),
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   dsarService: asClass(DSARService).singleton(),
+  maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
+  vendorSuggestionService: asClass(VendorSuggestionService).singleton(),
+  maintenanceInvoiceService: asClass(MaintenanceInvoiceService).singleton(),
+  metricsService: asClass(MetricsService).singleton(),
+  expenseService: asClass(ExpenseService).singleton(),
+  leaseTemplateService: asClass(LeaseTemplateService).singleton(),
 };
 
 const DAOResources = {
@@ -216,6 +274,10 @@ const DAOResources = {
   notificationDAO: asClass(NotificationDAO).singleton(),
   paymentDAO: asClass(PaymentDAO).singleton(),
   paymentProcessorDAO: asClass(PaymentProcessorDAO).singleton(),
+  maintenanceRequestDAO: asClass(MaintenanceRequestDAO).singleton(),
+  metricsDAO: asClass(MetricsDAO).singleton(),
+  expenseDAO: asClass(ExpenseDAO).singleton(),
+  invoiceDAO: asClass(InvoiceDAO).singleton(),
 };
 
 const CacheResources = {
@@ -226,6 +288,7 @@ const CacheResources = {
   userCache: asClass(UserCache).singleton(),
   vendorCache: asClass(VendorCache).singleton(),
   idempotencyCache: asClass(IdempotencyCache).singleton(),
+  notificationCache: asClass(NotificationCache).singleton(),
 };
 
 const WorkerResources = {
@@ -239,6 +302,7 @@ const WorkerResources = {
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
   propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
   paymentWorker: asClass(PaymentWorker).singleton(),
+  userWorker: asClass(UserWorker).singleton(),
 };
 
 const QueuesResources = {
@@ -253,10 +317,13 @@ const QueuesResources = {
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
   propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
   paymentQueue: asClass(PaymentQueue).singleton(),
+  userQueue: asClass(UserQueue).singleton(),
 };
 
 const UtilsResources = {
-  // Lazy-loaded services to reduce memory footprint
+  serviceAreaService: asFunction(() => {
+    return new ServiceAreaService(Profile, Vendor);
+  }).singleton(),
   geoCoderService: asFunction(() => {
     return new GeoCoderService();
   }).singleton(),
@@ -265,7 +332,6 @@ const UtilsResources = {
   }).singleton(),
   dbService: asClass(DatabaseService).singleton(),
   s3Service: asFunction(() => {
-    // Only initialize S3Service when actually needed
     return new S3Service();
   }).singleton(),
   clamScanner: asClass(ClamScannerService).singleton(),
@@ -288,11 +354,11 @@ export const initQueues = (container: AwilixContainer) => {
     envVariables.CLAMAV && (envVariables.CLAMAV.HOST || envVariables.CLAMAV.SOCKET);
 
   if (!hasClamAVConfig) {
-    logger.info('ClamAV not configured - virus scanning disabled');
+    logger.debug('ClamAV not configured - virus scanning disabled');
   } else {
     try {
       container.resolve('clamScanner');
-      logger.info('ClamAV scanner initialized');
+      logger.debug('ClamAV scanner initialized');
     } catch (error) {
       logger.error(
         { error },
@@ -301,15 +367,28 @@ export const initQueues = (container: AwilixContainer) => {
     }
   }
 
+  // Ensure the metrics time-series collection exists (no-op if already present)
+  try {
+    const metricsDAO = container.resolve<MetricsDAO>('metricsDAO');
+    metricsDAO.ensureCollection().catch((err) => {
+      logger.error({ err }, 'Failed to ensure metrics_snapshots collection');
+    });
+  } catch (err) {
+    logger.error({ err }, 'Failed to resolve metricsDAO for collection setup');
+  }
+
   // Queues and workers are now lazily initialized via QueueFactory when first accessed
   // This reduces startup time and memory footprint
   const processType = envVariables.SERVER.PROCESS_TYPE;
   const environment = envVariables.SERVER.ENV;
 
-  logger.info(
+  logger.debug(
     `💡 ${processType.toUpperCase()} process (${environment}): Queues will be initialized on-demand via QueueFactory`
   );
 };
+
+export const QUEUE_RESOURCE_NAMES = Object.keys(QueuesResources);
+export const SERVICE_RESOURCE_NAMES = Object.keys(ServiceResources);
 
 export const registerResources = {
   ...ControllerResources,

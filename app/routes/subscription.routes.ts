@@ -71,4 +71,15 @@ router.post(
   })
 );
 
+router.post(
+  '/:cuid/sync-from-stripe',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  asyncWrapper((req, res) => {
+    const subscriptionController =
+      req.container.resolve<SubscriptionController>('subscriptionController');
+    return subscriptionController.syncFromStripe(req, res);
+  })
+);
+
 export default router;

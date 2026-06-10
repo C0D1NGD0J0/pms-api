@@ -11,6 +11,7 @@ import {
   requireActiveSubscription,
   subscriptionEntitlements,
   requireVerifiedClient,
+  requireNotSuspended,
   requireVerification,
   requirePermission,
   isAuthenticated,
@@ -81,6 +82,7 @@ router.post(
   requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  requireNotSuspended,
   idempotency,
   subscriptionEntitlements,
   requireActiveSubscription,
@@ -138,6 +140,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.REVOKE),
+  idempotency,
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.revokeInvitation,
@@ -153,6 +156,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.UPDATE),
+  idempotency,
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.updateInvitation,
@@ -168,6 +172,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.RESEND),
+  idempotency,
   validateRequest({
     params: InvitationValidations.iuid,
     body: InvitationValidations.resendInvitation,
@@ -196,6 +201,9 @@ router.post(
   requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  requireNotSuspended,
+  subscriptionEntitlements,
+  requireActiveSubscription,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -212,8 +220,13 @@ router.post(
   '/:cuid/import_invitations_csv',
   basicLimiter(),
   isAuthenticated,
+  requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
   requireVerifiedClient,
+  requireNotSuspended,
+  idempotency,
+  subscriptionEntitlements,
+  requireActiveSubscription,
   diskUpload(['csv_file']),
   scanFile,
   validateRequest({
@@ -236,6 +249,7 @@ router.patch(
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  idempotency,
   validateRequest({
     params: UtilsValidations.cuid,
     query: InvitationValidations.processPending,

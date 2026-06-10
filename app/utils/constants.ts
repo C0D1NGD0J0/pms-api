@@ -1,18 +1,21 @@
 import { IUserRole } from '@shared/constants/roles.constants';
+import { VendorServicesOffered } from '@interfaces/vendor.interface';
 import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
+import { MaintenanceCategory } from '@interfaces/maintenanceRequest.interface';
 
 export const httpStatusCodes = {
   OK: 200,
+  CREATED: 201,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   BAD_REQUEST: 400,
-  UNPROCESSABLE: 422,
   UNAUTHORIZED: 401,
   RATE_LIMITER: 429,
+  UNPROCESSABLE: 422,
+  NOT_IMPLEMENTED: 501,
   EXPIRED_AUTH_TOKEN: 419,
   SERVICE_UNAVAILABLE: 503,
   INTERNAL_SERVER_ERROR: 500,
-  NOT_IMPLEMENTED: 501,
 };
 
 export const JWT_KEY_NAMES = {
@@ -42,6 +45,7 @@ export const QUEUE_NAMES = {
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
   PAYMENT_QUEUE: 'paymentQueue',
+  USER_QUEUE: 'userQueue',
 };
 
 export const JOB_NAME = {
@@ -66,10 +70,13 @@ export const JOB_NAME = {
   INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
   INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
   LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
+  LEASE_ADMIN_UPDATED_JOB: 'leaseAdminUpdatedJob',
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',
   RETRY_FAILED_INVOICE_JOB: 'retryFailedInvoiceJob',
+  PAYMENT_REQUEST_EMAIL_JOB: 'paymentRequestEmailJob',
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
   ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
+  VENDOR_TEAM_DISCONNECT_JOB: 'vendorTeamDisconnectJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {
@@ -96,7 +103,7 @@ export const PROPERTY_CREATION_ALLOWED_DEPARTMENTS: EmployeeDepartment[] = [
 /**
  * Roles that can approve/reject properties immediately
  */
-export const PROPERTY_APPROVAL_ROLES = [IUserRole.ADMIN, IUserRole.MANAGER];
+export const PROPERTY_APPROVAL_ROLES = [IUserRole.SUPER_ADMIN, IUserRole.ADMIN, IUserRole.MANAGER];
 
 /**
  * Roles that require approval for property creation
@@ -189,6 +196,57 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
 };
 
 /**
+ * Property fields that become immutable once ANY non-draft lease exists for the property.
+ * These define the physical identity of the property and cannot change while a tenant
+ * relationship is or has been active.
+ */
+export const IMMUTABLE_PROPERTY_FIELDS_WITH_LEASE_HISTORY = ['address', 'propertyType'] as const;
+
+/**
+ * Property unit fields that become immutable once the unit has or has had any non-draft lease.
+ * These are structural identity fields that must remain stable for legal records.
+ */
+export const IMMUTABLE_UNIT_FIELDS_WITH_LEASE_HISTORY = [
+  'unitNumber',
+  'floor',
+  'unitType',
+  'propertyId',
+] as const;
+
+/**
+ * Payment statuses that indicate a finalized (terminal) payment — core financial fields are frozen.
+ */
+export const TERMINAL_PAYMENT_STATUSES = ['paid', 'refunded', 'cancelled', 'failed'] as const;
+
+/**
+ * Core payment fields that cannot be changed once a payment reaches a terminal status.
+ */
+export const IMMUTABLE_PAYMENT_FIELDS_WHEN_TERMINAL = [
+  'baseAmount',
+  'processingFee',
+  'lease',
+  'tenant',
+  'cuid',
+] as const;
+
+/**
+ * Maintenance request statuses that "close" the request and trigger field locking.
+ */
+export const CLOSED_MAINTENANCE_REQUEST_STATUSES = ['completed', 'cancelled'] as const;
+
+/**
+ * Maintenance request fields frozen once the request is completed or cancelled.
+ */
+export const IMMUTABLE_MAINTENANCE_REQUEST_FIELDS_WHEN_CLOSED = [
+  'title',
+  'description',
+  'propertyId',
+  'unitId',
+  'requestType',
+  'priority',
+] as const;
+
+/**
  * ISO-2 country codes supported by Stripe Connect.
  * Users signing up from countries not in this list will be blocked at signup
  * until an alternative payment provider (e.g. Paystack) is integrated.
@@ -258,3 +316,23 @@ export const LEASE_CONSTANTS = {
   DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
   MINIMUM_ACTIVE_DURATION_DAYS: 30,
 } as const;
+
+/**
+ * Maps maintenance request categories to vendor servicesOffered boolean keys.
+ * Used by the vendor suggestion scoring algorithm to filter qualified vendors.
+ */
+export const CATEGORY_TO_VENDOR_SERVICE: Record<MaintenanceCategory, keyof VendorServicesOffered> =
+  {
+    [MaintenanceCategory.PLUMBING]: 'plumbing',
+    [MaintenanceCategory.ELECTRICAL]: 'electrical',
+    [MaintenanceCategory.HVAC]: 'hvac',
+    [MaintenanceCategory.APPLIANCE]: 'applianceRepair',
+    [MaintenanceCategory.STRUCTURAL]: 'carpentry',
+    [MaintenanceCategory.COSMETIC]: 'painting',
+    [MaintenanceCategory.PEST_CONTROL]: 'pestControl',
+    [MaintenanceCategory.LANDSCAPING]: 'landscaping',
+    [MaintenanceCategory.GENERAL]: 'maintenance',
+    [MaintenanceCategory.OTHER]: 'other',
+  };
+
+export const MAX_CHARGE_ATTEMPTS = 2;

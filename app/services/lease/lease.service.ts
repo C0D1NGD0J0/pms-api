@@ -4,6 +4,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
+import { PdfQueue } from '@queues/index';
 import { LeaseCache } from '@caching/index';
 import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
@@ -11,20 +12,14 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { ESignatureQueue, PdfQueue } from '@queues/index';
-import { preventTenantConflict } from '@shared/middlewares';
+import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { IPropertyDocument, ICronJob } from '@interfaces/index';
+import { MediaUploadService, UserService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
-import { PdfGeneratorService, MediaUploadService, UserService } from '@services/index';
-import { IPropertyDocument, IProfileWithUser, OwnershipType, ICronJob } from '@interfaces/index';
-import {
-  PdfGenerationRequestedPayload,
-  PdfGeneratedPayload,
-  EventTypes,
-} from '@interfaces/events.interface';
 import {
   EventEmitterService,
   NotificationService,
@@ -46,6 +41,7 @@ import {
   ILeaseFilterOptions,
   ILeaseDocument,
   ILeaseFormData,
+  ILeaseListItem,
   SigningMethod,
   LeaseStatus,
 } from '@interfaces/lease.interface';
@@ -60,8 +56,8 @@ import {
 } from '@interfaces/utils.interface';
 import {
   PROPERTY_APPROVAL_ROLES,
-  determineTemplateType,
   convertUserRoleToEnum,
+  preventTenantConflict,
   PROPERTY_STAFF_ROLES,
   LEASE_CONSTANTS,
   calcDaysElapsed,
@@ -90,6 +86,7 @@ import {
   handleActiveUpdate,
   buildLeaseTimeline,
   getUserPermissions,
+  buildLandlordInfo,
   filterLeaseByRole,
   handleDraftUpdate,
   fetchLeaseByLuid,
@@ -100,7 +97,6 @@ interface IConstructor {
   leaseDocumentService: LeaseDocumentService;
   leaseRenewalService: LeaseRenewalService;
   notificationService: NotificationService;
-  pdfGeneratorService: PdfGeneratorService;
   mediaUploadService: MediaUploadService;
   invitationService: InvitationService;
   emitterService: EventEmitterService;
@@ -136,7 +132,6 @@ export class LeaseService {
   private readonly emitterService: EventEmitterService;
   private readonly invitationService: InvitationService;
   private readonly mediaUploadService: MediaUploadService;
-  private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly notificationService: NotificationService;
   private readonly leaseTemplateService: LeaseTemplateService;
   private readonly leaseRenewalService: LeaseRenewalService;
@@ -159,7 +154,6 @@ export class LeaseService {
     mailerService,
     mediaUploadService,
     notificationService,
-    pdfGeneratorService,
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
@@ -183,7 +177,6 @@ export class LeaseService {
     this.log = createLogger('LeaseService');
     this.invitationService = invitationService;
     this.mediaUploadService = mediaUploadService;
-    this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
     this.leaseTemplateService = new LeaseTemplateService();
     this.leaseDocumentService = leaseDocumentService;
@@ -227,6 +220,13 @@ export class LeaseService {
       throw new BadRequestError({ message: t('property.errors.notFound') });
     }
 
+    if (
+      property.operationalStatus === 'maintenance' ||
+      property.operationalStatus === 'construction'
+    ) {
+      throw new BadRequestError({ message: t('lease.errors.propertyUnderMaintenance') });
+    }
+
     if (!property.isManagementAuthorized()) {
       this.log.error(
         `Property with id ${data.property.id} is not authorized for management by client ${cuid}`
@@ -252,6 +252,9 @@ export class LeaseService {
           'Tenant information is required. Please provide either a valid tenant ID or email address with an existing invitation.',
       });
     }
+
+    // Always lock currency to the property's configured value — caller-supplied currency is ignored
+    data.fees.currency = (property.fees as any)?.currency ?? 'USD';
 
     // Prevent conflict of interest: user cannot create lease for themselves as tenant
     const tenantIdStr =
@@ -333,7 +336,16 @@ export class LeaseService {
         timestamp: new Date(),
       });
     }
-    const landlordInfo = await this.buildLandlordInfo(cuid, data.property.id.toString());
+    const landlordInfo = await buildLandlordInfo(
+      cuid,
+      data.property.id.toString(),
+      {
+        clientDAO: this.clientDAO,
+        propertyDAO: this.propertyDAO,
+        profileDAO: this.profileDAO,
+      },
+      { requireManagementAuth: true }
+    );
 
     const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
     const hasUnitNumber = !!data.property.unitId;
@@ -354,7 +366,13 @@ export class LeaseService {
         templateType: data.templateType || 'residential-single-family',
         landlordName: landlordInfo.landlordName,
         fees: MoneyUtils.parseLeaseFees(data.fees),
-        internalNotes: data.internalNotes ? sanitizeHtml(data.internalNotes) : undefined,
+        internalNotes: data.internalNotes?.length
+          ? data.internalNotes.map((n: any) => ({
+              ...n,
+              note: sanitizeHtml(n.note ?? ''),
+              html: n.html ? sanitizeHtml(n.html) : undefined,
+            }))
+          : undefined,
         legalTerms: data.legalTerms
           ? {
               text: data.legalTerms.text ? sanitizeHtml(data.legalTerms.text) : undefined,
@@ -373,6 +391,7 @@ export class LeaseService {
         },
         approvalStatus,
         approvalDetails,
+        ...(approvalStatus === 'approved' && { status: LeaseStatus.READY_FOR_SIGNATURE }),
         useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
         metadata: {
           ...landlordInfo,
@@ -394,6 +413,15 @@ export class LeaseService {
           leaseId: lease.luid,
           invitationId: tenantInfo.tenantId.toString(),
         });
+      }
+
+      // Reserve the unit so no second lease can be created for it while this draft exists
+      if (data.property.unitId) {
+        await this.propertyUnitDAO.updateById(
+          data.property.unitId.toString(),
+          { status: PropertyUnitStatusEnum.RESERVED },
+          session
+        );
       }
 
       return { lease };
@@ -435,8 +463,40 @@ export class LeaseService {
   async getFilteredLeases(
     cuid: string,
     filters: ILeaseFilterOptions,
-    options: any
-  ): ListResultWithPagination<ILeaseDocument[]> {
+    options: any,
+    context?: IRequestContext
+  ): ListResultWithPagination<ILeaseListItem[]> {
+    const TENANT_VISIBLE_STATUSES: LeaseStatus[] = [
+      LeaseStatus.ACTIVE,
+      LeaseStatus.EXPIRED,
+      LeaseStatus.TERMINATED,
+      LeaseStatus.RENEWED,
+    ];
+
+    if (context?.currentuser?.client?.role === 'tenant') {
+      const requested = filters.status;
+      const arr = requested ? (Array.isArray(requested) ? requested : [requested]) : [];
+      const safe = arr.filter((s) => TENANT_VISIBLE_STATUSES.includes(s));
+      filters = {
+        ...filters,
+        status: safe.length ? safe : TENANT_VISIBLE_STATUSES,
+        tenantId: context.currentuser.sub, // always scope to caller — never trust client-supplied tenantId
+      };
+    }
+
+    // Resolve public puid → internal ObjectId so the DAO can filter by property.unitId
+    if (filters.unitPuid) {
+      const unit = await this.propertyUnitDAO.findFirst({
+        puid: filters.unitPuid,
+        cuid,
+        deletedAt: null,
+      });
+      if (unit) {
+        filters = { ...filters, unitId: unit._id };
+      }
+      delete (filters as any).unitPuid;
+    }
+
     this.log.info(`Getting filtered leases for client ${cuid}`, { filters });
 
     try {
@@ -449,9 +509,7 @@ export class LeaseService {
         });
 
         return {
-          success: true,
-          data: cachedResult.data.leases,
-          message: 'Leases retrieved successfully (cached)',
+          items: cachedResult.data.leases,
           pagination: {
             currentPage: options.page || 1,
             perPage: options.limit || 10,
@@ -461,7 +519,7 @@ export class LeaseService {
               (options.page || 1) <
               Math.ceil(cachedResult.data.pagination.total / (options.limit || 10)),
           },
-        } as any;
+        };
       }
       const result = await this.leaseDAO.getFilteredLeases(cuid, filters, options);
 
@@ -472,11 +530,9 @@ export class LeaseService {
       });
 
       return {
-        success: true,
-        data: result.items,
-        message: 'Leases retrieved successfully',
+        items: result.items,
         pagination: result.pagination,
-      } as any;
+      };
     } catch (error) {
       this.log.error('Error getting filtered leases:', error);
       throw error;
@@ -637,6 +693,19 @@ export class LeaseService {
 
       if (cleanUpdateData.fees) {
         cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
+
+        // Enforce currency from property — same rule as createLease (line ~256)
+        // Guard: only run if the lease has a property reference (may be absent in test fixtures / legacy data)
+        if ((lease.property as any)?.id) {
+          const property = await this.propertyDAO.findFirst(
+            { _id: new Types.ObjectId((lease.property as any).id), cuid, deletedAt: null },
+            { select: 'fees' }
+          );
+          if (property) {
+            // Always lock currency to the property's configured value — caller-supplied currency is ignored
+            cleanUpdateData.fees!.currency = (property.fees as any)?.currency ?? 'USD';
+          }
+        }
       }
 
       // Sanitize legalTerms HTML/text content
@@ -651,19 +720,6 @@ export class LeaseService {
           url: cleanUpdateData.legalTerms.url,
         };
       }
-
-      // Handle internalNotes separately - will append as new note to array
-      // let noteToAdd = null;
-      // if (cleanUpdateData.internalNotes && typeof cleanUpdateData.internalNotes === 'string') {
-      //   noteToAdd = {
-      //     note: cleanUpdateData.internalNotes.trim(),
-      //     author: currentUser.fullname || 'Unknown',
-      //     authorId: currentUser.sub,
-      //     timestamp: new Date(),
-      //   };
-      //   // Remove from main update data
-      //   delete cleanUpdateData.internalNotes;
-      // }
 
       validateImmutableFields(cleanUpdateData);
       let result = null;
@@ -704,6 +760,51 @@ export class LeaseService {
             this.profileDAO,
             this.leaseCache
           );
+          // Notify tenant (email + in-app) when an admin directly updates an active lease
+          if (result?.success && !result.data?.requiresApproval && lease.tenantId) {
+            const leaseUrl = `${envVariables.FRONTEND.URL}/tenants/${cuid}/${lease.tenantId}/lease`;
+            try {
+              const emailQueue = this.queueFactory.getQueue('emailQueue');
+              emailQueue.addJobToQueue(JOB_NAME.LEASE_ADMIN_UPDATED_JOB, {
+                emailType: MailType.LEASE_ADMIN_UPDATED,
+                subject: 'Your Lease Has Been Updated',
+                to: lease.tenantInfo?.email,
+                data: {
+                  tenantName: lease.tenantInfo?.fullname || 'Tenant',
+                  leaseNumber: lease.leaseNumber,
+                  propertyAddress: lease.property?.address || '',
+                  updatedBy: currentUser.fullname || 'Property Manager',
+                  leaseUrl,
+                },
+                client: { cuid },
+              });
+            } catch (error) {
+              this.log.error(`Failed to queue admin-update email for lease ${lease.luid}:`, error);
+            }
+
+            try {
+              await this.notificationService.createNotificationFromTemplate(
+                'lease.adminUpdated',
+                { leaseNumber: lease.leaseNumber },
+                lease.tenantId.toString(),
+                NotificationTypeEnum.LEASE,
+                NotificationPriorityEnum.MEDIUM,
+                cuid,
+                currentUser.sub,
+                {
+                  resourceName: ResourceContext.LEASE,
+                  resourceUid: lease.luid,
+                  resourceId: lease._id.toString(),
+                  metadata: { leaseUrl },
+                }
+              );
+            } catch (error) {
+              this.log.error(
+                `Failed to create in-app notification for lease ${lease.luid}:`,
+                error
+              );
+            }
+          }
           break;
         case LeaseStatus.DRAFT:
           result = await handleDraftUpdate(
@@ -721,25 +822,6 @@ export class LeaseService {
             message: `Cannot update lease with status: ${lease.status}`,
           });
       }
-
-      // If there's a note to add, append it now after main update
-      // if (noteToAdd && result?.success) {
-      //   await this.leaseDAO.update(
-      //     { luid, cuid, deletedAt: null },
-      //     {
-      //       $push: { internalNotes: noteToAdd }
-      //     }
-      //   );
-
-      //   // Refetch the lease to include the new note in response
-      //   const updatedLease = await this.leaseDAO.findOne({
-      //     filter: { luid, cuid, deletedAt: null }
-      //   });
-
-      //   if (result.data && updatedLease) {
-      //     result.data = updatedLease;
-      //   }
-      // }
 
       return result
         ? result
@@ -787,6 +869,13 @@ export class LeaseService {
     const deleted = await lease.softDelete(new Types.ObjectId(userId));
     if (!deleted) {
       throw new BadRequestError({ message: 'Failed to delete lease' });
+    }
+
+    // Release the unit reservation when a draft lease is deleted
+    if (lease.status === LeaseStatus.DRAFT && lease.property?.unitId) {
+      await this.propertyUnitDAO.updateById(lease.property.unitId.toString(), {
+        status: PropertyUnitStatusEnum.AVAILABLE,
+      });
     }
 
     // Invalidate lease cache
@@ -896,6 +985,15 @@ export class LeaseService {
       terminatedBy: currentUser.sub,
     });
 
+    this.emitterService.emit(EventTypes.LEASE_EXPIRED, {
+      leaseId: terminatedLease._id.toString(),
+      luid: terminatedLease.luid,
+      cuid,
+      tenantId: terminatedLease.tenantId.toString(),
+      expiredAt: new Date(),
+      reason: 'terminated',
+    });
+
     try {
       const tenantProfile = await this.profileDAO.findFirst(
         { user: new Types.ObjectId(lease.tenantId) },
@@ -958,97 +1056,6 @@ export class LeaseService {
     };
   }
 
-  async generateLeasePDF(
-    cuid: string,
-    leaseId: string,
-    templateType?: string
-  ): Promise<{
-    success: boolean;
-    pdfUrl?: string;
-    s3Key?: string;
-    error?: string;
-    metadata?: { fileSize?: number; generationTime?: number };
-  }> {
-    try {
-      const lease = await this.leaseDAO.findFirst(
-        { _id: new Types.ObjectId(leaseId), cuid, deletedAt: null },
-        {
-          populate: [
-            { path: 'property.id', select: '+owner +authorization' },
-            { path: 'property.unitId' },
-          ],
-        }
-      );
-
-      if (!lease) {
-        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
-      }
-
-      if (lease.status === LeaseStatus.PENDING_SIGNATURE) {
-        throw new ValidationRequestError({
-          message: 'Cannot edit lease while pending signature. Withdraw it first.',
-        });
-      }
-
-      if (!lease.tenantId) {
-        throw new BadRequestError({
-          message: 'Lease tenant information is incomplete. Cannot generate PDF.',
-        });
-      }
-
-      const tenantDetails = await this.profileDAO.findFirst(
-        { user: lease.tenantId },
-        { populate: [{ path: 'user', select: 'email' }] }
-      );
-
-      if (!tenantDetails) {
-        throw new BadRequestError({
-          message: 'Tenant information is incomplete. Cannot generate PDF.',
-        });
-      }
-
-      const previewData = await this.generateLeasePreview(cuid, lease.luid);
-      const finalTemplateType =
-        templateType || determineTemplateType(lease.property.propertyType || '');
-      const html = await this.leaseTemplateService.transformAndRender(
-        previewData,
-        finalTemplateType
-      );
-
-      const pdfResult = await this.pdfGeneratorService.generatePdf(html, {
-        format: 'Letter',
-        printBackground: true,
-      });
-
-      if (!pdfResult.success || !pdfResult.buffer) {
-        throw new Error(pdfResult.error || 'PDF generation failed');
-      }
-
-      const fileName = `${Date.now()}_${lease.leaseNumber}.pdf`;
-      this.mediaUploadService.handleBuffer(pdfResult.buffer, fileName, {
-        primaryResourceId: leaseId,
-        uploadedBy: lease.createdBy?.toString() || 'system',
-        resourceContext: ResourceContext.LEASE,
-      });
-
-      return {
-        success: true,
-        pdfUrl: 'pending',
-        s3Key: 'pending',
-        metadata: {
-          fileSize: pdfResult.metadata?.fileSize,
-          generationTime: pdfResult.metadata?.generationTime,
-        },
-      };
-    } catch (error) {
-      this.log.error({ error, leaseId, cuid }, 'Failed to generate lease PDF');
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
-  }
-
   /**
    * Queue lease PDF generation (called by controller)
    * Adds job to queue and returns immediately
@@ -1061,7 +1068,7 @@ export class LeaseService {
   ): Promise<{ success: boolean; jobId?: string | number; error?: string }> {
     try {
       const lease = await this.leaseDAO.findFirst({
-        _id: new Types.ObjectId(leaseId),
+        luid: leaseId,
         cuid,
         deletedAt: null,
       });
@@ -1222,110 +1229,6 @@ export class LeaseService {
     return this.leaseSignatureService.getSignatureDetails(cuid, leaseId);
   }
 
-  /**
-   * Helper method to build landlord and management company info based on property ownership
-   */
-  private async buildLandlordInfo(
-    cuid: string,
-    propertyId: string
-  ): Promise<{
-    landlordName?: string;
-    landlordAddress?: string;
-    landlordEmail?: string;
-    landlordPhone?: string;
-    isExternalOwner?: boolean;
-    managementCompanyName?: string;
-    managementCompanyAddress?: string;
-    managementCompanyEmail?: string;
-    managementCompanyPhone?: string;
-  }> {
-    const client = await this.clientDAO.getClientByCuid(cuid);
-    if (!client) {
-      throw new BadRequestError({ message: 'Client not found' });
-    }
-
-    const property = await this.propertyDAO.findFirst(
-      { _id: propertyId, cuid, deletedAt: null },
-      {
-        select: '+owner +authorization',
-      }
-    );
-
-    if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
-    }
-
-    if (!property.isManagementAuthorized()) {
-      throw new BadRequestError({
-        message: 'Property has not been authorized for management.',
-      });
-    }
-
-    let managementInfo;
-    if (client.accountType.isEnterpriseAccount && client.companyProfile) {
-      managementInfo = {
-        managementCompanyName: client.companyProfile?.legalEntityName,
-        managementCompanyAddress: client.companyProfile?.companyAddress,
-        managementCompanyEmail: client.companyProfile?.companyEmail,
-        managementCompanyPhone: client.companyProfile?.companyPhone,
-      };
-
-      if (property.owner?.type === OwnershipType.EXTERNAL_OWNER && property.owner.name) {
-        return {
-          ...managementInfo,
-          landlordName: property.owner.name,
-          landlordAddress: property.owner.notes || 'N/A',
-          landlordEmail: property.owner.email || 'N/A',
-          landlordPhone: property.owner.phone || 'N/A',
-          isExternalOwner: true,
-        };
-      }
-
-      if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
-        return {
-          landlordName: client.companyProfile?.legalEntityName || 'N/A',
-          landlordAddress: client.companyProfile?.companyAddress || 'N/A',
-          landlordEmail: client.companyProfile?.companyEmail || 'N/A',
-          landlordPhone: client.companyProfile?.companyPhone || 'N/A',
-          isExternalOwner: false,
-        };
-      }
-    }
-
-    if (!client.accountType.isEnterpriseAccount) {
-      if (
-        (property.owner?.type === OwnershipType.SELF_OWNED ||
-          property.owner?.type === OwnershipType.EXTERNAL_OWNER) &&
-        property.owner.name
-      ) {
-        return {
-          landlordName: property.owner.name,
-          landlordAddress: property.owner.notes || 'N/A',
-          landlordEmail: property.owner.email || 'N/A',
-          landlordPhone: property.owner.phone || 'N/A',
-          isExternalOwner: false,
-        };
-      }
-    }
-
-    const profile = (await this.profileDAO.findFirst(
-      { user: client.accountAdmin.toString() },
-      { populate: 'user' }
-    )) as unknown as IProfileWithUser;
-
-    return {
-      landlordName:
-        client.companyProfile?.legalEntityName ||
-        `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`,
-      landlordAddress:
-        client.companyProfile?.companyAddress || profile.personalInfo.location || 'N/A',
-      landlordEmail: client.companyProfile?.companyEmail || `${profile.user.email || 'N/A'}`,
-      landlordPhone:
-        client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
-      isExternalOwner: false,
-    };
-  }
-
   async generateLeasePreview(cuid: string, luid: string) {
     this.log.info(`Generating preview from existing lease ${luid} for client ${cuid}`);
 
@@ -1353,7 +1256,16 @@ export class LeaseService {
 
     const propertyId =
       typeof lease.property.id === 'string' ? lease.property.id : lease.property.id.toString();
-    const landlordInfo = await this.buildLandlordInfo(cuid, propertyId);
+    const landlordInfo = await buildLandlordInfo(
+      cuid,
+      propertyId,
+      {
+        clientDAO: this.clientDAO,
+        propertyDAO: this.propertyDAO,
+        profileDAO: this.profileDAO,
+      },
+      { requireManagementAuth: true }
+    );
 
     const baseData = {
       leaseNumber: lease.leaseNumber,
@@ -1375,7 +1287,7 @@ export class LeaseService {
       endDate: lease.duration.endDate.toISOString(),
       leaseType: lease.type,
 
-      monthlyRent: lease.fees.monthlyRent,
+      rentAmount: lease.fees.rentAmount,
       securityDeposit: lease.fees.securityDeposit,
       rentDueDay: lease.fees.rentDueDay,
       currency: lease.fees.currency,
@@ -1517,6 +1429,10 @@ export class LeaseService {
       $push: { approvalDetails: approvalEntry },
       $set: {
         approvalStatus: 'approved',
+        ...(lease.status === LeaseStatus.DRAFT &&
+          !lease.pendingChanges && {
+            status: LeaseStatus.READY_FOR_SIGNATURE,
+          }),
         lastModifiedBy: [
           {
             userId: currentuser.sub,
@@ -1797,136 +1713,9 @@ export class LeaseService {
 
   private setupEventListeners(): void {
     this.emitterService.on(
-      EventTypes.PDF_GENERATION_REQUESTED,
-      this.handlePdfGenerationRequest.bind(this)
-    );
-    this.emitterService.on(
-      EventTypes.PDF_GENERATED,
-      this.handlePdfGeneratedForESignature.bind(this)
-    );
-
-    this.emitterService.on(
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivatedEmail.bind(this)
     );
-  }
-
-  private handlePdfGenerationRequest = async (
-    payload: PdfGenerationRequestedPayload
-  ): Promise<void> => {
-    try {
-      const { jobId, resource, templateType, cuid, senderInfo } = payload;
-
-      this.log.info('Handling PDF generation request', { jobId, resourceId: resource.resourceId });
-
-      // Store senderInfo for later use when upload completes
-      if (senderInfo) {
-        this.leaseDocumentService.storePendingSenderInfo(resource.resourceId, senderInfo);
-      }
-
-      const result = await this.generateLeasePDF(cuid, resource.resourceId, templateType);
-
-      // Only emit PDF_GENERATED if PDF already existed (has real URL, not 'pending')
-      // Otherwise, wait for UPLOAD_COMPLETED event to emit PDF_GENERATED
-      if (result.success && result.pdfUrl?.startsWith('https://')) {
-        this.log.info('PDF already existed, emitting PDF_GENERATED immediately', {
-          leaseId: resource.resourceId,
-        });
-        this.emitterService.emit(EventTypes.PDF_GENERATED, {
-          jobId,
-          leaseId: resource.resourceId,
-          pdfUrl: result.pdfUrl,
-          s3Key: result.s3Key || '',
-          fileSize: result.metadata?.fileSize,
-          generationTime: result.metadata?.generationTime,
-          senderInfo,
-        });
-        // Clean up stored senderInfo
-        this.leaseDocumentService.clearPendingSenderInfo(resource.resourceId);
-      } else if (!result.success) {
-        this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
-          jobId,
-          resourceId: resource.resourceId,
-          error: result.error || 'PDF generation failed',
-        });
-        // Clean up stored senderInfo
-        this.leaseDocumentService.clearPendingSenderInfo(resource.resourceId);
-      } else {
-        // PDF is being uploaded, wait for UPLOAD_COMPLETED event
-        this.log.info('PDF upload in progress, waiting for UPLOAD_COMPLETED event', {
-          leaseId: resource.resourceId,
-        });
-      }
-    } catch (error) {
-      this.log.error('Error handling PDF generation request', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        payload,
-      });
-
-      this.emitterService.emit(EventTypes.PDF_GENERATION_FAILED, {
-        jobId: payload.jobId,
-        resourceId: payload.resource.resourceId,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
-      // Clean up stored senderInfo
-      this.leaseDocumentService.clearPendingSenderInfo(payload.resource.resourceId);
-    }
-  };
-
-  private handlePdfGeneratedForESignature = async (payload: PdfGeneratedPayload): Promise<void> => {
-    try {
-      const { leaseId, s3Key, senderInfo } = payload;
-
-      this.log.info('PDF generated, checking if e-signature is pending', { leaseId });
-
-      // Check if lease is waiting for e-signature
-      const lease = await this.leaseDAO.findById(leaseId);
-
-      if (!lease) {
-        this.log.warn('Lease not found for PDF generation event', { leaseId });
-        return;
-      }
-
-      // Only re-queue if lease status is READY_FOR_SIGNATURE and signingMethod is electronic
-      if (
-        lease.signingMethod !== 'electronic' ||
-        ![LeaseStatus.READY_FOR_SIGNATURE].includes(lease.status)
-      ) {
-        this.log.info('Lease not waiting for e-signature, skipping', {
-          leaseId,
-          signingMethod: lease.signingMethod,
-          status: lease.status,
-        });
-        return;
-      }
-
-      // Re-queue e-signature job now that PDF is ready
-      this.log.info('Re-queueing e-signature job after PDF generation', { leaseId, s3Key });
-
-      const eSignatureQueue = this.queueFactory.getQueue('eSignatureQueue') as ESignatureQueue;
-      await eSignatureQueue.addToESignatureRequestQueue({
-        resource: {
-          resourceId: leaseId,
-          resourceName: 'lease',
-          actorId: lease.createdBy.toString(),
-          resourceType: 'document',
-          fieldName: 'eSignature',
-        },
-        cuid: lease.cuid,
-        luid: lease.luid,
-        leaseId,
-        senderInfo,
-      });
-    } catch (error) {
-      this.log.error('Error handling PDF generated event for e-signature', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        payload,
-      });
-    }
-  };
-
-  private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
-    return this.leaseDocumentService.markLeaseDocumentsAsFailed(leaseId, errorMessage);
   }
 
   /**
@@ -2085,7 +1874,7 @@ export class LeaseService {
         const invitation = await this.invitationDAO.findFirst({
           inviteeEmail: leaseData.tenantInfo.email.toLowerCase(),
           clientId: client.id,
-          role: 'tenant',
+          role: IUserRole.TENANT,
         });
 
         if (!invitation) {
@@ -2159,6 +1948,11 @@ export class LeaseService {
               validationErrors['property.unitId'].push(
                 'Unit is currently occupied and cannot be leased'
               );
+            } else if (unit.status === PropertyUnitStatusEnum.RESERVED) {
+              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
+              validationErrors['property.unitId'].push(
+                'Unit already has a draft lease and cannot be leased again until that draft is deleted'
+              );
             } else if (
               unit.status === PropertyUnitStatusEnum.MAINTENANCE ||
               unit.status === PropertyUnitStatusEnum.INACTIVE
@@ -2190,10 +1984,25 @@ export class LeaseService {
       );
     }
 
-    if (leaseData.fees.monthlyRent <= 0 || isNaN(leaseData.fees.monthlyRent)) {
-      if (!validationErrors['fees.monthlyRent']) validationErrors['fees.monthlyRent'] = [];
-      validationErrors['fees.monthlyRent'].push(t('lease.errors.rentMustBePositive'));
+    if (leaseData.fees.rentAmount <= 0 || isNaN(leaseData.fees.rentAmount)) {
+      if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
+      validationErrors['fees.rentAmount'].push(t('lease.errors.rentMustBePositive'));
     }
+
+    const baseRentCents = leaseData.property.unitId
+      ? unit?.fees?.rentAmount
+      : propertyRecord.fees?.rentAmount;
+
+    if (baseRentCents && Number(baseRentCents) > 0) {
+      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.rentAmount);
+      if (Number(proposedRentCents) < Number(baseRentCents)) {
+        if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
+        validationErrors['fees.rentAmount'].push(
+          `Monthly rent cannot be lower than the base rental fee of ${MoneyUtils.centsToDisplay(Number(baseRentCents))}`
+        );
+      }
+    }
+
     if (leaseData.fees.securityDeposit < 0 || isNaN(leaseData.fees.securityDeposit)) {
       if (!validationErrors['fees.securityDeposit']) validationErrors['fees.securityDeposit'] = [];
       validationErrors['fees.securityDeposit'].push(t('lease.errors.depositCannotBeNegative'));
@@ -2319,7 +2128,7 @@ export class LeaseService {
             unitNumber: property?.unitId?.unitNumber || null,
             startDate: lease.duration.startDate.toISOString(),
             endDate: lease.duration.endDate.toISOString(),
-            monthlyRent: MoneyUtils.formatCurrency(lease.fees.monthlyRent, lease.fees.currency),
+            rentAmount: MoneyUtils.formatCurrency(lease.fees.rentAmount, lease.fees.currency),
             firstPaymentDate: lease.duration.startDate.toLocaleDateString(),
             securityDepositInfo: lease.fees.securityDeposit
               ? MoneyUtils.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)
@@ -2973,7 +2782,6 @@ export class LeaseService {
    * Cleanup event listeners
    */
   cleanupEventListeners(): void {
-    this.leaseDocumentService.cleanupEventListeners();
     this.leaseSignatureService.cleanupEventListeners();
     this.log.info('Lease service event listeners removed');
   }

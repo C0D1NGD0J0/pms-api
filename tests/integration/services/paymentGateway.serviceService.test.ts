@@ -252,6 +252,83 @@ describe('PaymentGatewayService Integration Tests', () => {
     });
   });
 
+  describe('getConnectBalance', () => {
+    it('should return balance data from StripeService', async () => {
+      const mockBalance = {
+        available: [{ amount: 50000, currency: 'usd' }],
+        pending: [{ amount: 12000, currency: 'usd' }],
+      };
+      mockStripeService.getConnectBalance = jest.fn().mockResolvedValue(mockBalance);
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.getConnectBalance(
+        IPaymentGatewayProvider.STRIPE,
+        'acct_test_123'
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockBalance);
+      expect(mockStripeService.getConnectBalance).toHaveBeenCalledWith('acct_test_123');
+    });
+
+    it('should return error when StripeService.getConnectBalance throws', async () => {
+      mockStripeService.getConnectBalance = jest.fn().mockRejectedValue(new Error('Stripe error'));
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.getConnectBalance(
+        IPaymentGatewayProvider.STRIPE,
+        'acct_bad'
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Stripe error');
+    });
+
+    it('should return error for provider that does not support balance', async () => {
+      const result = await paymentGatewayService.getConnectBalance(
+        'unsupported' as any,
+        'acct_test'
+      );
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('listConnectPayouts', () => {
+    it('should return payout list from StripeService', async () => {
+      const mockList = {
+        data: [{ id: 'po_001', amount: 30000, currency: 'usd', status: 'paid' }],
+        has_more: false,
+      };
+      mockStripeService.listConnectPayouts = jest.fn().mockResolvedValue(mockList);
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.listConnectPayouts(
+        IPaymentGatewayProvider.STRIPE,
+        'acct_test_123',
+        { limit: 20 }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(mockList);
+      expect(mockStripeService.listConnectPayouts).toHaveBeenCalledWith('acct_test_123', { limit: 20 });
+    });
+
+    it('should return error when StripeService.listConnectPayouts throws', async () => {
+      mockStripeService.listConnectPayouts = jest.fn().mockRejectedValue(new Error('List failed'));
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.listConnectPayouts(
+        IPaymentGatewayProvider.STRIPE,
+        'acct_bad',
+        {}
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('List failed');
+    });
+  });
+
   describe('Provider Registration', () => {
     it('should initialize with provided StripeService', () => {
       const mockStripe = {

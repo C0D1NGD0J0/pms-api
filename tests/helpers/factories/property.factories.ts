@@ -61,8 +61,7 @@ export const createMockPropertyData = (overrides = {}) => ({
   fees: {
     currency: faker.helpers.arrayElement(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']),
     // Values in cents (e.g., 100000 = $1000.00)
-    taxAmount: faker.number.int({ min: 10000, max: 100000 }),
-    rentalAmount: faker.number.int({ min: 100000, max: 500000 }),
+    rentAmount: faker.number.int({ min: 100000, max: 500000 }),
     managementFees: faker.number.int({ min: 5000, max: 50000 }),
     securityDeposit: faker.number.int({ min: 50000, max: 200000 }),
   },
@@ -144,8 +143,7 @@ export const createMockProperty = (overrides = {}) => ({
   fees: {
     currency: faker.helpers.arrayElement(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY']),
     // Values in cents (e.g., 100000 = $1000.00)
-    taxAmount: faker.number.int({ min: 10000, max: 100000 }),
-    rentalAmount: faker.number.int({ min: 100000, max: 500000 }),
+    rentAmount: faker.number.int({ min: 100000, max: 500000 }),
     managementFees: faker.number.int({ min: 5000, max: 50000 }),
     securityDeposit: faker.number.int({ min: 50000, max: 200000 }),
   },
@@ -288,8 +286,7 @@ export const createMockPropertyCsvData = () => {
       specifications_bedrooms: faker.number.int({ min: 1, max: 5 }),
       specifications_bathrooms: faker.number.float({ min: 1, max: 4, fractionDigits: 1 }),
       specifications_floors: faker.number.int({ min: 1, max: 3 }),
-      fees_taxAmount: faker.number.float({ min: 100, max: 1000, fractionDigits: 2 }),
-      fees_rentalAmount: faker.number.float({ min: 1000, max: 5000, fractionDigits: 2 }),
+      fees_rentAmount: faker.number.float({ min: 1000, max: 5000, fractionDigits: 2 }),
       fees_currency: 'USD',
       utilities_water: faker.datatype.boolean(),
       utilities_gas: faker.datatype.boolean(),

@@ -1,8 +1,6 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { IUserIdentificationType } from './user.interface';
-
 /**
  * ============================================================================
  * BASE TYPE DEFINITIONS (Single Source of Truth)
@@ -47,16 +45,17 @@ export enum DataRetentionPolicy {
  * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
  */
 export interface ITenantInfo {
-  maintenanceRequests?: IMaintenanceRequestItem[];
   paymentGatewayCustomers?: Map<string, string>;
   backgroundChecks?: IBackgroundCheckItem[];
+  cardPaymentMethods?: Map<string, string>;
   paymentHistory?: IPaymentHistoryItem[];
+  paymentMandates?: Map<string, string>;
   rentalReferences?: IRentalReference[];
+  paymentMethods?: Map<string, string>;
   emergencyContact?: IEmergencyContact;
   leaseHistory?: ILeaseHistoryItem[];
   employerInfo?: IEmployerInfoItem[];
   activeLeases?: IActiveLeaseItem[];
-  notes?: INoteItem[];
   propertyId?: string;
   unitId?: string;
   pets?: IPet[];
@@ -111,7 +110,7 @@ export interface IActiveLeaseItem {
   leaseId: string | Types.ObjectId;
   propertyAddress?: string;
   leaseNumber?: string;
-  monthlyRent?: number;
+  rentAmount?: number;
   confirmedDate: Date;
   unitNumber?: string;
   confirmed: boolean;
@@ -141,42 +140,13 @@ export interface IPopulatedUser {
 }
 
 /**
- * Personal Info Interface
- */
-export interface IPersonalInfo {
-  identification?: IUserIdentificationType;
-  phoneNumber?: string;
-  displayName: string;
-  firstName: string;
-  headline?: string;
-  lastName: string;
-  location: string;
-  avatar?: IAvatar;
-  bio?: string;
-  dob?: Date;
-}
-
-/**
- * Profile Edit Data Interface
- * Used when fetching profile data for editing/display
- */
-export interface IProfileEditData {
-  identification?: IUserIdentificationType;
-  personalInfo: IProfileEditPersonalInfo;
-  settings: IProfileEditSettings;
-  userType: ProfileUserType;
-  roles: IUserRoleType[];
-  policies?: IPolicies;
-}
-
-/**
  * Lease History Item Interface
  */
 export interface ILeaseHistoryItem {
   status: LeaseHistoryStatus;
   leaseNumber?: string;
   propertyName: string;
-  monthlyRent: number;
+  rentAmount: number;
   unitNumber: string;
   leaseStart: Date;
   leaseEnd: Date;
@@ -200,10 +170,17 @@ export interface IProfileDocument extends Document, IProfile {
 }
 
 /**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
+ * Employee Info Interface
  */
+export interface IEmployeeInfo {
+  emergencyContact?: IEmergencyContact;
+  department?: EmployeeDepartment;
+  clientSpecificSettings?: any;
+  employeeId?: string;
+  reportsTo?: string;
+  jobTitle?: string;
+  startDate?: Date;
+}
 
 /**
  * Vendor Info Interface
@@ -213,6 +190,12 @@ export interface IVendorInfo {
   isLinkedAccount: boolean;
   linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
+
+/**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
 
 /**
  * Main Profile Interface
@@ -225,6 +208,21 @@ export interface IProfile {
   user: Types.ObjectId;
   settings: ISettings;
   policies: IPolicies;
+}
+
+/**
+ * Personal Info Interface
+ */
+export interface IPersonalInfo {
+  phoneNumber?: string;
+  displayName: string;
+  firstName: string;
+  headline?: string;
+  lastName: string;
+  location: string;
+  avatar?: IAvatar;
+  bio?: string;
+  dob?: Date;
 }
 
 /**
@@ -252,27 +250,15 @@ export interface IEmployerInfoItem {
 }
 
 /**
- * Maintenance Request Item Interface
+ * Profile Edit Data Interface
+ * Used when fetching profile data for editing/display
  */
-export interface IMaintenanceRequestItem {
-  priority: MaintenanceRequestPriority;
-  status: MaintenanceRequestStatus;
-  description: string;
-  requestId: string;
-  type: string;
-  date: Date;
-}
-
-/**
- * Employee Info Interface
- */
-export interface IEmployeeInfo {
-  department?: EmployeeDepartment;
-  clientSpecificSettings?: any;
-  employeeId?: string;
-  reportsTo?: string;
-  jobTitle?: string;
-  startDate?: Date;
+export interface IProfileEditData {
+  personalInfo: IProfileEditPersonalInfo;
+  settings: IProfileEditSettings;
+  userType: ProfileUserType;
+  roles: IUserRoleType[];
+  policies?: IPolicies;
 }
 
 /**
@@ -368,16 +354,6 @@ export interface IPet {
   [key: string]: any;
   breed: string;
   type: string;
-}
-
-/**
- * Note Item Interface
- */
-export interface INoteItem {
-  timestamp: Date;
-  type: NoteType;
-  author: string;
-  note: string;
 }
 
 /**

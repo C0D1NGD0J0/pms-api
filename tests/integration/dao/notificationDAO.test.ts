@@ -497,6 +497,92 @@ describe('NotificationDAO Integration Tests', () => {
       expect(result.data.length).toBeLessThanOrEqual(2);
     });
 
+    it('should filter by since — returns only notifications created after the timestamp', async () => {
+      // Create the "old" notification first, then record a cursor timestamp,
+      // then create the "new" one. No backdating needed.
+      const old = await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: testUserId,
+        title: 'Old Notification',
+        message: 'Created before cursor',
+        type: NotificationTypeEnum.INFO,
+      });
+
+      // Cursor is set AFTER the old notification exists
+      const cursor = new Date();
+
+      const newNotif = await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: testUserId,
+        title: 'New Notification',
+        message: 'Created after cursor',
+        type: NotificationTypeEnum.INFO,
+      });
+
+      const result = await notificationDAO.findForUser(
+        testUserId.toString(),
+        testCuid,
+        { roles: [] },
+        { since: cursor.toISOString(), recipientType: RecipientTypeEnum.INDIVIDUAL }
+      );
+
+      const nuids = result.data.map((n) => n.nuid);
+      expect(nuids).toContain(newNotif.nuid);
+      expect(nuids).not.toContain(old.nuid);
+    });
+
+    it('should return empty array when since is in the future', async () => {
+      const future = new Date(Date.now() + 60_000).toISOString();
+
+      const result = await notificationDAO.findForUser(
+        testUserId.toString(),
+        testCuid,
+        { roles: [] },
+        { since: future, recipientType: RecipientTypeEnum.INDIVIDUAL }
+      );
+
+      expect(result.data).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+
+    it('should combine since with other filters correctly', async () => {
+      const cursor = new Date(Date.now() - 30_000);
+
+      await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: testUserId,
+        title: 'Recent Payment',
+        message: 'Payment after cursor',
+        type: NotificationTypeEnum.PAYMENT,
+      });
+
+      await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: testUserId,
+        title: 'Recent Info',
+        message: 'Info after cursor',
+        type: NotificationTypeEnum.INFO,
+      });
+
+      const result = await notificationDAO.findForUser(
+        testUserId.toString(),
+        testCuid,
+        { roles: [] },
+        {
+          since: cursor.toISOString(),
+          type: NotificationTypeEnum.PAYMENT,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+        }
+      );
+
+      expect(result.data.length).toBe(1);
+      expect(result.data[0].type).toBe(NotificationTypeEnum.PAYMENT);
+    });
+
     it('should only include non-deleted notifications', async () => {
       const created = await notificationDAO.create({
         cuid: testCuid,

@@ -277,7 +277,7 @@ export class SubscriptionService {
         throw new BadRequestError({ message: 'Missing required subscription data' });
       }
 
-      const client = await this.clientDAO.findById(clientId, session);
+      const client = await this.clientDAO.findById(clientId, session as any);
       if (!client) {
         throw new BadRequestError({ message: 'Client not found for subscription' });
       }
@@ -326,7 +326,7 @@ export class SubscriptionService {
         pendingDowngradeAt,
       };
 
-      const subscription = await this.subscriptionDAO.insert(subscriptionData, session);
+      const subscription = await this.subscriptionDAO.insert(subscriptionData, session as any);
 
       return { data: subscription, success: true };
     } catch (error) {

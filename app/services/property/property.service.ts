@@ -694,11 +694,11 @@ export class PropertyService {
 
     if (filters) {
       if (filters.propertyType) {
-        filter.propertyType = { $in: filters.propertyType };
+        filter.propertyType = { $in: filters.propertyType } as any;
       }
 
       if (filters.operationalStatus) {
-        filter.operationalStatus = { $in: filters.operationalStatus };
+        filter.operationalStatus = { $in: filters.operationalStatus } as any;
       }
 
       if (filters.occupancyStatus) {

@@ -7,6 +7,7 @@ import { EmailQueue, UserQueue } from '@queues/index';
 import { IVendor } from '@interfaces/vendor.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
+import { PaymentRecordType } from '@interfaces/payments.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
@@ -1466,7 +1467,7 @@ export class UserService {
           const activeLeases = await this.leaseDAO.list({
             cuid,
             tenantId: tenant._id, // Use tenant._id from aggregation result
-            status: { $in: ['active', 'pending_signature'] },
+            status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
             deletedAt: null,
           });
 
@@ -1487,7 +1488,7 @@ export class UserService {
               cuid,
               tenant: tenant._id,
               lease: activeLease._id,
-              paymentType: 'rent',
+              paymentType: PaymentRecordType.RENT,
               limit: 1,
               sortBy: 'dueDate',
               sort: 'desc',
@@ -2501,7 +2502,7 @@ export class UserService {
       const ongoingLeases = await this.leaseDAO.list({
         tenantId: new Types.ObjectId(tenantId),
         cuid,
-        status: { $in: ['active', 'pending_signature', 'draft'] },
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE, LeaseStatus.DRAFT] },
         deletedAt: null,
       });
 

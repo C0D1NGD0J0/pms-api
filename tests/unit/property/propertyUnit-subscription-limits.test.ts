@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
-import { BadRequestError as _BadRequestError } from '@shared/customErrors';
 import { IRequestContext } from '@interfaces/utils.interface';
+import { BadRequestError as _BadRequestError } from '@shared/customErrors';
 import { PropertyUnitService } from '@services/property/propertyUnit.service';
 
 describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {

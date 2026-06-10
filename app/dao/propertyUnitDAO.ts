@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { calcOccupancyRate, createLogger } from '@utils/index';
-import { ClientSession, FilterQuery, Model, Types } from 'mongoose';
+import { type QueryFilter, ClientSession, Model, Types } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   PropertyUnitStatusEnum,
@@ -33,7 +33,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Property ID is required');
       }
 
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         propertyId: new Types.ObjectId(propertyId),
         deletedAt: null,
       };
@@ -82,7 +82,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Unit number and property ID are required');
       }
 
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         unitNumber,
         propertyId: new Types.ObjectId(propertyId),
         deletedAt: null,
@@ -97,7 +97,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
 
   async findAvailableUnits(propertyId?: string): ListResultWithPagination<IPropertyUnitDocument[]> {
     try {
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         status: PropertyUnitStatusEnum.AVAILABLE,
         isActive: true,
         deletedAt: null,
@@ -127,7 +127,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Status is required');
       }
 
-      const query: FilterQuery<IPropertyUnitDocument> = {
+      const query: QueryFilter<IPropertyUnitDocument> = {
         status,
         isActive: true,
         deletedAt: null,
@@ -150,7 +150,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
 
   async getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>> {
     try {
-      const match: FilterQuery<IPropertyUnitDocument> = {
+      const match: QueryFilter<IPropertyUnitDocument> = {
         isActive: true,
         deletedAt: null,
       };

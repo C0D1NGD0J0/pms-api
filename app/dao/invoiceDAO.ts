@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { FilterQuery, Model, Types } from 'mongoose';
+import { type QueryFilter, Model, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import {
   TenantPaymentStatus,
@@ -54,7 +54,7 @@ export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
     filters?: { status?: InvoiceStatus; page?: number; limit?: number }
   ): ListResultWithPagination<IInvoiceDocument[]> {
     try {
-      const query: FilterQuery<IInvoiceDocument> = { cuid, isDeleted: false };
+      const query: QueryFilter<IInvoiceDocument> = { cuid, isDeleted: false };
       if (filters?.status) query.status = filters.status;
 
       return await this.list(query, {
@@ -120,7 +120,7 @@ export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
         ? { $in: vendorId.map((id) => new Types.ObjectId(id)) }
         : new Types.ObjectId(vendorId);
 
-      const query: FilterQuery<IInvoiceDocument> = {
+      const query: QueryFilter<IInvoiceDocument> = {
         cuid,
         submittedBy,
         isDeleted: false,

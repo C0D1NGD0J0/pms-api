@@ -1,4 +1,4 @@
-import { FilterQuery, Model, Types } from 'mongoose';
+import { type QueryFilter, Model, Types } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   IMaintenanceRequestDocument,
@@ -31,7 +31,7 @@ export class MaintenanceRequestDAO
   }
 
   async listWithDetails(
-    filter: FilterQuery<IMaintenanceRequestDocument>,
+    filter: QueryFilter<IMaintenanceRequestDocument>,
     pagination?: IPaginationQuery
   ): ListResultWithPagination<IMaintenanceRequestDocument[]> {
     return this.list(filter, {
@@ -133,7 +133,7 @@ export class MaintenanceRequestDAO
       assignedTechnicianUserId?: string;
     }
   ): Promise<IMaintenanceStats> {
-    const matchStage: FilterQuery<IMaintenanceRequestDocument> = { cuid, deletedAt: null };
+    const matchStage: QueryFilter<IMaintenanceRequestDocument> = { cuid, deletedAt: null };
     if (opts?.propertyId) matchStage.propertyId = new Types.ObjectId(opts.propertyId);
     if (opts?.tenantUserId) matchStage.tenantId = new Types.ObjectId(opts.tenantUserId);
     if (opts?.vendorUserId) matchStage.vendorId = new Types.ObjectId(opts.vendorUserId);

@@ -6,13 +6,13 @@ import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.in
 import {
   UpdateWriteOpResult,
   AggregateOptions,
+  type QueryFilter,
   PopulateOptions,
   PipelineStage,
   MongooseError,
   ClientSession,
   ModifyResult,
   UpdateQuery,
-  FilterQuery,
   Document,
   Types,
   Model,
@@ -48,7 +48,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @returns A promise that resolves to the found document or null if no document is found.
    */
   async findFirst(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     opts?: IFindOptions,
     select?: Record<string, number>,
     session?: ClientSession
@@ -94,7 +94,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @returns A promise that resolves to an array of found documents.
    */
   async list(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     options?: {
       projection?: string | Record<string, any>;
       populate?: string | Array<string | PopulateOptions> | PopulateOptions;
@@ -153,7 +153,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    */
   async upsert(
     data: UpdateQuery<T>,
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     options?: any,
     session?: ClientSession
   ): Promise<ModifyResult<T> | null> {
@@ -235,7 +235,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @returns A promise that resolves to the updated document or null if no document is found.
    */
   async update(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     updateOperation: UpdateQuery<T>,
     opts?: Record<string, any>,
     session?: ClientSession
@@ -403,7 +403,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @param filter - Query used to filter the documents.
    * @returns A promise that resolves to the count of documents that match the filter.
    */
-  async countDocuments(filter: FilterQuery<T>, session?: ClientSession): Promise<number> {
+  async countDocuments(filter: QueryFilter<T>, session?: ClientSession): Promise<number> {
     try {
       let query = this.model.countDocuments(filter);
       if (session) query = query.session(session);
@@ -421,7 +421,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
    * @returns A promise that resolves to the result of the update operation.
    */
   async updateMany(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     updateOperation: UpdateQuery<T>,
     session?: ClientSession
   ): Promise<UpdateWriteOpResult> {

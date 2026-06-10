@@ -1,5 +1,4 @@
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ResourceContext } from '@interfaces/utils.interface';
 import {
@@ -194,10 +193,6 @@ NotificationSchema.methods.softDelete = function () {
   this.deletedAt = new Date();
   return this.save();
 };
-
-NotificationSchema.plugin(uniqueValidator, {
-  message: 'Error, {PATH} must be unique.',
-});
 
 // virtual for checking if notification is expired
 NotificationSchema.virtual('isExpired').get(function (this: INotificationDocument) {

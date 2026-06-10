@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
-import uniqueValidator from 'mongoose-unique-validator';
 import {
   IMaintenanceRequestDocument,
   MaintenanceRequestPriority,
@@ -218,8 +217,6 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     toObject: { virtuals: true, getters: true },
   }
 );
-
-MaintenanceRequestSchema.plugin(uniqueValidator, { message: '{PATH} must be unique' });
 
 MaintenanceRequestSchema.index({ cuid: 1, status: 1 });
 MaintenanceRequestSchema.index({ cuid: 1, propertyId: 1 });

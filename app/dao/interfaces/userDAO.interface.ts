@@ -1,4 +1,4 @@
-import { FilterQuery } from 'mongoose';
+import type { QueryFilter } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
@@ -46,7 +46,7 @@ export interface IUserDAO {
   ): Promise<ListResultWithPagination<IUserDocument[]>>;
   getUsersByClientId(
     clientId: string,
-    filter?: FilterQuery<IUserDocument>,
+    filter?: QueryFilter<IUserDocument>,
     opts?: IFindOptions
   ): ListResultWithPagination<IUserDocument[]>;
   getTenantsByClient(

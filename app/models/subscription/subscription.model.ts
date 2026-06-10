@@ -33,11 +33,15 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       type: Date,
       required: false,
       validate: {
-        validator: function (this: ISubscriptionDocument, value: Date | undefined) {
-          if (this.planName === 'essential') return true;
+        validator: function (this: unknown, value: Date | undefined) {
+          // In Mongoose 9, `this` can be a Query (update context) or a Document
+          if (!this || typeof this !== 'object' || !('planName' in this)) return true;
+
+          const doc = this as ISubscriptionDocument;
+          if (doc.planName === 'essential') return true;
 
           // paid plans with active status must have endDate
-          if (this.status === 'active') {
+          if (doc.status === 'active') {
             return value !== undefined && value !== null;
           }
 

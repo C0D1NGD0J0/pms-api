@@ -2,12 +2,12 @@ import { ListResultWithPagination, IPaginationQuery } from '@interfaces/index';
 import {
   UpdateWriteOpResult,
   AggregateOptions,
+  type QueryFilter,
   PopulateOptions,
   PipelineStage,
   ClientSession,
   ModifyResult,
   UpdateQuery,
-  FilterQuery,
   Document,
   Types,
 } from 'mongoose';
@@ -26,7 +26,7 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to an array of found documents.
    */
   list(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     opts?: {
       projection?: string | Record<string, any>;
       populate?: string | Array<string | PopulateOptions> | PopulateOptions;
@@ -43,14 +43,14 @@ export interface IBaseDAO<T extends Document> {
    * @returns A promise that resolves to the found document or null if no document is found.
    */
   findFirst(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     opts?: IFindOptions,
     select?: Record<string, number>,
     session?: ClientSession
   ): Promise<T | null>;
 
   updateMany(
-    filter: FilterQuery<T>,
+    filter: QueryFilter<T>,
     data: UpdateQuery<T>,
     session?: ClientSession
   ): Promise<UpdateWriteOpResult>;
@@ -75,7 +75,7 @@ export interface IBaseDAO<T extends Document> {
    * @param opts - Optional settings for the upsert operation.
    * @returns A promise that resolves to the updated or inserted document.
    */
-  upsert(data: UpdateQuery<T>, filter: FilterQuery<T>, opts?: any): Promise<ModifyResult<T> | null>;
+  upsert(data: UpdateQuery<T>, filter: QueryFilter<T>, opts?: any): Promise<ModifyResult<T> | null>;
 
   /**
    * Update a document in the collection based on its unique identifier.
@@ -84,7 +84,7 @@ export interface IBaseDAO<T extends Document> {
    * @param data - The data to update in the document.
    * @returns A promise that resolves to the updated document or null if no document is found.
    */
-  update(filter: FilterQuery<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
+  update(filter: QueryFilter<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
 
   /**
    * Find a document by its unique identifier.
@@ -100,7 +100,7 @@ export interface IBaseDAO<T extends Document> {
    * @param filter - Query used to filter the documents.
    * @returns A promise that resolves to the count of documents that match the filter.
    */
-  countDocuments(filter: FilterQuery<T>, session?: ClientSession): Promise<number>;
+  countDocuments(filter: QueryFilter<T>, session?: ClientSession): Promise<number>;
 
   /**
    * Perform an aggregation operation on the collection.

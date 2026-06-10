@@ -1,8 +1,8 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/index';
-import { FilterQuery, Types } from 'mongoose';
 import { PropertyCache } from '@caching/index';
+import { type QueryFilter, Types } from 'mongoose';
 import { createSafeMongoUpdate } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
@@ -44,7 +44,7 @@ export class PropertyApprovalService {
       });
     }
 
-    const filter: FilterQuery<IPropertyDocument> = {
+    const filter: QueryFilter<IPropertyDocument> = {
       cuid,
       deletedAt: null,
       approvalStatus: 'pending',

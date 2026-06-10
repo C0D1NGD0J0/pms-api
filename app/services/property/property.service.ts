@@ -1,10 +1,10 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
-import { FilterQuery, Types } from 'mongoose';
 import { PropertyQueue } from '@queues/index';
 import { PropertyCache } from '@caching/index';
 import { QueueFactory } from '@services/queue';
+import { type QueryFilter, Types } from 'mongoose';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { LeaseStatus, EventTypes } from '@interfaces/index';
@@ -675,7 +675,7 @@ export class PropertyService {
     }
 
     const { pagination, filters } = queryParams || {};
-    const filter: FilterQuery<IPropertyDocument> = {
+    const filter: QueryFilter<IPropertyDocument> = {
       cuid,
       deletedAt: null,
       operationalStatus: { $ne: 'inactive' },
@@ -1342,7 +1342,7 @@ export class PropertyService {
       pagination: IPaginationQuery;
     }
   ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
-    const filter: FilterQuery<IPropertyDocument> = {
+    const filter: QueryFilter<IPropertyDocument> = {
       cuid,
       deletedAt: null,
       createdBy: new Types.ObjectId(currentuser.sub),
@@ -1920,7 +1920,7 @@ export class PropertyService {
         throw new NotFoundError({ message: t('client.errors.notFound') });
       }
 
-      const filter: FilterQuery<IPropertyDocument> = {
+      const filter: QueryFilter<IPropertyDocument> = {
         cuid,
         deletedAt: null,
         operationalStatus: 'available',

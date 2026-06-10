@@ -1,6 +1,5 @@
 import { Schema, model } from 'mongoose';
 import { calcLateFee } from '@utils/financial.utils';
-import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 
@@ -871,10 +870,6 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
     currency: this.fees?.currency || 'USD',
   };
 };
-
-LeaseSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 
 // Compound index to prevent duplicate renewals for the same lease
 // Uses partialFilterExpression to only apply to documents with previousLeaseId and not deleted

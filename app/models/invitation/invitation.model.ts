@@ -1,6 +1,5 @@
 import { Schema, model, Types } from 'mongoose';
 import { ConflictError } from '@shared/customErrors';
-import uniqueValidator from 'mongoose-unique-validator';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
@@ -158,10 +157,6 @@ const InvitationSchema = new Schema<IInvitationDocument>(
 InvitationSchema.index({ clientId: 1, status: 1 });
 InvitationSchema.index({ inviteeEmail: 1, clientId: 1 });
 InvitationSchema.index({ expiresAt: 1 });
-
-InvitationSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 
 InvitationSchema.virtual('inviteeFullName').get(function (this: IInvitationDocument) {
   return `${this.personalInfo.firstName} ${this.personalInfo.lastName}`;

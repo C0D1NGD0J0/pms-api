@@ -2,7 +2,6 @@ import Zod from 'zod';
 import { Schema, model } from 'mongoose';
 import { isValidPhoneNumber } from '@utils/index';
 import { IClientDocument } from '@interfaces/index';
-import uniqueValidator from 'mongoose-unique-validator';
 import { CURRENCIES } from '@interfaces/utils.interface';
 
 const ClientSchema = new Schema<IClientDocument>(
@@ -261,9 +260,6 @@ const ClientSchema = new Schema<IClientDocument>(
   }
 );
 
-ClientSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 ClientSchema.virtual('fullCompanyName').get(function (this: IClientDocument) {
   return this.companyProfile?.tradingName || this.companyProfile?.legalEntityName || 'Unknown';
 });

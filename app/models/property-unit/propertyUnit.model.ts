@@ -1,6 +1,5 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
-import uniqueValidator from 'mongoose-unique-validator';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { calcRentAdjustment } from '@utils/financial.utils';
 import {
@@ -227,10 +226,6 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
 PropertyUnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
 PropertyUnitSchema.index({ cuid: 1, status: 1 });
 PropertyUnitSchema.index({ propertyId: 1, floor: 1, unitNumber: 1 }); // For sorted unit queries
-
-PropertyUnitSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 
 PropertyUnitSchema.virtual('leases', {
   ref: 'Lease',

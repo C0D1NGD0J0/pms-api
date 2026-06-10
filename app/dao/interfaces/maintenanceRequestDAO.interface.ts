@@ -1,4 +1,4 @@
-import { FilterQuery } from 'mongoose';
+import type { QueryFilter } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   IMaintenanceRequestDocument,
@@ -12,7 +12,7 @@ export interface IMaintenanceRequestDAO {
    * Use this for all list responses sent to the frontend
    */
   listWithDetails(
-    filter: FilterQuery<IMaintenanceRequestDocument>,
+    filter: QueryFilter<IMaintenanceRequestDocument>,
     pagination?: IPaginationQuery
   ): ListResultWithPagination<IMaintenanceRequestDocument[]>;
 

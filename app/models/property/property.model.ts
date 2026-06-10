@@ -1,5 +1,4 @@
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
 
@@ -385,10 +384,6 @@ PropertySchema.index(
 );
 
 PropertySchema.index({ computedLocation: '2dsphere' });
-PropertySchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
-
 PropertySchema.virtual('units', {
   ref: 'PropertyUnit',
   localField: '_id',

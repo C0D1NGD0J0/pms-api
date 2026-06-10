@@ -103,7 +103,6 @@ class EnvVariables {
     INVOICE_WEBHOOK_ENABLED: boolean;
   };
   public APP_NAME: string;
-  public PLATFORM_FEE_PERCENTAGE: number;
 
   constructor() {
     this.APP_NAME = process.env.APP_NAME || '';
@@ -224,10 +223,6 @@ class EnvVariables {
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
     };
-    // Default to 0 (no fee) — safer than NaN, which corrupts all fee arithmetic.
-    // Set PLATFORM_FEE_PERCENTAGE in Railway to the intended percentage (e.g. 2.5).
-    this.PLATFORM_FEE_PERCENTAGE = Number(process.env.PLATFORM_FEE_PERCENTAGE) || 0;
-
     try {
       this.validateSecretValue();
     } catch (error) {
@@ -251,12 +246,6 @@ class EnvVariables {
 
       if (!this.REDIS.URL) {
         missingVars.push('REDIS.URL (REDIS_URL, REDIS_PRIVATE_URL, or REDIS_PUBLIC_URL)');
-      }
-
-      if (isNaN(this.PLATFORM_FEE_PERCENTAGE) || this.PLATFORM_FEE_PERCENTAGE === 0) {
-        console.warn(
-          '⚠️ PLATFORM_FEE_PERCENTAGE is 0 or unset — no platform fee will be collected'
-        );
       }
 
       if (missingVars.length > 0) {

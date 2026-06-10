@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { createLogger, escapeRegExp } from '@utils/index';
-import { ClientSession, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, ClientSession, Types, Model } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
 import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
@@ -48,7 +48,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Client ID is required');
       }
 
-      const query: FilterQuery<IPropertyDocument> = { cuid: clientId, deletedAt: null };
+      const query: QueryFilter<IPropertyDocument> = { cuid: clientId, deletedAt: null };
 
       if (filters.propertyType && filters.propertyType.length > 0) {
         query.propertyType = { $in: filters.propertyType };
@@ -162,7 +162,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
 
   async getPropertiesByClientId(
     clientId: string,
-    filter: FilterQuery<IPropertyDocument> = {},
+    filter: QueryFilter<IPropertyDocument> = {},
     opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]> {
     try {
@@ -345,13 +345,13 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
       const query = {
         cuid: clientId,
         deletedAt: null,
-        'computedLocation.type': 'Point',
+        'computedLocation.type': 'Point' as const,
         'computedLocation.coordinates': {
           $geoWithin: {
             $centerSphere: [coordinates, radiusInRadians],
           },
         },
-      };
+      } as QueryFilter<IPropertyDocument>;
 
       const result = await this.list(query);
       return result.items;
@@ -811,7 +811,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
   }
 
   async findPropertyWithActiveMedia(
-    filter: FilterQuery<IPropertyDocument>,
+    filter: QueryFilter<IPropertyDocument>,
     opts?: IFindOptions
   ): Promise<IPropertyDocument | null> {
     try {

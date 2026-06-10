@@ -1,4 +1,4 @@
-import { FilterQuery } from 'mongoose';
+import type { QueryFilter } from 'mongoose';
 import { RedisService } from '@database/index';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
 import { IPropertyDocument, IProperty } from '@interfaces/property.interface';
@@ -106,7 +106,7 @@ export class PropertyCache extends BaseCache {
     propertyList: IProperty[],
     opts: {
       pagination: IPaginationQuery;
-      filter: FilterQuery<IPropertyDocument>;
+      filter: QueryFilter<IPropertyDocument>;
       totalCount?: number;
     }
   ): Promise<ISuccessReturnData> {

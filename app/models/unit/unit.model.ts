@@ -1,6 +1,5 @@
 import { Schema, model } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
-import uniqueValidator from 'mongoose-unique-validator';
 import { calcRentAdjustment } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
 import {
@@ -208,10 +207,6 @@ const UnitSchema = new Schema<IUnitDocument>(
 
 UnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
 UnitSchema.index({ cuid: 1, status: 1 });
-
-UnitSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 
 UnitSchema.virtual('leases', {
   ref: 'Lease',

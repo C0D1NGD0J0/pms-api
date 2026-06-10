@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Lease } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
-import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import { hashGenerator, createLogger, escapeRegExp } from '@utils/index';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
@@ -132,7 +132,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         throw new Error('User ID or email is required to create activation token.');
       }
       const token = hashGenerator({});
-      const filter: FilterQuery<IUserDocument> = { deletedAt: null, isActive: false };
+      const filter: QueryFilter<IUserDocument> = { deletedAt: null, isActive: false };
       if (userId && email) {
         filter.$or = [{ _id: userId }, { email }];
       } else if (userId) {
@@ -230,7 +230,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
   async getUsersByClientId(
     clientId: string,
-    filter: FilterQuery<IUserDocument> = {},
+    filter: QueryFilter<IUserDocument> = {},
     opts?: IFindOptions
   ): ListResultWithPagination<IUserDocument[]> {
     try {
@@ -282,7 +282,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       const { role, department, status, search } = filterOptions;
 
-      const query: FilterQuery<IUserDocument> = {
+      const query: QueryFilter<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
         deletedAt: null,
@@ -643,7 +643,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     try {
       // Include both team members (linkedVendorUid set) and the primary account
       // holder (linkedVendorUid is null, primaryRole is 'vendor')
-      const query: FilterQuery<IUserDocument> = {
+      const query: QueryFilter<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
         deletedAt: null,
@@ -673,7 +673,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   }> {
     try {
       // Get all users (optionally filtered by client)
-      const userQuery: FilterQuery<IUserDocument> = { deletedAt: null };
+      const userQuery: QueryFilter<IUserDocument> = { deletedAt: null };
       if (cuid) {
         userQuery['cuids.cuid'] = cuid;
       }

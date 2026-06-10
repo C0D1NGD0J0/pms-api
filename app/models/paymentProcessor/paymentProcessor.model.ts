@@ -120,9 +120,8 @@ PaymentProcessorSchema.index({ cuid: 1 });
 PaymentProcessorSchema.index({ accountId: 1 }, { unique: true });
 PaymentProcessorSchema.index({ vuid: 1, cuid: 1 });
 
-PaymentProcessorSchema.pre('save', function (next) {
+PaymentProcessorSchema.pre('save', function () {
   logger.info({ ppuid: this.ppuid, cuid: this.cuid }, 'Saving payment processor');
-  next();
 });
 
 export const PaymentProcessor = model<IPaymentProcessorDocument>(

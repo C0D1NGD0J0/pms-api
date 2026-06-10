@@ -533,7 +533,7 @@ PropertySchema.methods.calculateFees = function () {
 };
 
 // hook to prevent duplicate properties
-PropertySchema.pre('validate', async function (next) {
+PropertySchema.pre('validate', async function () {
   try {
     // this runs if the address or location has changed, or it's a new property
     if (this.isNew || this.isModified('address') || this.isModified('computedLocation')) {
@@ -552,7 +552,7 @@ PropertySchema.pre('validate', async function (next) {
         });
 
         if (addressQuery) {
-          return next(new Error('A property with this address already exists for this client'));
+          throw new Error('A property with this address already exists for this client');
         }
       }
 
@@ -563,17 +563,13 @@ PropertySchema.pre('validate', async function (next) {
         });
 
         if (locationQuery) {
-          return next(
-            new Error('A property with these coordinates already exists for this client')
-          );
+          throw new Error('A property with these coordinates already exists for this client');
         }
       }
     }
-
-    next();
   } catch (error) {
     logger.error('Error in property pre-save hook:', error);
-    next(error);
+    throw error;
   }
 });
 

@@ -55,22 +55,19 @@ const UserSchema = new Schema<IUserDocument>(
   }
 );
 
-UserSchema.pre('save', async function (this: IUserDocument, next) {
+UserSchema.pre('save', async function (this: IUserDocument) {
   if (this.isModified('password')) {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
   }
-  next();
 });
 
-UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function (next) {
+UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function () {
   const update = this.getUpdate() as UpdateQuery<IUser>;
   if (update.password) {
     const salt = await bcrypt.genSalt(10);
     update.password = await bcrypt.hash(update.password, salt);
   }
-
-  next();
 });
 
 UserSchema.virtual('profile', {

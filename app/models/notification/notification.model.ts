@@ -161,13 +161,12 @@ NotificationSchema.index({ readBy: 1, cuid: 1 }); // Announcement read status lo
 NotificationSchema.index({ archivedBy: 1, cuid: 1 }); // Archive filtering
 
 // set expiration date if not provided (default 30 days)
-NotificationSchema.pre('save', function (this: INotificationDocument, next) {
+NotificationSchema.pre('save', function (this: INotificationDocument) {
   if (this.isNew && !this.expiresAt) {
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     this.expiresAt = thirtyDaysFromNow;
   }
-  next();
 });
 
 // static method to clean up soft-deleted notifications

@@ -273,7 +273,7 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
   return `https://gravatar.com/avatar/${hash}?s=200`;
 };
 
-ProfileSchema.pre('save', function (this: IProfileDocument, next) {
+ProfileSchema.pre('save', function (this: IProfileDocument) {
   if (this.isModified('settings.dataRetentionPolicy')) {
     const today = new Date();
     switch (this.settings?.gdprSettings?.dataRetentionPolicy) {
@@ -295,8 +295,6 @@ ProfileSchema.pre('save', function (this: IProfileDocument, next) {
         break;
     }
   }
-
-  next();
 });
 
 const ProfileModel = model<IProfileDocument>('Profile', ProfileSchema);

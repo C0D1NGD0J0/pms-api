@@ -251,7 +251,7 @@ PaymentSchema.virtual('daysOverdue').get(function (this: IPaymentDocument) {
 
 // pre('validate') runs before Mongoose's required/unique checks,
 // ensuring invoiceNumber is always set before validation fires.
-PaymentSchema.pre('validate', function (next) {
+PaymentSchema.pre('validate', function () {
   if (!this.invoiceNumber) {
     const date = new Date();
     const year = date.getFullYear();
@@ -259,7 +259,6 @@ PaymentSchema.pre('validate', function (next) {
     const random = randomBytes(3).toString('hex').toUpperCase();
     this.invoiceNumber = `INV-${year}${month}-${random}`;
   }
-  next();
 });
 
 const PaymentModel = model<IPaymentDocument>('Payment', PaymentSchema);

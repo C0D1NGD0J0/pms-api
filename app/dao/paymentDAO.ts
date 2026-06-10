@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { FilterQuery, Model } from 'mongoose';
+import { type QueryFilter, Model } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { calcDaysElapsed, calcPercentage, createLogger, msToDays } from '@utils/index';
 import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
@@ -36,7 +36,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       // Exclude vendor expense records — those have vendorId set and are internal
       // accounting entries (cost side of a billable maintenance request), not
       // tenant-facing payments. Including them skews metrics and the payments list.
-      const query: FilterQuery<IPaymentDocument> = {
+      const query: QueryFilter<IPaymentDocument> = {
         cuid,
         deletedAt: null,
         vendorId: { $exists: false },
@@ -92,7 +92,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         throw new Error('Tenant ID and Client ID are required');
       }
 
-      const query: FilterQuery<IPaymentDocument> = {
+      const query: QueryFilter<IPaymentDocument> = {
         tenant: tenantId,
         cuid,
         deletedAt: null,

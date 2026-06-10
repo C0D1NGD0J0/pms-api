@@ -3,7 +3,7 @@ import { calcPercentage } from '@utils/math.utils';
 import { IUserDocument } from '@interfaces/user.interface';
 import { ListResultWithPagination } from '@interfaces/index';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PipelineStage, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
 import { ICompanyProfile, IClientSettings, IClientDocument } from '@interfaces/client.interface';
 
@@ -212,11 +212,11 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
         rolesToQuery = employeeRoles;
       }
 
-      const baseQuery: FilterQuery<IUserDocument> = {
+      const baseQuery: QueryFilter<IUserDocument> = {
         'cuids.cuid': cuid,
         'cuids.isConnected': true,
         deletedAt: null,
-        'cuids.roles': { $in: rolesToQuery },
+        'cuids.roles': { $in: rolesToQuery } as any,
         ...(status && { isActive: status === 'active' }),
       };
 

@@ -2,8 +2,8 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import mongoose from 'mongoose';
 import { InvoiceDAO } from '@dao/invoiceDAO';
-import { FilterQuery, Types } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
+import { type QueryFilter, Types } from 'mongoose';
 import { MAX_CHARGE_ATTEMPTS } from '@utils/constants';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -246,7 +246,7 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      const query: FilterQuery<IPaymentDocument> = { cuid, deletedAt: null };
+      const query: QueryFilter<IPaymentDocument> = { cuid, deletedAt: null };
 
       if (filters?.status) {
         // Support comma-separated multi-status filter: "pending,overdue" → $in query
@@ -754,7 +754,7 @@ export class PaymentService implements ICronProvider {
     try {
       const tenantProfile = await this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
 
-      const query: FilterQuery<IPaymentDocument> = {
+      const query: QueryFilter<IPaymentDocument> = {
         cuid,
         tenant: tenantProfile._id,
         deletedAt: null,

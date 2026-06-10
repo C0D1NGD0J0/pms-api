@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { isValidObjectId, FilterQuery, Model, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
+import { type QueryFilter, isValidObjectId, Model, Types } from 'mongoose';
 import { IExpenseDocument, IExpenseFilters } from '@interfaces/expense.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -31,7 +31,7 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
     opts?: IFindOptions
   ): ListResultWithPagination<IExpenseDocument[]> {
     try {
-      const query: FilterQuery<IExpenseDocument> = { clientId, isDeleted: false };
+      const query: QueryFilter<IExpenseDocument> = { clientId, isDeleted: false };
 
       if (filters.propertyId && isValidObjectId(filters.propertyId))
         query.propertyId = new Types.ObjectId(filters.propertyId);
@@ -66,7 +66,7 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
 
   async aggregateByCategory(
     clientId: string,
-    match: FilterQuery<IExpenseDocument>
+    match: QueryFilter<IExpenseDocument>
   ): Promise<Array<{ _id: { category: string; currency: string }; total: number }>> {
     try {
       return (await this.aggregate([
@@ -87,7 +87,7 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
 
   async aggregateByProperty(
     clientId: string,
-    match: FilterQuery<IExpenseDocument>
+    match: QueryFilter<IExpenseDocument>
   ): Promise<Array<{ _id: { propertyId: string; currency: string }; total: number }>> {
     try {
       return (await this.aggregate([

@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { ClientSession, FilterQuery, Model } from 'mongoose';
 import { computeLeaseMonthlyFees } from '@utils/financial.utils';
+import { type QueryFilter, ClientSession, Model } from 'mongoose';
 import { calcPercentage, roundToDecimal } from '@utils/math.utils';
 import { paginateResult, createLogger, escapeRegExp } from '@utils/index';
 import {
@@ -58,7 +58,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting lease ${leaseId} for client ${cuid}`);
 
-      const query: FilterQuery<ILeaseDocument> = {
+      const query: QueryFilter<ILeaseDocument> = {
         _id: leaseId,
         cuid,
         deletedAt: null,
@@ -79,7 +79,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting filtered leases for client ${cuid}`, { filters, pagination });
 
-      const query: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null };
+      const query: QueryFilter<ILeaseDocument> = { cuid, deletedAt: null };
 
       if (filters.approvalStatus) {
         query.approvalStatus = Array.isArray(filters.approvalStatus)
@@ -318,7 +318,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const overlaps: ILeaseDocument[] = [];
 
       if (unitId) {
-        const query: FilterQuery<ILeaseDocument> = {
+        const query: QueryFilter<ILeaseDocument> = {
           cuid,
           'property.unitId': unitId,
           deletedAt: null,
@@ -350,7 +350,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       // Case 2: Creating PROPERTY-level lease (entire property)
       else {
         // Check 2a: Other property-level leases
-        const propertyQuery: FilterQuery<ILeaseDocument> = {
+        const propertyQuery: QueryFilter<ILeaseDocument> = {
           cuid,
           'property.id': propertyId,
           'property.unitId': { $exists: false },
@@ -401,7 +401,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         `Checking for property-level lease on property ${propertyId} from ${startDate} to ${endDate}`
       );
 
-      const query: FilterQuery<ILeaseDocument> = {
+      const query: QueryFilter<ILeaseDocument> = {
         cuid,
         'property.id': propertyId,
         $or: [{ 'property.unitId': { $exists: false } }, { 'property.unitId': null }],
@@ -437,7 +437,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         `Checking for active unit-level leases on property ${propertyId} from ${startDate} to ${endDate}`
       );
 
-      const query: FilterQuery<ILeaseDocument> = {
+      const query: QueryFilter<ILeaseDocument> = {
         cuid,
         'property.id': propertyId,
         'property.unitId': { $exists: true, $ne: null },
@@ -607,11 +607,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     }
   }
 
-  async getLeaseStats(cuid: string, filters?: FilterQuery<ILeaseDocument>): Promise<ILeaseStats> {
+  async getLeaseStats(cuid: string, filters?: QueryFilter<ILeaseDocument>): Promise<ILeaseStats> {
     try {
       this.log.info(`Getting lease stats for client ${cuid}`, { filters });
 
-      const baseQuery: FilterQuery<ILeaseDocument> = { cuid, deletedAt: null, ...filters };
+      const baseQuery: QueryFilter<ILeaseDocument> = { cuid, deletedAt: null, ...filters };
 
       const today = new Date();
       const thirtyDaysFromNow = new Date();
@@ -727,7 +727,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting rent roll data for client ${cuid}`, { propertyId });
 
-      const matchQuery: FilterQuery<ILeaseDocument> = {
+      const matchQuery: QueryFilter<ILeaseDocument> = {
         cuid,
         deletedAt: null,
         status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },

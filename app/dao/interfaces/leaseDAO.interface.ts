@@ -1,4 +1,4 @@
-import { ClientSession, FilterQuery } from 'mongoose';
+import { type QueryFilter, ClientSession } from 'mongoose';
 import {
   ListResultWithPagination,
   IPaginationQuery,
@@ -148,7 +148,7 @@ export interface ILeaseDAO {
    * @param filters - Optional filters (propertyId, date range)
    * @returns Statistics object
    */
-  getLeaseStats(cuid: string, filters?: FilterQuery<ILeaseDocument>): Promise<ILeaseStats>;
+  getLeaseStats(cuid: string, filters?: QueryFilter<ILeaseDocument>): Promise<ILeaseStats>;
 
   /**
    * Update lease status only

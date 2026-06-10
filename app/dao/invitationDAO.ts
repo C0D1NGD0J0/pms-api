@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import { Invitation } from '@models/index';
 import { hashGenerator } from '@utils/index';
-import { ClientSession, FilterQuery, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/index';
+import { type QueryFilter, ClientSession, Types } from 'mongoose';
 import {
   IInvitationListQuery,
   IInvitationDocument,
@@ -137,7 +137,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     query: IInvitationListQuery
   ): ListResultWithPagination<IInvitationDocument[]> {
     try {
-      const filter: FilterQuery<IInvitationDocument> = {};
+      const filter: QueryFilter<IInvitationDocument> = {};
 
       if (query.clientId) {
         filter.clientId = new Types.ObjectId(query.clientId);

@@ -5,7 +5,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
-import { PipelineStage, ClientSession, FilterQuery, Types, Model } from 'mongoose';
+import { type QueryFilter, PipelineStage, ClientSession, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
 import { IUserBasicInfo, IFindOptions, IProfileDAO } from './interfaces/index';
@@ -226,7 +226,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
   ): ListResultWithPagination<IProfileDocument[]> {
     try {
       // Create a search filter that looks across various fields
-      const filter: FilterQuery<IProfileDocument> = {
+      const filter: QueryFilter<IProfileDocument> = {
         $or: [
           { 'personalInfo.displayName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },
           { 'personalInfo.firstName': { $regex: escapeRegExp(searchTerm), $options: 'i' } },

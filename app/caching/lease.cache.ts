@@ -1,4 +1,4 @@
-import { FilterQuery } from 'mongoose';
+import type { QueryFilter } from 'mongoose';
 import { RedisService } from '@database/index';
 import { convertTimeToSecondsAndMilliseconds } from '@utils/index';
 import { ILeaseDocument, ILeaseListItem } from '@interfaces/lease.interface';
@@ -99,7 +99,7 @@ export class LeaseCache extends BaseCache {
     leaseList: ILeaseListItem[],
     opts: {
       pagination: IPaginationQuery;
-      filter: FilterQuery<ILeaseDocument>;
+      filter: QueryFilter<ILeaseDocument>;
       totalCount?: number;
     }
   ): Promise<ISuccessReturnData> {
@@ -163,7 +163,7 @@ export class LeaseCache extends BaseCache {
   async getClientLeases(
     cuid: string,
     pagination: IPaginationQuery,
-    filter: FilterQuery<ILeaseDocument>
+    filter: QueryFilter<ILeaseDocument>
   ): Promise<ISuccessReturnData<any>> {
     try {
       if (!cuid || !pagination) {
@@ -331,7 +331,7 @@ export class LeaseCache extends BaseCache {
    */
   private generateListKeyFromPagination(
     pagination: IPaginationQuery,
-    filter?: FilterQuery<ILeaseDocument>
+    filter?: QueryFilter<ILeaseDocument>
   ): string {
     const combined = { ...pagination, ...filter };
     const hash = this.hashData(combined);

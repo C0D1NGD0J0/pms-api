@@ -1,4 +1,4 @@
-import { ClientSession, FilterQuery } from 'mongoose';
+import { type QueryFilter, ClientSession } from 'mongoose';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
   ListResultWithPagination,
@@ -72,7 +72,7 @@ export interface IPropertyDAO {
    */
   getPropertiesByClientId(
     clientId: string,
-    filter?: FilterQuery<IPropertyDocument>,
+    filter?: QueryFilter<IPropertyDocument>,
     opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]>;
 

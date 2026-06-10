@@ -1,5 +1,4 @@
 import bcrypt from 'bcryptjs';
-import uniqueValidator from 'mongoose-unique-validator';
 import { UpdateQuery, Schema, Query, model } from 'mongoose';
 import { IUserDocument, IUser } from '@interfaces/user.interface';
 
@@ -75,10 +74,6 @@ UserSchema.virtual('profile', {
   localField: '_id',
   foreignField: 'user',
   justOne: true,
-});
-
-UserSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
 });
 
 UserSchema.virtual('fullname').get(function () {

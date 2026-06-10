@@ -1,6 +1,5 @@
 import md5 from 'md5';
 import { Schema, model } from 'mongoose';
-import uniqueValidator from 'mongoose-unique-validator';
 import { ProfileBackgroundCheckStatus, IProfileDocument } from '@interfaces/profile.interface';
 
 const ProfileSchema = new Schema<IProfileDocument>(
@@ -259,10 +258,6 @@ const ProfileSchema = new Schema<IProfileDocument>(
 );
 
 ProfileSchema.index({ user: 1 }, { unique: true });
-
-ProfileSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 
 ProfileSchema.virtual('fullname').get(function (this: IProfileDocument) {
   return `${this.personalInfo.firstName} ${this.personalInfo.lastName}`;

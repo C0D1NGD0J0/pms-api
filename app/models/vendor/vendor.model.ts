@@ -1,6 +1,5 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/helpers';
-import uniqueValidator from 'mongoose-unique-validator';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 
 const VendorSchema = new Schema<IVendorDocument>(
@@ -151,10 +150,6 @@ VendorSchema.index({ companyName: 1 });
 VendorSchema.index({ registrationNumber: 1 }, { unique: true });
 VendorSchema.index({ 'address.city': 1, 'address.state': 1 });
 VendorSchema.index({ 'address.computedLocation': '2dsphere' });
-
-VendorSchema.plugin(uniqueValidator, {
-  message: '{PATH} must be unique.',
-});
 
 const VendorModel = model<IVendorDocument>('Vendor', VendorSchema);
 

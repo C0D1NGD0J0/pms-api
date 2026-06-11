@@ -62,9 +62,10 @@ export interface ISubscriptionPlansConfig {
     };
   };
   limits: {
-    maxProperties: number;
     maxUnits: number;
+    smsQuota?: number;
     maxVendors: number;
+    maxProperties: number;
     manualRecordQuota?: number;
   };
   transactionFeePercent: number;
@@ -89,6 +90,14 @@ export interface ISubscriptionPlanUsage {
     maxAdditionalSeats: number;
     additionalSeatPriceCents: number;
     availableForPurchase: number;
+  };
+  smsUsage: {
+    countThisPeriod: number;
+    quota: number;
+    remaining: number;
+    percentUsed: number;
+    resetDate: Date | null;
+    enabled: boolean; // derived from smsQuota > 0
   };
   manualRecords: {
     countThisPeriod: number;
@@ -140,6 +149,13 @@ export interface ISubscription {
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
+  };
+  smsUsage?: {
+    countThisPeriod: number;
+    periodStart: Date;
+    lastResetAt?: Date;
+    notifiedAt80: boolean;
+    notifiedAt100: boolean;
   };
   manualRecords?: {
     countThisPeriod: number;

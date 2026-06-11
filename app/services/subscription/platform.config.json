@@ -81,6 +81,7 @@
         "maxProperties": 3,
         "maxUnits": 10,
         "maxVendors": -1,
+        "smsQuota": 0,
         "manualRecordQuota": 5
       },
       "features": {
@@ -138,17 +139,18 @@
         "maxProperties": 15,
         "maxUnits": 50,
         "maxVendors": -1,
-        "manualRecordQuota": 10
+        "smsQuota": 40,
+        "manualRecordQuota": 15
       },
       "features": {
+        "aiTriage": true,
         "eSignature": true,
-        "MaintenanceRequestService": true,
-        "VisitorPassService": true,
-        "reportingAnalytics": false,
         "leaseTemplates": false,
         "vendorManagement": true,
-        "aiTriage": true,
-        "aiInvoiceScanning": true
+        "aiInvoiceScanning": true,
+        "VisitorPassService": true,
+        "reportingAnalytics": false,
+        "MaintenanceRequestService": true
       },
       "featureList": [
         "Online payments & AutoPay",
@@ -193,7 +195,8 @@
         "maxProperties": 30,
         "maxUnits": 200,
         "maxVendors": -1,
-        "manualRecordQuota": 25
+        "smsQuota": 100,
+        "manualRecordQuota": 30
       },
       "features": {
         "eSignature": true,

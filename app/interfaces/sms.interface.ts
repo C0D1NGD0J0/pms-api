@@ -77,15 +77,15 @@ export interface ISendSMSResult {
 }
 
 export interface IPhoneVerification {
+  verifiedAt: Date | null;
   verifiedPhone: string;
   verified: boolean;
-  verifiedAt: Date | null;
 }
 
 export interface ISMSConsent {
-  consented: boolean;
   consentedAt: Date | null;
   revokedAt: Date | null;
+  consented: boolean;
 }
 
 type SMSError =

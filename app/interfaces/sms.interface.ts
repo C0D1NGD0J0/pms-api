@@ -77,9 +77,9 @@ export interface ISendSMSResult {
 }
 
 export interface IPhoneVerification {
-  verifiedPhone?: string;
+  verifiedPhone: string;
   verified: boolean;
-  verifiedAt?: Date;
+  verifiedAt: Date | null;
 }
 
 export interface ISMSConsent {

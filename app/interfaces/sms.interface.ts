@@ -24,12 +24,9 @@ export enum SMSStatus {
 }
 
 export interface ISMSLog {
-  recipientUserId?: Types.ObjectId;
-  countedAgainstQuota: boolean;
   messageType: SMSMessageType;
   sentBy?: Types.ObjectId;
   recipientPhone: string;
-  messageBody: string;
   twilioSid?: string;
   errorCode?: string;
   status: SMSStatus;
@@ -57,14 +54,6 @@ export interface ISendSMSInput {
   to: string; // E.164 format
 }
 
-export interface IPhoneVerification {
-  verifiedPhone?: string;
-  lastAttemptAt?: Date;
-  verified: boolean;
-  verifiedAt?: Date;
-  attempts: number;
-}
-
 export interface IQuotaStatus {
   percentUsed: number;
   remaining: number;
@@ -85,6 +74,12 @@ export interface ISendSMSResult {
   remaining?: number;
   error?: SMSError;
   success: boolean;
+}
+
+export interface IPhoneVerification {
+  verifiedPhone?: string;
+  verified: boolean;
+  verifiedAt?: Date;
 }
 
 export interface ISMSConsent {

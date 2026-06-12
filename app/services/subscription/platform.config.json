@@ -86,21 +86,24 @@
       },
       "features": {
         "eSignature": false,
-        "MaintenanceRequestService": false,
+        "smsService": false,
         "VisitorPassService": false,
         "reportingAnalytics": false,
         "leaseTemplates": false,
         "vendorManagement": false,
         "aiTriage": false,
+        "MaintenanceRequestService": false,
         "aiInvoiceScanning": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
-        "Vendor management",
         "E-Signature",
+        "AI features",
+        "SMS notification",
+        "Vendor management",
+        "Guest Pass Service",
         "Reporting & Analytics",
-        "Repair Request Service",
-        "Guest Pass Service"
+        "Repair Request Service"
       ]
     },
     "growth": {
@@ -145,6 +148,7 @@
       "features": {
         "aiTriage": true,
         "eSignature": true,
+        "smsService": true,
         "leaseTemplates": false,
         "vendorManagement": true,
         "aiInvoiceScanning": true,
@@ -153,10 +157,12 @@
         "MaintenanceRequestService": true
       },
       "featureList": [
-        "Online payments & AutoPay",
-        "Vendor management",
+        "AI feature",
         "E-Signature",
-        "Guest Pass Service"
+        "Vendor management",
+        "SMS notifications",
+        "Guest Pass Service",
+        "Online payments & AutoPay"
       ],
       "disabledFeatures": ["Reporting & Analytics", "Customizable Lease Templates"]
     },
@@ -207,13 +213,14 @@
         "vendorManagement": true,
         "prioritySupport": true,
         "aiTriage": true,
+        "smsService": true,
         "aiInvoiceScanning": true
       },
       "featureList": [
+        "Priority support",
         "Everything in Growth",
-        "Advanced reporting & analytics",
         "Customizable lease agreements",
-        "Priority support"
+        "Advanced reporting & analytics"
       ],
       "disabledFeatures": []
     }

@@ -15,4 +15,5 @@ export * from './UtilsValidation';
 export * from './LeaseValidation';
 export * from './AuthValidation';
 export * from './UserValidation';
+export * from './SMSValidation';
 export * from './setup';

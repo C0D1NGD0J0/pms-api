@@ -777,6 +777,18 @@ export class SubscriptionService {
             projectedOverageCents: overageCount * feeCents,
           };
         })(),
+        smsUsage: (() => {
+          const count = subscription.smsUsage?.countThisPeriod ?? 0;
+          const quota = config.limits.smsQuota ?? 0;
+          return {
+            countThisPeriod: count,
+            quota,
+            remaining: Math.max(0, quota - count),
+            percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
+            resetDate: subscription.smsUsage?.periodStart || null,
+            enabled: quota > 0,
+          };
+        })(),
       };
 
       return { data: planUsage, success: true };

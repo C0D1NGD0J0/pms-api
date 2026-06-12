@@ -46,6 +46,7 @@ export interface ISubscriptionPlansConfig {
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
     vendorManagement: boolean;
+    smsService: boolean;
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
@@ -189,6 +190,7 @@ export interface ISubscriptionEntitlements {
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
     vendorManagement: boolean;
+    smsService: boolean;
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;

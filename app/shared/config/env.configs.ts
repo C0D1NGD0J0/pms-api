@@ -92,6 +92,12 @@ class EnvVariables {
     MODEL: string;
     MAX_TOKENS: number;
   };
+  public TWILIO: {
+    ACCOUNT_SID: string;
+    AUTH_TOKEN: string;
+    VERIFY_SERVICE_SID: string;
+    MESSAGING_SERVICE_SID: string;
+  };
   public FEATURES: {
     AI_ENABLED: boolean;
     AI_COMMUNICATION_DRAFT_ENABLED: boolean;
@@ -193,7 +199,7 @@ class EnvVariables {
       DEFAULT_SENDER_EMAIL:
         process.env.BOLDSIGN_DEFAULT_SENDER_EMAIL ||
         process.env.APP_EMAIL_ADDRESS ||
-        'noreply@yourapp.com',
+        'noreply@propertydesk.com',
     };
     this.GEOCODER = {
       PROVIDER: process.env.GEOCODER_PROVIDER || '',
@@ -209,6 +215,12 @@ class EnvVariables {
       API_KEY: process.env.ANTHROPIC_API_KEY || '',
       MODEL: process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001',
       MAX_TOKENS: Number(process.env.ANTHROPIC_MAX_TOKENS) || 256,
+    };
+    this.TWILIO = {
+      ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || '',
+      AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || '',
+      VERIFY_SERVICE_SID: process.env.TWILIO_VERIFY_SERVICE_SID || '',
+      MESSAGING_SERVICE_SID: process.env.TWILIO_MESSAGING_SERVICE_SID || '',
     };
     this.FEATURES = {
       AI_ENABLED: process.env.FEATURE_AI_ENABLED !== 'false',

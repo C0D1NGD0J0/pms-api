@@ -958,6 +958,7 @@ export class ProfileService {
           propertyUpdates: true,
           emailNotifications: true,
           inAppNotifications: true,
+          smsNotifications: false,
           emailFrequency: 'immediate' as const,
         };
 

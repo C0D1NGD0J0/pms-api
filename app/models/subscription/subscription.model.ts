@@ -65,6 +65,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       reportingAnalytics: { type: Boolean, required: true, default: false },
       leaseTemplates: { type: Boolean, required: true, default: false },
       vendorManagement: { type: Boolean, required: true, default: false },
+      smsService: { type: Boolean, required: true, default: false },
       prioritySupport: { type: Boolean, default: false },
       aiTriage: { type: Boolean, required: true, default: false },
       aiInvoiceScanning: { type: Boolean, required: true, default: false },
@@ -119,6 +120,13 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     manualRecords: {
       countThisPeriod: { type: Number, default: 0 },
       periodStart: { type: Date, default: Date.now },
+    },
+    smsUsage: {
+      lastResetAt: { type: Date },
+      countThisPeriod: { type: Number, default: 0 },
+      periodStart: { type: Date, default: Date.now },
+      notifiedAt80: { type: Boolean, default: false },
+      notifiedAt100: { type: Boolean, default: false },
     },
     canceledAt: { type: Date },
   },

@@ -81,25 +81,29 @@
         "maxProperties": 3,
         "maxUnits": 10,
         "maxVendors": -1,
+        "smsQuota": 0,
         "manualRecordQuota": 5
       },
       "features": {
         "eSignature": false,
-        "MaintenanceRequestService": false,
+        "smsService": false,
         "VisitorPassService": false,
         "reportingAnalytics": false,
         "leaseTemplates": false,
         "vendorManagement": false,
         "aiTriage": false,
+        "MaintenanceRequestService": false,
         "aiInvoiceScanning": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
-        "Vendor management",
         "E-Signature",
+        "AI features",
+        "SMS notification",
+        "Vendor management",
+        "Guest Pass Service",
         "Reporting & Analytics",
-        "Repair Request Service",
-        "Guest Pass Service"
+        "Repair Request Service"
       ]
     },
     "growth": {
@@ -138,23 +142,27 @@
         "maxProperties": 15,
         "maxUnits": 50,
         "maxVendors": -1,
-        "manualRecordQuota": 10
+        "smsQuota": 40,
+        "manualRecordQuota": 15
       },
       "features": {
+        "aiTriage": true,
         "eSignature": true,
-        "MaintenanceRequestService": true,
-        "VisitorPassService": true,
-        "reportingAnalytics": false,
+        "smsService": true,
         "leaseTemplates": false,
         "vendorManagement": true,
-        "aiTriage": true,
-        "aiInvoiceScanning": true
+        "aiInvoiceScanning": true,
+        "VisitorPassService": true,
+        "reportingAnalytics": false,
+        "MaintenanceRequestService": true
       },
       "featureList": [
-        "Online payments & AutoPay",
-        "Vendor management",
+        "AI feature",
         "E-Signature",
-        "Guest Pass Service"
+        "Vendor management",
+        "SMS notifications",
+        "Guest Pass Service",
+        "Online payments & AutoPay"
       ],
       "disabledFeatures": ["Reporting & Analytics", "Customizable Lease Templates"]
     },
@@ -193,7 +201,8 @@
         "maxProperties": 30,
         "maxUnits": 200,
         "maxVendors": -1,
-        "manualRecordQuota": 25
+        "smsQuota": 100,
+        "manualRecordQuota": 30
       },
       "features": {
         "eSignature": true,
@@ -204,13 +213,14 @@
         "vendorManagement": true,
         "prioritySupport": true,
         "aiTriage": true,
+        "smsService": true,
         "aiInvoiceScanning": true
       },
       "featureList": [
+        "Priority support",
         "Everything in Growth",
-        "Advanced reporting & analytics",
         "Customizable lease agreements",
-        "Priority support"
+        "Advanced reporting & analytics"
       ],
       "disabledFeatures": []
     }

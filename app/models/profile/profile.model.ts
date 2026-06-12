@@ -105,12 +105,22 @@ const ProfileSchema = new Schema<IProfileDocument>(
         propertyUpdates: { type: Boolean, default: true },
         emailNotifications: { type: Boolean, default: true },
         inAppNotifications: { type: Boolean, default: true },
-
+        smsNotifications: { type: Boolean, default: false },
         emailFrequency: {
           type: String,
           enum: ['immediate', 'daily'],
           default: 'immediate',
         },
+      },
+      phoneVerification: {
+        verified: { type: Boolean, default: false },
+        verifiedAt: { type: Date, default: null },
+        verifiedPhone: { type: String, default: '' },
+      },
+      smsConsent: {
+        consented: { type: Boolean, default: false },
+        consentedAt: { type: Date, default: null },
+        revokedAt: { type: Date, default: null },
       },
     },
     puid: { type: String, required: true, index: true },
@@ -293,7 +303,6 @@ ProfileSchema.pre('save', function (this: IProfileDocument) {
 });
 
 const ProfileModel = model<IProfileDocument>('Profile', ProfileSchema);
-
 ProfileModel.syncIndexes();
 
 export default ProfileModel;

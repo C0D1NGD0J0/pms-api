@@ -121,6 +121,13 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       countThisPeriod: { type: Number, default: 0 },
       periodStart: { type: Date, default: Date.now },
     },
+    smsUsage: {
+      lastResetAt: { type: Date },
+      countThisPeriod: { type: Number, default: 0 },
+      periodStart: { type: Date, default: Date.now },
+      notifiedAt80: { type: Boolean, default: false },
+      notifiedAt100: { type: Boolean, default: false },
+    },
     canceledAt: { type: Date },
   },
   {

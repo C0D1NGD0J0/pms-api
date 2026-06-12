@@ -783,10 +783,10 @@ export class SubscriptionService {
           return {
             countThisPeriod: count,
             quota,
-            remaining: Math.max(0, quota - count),
-            percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
-            resetDate: subscription.smsUsage?.periodStart || null,
             enabled: quota > 0,
+            remaining: Math.max(0, quota - count),
+            resetDate: subscription.smsUsage?.periodStart || null,
+            percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
           };
         })(),
       };

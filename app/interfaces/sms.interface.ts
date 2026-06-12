@@ -84,8 +84,8 @@ export interface IPhoneVerification {
 
 export interface ISMSConsent {
   consented: boolean;
-  consentedAt?: Date;
-  revokedAt?: Date;
+  consentedAt: Date | null;
+  revokedAt: Date | null;
 }
 
 type SMSError =

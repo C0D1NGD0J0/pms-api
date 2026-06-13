@@ -27,7 +27,6 @@ export {
   Subscription,
   PropertyUnit,
   PaymentModel,
-  SMSLogModel,
   Invitation,
   UnitModel,
   Property,

@@ -12,11 +12,11 @@ export const SMSValidations = {
   }),
 
   verifyOTP: z.object({
-    phone: e164Phone,
-    code: z
+    phoneNumber: e164Phone,
+    otp: z
       .string()
-      .length(6, 'Code must be 6 digits')
-      .regex(/^\d+$/, 'Code must contain only digits'),
+      .length(6, 'OTP must be 6 digits')
+      .regex(/^\d+$/, 'OTP must contain only digits'),
   }),
 
   updateConsent: z.object({

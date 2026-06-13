@@ -321,9 +321,7 @@ const QueuesResources = {
 };
 
 const UtilsResources = {
-  serviceAreaService: asFunction(() => {
-    return new ServiceAreaService(Profile, Vendor);
-  }).singleton(),
+  serviceAreaService: asClass(ServiceAreaService).singleton(),
   geoCoderService: asFunction(() => {
     return new GeoCoderService();
   }).singleton(),

@@ -82,7 +82,7 @@ import {
   PropertyUnit,
   Subscription,
   ExpenseModel,
-  SMSLogModel,
+  SMSLog,
   Invitation,
   Property,
   Profile,

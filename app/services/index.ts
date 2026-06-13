@@ -12,6 +12,7 @@ export * from './mediaUpload';
 export * from './fileUpload';
 export * from './invitation';
 export * from './permission';
+export * from './smsService';
 export * from './payments';
 export * from './external';
 export * from './property';

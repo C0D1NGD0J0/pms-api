@@ -27,7 +27,10 @@ export class SMSService {
     currentUser: ICurrentUser,
     data: { phoneNumber: string; otp: string }
   ): Promise<ISuccessReturnData<undefined>> {
-    this.log.info({ cuid, currentUser: currentUser?.sub, data }, 'SMSService.verifyOTP called');
+    this.log.info(
+      { cuid, currentUser: currentUser?.sub, phoneNumber: data.phoneNumber },
+      'SMSService.verifyOTP called'
+    );
     return { success: true, data: undefined, message: '' };
   }
 

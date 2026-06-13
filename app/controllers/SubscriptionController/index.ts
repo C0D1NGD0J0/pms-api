@@ -1,22 +1,25 @@
 import Logger from 'bunyan';
 import { Response, Request } from 'express';
-import { SubscriptionService } from '@services/index';
 import { AppRequest } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { httpStatusCodes, createLogger } from '@utils/index';
+import { SubscriptionService, SMSService } from '@services/index';
 import { UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 
 interface IConstructor {
   subscriptionService: SubscriptionService;
+  smsService: SMSService;
 }
 
 export class SubscriptionController {
   private readonly log: Logger;
+  private readonly smsService: SMSService;
   private readonly subscriptionService: SubscriptionService;
 
-  constructor({ subscriptionService }: IConstructor) {
+  constructor({ subscriptionService, smsService }: IConstructor) {
     this.log = createLogger('SubscriptionController');
     this.subscriptionService = subscriptionService;
+    this.smsService = smsService;
   }
 
   getSubscriptionPlans = async (req: Request, res: Response) => {
@@ -102,5 +105,37 @@ export class SubscriptionController {
     const result = await this.subscriptionService.updateAdditionalSeats(cuid, seatDelta);
 
     res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getSMSQuota = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: 'Only account owner can view SMS quota' });
+    }
+
+    const quota = await this.smsService.getQuotaStatus(cuid, currentuser);
+    return res.status(200).json({ success: true, data: quota });
+  };
+
+  getSMSLogs = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    if (currentuser.client.role !== ROLES.SUPER_ADMIN) {
+      throw new ForbiddenError({ message: 'Only account owner can view SMS logs' });
+    }
+
+    const result = await this.smsService.getSMSHistory(cuid, currentuser);
+    return res.status(200).json({ success: true, data: result });
   };
 }

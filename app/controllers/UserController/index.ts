@@ -1,8 +1,8 @@
 import Logger from 'bunyan';
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
-import { UserService } from '@services/index';
 import { httpStatusCodes } from '@utils/constants';
+import { UserService, SMSService } from '@services/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
 import { QueueFactory } from '@services/queue/queueFactory.service';
@@ -13,26 +13,30 @@ import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
 export class UserController {
   private readonly log: Logger;
+  private readonly smsService: SMSService;
   private readonly userService: UserService;
-  private readonly profileService: ProfileService;
   private readonly queueFactory: QueueFactory;
+  private readonly profileService: ProfileService;
   private readonly mediaUploadService: MediaUploadService;
 
   constructor({
+    smsService,
     userService,
-    profileService,
     queueFactory,
+    profileService,
     mediaUploadService,
   }: {
+    smsService: SMSService;
     userService: UserService;
-    profileService: ProfileService;
     queueFactory: QueueFactory;
+    profileService: ProfileService;
     mediaUploadService: MediaUploadService;
   }) {
-    this.log = createLogger('UserController');
+    this.smsService = smsService;
     this.userService = userService;
-    this.profileService = profileService;
     this.queueFactory = queueFactory;
+    this.profileService = profileService;
+    this.log = createLogger('UserController');
     this.mediaUploadService = mediaUploadService;
   }
 
@@ -316,5 +320,33 @@ export class UserController {
     }
 
     res.status(httpStatusCodes.OK).json({ success: true, data: result.data });
+  };
+
+  // SMS-related endpoints
+  sendPhoneOTP = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    const result = await this.smsService.sendOTP(cuid, currentuser, req.body);
+    return res.status(httpStatusCodes.OK).json(result);
+  };
+
+  verifyPhoneOTP = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    const result = await this.smsService.verifyOTP(cuid, currentuser, req.body);
+    return res.status(httpStatusCodes.OK).json(result);
+  };
+
+  updateSMSConsent = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+
+    const result = await this.smsService.updateSMSConsent(cuid, currentuser, req.body);
+    return res.status(httpStatusCodes.OK).json({
+      ...result,
+      message: req.body.consent ? 'SMS consent granted' : 'SMS consent revoked',
+    });
   };
 }

@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { IRequestContext } from '@interfaces/utils.interface';
-import type { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
+import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import {
@@ -54,10 +54,9 @@ const _mockAiService = {
   selectBestVendor: jest.fn(),
 } as any;
 const mockPaymentDAO = { findFirst: jest.fn() } as any;
-const _mockServiceAreaService = {
+const _mockServiceAreaService: jest.Mocked<Pick<ServiceAreaService, 'isLocationInVendorServiceArea'>> = {
   isLocationInVendorServiceArea: jest.fn(),
-  findVendorsNearLocation: jest.fn(),
-} as unknown as ServiceAreaService;
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

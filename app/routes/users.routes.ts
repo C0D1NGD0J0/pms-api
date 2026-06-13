@@ -12,6 +12,7 @@ import {
   UtilsValidations,
   UserValidations,
   validateRequest,
+  SMSValidations,
 } from '@shared/validations';
 import {
   requirePermissionWithContext,
@@ -231,6 +232,39 @@ router.get(
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
     return userController.getNotificationPreferences(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/verify-phone',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
+  validateRequest({ params: UtilsValidations.cuid, body: SMSValidations.sendOTP }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.sendPhoneOTP(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/confirm-otp',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
+  validateRequest({ params: UtilsValidations.cuid, body: SMSValidations.verifyOTP }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.verifyPhoneOTP(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/sms-consent',
+  basicLimiter(),
+  isAuthenticated,
+  validateRequest({ params: UtilsValidations.cuid, body: SMSValidations.updateConsent }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.updateSMSConsent(req, res);
   })
 );
 

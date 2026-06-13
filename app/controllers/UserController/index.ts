@@ -332,11 +332,11 @@ export class UserController {
   };
 
   verifyPhoneOTP = async (req: AppRequest, res: Response): Promise<Response> => {
-    const currentuser = req.context.currentuser!;
     const { cuid } = req.params;
+    const { currentuser } = req.context;
 
     const result = await this.smsService.verifyOTP(cuid, currentuser, req.body);
-    return res.status(200).json({ success: true, data: result });
+    return res.status(httpStatusCodes.OK).json(result);
   };
 
   updateSMSConsent = async (req: AppRequest, res: Response): Promise<Response> => {

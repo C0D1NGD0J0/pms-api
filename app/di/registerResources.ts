@@ -192,7 +192,7 @@ const ModelResources = {
   clientModel: asValue(Client),
   profileModel: asValue(Profile),
   propertyModel: asValue(Property),
-  smsLogModel: asValue(SMSLogModel),
+  smsLogModel: asValue(SMSLog),
   expenseModel: asValue(ExpenseModel),
   invoiceModel: asValue(InvoiceModel),
   paymentModel: asValue(PaymentModel),

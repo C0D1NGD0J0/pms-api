@@ -340,13 +340,13 @@ export class UserController {
   };
 
   updateSMSConsent = async (req: AppRequest, res: Response): Promise<Response> => {
-    const currentuser = req.context.currentuser!;
     const { cuid } = req.params;
+    const { currentuser } = req.context;
 
     const result = await this.smsService.updateSMSConsent(cuid, currentuser, req.body);
-    return res.status(200).json({
-      success: true,
-      message: result.success ? 'SMS consent granted' : 'SMS consent revoked',
+    return res.status(httpStatusCodes.OK).json({
+      ...result,
+      message: req.body.consent ? 'SMS consent granted' : 'SMS consent revoked',
     });
   };
 }

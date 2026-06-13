@@ -325,10 +325,10 @@ export class UserController {
   // SMS-related endpoints
   sendPhoneOTP = async (req: AppRequest, res: Response): Promise<Response> => {
     const { cuid } = req.params;
-    const currentuser = req.context.currentuser;
+    const { currentuser } = req.context;
 
     const result = await this.smsService.sendOTP(cuid, currentuser, req.body);
-    return res.status(200).json({ success: true, data: result });
+    return res.status(httpStatusCodes.OK).json(result);
   };
 
   verifyPhoneOTP = async (req: AppRequest, res: Response): Promise<Response> => {

@@ -8,7 +8,7 @@ const smsStatuses = Object.values(SMSStatus) as [string, ...string[]];
 
 export const SMSValidations = {
   sendOTP: z.object({
-    phone: e164Phone,
+    phoneNumber: e164Phone,
   }),
 
   verifyOTP: z.object({

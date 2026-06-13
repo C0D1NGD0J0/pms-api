@@ -13,8 +13,8 @@ import PaymentModel from '@models/payments/payments.model';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { VendorSuggestionService } from '@services/maintenanceRequest/vendorSuggestion.service';
-import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
+import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 import {
   MaintenanceRequestModel,
   PropertyUnit,

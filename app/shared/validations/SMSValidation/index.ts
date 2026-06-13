@@ -20,7 +20,7 @@ export const SMSValidations = {
   }),
 
   updateConsent: z.object({
-    consented: z.boolean(),
+    consent: z.boolean(),
   }),
 
   logsQuery: z.object({

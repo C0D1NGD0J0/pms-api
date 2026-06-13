@@ -39,4 +39,27 @@ export class SMSService {
     );
     return { success: true, data: undefined, message: '' };
   }
+
+  async getQuotaStatus(
+    cuid: string,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData<{ remainingQuota: number; totalQuota: number }>> {
+    this.log.info({ cuid, currentUser: currentUser?.sub }, 'SMSService.getQuotaStatus called');
+    return { success: true, data: { remainingQuota: 100, totalQuota: 1000 }, message: '' };
+  }
+
+  async getSMSHistory(
+    cuid: string,
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData<{ phoneNumber: string; timestamp: string; status: string }[]>> {
+    this.log.info({ cuid, currentUser: currentUser?.sub }, 'SMSService.getSMSHistory called');
+    return {
+      success: true,
+      data: [
+        { phoneNumber: '+1234567890', timestamp: new Date().toISOString(), status: 'sent' },
+        { phoneNumber: '+1234567890', timestamp: new Date().toISOString(), status: 'delivered' },
+      ],
+      message: '',
+    };
+  }
 }

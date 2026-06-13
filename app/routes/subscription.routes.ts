@@ -1,12 +1,18 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { SubscriptionController } from '@controllers/index';
-import { SubscriptionValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
+import {
+  SubscriptionValidations,
+  UtilsValidations,
+  validateRequest,
+  SMSValidations,
+} from '@shared/validations';
 import {
   subscriptionEntitlements,
   requirePermission,
   isAuthenticated,
+  requireFeature,
   basicLimiter,
   idempotency,
 } from '@shared/middlewares';
@@ -79,6 +85,32 @@ router.post(
     const subscriptionController =
       req.container.resolve<SubscriptionController>('subscriptionController');
     return subscriptionController.syncFromStripe(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/sms-quota',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('smsService'),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<SubscriptionController>('subscriptionController');
+    return controller.getSMSQuota(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/sms-logs',
+  isAuthenticated,
+  requirePermission(PermissionResource.BILLING, PermissionAction.READ),
+  subscriptionEntitlements,
+  requireFeature('smsService'),
+  validateRequest({ params: UtilsValidations.cuid, query: SMSValidations.logsQuery }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<SubscriptionController>('subscriptionController');
+    return controller.getSMSLogs(req, res);
   })
 );
 

@@ -20,6 +20,7 @@ export * from './invoice';
 export * from './profile';
 export * from './client';
 export * from './vendor';
+export * from './queue';
 export * from './lease';
 export * from './asset';
 export * from './auth';

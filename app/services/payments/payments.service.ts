@@ -211,8 +211,6 @@ export class PaymentService implements ICronProvider {
     return this.rentPaymentService.payPendingCharge(cuid, pytuid, tenantUserId);
   }
 
-  // ── Query ────────────────────────────────────────────────────────────
-
   async listPayments(
     cuid: string,
     filters?: {

@@ -1,15 +1,11 @@
 import { envVariables } from '@shared/config';
 import NodeGeocoder, { Entry } from 'node-geocoder';
-/**
- * A service for geocoding addresses and reverse geocoding coordinates
- */
+import { CircuitBreaker, createLogger } from '@utils/index';
+
 export class GeoCoderService {
   private geocoder: NodeGeocoder.Geocoder;
+  private readonly breaker: CircuitBreaker;
 
-  /**
-   * Create a new GeoCoder instance
-   * @param options - Custom geocoder options (for testing/DI)
-   */
   constructor() {
     const opts = {
       provider: 'google' as const,
@@ -21,6 +17,12 @@ export class GeoCoderService {
     }
 
     this.geocoder = NodeGeocoder(opts);
+    this.breaker = new CircuitBreaker({
+      name: 'geocoder',
+      failureThreshold: 3,
+      cooldownMs: 60_000,
+      logger: createLogger('GeoCoderService'),
+    });
   }
 
   /**
@@ -39,7 +41,7 @@ export class GeoCoderService {
     }
 
     try {
-      const results = await this.geocoder.geocode(location);
+      const results = await this.breaker.exec(() => this.geocoder.geocode(location));
 
       if (!results || results.length === 0) {
         throw new Error(`No results found for location: ${location}`);
@@ -86,7 +88,7 @@ export class GeoCoderService {
     }
 
     try {
-      const results = await this.geocoder.reverse({ lat, lon });
+      const results = await this.breaker.exec(() => this.geocoder.reverse({ lat, lon }));
 
       if (!results || results.length === 0) {
         throw new Error(`No results found for coordinates: ${lat}, ${lon}`);

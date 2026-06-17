@@ -7,8 +7,6 @@
       "authenticationRequired": "Authentication required",
       "invalidAuthToken": "Invalid authentication token",
       "accountVerificationPending": "Account verification pending",
-      "userNotFound": "User not found",
-      "clientNotFound": "Client not found",
       "noAccessToClient": "User does not have access to this client",
       "userNotCreated": "User not created",
       "emailPasswordRequired": "Email and password are required.",
@@ -29,7 +27,6 @@
       "invalidTokenType": "Invalid token type",
       "allConnectionsDisabled": "All user connections are disabled",
       "connectionInactive": "User connection is inactive",
-      "insufficientPermissions": "Insufficient permissions to perform this action",
       "permissionCheckFailed": "Permission check failed",
       "connectionCheckFailed": "Connection check failed",
       "adminRequired": "Admin privileges required",
@@ -41,13 +38,8 @@
       "superAdminRequired": "Super administrator privileges are required to perform this action",
       "subscriptionInactive": "Your subscription is not active. Please renew your plan to continue.",
       "unsupportedCountry": "We're not yet available in {{country}}. Our payment processor does not support this country. Please contact support if you believe this is an error.",
-      "validationFailed": "Validation failed",
-      "emailAlreadyExists": "An account with this email already exists.",
       "subscriptionCreationFailed": "Encountered an error while creating subscription",
       "tenantOnlyPaymentSetup": "Only tenants can set up a payment method.",
-      "paymentProcessorNotConfigured": "Payment processing is not available. Please contact support.",
-      "paymentCustomerCreationFailed": "Unable to set up payment. Please try again later.",
-      "paymentSetupSessionFailed": "Unable to initiate payment setup. Please try again later.",
       "tenantOnlyViewPaymentMethods": "Only tenants can view payment methods.",
       "tenantOnlyRemovePaymentMethods": "Only tenants can remove payment methods.",
       "noPaymentMethodOnFile": "No payment method on file.",
@@ -93,60 +85,34 @@
   },
   "client": {
     "errors": {
-      "notFound": "Client not found",
-      "insufficientPermissions": "Insufficient permissions to perform this action",
       "idNumberRequired": "ID number is required when updating identification type",
       "issuingAuthorityRequired": "Issuing authority is required when updating identification type",
       "idTypeRequired": "ID type is required when updating identification number",
       "invalidCompanyEmail": "Invalid company email format",
       "displayNameEmpty": "Display name cannot be empty",
-      "validationFailed": "Validation failed",
       "updateFailed": "Failed to update client profile",
       "unableToFetch": "Unable to fetch client details.",
-      "detailsNotFound": "Client details not found.",
       "invalidRole": "Invalid role specified",
-      "userNotFound": "User not found",
       "userNotInClient": "User is not connected to this client",
       "userAlreadyHasRole": "User already has the role {{role}}",
       "cannotRemoveLastAdmin": "Cannot remove admin role from the last administrator",
       "cannotDisconnectLastAdmin": "Cannot disconnect the last administrator",
       "roleNotFound": "User does not have the specified role",
       "cannotDeleteAccountOwner": "Cannot delete account owner. Please transfer ownership to another admin or close your account instead.",
-      "clientIdRequired": "Client ID is required",
       "identitySessionFailed": "Failed to initiate identity verification. Please try again.",
       "identityNotVerified": "Identity verification has not been completed via Stripe. Please complete verification before approving.",
       "alreadyVerified": "This account is already verified.",
       "verificationRequired": "Account verification is required to perform this action. Please complete identity verification.",
       "enterpriseProfileIncomplete": "Enterprise clients must have complete company profile information.",
       "mustHaveAtLeastOneRole": "User must have at least one role.",
-      "userAlreadyDisconnected": "User is already disconnected.",
-      "userAlreadyConnected": "User is already connected.",
       "invalidDepartment": "Invalid department value.",
       "departmentEmployeeOnly": "Departments can only be assigned to employee roles.",
-      "profileNotFound": "User profile not found.",
-      "accountAlreadyVerified": "Account is already verified.",
       "verificationFailed": "Failed to verify account.",
-      "smsFeatureUnavailable": "SMS feature is not available on this platform.",
       "noTenantFeaturesProvided": "At least one tenant feature must be provided."
     },
     "success": {
-      "profileUpdated": "Client profile updated successfully",
-      "detailsUpdated": "Client details updated successfully",
-      "userRetrieved": "User information retrieved successfully",
-      "userStatsRetrieved": "User statistics retrieved successfully",
-      "tenantsRetrieved": "Tenants retrieved successfully",
       "roleAssigned": "Role {{role}} assigned successfully",
       "roleRemoved": "Role {{role}} removed successfully",
-      "rolesRetrieved": "User roles retrieved successfully",
-      "userDisconnected": "User disconnected successfully",
-      "userReconnected": "User reconnected successfully",
-      "usersRetrieved": "Client users retrieved successfully",
-      "filteredUsersRetrieved": "Users retrieved successfully",
-      "retrieved": "Client details retrieved successfully",
-      "verified": "Account verified successfully",
-      "updated": "Client updated successfully",
-      "userArchived": "User archived successfully",
-      "tenantStatsRetrieved": "Tenant statistics retrieved successfully",
       "departmentAssigned": "Department '{{department}}' assigned successfully"
     },
     "logging": {
@@ -163,10 +129,7 @@
     "errors": {
       "noCsvFileUploaded": "No CSV file uploaded",
       "invalidFormType": "Invalid form type: {{formType}}",
-      "validationFailed": "Property validation failed. Please correct the errors and try again.",
-      "unableToAddProperty": "Unable to add property to this account.",
       "duplicateAddress": "A property with this address already exists for this client",
-      "unableToCreateProperty": "Unable to create property.",
       "minUnitsRequired": "{{propertyType}} properties require at least {{minUnits}} units",
       "noBedroomsForCommercial": "Commercial properties should not have bedrooms defined at property level",
       "commercialMinArea": "Commercial properties must have at least 200 sq ft of total area",
@@ -175,30 +138,19 @@
       "occupiedRentalRequired": "Occupied properties must have a valid rental amount",
       "businessRuleValidationFailed": "Property type business rule validation failed",
       "noCsvFilePath": "No CSV file path provided",
-      "propertyIdRequired": "Property ID is required.",
-      "uploadResultRequired": "Upload result is required.",
-      "propertyNotFound": "Unable to find client property.",
-      "unableToUpdateProperty": "Unable to update property.",
       "fileSizeTooLarge": "File size too large for processing.",
-      "clientIdRequired": "Client ID is required.",
       "unableToGetProperties": "Unable to get properties for this account.",
       "clientIdAndPropertyIdRequired": "Client ID and Property ID are required.",
       "updateValidationFailed": "Update validation failed. Please correct the errors and try again.",
       "occupiedPropertiesMustHaveRental": "Occupied properties must have a rental amount",
       "singleUnitCannotBePartiallyOccupied": "Single-unit properties cannot be partially occupied",
       "occupancyStatusValidationFailed": "Occupancy status change validation failed",
-      "unableToArchiveProperty": "Unable to archive property.",
       "csvFilePathMissing": "CSV file path missing",
       "csvValidationFailed": "Unable to validate csv for this account."
     },
     "success": {
-      "propertyCreated": "Property created successfully.",
       "csvImportStarted": "CSV import job started",
-      "propertyUpdated": "Property updated successfully",
-      "csvValidationStarted": "CSV validation process started.",
-      "propertyArchived": "Property archived successfully",
-      "assignableUsersRetrieved": "Assignable users retrieved successfully",
-      "propertiesRetrieved": "Properties retrieved successfully"
+      "csvValidationStarted": "CSV validation process started."
     }
   },
   "propertyUnit": {
@@ -218,7 +170,6 @@
       "securityDepositMustBeNonNegative": "Security deposit must be a non-negative number",
       "cannotSetOccupiedWhenProperty": "Cannot set unit as occupied when property is {{status}}",
       "occupiedUnitsMustHaveRental": "Occupied units must have a rental amount",
-      "validationFailed": "Validation failed",
       "documentDeletionNotImplemented": "Document deletion functionality needs to be implemented",
       "maxCapacityReached": "Unable to add units to property, maximum capacity reached.",
       "exceedsLimit": "Cannot add {{count}} units. Property has {{current}}/{{max}} units (including archived). Adding these units would exceed the limit.",
@@ -228,9 +179,6 @@
       "unitSuggestion": "Suggested unit number: {{suggestion}}"
     },
     "success": {
-      "unitRetrieved": "Unit retrieved successfully.",
-      "unitsRetrieved": "Units retrieved successfully.",
-      "unitUpdated": "Unit updated successfully",
       "unitCreationQueued": "Unit creation job queued successfully",
       "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
       "allUnitsCreated": "All {{count}} units created successfully",
@@ -506,39 +454,21 @@
   },
   "profile": {
     "success": {
-      "roleInitialized": "User role initialized successfully",
-      "profileRetrieved": "Profile retrieved successfully",
-      "profileUpdated": "Profile updated successfully"
-    },
-    "errors": {
-      "notFound": "Profile not found"
+      "roleInitialized": "User role initialized successfully"
     }
   },
   "vendor": {
     "success": {
-      "statsRetrieved": "Vendor statistics retrieved successfully",
-      "teamMembersRetrieved": "Team members retrieved successfully",
-      "connectionUpdated": "Vendor connection updated successfully.",
-      "created": "Vendor created successfully.",
-      "infoUpdated": "Vendor information updated successfully.",
-      "retrieved": "Vendor retrieved successfully.",
-      "teamMemberUpdated": "Team member updated successfully.",
       "teamMemberActivated": "Team member activated successfully.",
       "teamMemberDeactivated": "Team member deactivated successfully."
     },
     "errors": {
       "notPrimaryVendor": "Access denied. Only primary vendor account holders can perform this action",
-      "companyNameRequired": "Company name is required.",
-      "connectedClientsRequired": "Connected clients information is required.",
       "duplicateClientConnections": "Duplicate client connections are not allowed.",
       "onlyPrimaryCanUpdate": "You do not have permission to update this information.",
-      "clientAndVendorIdRequired": "Client ID and vendor ID are required.",
       "notConnectedToClient": "Vendor is not connected to this account.",
-      "userAccountNotFound": "Vendor user account not found.",
       "cannotChangeOwnStatus": "You cannot change your own active status.",
-      "payoutNotEnabled": "Payout features are not available for this account.",
-      "payoutAccountNotFound": "Payout account not found.",
-      "payoutStatusRetrieveFailed": "Unable to retrieve payout account status. Please try again."
+      "payoutAccountNotFound": "Payout account not found."
     }
   },
   "tenant": {
@@ -551,12 +481,8 @@
   },
   "user": {
     "errors": {
-      "createFailed": "Error creating user account.",
-      "userIdRequired": "User ID is required.",
       "notFound": "User not found.",
       "canOnlyUpdateOwnAccount": "You can only update your own account information.",
-      "emailAlreadyExists": "Email already exists.",
-      "updateFailed": "Failed to update user.",
       "cannotArchiveTenantWithActiveLeases": "Cannot archive tenant. This user has {{count}} active lease(s). Please terminate the lease(s) before archiving.",
       "cannotArchiveManagerWithActiveLeases": "Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
       "notATenant": "This action is only available for tenant accounts.",
@@ -564,50 +490,27 @@
       "cannotDeactivateTenantWithActiveLeases": "Cannot deactivate a user with active leases. Please terminate leases first."
     },
     "success": {
-      "infoUpdated": "User information updated successfully.",
       "tenantDeactivated": "Tenant deactivated successfully."
     }
   },
   "subscription": {
     "errors": {
       "missingRequiredData": "Missing required subscription data.",
-      "clientNotFound": "Client not found.",
-      "internalSystemError": "An unexpected error occurred. Please try again.",
-      "subscriptionNotFound": "Subscription not found.",
-      "failedToCreateCustomer": "Unable to create customer account. Please try again.",
-      "failedToCreateCheckout": "Unable to create checkout session. Please try again.",
-      "alreadyCanceled": "Subscription has already been canceled.",
-      "failedToCancel": "Unable to cancel subscription. Please try again.",
-      "failedToUpdate": "Unable to update subscription. Please try again.",
       "seatChangeCannotBeZero": "Seat change cannot be zero.",
       "seatsNotAvailableOnEssential": "Seat management is not available on your current plan. Please upgrade to access this feature.",
       "cannotRemoveSeats": "Cannot remove more seats than you currently have.",
       "seatLimitExceeded": "Maximum additional seats limit exceeded for your plan.",
       "cannotRemoveSeatsActiveUsers": "Cannot remove seats while active users exceed the resulting seat limit. Please archive users first.",
-      "seatPriceConfigMissing": "Cannot add seats to your subscription. Please contact support.",
-      "billingIntervalMismatch": "Cannot add seats due to a billing configuration issue. Please contact support.",
-      "failedToFetchSubscription": "Unable to retrieve subscription details. Please try again.",
-      "failedToRemoveSeats": "Unable to remove seats. Please try again.",
-      "failedToAddSeats": "Unable to add seats. Please try again.",
-      "failedToUpdateSeatQuantity": "Unable to update seat quantity. Please try again.",
-      "unableToUpdateSeats": "Unable to update seats. Please try again or contact support.",
-      "failedToInitialize": "Unable to initialize subscription. Please try again.",
-      "planPricingNotConfigured": "Plan pricing is not configured. Please contact support.",
       "noActiveSubscription": "No active subscription found.",
       "unexpectedStatus": "Unexpected subscription status.",
       "gracePeriodEnded": "Your grace period has ended. Please renew your subscription to restore access.",
       "subscriptionExpired": "Your subscription has expired. Please renew to continue using premium features.",
       "noLinkedSubscription": "No subscription linked to this record.",
-      "failedToRetrieveSubscription": "Unable to retrieve subscription details.",
-      "syncFailed": "Subscription sync failed. Please try again.",
       "seatLimitReached": "Seat limit reached for your plan."
     },
     "success": {
       "cancelAtPeriodEnd": "Your subscription will cancel at the end of your billing period. You'll retain access until then.",
       "canceled": "Your subscription has been canceled successfully.",
-      "seatsUpdated": "Seats updated successfully.",
-      "checkoutCreated": "Checkout session created successfully.",
-      "updated": "Subscription updated successfully.",
       "usageCountersUpdated": "Subscription usage counters updated.",
       "essentialActivated": "Essential plan activated."
     }
@@ -619,26 +522,17 @@
       "paymentMethodFailedCardRequired": "Payment could not be processed. An alternate payment method is required.",
       "paymentFailedNoFallback": "Payment failed and no alternate payment method is on file.",
       "retryFailedMissingInfo": "Payment retry failed. Please update your account information.",
-      "paymentFailedAddPaymentMethod": "Payment failed. Please add a payment method to complete payment.",
-      "retryFailedNoCustomer": "Payment retry failed. Please contact support.",
-      "retryFailedInvoiceCreation": "Payment retry failed. Please try again later.",
-      "retryFailedFinalize": "Payment retry failed. Please try again later.",
-      "retryPaymentFailed": "Payment retry was unsuccessful. Please try again."
+      "paymentFailedAddPaymentMethod": "Payment failed. Please add a payment method to complete payment."
     }
   },
   "sms": {
     "errors": {
-      "unavailable": "SMS is not available at this time.",
       "notEnabled": "SMS notifications are not enabled for this account.",
-      "subscriptionRequired": "An active subscription is required to use SMS features.",
       "quotaExceeded": "Monthly SMS limit has been reached. SMS will resume on your next billing cycle.",
       "recipientOptedOut": "Recipient has not opted in to SMS notifications.",
       "phoneNumberMismatch": "Please update your profile phone number before verifying.",
       "cooldownActive": "A verification code was recently sent. Please wait before requesting a new one.",
-      "deliveryFailed": "Unable to send message. Please try again later.",
-      "verificationDeliveryFailed": "Unable to send verification code. Please try again later.",
-      "invalidCode": "The verification code entered is incorrect. Please try again.",
-      "verificationFailed": "Phone verification could not be completed. Please try again."
+      "invalidCode": "The verification code entered is incorrect. Please try again."
     },
     "success": {
       "otpSent": "Verification code sent successfully.",
@@ -656,10 +550,7 @@
       "cannotCreateOwnLease": "Cannot create a lease for yourself as the tenant - conflict of interest",
       "cannotUpdateOwnLease": "Cannot update your own lease information - conflict of interest",
       "propertyUnderMaintenance": "Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first."
-    },
-    "invalid_access": "You do not have permission to access this lease",
-    "retrieved_successfully": "Lease retrieved successfully",
-    "updatedSuccessfully": "Lease updated successfully"
+    }
   },
   "common": {
     "errors": {
@@ -686,14 +577,12 @@
   },
   "maintenance": {
     "errors": {
-      "notFound": "Maintenance request not found",
       "invalidTransition": "Invalid status transition from {{current}} to {{next}}",
       "notAssigned": "Request is not in assigned status",
       "notYourAssignment": "You are not assigned to this request",
       "noActiveLease": "You must have an active lease to submit a maintenance request",
       "notYourUnit": "You do not have an active lease for this property",
       "staffCannotCreateForOwnUnit": "Staff cannot create maintenance requests for units they occupy",
-      "vendorNotFound": "Vendor not found or not connected to this client",
       "invoiceInvalidStatus": "Invoice can only be submitted when work is in progress or awaiting invoice",
       "invoiceForbidden": "Only the assigned vendor can submit an invoice",
       "noInvoice": "No invoice found on this request",
@@ -713,11 +602,9 @@
       "editNotAllowed": "Request cannot be edited in its current status"
     },
     "success": {
-      "created": "Maintenance request created successfully",
       "assigned": "Vendor assigned successfully",
       "accepted": "Assignment accepted",
       "declined": "Assignment declined",
-      "statusUpdated": "Status updated successfully",
       "workDone": "Work marked as done. Please submit your invoice within 72 hours.",
       "completed": "Maintenance request completed",
       "cancelled": "Maintenance request cancelled",

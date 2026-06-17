@@ -1,4 +1,7 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { SMSLogDAO } from '@dao/smsLogDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
@@ -79,7 +82,8 @@ export class SMSService implements ICronProvider {
 
     // Quota
     const quota = await this.incrementQuota(cuid);
-    if (!quota.success) return { success: false, error: 'quota_exceeded' };
+    if (!quota.success)
+      return { success: false, error: 'quota_exceeded', message: t('sms.errors.quotaExceeded') };
 
     // Send
     try {
@@ -104,7 +108,11 @@ export class SMSService implements ICronProvider {
         errorCode: error.code?.toString(),
         sentBy,
       });
-      return { success: false, error: 'delivery_failed' };
+      return {
+        success: false,
+        error: 'delivery_failed',
+        message: t('common.errors.operationFailed', { action: 'send message' }),
+      };
     }
   }
 
@@ -114,8 +122,35 @@ export class SMSService implements ICronProvider {
     data: { phoneNumber: string }
   ): Promise<ISendSMSResult> {
     const { phoneNumber: phone } = data;
+    const userId = currentUser?.sub;
+
     const gateResult = await this.checkGates(cuid, SMSMessageType.OTP);
     if (gateResult) return gateResult;
+
+    // Only allow verifying the phone number on the user's profile
+    const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(userId) });
+    if (profile?.personalInfo?.phoneNumber !== phone) {
+      return {
+        success: false,
+        error: 'unverified_phone',
+        message: t('sms.errors.phoneNumberMismatch'),
+      };
+    }
+
+    // Cooldown: 60 seconds between OTP sends per user
+    const recentOTP = await this.smsLogDAO.findFirst({
+      cuid,
+      recipientPhone: phone,
+      messageType: SMSMessageType.OTP,
+      sentAt: { $gte: dayjs().subtract(60, 'seconds').toDate() },
+    });
+    if (recentOTP) {
+      return {
+        success: false,
+        error: 'rate_limited',
+        message: t('sms.errors.cooldownActive'),
+      };
+    }
 
     try {
       const result = await this.twilioService.sendOTP(phone);
@@ -136,7 +171,11 @@ export class SMSService implements ICronProvider {
         status: SMSStatus.FAILED,
         errorCode: error.code?.toString(),
       });
-      return { success: false, error: 'delivery_failed' };
+      return {
+        success: false,
+        error: 'delivery_failed',
+        message: t('common.errors.operationFailed', { action: 'send verification code' }),
+      };
     }
   }
 
@@ -151,10 +190,11 @@ export class SMSService implements ICronProvider {
     try {
       let isVerified = false;
       const result = await this.twilioService.verifyOTP(phone, code);
-      if (!result.valid) return { success: false, data: isVerified, error: 'Invalid code' };
+      if (!result.valid)
+        return { success: false, data: isVerified, error: t('sms.errors.invalidCode') };
 
       await this.profileDAO.update(
-        { user: userId },
+        { user: new Types.ObjectId(userId) },
         {
           $set: {
             'settings.phoneVerification.verified': true,
@@ -167,7 +207,11 @@ export class SMSService implements ICronProvider {
       return { success: true, data: isVerified };
     } catch (error: any) {
       this.log.error({ error, phone }, 'OTP verification failed');
-      return { success: false, data: false, error: 'Verification failed' };
+      return {
+        success: false,
+        data: false,
+        error: t('common.errors.operationFailed', { action: 'complete phone verification' }),
+      };
     }
   }
 
@@ -249,24 +293,32 @@ export class SMSService implements ICronProvider {
     recipientUserId?: string
   ): Promise<ISendSMSResult | null> {
     if (!this.featureFlagService.isEnabled(FeatureFlag.SMS)) {
-      return { success: false, error: 'sms_disabled' };
+      return {
+        success: false,
+        error: 'sms_disabled',
+        message: t('common.errors.featureNotAvailable'),
+      };
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client?.settings?.tenantFeatures?.smsNotifications) {
-      return { success: false, error: 'sms_disabled' };
+      return { success: false, error: 'sms_disabled', message: t('sms.errors.notEnabled') };
     }
 
     const subscription = await this.getActiveSubscription(cuid).catch(() => null);
     if (!subscription) {
-      return { success: false, error: 'sms_disabled' };
+      return {
+        success: false,
+        error: 'sms_disabled',
+        message: t('common.errors.featureNotAvailable'),
+      };
     }
 
     // consent check for marketing (non-transactional) SMS only
     if (!isTransactionalSMS(messageType) && recipientUserId) {
       const profile = await this.profileDAO.findFirst({ user: recipientUserId });
       if (!profile?.settings?.smsConsent?.consented) {
-        return { success: false, error: 'opted_out' };
+        return { success: false, error: 'opted_out', message: t('sms.errors.recipientOptedOut') };
       }
     }
 

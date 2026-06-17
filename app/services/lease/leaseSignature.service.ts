@@ -1,6 +1,7 @@
 /* eslint-disable no-case-declarations */
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
@@ -125,7 +126,7 @@ export class LeaseSignatureService {
 
     const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
     if (!client) {
-      throw new BadRequestError({ message: 'Client not found' });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid);
@@ -153,7 +154,7 @@ export class LeaseSignatureService {
       { select: '+owner +authorization' }
     );
     if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
     validateResourceAvailable(property, 'property');
     if (lease.property.unitId) {
@@ -260,7 +261,7 @@ export class LeaseSignatureService {
 
     const lease = await this.leaseDAO.findFirst({ luid: leaseId, cuid });
     if (!lease) {
-      throw new BadRequestError({ message: 'Lease not found' });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
     if (lease.status !== LeaseStatus.PENDING_SIGNATURE) {
@@ -296,7 +297,9 @@ export class LeaseSignatureService {
     );
 
     if (!updated) {
-      throw new BadRequestError({ message: 'Failed to update lease status' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'update lease status' }),
+      });
     }
 
     this.log.info(`Signature cancelled, lease ${leaseId} reverted to draft`);

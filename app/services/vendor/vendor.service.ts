@@ -102,13 +102,13 @@ export class VendorService {
     try {
       if (!vendorData.companyName) {
         throw new BadRequestError({
-          message: 'Company name is required',
+          message: t('common.errors.required', { field: 'Company name' }),
         });
       }
 
       if (!vendorData.connectedClients || vendorData.connectedClients.length === 0) {
         throw new BadRequestError({
-          message: 'Connected clients information is required',
+          message: t('common.errors.required', { field: 'Connected clients information' }),
         });
       }
 
@@ -117,7 +117,7 @@ export class VendorService {
       const uniqueCuids = [...new Set(cuids)];
       if (cuids.length !== uniqueCuids.length) {
         throw new BadRequestError({
-          message: 'Duplicate client connections are not allowed',
+          message: t('vendor.errors.duplicateClientConnections'),
         });
       }
 
@@ -201,7 +201,7 @@ export class VendorService {
         return {
           success: true,
           data: existingVendor,
-          message: 'Vendor connection updated successfully',
+          message: t('common.success.updated', { resource: 'Vendor connection' }),
         };
       }
 
@@ -214,7 +214,7 @@ export class VendorService {
       return {
         success: true,
         data: vendor,
-        message: 'Vendor created successfully',
+        message: t('common.success.created', { resource: 'Vendor' }),
       };
     } catch (error) {
       this.logger.error(`Error creating vendor: ${error}`);
@@ -264,7 +264,7 @@ export class VendorService {
           );
           if (!clientConn) {
             throw new ForbiddenError({
-              message: 'Only primary account holders can update vendor business information.',
+              message: t('vendor.errors.onlyPrimaryCanUpdate'),
             });
           }
         }
@@ -293,14 +293,14 @@ export class VendorService {
       const vendor = await this.vendorDAO.updateVendor(vendorId, updateData, session);
       if (!vendor) {
         throw new NotFoundError({
-          message: 'Vendor not found',
+          message: t('common.errors.notFound', { resource: 'Vendor' }),
         });
       }
 
       return {
         success: true,
         data: vendor,
-        message: 'Vendor information updated successfully',
+        message: t('common.success.updated', { resource: 'Vendor information' }),
       };
     } catch (error) {
       this.logger.error(`Error updating vendor ${vendorId}: ${error}`);
@@ -384,12 +384,12 @@ export class VendorService {
   ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: IPaginateResult }>> {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const cachedResult = await this.vendorCache.getFilteredVendors(
@@ -405,7 +405,7 @@ export class VendorService {
             items: cachedResult.data.items,
             pagination: cachedResult.data.pagination,
           },
-          message: t('client.success.filteredUsersRetrieved'),
+          message: t('common.success.retrieved', { resource: 'Users' }),
         };
       }
 
@@ -466,7 +466,7 @@ export class VendorService {
           items: vendorTableData,
           pagination: result.pagination!,
         },
-        message: t('client.success.filteredUsersRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Users' }),
       };
     } catch (error) {
       this.logger.error('Error getting filtered vendors:', {
@@ -494,7 +494,7 @@ export class VendorService {
 
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const vendor = await this.vendorDAO.findFirst({
@@ -503,7 +503,7 @@ export class VendorService {
         deletedAt: null,
       });
       if (!vendor) {
-        throw new NotFoundError({ message: t('vendor.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
       }
 
       // Check if the vendor is associated with this client
@@ -522,7 +522,7 @@ export class VendorService {
 
       if (!allowedRoles && !isPrimaryVendor && !isTeamMember) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'view',
             resource: 'vendor team members',
           }),
@@ -539,7 +539,7 @@ export class VendorService {
         );
         if (!canAccess) {
           throw new ForbiddenError({
-            message: t('client.errors.insufficientPermissions', {
+            message: t('common.errors.insufficientPermissions', {
               action: 'view',
               resource: 'vendor team',
             }),
@@ -592,7 +592,7 @@ export class VendorService {
           items: formattedMembers,
           pagination: linkedUsersResult.pagination,
         },
-        message: t('vendor.success.teamMembersRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Team members' }),
       };
     } catch (error) {
       this.logger.error('Error getting vendor team members:', {
@@ -610,23 +610,25 @@ export class VendorService {
   ): Promise<ISuccessReturnData<IUserDetailResponse | null>> {
     try {
       if (!cuid || !vuid) {
-        throw new BadRequestError({ message: 'Client ID and Vendor UID are required' });
+        throw new BadRequestError({
+          message: t('common.errors.required', { field: 'Client ID and vendor ID' }),
+        });
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const vendor = await this.vendorDAO.getVendorByVuid(vuid);
       if (!vendor) {
-        throw new NotFoundError({ message: 'Vendor not found' });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
       }
 
       // Check if vendor is connected to this client
       const clientConnection = vendor.connectedClients.find((cc) => cc.cuid === cuid);
       if (!clientConnection) {
-        throw new NotFoundError({ message: 'Vendor not connected to this client' });
+        throw new NotFoundError({ message: t('vendor.errors.notConnectedToClient') });
       }
 
       // Get user data for the primary account holder with profile populated
@@ -635,7 +637,9 @@ export class VendorService {
         { populate: 'profile' }
       );
       if (!user) {
-        throw new NotFoundError({ message: 'Vendor user account not found' });
+        throw new NotFoundError({
+          message: t('common.errors.notFound', { resource: 'Vendor user account' }),
+        });
       }
 
       const profile = user.profile;
@@ -767,7 +771,7 @@ export class VendorService {
       return {
         success: true,
         data: userData,
-        message: 'Vendor retrieved successfully',
+        message: t('common.success.retrieved', { resource: 'Vendor' }),
       };
     } catch (error) {
       this.logger.error('Error getting single vendor:', {
@@ -831,7 +835,8 @@ export class VendorService {
         'connectedClients.cuid': cuid,
         deletedAt: null,
       });
-      if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
+      if (!vendor)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
 
       const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
       if (!vendorConnection) {
@@ -846,7 +851,7 @@ export class VendorService {
 
       if (!allowedRoles && !isPrimaryVendor) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'update',
             resource: 'team member',
           }),
@@ -880,7 +885,7 @@ export class VendorService {
       return {
         success: true,
         data: { uid, ...updateData },
-        message: 'Team member updated successfully',
+        message: t('common.success.updated', { resource: 'Team member' }),
       };
     } catch (error) {
       this.logger.error('Error updating team member:', {
@@ -907,7 +912,8 @@ export class VendorService {
         'connectedClients.cuid': cuid,
         deletedAt: null,
       });
-      if (!vendor) throw new NotFoundError({ message: t('vendor.errors.notFound') });
+      if (!vendor)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
 
       const vendorConnection = vendor.connectedClients?.find((c: any) => c.cuid === cuid);
       if (!vendorConnection) {
@@ -922,7 +928,7 @@ export class VendorService {
 
       if (!allowedRoles && !isPrimaryVendor) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'update',
             resource: 'team member status',
           }),
@@ -933,7 +939,7 @@ export class VendorService {
       if (!user) throw new NotFoundError({ message: t('user.errors.notFound') });
 
       if (user.uid === currentuser.uid) {
-        throw new BadRequestError({ message: 'You cannot change your own active status' });
+        throw new BadRequestError({ message: t('vendor.errors.cannotChangeOwnStatus') });
       }
 
       await this.userDAO.updateById(user._id.toString(), { $set: { isActive } });
@@ -941,7 +947,9 @@ export class VendorService {
       return {
         success: true,
         data: { uid, isActive },
-        message: `Team member ${isActive ? 'activated' : 'deactivated'} successfully`,
+        message: isActive
+          ? t('vendor.success.teamMemberActivated')
+          : t('vendor.success.teamMemberDeactivated'),
       };
     } catch (error) {
       this.logger.error('Error toggling team member status:', {
@@ -961,13 +969,13 @@ export class VendorService {
     try {
       if (!cuid) {
         throw new BadRequestError({
-          message: t('client.errors.clientIdRequired'),
+          message: t('common.errors.required', { field: 'Client ID' }),
         });
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const vendorStats = await this.vendorDAO.getClientVendorStats(cuid, {
@@ -981,7 +989,7 @@ export class VendorService {
           servicesDistribution: vendorStats.servicesDistribution,
           totalVendors: vendorStats.totalVendors,
         },
-        message: t('vendor.success.statsRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Vendor statistics' }),
       };
     } catch (error) {
       this.logger.error(`Error getting vendor stats for client ${cuid}: ${error}`);
@@ -999,11 +1007,12 @@ export class VendorService {
   ): Promise<ISuccessReturnData<{ accountId: string }>> {
     try {
       const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) throw new NotFoundError({ message: t('client.errors.notFound') });
+      if (!client)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
 
       if ((client.settings as any)?.vendorPayoutMode !== 'express') {
         throw new BadRequestError({
-          message: 'Payout account setup is not enabled for this client.',
+          message: t('common.errors.featureNotAvailable'),
         });
       }
 
@@ -1050,7 +1059,7 @@ export class VendorService {
     try {
       const processor = await this.paymentProcessorDAO.findByVuid(vuid);
       if (!processor) {
-        throw new NotFoundError({ message: 'Payout account not found.' });
+        throw new NotFoundError({ message: t('vendor.errors.payoutAccountNotFound') });
       }
 
       const result = await this.paymentGatewayService.getConnectAccount(
@@ -1059,7 +1068,9 @@ export class VendorService {
       );
 
       if (!result.success || !result.data) {
-        throw new BadRequestError({ message: 'Failed to retrieve payout account status.' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'retrieve payout account status' }),
+        });
       }
 
       const account = result.data;

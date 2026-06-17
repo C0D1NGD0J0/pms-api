@@ -77,14 +77,14 @@ export class ProfileService {
 
       if (!ROLE_GROUPS.EMPLOYEE_ROLES.includes(userRole as any)) {
         throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
+          message: t('common.errors.insufficientPermissions'),
         });
       }
 
       const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
       if (!profile) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -94,7 +94,7 @@ export class ProfileService {
 
       if (!result) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -121,14 +121,14 @@ export class ProfileService {
     try {
       if (userRole !== ROLES.VENDOR) {
         throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
+          message: t('common.errors.insufficientPermissions'),
         });
       }
 
       const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
       if (!profile) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -136,7 +136,7 @@ export class ProfileService {
       const vendor = await this.vendorService.getVendorByUserId(profile.user.toString());
       if (!vendor) {
         throw new NotFoundError({
-          message: 'Vendor entity not found',
+          message: t('common.errors.notFound', { resource: 'Vendor entity' }),
         });
       }
 
@@ -157,7 +157,7 @@ export class ProfileService {
       });
       if (!updatedProfile) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -189,7 +189,7 @@ export class ProfileService {
       const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
       if (!profile) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
@@ -199,7 +199,7 @@ export class ProfileService {
 
       if (!result) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -225,7 +225,7 @@ export class ProfileService {
     try {
       if (!userId || !cuid) {
         throw new BadRequestError({
-          message: 'Profile not found',
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -275,7 +275,7 @@ export class ProfileService {
     const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(context.userId) });
     if (!profile) {
       throw new NotFoundError({
-        message: t('profile.errors.notFound'),
+        message: t('common.errors.notFound', { resource: 'Profile' }),
       });
     }
     return profile;
@@ -453,7 +453,7 @@ export class ProfileService {
         )
       ) {
         throw new ForbiddenError({
-          message: t('auth.errors.insufficientPermissions'),
+          message: t('common.errors.insufficientPermissions'),
         });
       }
 
@@ -467,7 +467,7 @@ export class ProfileService {
       const profileDoc = await this.profileDAO.getProfileByUserId(userDoc.data.profile.id);
       if (!profileDoc) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
@@ -495,7 +495,7 @@ export class ProfileService {
       return {
         success: true,
         data: profileData,
-        message: t('profile.success.profileRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Profile' }),
       };
     } catch (error) {
       this.logger.error(`Error getting user profile for edit (uid: ${targetUid}):`, error);
@@ -520,7 +520,7 @@ export class ProfileService {
       )
     ) {
       throw new ForbiddenError({
-        message: t('auth.errors.insufficientPermissions'),
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
@@ -535,7 +535,7 @@ export class ProfileService {
     const profileDoc = await this.profileDAO.getProfileByUserId(userDoc?._id.toString() || '');
     if (!profileDoc) {
       throw new NotFoundError({
-        message: t('profile.errors.notFound'),
+        message: t('common.errors.notFound', { resource: 'Profile' }),
       });
     }
 
@@ -719,14 +719,14 @@ export class ProfileService {
 
       if (!finalProfile) {
         throw new NotFoundError({
-          message: t('profile.errors.notFound'),
+          message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
 
       return {
         success: true,
         data: finalProfile,
-        message: t('profile.success.profileUpdated'),
+        message: t('common.success.updated', { resource: 'Profile' }),
       };
     } catch (error) {
       this.logger.error(`Error updating user profile for uid ${uid}:`, error);
@@ -786,7 +786,7 @@ export class ProfileService {
 
       if (!updatedProfile) {
         throw new NotFoundError({
-          message: 'Failed to update profile avatar',
+          message: t('common.errors.operationFailed', { action: 'update profile avatar' }),
         });
       }
 
@@ -795,7 +795,7 @@ export class ProfileService {
       return {
         success: true,
         data: updatedProfile,
-        message: 'Avatar updated successfully',
+        message: t('common.success.updated', { resource: 'Avatar' }),
       };
     } catch (error) {
       this.logger.error(`Error updating avatar for user ${userUid}:`, error);
@@ -964,14 +964,14 @@ export class ProfileService {
 
         return {
           success: true,
-          message: 'Default notification preferences retrieved',
+          message: t('common.success.retrieved', { resource: 'Default notification preferences' }),
           data: defaultPreferences,
         };
       }
 
       return {
         success: true,
-        message: 'Notification preferences retrieved successfully',
+        message: t('common.success.retrieved', { resource: 'Notification preferences' }),
         data: preferences,
       };
     } catch (error) {
@@ -987,12 +987,20 @@ export class ProfileService {
   ): Promise<ISuccessReturnData<IProfileCompletion>> {
     const profile = await this.profileDAO.getProfileByUserId(userId);
     if (!profile) {
-      return { success: false, message: 'Profile not found', data: null as any };
+      return {
+        success: false,
+        message: t('common.errors.notFound', { resource: 'Profile' }),
+        data: null as any,
+      };
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      return { success: false, message: 'Client not found', data: null as any };
+      return {
+        success: false,
+        message: t('common.errors.notFound', { resource: 'Client' }),
+        data: null as any,
+      };
     }
 
     const data = computeProfileCompletion(profile, client, roles);

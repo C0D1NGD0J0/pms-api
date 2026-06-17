@@ -119,7 +119,7 @@ export class SubscriptionController {
       throw new ForbiddenError({ message: 'Only account owner can view SMS quota' });
     }
 
-    const quota = await this.smsService.getQuotaStatus(cuid, currentuser);
+    const quota = await this.smsService.getQuotaStatus(cuid);
     return res.status(200).json({ success: true, data: quota });
   };
 
@@ -135,7 +135,7 @@ export class SubscriptionController {
       throw new ForbiddenError({ message: 'Only account owner can view SMS logs' });
     }
 
-    const result = await this.smsService.getSMSHistory(cuid, currentuser);
+    const result = await this.smsService.getSMSHistory(cuid, req.query as any);
     return res.status(200).json({ success: true, data: result });
   };
 }

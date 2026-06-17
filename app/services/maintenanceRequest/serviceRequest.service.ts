@@ -281,7 +281,8 @@ export class MaintenanceRequestService {
       cuid,
       deletedAt: null,
     });
-    if (!property) throw new NotFoundError({ message: t('property.errors.notFound') });
+    if (!property)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     if (property.approvalStatus !== 'approved') {
       throw new BadRequestError({ message: t('property.errors.notApproved') });
     }
@@ -298,7 +299,8 @@ export class MaintenanceRequestService {
         status: { $ne: PropertyUnitStatusEnum.INACTIVE },
         deletedAt: null,
       });
-      if (!unit) throw new NotFoundError({ message: t('unit.errors.notFound') });
+      if (!unit)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
     if (currentuser.client.role === ROLES.TENANT) {
@@ -450,7 +452,11 @@ export class MaintenanceRequestService {
         this.log.error({ err, mruid: request.mruid }, 'AI triage background task failed')
       );
 
-    return { success: true, data: request, message: t('maintenance.success.created') };
+    return {
+      success: true,
+      data: request,
+      message: t('common.success.created', { resource: 'Maintenance request' }),
+    };
   }
 
   async listRequests(
@@ -506,7 +512,7 @@ export class MaintenanceRequestService {
 
     if (filters.assignedTechnicianSub) {
       if (isVendorTeamMember && filters.assignedTechnicianSub !== currentuser.sub) {
-        throw new ForbiddenError({ message: t('client.errors.insufficientPermissions') });
+        throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
       }
       baseFilter['assignedTechnician.userId'] = new Types.ObjectId(filters.assignedTechnicianSub);
     }
@@ -609,7 +615,10 @@ export class MaintenanceRequestService {
         ],
       }
     );
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!request)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
 
     const property = (request as any).propertyId as any;
     const unit = (request as any).propertyUnitId as any;
@@ -752,12 +761,14 @@ export class MaintenanceRequestService {
       'connectedClients.isConnected': true,
       deletedAt: null,
     });
-    if (!vendorRecord) throw new NotFoundError({ message: t('maintenance.errors.vendorNotFound') });
+    if (!vendorRecord)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
 
     const clientConn = vendorRecord.connectedClients.find((c) => c.cuid === cuid);
     const vendorUserId = clientConn!.primaryAccountHolderUserId;
     const vendorUser = await this.userDAO.findFirst({ _id: vendorUserId });
-    if (!vendorUser) throw new NotFoundError({ message: t('maintenance.errors.vendorNotFound') });
+    if (!vendorUser)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
@@ -956,7 +967,7 @@ export class MaintenanceRequestService {
     return {
       success: true,
       data: updated,
-      message: 'Assignment released. The request has been returned for reassignment.',
+      message: t('maintenance.success.declined'),
     };
   }
 
@@ -970,7 +981,7 @@ export class MaintenanceRequestService {
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
     if (CurrentUser.isTenant(currentuser)) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notAllowed') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
     if (CurrentUser.isVendor(currentuser)) {
       assertRecordOwnership(currentuser, request.vendorId, {
@@ -998,7 +1009,11 @@ export class MaintenanceRequestService {
       newStatus: data.status,
     });
 
-    return { success: true, data: updated, message: t('maintenance.success.statusUpdated') };
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.updated', { resource: 'Status' }),
+    };
   }
 
   /**
@@ -1358,7 +1373,11 @@ export class MaintenanceRequestService {
         propertyId: request.propertyId?.toString(),
       });
 
-      return { success: true, data: updated, message: t('maintenance.success.updated') };
+      return {
+        success: true,
+        data: updated,
+        message: t('common.success.updated', { resource: 'Maintenance request' }),
+      };
     }
 
     const titleChanged = data.title !== undefined && data.title !== request.title;
@@ -1438,7 +1457,11 @@ export class MaintenanceRequestService {
       propertyId: request.propertyId?.toString(),
     });
 
-    return { success: true, data: updated, message: t('maintenance.success.updated') };
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.updated', { resource: 'Maintenance request' }),
+    };
   }
 
   async getStats(ctx: IRequestContext, pid?: string): Promise<ISuccessReturnData> {
@@ -1501,7 +1524,10 @@ export class MaintenanceRequestService {
       tenantId: new Types.ObjectId(tenantUserId),
       deletedAt: null,
     });
-    if (!req) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!req)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
     return { success: true, data: this.buildTenantView(req) };
   }
 

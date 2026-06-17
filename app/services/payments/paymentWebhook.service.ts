@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -235,7 +236,7 @@ export class PaymentWebhookService {
           );
           isAcssFailure = pm.type === 'acss_debit';
           if (isAcssFailure) {
-            failureReason = 'Bank debit failed — payment amount may exceed per-transaction limit';
+            failureReason = t('payment.errors.paymentMethodFailed');
           }
         } catch (err) {
           this.log.warn({ err }, 'Could not retrieve payment method type');
@@ -261,7 +262,7 @@ export class PaymentWebhookService {
           return {
             success: true,
             data: undefined,
-            message: 'Bank debit failed — retried with card',
+            message: t('payment.errors.paymentFailedRetried'),
           };
         }
         // No card available — mark failed with a clear reason for the PM
@@ -273,8 +274,7 @@ export class PaymentWebhookService {
               'failure.lastFailedAt': dayjs().toDate(),
               'failure.pmNotifiedAt': dayjs().toDate(),
               'failure.retryCount': (payment.failure?.retryCount ?? 0) + 1,
-              'failure.reason':
-                'Bank debit failed: payment amount exceeds per-transaction limit. Card payment required.',
+              'failure.reason': t('payment.errors.paymentMethodFailedCardRequired'),
             },
           }
         );
@@ -286,7 +286,11 @@ export class PaymentWebhookService {
           tenantId: payment.tenant?.toString(),
           hostedInvoiceUrl: invoiceData.hosted_invoice_url ?? payment.receipt?.url,
         });
-        return { success: true, data: undefined, message: 'ACSS payment failed — no card on file' };
+        return {
+          success: true,
+          data: undefined,
+          message: t('payment.errors.paymentFailedNoFallback'),
+        };
       }
 
       const attemptCount = invoiceData.attempt_count || 0;
@@ -384,7 +388,7 @@ export class PaymentWebhookService {
     ]);
 
     if (!tenantProfile || !processor?.accountId) {
-      await markFailed('Card retry failed: tenant profile or payment processor not found');
+      await markFailed(t('payment.errors.retryFailedMissingInfo'));
       return false;
     }
 
@@ -393,9 +397,7 @@ export class PaymentWebhookService {
       tenantProfile.tenantInfo?.cardPaymentMethods?.get(processor.accountId) ||
       tenantProfile.tenantInfo?.paymentMethods?.get(processor.accountId);
     if (!paymentMethodId) {
-      await markFailed(
-        'Bank debit failed and no card on file. Please add a card to complete payment.'
-      );
+      await markFailed(t('payment.errors.paymentFailedAddPaymentMethod'));
       return false;
     }
 
@@ -405,15 +407,15 @@ export class PaymentWebhookService {
       paymentMethodId
     );
     if (!pmResult.success || pmResult.data?.type === 'acss_debit') {
-      await markFailed(
-        'Bank debit failed and no card on file. Please add a card to complete payment.'
-      );
+      await markFailed(t('payment.errors.paymentFailedAddPaymentMethod'));
       return false;
     }
 
     const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
     if (!tenantCustomerId) {
-      await markFailed('Card retry failed: no Stripe customer ID on file');
+      await markFailed(
+        t('common.errors.operationFailedContact', { action: 'process payment retry' })
+      );
       return false;
     }
 
@@ -456,9 +458,7 @@ export class PaymentWebhookService {
       }
     );
     if (!invoiceResult.success || !invoiceResult.data) {
-      await markFailed(
-        `Card retry failed: could not create invoice — ${invoiceResult.message || 'unknown error'}`
-      );
+      await markFailed(t('common.errors.operationFailed', { action: 'process payment retry' }));
       return false;
     }
 
@@ -467,7 +467,7 @@ export class PaymentWebhookService {
       invoiceResult.data.invoiceId
     );
     if (!finalizeResult.success) {
-      await markFailed('Card retry failed: could not finalize invoice');
+      await markFailed(t('common.errors.operationFailed', { action: 'process payment retry' }));
       return false;
     }
 
@@ -478,7 +478,7 @@ export class PaymentWebhookService {
     );
 
     if (!payResult.success) {
-      await markFailed(`Card payment failed — ${payResult.message || 'unknown error'}`);
+      await markFailed(t('common.errors.operationFailed', { action: 'process payment' }));
       return false;
     }
 
@@ -851,26 +851,33 @@ export class PaymentWebhookService {
         this.log.warn('No transfer on charge — skipping reversal', { chargeId, disputeId });
       }
 
-      await this.paymentDAO.update(
-        { _id: payment._id, cuid: payment.cuid },
-        {
-          $set: {
-            'dispute.disputeId': disputeId,
-            'dispute.amount': amount,
-            'dispute.reason': reason,
-            'dispute.disputedAt': dayjs().toDate(),
-            'dispute.status': 'open',
+      const session = await this.paymentDAO.startSession();
+      await this.paymentDAO.withTransaction(session, async (txSession) => {
+        await this.paymentDAO.update(
+          { _id: payment._id, cuid: payment.cuid },
+          {
+            $set: {
+              'dispute.disputeId': disputeId,
+              'dispute.amount': amount,
+              'dispute.reason': reason,
+              'dispute.disputedAt': dayjs().toDate(),
+              'dispute.status': 'open',
+            },
           },
-        }
-      );
+          undefined,
+          txSession
+        );
 
-      await this.paymentProcessorDAO.update(
-        { cuid: payment.cuid },
-        {
-          $inc: { 'disputeStats.total': 1, 'disputeStats.open': 1 },
-          $set: { 'disputeStats.lastDisputeAt': dayjs().toDate() },
-        }
-      );
+        await this.paymentProcessorDAO.update(
+          { cuid: payment.cuid },
+          {
+            $inc: { 'disputeStats.total': 1, 'disputeStats.open': 1 },
+            $set: { 'disputeStats.lastDisputeAt': dayjs().toDate() },
+          },
+          undefined,
+          txSession
+        );
+      });
 
       this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_CREATED, {
         cuid: payment.cuid,
@@ -931,15 +938,22 @@ export class PaymentWebhookService {
         metadata: { disputeId, reason: 'dispute_won', invoiceNumber: payment.invoiceNumber },
       });
 
-      await this.paymentDAO.update(
-        { _id: payment._id, cuid: payment.cuid },
-        { $set: { 'dispute.status': 'won', 'dispute.resolvedAt': dayjs().toDate() } }
-      );
+      const session = await this.paymentDAO.startSession();
+      await this.paymentDAO.withTransaction(session, async (txSession) => {
+        await this.paymentDAO.update(
+          { _id: payment._id, cuid: payment.cuid },
+          { $set: { 'dispute.status': 'won', 'dispute.resolvedAt': dayjs().toDate() } },
+          undefined,
+          txSession
+        );
 
-      await this.paymentProcessorDAO.update(
-        { cuid: payment.cuid, 'disputeStats.open': { $gt: 0 } },
-        { $inc: { 'disputeStats.open': -1 } }
-      );
+        await this.paymentProcessorDAO.update(
+          { cuid: payment.cuid, 'disputeStats.open': { $gt: 0 } },
+          { $inc: { 'disputeStats.open': -1 } },
+          undefined,
+          txSession
+        );
+      });
 
       this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_WON, {
         cuid: payment.cuid,
@@ -978,26 +992,35 @@ export class PaymentWebhookService {
       }
       const { payment, chargeId, amount, currency } = result;
 
-      await this.paymentProcessorDAO.update(
-        { cuid: payment.cuid },
-        {
-          $set: {
-            payoutsBlocked: true,
-            payoutsBlockedReason: `Dispute ${disputeId} lost — funds debited from platform account`,
-            payoutsBlockedAt: dayjs().toDate(),
+      const session = await this.paymentDAO.startSession();
+      await this.paymentDAO.withTransaction(session, async (txSession) => {
+        await this.paymentProcessorDAO.update(
+          { cuid: payment.cuid },
+          {
+            $set: {
+              payoutsBlocked: true,
+              payoutsBlockedReason: `Dispute ${disputeId} lost — funds debited from platform account`,
+              payoutsBlockedAt: dayjs().toDate(),
+            },
           },
-        }
-      );
+          undefined,
+          txSession
+        );
 
-      await this.paymentProcessorDAO.update(
-        { cuid: payment.cuid, 'disputeStats.open': { $gt: 0 } },
-        { $inc: { 'disputeStats.open': -1 } }
-      );
+        await this.paymentProcessorDAO.update(
+          { cuid: payment.cuid, 'disputeStats.open': { $gt: 0 } },
+          { $inc: { 'disputeStats.open': -1 } },
+          undefined,
+          txSession
+        );
 
-      await this.paymentDAO.update(
-        { _id: payment._id, cuid: payment.cuid },
-        { $set: { 'dispute.status': 'lost', 'dispute.resolvedAt': dayjs().toDate() } }
-      );
+        await this.paymentDAO.update(
+          { _id: payment._id, cuid: payment.cuid },
+          { $set: { 'dispute.status': 'lost', 'dispute.resolvedAt': dayjs().toDate() } },
+          undefined,
+          txSession
+        );
+      });
 
       this.emitterService.emit(EventTypes.PAYMENT_DISPUTE_LOST, {
         cuid: payment.cuid,

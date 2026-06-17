@@ -38,7 +38,7 @@ export class ClientController {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: updatedClient,
-      message: t('client.success.profileUpdated'),
+      message: t('common.success.updated', { resource: 'Client profile' }),
     });
   };
 

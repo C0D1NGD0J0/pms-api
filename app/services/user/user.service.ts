@@ -129,7 +129,7 @@ export class UserService {
     })) as IUserPopulatedDocument | null;
 
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     // Users can always read their own record regardless of connection status
@@ -152,7 +152,7 @@ export class UserService {
     );
     if (!access.canRead) {
       throw new ForbiddenError({
-        message: t('client.errors.insufficientPermissions', {
+        message: t('common.errors.insufficientPermissions', {
           action: 'view',
           resource: 'user',
         }),
@@ -172,7 +172,7 @@ export class UserService {
       return {
         success: true,
         data: cachedData.data,
-        message: t('client.success.userRetrieved'),
+        message: t('common.success.retrieved', { resource: 'User information' }),
       };
     }
     return null;
@@ -185,12 +185,12 @@ export class UserService {
   ): Promise<IUserDetailResponse> {
     const clientConnection = user.cuids?.find((c: any) => c.cuid === clientId);
     if (!clientConnection || !clientConnection.isConnected) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const client = await this.clientDAO.getClientByCuid(clientId);
     if (!client) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const userDetail = await this.buildUserDetailData(user, clientConnection, clientId, client);
@@ -218,7 +218,7 @@ export class UserService {
       return {
         success: true,
         data: userDetail,
-        message: t('client.success.userRetrieved'),
+        message: t('common.success.retrieved', { resource: 'User information' }),
       };
     } catch (error) {
       this.log.error('Error getting client user:', {
@@ -255,7 +255,7 @@ export class UserService {
     return {
       success: true,
       data: { users: result.data.items },
-      message: t('client.success.usersByRoleRetrieved', { role }),
+      message: t('common.success.retrieved', { resource: 'Users' }),
     };
   }
 
@@ -276,12 +276,12 @@ export class UserService {
   ): Promise<ISuccessReturnData<{ items: FilteredUserTableData[]; pagination: IPaginateResult }>> {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (filterOptions.role && typeof filterOptions.role === 'string') {
@@ -300,7 +300,7 @@ export class UserService {
       //       items: cachedResult.data.items,
       //       pagination: cachedResult.data.pagination,
       //     },
-      //     message: t('client.success.filteredUsersRetrieved'),
+      //     message: t('common.success.retrieved', { resource: 'Users' }),
       //   };
       // }
 
@@ -380,7 +380,7 @@ export class UserService {
           items: users,
           pagination: result.pagination!,
         },
-        message: t('client.success.filteredUsersRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Users' }),
       };
     } catch (error) {
       this.log.error('Error getting filtered users:', {
@@ -405,12 +405,12 @@ export class UserService {
   ): Promise<ISuccessReturnData<IUserStats | any>> {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (filterOptions.role && typeof filterOptions.role === 'string') {
@@ -428,7 +428,7 @@ export class UserService {
           roleDistribution: stats.roleDistribution,
           totalFilteredUsers: stats.totalFilteredUsers,
         },
-        message: t('client.success.userStatsRetrieved'),
+        message: t('common.success.retrieved', { resource: 'User statistics' }),
       };
     } catch (error) {
       this.log.error('Error getting user stats:', {
@@ -1067,7 +1067,9 @@ export class UserService {
     );
 
     if (!user) {
-      throw new BadRequestError({ message: 'Error creating user account.' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'create user account' }),
+      });
     }
 
     const profileData = this.buildProfileFromInvitationData(user, invitationData, userData);
@@ -1292,26 +1294,28 @@ export class UserService {
   ): Promise<ISuccessReturnData<any>> {
     try {
       if (!userId) {
-        throw new BadRequestError({ message: 'User ID is required' });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'User ID' }) });
       }
 
       // Check if user exists
       const existingUser = await this.userDAO.findFirst({ uid: userId });
       if (!existingUser) {
-        throw new NotFoundError({ message: 'User not found' });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       // Ownership: currentuser.sub is the MongoDB _id; compare against the fetched user's _id
       assertRecordOwnership(currentuser, existingUser._id, {
         bypassRoles: ROLE_GROUPS.MANAGEMENT_ROLES,
-        errorMessage: 'You can only update your own account information.',
+        errorMessage: t('user.errors.canOnlyUpdateOwnAccount'),
       });
 
       // If email is being updated, check for uniqueness
       if (userInfo.email && userInfo.email !== existingUser.email) {
         const emailExists = await this.userDAO.findFirst({ email: userInfo.email });
         if (emailExists) {
-          throw new BadRequestError({ message: 'Email already exists' });
+          throw new BadRequestError({
+            message: t('common.errors.alreadyExists', { resource: 'Email' }),
+          });
         }
       }
 
@@ -1319,7 +1323,9 @@ export class UserService {
       const updatedUser = await this.userDAO.updateById(existingUser._id.toString(), userInfo);
 
       if (!updatedUser) {
-        throw new NotFoundError({ message: 'Failed to update user' });
+        throw new NotFoundError({
+          message: t('common.errors.operationFailed', { action: 'update user' }),
+        });
       }
 
       this.log.info(`User info updated for user ${userId}`, { userInfo });
@@ -1331,7 +1337,7 @@ export class UserService {
           email: updatedUser.email,
           isActive: updatedUser.isActive,
         },
-        message: 'User information updated successfully',
+        message: t('common.success.updated', { resource: 'User information' }),
       };
     } catch (error) {
       this.log.error(`Error updating user info for ${userId}:`, error);
@@ -1364,13 +1370,13 @@ export class UserService {
   > {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       // Get all tenants for this client
@@ -1417,7 +1423,7 @@ export class UserService {
       return {
         success: true,
         data: availableTenants,
-        message: t('client.success.tenantsRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Tenants' }),
       };
     } catch (error: any) {
       this.log.error('Error getting available tenants:', {
@@ -1436,17 +1442,17 @@ export class UserService {
   ): Promise<ISuccessReturnData<IPaginatedResult<any[]>>> {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (currentUser && currentUser.client.cuid !== cuid) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'view',
             resource: 'tenants',
           }),
@@ -1561,7 +1567,7 @@ export class UserService {
       return {
         success: true,
         data: enrichedResult,
-        message: t('client.success.tenantsRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Tenants' }),
       };
     } catch (error) {
       this.log.error('Error getting tenants by client:', {
@@ -1587,19 +1593,19 @@ export class UserService {
   ): Promise<ISuccessReturnData<import('@interfaces/user.interface').ITenantStats>> {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('client.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       // Validate client exists
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       // Optional permission check if currentUser is provided
       if (currentUser && currentUser.client.cuid !== cuid) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'view',
             resource: 'tenant_stats',
           }),
@@ -1633,7 +1639,7 @@ export class UserService {
       return {
         success: true,
         data: stats,
-        message: t('client.success.tenantStatsRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Tenant statistics' }),
       };
     } catch (error) {
       this.log.error('Error getting tenant stats:', {
@@ -1660,12 +1666,12 @@ export class UserService {
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (currentUser && currentUser.client.cuid !== cuid) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'view',
             resource: 'tenant_details',
           }),
@@ -1854,13 +1860,13 @@ export class UserService {
       });
 
       if (!user) {
-        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       // Check if user is connected to this client
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
       if (!clientConnection || !clientConnection.isConnected) {
-        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       // Verify user is a tenant
@@ -1879,7 +1885,7 @@ export class UserService {
       );
       if (!canAccess) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'update',
             resource: 'tenant',
           }),
@@ -1926,7 +1932,9 @@ export class UserService {
         // Check if email is already in use
         const emailExists = await this.userDAO.findFirst({ email: updateData.email });
         if (emailExists && emailExists.uid !== uid) {
-          throw new BadRequestError({ message: t('client.errors.emailExists') });
+          throw new BadRequestError({
+            message: t('common.errors.alreadyExists', { resource: 'Email' }),
+          });
         }
         await this.userDAO.updateById(user._id.toString(), { email: updateData.email });
       }
@@ -1988,7 +1996,7 @@ export class UserService {
       });
 
       if (!user) {
-        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       // Check permissions
@@ -2000,7 +2008,7 @@ export class UserService {
       );
       if (!canAccess) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'delete',
             resource: 'user',
           }),
@@ -2017,7 +2025,7 @@ export class UserService {
       // Prevent deleting account owner
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (client.accountAdmin.toString() === user._id.toString()) {
@@ -2065,7 +2073,9 @@ export class UserService {
           });
 
           throw new BadRequestError({
-            message: `Cannot archive tenant. This user has ${activeLeases.length} active lease(s). Please terminate the lease(s) before archiving.`,
+            message: t('user.errors.cannotArchiveTenantWithActiveLeases', {
+              count: activeLeases.length,
+            }),
           });
         }
       }
@@ -2094,7 +2104,9 @@ export class UserService {
 
           if (activeTenantLeases.items.length > 0) {
             throw new BadRequestError({
-              message: `Cannot archive user. They manage properties with ${activeTenantLeases.items.length} active lease(s). Reassign properties or terminate leases first.`,
+              message: t('user.errors.cannotArchiveManagerWithActiveLeases', {
+                count: activeTenantLeases.items.length,
+              }),
             });
           }
         }
@@ -2321,7 +2333,7 @@ export class UserService {
       return {
         success: true,
         data: archivalSummary,
-        message: t('client.success.userArchived'),
+        message: t('common.success.archived', { resource: 'User' }),
       };
     } catch (error) {
       this.log.error('Error archiving user:', {
@@ -2368,7 +2380,7 @@ export class UserService {
       });
 
       if (!user) {
-        throw new NotFoundError({ message: t('client.errors.userNotFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
@@ -2380,7 +2392,7 @@ export class UserService {
 
       if (!roles.includes('tenant')) {
         throw new BadRequestError({
-          message: 'User is not a tenant',
+          message: t('user.errors.notATenant'),
         });
       }
 
@@ -2392,7 +2404,7 @@ export class UserService {
       );
       if (!canAccess) {
         throw new ForbiddenError({
-          message: t('client.errors.insufficientPermissions', {
+          message: t('common.errors.insufficientPermissions', {
             action: 'deactivate',
             resource: 'tenant',
           }),
@@ -2401,7 +2413,7 @@ export class UserService {
 
       if (uid === context.currentuser.uid) {
         throw new BadRequestError({
-          message: 'Cannot deactivate yourself',
+          message: t('user.errors.cannotDeactivateSelf'),
         });
       }
 
@@ -2416,7 +2428,7 @@ export class UserService {
       const activeLeases = await this.leaseDAO.getActiveLeaseByTenant(cuid, uid);
       if (activeLeases?.status === 'active') {
         throw new BadRequestError({
-          message: 'Cannot deactivate tenant with active leases',
+          message: t('user.errors.cannotDeactivateTenantWithActiveLeases'),
         });
       }
 
@@ -2479,7 +2491,7 @@ export class UserService {
       return {
         success: true,
         data: deactivationSummary,
-        message: 'Tenant deactivated successfully',
+        message: t('user.success.tenantDeactivated'),
       };
     } catch (error) {
       this.log.error('Error deactivating tenant:', {

@@ -44,7 +44,7 @@ export class AuthController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -60,7 +60,7 @@ export class AuthController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 

@@ -206,7 +206,7 @@ export class MaintenanceInvoiceService {
 
     // Only management roles can approve invoices — tenants, vendors, and staff are excluded
     if (!ROLE_GROUPS.MANAGEMENT_ROLES.includes(currentuser.client.role as any)) {
-      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
@@ -271,7 +271,7 @@ export class MaintenanceInvoiceService {
 
     // Only management roles can reject invoices — tenants, vendors, and staff are excluded
     if (!ROLE_GROUPS.MANAGEMENT_ROLES.includes(currentuser.client.role as any)) {
-      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
@@ -494,7 +494,10 @@ export class MaintenanceInvoiceService {
       mruid: payload.mruid,
       deletedAt: null,
     });
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!request)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
 
     // Validate tenant isolation: the resolved request must belong to the declared client
     if (request.cuid !== payload.cuid) {

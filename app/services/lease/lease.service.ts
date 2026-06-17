@@ -194,13 +194,13 @@ export class LeaseService {
     const currentuser = ctx.currentuser!;
 
     if (!cuid) {
-      throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: t('common.errors.clientNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const property = await this.propertyDAO.findFirst(
@@ -217,7 +217,7 @@ export class LeaseService {
 
     if (!property) {
       this.log.error(`Property with id ${data.property.id} not found for client ${cuid}`);
-      throw new BadRequestError({ message: t('property.errors.notFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     if (
@@ -548,7 +548,7 @@ export class LeaseService {
       const { cuid } = cxt.request.params;
 
       if (!cuid || !luid) {
-        throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const lease = await this.leaseDAO.findFirst(
@@ -561,17 +561,19 @@ export class LeaseService {
       );
 
       if (!lease) {
-        throw new InvalidRequestError({ message: t('lease.not_found') });
+        throw new InvalidRequestError({
+          message: t('common.errors.notFound', { resource: 'Lease' }),
+        });
       }
 
       if (lease.cuid !== cuid) {
-        throw new InvalidRequestError({ message: t('lease.invalid_access') });
+        throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
       }
 
       if (!includeFormattedData) {
         return {
           success: true,
-          message: t('lease.retrieved_successfully'),
+          message: t('common.success.retrieved', { resource: 'Lease' }),
           data: { lease },
         };
       }
@@ -585,7 +587,7 @@ export class LeaseService {
             : lease.tenantId?.toString();
 
         if (tenantIdStr !== cxt.currentuser!.sub) {
-          throw new InvalidRequestError({ message: t('lease.access_denied') });
+          throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
         }
       }
 
@@ -643,7 +645,7 @@ export class LeaseService {
 
       return {
         success: true,
-        message: t('lease.retrieved_successfully'),
+        message: t('common.success.retrieved', { resource: 'Lease' }),
         data: response,
       };
     } catch (error: any) {
@@ -668,7 +670,7 @@ export class LeaseService {
 
       const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
       if (!lease) {
-        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
       }
 
       // Prevent conflict of interest: cannot update a lease where you are the tenant
@@ -849,7 +851,7 @@ export class LeaseService {
     });
 
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
     preventTenantConflict(userId, lease.tenantId as any);
@@ -868,7 +870,9 @@ export class LeaseService {
 
     const deleted = await lease.softDelete(new Types.ObjectId(userId));
     if (!deleted) {
-      throw new BadRequestError({ message: 'Failed to delete lease' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'delete lease' }),
+      });
     }
 
     // Release the unit reservation when a draft lease is deleted
@@ -885,7 +889,7 @@ export class LeaseService {
     return {
       success: true,
       data: true,
-      message: 'Lease deleted successfully',
+      message: t('common.success.deleted', { resource: 'Lease' }),
     };
   }
 
@@ -911,7 +915,7 @@ export class LeaseService {
     );
 
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
     // tenantId may be populated (full document) — extract _id when that's the case
@@ -966,7 +970,9 @@ export class LeaseService {
     );
 
     if (!terminatedLease) {
-      throw new BadRequestError({ message: 'Failed to terminate lease' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'terminate lease' }),
+      });
     }
 
     await this.leaseCache.invalidateLease(cuid, luid);
@@ -1052,7 +1058,7 @@ export class LeaseService {
     return {
       success: true,
       data: terminatedLease,
-      message: 'Lease terminated successfully',
+      message: t('common.success.updated', { resource: 'Lease' }),
     };
   }
 
@@ -1073,7 +1079,7 @@ export class LeaseService {
         deletedAt: null,
       });
       if (!lease) {
-        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
       }
 
       const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
@@ -1151,7 +1157,9 @@ export class LeaseService {
     );
 
     if (!activatedLease) {
-      throw new BadRequestError({ message: 'Failed to activate lease' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'activate lease' }),
+      });
     }
 
     await this.leaseCache.invalidateLease(cuid, luid);
@@ -1174,7 +1182,7 @@ export class LeaseService {
     return {
       success: true,
       data: activatedLease,
-      message: 'Lease activated successfully',
+      message: t('common.success.updated', { resource: 'Lease' }),
     };
   }
 
@@ -1314,7 +1322,7 @@ export class LeaseService {
     daysThreshold: number = 30
   ): IPromiseReturnedData<ILeaseDocument[]> {
     if (!cuid) {
-      throw new BadRequestError({ message: 'Client ID is required' });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
     }
 
     if (daysThreshold <= 0 || !Number.isInteger(daysThreshold) || daysThreshold > 365) {
@@ -1338,7 +1346,7 @@ export class LeaseService {
 
       return {
         success: true,
-        message: 'Lease statistics retrieved successfully',
+        message: t('common.success.retrieved', { resource: 'Lease statistics' }),
         data: stats,
       };
     } catch (error) {
@@ -1382,7 +1390,7 @@ export class LeaseService {
         items: leases.items,
         pagination: leases.pagination,
       },
-      message: 'Pending lease approvals retrieved successfully',
+      message: t('common.success.retrieved', { resource: 'Pending lease approvals' }),
     };
   }
 
@@ -1409,7 +1417,7 @@ export class LeaseService {
     });
 
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
     if (lease.approvalStatus === 'approved' && !lease.pendingChanges) {
@@ -1502,7 +1510,7 @@ export class LeaseService {
     return {
       success: true,
       data: updatedLease,
-      message: 'Lease approved successfully',
+      message: t('common.success.updated', { resource: 'Lease' }),
     };
   }
 
@@ -1523,7 +1531,9 @@ export class LeaseService {
     }
 
     if (!reason) {
-      throw new BadRequestError({ message: 'Rejection reason is required' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Rejection reason' }),
+      });
     }
 
     const lease = await this.leaseDAO.findFirst({
@@ -1533,7 +1543,7 @@ export class LeaseService {
     });
 
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
     const approvalEntry = {
@@ -1599,7 +1609,7 @@ export class LeaseService {
     return {
       success: true,
       data: updatedLease,
-      message: 'Lease rejected',
+      message: t('common.success.updated', { resource: 'Lease' }),
     };
   }
 
@@ -1668,7 +1678,9 @@ export class LeaseService {
     }
 
     if (!reason) {
-      throw new BadRequestError({ message: 'Rejection reason is required' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Rejection reason' }),
+      });
     }
 
     const approvalEntry = {
@@ -1851,7 +1863,9 @@ export class LeaseService {
 
         if (!user) {
           if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
-          validationErrors['tenantInfo.id'].push(t('lease.errors.tenantNotFound'));
+          validationErrors['tenantInfo.id'].push(
+            t('common.errors.notFound', { resource: 'Tenant' })
+          );
         } else {
           const clientAccess = user.cuids.find((c) => c.cuid === cuid);
           if (!clientAccess || !clientAccess.roles.includes('tenant')) {
@@ -1869,7 +1883,7 @@ export class LeaseService {
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         if (!validationErrors['client']) validationErrors['client'] = [];
-        validationErrors['client'].push(t('common.errors.clientNotFound'));
+        validationErrors['client'].push(t('common.errors.notFound', { resource: 'Client' }));
       } else {
         const invitation = await this.invitationDAO.findFirst({
           inviteeEmail: leaseData.tenantInfo.email.toLowerCase(),
@@ -1920,7 +1934,7 @@ export class LeaseService {
 
     if (!propertyRecord) {
       if (!validationErrors['property.id']) validationErrors['property.id'] = [];
-      validationErrors['property.id'].push(t('property.errors.notFound'));
+      validationErrors['property.id'].push(t('common.errors.notFound', { resource: 'Property' }));
     } else {
       const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyRecord.propertyType);
 

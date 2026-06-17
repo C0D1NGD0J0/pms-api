@@ -40,7 +40,7 @@ export class PropertyApprovalService {
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
-        message: 'You are not authorized to view pending approvals.',
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
@@ -66,7 +66,7 @@ export class PropertyApprovalService {
         items: properties.items,
         pagination: properties.pagination,
       },
-      message: 'Pending approvals retrieved successfully',
+      message: t('common.success.retrieved', { resource: 'Pending approvals' }),
     };
   }
 
@@ -79,7 +79,7 @@ export class PropertyApprovalService {
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
-        message: 'You are not authorized to approve properties.',
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
@@ -90,7 +90,7 @@ export class PropertyApprovalService {
     });
 
     if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     if (property.approvalStatus === 'approved' && !property.pendingChanges) {
@@ -147,7 +147,9 @@ export class PropertyApprovalService {
     );
 
     if (!updatedProperty) {
-      throw new BadRequestError({ message: 'Unable to approve property.' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'approve property' }),
+      });
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
@@ -208,14 +210,16 @@ export class PropertyApprovalService {
     reason: string
   ): Promise<ISuccessReturnData> {
     if (!reason || reason.trim().length === 0) {
-      throw new BadRequestError({ message: 'Rejection reason is required.' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Rejection reason' }),
+      });
     }
 
     // Check if user has permission
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
-        message: 'You are not authorized to reject properties.',
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
@@ -226,7 +230,7 @@ export class PropertyApprovalService {
     });
 
     if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     // Create new rejection entry for the array
@@ -263,7 +267,9 @@ export class PropertyApprovalService {
     );
 
     if (!updatedProperty) {
-      throw new BadRequestError({ message: 'Unable to reject property.' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'reject property' }),
+      });
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
@@ -326,12 +332,14 @@ export class PropertyApprovalService {
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
-        message: 'You are not authorized to bulk approve properties.',
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
     if (!propertyIds || propertyIds.length === 0) {
-      throw new BadRequestError({ message: 'Property IDs are required.' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Property IDs' }),
+      });
     }
 
     const updateData = {
@@ -373,19 +381,23 @@ export class PropertyApprovalService {
     reason: string
   ): Promise<ISuccessReturnData> {
     if (!reason || reason.trim().length === 0) {
-      throw new BadRequestError({ message: 'Rejection reason is required.' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Rejection reason' }),
+      });
     }
 
     // Check if user has permission
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
-        message: 'You are not authorized to bulk reject properties.',
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
     if (!propertyIds || propertyIds.length === 0) {
-      throw new BadRequestError({ message: 'Property IDs are required.' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Property IDs' }),
+      });
     }
 
     const updateData = {

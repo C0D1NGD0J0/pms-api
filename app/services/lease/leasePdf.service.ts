@@ -113,7 +113,7 @@ export class LeasePdfService {
       );
 
       if (!lease) {
-        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
       }
 
       if (lease.status === LeaseStatus.PENDING_SIGNATURE) {
@@ -205,7 +205,7 @@ export class LeasePdfService {
         deletedAt: null,
       });
       if (!lease) {
-        throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
       }
 
       const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
@@ -248,7 +248,7 @@ export class LeasePdfService {
     );
 
     if (!lease) {
-      throw new BadRequestError({ message: 'Lease not found' });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
     const property = await this.propertyDAO.findFirst(
@@ -259,7 +259,7 @@ export class LeasePdfService {
     );
 
     if (!property) {
-      throw new BadRequestError({ message: 'Property not found' });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     const propertyId =
@@ -662,11 +662,13 @@ export class LeasePdfService {
     userId: string
   ): Promise<{ luid: string; cuid: string }> {
     if (!leaseId) {
-      throw new BadRequestError({ message: 'Lease ID is required' });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Lease ID' }) });
     }
 
     if (!uploadResults || uploadResults.length === 0) {
-      throw new BadRequestError({ message: 'Upload results are required' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Upload results' }),
+      });
     }
 
     // Flexible query - supports both ObjectId and luid
@@ -676,11 +678,13 @@ export class LeasePdfService {
 
     const lease = await this.leaseDAO.findFirst(query);
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
     const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
     if (!updatedLease) {
-      throw new BadRequestError({ message: 'Unable to update lease documents' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'update lease documents' }),
+      });
     }
     return { luid: lease.luid, cuid: lease.cuid };
   }

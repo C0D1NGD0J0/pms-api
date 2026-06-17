@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -126,12 +127,14 @@ export class MaintenancePaymentService {
 
     const client = await this.clientDAO.findFirst({ cuid });
     if (!client) {
-      throw new NotFoundError({ message: 'Client not found' });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     if (!subscription) {
-      throw new BadRequestError({ message: 'No subscription found' });
+      throw new BadRequestError({
+        message: t('common.errors.notFound', { resource: 'Subscription' }),
+      });
     }
     if (subscription.status !== ISubscriptionStatus.ACTIVE) {
       this.log.warn(
@@ -151,7 +154,9 @@ export class MaintenancePaymentService {
 
     const tenantProfile = await this.profileDAO.getProfileByUserId(tenantId);
     if (!tenantProfile) {
-      throw new NotFoundError({ message: 'Tenant profile not found' });
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Tenant profile' }),
+      });
     }
 
     const existingCharge = await this.paymentDAO.findFirst({
@@ -215,7 +220,7 @@ export class MaintenancePaymentService {
       const invoice = await this.invoiceDAO.findByMaintenanceRequest(mruid, cuid);
       if (!invoice) {
         throw new NotFoundError({
-          message: 'No invoice found for this maintenance request.',
+          message: t('common.errors.notFound', { resource: 'Invoice' }),
         });
       }
       if (invoice.status !== InvoiceStatus.APPROVED) {
@@ -225,7 +230,7 @@ export class MaintenancePaymentService {
       }
       if (invoice.vendorPayoutStatus === 'paid') {
         throw new BadRequestError({
-          message: 'Vendor has already been paid for this request.',
+          message: t('common.errors.alreadyInState', { resource: 'Vendor payout', state: 'paid' }),
         });
       }
 
@@ -242,7 +247,9 @@ export class MaintenancePaymentService {
         deletedAt: null,
       });
       if (!vendorUser?.uid) {
-        throw new NotFoundError({ message: 'Vendor user record not found.' });
+        throw new NotFoundError({
+          message: t('common.errors.notFound', { resource: 'Vendor user record' }),
+        });
       }
 
       // Resolve vendor org vuid: team members have linkedVendorUid,

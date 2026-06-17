@@ -89,7 +89,10 @@ export class VendorSuggestionService {
     }
 
     const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!request)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
 
     if (!request.aiAnalysis?.suggestedCategory && !request.aiAnalysis?.suggestedPriority) {
       throw new BadRequestError({ message: 'No AI suggestion available to accept' });
@@ -158,7 +161,10 @@ export class VendorSuggestionService {
       throw new ForbiddenError({ message: 'Only managers can dismiss AI suggestions' });
     }
     const request = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!request)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
 
     const updated = await this.maintenanceRequestDAO.update(
       { _id: request._id },

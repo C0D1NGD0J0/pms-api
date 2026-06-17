@@ -385,7 +385,7 @@ export const handleDraftUpdate = async (
     success: true,
     message: requiresApproval
       ? t('lease.updateSubmittedForApproval')
-      : t('lease.updatedSuccessfully'),
+      : t('common.success.updated', { resource: 'Lease' }),
     data: {
       lease: updatedLease,
       requiresApproval,
@@ -426,7 +426,7 @@ export const handlePendingSignatureUpdate = async (
 
   return {
     success: true,
-    message: t('lease.updatedSuccessfully'),
+    message: t('common.success.updated', { resource: 'Lease' }),
     data: { lease: updatedLease },
   };
 };
@@ -487,7 +487,7 @@ export const handleActiveUpdate = async (
     success: true,
     message: requiresApproval
       ? t('lease.updateSubmittedForApproval')
-      : t('lease.updatedSuccessfully'),
+      : t('common.success.updated', { resource: 'Lease' }),
     data: {
       lease: updatedLease,
       requiresApproval,
@@ -521,7 +521,7 @@ export const handleClosedStatusUpdate = async (
 
   return {
     success: true,
-    message: t('lease.updatedSuccessfully'),
+    message: t('common.success.updated', { resource: 'Lease' }),
     data: { lease: updatedLease },
   };
 };
@@ -886,7 +886,7 @@ export const fetchLeaseByLuid = async (
   const lease = await leaseDAO.findFirst({ luid, cuid, deletedAt: null }, options);
 
   if (!lease) {
-    throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
   }
 
   return lease;

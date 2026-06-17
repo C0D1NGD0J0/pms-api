@@ -216,11 +216,11 @@ export class AuthService {
     const user = await this.userDAO.getUserById(userId);
 
     if (!user) {
-      throw new ForbiddenError({ message: t('auth.errors.userNotFound') });
+      throw new ForbiddenError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
     const client = await this.clientDAO.getClientByCuid(clientId);
     if (!client) {
-      throw new ForbiddenError({ message: t('auth.errors.clientNotFound') });
+      throw new ForbiddenError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const clientAccount = user.cuids.find((c) => c.cuid === clientId);
@@ -259,8 +259,10 @@ export class AuthService {
       );
       if (alreadyExists) {
         throw new ValidationRequestError({
-          message: 'Validation failed',
-          errorInfo: { email: ['An account with this email already exists.'] },
+          message: t('common.errors.validationFailed'),
+          errorInfo: {
+            email: [t('common.errors.alreadyExists', { resource: 'An account with this email' })],
+          },
         });
       }
 
@@ -356,7 +358,7 @@ export class AuthService {
 
       if (!subscriptionResult.success) {
         throw new InvalidRequestError({
-          message: subscriptionResult.message || 'Encountered an error while creating subscription',
+          message: subscriptionResult.message || t('auth.errors.subscriptionCreationFailed'),
         });
       }
 
@@ -498,7 +500,7 @@ export class AuthService {
     const currentuser = await this.profileDAO.generateCurrentUserInfo(userId);
     if (!currentuser) {
       this.log.error('User not found. | GetCurrentUser');
-      throw new UnauthorizedError({ message: t('auth.errors.unauthorized') });
+      throw new UnauthorizedError({ message: t('common.errors.unauthorized') });
     }
     if (currentuser.subscription?.plan?.name) {
       const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
@@ -535,7 +537,7 @@ export class AuthService {
 
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const accountExists = user.cuids.find((c) => c.cuid === newcuid);
@@ -743,7 +745,7 @@ export class AuthService {
     try {
       const user = await this.userDAO.getUserById(userId);
       if (!user) {
-        throw new NotFoundError({ message: t('auth.errors.userNotFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       const activeConnection = user.cuids.find((c) => c.cuid === cuid);
@@ -875,7 +877,7 @@ export class AuthService {
   > {
     try {
       if (currentuser.client.role !== 'tenant') {
-        throw new BadRequestError({ message: 'Only tenants can set up a payment method.' });
+        throw new BadRequestError({ message: t('auth.errors.tenantOnlyPaymentSetup') });
       }
 
       const lease = await this.leaseDAO.getActiveLeaseByTenant(cuid, currentuser.sub);
@@ -898,7 +900,9 @@ export class AuthService {
         deletedAt: null,
       });
       if (!processor) {
-        throw new NotFoundError({ message: 'Client payment processor not configured.' });
+        throw new NotFoundError({
+          message: t('common.errors.operationFailedContact', { action: 'process payment' }),
+        });
       }
 
       const tenantProfile = await this.profileDAO.findFirst({
@@ -917,7 +921,9 @@ export class AuthService {
         });
 
         if (!customerResult.success || !customerResult.data) {
-          throw new BadRequestError({ message: 'Failed to create payment customer.' });
+          throw new BadRequestError({
+            message: t('common.errors.operationFailed', { action: 'set up payment' }),
+          });
         }
 
         customerId = customerResult.data.customerId;
@@ -961,7 +967,9 @@ export class AuthService {
       );
 
       if (!sessionResult.success || !sessionResult.data) {
-        throw new BadRequestError({ message: 'Failed to create payment setup session.' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'initiate payment setup' }),
+        });
       }
 
       return {
@@ -1004,7 +1012,7 @@ export class AuthService {
     };
   }> {
     if (currentuser.client.role !== 'tenant') {
-      throw new BadRequestError({ message: 'Only tenants can view payment methods.' });
+      throw new BadRequestError({ message: t('auth.errors.tenantOnlyViewPaymentMethods') });
     }
 
     const processor = await this.paymentProcessorDAO.findFirst({
@@ -1086,7 +1094,7 @@ export class AuthService {
     currentuser: ICurrentUser
   ): Promise<{ success: boolean; data: null }> {
     if (currentuser.client.role !== 'tenant') {
-      throw new BadRequestError({ message: 'Only tenants can remove payment methods.' });
+      throw new BadRequestError({ message: t('auth.errors.tenantOnlyRemovePaymentMethods') });
     }
 
     const processor = await this.paymentProcessorDAO.findFirst({
@@ -1095,26 +1103,28 @@ export class AuthService {
       deletedAt: null,
     });
     if (!processor) {
-      throw new NotFoundError({ message: 'Payment processor not configured.' });
+      throw new NotFoundError({
+        message: t('common.errors.operationFailedContact', { action: 'process payment' }),
+      });
     }
 
     const tenantProfile = await this.profileDAO.findFirst({
       user: new Types.ObjectId(currentuser.sub),
     });
     if (!tenantProfile || !tenantProfile.tenantInfo?.paymentMethods) {
-      throw new NotFoundError({ message: 'No payment method on file.' });
+      throw new NotFoundError({ message: t('auth.errors.noPaymentMethodOnFile') });
     }
 
     const paymentMethods = tenantProfile.tenantInfo.paymentMethods;
     if (paymentMethods.size <= 1) {
       throw new BadRequestError({
-        message: 'You must keep at least one payment method on file.',
+        message: t('auth.errors.mustKeepOnePaymentMethod'),
       });
     }
 
     const paymentMethodId = paymentMethods.get(processor.accountId);
     if (!paymentMethodId) {
-      throw new NotFoundError({ message: 'No payment method found for this property manager.' });
+      throw new NotFoundError({ message: t('auth.errors.noPaymentMethodForManager') });
     }
 
     // Remove from profile
@@ -1150,7 +1160,7 @@ export class AuthService {
     }>
   > {
     if (currentUser.client.role !== 'tenant') {
-      throw new BadRequestError({ message: 'Only tenants can charge a first payment.' });
+      throw new BadRequestError({ message: t('auth.errors.tenantOnlyFirstPayment') });
     }
 
     const lease = await this.leaseDAO.getActiveLeaseByTenant(cuid, currentUser.sub);

@@ -78,11 +78,13 @@ export class LeaseDocumentService {
     userId: string
   ): Promise<ISuccessReturnData> {
     if (!leaseId) {
-      throw new BadRequestError({ message: 'Lease ID is required' });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Lease ID' }) });
     }
 
     if (!uploadResults || uploadResults.length === 0) {
-      throw new BadRequestError({ message: 'Upload results are required' });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Upload results' }),
+      });
     }
 
     // Flexible query - supports both ObjectId and luid
@@ -92,16 +94,18 @@ export class LeaseDocumentService {
 
     const lease = await this.leaseDAO.findFirst(query);
     if (!lease) {
-      throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
     const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
     if (!updatedLease) {
-      throw new BadRequestError({ message: 'Unable to update lease documents' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'update lease documents' }),
+      });
     }
     return {
       success: true,
       data: updatedLease,
-      message: 'Lease documents updated successfully',
+      message: t('common.success.updated', { resource: 'Lease documents' }),
     };
   }
 

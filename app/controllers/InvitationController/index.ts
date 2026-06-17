@@ -39,7 +39,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -67,7 +67,7 @@ export class InvitationController {
 
     if (!currentuser) {
       return new UnauthorizedError({
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -134,7 +134,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -160,7 +160,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -189,7 +189,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -220,7 +220,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -240,7 +240,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -267,7 +267,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -297,7 +297,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -361,7 +361,7 @@ export class InvitationController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 

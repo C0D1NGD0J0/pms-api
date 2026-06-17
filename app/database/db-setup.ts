@@ -63,8 +63,8 @@ export class DatabaseService implements IDatabaseService {
       const url = this.getDatabaseUrl(env);
       const mongoOptions = {
         family: 4,
-        minPoolSize: parseInt(process.env.MONGO_MIN_POOL_SIZE ?? '1'),
-        maxPoolSize: parseInt(process.env.MONGO_MAX_POOL_SIZE ?? '5'),
+        minPoolSize: parseInt(process.env.MONGO_MIN_POOL_SIZE ?? '5'),
+        maxPoolSize: parseInt(process.env.MONGO_MAX_POOL_SIZE ?? '25'),
         socketTimeoutMS: 45000,
         connectTimeoutMS: 10000,
         serverSelectionTimeoutMS: 15000,

@@ -70,7 +70,11 @@ const makeServiceWithMocks = (
     userDAO: jest.Mocked<UserDAO>;
   }> = {}
 ) => {
-  const paymentDAO = (overrides.paymentDAO ?? { list: jest.fn().mockResolvedValue({ items: [], pagination: null }) }) as jest.Mocked<PaymentDAO>;
+  const paymentDAO = (overrides.paymentDAO ?? {
+    list: jest.fn().mockResolvedValue({ items: [], pagination: null }),
+    startSession: jest.fn().mockResolvedValue({}),
+    withTransaction: jest.fn((_session: unknown, cb: (s: unknown) => unknown) => cb(_session)),
+  }) as jest.Mocked<PaymentDAO>;
   const clientDAO = (overrides.clientDAO ?? {}) as jest.Mocked<ClientDAO>;
   const profileDAO = (overrides.profileDAO ?? { findFirst: jest.fn().mockResolvedValue(null) }) as jest.Mocked<ProfileDAO>;
   const leaseDAO = (overrides.leaseDAO ?? {}) as jest.Mocked<LeaseDAO>;
@@ -1072,6 +1076,8 @@ describe('PaymentService - handleDisputeCreated', () => {
     mockPaymentDAO = {
       findFirst: jest.fn(),
       update: jest.fn(),
+      startSession: jest.fn().mockResolvedValue({}),
+      withTransaction: jest.fn((_session: unknown, cb: (s: unknown) => unknown) => cb(_session)),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = {
       update: jest.fn(),
@@ -1203,7 +1209,12 @@ describe('PaymentService - handleDisputeWon', () => {
   });
 
   beforeEach(() => {
-    mockPaymentDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      startSession: jest.fn().mockResolvedValue({}),
+      withTransaction: jest.fn((_session: unknown, cb: (s: unknown) => unknown) => cb(_session)),
+    } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = { createTransfer: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };

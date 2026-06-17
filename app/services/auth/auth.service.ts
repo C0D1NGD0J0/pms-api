@@ -815,7 +815,7 @@ export class AuthService {
   ): Promise<ISuccessReturnData> {
     const profile = await this.profileDAO.getProfileByUserId(userId);
     if (!profile) {
-      throw new NotFoundError({ message: t('profile.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Profile' }) });
     }
 
     const now = new Date();
@@ -909,7 +909,7 @@ export class AuthService {
         user: new Types.ObjectId(currentuser.sub),
       });
       if (!tenantProfile) {
-        throw new NotFoundError({ message: t('profile.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Profile' }) });
       }
 
       let customerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');

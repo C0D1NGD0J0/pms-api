@@ -316,9 +316,11 @@ export const LoginSchema = z.object({
     .string({ message: "Email field can't be blank." })
     .email({ message: 'Invalid email format.' }),
   password: z
-    .string({ message: "Password field can't be blank." })
+    .string()
     .min(6, { message: 'Password must be at least 6 characters long.' })
-    .max(20, { message: 'Invalid password value provided.' }),
+    .max(20, { message: 'Invalid password value provided.' })
+    .optional(),
+  otp: z.string().length(6, { message: 'Verification code must be 6 digits.' }).optional(),
   rememberMe: z.boolean().optional(),
 });
 

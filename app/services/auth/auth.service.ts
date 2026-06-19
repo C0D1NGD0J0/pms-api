@@ -11,8 +11,11 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PaymentMethodType } from '@interfaces/lease.interface';
 import { subscriptionPlanConfig } from '@services/subscription';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { PaymentService } from '@services/payments/payments.service';
+import { TwilioService } from '@services/external/twilio/twilio.service';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PaymentRecordType, IPaymentFormData } from '@interfaces/payments.interface';
@@ -46,9 +49,11 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
   paymentService: PaymentService;
   tokenService: AuthTokenService;
+  twilioService: TwilioService;
   vendorService: VendorService;
   queueFactory: QueueFactory;
   profileDAO: ProfileDAO;
@@ -73,6 +78,8 @@ export class AuthService {
   private readonly subscriptionService: SubscriptionService;
   private readonly paymentService: PaymentService;
   private readonly emitterService: EventEmitterService;
+  private readonly twilioService: TwilioService;
+  private readonly featureFlagService: FeatureFlagService;
 
   constructor({
     userDAO,
@@ -88,6 +95,8 @@ export class AuthService {
     subscriptionService,
     paymentService,
     emitterService,
+    twilioService,
+    featureFlagService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -102,6 +111,8 @@ export class AuthService {
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
     this.emitterService = emitterService;
+    this.twilioService = twilioService;
+    this.featureFlagService = featureFlagService;
     this.log = createLogger('AuthService');
     this.setupEventListeners();
   }
@@ -393,21 +404,81 @@ export class AuthService {
     };
   }
 
-  async login(data: { email: string; password: string; rememberMe: boolean }): Promise<
-    ISuccessReturnData<{
-      accessToken: string;
-      rememberMe: boolean;
-      refreshToken: string;
-      activeAccount: IActiveAccountInfo;
-      accounts: IActiveAccountInfo[] | null;
-    }>
-  > {
-    const { email, password, rememberMe } = data;
-    if (!email || !password) {
-      this.log.error('Email and password are required. | Login');
+  async login(data: {
+    email: string;
+    password?: string;
+    otp?: string;
+    rememberMe?: boolean;
+  }): Promise<ISuccessReturnData> {
+    const { email, password, otp, rememberMe = false } = data;
+
+    if (!email) {
       throw new BadRequestError({ message: t('auth.errors.emailPasswordRequired') });
     }
 
+    // Step 1: email only — determine login type and send OTP if needed
+    if (!password && !otp) {
+      return this.resolveLoginType(email);
+    }
+
+    // Step 2a: password login
+    if (password) {
+      return this.loginWithPassword(email, password, rememberMe);
+    }
+
+    // Step 2b: OTP login
+    return this.loginWithOTP(email, otp!, rememberMe);
+  }
+
+  private async resolveLoginType(email: string): Promise<ISuccessReturnData> {
+    const user = await this.userDAO.getActiveUserByEmail(email);
+    if (!user) {
+      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
+    }
+
+    if (!user.isActive) {
+      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
+    }
+
+    const profile = await this.profileDAO.findFirst({ user: user._id });
+    const loginType = profile?.settings?.loginType ?? 'password';
+
+    const canUseOTP =
+      loginType === 'otp' &&
+      this.featureFlagService.isEnabled(FeatureFlag.SMS) &&
+      profile?.settings?.phoneVerification?.verified &&
+      profile?.settings?.phoneVerification?.verifiedPhone;
+
+    if (!canUseOTP) {
+      return {
+        success: true,
+        data: { step: 'password_required', loginType: 'password' },
+        message:
+          loginType === 'otp'
+            ? t('auth.errors.otpUnavailable')
+            : t('auth.success.loginTypeResolved'),
+      };
+    }
+
+    const phone = profile!.settings!.phoneVerification!.verifiedPhone!;
+    await this.twilioService.sendOTP(phone);
+
+    return {
+      success: true,
+      data: {
+        step: 'otp_sent',
+        loginType: 'otp',
+        maskedPhone: phone.replace(/.(?=.{4})/g, '*'),
+      },
+      message: t('auth.success.otpSent'),
+    };
+  }
+
+  private async loginWithPassword(
+    email: string,
+    password: string,
+    rememberMe: boolean
+  ): Promise<ISuccessReturnData> {
     let user = await this.userDAO.getActiveUserByEmail(email);
     if (!user) {
       throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
@@ -422,13 +493,46 @@ export class AuthService {
       throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
     }
 
-    const connectedClients = user.cuids.filter((c) => c.isConnected);
+    return this.completeLogin(user, rememberMe);
+  }
+
+  private async loginWithOTP(
+    email: string,
+    otp: string,
+    rememberMe: boolean
+  ): Promise<ISuccessReturnData> {
+    const user = await this.userDAO.getActiveUserByEmail(email);
+    if (!user) {
+      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
+    }
+
+    if (!user.isActive) {
+      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
+    }
+
+    const profile = await this.profileDAO.findFirst({ user: user._id });
+    const phone = profile?.settings?.phoneVerification?.verifiedPhone;
+
+    if (!phone) {
+      throw new BadRequestError({ message: t('auth.errors.phoneNotVerified') });
+    }
+
+    const result = await this.twilioService.verifyOTP(phone, otp);
+    if (!result.valid) {
+      throw new UnauthorizedError({ message: t('auth.errors.otpVerificationFailed') });
+    }
+
+    return this.completeLogin(user, rememberMe);
+  }
+
+  private async completeLogin(user: any, rememberMe: boolean): Promise<ISuccessReturnData> {
+    const connectedClients = user.cuids.filter((c: any) => c.isConnected);
 
     if (connectedClients.length === 0) {
       throw new UnauthorizedError({ message: t('auth.errors.allConnectionsDisabled') });
     }
 
-    let activeAccount = connectedClients.find((c) => c.cuid === user.activecuid);
+    let activeAccount = connectedClients.find((c: any) => c.cuid === user.activecuid);
 
     if (!activeAccount) {
       activeAccount = connectedClients[0];
@@ -455,29 +559,14 @@ export class AuthService {
     }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
 
-    if (connectedClients.length === 1) {
-      return {
-        success: true,
-        data: {
-          rememberMe,
-          refreshToken: tokens.refreshToken,
-          accessToken: tokens.accessToken,
-          activeAccount: {
-            cuid: activeAccount.cuid,
-            clientDisplayName: activeAccount.clientDisplayName,
-          },
-          accounts: [],
-        },
-        message: t('auth.success.loginSuccessful'),
-      };
-    }
-
     const otherAccounts = connectedClients
-      .filter((c) => c.cuid !== activeAccount.cuid)
-      .map((c) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
+      .filter((c: any) => c.cuid !== activeAccount.cuid)
+      .map((c: any) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
+
     return {
       success: true,
       data: {
+        step: 'authenticated',
         rememberMe,
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,

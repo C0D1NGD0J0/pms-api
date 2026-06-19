@@ -14,12 +14,12 @@ import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { IPropertyDocument, ICronJob } from '@interfaces/index';
-import { MediaUploadService, UserService } from '@services/index';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
-import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import { MediaUploadService, UserService, SMSService } from '@services/index';
+import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
+import { InvitationDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import {
   EventEmitterService,
   NotificationService,
@@ -108,8 +108,10 @@ interface IConstructor {
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
   userService: UserService;
+  smsService: SMSService;
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
+  paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -138,6 +140,8 @@ export class LeaseService {
   private readonly leaseDocumentService: LeaseDocumentService;
   private readonly leaseSignatureService: LeaseSignatureService;
   private readonly leasePdfService: LeasePdfService;
+  private readonly smsService: SMSService;
+  private readonly paymentDAO: PaymentDAO;
 
   constructor({
     boldSignService,
@@ -158,6 +162,8 @@ export class LeaseService {
     propertyDAO,
     propertyUnitDAO,
     queueFactory,
+    smsService,
+    paymentDAO,
     userDAO,
     userService,
   }: IConstructor) {
@@ -183,6 +189,8 @@ export class LeaseService {
     this.leasePdfService = leasePdfService;
     this.leaseRenewalService = leaseRenewalService;
     this.leaseSignatureService = leaseSignatureService;
+    this.smsService = smsService;
+    this.paymentDAO = paymentDAO;
     this.setupEventListeners();
   }
 
@@ -622,12 +630,16 @@ export class LeaseService {
         },
       };
 
-      response.payments = [];
+      const { items: leasePayments } = await this.paymentDAO.findByLease(
+        lease._id.toString(),
+        cuid
+      );
+      response.payments = leasePayments || [];
       response.documents = filterDocumentsByRole(lease.leaseDocuments || [], userRole);
       response.activity = constructActivityFeed(lease);
       response.timeline = buildLeaseTimeline(lease);
       response.permissions = getUserPermissions(lease, cxt.currentuser!);
-      response.financialSummary = calculateFinancialSummary(lease);
+      response.financialSummary = calculateFinancialSummary(lease, leasePayments || []);
 
       const pendingChangesPreview = generatePendingChangesPreview(lease, cxt.currentuser!);
       if (pendingChangesPreview) {
@@ -806,6 +818,16 @@ export class LeaseService {
                 error
               );
             }
+
+            // SMS notification to tenant
+            this.smsService
+              .sendToUser(
+                cuid,
+                lease.tenantId.toString(),
+                `Your lease ${lease.leaseNumber} has been updated by your property manager.`,
+                SMSMessageType.LEASE_REMINDER
+              )
+              .catch(() => {});
           }
           break;
         case LeaseStatus.DRAFT:
@@ -1179,6 +1201,16 @@ export class LeaseService {
       completedAt: new Date(),
     });
 
+    // SMS notification to tenant
+    this.smsService
+      .sendToUser(
+        cuid,
+        activatedLease.tenantId.toString(),
+        `Your lease ${activatedLease.leaseNumber || activatedLease.luid} is now active.`,
+        SMSMessageType.LEASE_REMINDER
+      )
+      .catch(() => {});
+
     return {
       success: true,
       data: activatedLease,
@@ -1299,6 +1331,13 @@ export class LeaseService {
       securityDeposit: lease.fees.securityDeposit,
       rentDueDay: lease.fees.rentDueDay,
       currency: lease.fees.currency,
+      acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
+      lateFee: {
+        amount: lease.fees.lateFeeAmount || 0,
+        type: lease.fees.lateFeeType || 'fixed',
+        percentage: lease.fees.lateFeePercentage || 0,
+        gracePeriodDays: lease.fees.lateFeeDays || 5,
+      },
 
       petPolicy: lease.petPolicy,
       renewalOptions: lease.renewalOptions,
@@ -1306,6 +1345,17 @@ export class LeaseService {
       utilitiesIncluded: lease.utilitiesIncluded,
       signingMethod: lease.signingMethod || SigningMethod.MANUAL,
       requiresNotarization: true,
+
+      managementFee:
+        lease.includeManagementFee && Number(property.fees?.managementFees ?? 0) > 0
+          ? {
+              amount: property.fees.managementFees,
+              formatted: MoneyUtils.formatCurrency(
+                property.fees.managementFees as number,
+                lease.fees.currency || 'USD'
+              ),
+            }
+          : null,
 
       ...landlordInfo,
       propertyName: property.name,

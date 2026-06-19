@@ -304,7 +304,8 @@ export class VendorSuggestionService {
           }
           const check = await this.serviceAreaService.isLocationInVendorServiceArea(
             v._id.toString(),
-            propertyCoords!
+            propertyCoords!,
+            cuid
           );
           return { vendor: v, include: check.isInRange, distance: check.distance ?? null };
         })

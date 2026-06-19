@@ -665,15 +665,16 @@ export class PaymentWebhookService {
     payment_status?: string;
   }): Promise<void> {
     const pytuid = session.metadata?.pytuid;
-    if (!pytuid) {
+    const sessionCuid = session.metadata?.cuid;
+    if (!pytuid || !sessionCuid) {
       this.log.warn(
         { sessionId: session.id },
-        'Card payment session has no pytuid metadata — skipping'
+        'Card payment session missing pytuid or cuid metadata — skipping'
       );
       return;
     }
 
-    const payment = await this.paymentDAO.findFirst({ pytuid, deletedAt: null });
+    const payment = await this.paymentDAO.findFirst({ pytuid, cuid: sessionCuid, deletedAt: null });
     if (!payment) {
       this.log.warn(
         { sessionId: session.id, pytuid },

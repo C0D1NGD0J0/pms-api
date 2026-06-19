@@ -1,4 +1,5 @@
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
 import { GeoCoderService } from '@services/external/geoCoder.service';
@@ -24,13 +25,16 @@ export class ServiceAreaService {
    */
   public async isLocationInVendorServiceArea(
     vendorId: string,
-    targetLocation: string | [number, number]
+    targetLocation: string | [number, number],
+    cuid?: string
   ): Promise<{
     isInRange: boolean;
     distance?: number;
     message: string;
   }> {
-    const vendor = await this.vendorDAO.findById(vendorId);
+    const vendor = cuid
+      ? await this.vendorDAO.findFirst({ _id: new Types.ObjectId(vendorId), cuid })
+      : await this.vendorDAO.findById(vendorId);
     if (!vendor) {
       return {
         isInRange: false,

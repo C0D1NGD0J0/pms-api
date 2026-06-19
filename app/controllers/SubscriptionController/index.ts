@@ -120,7 +120,7 @@ export class SubscriptionController {
     }
 
     const quota = await this.smsService.getQuotaStatus(cuid);
-    return res.status(200).json({ success: true, data: quota });
+    return res.status(200).json(quota);
   };
 
   getSMSLogs = async (req: AppRequest, res: Response): Promise<Response> => {
@@ -136,6 +136,6 @@ export class SubscriptionController {
     }
 
     const result = await this.smsService.getSMSHistory(cuid, req.query as any);
-    return res.status(200).json({ success: true, data: result });
+    return res.status(200).json(result);
   };
 }

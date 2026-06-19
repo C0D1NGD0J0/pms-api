@@ -124,8 +124,16 @@ export class SMSService implements ICronProvider {
     const { phoneNumber: phone } = data;
     const userId = currentUser?.sub;
 
-    const gateResult = await this.checkGates(cuid, SMSMessageType.OTP);
-    if (gateResult) return gateResult;
+    // OTP only checks the platform feature flag — NOT client toggle or plan.
+    // Phone verification is a security feature that must work regardless of
+    // whether the PM has enabled SMS notifications for tenants.
+    if (!this.featureFlagService.isEnabled(FeatureFlag.SMS)) {
+      return {
+        success: false,
+        error: 'sms_disabled',
+        message: t('common.errors.featureNotAvailable'),
+      };
+    }
 
     // Only allow verifying the phone number on the user's profile
     const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(userId) });
@@ -314,10 +322,29 @@ export class SMSService implements ICronProvider {
       };
     }
 
-    // consent check for marketing (non-transactional) SMS only
+    // For non-transactional SMS, check recipient-level gates
     if (!isTransactionalSMS(messageType) && recipientUserId) {
       const profile = await this.profileDAO.findFirst({ user: recipientUserId });
+
+      // Recipient must have a verified phone number
+      if (
+        !profile?.settings?.phoneVerification?.verified ||
+        !profile?.settings?.phoneVerification?.verifiedPhone
+      ) {
+        return {
+          success: false,
+          error: 'unverified_phone',
+          message: t('sms.errors.phoneNotVerified'),
+        };
+      }
+
+      // Recipient must have opted into SMS consent
       if (!profile?.settings?.smsConsent?.consented) {
+        return { success: false, error: 'opted_out', message: t('sms.errors.recipientOptedOut') };
+      }
+
+      // Recipient must have SMS notifications enabled in their profile
+      if (!profile?.settings?.notifications?.smsNotifications) {
         return { success: false, error: 'opted_out', message: t('sms.errors.recipientOptedOut') };
       }
     }
@@ -332,7 +359,23 @@ export class SMSService implements ICronProvider {
     const limit = this.getQuotaLimitForPlan(subscription.planName);
 
     if (limit === 0) {
-      return { success: true, used: 0, limit: 0, remaining: 0 };
+      return { success: false, used: 0, limit: 0, remaining: 0 };
+    }
+
+    // Lazy-init: if smsUsage subdoc doesn't exist on pre-existing subscriptions,
+    // initialize it before attempting the atomic increment
+    if (subscription.smsUsage?.countThisPeriod === undefined) {
+      await this.subscriptionDAO.update(
+        { cuid, smsUsage: { $exists: false } },
+        {
+          $set: {
+            'smsUsage.countThisPeriod': 0,
+            'smsUsage.periodStart': new Date(),
+            'smsUsage.notifiedAt80': false,
+            'smsUsage.notifiedAt100': false,
+          },
+        }
+      );
     }
 
     // Atomic check + increment — prevents race conditions
@@ -433,31 +476,79 @@ export class SMSService implements ICronProvider {
   }
 
   private async resetQuotasForBillingCycle(): Promise<void> {
-    const dayOfMonth = new Date().getDate();
-    this.log.info({ dayOfMonth }, 'Running SMS quota reset for billing cycle day');
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const isLastDay = dayOfMonth === lastDayOfMonth;
+
+    this.log.info({ dayOfMonth, isLastDay }, 'Running SMS quota reset for billing cycle day');
 
     try {
-      const result = await this.subscriptionDAO.updateMany(
-        {
-          status: ISubscriptionStatus.ACTIVE,
-          $expr: { $eq: [{ $dayOfMonth: '$startDate' }, dayOfMonth] },
-        },
-        {
-          $set: {
-            'smsUsage.countThisPeriod': 0,
-            'smsUsage.periodStart': new Date(),
-            'smsUsage.lastResetAt': new Date(),
-            'smsUsage.notifiedAt80': false,
-            'smsUsage.notifiedAt100': false,
-          },
-        }
-      );
+      // Match subscriptions whose start day equals today,
+      // OR if today is the last day of the month, also match subscriptions
+      // whose start day exceeds the last day (e.g. start day 31 in a 30-day month)
+      const matchFilter: Record<string, unknown> = {
+        status: ISubscriptionStatus.ACTIVE,
+      };
 
-      this.log.info({ dayOfMonth, modifiedCount: result?.modifiedCount }, 'SMS quotas reset');
+      if (isLastDay) {
+        matchFilter.$expr = {
+          $or: [
+            { $eq: [{ $dayOfMonth: '$startDate' }, dayOfMonth] },
+            { $gt: [{ $dayOfMonth: '$startDate' }, lastDayOfMonth] },
+          ],
+        };
+      } else {
+        matchFilter.$expr = { $eq: [{ $dayOfMonth: '$startDate' }, dayOfMonth] };
+      }
+
+      const result = await this.subscriptionDAO.updateMany(matchFilter, {
+        $set: {
+          'smsUsage.countThisPeriod': 0,
+          'smsUsage.periodStart': new Date(),
+          'smsUsage.lastResetAt': new Date(),
+          'smsUsage.notifiedAt80': false,
+          'smsUsage.notifiedAt100': false,
+        },
+      });
+
+      this.log.info(
+        { dayOfMonth, isLastDay, modifiedCount: result?.modifiedCount },
+        'SMS quotas reset'
+      );
     } catch (error: any) {
       this.log.error({ error }, 'Failed to reset SMS quotas');
       throw error;
     }
+  }
+
+  async handleStatusCallback(data: {
+    MessageSid: string;
+    MessageStatus: string;
+    To?: string;
+    ErrorCode?: string;
+  }): Promise<void> {
+    const { MessageSid, MessageStatus, ErrorCode } = data;
+
+    const statusMap: Record<string, SMSStatus> = {
+      queued: SMSStatus.QUEUED,
+      sent: SMSStatus.SENT,
+      delivered: SMSStatus.DELIVERED,
+      failed: SMSStatus.FAILED,
+      undelivered: SMSStatus.FAILED,
+    };
+
+    const newStatus = statusMap[MessageStatus];
+    if (!newStatus) {
+      this.log.warn({ MessageSid, MessageStatus }, 'Unknown Twilio message status');
+      return;
+    }
+
+    const updateFields: Record<string, unknown> = { status: newStatus };
+    if (ErrorCode) updateFields.errorCode = ErrorCode;
+
+    await this.smsLogDAO.updateBySid(MessageSid, updateFields);
+    this.log.info({ MessageSid, MessageStatus, newStatus }, 'SMS status updated via webhook');
   }
 
   getCronJobs(): ICronJob[] {

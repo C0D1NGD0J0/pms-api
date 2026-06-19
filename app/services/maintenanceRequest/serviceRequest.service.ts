@@ -9,12 +9,14 @@ import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { convertUserRoleToEnum } from '@utils/helpers';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { UploadResult } from '@interfaces/utils.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SMSService } from '@services/smsService/sms.service';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { assertRecordOwnership } from '@utils/authorization.utils';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
@@ -64,6 +66,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   invoiceDAO: InvoiceDAO;
   paymentDAO: PaymentDAO;
+  smsService: SMSService;
   vendorDAO: VendorDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -77,6 +80,7 @@ export class MaintenanceRequestService {
   private readonly invoiceDAO: InvoiceDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly smsService: SMSService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentDAO: PaymentDAO;
   private readonly vendorSuggestionService: VendorSuggestionService;
@@ -90,6 +94,7 @@ export class MaintenanceRequestService {
     invoiceDAO,
     paymentDAO,
     propertyDAO,
+    smsService,
     emitterService,
     propertyUnitDAO,
     maintenanceRequestDAO,
@@ -98,6 +103,7 @@ export class MaintenanceRequestService {
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.smsService = smsService;
     this.vendorDAO = vendorDAO;
     this.invoiceDAO = invoiceDAO;
     this.paymentDAO = paymentDAO;
@@ -303,6 +309,8 @@ export class MaintenanceRequestService {
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
+    let leasePetDefault = false;
+
     if (currentuser.client.role === ROLES.TENANT) {
       const activeLease = await this.leaseDAO.findFirst({
         cuid,
@@ -316,6 +324,21 @@ export class MaintenanceRequestService {
       if (!activeLease) {
         throw new ForbiddenError({ message: t('maintenance.errors.notYourUnit') });
       }
+
+      leasePetDefault = activeLease.petPolicy?.allowed ?? false;
+    } else if (data.hasPet === undefined && unit) {
+      // For employees filing on behalf of a tenant, derive pet default from the unit's active lease
+      const unitLease = await this.leaseDAO.findFirst(
+        {
+          cuid,
+          'property.id': property._id,
+          'property.unitId': unit._id,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+        },
+        { select: 'petPolicy.allowed' }
+      );
+      leasePetDefault = unitLease?.petPolicy?.allowed ?? false;
     }
 
     // Employees (staff/manager/admin) cannot create MRs on properties they personally
@@ -358,7 +381,7 @@ export class MaintenanceRequestService {
           priority: data.priority,
           locationDescription: data.locationDescription,
           permissionToEnter: data.permissionToEnter,
-          hasPet: data.hasPet,
+          hasPet: data.hasPet ?? leasePetDefault,
           status: MaintenanceRequestStatus.OPEN,
           isBillable: false,
           media: data.media || [],
@@ -799,6 +822,17 @@ export class MaintenanceRequestService {
       scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : undefined,
     });
 
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    this.smsService
+      .sendToUser(
+        cuid,
+        vendorUserId.toString(),
+        `You've been assigned to service request #${mruid}.`,
+        SMSMessageType.MAINTENANCE_UPDATE,
+        currentuser.sub
+      )
+      .catch(() => {}); // swallow — SMSService logs internally
+
     return { success: true, data: updated, message: t('maintenance.success.assigned') };
   }
 
@@ -867,6 +901,19 @@ export class MaintenanceRequestService {
       tenantId: request.tenantId?.toString(),
       vendorId: currentuser.sub,
     });
+
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          `A technician has accepted your service request #${mruid}.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
 
     return { success: true, data: updated, message: t('maintenance.success.accepted') };
   }
@@ -1097,6 +1144,19 @@ export class MaintenanceRequestService {
       invoiceDeadline: invoiceDeadline.toISOString(),
     });
 
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          `Work has been completed on your service request #${mruid}.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
+
     return { success: true, data: updated, message: t('maintenance.success.workDone') };
   }
 
@@ -1135,6 +1195,19 @@ export class MaintenanceRequestService {
       technicianId: request.assignedTechnician?.userId?.toString(),
       completedBy: currentuser.sub,
     });
+
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          `Your service request #${mruid} has been resolved.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
 
     // Auto-revert property/unit status if in maintenance and no other active SRs
     if (request.propertyId) {
@@ -1305,6 +1378,31 @@ export class MaintenanceRequestService {
       technicianId: request.assignedTechnician?.userId?.toString(),
       reason: data.reason,
     });
+
+    // Send SMS notifications (fire-and-forget — failures are logged internally)
+    const cancelMsg = `Service request #${mruid} has been cancelled.`;
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          cancelMsg,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
+    if (request.vendorId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.vendorId.toString(),
+          cancelMsg,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
 
     return { success: true, data: updated, message: t('maintenance.success.cancelled') };
   }

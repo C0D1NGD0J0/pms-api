@@ -4,11 +4,11 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { SMSLogDAO } from '@dao/smsLogDAO';
 import { ClientDAO } from '@dao/clientDAO';
-import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { TwilioService } from '@services/external';
 import { NotFoundError } from '@shared/customErrors';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { calcPercentage, createLogger } from '@utils/index';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { NotificationMessageKey } from '@services/notification';
@@ -267,7 +267,7 @@ export class SMSService implements ICronProvider {
       limit,
       quotaUsed: used,
       remainingQuota: Math.max(0, limit - used),
-      percentUsed: limit > 0 ? Math.round((used / limit) * 100) : 0,
+      percentUsed: calcPercentage(used, limit),
       resetDate: subscription.smsUsage?.periodStart || subscription.startDate,
     };
 
@@ -404,15 +404,15 @@ export class SMSService implements ICronProvider {
 
   private async checkThresholds(cuid: string, used: number, limit: number): Promise<void> {
     if (limit === 0) return;
-    const pct = (used / limit) * 100;
+    const percentUsed = calcPercentage(used, limit);
 
-    if (pct >= 100) {
+    if (percentUsed >= 100) {
       const updated = await this.subscriptionDAO.update(
         { cuid, 'smsUsage.notifiedAt100': false },
         { $set: { 'smsUsage.notifiedAt100': true } }
       );
       if (updated) await this.notifyAccountAdmin(cuid, 'sms.quotaExhausted', { used, limit });
-    } else if (pct >= 80) {
+    } else if (percentUsed >= 80) {
       const updated = await this.subscriptionDAO.update(
         { cuid, 'smsUsage.notifiedAt80': false },
         { $set: { 'smsUsage.notifiedAt80': true } }
@@ -421,7 +421,7 @@ export class SMSService implements ICronProvider {
         await this.notifyAccountAdmin(cuid, 'sms.quotaWarning', {
           used,
           limit,
-          percentUsed: Math.round(pct),
+          percentUsed,
         });
     }
   }

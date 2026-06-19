@@ -36,10 +36,14 @@ export class TwilioService {
    */
   async sendSMS(to: string, body: string): Promise<{ sid: string; status: string }> {
     try {
+      const apiBaseUrl = process.env.API_BASE_URL;
+      const statusCallback = apiBaseUrl ? `${apiBaseUrl}/api/v1/webhooks/twilio/status` : undefined;
+
       const message = await this.client.messages.create({
         messagingServiceSid: this.messagingServiceSid,
         to,
         body,
+        ...(statusCallback && { statusCallback }),
       });
 
       this.log.info({ sid: message.sid, to }, 'SMS sent successfully');

@@ -45,6 +45,18 @@ export class SMSLogDAO extends BaseDAO<ISMSLogDocument> implements ISMSLogDAO {
     }
   }
 
+  async updateBySid(
+    twilioSid: string,
+    updateFields: Record<string, unknown>
+  ): Promise<ISMSLogDocument | null> {
+    try {
+      return await this.update({ twilioSid } as any, { $set: updateFields });
+    } catch (error: any) {
+      this.log.error({ error, twilioSid }, 'Error updating SMS log by SID');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
   async getUsageByType(cuid: string, from: Date, to: Date): Promise<Record<string, number>> {
     try {
       const result = (await this.aggregate([

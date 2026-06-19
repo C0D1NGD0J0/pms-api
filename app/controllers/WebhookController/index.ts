@@ -4,6 +4,7 @@ import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { IdempotencyCache } from '@caching/index';
 import { LeaseService } from '@services/lease/lease.service';
+import { SMSService } from '@services/smsService/sms.service';
 import { ClientService } from '@services/client/client.service';
 import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
@@ -21,6 +22,7 @@ interface IConstructor {
   stripeService: StripeService;
   clientService: ClientService;
   leaseService: LeaseService;
+  smsService: SMSService;
 }
 
 export class WebhookController {
@@ -32,6 +34,7 @@ export class WebhookController {
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
   private maintenanceInvoiceService: MaintenanceInvoiceService;
+  private smsService: SMSService;
   private log: Logger;
 
   constructor({
@@ -43,6 +46,7 @@ export class WebhookController {
     clientService,
     idempotencyCache,
     maintenanceInvoiceService,
+    smsService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
@@ -52,6 +56,7 @@ export class WebhookController {
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
     this.maintenanceInvoiceService = maintenanceInvoiceService;
+    this.smsService = smsService;
     this.log = createLogger('WebhookController');
   }
 
@@ -362,5 +367,48 @@ export class WebhookController {
       .catch((err: unknown) => {
         this.log.error('[WebhookController] invoice webhook processing error', err);
       });
+  };
+
+  /**
+   * Twilio SMS status callback + Verify webhook
+   * Handles: SMS delivery status updates (sent → delivered/failed)
+   * and Verify events (factor.verified)
+   */
+  handleTwilioWebhook = async (req: Request, res: Response): Promise<void> => {
+    const body = req.body;
+
+    // SMS delivery status callback (from Twilio Messaging)
+    if (body.MessageSid && body.MessageStatus) {
+      this.log.info(
+        { sid: body.MessageSid, status: body.MessageStatus },
+        'Twilio SMS status callback received'
+      );
+
+      this.smsService
+        .handleStatusCallback({
+          MessageSid: body.MessageSid,
+          MessageStatus: body.MessageStatus,
+          To: body.To,
+          ErrorCode: body.ErrorCode,
+        })
+        .catch((err: unknown) => {
+          this.log.error({ err, sid: body.MessageSid }, 'Error processing Twilio status callback');
+        });
+
+      res.status(204).send();
+      return;
+    }
+
+    // Twilio Verify webhook (factor.verified etc.)
+    if (body.type && body.type === 'factor.verified') {
+      this.log.info({ type: body.type }, 'Twilio Verify webhook received');
+      // Verification is already handled synchronously via confirmOTP
+      // This webhook is a backup confirmation — no action needed
+      res.status(204).send();
+      return;
+    }
+
+    this.log.warn({ body }, 'Unknown Twilio webhook event');
+    res.status(200).send();
   };
 }

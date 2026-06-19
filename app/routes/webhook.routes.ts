@@ -54,4 +54,16 @@ router.post(
   })
 );
 
+/**
+ * Twilio webhooks (SMS delivery status + Verify events)
+ * No signature verification — Twilio sends form-encoded POST data
+ */
+router.post(
+  '/twilio/status',
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<WebhookController>('webhookController');
+    return controller.handleTwilioWebhook(req, res);
+  })
+);
+
 export default router;

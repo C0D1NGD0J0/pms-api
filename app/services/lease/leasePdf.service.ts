@@ -294,6 +294,13 @@ export class LeasePdfService {
       securityDeposit: lease.fees.securityDeposit,
       rentDueDay: lease.fees.rentDueDay,
       currency: lease.fees.currency,
+      acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
+      lateFee: {
+        amount: lease.fees.lateFeeAmount || 0,
+        type: lease.fees.lateFeeType || 'fixed',
+        percentage: lease.fees.lateFeePercentage || 0,
+        gracePeriodDays: lease.fees.lateFeeDays || 5,
+      },
 
       petPolicy: lease.petPolicy,
       renewalOptions: lease.renewalOptions,
@@ -308,7 +315,7 @@ export class LeasePdfService {
               amount: property.fees.managementFees,
               formatted: MoneyUtils.formatCurrency(
                 property.fees.managementFees as number,
-                (property.fees.currency as string) || 'USD'
+                lease.fees.currency || 'USD'
               ),
             }
           : null,

@@ -102,6 +102,7 @@ beforeEach(() => {
     invoiceDAO: mockInvoiceDAO,
     emitterService: mockEmitter,
     vendorDAO: mockVendorDAO,
+    smsService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })) } as any,
     clientDAO: { getClientByCuid: jest.fn().mockResolvedValue({ settings: { defaultCurrency: 'USD' } }) } as any,
   });
 });

@@ -134,6 +134,9 @@ beforeEach(() => {
       reviewWorkOrder: jest.fn(),
       handleInvoiceWebhook: jest.fn(),
     } as any,
+    smsService: {
+      sendSMS: jest.fn(),
+    } as any,
   });
 });
 
@@ -269,6 +272,83 @@ describe('MaintenanceRequestService - createRequest guards', () => {
     await expect(service.createRequest(ctx as IRequestContext, baseData)).rejects.toThrow(
       ForbiddenError
     );
+  });
+});
+
+// ===========================================================================
+// 2b. createRequest — hasPet defaults from lease petPolicy
+// ===========================================================================
+
+describe('MaintenanceRequestService - createRequest hasPet lease default', () => {
+  const propertyId = new Types.ObjectId();
+  const unitId = new Types.ObjectId();
+  const tenantSub = new Types.ObjectId().toString();
+
+  const baseData = {
+    pid: 'PROP001',
+    puid: 'UNIT001',
+    title: 'Leaky faucet',
+    description: { text: 'Water is dripping.' },
+    category: 'plumbing' as any,
+    priority: 'medium' as any,
+    permissionToEnter: true,
+    media: [],
+  };
+
+  function setupMocks(petPolicyAllowed: boolean) {
+    mockPropertyDAO.findFirst.mockResolvedValue({
+      _id: propertyId,
+      approvalStatus: 'approved',
+      operationalStatus: 'active',
+    });
+    mockPropertyUnitDAO.findFirst.mockResolvedValue({
+      _id: unitId,
+      isActive: true,
+    });
+    // leaseDAO.findFirst is called twice for tenants:
+    // 1) any active lease check (line ~268)
+    // 2) property-specific lease check (line ~307)
+    const leaseDoc = { _id: new Types.ObjectId(), petPolicy: { allowed: petPolicyAllowed } };
+    mockLeaseDAO.findFirst.mockResolvedValue(leaseDoc);
+    mockDAO.insert.mockImplementation((data: any) => Promise.resolve({ ...data, _id: new Types.ObjectId(), mruid: 'MR-NEW' }));
+  }
+
+  it('should default hasPet to true when lease petPolicy.allowed is true and hasPet not provided', async () => {
+    setupMocks(true);
+    const ctx = makeCtx('tenant', tenantSub);
+    const { hasPet: _hp, ...dataWithoutHasPet } = baseData as any;
+    await service.createRequest(ctx as IRequestContext, dataWithoutHasPet);
+
+    const insertCall = mockDAO.insert.mock.calls[0][0];
+    expect(insertCall.hasPet).toBe(true);
+  });
+
+  it('should default hasPet to false when lease petPolicy.allowed is false and hasPet not provided', async () => {
+    setupMocks(false);
+    const ctx = makeCtx('tenant', tenantSub);
+    const { hasPet: _hp, ...dataWithoutHasPet } = baseData as any;
+    await service.createRequest(ctx as IRequestContext, dataWithoutHasPet);
+
+    const insertCall = mockDAO.insert.mock.calls[0][0];
+    expect(insertCall.hasPet).toBe(false);
+  });
+
+  it('should respect explicit hasPet=false even when lease petPolicy.allowed is true', async () => {
+    setupMocks(true);
+    const ctx = makeCtx('tenant', tenantSub);
+    await service.createRequest(ctx as IRequestContext, { ...baseData, hasPet: false });
+
+    const insertCall = mockDAO.insert.mock.calls[0][0];
+    expect(insertCall.hasPet).toBe(false);
+  });
+
+  it('should respect explicit hasPet=true even when lease petPolicy.allowed is false', async () => {
+    setupMocks(false);
+    const ctx = makeCtx('tenant', tenantSub);
+    await service.createRequest(ctx as IRequestContext, { ...baseData, hasPet: true });
+
+    const insertCall = mockDAO.insert.mock.calls[0][0];
+    expect(insertCall.hasPet).toBe(true);
   });
 });
 

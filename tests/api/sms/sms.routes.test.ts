@@ -95,10 +95,10 @@ const mockSubscriptionController = {
 const mockContainer = {
   resolve: jest.fn((service: string) => {
     switch (service) {
-      case 'userController':
-        return mockUserController;
       case 'subscriptionController':
         return mockSubscriptionController;
+      case 'userController':
+        return mockUserController;
       default:
         return {};
     }

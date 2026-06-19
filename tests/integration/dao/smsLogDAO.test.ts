@@ -6,9 +6,9 @@
  */
 
 import { Types } from 'mongoose';
-import { clearTestDatabase } from '@tests/helpers';
-import { SMSLogDAO } from '@dao/smsLogDAO';
 import { SMSLog } from '@models/index';
+import { SMSLogDAO } from '@dao/smsLogDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import { SMSMessageType, SMSStatus } from '@interfaces/index';
 
 describe('SMSLogDAO Integration Tests', () => {

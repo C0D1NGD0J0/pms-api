@@ -84,19 +84,6 @@ export interface IPaymentDAO {
   ): Promise<IPaymentDocument | null>;
 
   /**
-   * Find payments by lease
-   * @param leaseId - Lease ID
-   * @param cuid - Client ID
-   * @param opts - Additional query options
-   * @returns Paginated list of lease payments
-   */
-  findByLease(
-    leaseId: string,
-    cuid: string,
-    opts?: IFindOptions
-  ): ListResultWithPagination<IPaymentDocument[]>;
-
-  /**
    * Find by gateway payment ID (Stripe invoice ID)
    * Used for webhook processing to locate payment by external ID
    * @param gatewayPaymentId - Stripe invoice ID or other gateway ID
@@ -109,6 +96,19 @@ export interface IPaymentDAO {
     cuid: string,
     opts?: IFindOptions
   ): Promise<IPaymentDocument | null>;
+
+  /**
+   * Find payments by lease
+   * @param leaseId - Lease ID
+   * @param cuid - Client ID
+   * @param opts - Additional query options
+   * @returns Paginated list of lease payments
+   */
+  findByLease(
+    leaseId: string,
+    cuid: string,
+    opts?: IFindOptions
+  ): ListResultWithPagination<IPaymentDocument[]>;
 
   /**
    * Find payment by pid (multi-tenant safe)

@@ -73,6 +73,40 @@ export class SMSService implements ICronProvider {
     this.clientDAO = clientDAO;
   }
 
+  /**
+   * Convenience method — looks up user's phone from profile and sends SMS.
+   * Consuming services call this instead of sendSMS() directly.
+   * Silently returns on failure (SMS should never block business logic).
+   */
+  async sendToUser(
+    cuid: string,
+    userId: string,
+    body: string,
+    messageType: SMSMessageType,
+    sentBy?: string
+  ): Promise<ISendSMSResult> {
+    try {
+      const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(userId) });
+      const phone = profile?.personalInfo?.phoneNumber;
+      if (!phone) {
+        this.log.debug({ userId }, 'No phone number on profile — skipping SMS');
+        return { success: false, error: 'unverified_phone' };
+      }
+
+      return this.sendSMS({
+        cuid,
+        to: phone,
+        body,
+        messageType,
+        recipientUserId: userId,
+        sentBy,
+      });
+    } catch (error: any) {
+      this.log.error({ error, userId, cuid }, 'sendToUser failed — SMS skipped');
+      return { success: false, error: 'delivery_failed' };
+    }
+  }
+
   async sendSMS(input: ISendSMSInput): Promise<ISendSMSResult> {
     const { cuid, to, body, messageType, recipientUserId, sentBy } = input;
 

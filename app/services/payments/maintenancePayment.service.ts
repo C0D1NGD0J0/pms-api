@@ -7,6 +7,7 @@ import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { PlanName } from '@interfaces/subscription.interface';
+import { SMSService } from '@services/smsService/sms.service';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
@@ -28,6 +29,7 @@ import {
   ISubscriptionStatus,
   PaymentRecordType,
   IPaymentDocument,
+  SMSMessageType,
   PaymentMethod,
 } from '@interfaces/index';
 
@@ -37,6 +39,7 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  smsService: SMSService;
   invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
@@ -57,6 +60,7 @@ export class MaintenancePaymentService {
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly smsService: SMSService;
   private readonly vendorDAO: VendorDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly userDAO: UserDAO;
@@ -67,6 +71,7 @@ export class MaintenancePaymentService {
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
+    smsService,
     invoiceDAO,
     profileDAO,
     paymentDAO,
@@ -84,6 +89,7 @@ export class MaintenancePaymentService {
     this.invoiceDAO = invoiceDAO;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
+    this.smsService = smsService;
     this.clientDAO = clientDAO;
     this.vendorDAO = vendorDAO;
     this.leaseDAO = leaseDAO;
@@ -357,6 +363,16 @@ export class MaintenancePaymentService {
         mruid,
         cuid,
       });
+
+      // SMS notification to vendor
+      this.smsService
+        .sendToUser(
+          cuid,
+          vendorUser._id.toString(),
+          `A payout has been initiated for service request #${mruid}.`,
+          SMSMessageType.SYSTEM
+        )
+        .catch(() => {});
 
       this.log.info(
         { mruid, invuid: invoice.invuid, transferId: transferResult.data.transferId, cuid },

@@ -5,6 +5,7 @@ import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SMSService } from '@services/smsService/sms.service';
 import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
@@ -16,6 +17,7 @@ import {
   PaymentRecordStatus,
   PaymentRecordType,
   IPaymentDocument,
+  SMSMessageType,
   PaymentMethod,
 } from '@interfaces/index';
 
@@ -47,6 +49,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   stripeService: StripeService;
+  smsService: SMSService;
   invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
@@ -96,6 +99,7 @@ export class PaymentWebhookService {
   private readonly emitterService: EventEmitterService;
   private readonly stripeService: StripeService;
   private readonly invoiceDAO: InvoiceDAO;
+  private readonly smsService: SMSService;
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
 
@@ -105,6 +109,7 @@ export class PaymentWebhookService {
     subscriptionDAO,
     emitterService,
     stripeService,
+    smsService,
     invoiceDAO,
     profileDAO,
     paymentDAO,
@@ -115,6 +120,7 @@ export class PaymentWebhookService {
     this.subscriptionDAO = subscriptionDAO;
     this.emitterService = emitterService;
     this.stripeService = stripeService;
+    this.smsService = smsService;
     this.invoiceDAO = invoiceDAO;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
@@ -193,6 +199,18 @@ export class PaymentWebhookService {
         receiptUrl: hostedInvoiceUrl ?? undefined,
         paymentType: payment.paymentType,
       });
+
+      // SMS notification to tenant
+      if (tenantUserId) {
+        this.smsService
+          .sendToUser(
+            payment.cuid,
+            tenantUserId,
+            `Payment of $${(payment.baseAmount / 100).toFixed(2)} received successfully.`,
+            SMSMessageType.SYSTEM
+          )
+          .catch(() => {});
+      }
 
       await this.markMaintenanceChargePaid(
         payment,
@@ -347,6 +365,18 @@ export class PaymentWebhookService {
         tenantId: payment.tenant?.toString(),
         hostedInvoiceUrl: invoiceData.hosted_invoice_url ?? payment.receipt?.url,
       });
+
+      // SMS notification to tenant
+      if (payment.tenant) {
+        this.smsService
+          .sendToUser(
+            payment.cuid,
+            payment.tenant.toString(),
+            'Your payment could not be processed. Please check your payment method.',
+            SMSMessageType.SYSTEM
+          )
+          .catch(() => {});
+      }
 
       return { success: true, data: undefined, message: 'Payment marked as failed' };
     } catch (error: any) {

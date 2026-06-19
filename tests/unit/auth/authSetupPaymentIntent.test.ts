@@ -105,6 +105,8 @@ const makeService = (overrides: Record<string, any> = {}) =>
     vendorService: {} as any,
     subscriptionService: {} as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+    twilioService: {} as any,
+    featureFlagService: { isEnabled: jest.fn().mockReturnValue(false) } as any,
   });
 
 // ═════════════════════════════════════════════════════════════════════════════

@@ -7,8 +7,6 @@
       "authenticationRequired": "Authentification requise",
       "invalidAuthToken": "Jeton d'authentification invalide",
       "accountVerificationPending": "Vérification de compte en attente",
-      "userNotFound": "Utilisateur introuvable",
-      "clientNotFound": "Client introuvable",
       "noAccessToClient": "L'utilisateur n'a pas accès à ce client",
       "userNotCreated": "Utilisateur non créé",
       "emailPasswordRequired": "Email et mot de passe sont requis.",
@@ -29,7 +27,6 @@
       "invalidTokenType": "Type de jeton invalide",
       "allConnectionsDisabled": "Toutes les connexions utilisateur sont désactivées",
       "connectionInactive": "La connexion utilisateur est inactive",
-      "insufficientPermissions": "Permissions insuffisantes pour effectuer cette action",
       "permissionCheckFailed": "Vérification des permissions échouée",
       "connectionCheckFailed": "Vérification de la connexion échouée",
       "adminRequired": "Privilèges administrateur requis",
@@ -39,7 +36,16 @@
       "featureNotEntitled": "Cette fonctionnalité n'est pas disponible dans votre plan d'abonnement actuel. Veuillez mettre à niveau pour y accéder.",
       "clientNotVerified": "Votre compte doit être vérifié avant d'effectuer cette action. Veuillez compléter la vérification du compte.",
       "superAdminRequired": "Des privilèges de super administrateur sont requis pour effectuer cette action",
-      "subscriptionInactive": "Votre abonnement n'est pas actif. Veuillez renouveler votre plan pour continuer."
+      "subscriptionInactive": "Votre abonnement n'est pas actif. Veuillez renouveler votre plan pour continuer.",
+      "unsupportedCountry": "[FR] We're not yet available in {{country}}. Our payment processor does not support this country. Please contact support if you believe this is an error.",
+      "subscriptionCreationFailed": "[FR] Encountered an error while creating subscription",
+      "tenantOnlyPaymentSetup": "[FR] Only tenants can set up a payment method.",
+      "tenantOnlyViewPaymentMethods": "[FR] Only tenants can view payment methods.",
+      "tenantOnlyRemovePaymentMethods": "[FR] Only tenants can remove payment methods.",
+      "noPaymentMethodOnFile": "[FR] No payment method on file.",
+      "mustKeepOnePaymentMethod": "[FR] You must keep at least one payment method on file.",
+      "noPaymentMethodForManager": "[FR] No payment method found for this property manager.",
+      "tenantOnlyFirstPayment": "[FR] Only tenants can initiate a first payment."
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -79,47 +85,35 @@
   },
   "client": {
     "errors": {
-      "notFound": "Client introuvable",
-      "insufficientPermissions": "Permissions insuffisantes pour effectuer cette action",
       "idNumberRequired": "Numéro d'identification requis lors de la mise à jour du type d'identification",
       "issuingAuthorityRequired": "Autorité d'émission requise lors de la mise à jour du type d'identification",
       "idTypeRequired": "Type d'identification requis lors de la mise à jour du numéro d'identification",
       "invalidCompanyEmail": "Format d'email de l'entreprise invalide",
       "displayNameEmpty": "Le nom d'affichage ne peut pas être vide",
-      "validationFailed": "La validation a échoué",
       "updateFailed": "Échec de la mise à jour du profil client",
       "unableToFetch": "Impossible de récupérer les détails du client.",
-      "detailsNotFound": "Détails du client introuvables.",
       "invalidRole": "Rôle spécifié invalide",
-      "userNotFound": "Utilisateur introuvable",
       "userNotInClient": "L'utilisateur n'est pas connecté à ce client",
       "userAlreadyHasRole": "L'utilisateur a déjà le rôle {{role}}",
       "cannotRemoveLastAdmin": "Impossible de supprimer le rôle administrateur du dernier administrateur",
       "cannotDisconnectLastAdmin": "Impossible de déconnecter le dernier administrateur",
       "roleNotFound": "L'utilisateur ne possède pas le rôle spécifié",
       "cannotDeleteAccountOwner": "Impossible de supprimer le propriétaire du compte. Veuillez transférer la propriété à un autre administrateur ou fermer votre compte.",
-      "clientIdRequired": "ID client requis",
       "identitySessionFailed": "Échec de l'initiation de la vérification d'identité. Veuillez réessayer.",
       "identityNotVerified": "La vérification d'identité via Stripe n'a pas été complétée. Veuillez compléter la vérification avant d'approuver.",
       "alreadyVerified": "Ce compte est déjà vérifié.",
-      "verificationRequired": "La vérification du compte est requise pour effectuer cette action. Veuillez compléter la vérification d'identité."
+      "verificationRequired": "La vérification du compte est requise pour effectuer cette action. Veuillez compléter la vérification d'identité.",
+      "enterpriseProfileIncomplete": "[FR] Enterprise clients must have complete company profile information.",
+      "mustHaveAtLeastOneRole": "[FR] User must have at least one role.",
+      "invalidDepartment": "[FR] Invalid department value.",
+      "departmentEmployeeOnly": "[FR] Departments can only be assigned to employee roles.",
+      "verificationFailed": "[FR] Failed to verify account.",
+      "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided."
     },
     "success": {
-      "profileUpdated": "Profil client mis à jour avec succès",
-      "detailsUpdated": "Détails du client mis à jour avec succès",
-      "userRetrieved": "Informations utilisateur récupérées avec succès",
-      "userStatsRetrieved": "Statistiques utilisateur récupérées avec succès",
-      "tenantsRetrieved": "Locataires récupérés avec succès",
-      "retrieved": "Détails du client récupérés avec succès",
       "roleAssigned": "Rôle {{role}} assigné avec succès",
       "roleRemoved": "Rôle {{role}} supprimé avec succès",
-      "rolesRetrieved": "Rôles utilisateur récupérés avec succès",
-      "userDisconnected": "Utilisateur déconnecté avec succès",
-      "userReconnected": "Utilisateur reconnecté avec succès",
-      "usersRetrieved": "Utilisateurs du client récupérés avec succès",
-      "filteredUsersRetrieved": "Utilisateurs récupérés avec succès",
-      "verified": "Compte vérifié avec succès",
-      "updated": "Client mis à jour avec succès"
+      "departmentAssigned": "[FR] Department '{{department}}' assigned successfully"
     },
     "logging": {
       "validationCompleted": "Validation client terminée"
@@ -135,10 +129,7 @@
     "errors": {
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
       "invalidFormType": "Type de formulaire invalide: {{formType}}",
-      "validationFailed": "La validation de la propriété a échoué. Veuillez corriger les erreurs et réessayer.",
-      "unableToAddProperty": "Impossible d'ajouter une propriété à ce compte.",
       "duplicateAddress": "Une propriété avec cette adresse existe déjà pour ce client",
-      "unableToCreateProperty": "Impossible de créer la propriété.",
       "minUnitsRequired": "Les propriétés {{propertyType}} nécessitent au moins {{minUnits}} unités",
       "noBedroomsForCommercial": "Les propriétés commerciales ne doivent pas avoir de chambres définies au niveau de la propriété",
       "commercialMinArea": "Les propriétés commerciales doivent avoir au moins 200 pieds carrés de superficie totale",
@@ -147,30 +138,19 @@
       "occupiedRentalRequired": "Les propriétés occupées doivent avoir un montant de loyer valide",
       "businessRuleValidationFailed": "La validation des règles métier du type de propriété a échoué",
       "noCsvFilePath": "Aucun chemin de fichier CSV fourni",
-      "propertyIdRequired": "ID de propriété requis.",
-      "uploadResultRequired": "Résultat de téléchargement requis.",
-      "propertyNotFound": "Impossible de trouver la propriété du client.",
-      "unableToUpdateProperty": "Impossible de mettre à jour la propriété.",
       "fileSizeTooLarge": "Taille de fichier trop importante pour le traitement.",
-      "clientIdRequired": "ID client requis.",
       "unableToGetProperties": "Impossible d'obtenir les propriétés pour ce compte.",
       "clientIdAndPropertyIdRequired": "ID client et ID propriété requis.",
       "updateValidationFailed": "La validation de mise à jour a échoué. Veuillez corriger les erreurs et réessayer.",
       "occupiedPropertiesMustHaveRental": "Les propriétés occupées doivent avoir un montant de loyer",
       "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
       "occupancyStatusValidationFailed": "La validation du changement de statut d'occupation a échoué",
-      "unableToArchiveProperty": "Impossible d'archiver la propriété.",
       "csvFilePathMissing": "Chemin de fichier CSV manquant",
       "csvValidationFailed": "Impossible de valider le csv pour ce compte."
     },
     "success": {
-      "propertyCreated": "Propriété créée avec succès.",
       "csvImportStarted": "Tâche d'importation CSV démarrée",
-      "propertyUpdated": "Propriété mise à jour avec succès",
-      "csvValidationStarted": "Processus de validation CSV démarré.",
-      "propertyArchived": "Propriété archivée avec succès",
-      "assignableUsersRetrieved": "Utilisateurs assignables récupérés avec succès",
-      "propertiesRetrieved": "Propriétés récupérées avec succès"
+      "csvValidationStarted": "Processus de validation CSV démarré."
     }
   },
   "propertyUnit": {
@@ -190,7 +170,6 @@
       "securityDepositMustBeNonNegative": "Le dépôt de garantie doit être un nombre non négatif",
       "cannotSetOccupiedWhenProperty": "Impossible de définir l'unité comme occupée lorsque la propriété est {{status}}",
       "occupiedUnitsMustHaveRental": "Les unités occupées doivent avoir un montant de loyer",
-      "validationFailed": "La validation a échoué",
       "documentDeletionNotImplemented": "La fonctionnalité de suppression de document doit être implémentée",
       "maxCapacityReached": "Impossible d'ajouter des unités à la propriété, capacité maximale atteinte.",
       "exceedsLimit": "Impossible d'ajouter {{count}} unités. La propriété a {{current}}/{{max}} unités (y compris archivées). L'ajout de ces unités dépasserait la limite.",
@@ -200,9 +179,6 @@
       "unitSuggestion": "Numéro d'unité suggéré: {{suggestion}}"
     },
     "success": {
-      "unitRetrieved": "Unité récupérée avec succès.",
-      "unitsRetrieved": "Unités récupérées avec succès.",
-      "unitUpdated": "Unité mise à jour avec succès",
       "unitCreationQueued": "Tâche de création d'unité mise en file d'attente avec succès",
       "unitsCreated": "{{created}} unités créées avec succès, {{failed}} ont échoué",
       "allUnitsCreated": "Toutes les {{count}} unités créées avec succès",
@@ -225,14 +201,10 @@
       "invalidUrl": "URL invalide fournie.",
       "companyNameRequired": "Nom de l'entreprise requis",
       "invalidCompanyEmail": "Email de l'entreprise invalide",
-      "legalEntityNameRequired": "Nom de l'entité légale requis",
       "companyAddressRequired": "Adresse de l'entreprise requise",
       "companyPhoneRequired": "Numéro de téléphone de l'entreprise requis",
       "contactPersonRequired": "Personne de contact requise",
       "businessRegNumberRequired": "Numéro d'enregistrement commercial requis",
-      "idNumberRequired": "Numéro d'identification requis",
-      "issuingAuthorityRequired": "Autorité d'émission requise",
-      "issuingStateRequired": "État d'émission requis",
       "companyProfileRequired": "Profil de l'entreprise requis pour les comptes professionnels",
       "invalidEmergencyEmail": "Email de contact d'urgence invalide",
       "invalidToken": "Jeton invalide fourni",
@@ -313,17 +285,10 @@
     },
     "propertyUnit": {
       "invalidUnitId": "ID d'unité invalide",
-      "totalAreaPositive": "La superficie totale doit être un nombre positif",
       "roomsNonNegative": "Les pièces doivent être un entier non négatif",
-      "bathroomsNonNegative": "Les salles de bain doivent être un nombre non négatif",
-      "maxOccupantsMinOne": "Le nombre maximum d'occupants doit être au moins 1",
       "rentNonNegative": "Le montant du loyer doit être un nombre non négatif",
-      "securityDepositNonNegative": "Le dépôt de garantie doit être un nombre non négatif",
       "invalidPhotoUrl": "Format d'URL invalide pour la photo",
-      "invalidDocumentUrl": "Format d'URL invalide pour le document",
       "invalidExternalUrl": "Format d'URL externe invalide",
-      "descriptionMaxLength": "La description doit contenir au maximum 150 caractères",
-      "documentNameMaxLength": "Le nom du document doit contenir au maximum 100 caractères",
       "invalidAttachmentUrl": "Format d'URL invalide pour la pièce jointe",
       "unitNumberRequired": "Le numéro d'unité ne doit pas être vide",
       "unitNumberMaxLength": "Le numéro d'unité doit contenir au maximum 20 caractères",
@@ -365,36 +330,93 @@
       "managerEmailValidationError": "Erreur lors de la validation de l'email du gestionnaire: {{error}}"
     }
   },
+  "unitNumbering": {
+    "suggestions": {
+      "suggestedPattern": "Utilisation du numéro suggéré avec le modèle {{pattern}}",
+      "startingNewPattern": "Démarrage d'un nouveau modèle {{pattern}}",
+      "followingAlphabetic": "Suivi du modèle alphabétique pour l'étage {{floor}}",
+      "followingBuildingUnit": "Suivi du modèle bâtiment-unité pour le bâtiment {{building}}",
+      "followingFloorBased": "Suivi du modèle de numérotation basé sur l'étage",
+      "followingSequential": "Suivi du modèle de numérotation séquentielle",
+      "followingWingUnit": "Suivi du modèle aile-unité pour l'aile {{wing}}",
+      "followingCustom": "Suivi du modèle personnalisé avec le préfixe \"{{prefix}}\"",
+      "followingSuite": "Suivi du modèle de numérotation de suite"
+    },
+    "errors": {
+      "unitNumberSuggestsWrongFloor": "Le numéro d'unité \"{{unitNumber}}\" suggère l'étage {{expectedFloor}} ({{patternName}}), mais l'étage {{floor}} est sélectionné.",
+      "noUnitsToValidate": "Aucune unité à valider",
+      "mixedPatternsDetected": "Modèles mixtes détectés: {{patterns}}. Envisagez de standardiser à un modèle.",
+      "unitNumberAlreadyExists": "Le numéro d'unité \"{{unitNumber}}\" existe déjà"
+    },
+    "success": {
+      "allUnitsFollowPattern": "Toutes les unités suivent le modèle {{pattern}}",
+      "unitNumberValid": "Le numéro d'unité est valide"
+    }
+  },
   "email": {
-    "accountUpdate": {
+    "common": {
       "greeting": "Bonjour {{fullname}},",
+      "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:"
+    },
+    "accountUpdate": {
       "message": "Cet email vous informe que votre compte a été récemment mis à jour le {{updatedAt}}. Si vous pensez que cette mise à jour n'a pas été effectuée par vous, veuillez contacter le support client.",
       "supportText": "email du support client: Support client"
     },
     "forgotPassword": {
       "subject": "Réinitialisez votre mot de passe",
-      "greeting": "Bonjour {{fullname}},",
       "message": "Nous avons reçu une demande de réinitialisation de votre mot de passe. Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe pour votre compte PropertyDesk.",
       "buttonText": "Réinitialiser le mot de passe",
-      "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:",
       "expiryText": "Ce lien expirera dans 1 heure. Si vous n'avez pas demandé de réinitialisation de mot de passe, veuillez ignorer cet email."
     },
     "registration": {
       "subject": "Activez votre compte",
-      "greeting": "Bonjour {{fullname}},",
       "message": "Bienvenue chez PropertyDesk! Pour terminer la configuration de votre compte, veuillez cliquer sur le bouton ci-dessous pour activer votre compte.",
       "buttonText": "Activer le compte",
-      "alternativeText": "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur:",
       "expiryText": "Ce lien expirera dans 2 heures. Si vous n'avez pas créé de compte, veuillez ignorer cet email."
     },
     "resetPassword": {
-      "greeting": "Bonjour {{fullname}},",
       "message": "Votre mot de passe a été mis à jour avec succès pour votre compte.",
       "warningText": "Si vous n'avez pas initié cette demande, veuillez contacter le service client de toute urgence."
     },
     "invitation": {
       "subject": "Vous avez été invité à rejoindre {{companyName}}",
       "reminderSubject": "Rappel: Vous avez été invité à rejoindre {{companyName}}"
+    },
+    "accountDisconnected": {
+      "subject": "[FR] Your Account Connection Has Been Removed"
+    }
+  },
+  "system": {
+    "errors": {
+      "unexpectedError": "Une erreur inattendue s'est produite",
+      "internalServerError": "Erreur interne du serveur"
+    }
+  },
+  "propertyValidation": {
+    "errors": {
+      "fieldRequired": "{{fieldName}} est requis",
+      "fieldMustBeNumber": "{{fieldName}} doit être un nombre valide",
+      "fieldMinimum": "{{fieldName}} doit être au moins {{min}}",
+      "fieldMaximum": "{{fieldName}} ne peut pas dépasser {{max}}",
+      "fieldCannotBeNegative": "{{fieldName}} ne peut pas être négatif",
+      "fieldMustBeValidDate": "{{fieldName}} doit être une date valide",
+      "fieldCannotBeFuture": "{{fieldName}} ne peut pas être dans le futur",
+      "fieldCannotBeBefore": "{{fieldName}} ne peut pas être avant {{date}}",
+      "fieldCannotBeAfter": "{{fieldName}} ne peut pas être après {{date}}",
+      "fieldRequiredForPropertyType": "{{fieldName}} est requis pour les propriétés {{propertyType}}",
+      "fieldMustBeWholeNumber": "{{fieldName}} doit être un nombre entier",
+      "propertyNameMinLength": "Le nom de la propriété doit contenir au moins 3 caractères",
+      "propertyAddressMinLength": "L'adresse de la propriété doit contenir au moins 5 caractères",
+      "bedroomsUnitLevel": "Les propriétés {{propertyType}} doivent gérer les chambres au niveau de l'unité",
+      "bathroomsUnitLevel": "Les propriétés {{propertyType}} doivent gérer les salles de bain au niveau de l'unité",
+      "totalAreaRequiredForType": "La superficie totale est requise pour les propriétés {{propertyType}}",
+      "lotSizeRequiredForType": "La taille du lot est requise pour les propriétés {{propertyType}}",
+      "occupiedMustHaveRental": "Les propriétés occupées doivent avoir un montant de loyer supérieur à 0",
+      "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
+      "commercialShouldNotHaveBedrooms": "Les propriétés commerciales ne devraient généralement pas avoir de chambres",
+      "propertyTypeMinUnits": "Les propriétés {{propertyType}} nécessitent généralement au moins {{minUnits}} unités",
+      "fieldMinLengthRequired": "{{fieldName}} doit contenir au moins {{minLength}} caractères",
+      "fieldMaxLengthExceeded": "{{fieldName}} ne peut pas dépasser {{maxLength}} caractères"
     }
   },
   "invitation": {
@@ -430,79 +452,23 @@
       "pendingInvitationExists": "Une invitation active existe déjà pour cette adresse email"
     }
   },
-  "system": {
-    "errors": {
-      "unexpectedError": "Une erreur inattendue s'est produite",
-      "internalServerError": "Erreur interne du serveur"
-    }
-  },
-  "unitNumbering": {
-    "suggestions": {
-      "suggestedPattern": "Utilisation du numéro suggéré avec le modèle {{pattern}}",
-      "startingNewPattern": "Démarrage d'un nouveau modèle {{pattern}}",
-      "followingAlphabetic": "Suivi du modèle alphabétique pour l'étage {{floor}}",
-      "followingBuildingUnit": "Suivi du modèle bâtiment-unité pour le bâtiment {{building}}",
-      "followingFloorBased": "Suivi du modèle de numérotation basé sur l'étage",
-      "followingSequential": "Suivi du modèle de numérotation séquentielle",
-      "followingWingUnit": "Suivi du modèle aile-unité pour l'aile {{wing}}",
-      "followingCustom": "Suivi du modèle personnalisé avec le préfixe \"{{prefix}}\"",
-      "followingSuite": "Suivi du modèle de numérotation de suite"
-    },
-    "errors": {
-      "unitNumberSuggestsWrongFloor": "Le numéro d'unité \"{{unitNumber}}\" suggère l'étage {{expectedFloor}} ({{patternName}}), mais l'étage {{floor}} est sélectionné.",
-      "noUnitsToValidate": "Aucune unité à valider",
-      "mixedPatternsDetected": "Modèles mixtes détectés: {{patterns}}. Envisagez de standardiser à un modèle.",
-      "unitNumberAlreadyExists": "Le numéro d'unité \"{{unitNumber}}\" existe déjà"
-    },
-    "success": {
-      "allUnitsFollowPattern": "Toutes les unités suivent le modèle {{pattern}}",
-      "unitNumberValid": "Le numéro d'unité est valide"
-    }
-  },
-  "propertyValidation": {
-    "errors": {
-      "fieldRequired": "{{fieldName}} est requis",
-      "fieldMustBeNumber": "{{fieldName}} doit être un nombre valide",
-      "fieldMinimum": "{{fieldName}} doit être au moins {{min}}",
-      "fieldMaximum": "{{fieldName}} ne peut pas dépasser {{max}}",
-      "fieldCannotBeNegative": "{{fieldName}} ne peut pas être négatif",
-      "fieldMustBeValidDate": "{{fieldName}} doit être une date valide",
-      "fieldCannotBeFuture": "{{fieldName}} ne peut pas être dans le futur",
-      "fieldCannotBeBefore": "{{fieldName}} ne peut pas être avant {{date}}",
-      "fieldCannotBeAfter": "{{fieldName}} ne peut pas être après {{date}}",
-      "fieldRequiredForPropertyType": "{{fieldName}} est requis pour les propriétés {{propertyType}}",
-      "fieldMustBeWholeNumber": "{{fieldName}} doit être un nombre entier",
-      "propertyNameMinLength": "Le nom de la propriété doit contenir au moins 3 caractères",
-      "propertyAddressMinLength": "L'adresse de la propriété doit contenir au moins 5 caractères",
-      "bedroomsUnitLevel": "Les propriétés {{propertyType}} doivent gérer les chambres au niveau de l'unité",
-      "bathroomsUnitLevel": "Les propriétés {{propertyType}} doivent gérer les salles de bain au niveau de l'unité",
-      "totalAreaRequiredForType": "La superficie totale est requise pour les propriétés {{propertyType}}",
-      "lotSizeRequiredForType": "La taille du lot est requise pour les propriétés {{propertyType}}",
-      "occupiedMustHaveRental": "Les propriétés occupées doivent avoir un montant de loyer supérieur à 0",
-      "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
-      "commercialShouldNotHaveBedrooms": "Les propriétés commerciales ne devraient généralement pas avoir de chambres",
-      "propertyTypeMinUnits": "Les propriétés {{propertyType}} nécessitent généralement au moins {{minUnits}} unités",
-      "fieldMinLengthRequired": "{{fieldName}} doit contenir au moins {{minLength}} caractères",
-      "fieldMaxLengthExceeded": "{{fieldName}} ne peut pas dépasser {{maxLength}} caractères"
-    }
-  },
   "profile": {
     "success": {
-      "roleInitialized": "Rôle utilisateur initialisé avec succès",
-      "profileRetrieved": "Profil récupéré avec succès",
-      "profileUpdated": "Profil mis à jour avec succès"
-    },
-    "errors": {
-      "notFound": "Profil introuvable"
+      "roleInitialized": "Rôle utilisateur initialisé avec succès"
     }
   },
   "vendor": {
     "success": {
-      "statsRetrieved": "Statistiques du fournisseur récupérées avec succès",
-      "teamMembersRetrieved": "Membres de l'équipe récupérés avec succès"
+      "teamMemberActivated": "[FR] Team member activated successfully.",
+      "teamMemberDeactivated": "[FR] Team member deactivated successfully."
     },
     "errors": {
-      "notPrimaryVendor": "Accès refusé. Seuls les détenteurs de compte fournisseur principal peuvent effectuer cette action"
+      "notPrimaryVendor": "Accès refusé. Seuls les détenteurs de compte fournisseur principal peuvent effectuer cette action",
+      "duplicateClientConnections": "[FR] Duplicate client connections are not allowed.",
+      "onlyPrimaryCanUpdate": "[FR] You do not have permission to update this information.",
+      "notConnectedToClient": "[FR] Vendor is not connected to this account.",
+      "cannotChangeOwnStatus": "[FR] You cannot change your own active status.",
+      "payoutAccountNotFound": "[FR] Payout account not found."
     }
   },
   "tenant": {
@@ -513,20 +479,142 @@
       "notFound": "Locataire introuvable"
     }
   },
+  "user": {
+    "errors": {
+      "notFound": "[FR] User not found.",
+      "canOnlyUpdateOwnAccount": "[FR] You can only update your own account information.",
+      "cannotArchiveTenantWithActiveLeases": "[FR] Cannot archive tenant. This user has {{count}} active lease(s). Please terminate the lease(s) before archiving.",
+      "cannotArchiveManagerWithActiveLeases": "[FR] Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
+      "notATenant": "[FR] This action is only available for tenant accounts.",
+      "cannotDeactivateSelf": "[FR] You cannot deactivate your own account.",
+      "cannotDeactivateTenantWithActiveLeases": "[FR] Cannot deactivate a user with active leases. Please terminate leases first."
+    },
+    "success": {
+      "tenantDeactivated": "[FR] Tenant deactivated successfully."
+    }
+  },
+  "subscription": {
+    "errors": {
+      "missingRequiredData": "[FR] Missing required subscription data.",
+      "seatChangeCannotBeZero": "[FR] Seat change cannot be zero.",
+      "seatsNotAvailableOnEssential": "[FR] Seat management is not available on your current plan. Please upgrade to access this feature.",
+      "cannotRemoveSeats": "[FR] Cannot remove more seats than you currently have.",
+      "seatLimitExceeded": "[FR] Maximum additional seats limit exceeded for your plan.",
+      "cannotRemoveSeatsActiveUsers": "[FR] Cannot remove seats while active users exceed the resulting seat limit. Please archive users first.",
+      "noActiveSubscription": "[FR] No active subscription found.",
+      "unexpectedStatus": "[FR] Unexpected subscription status.",
+      "gracePeriodEnded": "[FR] Your grace period has ended. Please renew your subscription to restore access.",
+      "subscriptionExpired": "[FR] Your subscription has expired. Please renew to continue using premium features.",
+      "noLinkedSubscription": "[FR] No subscription linked to this record.",
+      "seatLimitReached": "[FR] Seat limit reached for your plan."
+    },
+    "success": {
+      "cancelAtPeriodEnd": "[FR] Your subscription will cancel at the end of your billing period. You'll retain access until then.",
+      "canceled": "[FR] Your subscription has been canceled successfully.",
+      "usageCountersUpdated": "[FR] Subscription usage counters updated.",
+      "essentialActivated": "[FR] Essential plan activated."
+    }
+  },
+  "payment": {
+    "errors": {
+      "paymentMethodFailed": "[FR] Payment could not be processed. Please try again or use a different payment method.",
+      "paymentFailedRetried": "[FR] Payment method failed. We are retrying with an alternate method.",
+      "paymentMethodFailedCardRequired": "[FR] Payment could not be processed. An alternate payment method is required.",
+      "paymentFailedNoFallback": "[FR] Payment failed and no alternate payment method is on file.",
+      "retryFailedMissingInfo": "[FR] Payment retry failed. Please update your account information.",
+      "paymentFailedAddPaymentMethod": "[FR] Payment failed. Please add a payment method to complete payment."
+    }
+  },
+  "sms": {
+    "errors": {
+      "notEnabled": "[FR] SMS notifications are not enabled for this account.",
+      "quotaExceeded": "[FR] Monthly SMS limit has been reached. SMS will resume on your next billing cycle.",
+      "recipientOptedOut": "[FR] Recipient has not opted in to SMS notifications.",
+      "phoneNumberMismatch": "[FR] Please update your profile phone number before verifying.",
+      "cooldownActive": "[FR] A verification code was recently sent. Please wait before requesting a new one.",
+      "invalidCode": "[FR] The verification code entered is incorrect. Please try again."
+    },
+    "success": {
+      "otpSent": "[FR] Verification code sent successfully.",
+      "phoneVerified": "[FR] Phone number verified successfully.",
+      "consentGranted": "[FR] SMS consent granted.",
+      "consentRevoked": "[FR] SMS consent revoked.",
+      "logsRetrieved": "[FR] SMS logs retrieved.",
+      "quotaRetrieved": "[FR] SMS quota status retrieved."
+    }
+  },
   "lease": {
     "errors": {
       "validationFailed": "Validation du bail échouée. Veuillez vérifier les détails et réessayer.",
       "overlappingLease": "Les dates du bail chevauchent un bail actif existant pour cette unité",
       "cannotCreateOwnLease": "Impossible de créer un bail pour vous-même en tant que locataire - conflit d'intérêts",
-      "cannotUpdateOwnLease": "Impossible de mettre à jour vos propres informations de bail - conflit d'intérêts"
-    },
-    "invalid_access": "Vous n'avez pas la permission d'accéder à ce bail",
-    "retrieved_successfully": "Bail récupéré avec succès",
-    "updatedSuccessfully": "Bail mis à jour avec succès"
+      "cannotUpdateOwnLease": "Impossible de mettre à jour vos propres informations de bail - conflit d'intérêts",
+      "propertyUnderMaintenance": "[FR] Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first."
+    }
   },
   "common": {
     "errors": {
-      "invalidUserRole": "Rôle utilisateur invalide spécifié"
+      "notFound": "{{resource}} introuvable.",
+      "operationFailed": "Impossible de {{action}}. Veuillez réessayer.",
+      "operationFailedContact": "Impossible de {{action}}. Veuillez contacter le support.",
+      "insufficientPermissions": "Vous n'avez pas la permission d'effectuer cette action.",
+      "validationFailed": "La validation a échoué. Veuillez vérifier vos données et réessayer.",
+      "unauthorized": "Accès non autorisé.",
+      "required": "{{field}} est requis.",
+      "alreadyExists": "{{resource}} existe déjà.",
+      "alreadyInState": "{{resource}} est déjà {{state}}.",
+      "tryAgainLater": "Un problème est survenu. Veuillez réessayer plus tard.",
+      "invalidUserRole": "Rôle utilisateur invalide spécifié.",
+      "featureNotAvailable": "Cette fonctionnalité n'est pas disponible sur votre forfait actuel."
+    },
+    "success": {
+      "retrieved": "{{resource}} récupéré(e) avec succès.",
+      "updated": "{{resource}} mis(e) à jour avec succès.",
+      "created": "{{resource}} créé(e) avec succès.",
+      "deleted": "{{resource}} supprimé(e) avec succès.",
+      "archived": "{{resource}} archivé(e) avec succès."
+    }
+  },
+  "maintenance": {
+    "errors": {
+      "invalidTransition": "[FR] Invalid status transition from {{current}} to {{next}}",
+      "notAssigned": "[FR] Request is not in assigned status",
+      "notYourAssignment": "[FR] You are not assigned to this request",
+      "noActiveLease": "[FR] You must have an active lease to submit a maintenance request",
+      "notYourUnit": "[FR] You do not have an active lease for this property",
+      "staffCannotCreateForOwnUnit": "[FR] Staff cannot create maintenance requests for units they occupy",
+      "invoiceInvalidStatus": "[FR] Invoice can only be submitted when work is in progress or awaiting invoice",
+      "invoiceForbidden": "[FR] Only the assigned vendor can submit an invoice",
+      "noInvoice": "[FR] No invoice found on this request",
+      "invoiceNotPending": "[FR] Invoice is not in pending status",
+      "noVendorAssigned": "[FR] No vendor assigned to this request",
+      "webhookSignatureInvalid": "[FR] Invalid webhook signature",
+      "workOrderPendingReview": "[FR] Work order is pending PM review — cannot start work yet",
+      "workOrderRejected": "[FR] Work order was rejected — please resubmit before starting",
+      "workOrderNotFound": "[FR] No work order found on this request",
+      "workOrderNotPending": "[FR] Work order is not in pending review status",
+      "workOrderForbidden": "[FR] Only the PM/manager can review work orders",
+      "workOrderRequired": "[FR] A work order must be submitted and approved before marking work as done",
+      "workOrderNotApproved": "[FR] The work order must be submitted and approved before this action can proceed",
+      "notCompleted": "[FR] Request must be completed before submitting feedback",
+      "notYourRequest": "[FR] You are not the tenant on this request",
+      "feedbackAlreadySubmitted": "[FR] Feedback has already been submitted for this request",
+      "editNotAllowed": "[FR] Request cannot be edited in its current status"
+    },
+    "success": {
+      "assigned": "[FR] Vendor assigned successfully",
+      "accepted": "[FR] Assignment accepted",
+      "declined": "[FR] Assignment declined",
+      "workDone": "[FR] Work marked as done. Please submit your invoice within 72 hours.",
+      "completed": "[FR] Maintenance request completed",
+      "cancelled": "[FR] Maintenance request cancelled",
+      "invoiceSubmitted": "[FR] Invoice submitted successfully",
+      "invoiceApproved": "[FR] Invoice approved",
+      "invoiceRejected": "[FR] Invoice rejected",
+      "workOrderSubmitted": "[FR] Work order submitted successfully",
+      "workOrderApproved": "[FR] Work order approved",
+      "workOrderRejected": "[FR] Work order rejected",
+      "feedbackSubmitted": "[FR] Thank you for your feedback"
     }
   },
 
@@ -664,9 +752,17 @@
         "title": "Bon de travail soumis",
         "message": "Un bon de travail a été soumis pour la demande de maintenance {{mruid}}"
       },
+      "vendorScheduledVisit": {
+        "title": "[FR] Visit Scheduled",
+        "message": "[FR] Your vendor has scheduled a visit for request {{mruid}} on {{scheduledDate}}"
+      },
       "workOrderApproved": {
         "title": "Bon de travail approuvé",
         "message": "Votre bon de travail pour la demande {{mruid}} a été approuvé — procédez au travail"
+      },
+      "workOrderApprovedTenant": {
+        "title": "[FR] Work Confirmed",
+        "message": "[FR] The work plan for your request {{mruid}} has been approved. Your vendor will be in touch shortly."
       },
       "workOrderRejected": {
         "title": "Bon de travail rejeté",

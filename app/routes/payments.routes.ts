@@ -101,6 +101,7 @@ router.post(
   requireNotSuspended,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireActiveTenant('onlinePayments'),
+  requireVerifiedClient,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
@@ -195,6 +196,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireActiveTenant('onlinePayments'),
+  requireVerifiedClient,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(PaymentValidations.cardCheckoutParams),
@@ -210,6 +212,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireActiveTenant('onlinePayments'),
+  requireVerifiedClient,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),

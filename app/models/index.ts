@@ -1,4 +1,5 @@
 import User from '@models/user/user.model';
+import SMSLog from '@models/sms/sms.model';
 import Lease from '@models/lease/lease.model';
 import Asset from '@models/asset/asset.model';
 import UnitModel from '@models/unit/unit.model';
@@ -29,6 +30,7 @@ export {
   UnitModel,
   Property,
   Profile,
+  SMSLog,
   Client,
   Vendor,
   Lease,

@@ -94,7 +94,10 @@ export async function getRequestOrThrow(
   cuid: string
 ): Promise<IMaintenanceRequestDocument> {
   const request = await dao.getByMruid(mruid, cuid);
-  if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+  if (!request)
+    throw new NotFoundError({
+      message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+    });
   return request;
 }
 

@@ -1,11 +1,8 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
+import { INotificationSettings } from './notification.interface';
+import { IPhoneVerification, ISMSConsent } from './sms.interface';
 
 /**
  * Employee Department Enum
@@ -88,22 +85,6 @@ export interface IProfileUpdateData {
 }
 
 /**
- * Notification Settings Interface
- */
-export interface INotificationSettings {
-  emailFrequency: EmailFrequencyType;
-  emailNotifications: boolean;
-  inAppNotifications: boolean;
-  propertyUpdates: boolean;
-  announcements: boolean;
-  maintenance: boolean;
-  comments: boolean;
-  messages: boolean;
-  payments: boolean;
-  system: boolean;
-}
-
-/**
  * Active Lease Item Interface
  */
 export interface IActiveLeaseItem {
@@ -137,6 +118,20 @@ export interface IPopulatedUser {
   updatedAt: Date;
   email: string;
   uid: string;
+}
+
+/**
+ * Settings Interface
+ */
+export interface ISettings {
+  phoneVerification?: IPhoneVerification;
+  notifications?: INotificationSettings;
+  gdprSettings?: IGDPRSettings;
+  smsConsent?: ISMSConsent;
+  loginType?: LoginType;
+  theme?: ThemeType;
+  timeZone?: string;
+  lang: string;
 }
 
 /**
@@ -190,12 +185,6 @@ export interface IVendorInfo {
   isLinkedAccount: boolean;
   linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Main Profile Interface
@@ -259,18 +248,6 @@ export interface IProfileEditData {
   userType: ProfileUserType;
   roles: IUserRoleType[];
   policies?: IPolicies;
-}
-
-/**
- * Settings Interface
- */
-export interface ISettings {
-  notifications?: INotificationSettings;
-  gdprSettings?: IGDPRSettings;
-  loginType?: LoginType;
-  theme?: ThemeType;
-  timeZone?: string;
-  lang: string;
 }
 
 /**
@@ -385,12 +362,6 @@ export interface ICompletionField {
 }
 
 /**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
  * Policy Acceptance Interface
  */
 export interface IPolicyAcceptance {
@@ -426,21 +397,9 @@ export interface ClientVendorInfo {
 }
 
 /**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
  * Note Type
  */
 export type NoteType = 'general' | 'payment' | 'maintenance' | 'lease';
-
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
 
 /**
  * Lease History Status Type
@@ -448,20 +407,9 @@ export type NoteType = 'general' | 'payment' | 'maintenance' | 'lease';
 export type LeaseHistoryStatus = 'completed' | 'active' | 'terminated';
 
 /**
- * @deprecated Use INotificationSettings instead
- */
-export type NotificationSettings = INotificationSettings;
-
-/**
  * Payment Status Type
  */
 export type PaymentStatus = 'paid' | 'late' | 'pending';
-
-/**
- * ============================================================================
- * LEGACY INTERFACES (Backward Compatibility)
- * ============================================================================
- */
 
 /**
  * Email Frequency Type
@@ -492,12 +440,6 @@ export type EmployeeInfo = IEmployeeInfo;
  * @deprecated Use IGDPRSettings instead
  */
 export type GDPRSettings = IGDPRSettings;
-
-/**
- * ============================================================================
- * PROFILE COMPLETION INTERFACES
- * ============================================================================
- */
 
 /**
  * @deprecated Use ITenantInfo instead

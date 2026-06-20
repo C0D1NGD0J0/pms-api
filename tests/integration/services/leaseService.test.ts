@@ -201,6 +201,7 @@ const setupServices = () => {
     queueFactory: mockQueueFactory as any,
     emitterService,
     leaseCache,
+    smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
     leaseRenewalService,
     leaseDocumentService,
     leasePdfService,

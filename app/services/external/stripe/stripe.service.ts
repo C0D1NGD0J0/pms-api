@@ -1,8 +1,8 @@
 import Stripe from 'stripe';
 import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
-import { isValidPhoneNumber, createLogger } from '@utils/index';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { isValidPhoneNumber, CircuitBreaker, createLogger } from '@utils/index';
 import {
   IIdentityVerificationReport,
   ICreateIdentitySessionInput,
@@ -24,6 +24,7 @@ import {
 export class StripeService implements IPaymentProvider {
   private readonly log: Logger;
   private readonly stripe: Stripe;
+  private readonly breaker: CircuitBreaker;
 
   constructor() {
     this.log = createLogger('StripeService');
@@ -34,6 +35,24 @@ export class StripeService implements IPaymentProvider {
       apiVersion: '2025-02-24.acacia',
       typescript: true,
     });
+    this.breaker = new CircuitBreaker({
+      name: 'stripe',
+      failureThreshold: 5,
+      cooldownMs: 30_000,
+      isFailure: (err) => {
+        const status = (err as any)?.statusCode ?? (err as any)?.status;
+        return !status || status >= 500;
+      },
+      logger: this.log,
+    });
+  }
+
+  /**
+   * Wraps a Stripe API call with the circuit breaker.
+   * Use for write operations and critical reads (payments, refunds, transfers).
+   */
+  private withBreaker<T>(fn: () => Promise<T>): Promise<T> {
+    return this.breaker.exec(fn);
   }
 
   async getProducts(): Promise<Stripe.Product[]> {
@@ -134,26 +153,28 @@ export class StripeService implements IPaymentProvider {
     try {
       const { customerId, priceId, successUrl, cancelUrl, metadata } = data;
 
-      const session = await this.stripe.checkout.sessions.create({
-        mode: 'subscription',
-        customer: customerId,
-        customer_update: {
-          name: 'auto',
-          address: 'auto',
-        },
-        line_items: [
-          {
-            price: priceId,
-            quantity: 1,
+      const session = await this.withBreaker(() =>
+        this.stripe.checkout.sessions.create({
+          mode: 'subscription',
+          customer: customerId,
+          customer_update: {
+            name: 'auto',
+            address: 'auto',
           },
-        ],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        metadata,
-        subscription_data: {
+          line_items: [
+            {
+              price: priceId,
+              quantity: 1,
+            },
+          ],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
           metadata,
-        },
-      });
+          subscription_data: {
+            metadata,
+          },
+        })
+      );
 
       this.log.info({ sessionId: session.id, customerId }, 'Created checkout session');
 
@@ -397,7 +418,7 @@ export class StripeService implements IPaymentProvider {
       if (amountInCents) refundParams.amount = amountInCents;
       if (reason) refundParams.reason = reason as Stripe.RefundCreateParams.Reason;
 
-      const refund = await this.stripe.refunds.create(refundParams);
+      const refund = await this.withBreaker(() => this.stripe.refunds.create(refundParams));
       this.log.info({ chargeId, refundId: refund.id, amount: refund.amount }, 'Refund created');
       return {
         refundId: refund.id,
@@ -416,9 +437,11 @@ export class StripeService implements IPaymentProvider {
     amountInCents?: number
   ): Promise<{ reversalId: string; amount: number }> {
     try {
-      const reversal = await this.stripe.transfers.createReversal(
-        transferId,
-        amountInCents ? { amount: amountInCents } : undefined
+      const reversal = await this.withBreaker(() =>
+        this.stripe.transfers.createReversal(
+          transferId,
+          amountInCents ? { amount: amountInCents } : undefined
+        )
       );
       this.log.info(
         { transferId, reversalId: reversal.id, amount: reversal.amount },
@@ -439,13 +462,15 @@ export class StripeService implements IPaymentProvider {
     metadata?: Record<string, string>;
   }): Promise<{ transferId: string; amount: number }> {
     try {
-      const transfer = await this.stripe.transfers.create({
-        amount: params.amountInCents,
-        currency: params.currency,
-        destination: params.destination,
-        ...(params.sourceTransaction && { source_transaction: params.sourceTransaction }),
-        ...(params.metadata && { metadata: params.metadata }),
-      });
+      const transfer = await this.withBreaker(() =>
+        this.stripe.transfers.create({
+          amount: params.amountInCents,
+          currency: params.currency,
+          destination: params.destination,
+          ...(params.sourceTransaction && { source_transaction: params.sourceTransaction }),
+          ...(params.metadata && { metadata: params.metadata }),
+        })
+      );
       this.log.info(
         { transferId: transfer.id, amount: transfer.amount, destination: params.destination },
         'Transfer created'
@@ -849,9 +874,11 @@ export class StripeService implements IPaymentProvider {
         });
       }
 
-      await this.stripe.invoices.pay(invoiceId, {
-        ...(opts?.mandate && { mandate: opts.mandate }),
-      });
+      await this.withBreaker(() =>
+        this.stripe.invoices.pay(invoiceId, {
+          ...(opts?.mandate && { mandate: opts.mandate }),
+        })
+      );
     } catch (error: any) {
       if (error?.rawType === 'invoice_already_paid') return;
       this.log.error({ error, invoiceId }, 'Error paying invoice');
@@ -876,7 +903,7 @@ export class StripeService implements IPaymentProvider {
 
   async voidInvoice(invoiceId: string): Promise<void> {
     try {
-      await this.stripe.invoices.voidInvoice(invoiceId);
+      await this.withBreaker(() => this.stripe.invoices.voidInvoice(invoiceId));
     } catch (error: any) {
       // If the invoice is still in draft, delete it instead
       if (error?.code === 'invoice_not_open' || error?.statusCode === 400) {

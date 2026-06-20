@@ -182,8 +182,7 @@ export class SubscriptionWebhookService {
    * Non-subscription invoices (rent) are silently ignored.
    */
   async handleInvoicePaid(rawInvoice: any): Promise<void> {
-    const stripeSubscriptionId =
-      rawInvoice.subscription || rawInvoice.parent?.subscription_details?.subscription;
+    const stripeSubscriptionId = this.extractSubscriptionId(rawInvoice);
 
     // Non-subscription invoice (e.g. rent) — handled elsewhere
     if (!stripeSubscriptionId) return;
@@ -316,8 +315,7 @@ export class SubscriptionWebhookService {
    * Handles subscription payment failures only; silently ignores rent invoices.
    */
   async handleInvoicePaymentFailed(rawInvoice: any): Promise<void> {
-    const stripeSubscriptionId =
-      rawInvoice.subscription || rawInvoice.parent?.subscription_details?.subscription;
+    const stripeSubscriptionId = this.extractSubscriptionId(rawInvoice);
 
     if (!stripeSubscriptionId) {
       return;
@@ -765,5 +763,15 @@ export class SubscriptionWebhookService {
     return client.accountAdmin._id
       ? client.accountAdmin._id.toString()
       : client.accountAdmin.toString();
+  }
+
+  /**
+   * Extracts the Stripe subscription ID from an invoice event payload.
+   * Handles both older API versions (string) and newer versions (expanded object).
+   */
+  private extractSubscriptionId(rawInvoice: any): string | undefined {
+    const rawSub = rawInvoice.subscription ?? rawInvoice.parent?.subscription_details?.subscription;
+    if (!rawSub) return undefined;
+    return typeof rawSub === 'string' ? rawSub : rawSub?.id;
   }
 }

@@ -12,8 +12,9 @@ import { ROLES } from '@shared/constants/roles.constants';
 import PaymentModel from '@models/payments/payments.model';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
-import type { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
+import { VendorSuggestionService } from '@services/maintenanceRequest/vendorSuggestion.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
+import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 import {
   MaintenanceRequestModel,
   PropertyUnit,
@@ -60,20 +61,27 @@ const setupService = () => {
   const emitterService = new EventEmitterService({ eventsRegistry });
   const invoiceDAO = new InvoiceDAO({ invoiceModel: InvoiceModel });
   const paymentDAO = new PaymentDAO({ paymentModel: PaymentModel });
-  const aiService = { categorize: () => Promise.resolve(null) } as any;
-
   return new MaintenanceRequestService({
     maintenanceRequestDAO,
     propertyDAO,
     propertyUnitDAO,
     invoiceDAO,
     paymentDAO,
-    aiService,
     userDAO,
     leaseDAO,
     vendorDAO,
     emitterService,
-    serviceAreaService: { isLocationInVendorServiceArea: jest.fn(), findVendorsNearLocation: jest.fn() } as unknown as ServiceAreaService,
+    smsService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })) } as any,
+    vendorSuggestionService: {
+      runAITriage: jest.fn().mockReturnValue(Promise.resolve()),
+      suggestVendor: jest.fn().mockReturnValue(Promise.resolve(null)),
+      acceptAISuggestion: jest.fn(),
+      dismissAISuggestion: jest.fn(),
+    } as unknown as VendorSuggestionService,
+    maintenanceInvoiceService: {
+      submitInvoice: jest.fn(),
+      reviewInvoice: jest.fn(),
+    } as unknown as MaintenanceInvoiceService,
   });
 };
 

@@ -298,13 +298,15 @@ export class PropertyService {
     const start = process.hrtime.bigint();
 
     if (!cuid) {
-      throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: t('property.errors.unableToAdd') });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'add property to this account' }),
+      });
     }
 
     const userRole = currentuser.client.role;
@@ -313,7 +315,7 @@ export class PropertyService {
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
     ) {
-      throw new InvalidRequestError({ message: 'You are not authorized to create properties.' });
+      throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const cleanPropertyData = { ...propertyData };
@@ -346,7 +348,7 @@ export class PropertyService {
       });
 
       throw new ValidationRequestError({
-        message: t('property.errors.validationFailed'),
+        message: t('common.errors.validationFailed'),
         errorInfo,
       });
     }
@@ -377,7 +379,7 @@ export class PropertyService {
           actor: new Types.ObjectId(currentuser.sub),
         },
       ];
-      message = t('property.success.created');
+      message = t('common.success.created', { resource: 'Property' });
       this.log.info('Property auto-approved for admin/manager', {
         userId: currentuser.sub,
         role: userRole,
@@ -412,7 +414,7 @@ export class PropertyService {
       });
     } else {
       throw new InvalidRequestError({
-        message: 'You are not authorized to create properties.',
+        message: t('common.errors.insufficientPermissions'),
       });
     }
 
@@ -435,7 +437,9 @@ export class PropertyService {
     // Get subscription and check limits
     const subscription = await this.subscriptionDAO.findFirst({ cuid });
     if (!subscription) {
-      throw new BadRequestError({ message: 'Subscription not found for client' });
+      throw new BadRequestError({
+        message: t('common.errors.notFound', { resource: 'Subscription' }),
+      });
     }
 
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
@@ -475,7 +479,9 @@ export class PropertyService {
       );
 
       if (!property) {
-        throw new BadRequestError({ message: t('property.errors.unableToCreate') });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'create property' }),
+        });
       }
 
       return property;
@@ -586,7 +592,9 @@ export class PropertyService {
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: 'Unable to add property to this account.' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'add property to this account' }),
+      });
     }
 
     // Pre-check: reject immediately if already at the property limit — avoids queueing a job that will fully fail
@@ -665,13 +673,15 @@ export class PropertyService {
     }>
   > {
     if (!cuid) {
-      throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: 'Unable to get properties for this account.' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'get properties for this account' }),
+      });
     }
 
     const { pagination, filters } = queryParams || {};
@@ -848,7 +858,9 @@ export class PropertyService {
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: 'Unable to get properties for this account.' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'get properties for this account' }),
+      });
     }
 
     const property = await this.propertyDAO.findPropertyWithActiveMedia({
@@ -857,7 +869,7 @@ export class PropertyService {
       deletedAt: null,
     });
     if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     if (currentUser?.client?.role === ROLES.TENANT) {
@@ -869,7 +881,7 @@ export class PropertyService {
       });
 
       if (!tenantLease) {
-        throw new NotFoundError({ message: t('property.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
       }
 
       const cuidsEntry = currentUser.clients?.find((c: any) => c.cuid === cuid);
@@ -882,7 +894,7 @@ export class PropertyService {
             address: property.address,
             propertyType: property.propertyType,
           } as any,
-          message: 'Property retrieved',
+          message: t('common.success.retrieved', { resource: 'Property' }),
         };
       }
     }
@@ -1013,7 +1025,7 @@ export class PropertyService {
 
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     // Check user authorization
@@ -1023,7 +1035,7 @@ export class PropertyService {
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
     ) {
-      throw new ForbiddenError({ message: 'You are not authorized to update properties.' });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     // Process update data
@@ -1151,7 +1163,9 @@ export class PropertyService {
       );
 
       if (!result) {
-        throw new BadRequestError({ message: 'Unable to update property.' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'update property' }),
+        });
       }
 
       // Send notification to approvers
@@ -1207,7 +1221,9 @@ export class PropertyService {
       const result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
 
       if (!result) {
-        throw new BadRequestError({ message: 'Unable to update property.' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'update property' }),
+        });
       }
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
@@ -1240,9 +1256,8 @@ export class PropertyService {
         }
       }
 
-      const message = hasPendingChanges
-        ? `Property updated successfully${overrideMessage}`
-        : 'Property updated successfully';
+      const baseMessage = t('common.success.updated', { resource: 'Property' });
+      const message = hasPendingChanges ? `${baseMessage}${overrideMessage}` : baseMessage;
 
       return { success: true, data: result, message };
     }
@@ -1368,7 +1383,7 @@ export class PropertyService {
         items: properties.items,
         pagination: properties.pagination,
       },
-      message: 'Property requests retrieved successfully',
+      message: t('common.success.retrieved', { resource: 'Property requests' }),
     };
   }
 
@@ -1389,7 +1404,9 @@ export class PropertyService {
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: t('property.errors.unableToArchive') });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'archive property' }),
+      });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -1398,7 +1415,7 @@ export class PropertyService {
       deletedAt: null,
     });
     if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     // Business Rule: Cannot archive property with active leases
@@ -1427,13 +1444,19 @@ export class PropertyService {
     const archivedProperty = await this.propertyDAO.archiveProperty(property.id, currentUser.sub);
 
     if (!archivedProperty) {
-      throw new BadRequestError({ message: t('property.errors.unableToArchive') });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'archive property' }),
+      });
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
     await this.propertyCache.invalidatePropertyLists(cuid);
 
-    return { success: true, data: null, message: t('property.success.archived') };
+    return {
+      success: true,
+      data: null,
+      message: t('common.success.archived', { resource: 'Property' }),
+    };
   }
 
   async unarchiveClientProperty(cuid: string, pid: string): Promise<ISuccessReturnData> {
@@ -1445,7 +1468,9 @@ export class PropertyService {
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: t('property.errors.unableToUnarchive') });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'unarchive property' }),
+      });
     }
 
     // Find archived property
@@ -1456,14 +1481,18 @@ export class PropertyService {
     });
 
     if (!property) {
-      throw new NotFoundError({ message: 'Archived property not found' });
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Archived property' }),
+      });
     }
 
     // Check subscription limits - properties count cumulatively (active + archived)
     // This is already accounted for, but we verify active properties don't exceed limits
     const subscription = await this.subscriptionDAO.findFirst({ cuid });
     if (!subscription) {
-      throw new BadRequestError({ message: 'Subscription not found for client' });
+      throw new BadRequestError({
+        message: t('common.errors.notFound', { resource: 'Subscription' }),
+      });
     }
 
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
@@ -1487,13 +1516,19 @@ export class PropertyService {
     });
 
     if (!unarchivedProperty) {
-      throw new BadRequestError({ message: 'Unable to unarchive property' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'unarchive property' }),
+      });
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
     await this.propertyCache.invalidatePropertyLists(cuid);
 
-    return { success: true, data: unarchivedProperty, message: 'Property unarchived successfully' };
+    return {
+      success: true,
+      data: unarchivedProperty,
+      message: t('common.success.updated', { resource: 'Property' }),
+    };
   }
 
   private async handleUnitChanged(payload: any): Promise<void> {
@@ -1686,7 +1721,7 @@ export class PropertyService {
     try {
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       // Define management roles only (exclude vendor, tenant)
@@ -1830,7 +1865,7 @@ export class PropertyService {
       return {
         success: true,
         data: result,
-        message: t('property.success.assignableUsersRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Assignable users' }),
       };
     } catch (error) {
       this.log.error('Failed to get assignable users', {
@@ -1891,7 +1926,7 @@ export class PropertyService {
   > {
     try {
       if (!cuid) {
-        throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const cachedResult = await this.propertyCache.getLeaseableProperties(
@@ -1910,14 +1945,14 @@ export class PropertyService {
               filteredCount: 0,
             },
           },
-          message: t('property.success.propertiesRetrieved'),
+          message: t('common.success.retrieved', { resource: 'Properties' }),
         };
       }
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const filter: QueryFilter<IPropertyDocument> = {
@@ -1940,7 +1975,7 @@ export class PropertyService {
         return {
           success: true,
           data: { items: [], metadata: null },
-          message: t('property.success.propertiesRetrieved'),
+          message: t('common.success.retrieved', { resource: 'Properties' }),
         };
       }
 
@@ -2062,7 +2097,7 @@ export class PropertyService {
             filteredProperties: filteredProperties.length > 0 ? filteredProperties : undefined,
           },
         },
-        message: t('property.success.propertiesRetrieved'),
+        message: t('common.success.retrieved', { resource: 'Properties' }),
       };
     } catch (error) {
       this.log.error('Failed to get lease-able properties', {

@@ -11,8 +11,11 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PaymentMethodType } from '@interfaces/lease.interface';
 import { subscriptionPlanConfig } from '@services/subscription';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { PaymentService } from '@services/payments/payments.service';
+import { TwilioService } from '@services/external/twilio/twilio.service';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PaymentRecordType, IPaymentFormData } from '@interfaces/payments.interface';
@@ -46,9 +49,11 @@ interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
   paymentService: PaymentService;
   tokenService: AuthTokenService;
+  twilioService: TwilioService;
   vendorService: VendorService;
   queueFactory: QueueFactory;
   profileDAO: ProfileDAO;
@@ -73,6 +78,8 @@ export class AuthService {
   private readonly subscriptionService: SubscriptionService;
   private readonly paymentService: PaymentService;
   private readonly emitterService: EventEmitterService;
+  private readonly twilioService: TwilioService;
+  private readonly featureFlagService: FeatureFlagService;
 
   constructor({
     userDAO,
@@ -88,6 +95,8 @@ export class AuthService {
     subscriptionService,
     paymentService,
     emitterService,
+    twilioService,
+    featureFlagService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -102,6 +111,8 @@ export class AuthService {
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
     this.emitterService = emitterService;
+    this.twilioService = twilioService;
+    this.featureFlagService = featureFlagService;
     this.log = createLogger('AuthService');
     this.setupEventListeners();
   }
@@ -216,11 +227,11 @@ export class AuthService {
     const user = await this.userDAO.getUserById(userId);
 
     if (!user) {
-      throw new ForbiddenError({ message: t('auth.errors.userNotFound') });
+      throw new ForbiddenError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
     const client = await this.clientDAO.getClientByCuid(clientId);
     if (!client) {
-      throw new ForbiddenError({ message: t('auth.errors.clientNotFound') });
+      throw new ForbiddenError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const clientAccount = user.cuids.find((c) => c.cuid === clientId);
@@ -259,8 +270,10 @@ export class AuthService {
       );
       if (alreadyExists) {
         throw new ValidationRequestError({
-          message: 'Validation failed',
-          errorInfo: { email: ['An account with this email already exists.'] },
+          message: t('common.errors.validationFailed'),
+          errorInfo: {
+            email: [t('common.errors.alreadyExists', { resource: 'An account with this email' })],
+          },
         });
       }
 
@@ -356,7 +369,7 @@ export class AuthService {
 
       if (!subscriptionResult.success) {
         throw new InvalidRequestError({
-          message: subscriptionResult.message || 'Encountered an error while creating subscription',
+          message: subscriptionResult.message || t('auth.errors.subscriptionCreationFailed'),
         });
       }
 
@@ -391,21 +404,81 @@ export class AuthService {
     };
   }
 
-  async login(data: { email: string; password: string; rememberMe: boolean }): Promise<
-    ISuccessReturnData<{
-      accessToken: string;
-      rememberMe: boolean;
-      refreshToken: string;
-      activeAccount: IActiveAccountInfo;
-      accounts: IActiveAccountInfo[] | null;
-    }>
-  > {
-    const { email, password, rememberMe } = data;
-    if (!email || !password) {
-      this.log.error('Email and password are required. | Login');
+  async login(data: {
+    email: string;
+    password?: string;
+    otp?: string;
+    rememberMe?: boolean;
+  }): Promise<ISuccessReturnData> {
+    const { email, password, otp, rememberMe = false } = data;
+
+    if (!email) {
       throw new BadRequestError({ message: t('auth.errors.emailPasswordRequired') });
     }
 
+    // Step 1: email only — determine login type and send OTP if needed
+    if (!password && !otp) {
+      return this.resolveLoginType(email);
+    }
+
+    // Step 2a: password login
+    if (password) {
+      return this.loginWithPassword(email, password, rememberMe);
+    }
+
+    // Step 2b: OTP login
+    return this.loginWithOTP(email, otp!, rememberMe);
+  }
+
+  private async resolveLoginType(email: string): Promise<ISuccessReturnData> {
+    const user = await this.userDAO.getActiveUserByEmail(email);
+    if (!user) {
+      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
+    }
+
+    if (!user.isActive) {
+      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
+    }
+
+    const profile = await this.profileDAO.findFirst({ user: user._id });
+    const loginType = profile?.settings?.loginType ?? 'password';
+
+    const canUseOTP =
+      loginType === 'otp' &&
+      this.featureFlagService.isEnabled(FeatureFlag.SMS) &&
+      profile?.settings?.phoneVerification?.verified &&
+      profile?.settings?.phoneVerification?.verifiedPhone;
+
+    if (!canUseOTP) {
+      return {
+        success: true,
+        data: { step: 'password_required', loginType: 'password' },
+        message:
+          loginType === 'otp'
+            ? t('auth.errors.otpUnavailable')
+            : t('auth.success.loginTypeResolved'),
+      };
+    }
+
+    const phone = profile!.settings!.phoneVerification!.verifiedPhone!;
+    await this.twilioService.sendOTP(phone);
+
+    return {
+      success: true,
+      data: {
+        step: 'otp_sent',
+        loginType: 'otp',
+        maskedPhone: phone.replace(/.(?=.{4})/g, '*'),
+      },
+      message: t('auth.success.otpSent'),
+    };
+  }
+
+  private async loginWithPassword(
+    email: string,
+    password: string,
+    rememberMe: boolean
+  ): Promise<ISuccessReturnData> {
     let user = await this.userDAO.getActiveUserByEmail(email);
     if (!user) {
       throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
@@ -420,13 +493,53 @@ export class AuthService {
       throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
     }
 
-    const connectedClients = user.cuids.filter((c) => c.isConnected);
+    return this.completeLogin(user, rememberMe);
+  }
+
+  private async loginWithOTP(
+    email: string,
+    otp: string,
+    rememberMe: boolean
+  ): Promise<ISuccessReturnData> {
+    const user = await this.userDAO.getActiveUserByEmail(email);
+    if (!user) {
+      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
+    }
+
+    if (!user.isActive) {
+      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
+    }
+
+    const profile = await this.profileDAO.findFirst({ user: user._id });
+    const loginType = profile?.settings?.loginType ?? 'password';
+    const phone = profile?.settings?.phoneVerification?.verifiedPhone;
+    const phoneVerified = profile?.settings?.phoneVerification?.verified;
+
+    if (
+      loginType !== 'otp' ||
+      !this.featureFlagService.isEnabled(FeatureFlag.SMS) ||
+      !phoneVerified ||
+      !phone
+    ) {
+      throw new BadRequestError({ message: t('auth.errors.otpUnavailable') });
+    }
+
+    const result = await this.twilioService.verifyOTP(phone, otp);
+    if (!result.valid) {
+      throw new UnauthorizedError({ message: t('auth.errors.otpVerificationFailed') });
+    }
+
+    return this.completeLogin(user, rememberMe);
+  }
+
+  private async completeLogin(user: any, rememberMe: boolean): Promise<ISuccessReturnData> {
+    const connectedClients = user.cuids.filter((c: any) => c.isConnected);
 
     if (connectedClients.length === 0) {
       throw new UnauthorizedError({ message: t('auth.errors.allConnectionsDisabled') });
     }
 
-    let activeAccount = connectedClients.find((c) => c.cuid === user.activecuid);
+    let activeAccount = connectedClients.find((c: any) => c.cuid === user.activecuid);
 
     if (!activeAccount) {
       activeAccount = connectedClients[0];
@@ -453,29 +566,14 @@ export class AuthService {
     }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
 
-    if (connectedClients.length === 1) {
-      return {
-        success: true,
-        data: {
-          rememberMe,
-          refreshToken: tokens.refreshToken,
-          accessToken: tokens.accessToken,
-          activeAccount: {
-            cuid: activeAccount.cuid,
-            clientDisplayName: activeAccount.clientDisplayName,
-          },
-          accounts: [],
-        },
-        message: t('auth.success.loginSuccessful'),
-      };
-    }
-
     const otherAccounts = connectedClients
-      .filter((c) => c.cuid !== activeAccount.cuid)
-      .map((c) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
+      .filter((c: any) => c.cuid !== activeAccount.cuid)
+      .map((c: any) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
+
     return {
       success: true,
       data: {
+        step: 'authenticated',
         rememberMe,
         refreshToken: tokens.refreshToken,
         accessToken: tokens.accessToken,
@@ -498,7 +596,7 @@ export class AuthService {
     const currentuser = await this.profileDAO.generateCurrentUserInfo(userId);
     if (!currentuser) {
       this.log.error('User not found. | GetCurrentUser');
-      throw new UnauthorizedError({ message: t('auth.errors.unauthorized') });
+      throw new UnauthorizedError({ message: t('common.errors.unauthorized') });
     }
     if (currentuser.subscription?.plan?.name) {
       const planConfig = subscriptionPlanConfig.getConfig(currentuser.subscription.plan.name);
@@ -535,7 +633,7 @@ export class AuthService {
 
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const accountExists = user.cuids.find((c) => c.cuid === newcuid);
@@ -743,7 +841,7 @@ export class AuthService {
     try {
       const user = await this.userDAO.getUserById(userId);
       if (!user) {
-        throw new NotFoundError({ message: t('auth.errors.userNotFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       const activeConnection = user.cuids.find((c) => c.cuid === cuid);
@@ -813,7 +911,7 @@ export class AuthService {
   ): Promise<ISuccessReturnData> {
     const profile = await this.profileDAO.getProfileByUserId(userId);
     if (!profile) {
-      throw new NotFoundError({ message: t('profile.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Profile' }) });
     }
 
     const now = new Date();
@@ -875,7 +973,7 @@ export class AuthService {
   > {
     try {
       if (currentuser.client.role !== 'tenant') {
-        throw new BadRequestError({ message: 'Only tenants can set up a payment method.' });
+        throw new BadRequestError({ message: t('auth.errors.tenantOnlyPaymentSetup') });
       }
 
       const lease = await this.leaseDAO.getActiveLeaseByTenant(cuid, currentuser.sub);
@@ -898,14 +996,16 @@ export class AuthService {
         deletedAt: null,
       });
       if (!processor) {
-        throw new NotFoundError({ message: 'Client payment processor not configured.' });
+        throw new NotFoundError({
+          message: t('common.errors.operationFailedContact', { action: 'process payment' }),
+        });
       }
 
       const tenantProfile = await this.profileDAO.findFirst({
         user: new Types.ObjectId(currentuser.sub),
       });
       if (!tenantProfile) {
-        throw new NotFoundError({ message: t('profile.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Profile' }) });
       }
 
       let customerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
@@ -917,7 +1017,9 @@ export class AuthService {
         });
 
         if (!customerResult.success || !customerResult.data) {
-          throw new BadRequestError({ message: 'Failed to create payment customer.' });
+          throw new BadRequestError({
+            message: t('common.errors.operationFailed', { action: 'set up payment' }),
+          });
         }
 
         customerId = customerResult.data.customerId;
@@ -961,7 +1063,9 @@ export class AuthService {
       );
 
       if (!sessionResult.success || !sessionResult.data) {
-        throw new BadRequestError({ message: 'Failed to create payment setup session.' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'initiate payment setup' }),
+        });
       }
 
       return {
@@ -1004,7 +1108,7 @@ export class AuthService {
     };
   }> {
     if (currentuser.client.role !== 'tenant') {
-      throw new BadRequestError({ message: 'Only tenants can view payment methods.' });
+      throw new BadRequestError({ message: t('auth.errors.tenantOnlyViewPaymentMethods') });
     }
 
     const processor = await this.paymentProcessorDAO.findFirst({
@@ -1086,7 +1190,7 @@ export class AuthService {
     currentuser: ICurrentUser
   ): Promise<{ success: boolean; data: null }> {
     if (currentuser.client.role !== 'tenant') {
-      throw new BadRequestError({ message: 'Only tenants can remove payment methods.' });
+      throw new BadRequestError({ message: t('auth.errors.tenantOnlyRemovePaymentMethods') });
     }
 
     const processor = await this.paymentProcessorDAO.findFirst({
@@ -1095,26 +1199,28 @@ export class AuthService {
       deletedAt: null,
     });
     if (!processor) {
-      throw new NotFoundError({ message: 'Payment processor not configured.' });
+      throw new NotFoundError({
+        message: t('common.errors.operationFailedContact', { action: 'process payment' }),
+      });
     }
 
     const tenantProfile = await this.profileDAO.findFirst({
       user: new Types.ObjectId(currentuser.sub),
     });
     if (!tenantProfile || !tenantProfile.tenantInfo?.paymentMethods) {
-      throw new NotFoundError({ message: 'No payment method on file.' });
+      throw new NotFoundError({ message: t('auth.errors.noPaymentMethodOnFile') });
     }
 
     const paymentMethods = tenantProfile.tenantInfo.paymentMethods;
     if (paymentMethods.size <= 1) {
       throw new BadRequestError({
-        message: 'You must keep at least one payment method on file.',
+        message: t('auth.errors.mustKeepOnePaymentMethod'),
       });
     }
 
     const paymentMethodId = paymentMethods.get(processor.accountId);
     if (!paymentMethodId) {
-      throw new NotFoundError({ message: 'No payment method found for this property manager.' });
+      throw new NotFoundError({ message: t('auth.errors.noPaymentMethodForManager') });
     }
 
     // Remove from profile
@@ -1150,7 +1256,7 @@ export class AuthService {
     }>
   > {
     if (currentUser.client.role !== 'tenant') {
-      throw new BadRequestError({ message: 'Only tenants can charge a first payment.' });
+      throw new BadRequestError({ message: t('auth.errors.tenantOnlyFirstPayment') });
     }
 
     const lease = await this.leaseDAO.getActiveLeaseByTenant(cuid, currentUser.sub);

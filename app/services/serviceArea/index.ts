@@ -1,5 +1,1 @@
-export {
-  type ServiceAreaLocation,
-  type ServiceAreaConfig,
-  ServiceAreaService,
-} from './serviceArea.service';
+export { ServiceAreaService } from './serviceArea.service';

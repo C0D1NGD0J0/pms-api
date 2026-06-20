@@ -1,13 +1,14 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { CronQueue } from '@queues/cron.queue';
-import { QueueFactory } from '@services/queue';
-import { LeaseService } from '@services/lease';
-import { NotificationService } from '@services/notification';
+import { LeaseService } from '@services/lease/lease.service';
+import { SMSService } from '@services/smsService/sms.service';
 import { MetricsService } from '@services/metrics/metrics.service';
-import { PaymentService } from '@services/payments/payments.service';
+import { QueueFactory } from '@services/queue/queueFactory.service';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { PaymentService } from '@services/payments/payments.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { NotificationService } from '@services/notification/notification.service';
 
 interface IConstructor {
   notificationService?: NotificationService;
@@ -16,6 +17,7 @@ interface IConstructor {
   paymentService: PaymentService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
+  smsService: SMSService;
 }
 
 /**
@@ -34,6 +36,7 @@ export class CronService {
     leaseService,
     subscriptionService,
     paymentService,
+    smsService,
     metricsService,
   }: IConstructor) {
     this.log = createLogger('CronService');
@@ -44,6 +47,7 @@ export class CronService {
       leaseService,
       subscriptionService,
       paymentService,
+      smsService,
       metricsService,
     ].filter(Boolean);
 

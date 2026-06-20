@@ -136,6 +136,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       propertyUnitDAO: {} as any,
       queueFactory: {} as any,
       userService: {} as any,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
     });
   });
 
@@ -533,6 +534,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         propertyUnitDAO: {} as any,
         queueFactory: {} as any,
         userService: {} as any,
+        smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       });
 
       (mockLeaseDAO as any).getFilteredLeases = jest.fn().mockResolvedValue({

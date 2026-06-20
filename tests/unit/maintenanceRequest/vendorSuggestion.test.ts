@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { MaintenanceCategory } from '@interfaces/maintenanceRequest.interface';
+import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { VendorSuggestionService } from '@services/maintenanceRequest/vendorSuggestion.service';
 
 // ── Minimal mock factories ───────────────────────────────────────────────────
@@ -28,7 +29,7 @@ const createService = (mocks: {
   vendorDAO?: any;
   maintenanceRequestDAO?: any;
   propertyDAO?: any;
-  serviceAreaService?: any;
+  serviceAreaService?: Partial<jest.Mocked<ServiceAreaService>>;
 }) => {
   const defaultDAO = {
     getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [] })),
@@ -54,7 +55,7 @@ const createService = (mocks: {
     serviceAreaService: {
       isLocationInVendorServiceArea: jest.fn(),
       ...mocks.serviceAreaService,
-    } as any,
+    } as jest.Mocked<ServiceAreaService>,
     subscriptionDAO: {} as any,
   });
 };

@@ -4,8 +4,10 @@ import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { IdempotencyCache } from '@caching/index';
 import { LeaseService } from '@services/lease/lease.service';
+import { SMSService } from '@services/smsService/sms.service';
 import { ClientService } from '@services/client/client.service';
 import { PaymentService } from '@services/payments/payments.service';
+import { TwilioService } from '@services/external/twilio/twilio.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
@@ -18,9 +20,11 @@ interface IConstructor {
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
   paymentService: PaymentService;
+  twilioService: TwilioService;
   stripeService: StripeService;
   clientService: ClientService;
   leaseService: LeaseService;
+  smsService: SMSService;
 }
 
 export class WebhookController {
@@ -32,6 +36,8 @@ export class WebhookController {
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
   private maintenanceInvoiceService: MaintenanceInvoiceService;
+  private twilioService: TwilioService;
+  private smsService: SMSService;
   private log: Logger;
 
   constructor({
@@ -40,18 +46,22 @@ export class WebhookController {
     subscriptionService,
     stripeService,
     paymentService,
+    twilioService,
     clientService,
     idempotencyCache,
     maintenanceInvoiceService,
+    smsService,
   }: IConstructor) {
     this.leaseService = leaseService;
     this.stripeService = stripeService;
     this.boldSignService = boldSignService;
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
+    this.twilioService = twilioService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
     this.maintenanceInvoiceService = maintenanceInvoiceService;
+    this.smsService = smsService;
     this.log = createLogger('WebhookController');
   }
 
@@ -362,5 +372,60 @@ export class WebhookController {
       .catch((err: unknown) => {
         this.log.error('[WebhookController] invoice webhook processing error', err);
       });
+  };
+
+  /**
+   * Twilio SMS status callback + Verify webhook
+   * Handles: SMS delivery status updates (sent → delivered/failed)
+   * and Verify events (factor.verified)
+   */
+  handleTwilioWebhook = async (req: Request, res: Response): Promise<void> => {
+    const twilioSignature = req.headers['x-twilio-signature'] as string | undefined;
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+
+    if (
+      !twilioSignature ||
+      !this.twilioService.isValidWebhookSignature(twilioSignature, url, req.body)
+    ) {
+      this.log.warn('Invalid or missing Twilio webhook signature');
+      res.status(403).send();
+      return;
+    }
+
+    const body = req.body;
+
+    // SMS delivery status callback (from Twilio Messaging)
+    if (body.MessageSid && body.MessageStatus) {
+      this.log.info(
+        { sid: body.MessageSid, status: body.MessageStatus },
+        'Twilio SMS status callback received'
+      );
+
+      this.smsService
+        .handleStatusCallback({
+          MessageSid: body.MessageSid,
+          MessageStatus: body.MessageStatus,
+          To: body.To,
+          ErrorCode: body.ErrorCode,
+        })
+        .catch((err: unknown) => {
+          this.log.error({ err, sid: body.MessageSid }, 'Error processing Twilio status callback');
+        });
+
+      res.status(204).send();
+      return;
+    }
+
+    // Twilio Verify webhook (factor.verified etc.)
+    if (body.type && body.type === 'factor.verified') {
+      this.log.info({ type: body.type }, 'Twilio Verify webhook received');
+      // Verification is already handled synchronously via confirmOTP
+      // This webhook is a backup confirmation — no action needed
+      res.status(204).send();
+      return;
+    }
+
+    this.log.warn({ body }, 'Unknown Twilio webhook event');
+    res.status(200).send();
   };
 }

@@ -292,7 +292,7 @@ export class PropertyUnitService {
         },
         'Property not found, unable to add unit.'
       );
-      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     if (data.units.length <= 5) {
@@ -337,7 +337,7 @@ export class PropertyUnitService {
         'Property not found, unable to get unit.'
       );
       throw new BadRequestError({
-        message: t('propertyUnit.errors.propertyNotFound'),
+        message: t('common.errors.notFound', { resource: 'Property' }),
       });
     }
 
@@ -355,7 +355,7 @@ export class PropertyUnitService {
         },
         'Unit not found in property.'
       );
-      throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
     const unitObj = unit.toObject ? unit.toObject() : { ...unit };
@@ -386,7 +386,7 @@ export class PropertyUnitService {
     return {
       data: { ...unitObj, currentLease: resolvedLease },
       success: true,
-      message: t('propertyUnit.success.unitRetrieved'),
+      message: t('common.success.retrieved', { resource: 'Unit' }),
     };
   }
 
@@ -423,7 +423,7 @@ export class PropertyUnitService {
         'Property not found, unable to get units.'
       );
       throw new BadRequestError({
-        message: t('propertyUnit.errors.propertyNotFoundForUnits'),
+        message: t('common.errors.notFound', { resource: 'Property' }),
       });
     }
 
@@ -474,7 +474,7 @@ export class PropertyUnitService {
     return {
       data: { items: enrichedItems, pagination: units.pagination },
       success: true,
-      message: t('propertyUnit.success.unitsRetrieved'),
+      message: t('common.success.retrieved', { resource: 'Units' }),
     };
   }
 
@@ -513,7 +513,7 @@ export class PropertyUnitService {
         },
         'Property not found'
       );
-      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     const unit = await this.propertyUnitDAO.findFirst({
@@ -535,7 +535,7 @@ export class PropertyUnitService {
         },
         'Unit not found'
       );
-      throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
     // Enforce lease-history immutability (applies to all roles — no admin bypass)
@@ -636,7 +636,7 @@ export class PropertyUnitService {
       }
 
       throw new ValidationRequestError({
-        message: t('propertyUnit.errors.validationFailed'),
+        message: t('common.errors.validationFailed'),
         errorInfo: validationErrors,
       });
     }
@@ -650,7 +650,7 @@ export class PropertyUnitService {
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
     ) {
-      throw new ForbiddenError({ message: 'You are not authorized to update units.' });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     // Categorize changes into high-impact vs operational
@@ -658,7 +658,7 @@ export class PropertyUnitService {
     const operationalChanges = this.extractOperationalUnitChanges(updateData);
 
     let updatedUnit: any;
-    let message: string = t('propertyUnit.success.updated'); // Initialize with default value
+    let message: string = t('common.success.updated', { resource: 'Unit' }); // Initialize with default value
 
     // 1. Always apply operational changes directly
     if (Object.keys(operationalChanges).length > 0) {
@@ -741,7 +741,7 @@ export class PropertyUnitService {
     // Get property info for event emission
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
-      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     // Get the unit by puid
@@ -752,7 +752,7 @@ export class PropertyUnitService {
     });
 
     if (!unit) {
-      throw new BadRequestError({ message: t('propertyUnit.errors.unitNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
     // Business Rule: Cannot archive unit with active or pending leases
@@ -811,7 +811,7 @@ export class PropertyUnitService {
 
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
-      throw new NotFoundError({ message: t('property.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     // Find archived unit by puid
@@ -822,13 +822,17 @@ export class PropertyUnitService {
     });
 
     if (!unit) {
-      throw new NotFoundError({ message: 'Archived unit not found' });
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Archived unit' }),
+      });
     }
 
     // Check subscription limits
     const subscription = await this.subscriptionDAO.findFirst({ cuid });
     if (!subscription) {
-      throw new BadRequestError({ message: 'Subscription not found for client' });
+      throw new BadRequestError({
+        message: t('common.errors.notFound', { resource: 'Subscription' }),
+      });
     }
 
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
@@ -859,7 +863,9 @@ export class PropertyUnitService {
     const result = await this.propertyUnitDAO.updateById(unit.id, { $set: updateData });
 
     if (!result) {
-      throw new BadRequestError({ message: 'Unable to unarchive unit' });
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'unarchive unit' }),
+      });
     }
 
     // Emit unit unarchived event
@@ -872,7 +878,11 @@ export class PropertyUnitService {
       changeType: 'unarchived',
     });
 
-    return { success: true, data: result, message: 'Unit unarchived successfully' };
+    return {
+      success: true,
+      data: result,
+      message: t('common.success.updated', { resource: 'Unit' }),
+    };
   }
 
   async setupInspection(cxt: IRequestContext, inspectionData: any) {
@@ -1108,7 +1118,7 @@ export class PropertyUnitService {
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
-      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     const csvProcessor = new PropertyUnitCsvProcessor();
@@ -1168,7 +1178,7 @@ export class PropertyUnitService {
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
     if (!property) {
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
-      throw new BadRequestError({ message: t('propertyUnit.errors.propertyNotFound') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     // Pre-check: reject immediately if already at subscription unit limit

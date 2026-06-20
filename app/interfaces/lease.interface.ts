@@ -521,6 +521,27 @@ export interface ILeaseSignature {
 }
 
 /**
+ * Lease List Item Interface
+ * Simplified lease data for list views
+ */
+export interface ILeaseListItem {
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  gracePeriodDays: number;
+  petsAllowed: boolean;
+  leaseNumber: string;
+  status: LeaseStatus;
+  unitNumber?: string;
+  rentAmount: number;
+  tenantName: string;
+  tenantUid: string;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
+/**
  * Rent Roll Report Interface
  * Complete rent roll with summary
  */
@@ -572,26 +593,6 @@ export interface ILeaseUserPermissions {
   canDownload: boolean;
   canDelete: boolean;
   canEdit: boolean;
-}
-
-/**
- * Lease List Item Interface
- * Simplified lease data for list views
- */
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  gracePeriodDays: number;
-  leaseNumber: string;
-  status: LeaseStatus;
-  unitNumber?: string;
-  rentAmount: number;
-  tenantName: string;
-  tenantUid: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
 }
 
 export interface LeaseESignatureSentPayload {

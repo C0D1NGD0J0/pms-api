@@ -70,7 +70,11 @@ const makeServiceWithMocks = (
     userDAO: jest.Mocked<UserDAO>;
   }> = {}
 ) => {
-  const paymentDAO = (overrides.paymentDAO ?? { list: jest.fn().mockResolvedValue({ items: [], pagination: null }) }) as jest.Mocked<PaymentDAO>;
+  const paymentDAO = (overrides.paymentDAO ?? {
+    list: jest.fn().mockResolvedValue({ items: [], pagination: null }),
+    startSession: jest.fn().mockResolvedValue({}),
+    withTransaction: jest.fn((_session: unknown, cb: (s: unknown) => unknown) => cb(_session)),
+  }) as jest.Mocked<PaymentDAO>;
   const clientDAO = (overrides.clientDAO ?? {}) as jest.Mocked<ClientDAO>;
   const profileDAO = (overrides.profileDAO ?? { findFirst: jest.fn().mockResolvedValue(null) }) as jest.Mocked<ProfileDAO>;
   const leaseDAO = (overrides.leaseDAO ?? {}) as jest.Mocked<LeaseDAO>;
@@ -99,6 +103,7 @@ const makeServiceWithMocks = (
     subscriptionDAO,
     emitterService,
     stripeService: stripeService as unknown as StripeService,
+    smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
     profileDAO,
     paymentDAO,
     invoiceDAO,
@@ -119,6 +124,7 @@ const makeServiceWithMocks = (
     emitterService,
     subscriptionDAO,
     stripeService: stripeService as unknown as StripeService,
+    smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
     invoiceDAO,
     queueFactory,
     profileDAO,
@@ -133,6 +139,7 @@ const makeServiceWithMocks = (
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
+    smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
     invoiceDAO,
     profileDAO,
     paymentDAO,
@@ -1072,6 +1079,8 @@ describe('PaymentService - handleDisputeCreated', () => {
     mockPaymentDAO = {
       findFirst: jest.fn(),
       update: jest.fn(),
+      startSession: jest.fn().mockResolvedValue({}),
+      withTransaction: jest.fn((_session: unknown, cb: (s: unknown) => unknown) => cb(_session)),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = {
       update: jest.fn(),
@@ -1203,7 +1212,12 @@ describe('PaymentService - handleDisputeWon', () => {
   });
 
   beforeEach(() => {
-    mockPaymentDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = {
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      startSession: jest.fn().mockResolvedValue({}),
+      withTransaction: jest.fn((_session: unknown, cb: (s: unknown) => unknown) => cb(_session)),
+    } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = { findFirst: jest.fn(), update: jest.fn() } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = { createTransfer: jest.fn() } as unknown as jest.Mocked<PaymentGatewayService>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
@@ -3923,6 +3937,7 @@ describe('MaintenancePaymentService - payVendor', () => {
       paymentProcessorDAO: mockPaymentProcessorDAO,
       paymentGatewayService: mockGateway,
       emitterService: mockEmitter as unknown as EventEmitterService,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       userDAO: mockUserDAO,
       vendorDAO: mockVendorDAO as any,
       profileDAO: {} as any,
@@ -4122,6 +4137,7 @@ describe('MaintenancePaymentService - handleMaintenanceInvoiceApproved', () => {
       paymentProcessorDAO: {} as any,
       paymentGatewayService: {} as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       userDAO: {} as any,
       vendorDAO: {} as any,
       profileDAO: mockProfileDAO,
@@ -5213,6 +5229,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
       subscriptionDAO: {} as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
       stripeService: { getInvoicePaymentDetails: jest.fn().mockResolvedValue({ chargeId: CHARGE_ID }) } as any,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       profileDAO: {} as any,
       paymentDAO: mockPaymentDAO,
       invoiceDAO: mockInvoiceDAO,
@@ -5245,6 +5262,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
       subscriptionDAO: {} as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
       stripeService: { getInvoicePaymentDetails: jest.fn().mockResolvedValue({ chargeId: null }) } as any,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       profileDAO: {} as any,
       paymentDAO: mockPaymentDAO,
       invoiceDAO: mockInvoiceDAO,
@@ -5335,6 +5353,7 @@ describe('PaymentCronService - checkFundsAvailability', () => {
       emitterService: mockEmitter as unknown as EventEmitterService,
       subscriptionDAO: {} as any,
       stripeService: mockStripe as unknown as StripeService,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       invoiceDAO: mockInvoiceDAO,
       queueFactory: { getQueue: jest.fn() } as any,
       profileDAO: {} as any,
@@ -5444,6 +5463,7 @@ describe('PaymentCronService - getCronJobs', () => {
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
       subscriptionDAO: {} as any,
       stripeService: {} as any,
+      smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       invoiceDAO: {} as any,
       queueFactory: { getQueue: jest.fn() } as any,
       profileDAO: {} as any,

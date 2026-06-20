@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Decimal from 'decimal.js';
+import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { ClientSession } from 'mongodb';
 import { AuthCache } from '@caching/index';
@@ -274,12 +275,12 @@ export class SubscriptionService {
       const isPaidPlan = planName !== 'essential';
 
       if (!planName || !planId) {
-        throw new BadRequestError({ message: 'Missing required subscription data' });
+        throw new BadRequestError({ message: t('subscription.errors.missingRequiredData') });
       }
 
       const client = await this.clientDAO.findById(clientId, session as any);
       if (!client) {
-        throw new BadRequestError({ message: 'Client not found for subscription' });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const config = subscriptionPlanConfig.getConfig(planName as PlanName);
@@ -351,18 +352,22 @@ export class SubscriptionService {
 
         if (!this.paymentGatewayService) {
           this.log.error('Payment gateway service not initialized');
-          throw new InternalServerError({ message: 'Internal system error' });
+          throw new InternalServerError({ message: t('common.errors.tryAgainLater') });
         }
 
         const subscription = await this.subscriptionDAO.findById(subscriptionId, cxtsession);
         if (!subscription) {
-          throw new BadRequestError({ message: 'Client subscription not found' });
+          throw new BadRequestError({
+            message: t('common.errors.notFound', { resource: 'Subscription' }),
+          });
         }
 
         const clientId = subscription.client.toString();
         const client = await this.clientDAO.findById(clientId, cxtsession);
         if (!client) {
-          throw new BadRequestError({ message: 'Client not found' });
+          throw new BadRequestError({
+            message: t('common.errors.notFound', { resource: 'Client' }),
+          });
         }
 
         let customerName: string | undefined;
@@ -391,7 +396,9 @@ export class SubscriptionService {
 
           if (!customerResult.success || !customerResult.data) {
             throw new BadRequestError({
-              message: customerResult.message || 'Failed to create customer',
+              message:
+                customerResult.message ||
+                t('common.errors.operationFailed', { action: 'create customer account' }),
             });
           }
 
@@ -426,7 +433,9 @@ export class SubscriptionService {
 
         if (!sessionResult.success || !sessionResult.data) {
           throw new BadRequestError({
-            message: sessionResult.message || 'Failed to create checkout session',
+            message:
+              sessionResult.message ||
+              t('common.errors.operationFailed', { action: 'create checkout session' }),
           });
         }
 
@@ -459,11 +468,18 @@ export class SubscriptionService {
           cxtsession
         );
         if (!subscription) {
-          throw new BadRequestError({ message: 'Subscription not found' });
+          throw new BadRequestError({
+            message: t('common.errors.notFound', { resource: 'Subscription' }),
+          });
         }
 
         if (subscription.status === ISubscriptionStatus.INACTIVE && subscription.canceledAt) {
-          throw new BadRequestError({ message: 'Subscription already canceled' });
+          throw new BadRequestError({
+            message: t('common.errors.alreadyInState', {
+              resource: 'Subscription',
+              state: 'canceled',
+            }),
+          });
         }
 
         const isPaidSubscription =
@@ -482,7 +498,9 @@ export class SubscriptionService {
 
           if (!cancelResult.success) {
             throw new BadRequestError({
-              message: cancelResult.message || 'Failed to cancel subscription in payment gateway',
+              message:
+                cancelResult.message ||
+                t('common.errors.operationFailed', { action: 'cancel subscription' }),
             });
           }
 
@@ -498,7 +516,9 @@ export class SubscriptionService {
           );
 
           if (!updatedSubscription) {
-            throw new BadRequestError({ message: 'Failed to update subscription' });
+            throw new BadRequestError({
+              message: t('common.errors.operationFailed', { action: 'update subscription' }),
+            });
           }
 
           return updatedSubscription;
@@ -519,7 +539,9 @@ export class SubscriptionService {
           );
 
           if (!updatedSubscription) {
-            throw new BadRequestError({ message: 'Failed to cancel subscription' });
+            throw new BadRequestError({
+              message: t('common.errors.operationFailed', { action: 'cancel subscription' }),
+            });
           }
 
           await this.syncPayoutSchedule(cuid, ISubscriptionStatus.INACTIVE);
@@ -531,8 +553,8 @@ export class SubscriptionService {
       // Notify account admin with appropriate message
       const isPaid = result.billing?.subscriberId && result.planName !== 'essential';
       const message = isPaid
-        ? `Your subscription will cancel at the end of your billing period (${result.endDate?.toLocaleDateString()}). You'll retain access until then.`
-        : 'Your subscription has been canceled successfully';
+        ? t('subscription.success.cancelAtPeriodEnd')
+        : t('subscription.success.canceled');
 
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'subscription_canceled',
@@ -544,7 +566,7 @@ export class SubscriptionService {
         message,
       });
 
-      return { data: result, success: true, message: 'Subscription canceled successfully' };
+      return { data: result, success: true, message: t('subscription.success.canceled') };
     } catch (error) {
       this.log.error({ error }, 'Error canceling subscription');
       throw error;
@@ -687,7 +709,7 @@ export class SubscriptionService {
       await this.notifyAccountAdminViaSSE(cuid, {
         type: 'subscription_updated',
         subscription: { plan: subscription.planName, status: subscription.status },
-        message: 'Subscription usage counters updated',
+        message: t('subscription.success.usageCountersUpdated'),
       });
     }
   }
@@ -710,7 +732,7 @@ export class SubscriptionService {
       // Fetch client for verification status
       const client = await this.clientDAO.findFirst({ cuid });
       if (!client) {
-        throw new BadRequestError({ message: 'Client not found' });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       // Calculate verification status and grace period
@@ -775,6 +797,18 @@ export class SubscriptionService {
             overageFeeCents: feeCents,
             overageCount,
             projectedOverageCents: overageCount * feeCents,
+          };
+        })(),
+        smsUsage: (() => {
+          const count = subscription.smsUsage?.countThisPeriod ?? 0;
+          const quota = config.limits.smsQuota ?? 0;
+          return {
+            countThisPeriod: count,
+            quota,
+            enabled: quota > 0,
+            remaining: Math.max(0, quota - count),
+            resetDate: subscription.smsUsage?.periodStart || null,
+            percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
           };
         })(),
       };
@@ -854,7 +888,9 @@ export class SubscriptionService {
   }> {
     const subscription = await this.subscriptionDAO.findFirst({ cuid });
     if (!subscription) {
-      throw new BadRequestError({ message: 'Subscription not found' });
+      throw new BadRequestError({
+        message: t('common.errors.notFound', { resource: 'Subscription' }),
+      });
     }
 
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
@@ -900,7 +936,7 @@ export class SubscriptionService {
     seatDelta: number
   ): IPromiseReturnedData<ISubscriptionDocument> {
     if (seatDelta === 0) {
-      throw new BadRequestError({ message: 'Seat change cannot be zero' });
+      throw new BadRequestError({ message: t('subscription.errors.seatChangeCannotBeZero') });
     }
 
     const session = await this.subscriptionDAO.startSession();
@@ -914,13 +950,14 @@ export class SubscriptionService {
           cxtsession
         );
         if (!subscription) {
-          throw new BadRequestError({ message: 'Subscription not found' });
+          throw new BadRequestError({
+            message: t('common.errors.notFound', { resource: 'Subscription' }),
+          });
         }
 
         if (subscription.planName === 'essential') {
           throw new BadRequestError({
-            message:
-              'Cannot manage seats on Essential plan. Please upgrade to Growth or Portfolio.',
+            message: t('subscription.errors.seatsNotAvailableOnEssential'),
           });
         }
 
@@ -930,13 +967,13 @@ export class SubscriptionService {
         // Validate new count is within allowed range
         if (newAdditionalCount < 0) {
           throw new BadRequestError({
-            message: `Cannot remove ${Math.abs(seatDelta)} seats. You only have ${subscription.additionalSeatsCount} additional seats.`,
+            message: t('subscription.errors.cannotRemoveSeats'),
           });
         }
 
         if (newAdditionalCount > config.seatPricing.maxAdditionalSeats) {
           throw new BadRequestError({
-            message: `Cannot ${seatDelta > 0 ? 'purchase' : 'have'} ${Math.abs(seatDelta)} seats. Your ${subscription.planName} plan allows a maximum of ${config.seatPricing.maxAdditionalSeats} additional seats. You currently have ${subscription.additionalSeatsCount} additional seats.`,
+            message: t('subscription.errors.seatLimitExceeded'),
           });
         }
 
@@ -944,9 +981,9 @@ export class SubscriptionService {
         if (seatDelta < 0) {
           const maxAllowedAfterRemoval = config.seatPricing.includedSeats + newAdditionalCount;
           if (subscription.currentSeats > maxAllowedAfterRemoval) {
-            const needToArchive = subscription.currentSeats - maxAllowedAfterRemoval;
+            const _needToArchive = subscription.currentSeats - maxAllowedAfterRemoval;
             throw new BadRequestError({
-              message: `Cannot remove ${Math.abs(seatDelta)} seats. You currently have ${subscription.currentSeats} active users but would only have ${maxAllowedAfterRemoval} seats allowed. Please archive ${needToArchive} user(s) first.`,
+              message: t('subscription.errors.cannotRemoveSeatsActiveUsers'),
             });
           }
         }
@@ -970,10 +1007,12 @@ export class SubscriptionService {
               );
 
               if (!stripePrice) {
-                const intervalName =
+                const _intervalName =
                   subscription.billingInterval === 'annual' ? 'annual' : 'monthly';
                 throw new BadRequestError({
-                  message: `Cannot add seats to your ${intervalName} subscription. The seat price configuration is missing in Stripe. Please contact support to enable seat purchases for ${intervalName} billing.`,
+                  message: t('common.errors.operationFailedContact', {
+                    action: 'add seats to your subscription',
+                  }),
                 });
               }
 
@@ -986,10 +1025,12 @@ export class SubscriptionService {
                 (priceInterval === 'year' && subInterval === 'annual');
 
               if (!intervalsMatch) {
-                const priceIntervalName = priceInterval === 'month' ? 'monthly' : 'yearly';
-                const subIntervalName = subInterval === 'monthly' ? 'monthly' : 'yearly';
+                const _priceIntervalName = priceInterval === 'month' ? 'monthly' : 'yearly';
+                const _subIntervalName = subInterval === 'monthly' ? 'monthly' : 'yearly';
                 throw new BadRequestError({
-                  message: `Cannot add seats to your ${subIntervalName} subscription. The seat price (${seatLookupKey}) is configured for ${priceIntervalName} billing, but your subscription is billed ${subIntervalName}. Please contact support to resolve this billing interval mismatch.`,
+                  message: t('common.errors.operationFailedContact', {
+                    action: 'add seats due to a billing configuration issue',
+                  }),
                 });
               }
 
@@ -1006,7 +1047,11 @@ export class SubscriptionService {
             );
 
             if (!stripeSubResult.success || !stripeSubResult.data) {
-              throw new InternalServerError({ message: 'Failed to fetch Stripe subscription' });
+              throw new InternalServerError({
+                message: t('common.errors.operationFailed', {
+                  action: 'retrieve subscription details',
+                }),
+              });
             }
 
             const stripeSubscription = stripeSubResult.data;
@@ -1033,7 +1078,9 @@ export class SubscriptionService {
 
                 if (!deleteResult.success) {
                   throw new BadRequestError({
-                    message: deleteResult.message || 'Failed to delete seat item from Stripe',
+                    message:
+                      deleteResult.message ||
+                      t('common.errors.operationFailed', { action: 'remove seats' }),
                   });
                 }
 
@@ -1055,7 +1102,9 @@ export class SubscriptionService {
 
               if (!addResult.success || !addResult.data) {
                 throw new BadRequestError({
-                  message: addResult.message || 'Failed to add seats to Stripe subscription',
+                  message:
+                    addResult.message ||
+                    t('common.errors.operationFailed', { action: 'add seats' }),
                 });
               }
 
@@ -1082,7 +1131,9 @@ export class SubscriptionService {
 
               if (!updateResult.success) {
                 throw new BadRequestError({
-                  message: updateResult.message || 'Failed to update seat quantity in Stripe',
+                  message:
+                    updateResult.message ||
+                    t('common.errors.operationFailed', { action: 'update seat quantity' }),
                 });
               }
 
@@ -1103,10 +1154,10 @@ export class SubscriptionService {
             }
 
             // Otherwise, wrap in user-friendly error
-            const errorMessage =
+            const _errorMessage =
               stripeError instanceof Error ? stripeError.message : 'Unknown error';
             throw new BadRequestError({
-              message: `Unable to update seats. ${errorMessage}. Please try again or contact support if the issue persists.`,
+              message: t('common.errors.operationFailedContact', { action: 'update seats' }),
             });
           }
         }
@@ -1145,7 +1196,9 @@ export class SubscriptionService {
         );
 
         if (!updatedSubscription) {
-          throw new BadRequestError({ message: 'Failed to update subscription' });
+          throw new BadRequestError({
+            message: t('common.errors.operationFailed', { action: 'update subscription' }),
+          });
         }
 
         this.log.info(
@@ -1164,7 +1217,7 @@ export class SubscriptionService {
       });
 
       // Send SSE notification
-      const action = seatDelta > 0 ? 'purchased' : 'removed';
+      const _action = seatDelta > 0 ? 'purchased' : 'removed';
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'seats_purchased',
         subscription: {
@@ -1172,7 +1225,7 @@ export class SubscriptionService {
           additionalSeats: result.additionalSeatsCount,
           totalMonthlyCost: result.totalMonthlyPrice,
         },
-        message: `Successfully ${action} ${Math.abs(seatDelta)} seat${Math.abs(seatDelta) > 1 ? 's' : ''}`,
+        message: t('common.success.updated', { resource: 'Seats' }),
       });
 
       return { data: result, success: true };
@@ -1204,14 +1257,16 @@ export class SubscriptionService {
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new BadRequestError({ message: 'Client not found' });
+        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       let subscription = await this.subscriptionDAO.findFirst({ cuid });
       if (!subscription) {
         // Subscription record missing (e.g. DB was reset). Auto-create it from checkout data.
         if (!checkoutData.planName || !checkoutData.billingInterval) {
-          throw new BadRequestError({ message: 'Subscription not found' });
+          throw new BadRequestError({
+            message: t('common.errors.notFound', { resource: 'Subscription' }),
+          });
         }
 
         const createResult = await this.createSubscription(client._id.toString(), {
@@ -1222,7 +1277,9 @@ export class SubscriptionService {
         });
         if (!createResult.success || !createResult.data) {
           throw new BadRequestError({
-            message: createResult.message || 'Failed to initialize subscription',
+            message:
+              createResult.message ||
+              t('common.errors.operationFailed', { action: 'initialize subscription' }),
           });
         }
         subscription = createResult.data;
@@ -1234,7 +1291,7 @@ export class SubscriptionService {
         await this.notifyAccountAdminViaSSE(cuid, {
           type: 'subscription_activated',
           subscription: { plan: 'essential', status: 'active' },
-          message: 'Essential plan activated',
+          message: t('subscription.success.essentialActivated'),
         });
         return { data: { activated: true }, success: true };
       }
@@ -1251,7 +1308,9 @@ export class SubscriptionService {
 
       const priceId = checkoutData.priceId || subscription.billing.planId;
       if (!priceId) {
-        throw new InternalServerError({ message: 'Plan pricing not configured' });
+        throw new InternalServerError({
+          message: t('common.errors.operationFailedContact', { action: 'process plan pricing' }),
+        });
       }
 
       if (isInitialPayment) {
@@ -1266,21 +1325,23 @@ export class SubscriptionService {
 
         if (!checkoutResult.success || !checkoutResult.data) {
           throw new BadRequestError({
-            message: checkoutResult.message || 'Failed to create checkout session',
+            message:
+              checkoutResult.message ||
+              t('common.errors.operationFailed', { action: 'create checkout session' }),
           });
         }
 
         return {
           data: checkoutResult.data,
           success: true,
-          message: 'Checkout session created successfully',
+          message: t('common.success.created', { resource: 'Checkout session' }),
         };
       }
 
       if (isUpdate) {
         const stripeSubscriptionId = subscription.billing?.subscriberId;
         if (!stripeSubscriptionId) {
-          throw new BadRequestError({ message: 'No active Stripe subscription found' });
+          throw new BadRequestError({ message: t('subscription.errors.noActiveSubscription') });
         }
 
         const session = await this.subscriptionDAO.startSession();
@@ -1294,7 +1355,9 @@ export class SubscriptionService {
 
             if (!updateResult.success) {
               throw new BadRequestError({
-                message: updateResult.message || 'Failed to update subscription in Stripe',
+                message:
+                  updateResult.message ||
+                  t('common.errors.operationFailed', { action: 'update subscription' }),
               });
             }
 
@@ -1317,7 +1380,9 @@ export class SubscriptionService {
             );
 
             if (!updatedSubscription) {
-              throw new BadRequestError({ message: 'Failed to update subscription' });
+              throw new BadRequestError({
+                message: t('common.errors.operationFailed', { action: 'update subscription' }),
+              });
             }
 
             return updatedSubscription;
@@ -1339,14 +1404,13 @@ export class SubscriptionService {
               status: result.status,
               endDate: result.endDate,
             },
-            message:
-              'Subscription updated. You were charged immediately with credit for unused time.',
+            message: t('common.success.updated', { resource: 'Subscription' }),
           });
 
           return {
-            data: { message: 'Subscription updated successfully' }, // NO checkoutUrl
+            data: { message: t('common.success.updated', { resource: 'Subscription' }) }, // NO checkoutUrl
             success: true,
-            message: 'Subscription updated successfully',
+            message: t('common.success.updated', { resource: 'Subscription' }),
           };
         } catch (error) {
           this.log.error({ error }, 'Error updating subscription');
@@ -1354,7 +1418,7 @@ export class SubscriptionService {
         }
       }
 
-      throw new InternalServerError({ message: 'Unexpected subscription status' });
+      throw new InternalServerError({ message: t('subscription.errors.unexpectedStatus') });
     } catch (error) {
       this.log.error({ error }, 'Error initiating subscription payment');
       throw error;
@@ -1458,8 +1522,8 @@ export class SubscriptionService {
               endDate: subscription.endDate,
             },
             message: isPastDue
-              ? 'Your grace period has ended. Please renew your subscription to restore access.'
-              : 'Your subscription has expired. Please renew to continue using premium features.',
+              ? t('subscription.errors.gracePeriodEnded')
+              : t('subscription.errors.subscriptionExpired'),
           });
 
           this.log.info(
@@ -1536,12 +1600,14 @@ export class SubscriptionService {
     try {
       const subscription = await this.subscriptionDAO.findFirst({ cuid });
       if (!subscription) {
-        throw new BadRequestError({ message: 'Subscription not found for this client' });
+        throw new BadRequestError({
+          message: t('common.errors.notFound', { resource: 'Subscription' }),
+        });
       }
 
       const stripeSubscriptionId = subscription.billing?.subscriberId;
       if (!stripeSubscriptionId) {
-        throw new BadRequestError({ message: 'No Stripe subscription ID linked to this record' });
+        throw new BadRequestError({ message: t('subscription.errors.noLinkedSubscription') });
       }
 
       const stripeResult = await this.paymentGatewayService.getSubscriptionWithItems(
@@ -1550,7 +1616,9 @@ export class SubscriptionService {
       );
 
       if (!stripeResult.success || !stripeResult.data) {
-        throw new BadRequestError({ message: 'Failed to retrieve subscription from Stripe' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'retrieve subscription details' }),
+        });
       }
 
       const stripeSub = stripeResult.data;
@@ -1569,7 +1637,9 @@ export class SubscriptionService {
       );
 
       if (!updated) {
-        throw new BadRequestError({ message: 'DB update failed during Stripe sync' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'sync subscription' }),
+        });
       }
 
       this.log.info(
@@ -1680,7 +1750,7 @@ export class SubscriptionService {
           'Seat limit reached - invitation should have been blocked'
         );
         throw new BadRequestError({
-          message: `Seat limit reached. Your ${subscription.planName} plan allows ${maxAllowedSeats} seats (${config.seatPricing.includedSeats} included + ${subscription.additionalSeatsCount} additional).`,
+          message: t('subscription.errors.seatLimitReached'),
         });
       }
 

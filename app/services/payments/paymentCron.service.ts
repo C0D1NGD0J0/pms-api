@@ -6,6 +6,7 @@ import { QueueFactory } from '@services/queue';
 import { NotFoundError } from '@shared/customErrors';
 import { PaymentQueue } from '@queues/payment.queue';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SMSService } from '@services/smsService/sms.service';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { calcApplicationFeeSplit } from '@utils/financial.utils';
@@ -27,6 +28,7 @@ import {
   PaymentRecordStatus,
   PaymentRecordType,
   IPaymentDocument,
+  SMSMessageType,
   PaymentMethod,
   PaymentSource,
   LeaseStatus,
@@ -40,6 +42,7 @@ interface IConstructor {
   subscriptionDAO: SubscriptionDAO;
   stripeService: StripeService;
   queueFactory: QueueFactory;
+  smsService: SMSService;
   invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
@@ -55,6 +58,7 @@ export class PaymentCronService implements ICronProvider {
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly stripeService: StripeService;
+  private readonly smsService: SMSService;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly queueFactory: QueueFactory;
   private readonly profileDAO: ProfileDAO;
@@ -69,6 +73,7 @@ export class PaymentCronService implements ICronProvider {
     emitterService,
     subscriptionDAO,
     stripeService,
+    smsService,
     invoiceDAO,
     queueFactory,
     profileDAO,
@@ -83,6 +88,7 @@ export class PaymentCronService implements ICronProvider {
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.stripeService = stripeService;
+    this.smsService = smsService;
     this.invoiceDAO = invoiceDAO;
     this.queueFactory = queueFactory;
     this.profileDAO = profileDAO;
@@ -555,6 +561,18 @@ export class PaymentCronService implements ICronProvider {
           paymentType: payment.paymentType,
           tenantId: payment.tenant?.toString(),
         });
+
+        // SMS notification to tenant
+        if (payment.tenant) {
+          this.smsService
+            .sendToUser(
+              payment.cuid,
+              payment.tenant.toString(),
+              'Your payment is overdue. Please make payment as soon as possible.',
+              SMSMessageType.SYSTEM
+            )
+            .catch(() => {});
+        }
       }
 
       this.log.info(

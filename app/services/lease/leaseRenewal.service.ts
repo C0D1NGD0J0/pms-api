@@ -103,7 +103,7 @@ export class LeaseRenewalService {
       const { cuid } = cxt.request.params;
 
       if (!cuid || !luid) {
-        throw new BadRequestError({ message: t('property.errors.clientIdRequired') });
+        throw new BadRequestError({ message: t('common.errors.required', { field: 'Client ID' }) });
       }
 
       const lease = await this.leaseDAO.findFirst(
@@ -111,7 +111,9 @@ export class LeaseRenewalService {
         { populate: ['propertyInfo', 'propertyUnitInfo', 'tenantInfo'] }
       );
       if (!lease) {
-        throw new InvalidRequestError({ message: t('lease.not_found') });
+        throw new InvalidRequestError({
+          message: t('common.errors.notFound', { resource: 'Lease' }),
+        });
       }
 
       // Only allow for active or draft_renewal leases
@@ -139,7 +141,7 @@ export class LeaseRenewalService {
 
       return {
         success: true,
-        message: 'Renewal form data retrieved successfully',
+        message: t('common.success.retrieved', { resource: 'Renewal form data' }),
         data: renewalMetadata.renewalFormData,
       };
     } catch (error: any) {
@@ -189,7 +191,7 @@ export class LeaseRenewalService {
 
     if (!existingLease) {
       throw new InvalidRequestError({
-        message: t('lease.errors.notFound'),
+        message: t('common.errors.notFound', { resource: 'Lease' }),
       });
     }
 

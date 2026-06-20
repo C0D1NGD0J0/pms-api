@@ -129,7 +129,7 @@ export class LeaseTemplateService {
         isUnitLease: !!(previewData.unitNumber && previewData.isMultiUnit),
 
         // Lease Terms - Use MoneyUtils.formatCurrency for consistency
-        leaseType: previewData.leaseType || 'Fixed Term Residential Lease',
+        leaseType: this.formatLeaseType(previewData.leaseType),
         startDate: this.formatDate(previewData.startDate),
         endDate: this.formatDate(previewData.endDate),
         rentAmount: MoneyUtils.formatCurrency(previewData.rentAmount, previewData.currency),
@@ -138,6 +138,25 @@ export class LeaseTemplateService {
           previewData.currency
         ),
         rentDueDayOrdinal: this.getOrdinalSuffix(previewData.rentDueDay || 1),
+
+        // Payment & Fee Details
+        acceptedPaymentMethod: previewData.acceptedPaymentMethod
+          ? previewData.acceptedPaymentMethod
+              .replace(/-/g, ' ')
+              .replace(/\b\w/g, (c: string) => c.toUpperCase())
+          : null,
+        lateFee:
+          previewData.lateFee?.amount > 0 || previewData.lateFee?.percentage > 0
+            ? {
+                type: previewData.lateFee.type,
+                amount:
+                  previewData.lateFee.type === 'fixed'
+                    ? MoneyUtils.formatCurrency(previewData.lateFee.amount, previewData.currency)
+                    : `${previewData.lateFee.percentage}%`,
+                gracePeriodDays: previewData.lateFee.gracePeriodDays || 5,
+              }
+            : null,
+        managementFee: previewData.managementFee || null,
 
         // Additional Provisions
         petPolicy: this.transformPetPolicy(previewData.petPolicy, previewData.currency),
@@ -152,7 +171,7 @@ export class LeaseTemplateService {
         requiresNotarization: previewData.requiresNotarization || false,
       };
 
-      this.log.info('Successfully transformed lease preview data for template');
+      this.log.info('Transformed lease preview data for template');
       return templateData;
     } catch (error) {
       this.log.error({ error }, 'Failed to transform lease preview data');
@@ -321,7 +340,25 @@ export class LeaseTemplateService {
       maxPets: petPolicy.maxPets || 1,
       types: this.transformArrayToString(petPolicy.types) || 'Pets',
       deposit: MoneyUtils.formatCurrency(petPolicy.deposit, currency),
+      monthlyFee:
+        (petPolicy.monthlyFee ?? 0) > 0
+          ? MoneyUtils.formatCurrency(petPolicy.monthlyFee!, currency)
+          : null,
     };
+  }
+
+  private formatLeaseType(leaseType: string | undefined): string {
+    if (!leaseType) return 'Fixed Term Residential Lease';
+    const typeMap: Record<string, string> = {
+      fixed_term: 'Fixed Term',
+      month_to_month: 'Month to Month',
+      short_term: 'Short Term',
+      commercial: 'Commercial',
+      sublease: 'Sublease',
+    };
+    return (
+      typeMap[leaseType] || leaseType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    );
   }
 
   private transformArrayToString(value: string | string[] | undefined): string | null {

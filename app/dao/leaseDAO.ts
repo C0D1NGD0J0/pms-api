@@ -187,7 +187,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           skip,
           limit,
           projection:
-            'luid leaseNumber status duration.startDate duration.endDate fees.rentAmount fees.currency fees.lateFeeDays fees.rentDueDay fees.acceptedPaymentMethod property.unitId tenantId signingMethod eSignature.status includeManagementFee petPolicy.monthlyFee',
+            'luid leaseNumber status duration.startDate duration.endDate fees.rentAmount fees.currency fees.lateFeeDays fees.rentDueDay fees.acceptedPaymentMethod property.unitId tenantId signingMethod eSignature.status includeManagementFee petPolicy.allowed petPolicy.monthlyFee',
           populate: [
             {
               path: 'tenantId',
@@ -245,6 +245,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             email: tenant?.email,
             fullName: tenantName,
           },
+          petsAllowed: leaseObj.petPolicy?.allowed ?? false,
           property: {
             pid: leaseObj.property?.id?.pid,
             name: propertyName,

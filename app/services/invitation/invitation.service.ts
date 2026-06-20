@@ -113,7 +113,7 @@ export class InvitationService {
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (!client.isVerified && validatedData.role === ROLES.TENANT) {
@@ -132,7 +132,7 @@ export class InvitationService {
 
       const inviterUser = await this.userDAO.getUserById(inviterUserId);
       if (!inviterUser) {
-        throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+        throw new UnauthorizedError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       if (inviterUser.email.toLowerCase() === validatedData.inviteeEmail.toLowerCase()) {
@@ -267,7 +267,7 @@ export class InvitationService {
     try {
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const existingInvitation = await this.invitationDAO.findByIuid(iuid, client.id);
@@ -283,7 +283,7 @@ export class InvitationService {
 
       const updaterUser = await this.userDAO.getUserById(updaterUserId);
       if (!updaterUser) {
-        throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+        throw new UnauthorizedError({ message: t('common.errors.notFound', { resource: 'User' }) });
       }
 
       if (updaterUser.email.toLowerCase() === invitationData.inviteeEmail.toLowerCase()) {
@@ -353,7 +353,7 @@ export class InvitationService {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const linkedVendorUid =
@@ -494,7 +494,9 @@ export class InvitationService {
       );
 
       if (!user) {
-        throw new BadRequestError({ message: 'Error creating user account.' });
+        throw new BadRequestError({
+          message: t('common.errors.operationFailed', { action: 'create user account' }),
+        });
       }
 
       await this.invitationDAO.acceptInvitation(invitationData.token, user._id.toString(), session);
@@ -569,7 +571,7 @@ export class InvitationService {
     }
 
     if (!client) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     if (invitation.clientId.toString() !== client.id.toString()) {
@@ -704,7 +706,7 @@ export class InvitationService {
       ]);
 
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       if (resender && resender.email.toLowerCase() === invitation.inviteeEmail.toLowerCase()) {
@@ -789,7 +791,7 @@ export class InvitationService {
     // Lookup client by cuid to get clientId for querying
     const client = await this.clientDAO.getClientByCuid(query.cuid);
     if (!client) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     // Add clientId to query for DAO
@@ -869,7 +871,7 @@ export class InvitationService {
   private async validateInviterPermissions(userId: string, cuid: string): Promise<void> {
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
-      throw new UnauthorizedError({ message: t('auth.errors.userNotFound') });
+      throw new UnauthorizedError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === cuid && c.isConnected);
@@ -1090,7 +1092,7 @@ export class InvitationService {
       // Lookup client by cuid to get clientId for querying
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        throw new NotFoundError({ message: t('client.errors.notFound') });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const query: IInvitationListQuery = {

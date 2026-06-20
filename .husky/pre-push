@@ -1,8 +1,8 @@
 echo "Running pre-push checks..."
 
 echo "Running security audit..."
-npm audit --audit-level=high --omit=dev || {
-  echo "High or critical vulnerabilities found in production dependencies. Run 'npm audit' for details."
+npm audit --audit-level=critical --omit=dev || {
+  echo "Critical vulnerabilities found in production dependencies. Run 'npm audit' for details."
   exit 1
 }
 

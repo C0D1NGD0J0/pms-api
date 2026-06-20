@@ -192,14 +192,15 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
 
   async findByGatewayId(
     gatewayPaymentId: string,
+    cuid: string,
     opts?: IFindOptions
   ): Promise<IPaymentDocument | null> {
     try {
-      if (!gatewayPaymentId) {
-        throw new Error('Gateway payment ID is required');
+      if (!gatewayPaymentId || !cuid) {
+        throw new Error('Gateway payment ID and cuid are required');
       }
 
-      return await this.findFirst({ gatewayPaymentId, deletedAt: null }, opts);
+      return await this.findFirst({ gatewayPaymentId, cuid, deletedAt: null }, opts);
     } catch (error: any) {
       this.log.error('Error finding payment by gateway ID:', error);
       throw this.throwErrorHandler(error);

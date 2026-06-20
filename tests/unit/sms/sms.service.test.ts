@@ -1,16 +1,12 @@
 import { Types } from 'mongoose';
 import { NotFoundError } from '@shared/customErrors';
 import { SMSService } from '@services/smsService/sms.service';
-import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import {
   SMSMessageType,
-  ISendSMSResult,
   ISendSMSInput,
   SMSStatus,
 } from '@interfaces/sms.interface';
 import {
-  NotificationPriorityEnum,
-  NotificationTypeEnum,
   ISubscriptionStatus,
 } from '@interfaces/index';
 

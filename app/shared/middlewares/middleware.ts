@@ -508,7 +508,7 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   const { currentuser } = req.context;
 
   if (!currentuser) {
-    next(new UnauthorizedError({ message: t('auth.errors.unauthorized') }));
+    next(new UnauthorizedError({ message: t('common.errors.unauthorized') }));
     return null;
   }
 
@@ -571,7 +571,7 @@ export const requirePermission = (
         });
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions', {
+            message: t('common.errors.insufficientPermissions', {
               resource,
               action,
               reason: hasPermission.reason || '',
@@ -597,7 +597,7 @@ export const requirePrimaryVendor = (req: Request, _res: Response, next: NextFun
   if (!currentUser?.vendorInfo?.isPrimaryVendor) {
     return next(
       new ForbiddenError({
-        message: t('auth.errors.insufficientPermissions', {
+        message: t('common.errors.insufficientPermissions', {
           resource: 'payout',
           action: 'manage',
           reason: 'Only primary vendor account holders can manage payout settings',
@@ -700,7 +700,7 @@ export const requireAnyPermission = (permissions: PermissionCheck[]) => {
       }
 
       // No valid permissions found
-      return next(new ForbiddenError({ message: t('auth.errors.insufficientPermissions') }));
+      return next(new ForbiddenError({ message: t('common.errors.insufficientPermissions') }));
     } catch (error) {
       logger.error('Error in requireAnyPermission middleware:', error);
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
@@ -729,7 +729,7 @@ export const requireAllPermissions = (permissions: PermissionCheck[]) => {
         if (!result.granted) {
           return next(
             new ForbiddenError({
-              message: t('auth.errors.insufficientPermissions', {
+              message: t('common.errors.insufficientPermissions', {
                 resource: permission.resource,
                 action: permission.action,
               }),
@@ -827,7 +827,7 @@ export const requirePermissionWithContext = (
       if (!hasPermission.granted) {
         return next(
           new ForbiddenError({
-            message: t('auth.errors.insufficientPermissions', {
+            message: t('common.errors.insufficientPermissions', {
               resource,
               action,
               reason: hasPermission.reason || '',
@@ -886,7 +886,7 @@ export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings
   return (req: Request, _res: Response, next: NextFunction) => {
     const currentUser = req.context?.currentuser;
     if (!currentUser) {
-      return next(new UnauthorizedError({ message: t('auth.errors.unauthorized') }));
+      return next(new UnauthorizedError({ message: t('common.errors.unauthorized') }));
     }
 
     // Only applies to tenant-role users; all other roles pass through

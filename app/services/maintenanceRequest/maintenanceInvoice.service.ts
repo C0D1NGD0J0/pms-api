@@ -7,9 +7,11 @@ import { ClientDAO } from '@dao/clientDAO';
 import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SMSService } from '@services/smsService/sms.service';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
@@ -32,6 +34,7 @@ interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
   emitterService: EventEmitterService;
   invoiceDAO: InvoiceDAO;
+  smsService: SMSService;
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
 }
@@ -41,6 +44,7 @@ export class MaintenanceInvoiceService {
   private readonly vendorDAO: VendorDAO;
   private readonly clientDAO: ClientDAO;
   private readonly invoiceDAO: InvoiceDAO;
+  private readonly smsService: SMSService;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
 
@@ -49,11 +53,13 @@ export class MaintenanceInvoiceService {
     emitterService,
     invoiceDAO,
     vendorDAO,
+    smsService,
     clientDAO,
   }: IConstructor) {
     this.vendorDAO = vendorDAO;
     this.clientDAO = clientDAO;
     this.invoiceDAO = invoiceDAO;
+    this.smsService = smsService;
     this.emitterService = emitterService;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.log = createLogger('MaintenanceInvoiceService');
@@ -206,7 +212,7 @@ export class MaintenanceInvoiceService {
 
     // Only management roles can approve invoices — tenants, vendors, and staff are excluded
     if (!ROLE_GROUPS.MANAGEMENT_ROLES.includes(currentuser.client.role as any)) {
-      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
@@ -254,6 +260,19 @@ export class MaintenanceInvoiceService {
       })),
     });
 
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.vendorId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.vendorId.toString(),
+          `Your invoice for service request #${mruid} has been approved.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
+
     return {
       success: true,
       data: updatedInvoice,
@@ -271,7 +290,7 @@ export class MaintenanceInvoiceService {
 
     // Only management roles can reject invoices — tenants, vendors, and staff are excluded
     if (!ROLE_GROUPS.MANAGEMENT_ROLES.includes(currentuser.client.role as any)) {
-      throw new ForbiddenError({ message: t('auth.errors.insufficientRole') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
@@ -301,6 +320,19 @@ export class MaintenanceInvoiceService {
       rejectionReason: data.rejectionReason,
       rejectedBy: currentuser.sub,
     });
+
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.vendorId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.vendorId.toString(),
+          `Your invoice for service request #${mruid} was rejected.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
 
     return {
       success: true,
@@ -461,6 +493,19 @@ export class MaintenanceInvoiceService {
         tenantId: request.tenantId?.toString(),
         approvedBy: currentuser.sub,
       });
+
+      // Send SMS notification (fire-and-forget — failures are logged internally)
+      if (request.vendorId) {
+        this.smsService
+          .sendToUser(
+            cuid,
+            request.vendorId.toString(),
+            `Your work order for service request #${mruid} has been approved.`,
+            SMSMessageType.MAINTENANCE_UPDATE,
+            currentuser.sub
+          )
+          .catch(() => {}); // swallow — SMSService logs internally
+      }
     } else {
       this.emitterService.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
         requestId: request._id.toString(),
@@ -472,6 +517,19 @@ export class MaintenanceInvoiceService {
         rejectedBy: currentuser.sub,
         rejectionReason: data.rejectionReason!,
       });
+
+      // Send SMS notification (fire-and-forget — failures are logged internally)
+      if (request.vendorId) {
+        this.smsService
+          .sendToUser(
+            cuid,
+            request.vendorId.toString(),
+            `Your work order for service request #${mruid} was rejected.`,
+            SMSMessageType.MAINTENANCE_UPDATE,
+            currentuser.sub
+          )
+          .catch(() => {}); // swallow — SMSService logs internally
+      }
     }
 
     const msg = approved
@@ -494,7 +552,10 @@ export class MaintenanceInvoiceService {
       mruid: payload.mruid,
       deletedAt: null,
     });
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!request)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
 
     // Validate tenant isolation: the resolved request must belong to the declared client
     if (request.cuid !== payload.cuid) {

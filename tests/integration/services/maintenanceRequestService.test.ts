@@ -71,6 +71,7 @@ const setupService = () => {
     leaseDAO,
     vendorDAO,
     emitterService,
+    smsService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })) } as any,
     vendorSuggestionService: {
       runAITriage: jest.fn().mockReturnValue(Promise.resolve()),
       suggestVendor: jest.fn().mockReturnValue(Promise.resolve(null)),

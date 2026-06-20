@@ -10,6 +10,7 @@ import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils
 export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
 export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { PaymentRecordStatus, IPaymentDocument } from '@interfaces/payments.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import {
   IPropertyUnitDocument,
@@ -385,7 +386,7 @@ export const handleDraftUpdate = async (
     success: true,
     message: requiresApproval
       ? t('lease.updateSubmittedForApproval')
-      : t('lease.updatedSuccessfully'),
+      : t('common.success.updated', { resource: 'Lease' }),
     data: {
       lease: updatedLease,
       requiresApproval,
@@ -426,7 +427,7 @@ export const handlePendingSignatureUpdate = async (
 
   return {
     success: true,
-    message: t('lease.updatedSuccessfully'),
+    message: t('common.success.updated', { resource: 'Lease' }),
     data: { lease: updatedLease },
   };
 };
@@ -487,7 +488,7 @@ export const handleActiveUpdate = async (
     success: true,
     message: requiresApproval
       ? t('lease.updateSubmittedForApproval')
-      : t('lease.updatedSuccessfully'),
+      : t('common.success.updated', { resource: 'Lease' }),
     data: {
       lease: updatedLease,
       requiresApproval,
@@ -521,7 +522,7 @@ export const handleClosedStatusUpdate = async (
 
   return {
     success: true,
-    message: t('lease.updatedSuccessfully'),
+    message: t('common.success.updated', { resource: 'Lease' }),
     data: { lease: updatedLease },
   };
 };
@@ -886,7 +887,7 @@ export const fetchLeaseByLuid = async (
   const lease = await leaseDAO.findFirst({ luid, cuid, deletedAt: null }, options);
 
   if (!lease) {
-    throw new BadRequestError({ message: t('lease.errors.leaseNotFound') });
+    throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
   }
 
   return lease;
@@ -897,17 +898,14 @@ export const fetchLeaseByLuid = async (
 /**
  * Calculate financial summary for a lease
  */
-export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
+export const calculateFinancialSummary = (
+  lease: ILeaseDocument,
+  payments: IPaymentDocument[] = []
+): any => {
   const { baseRent, managementFee, petMonthlyFee, petDeposit, securityDeposit, totalMonthlyRent } =
     computeLeaseMonthlyFees(lease);
   const currency = lease.fees.currency || 'USD';
-
-  const now = new Date();
   const startDate = new Date(lease.duration.startDate);
-  const monthsElapsed = Math.max(
-    0,
-    Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30))
-  );
 
   // Pro-rate only the base rent; pet fee and management fee are added as flat/separate items below.
   const proRated = proRateAmount(baseRent, startDate);
@@ -944,10 +942,20 @@ export const calculateFinancialSummary = (lease: ILeaseDocument): any => {
     lateFeeType: lease.fees.lateFeeType,
     lateFeePercentage: lease.fees.lateFeePercentage,
     acceptedPaymentMethod: lease.fees.acceptedPaymentMethod,
-    totalExpected: totalMonthlyRent * monthsElapsed,
-    totalPaid: 0,
-    totalOwed: 0,
-    lastPaymentDate: null,
+    totalExpected: payments.reduce((sum, p) => sum + (p.baseAmount || 0), 0),
+    totalPaid: payments
+      .filter((p) => p.status === PaymentRecordStatus.PAID)
+      .reduce((sum, p) => sum + (p.baseAmount || 0), 0),
+    totalOwed: payments
+      .filter(
+        (p) => p.status === PaymentRecordStatus.PENDING || p.status === PaymentRecordStatus.OVERDUE
+      )
+      .reduce((sum, p) => sum + (p.baseAmount || 0), 0),
+    lastPaymentDate:
+      payments
+        .filter((p) => p.status === PaymentRecordStatus.PAID && p.paidAt)
+        .sort((a, b) => new Date(b.paidAt!).getTime() - new Date(a.paidAt!).getTime())[0]?.paidAt ||
+      null,
     nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay, startDate),
     // First-payment breakdown (pro-rated base rent at move-in — pet fee and management fee separate)
     proRatedFirstMonthAmount: proRated.amount,

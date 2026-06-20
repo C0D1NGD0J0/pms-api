@@ -1,5 +1,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
@@ -51,7 +52,7 @@ export class ExpenseService implements IExpenseService {
       });
 
       if (!property) {
-        throw new NotFoundError({ message: 'Property not found' });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
       }
 
       const expense = await this.expenseDAO.insert({
@@ -62,7 +63,11 @@ export class ExpenseService implements IExpenseService {
       });
 
       this.log.info({ expuid: expense.expuid, cuid }, 'Expense created');
-      return { success: true, data: expense, message: 'Expense created successfully' };
+      return {
+        success: true,
+        data: expense,
+        message: t('common.success.created', { resource: 'Expense' }),
+      };
     } catch (error) {
       this.log.error({ error }, 'Error creating expense');
       throw error;
@@ -76,7 +81,11 @@ export class ExpenseService implements IExpenseService {
       const skip = (page - 1) * limit;
 
       const result = await this.expenseDAO.findByClient(cuid, filters, { limit, skip });
-      return { success: true, data: result as any, message: 'Expenses retrieved' };
+      return {
+        success: true,
+        data: result as any,
+        message: t('common.success.retrieved', { resource: 'Expenses' }),
+      };
     } catch (error) {
       this.log.error({ error }, 'Error listing expenses');
       throw error;
@@ -86,8 +95,13 @@ export class ExpenseService implements IExpenseService {
   async getExpenseById(expuid: string, cuid: string): IPromiseReturnedData<IExpenseDocument> {
     try {
       const expense = await this.expenseDAO.findByExpuid(expuid, cuid);
-      if (!expense) throw new NotFoundError({ message: 'Expense not found' });
-      return { success: true, data: expense, message: 'Expense retrieved' };
+      if (!expense)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Expense' }) });
+      return {
+        success: true,
+        data: expense,
+        message: t('common.success.retrieved', { resource: 'Expense' }),
+      };
     } catch (error) {
       this.log.error({ error }, 'Error getting expense');
       throw error;
@@ -101,12 +115,17 @@ export class ExpenseService implements IExpenseService {
   ): IPromiseReturnedData<IExpenseDocument> {
     try {
       const expense = await this.expenseDAO.findByExpuid(expuid, cuid);
-      if (!expense) throw new NotFoundError({ message: 'Expense not found' });
+      if (!expense)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Expense' }) });
 
       const { expuid: _e, clientId: _c, createdBy: _cb, isDeleted: _d, ...safeData } = data as any;
 
       const updated = await this.expenseDAO.update({ expuid, clientId: cuid }, { $set: safeData });
-      return { success: true, data: updated!, message: 'Expense updated' };
+      return {
+        success: true,
+        data: updated!,
+        message: t('common.success.updated', { resource: 'Expense' }),
+      };
     } catch (error) {
       this.log.error({ error }, 'Error updating expense');
       throw error;
@@ -116,13 +135,18 @@ export class ExpenseService implements IExpenseService {
   async softDeleteExpense(expuid: string, cuid: string): IPromiseReturnedData<void> {
     try {
       const expense = await this.expenseDAO.findByExpuid(expuid, cuid);
-      if (!expense) throw new NotFoundError({ message: 'Expense not found' });
+      if (!expense)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Expense' }) });
 
       await this.expenseDAO.update(
         { expuid, clientId: cuid },
         { $set: { isDeleted: true, deletedAt: new Date() } }
       );
-      return { success: true, data: undefined, message: 'Expense deleted' };
+      return {
+        success: true,
+        data: undefined,
+        message: t('common.success.deleted', { resource: 'Expense' }),
+      };
     } catch (error) {
       this.log.error({ error }, 'Error deleting expense');
       throw error;

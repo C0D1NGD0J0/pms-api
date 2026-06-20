@@ -63,17 +63,18 @@ export interface IQuotaStatus {
   used: number;
 }
 
+export interface ISendSMSResult {
+  twilioSid?: string;
+  remaining?: number;
+  message?: string;
+  error?: SMSError;
+  success: boolean;
+}
+
 export interface ISMSLogDocument extends Document, ISMSLog {
   _id: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
-}
-
-export interface ISendSMSResult {
-  twilioSid?: string;
-  remaining?: number;
-  error?: SMSError;
-  success: boolean;
 }
 
 export interface IPhoneVerification {
@@ -93,7 +94,8 @@ type SMSError =
   | 'sms_disabled'
   | 'delivery_failed'
   | 'opted_out'
-  | 'unverified_phone';
+  | 'unverified_phone'
+  | 'rate_limited';
 
 export function isTransactionalSMS(type: SMSMessageType): boolean {
   return TRANSACTIONAL_SMS_TYPES.includes(type);

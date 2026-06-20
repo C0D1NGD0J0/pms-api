@@ -23,6 +23,19 @@ export class AuthController {
 
   login = async (req: Request, res: Response) => {
     const result = await this.authService.login(req.body);
+
+    // step 1 responses (password_required / otp_sent) have no tokens
+    if (result.data.step !== 'authenticated') {
+      return res.status(httpStatusCodes.OK).json({
+        success: true,
+        msg: result.message,
+        step: result.data.step,
+        loginType: result.data.loginType,
+        maskedPhone: result.data.maskedPhone,
+      });
+    }
+
+    // step 2: authenticated — set cookies and return tokens
     res = setAuthCookies(
       {
         accessToken: result.data.accessToken,
@@ -34,6 +47,7 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json({
       success: true,
       msg: result.message,
+      step: result.data.step,
       accounts: result.data.accounts,
       activeAccount: result.data.activeAccount,
     });
@@ -44,7 +58,7 @@ export class AuthController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 
@@ -60,7 +74,7 @@ export class AuthController {
     if (!currentuser) {
       return res.status(httpStatusCodes.UNAUTHORIZED).json({
         success: false,
-        message: t('auth.errors.unauthorized'),
+        message: t('common.errors.unauthorized'),
       });
     }
 

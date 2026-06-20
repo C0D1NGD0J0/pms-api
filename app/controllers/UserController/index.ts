@@ -322,7 +322,7 @@ export class UserController {
     res.status(httpStatusCodes.OK).json({ success: true, data: result.data });
   };
 
-  // SMS-related endpoints
+  // SMS endpoints
   sendPhoneOTP = async (req: AppRequest, res: Response): Promise<Response> => {
     const { cuid } = req.params;
     const { currentuser } = req.context;

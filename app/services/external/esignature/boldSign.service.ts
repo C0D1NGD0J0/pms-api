@@ -1,9 +1,9 @@
 import dayjs from 'dayjs';
 import crypto from 'crypto';
 import { Readable } from 'stream';
-import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { ForbiddenError } from '@shared/customErrors';
+import { CircuitBreaker, createLogger } from '@utils/index';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { DocumentSigner, RevokeDocument, DocumentApi, SendForSign } from 'boldsign';
@@ -32,6 +32,7 @@ export class BoldSignService {
   private readonly webhookSecret: string;
   private readonly documentApi: DocumentApi;
   private readonly featureFlagService: FeatureFlagService;
+  private readonly breaker: CircuitBreaker;
 
   constructor({ featureFlagService }: { featureFlagService: FeatureFlagService }) {
     this.apiKey = envVariables.BOLDSIGN.API_KEY;
@@ -41,6 +42,17 @@ export class BoldSignService {
 
     this.documentApi = new DocumentApi(this.apiUrl);
     this.documentApi.setApiKey(this.apiKey);
+
+    this.breaker = new CircuitBreaker({
+      name: 'boldsign',
+      failureThreshold: 5,
+      cooldownMs: 60_000,
+      isFailure: (err) => {
+        const status = (err as any)?.statusCode ?? (err as any)?.status;
+        return !status || status >= 500;
+      },
+      logger: this.log,
+    });
   }
 
   /**
@@ -82,7 +94,7 @@ export class BoldSignService {
         sendForSign.onBehalfOf = params.senderInfo.email;
       }
 
-      const response = await this.documentApi.sendDocument(sendForSign);
+      const response = await this.breaker.exec(() => this.documentApi.sendDocument(sendForSign));
       return {
         documentId: response.documentId || '',
       };
@@ -100,7 +112,7 @@ export class BoldSignService {
    */
   async getDocumentStatus(documentId: string): Promise<IDocumentStatus> {
     try {
-      const response = await this.documentApi.getProperties(documentId);
+      const response = await this.breaker.exec(() => this.documentApi.getProperties(documentId));
 
       return {
         documentId: response.documentId || '',
@@ -126,7 +138,7 @@ export class BoldSignService {
    */
   async downloadSignedDocument(documentId: string): Promise<Buffer> {
     try {
-      const buffer = await this.documentApi.downloadDocument(documentId);
+      const buffer = await this.breaker.exec(() => this.documentApi.downloadDocument(documentId));
 
       return buffer;
     } catch (error: any) {
@@ -217,7 +229,9 @@ export class BoldSignService {
       const revokeDocumentRequest = new RevokeDocument();
       revokeDocumentRequest.message = reason;
       revokeDocumentRequest.onBehalfOf = envVariables.BOLDSIGN.DEFAULT_SENDER_EMAIL; // this should be onbehalf email used to send
-      const result = await this.documentApi.revokeDocument(documentId, revokeDocumentRequest);
+      const result = await this.breaker.exec(() =>
+        this.documentApi.revokeDocument(documentId, revokeDocumentRequest)
+      );
       return result;
     } catch (error: any) {
       this.log.error('Failed to revoke document', {

@@ -621,6 +621,30 @@
           <td class="value-cell"><%= petPolicy.deposit %></td>
         </tr>
         <% } %>
+        <% if (managementFee) { %>
+        <tr>
+          <td class="label-cell">Management Fee:</td>
+          <td class="value-cell"><%= managementFee.formatted %> / month</td>
+        </tr>
+        <% } %>
+        <% if (petPolicy && petPolicy.monthlyFee) { %>
+        <tr>
+          <td class="label-cell">Monthly Pet Fee:</td>
+          <td class="value-cell"><%= petPolicy.monthlyFee %> / month</td>
+        </tr>
+        <% } %>
+        <% if (lateFee) { %>
+        <tr>
+          <td class="label-cell">Late Fee:</td>
+          <td class="value-cell"><%= lateFee.amount %> after <%= lateFee.gracePeriodDays %> day grace period</td>
+        </tr>
+        <% } %>
+        <% if (acceptedPaymentMethod) { %>
+        <tr>
+          <td class="label-cell">Payment Method:</td>
+          <td class="value-cell"><%= acceptedPaymentMethod %></td>
+        </tr>
+        <% } %>
       </table>
 
       <% if (renewalOptions && renewalOptions.autoRenew) { %>
@@ -676,6 +700,26 @@
         term of this Agreement. All payments shall be made to the Landlord at the address specified above or at
         such other place as the Landlord may designate in writing.
       </p>
+      <% if (lateFee) { %>
+      <p class="legal-paragraph">
+        In the event that any rental payment is not received by the Landlord within
+        <strong><%= lateFee.gracePeriodDays %></strong> days after the due date, the Tenant shall pay a late charge of
+        <strong><%= lateFee.amount %></strong><% if (lateFee.type === 'percentage') { %> of the monthly rent<% } %>.
+        This provision shall not be construed as a waiver of the Tenant's obligation to make timely rental payments.
+      </p>
+      <% } %>
+      <% if (acceptedPaymentMethod) { %>
+      <p class="legal-paragraph">
+        Rental payments shall be made via <strong><%= acceptedPaymentMethod %></strong> unless otherwise agreed upon in writing by both parties.
+      </p>
+      <% } %>
+      <% if (managementFee) { %>
+      <p class="legal-paragraph">
+        In addition to the monthly rent, the Tenant shall pay a management fee of
+        <strong><%= managementFee.formatted %></strong> per month. This fee covers property management services
+        provided by the Landlord or their appointed management company.
+      </p>
+      <% } %>
 
       <div class="subsection-header">2.4 Security Deposit</div>
       <p class="legal-paragraph">
@@ -710,7 +754,11 @@
         The Tenant is permitted to keep a maximum of <strong><%= petPolicy.maxPets %></strong> pet(s) of the following
         types: <strong><%= petPolicy.types %></strong>. The Tenant has paid a pet deposit of
         <strong><%= petPolicy.deposit %></strong> and agrees to be responsible for all damages caused by
-        any pet(s). The Tenant further agrees to comply with all applicable laws and regulations regarding pet ownership.
+        any pet(s).
+        <% if (petPolicy.monthlyFee) { %>
+        In addition, the Tenant shall pay a recurring monthly pet fee of <strong><%= petPolicy.monthlyFee %></strong>.
+        <% } %>
+        The Tenant further agrees to comply with all applicable laws and regulations regarding pet ownership.
         <% } else { %>
         No animals, birds, or pets of any kind shall be kept on or about the Premises without the prior written consent
         of the Landlord, which consent may be withheld at the Landlord's sole discretion.

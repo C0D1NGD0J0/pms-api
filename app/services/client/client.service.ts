@@ -140,9 +140,9 @@ export class ClientService {
           data: JSON.stringify(updateData),
           duration: getRequestDuration(start).durationInMs,
         },
-        t('client.errors.notFound')
+        t('common.errors.notFound', { resource: 'Client' })
       );
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const validationErrors: string[] = [];
@@ -212,7 +212,7 @@ export class ClientService {
 
         if (enterpriseErrors.length > 0) {
           throw new BadRequestError({
-            message: 'Enterprise clients must have complete company profile information',
+            message: t('client.errors.enterpriseProfileIncomplete'),
           });
         }
       }
@@ -243,7 +243,7 @@ export class ClientService {
         t('client.logging.validationFailed')
       );
       throw new BadRequestError({
-        message: t('client.errors.validationFailed'),
+        message: t('common.errors.validationFailed'),
         errorInfo: { validationErrors },
       });
     }
@@ -286,7 +286,7 @@ export class ClientService {
     return {
       success: true,
       data: result.updatedClient,
-      message: t('client.success.updated'),
+      message: t('common.success.updated', { resource: 'Client' }),
     };
   }
 
@@ -340,11 +340,13 @@ export class ClientService {
         },
         t('client.logging.detailsNotFound')
       );
-      throw new NotFoundError({ message: t('client.errors.detailsNotFound') });
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Client details' }),
+      });
     }
 
     if (cuid !== currentuser.client.cuid) {
-      throw new ForbiddenError({ message: t('client.errors.insufficientPermissions') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const responseData: any = {
@@ -454,7 +456,7 @@ export class ClientService {
 
     return {
       success: true,
-      message: t('client.success.retrieved'),
+      message: t('common.success.retrieved', { resource: 'Client details' }),
       data: responseData,
     };
   }
@@ -473,7 +475,7 @@ export class ClientService {
 
     const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
@@ -522,7 +524,7 @@ export class ClientService {
 
     const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
@@ -536,7 +538,7 @@ export class ClientService {
 
     if (clientConnection.roles.length <= 1) {
       throw new BadRequestError({
-        message: 'User must have at least one role.',
+        message: t('client.errors.mustHaveAtLeastOneRole'),
       });
     }
 
@@ -595,7 +597,7 @@ export class ClientService {
 
     const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
@@ -606,7 +608,7 @@ export class ClientService {
     return {
       success: true,
       data: { roles: clientConnection.roles },
-      message: t('client.success.rolesRetrieved'),
+      message: t('common.success.retrieved', { resource: 'User roles' }),
     };
   }
 
@@ -616,7 +618,7 @@ export class ClientService {
 
     const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
@@ -625,7 +627,9 @@ export class ClientService {
     }
 
     if (!clientConnection.isConnected) {
-      throw new BadRequestError({ message: 'User is already disconnected.' });
+      throw new BadRequestError({
+        message: t('common.errors.alreadyInState', { resource: 'User', state: 'disconnected' }),
+      });
     }
 
     if (clientConnection.roles.includes(IUserRole.ADMIN)) {
@@ -727,7 +731,7 @@ export class ClientService {
     return {
       success: true,
       data: null,
-      message: t('client.success.userDisconnected'),
+      message: t('common.success.updated', { resource: 'User connection' }),
     };
   }
 
@@ -737,7 +741,7 @@ export class ClientService {
 
     const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
@@ -746,7 +750,9 @@ export class ClientService {
     }
 
     if (clientConnection.isConnected) {
-      throw new BadRequestError({ message: 'User is already connected.' });
+      throw new BadRequestError({
+        message: t('common.errors.alreadyInState', { resource: 'User', state: 'connected' }),
+      });
     }
 
     await this.userDAO.updateById(
@@ -785,7 +791,7 @@ export class ClientService {
     return {
       success: true,
       data: null,
-      message: t('client.success.userReconnected'),
+      message: t('common.success.updated', { resource: 'User connection' }),
     };
   }
 
@@ -802,13 +808,13 @@ export class ClientService {
     const clientId = currentuser.client.cuid;
 
     if (!Object.values(EmployeeDepartment).includes(department)) {
-      throw new BadRequestError({ message: 'Invalid department value' });
+      throw new BadRequestError({ message: t('client.errors.invalidDepartment') });
     }
 
     // Get user and validate
     const user = await this.userDAO.getUserByUId(targetUserId);
     if (!user) {
-      throw new NotFoundError({ message: t('client.errors.userNotFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
     }
 
     const clientConnection = user.cuids.find((c) => c.cuid === clientId);
@@ -820,14 +826,16 @@ export class ClientService {
     const roles = clientConnection.roles;
     if (!RoleHelpers.isEmployeeRole(roles[0])) {
       throw new BadRequestError({
-        message: 'Departments can only be assigned to employee roles (admin/manager/staff)',
+        message: t('client.errors.departmentEmployeeOnly'),
       });
     }
 
     // Get profile
     const profile = await this.profileDAO.getProfileByUserId(user._id);
     if (!profile) {
-      throw new NotFoundError({ message: 'User profile not found' });
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'User profile' }),
+      });
     }
 
     // Initialize employeeInfo if null to avoid MongoDB PathNotViable error
@@ -853,7 +861,7 @@ export class ClientService {
     return {
       success: true,
       data: { department },
-      message: `Department '${department}' assigned successfully`,
+      message: t('client.success.departmentAssigned', { department }),
     };
   }
 
@@ -873,9 +881,9 @@ export class ClientService {
           requestId: cxt.requestId,
           duration: getRequestDuration(start).durationInMs,
         },
-        t('client.errors.notFound')
+        t('common.errors.notFound', { resource: 'Client' })
       );
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     // Check if already verified
@@ -888,7 +896,9 @@ export class ClientService {
         },
         'Account is already verified'
       );
-      throw new BadRequestError({ message: 'Account is already verified' });
+      throw new BadRequestError({
+        message: t('common.errors.alreadyInState', { resource: 'Account', state: 'verified' }),
+      });
     }
 
     // Update client to verified status
@@ -911,7 +921,7 @@ export class ClientService {
         },
         'Failed to update client verification status'
       );
-      throw new BadRequestError({ message: 'Failed to verify account' });
+      throw new BadRequestError({ message: t('client.errors.verificationFailed') });
     }
 
     this.log.info(
@@ -927,7 +937,7 @@ export class ClientService {
     return {
       success: true,
       data: { isVerified: true },
-      message: t('client.success.verified'),
+      message: t('common.success.updated', { resource: 'Account verification' }),
     };
   }
 
@@ -942,7 +952,8 @@ export class ClientService {
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
-    if (!client) throw new NotFoundError({ message: t('client.errors.notFound') });
+    if (!client)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     if (client.isVerified)
       throw new BadRequestError({ message: t('client.errors.alreadyVerified') });
 
@@ -1222,11 +1233,11 @@ export class ClientService {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     if (features.smsNotifications === true && !this.featureFlagService.isEnabled(FeatureFlag.SMS)) {
-      throw new ForbiddenError({ message: 'SMS feature is not available on this platform.' });
+      throw new ForbiddenError({ message: t('common.errors.featureNotAvailable') });
     }
 
     const allowedKeys: (keyof ITenantFeatureSettings)[] = [
@@ -1245,12 +1256,12 @@ export class ClientService {
     }
 
     if (Object.keys(updateSet).length === 0) {
-      throw new BadRequestError({ message: 'At least one tenant feature must be provided' });
+      throw new BadRequestError({ message: t('client.errors.noTenantFeaturesProvided') });
     }
 
     const updated = await this.clientDAO.updateById(client._id.toString(), { $set: updateSet });
     if (!updated) {
-      throw new NotFoundError({ message: t('client.errors.notFound') });
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     return { success: true, data: updated };

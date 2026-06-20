@@ -49,6 +49,8 @@ describe('AuthService Integration Tests', () => {
       paymentProcessorDAO: {} as any,
       paymentGatewayService: {} as any,
       paymentService: {} as any,
+      twilioService: {} as any,
+      featureFlagService: { isEnabled: jest.fn().mockReturnValue(false) } as any,
     });
   });
 

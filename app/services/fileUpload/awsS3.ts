@@ -3,9 +3,9 @@ import path from 'path';
 import Logger from 'bunyan';
 import { Upload } from '@aws-sdk/lib-storage';
 import { envVariables } from '@shared/config';
-import { createLogger, retryAsync } from '@utils/index';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { CircuitBreaker, createLogger, retryAsync } from '@utils/index';
 import { ResourceInfo, UploadedFile, UploadResult } from '@interfaces/index';
 import {
   DeleteObjectsCommand,
@@ -29,10 +29,18 @@ const isPermanentS3Error = (err: Error): boolean => {
 export class S3Service {
   private readonly s3: S3Client;
   private readonly log: Logger;
+  private readonly breaker: CircuitBreaker;
   private readonly bucketName = envVariables.AWS.BUCKET_NAME;
 
   constructor() {
     this.log = createLogger('S3Storage');
+    this.breaker = new CircuitBreaker({
+      name: 's3',
+      failureThreshold: 5,
+      cooldownMs: 45_000,
+      isFailure: (err) => !isPermanentS3Error(err),
+      logger: this.log,
+    });
     this.s3 = new S3Client({
       region: envVariables.AWS.REGION,
       credentials: {
@@ -172,20 +180,22 @@ export class S3Service {
     this.log.debug(`Generating signed URL for ${s3Key}`);
 
     try {
-      return await retryAsync(
-        async () => {
-          const command = new GetObjectCommand({
-            Bucket: this.bucketName,
-            Key: s3Key,
-          });
-          return getSignedUrl(this.s3, command, { expiresIn: 3600 });
-        },
-        {
-          attempts: 2,
-          backoff: 'fixed',
-          delay: 300,
-          retryOn: (err) => !isPermanentS3Error(err),
-        }
+      return await this.breaker.exec(() =>
+        retryAsync(
+          async () => {
+            const command = new GetObjectCommand({
+              Bucket: this.bucketName,
+              Key: s3Key,
+            });
+            return getSignedUrl(this.s3, command, { expiresIn: 3600 });
+          },
+          {
+            attempts: 2,
+            backoff: 'fixed',
+            delay: 300,
+            retryOn: (err) => !isPermanentS3Error(err),
+          }
+        )
       );
     } catch (error) {
       this.log.error(`Error generating signed URL for ${s3Key}:`, error);
@@ -201,31 +211,33 @@ export class S3Service {
     }
 
     try {
-      const buffer = await retryAsync(
-        async () => {
-          const command = new GetObjectCommand({
-            Bucket: this.bucketName,
-            Key: s3Key,
-          });
+      const buffer = await this.breaker.exec(() =>
+        retryAsync(
+          async () => {
+            const command = new GetObjectCommand({
+              Bucket: this.bucketName,
+              Key: s3Key,
+            });
 
-          const response = await this.s3.send(command);
+            const response = await this.s3.send(command);
 
-          if (!response.Body) {
-            throw new Error('Empty response body from S3');
+            if (!response.Body) {
+              throw new Error('Empty response body from S3');
+            }
+
+            const chunks: Uint8Array[] = [];
+            for await (const chunk of response.Body as any) {
+              chunks.push(chunk);
+            }
+            return Buffer.concat(chunks);
+          },
+          {
+            attempts: 2,
+            backoff: 'fixed',
+            delay: 500,
+            retryOn: (err) => !isPermanentS3Error(err),
           }
-
-          const chunks: Uint8Array[] = [];
-          for await (const chunk of response.Body as any) {
-            chunks.push(chunk);
-          }
-          return Buffer.concat(chunks);
-        },
-        {
-          attempts: 2,
-          backoff: 'fixed',
-          delay: 500,
-          retryOn: (err) => !isPermanentS3Error(err),
-        }
+        )
       );
 
       this.log.info(`Downloaded file buffer from S3: ${s3Key}`, { size: buffer.length });

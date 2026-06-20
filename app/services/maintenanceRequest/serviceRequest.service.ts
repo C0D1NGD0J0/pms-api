@@ -9,12 +9,14 @@ import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { convertUserRoleToEnum } from '@utils/helpers';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { UploadResult } from '@interfaces/utils.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SMSService } from '@services/smsService/sms.service';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { assertRecordOwnership } from '@utils/authorization.utils';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
@@ -64,6 +66,7 @@ interface IConstructor {
   propertyDAO: PropertyDAO;
   invoiceDAO: InvoiceDAO;
   paymentDAO: PaymentDAO;
+  smsService: SMSService;
   vendorDAO: VendorDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -77,6 +80,7 @@ export class MaintenanceRequestService {
   private readonly invoiceDAO: InvoiceDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly smsService: SMSService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentDAO: PaymentDAO;
   private readonly vendorSuggestionService: VendorSuggestionService;
@@ -90,6 +94,7 @@ export class MaintenanceRequestService {
     invoiceDAO,
     paymentDAO,
     propertyDAO,
+    smsService,
     emitterService,
     propertyUnitDAO,
     maintenanceRequestDAO,
@@ -98,6 +103,7 @@ export class MaintenanceRequestService {
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.smsService = smsService;
     this.vendorDAO = vendorDAO;
     this.invoiceDAO = invoiceDAO;
     this.paymentDAO = paymentDAO;
@@ -281,7 +287,8 @@ export class MaintenanceRequestService {
       cuid,
       deletedAt: null,
     });
-    if (!property) throw new NotFoundError({ message: t('property.errors.notFound') });
+    if (!property)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     if (property.approvalStatus !== 'approved') {
       throw new BadRequestError({ message: t('property.errors.notApproved') });
     }
@@ -298,8 +305,11 @@ export class MaintenanceRequestService {
         status: { $ne: PropertyUnitStatusEnum.INACTIVE },
         deletedAt: null,
       });
-      if (!unit) throw new NotFoundError({ message: t('unit.errors.notFound') });
+      if (!unit)
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
+
+    let leasePetDefault = false;
 
     if (currentuser.client.role === ROLES.TENANT) {
       const activeLease = await this.leaseDAO.findFirst({
@@ -314,6 +324,21 @@ export class MaintenanceRequestService {
       if (!activeLease) {
         throw new ForbiddenError({ message: t('maintenance.errors.notYourUnit') });
       }
+
+      leasePetDefault = activeLease.petPolicy?.allowed ?? false;
+    } else if (data.hasPet === undefined && unit) {
+      // For employees filing on behalf of a tenant, derive pet default from the unit's active lease
+      const unitLease = await this.leaseDAO.findFirst(
+        {
+          cuid,
+          'property.id': property._id,
+          'property.unitId': unit._id,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+        },
+        { select: 'petPolicy.allowed' }
+      );
+      leasePetDefault = unitLease?.petPolicy?.allowed ?? false;
     }
 
     // Employees (staff/manager/admin) cannot create MRs on properties they personally
@@ -356,7 +381,7 @@ export class MaintenanceRequestService {
           priority: data.priority,
           locationDescription: data.locationDescription,
           permissionToEnter: data.permissionToEnter,
-          hasPet: data.hasPet,
+          hasPet: data.hasPet ?? leasePetDefault,
           status: MaintenanceRequestStatus.OPEN,
           isBillable: false,
           media: data.media || [],
@@ -450,7 +475,11 @@ export class MaintenanceRequestService {
         this.log.error({ err, mruid: request.mruid }, 'AI triage background task failed')
       );
 
-    return { success: true, data: request, message: t('maintenance.success.created') };
+    return {
+      success: true,
+      data: request,
+      message: t('common.success.created', { resource: 'Maintenance request' }),
+    };
   }
 
   async listRequests(
@@ -506,7 +535,7 @@ export class MaintenanceRequestService {
 
     if (filters.assignedTechnicianSub) {
       if (isVendorTeamMember && filters.assignedTechnicianSub !== currentuser.sub) {
-        throw new ForbiddenError({ message: t('client.errors.insufficientPermissions') });
+        throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
       }
       baseFilter['assignedTechnician.userId'] = new Types.ObjectId(filters.assignedTechnicianSub);
     }
@@ -609,7 +638,10 @@ export class MaintenanceRequestService {
         ],
       }
     );
-    if (!request) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!request)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
 
     const property = (request as any).propertyId as any;
     const unit = (request as any).propertyUnitId as any;
@@ -752,12 +784,14 @@ export class MaintenanceRequestService {
       'connectedClients.isConnected': true,
       deletedAt: null,
     });
-    if (!vendorRecord) throw new NotFoundError({ message: t('maintenance.errors.vendorNotFound') });
+    if (!vendorRecord)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
 
     const clientConn = vendorRecord.connectedClients.find((c) => c.cuid === cuid);
     const vendorUserId = clientConn!.primaryAccountHolderUserId;
     const vendorUser = await this.userDAO.findFirst({ _id: vendorUserId });
-    if (!vendorUser) throw new NotFoundError({ message: t('maintenance.errors.vendorNotFound') });
+    if (!vendorUser)
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
@@ -787,6 +821,17 @@ export class MaintenanceRequestService {
       assignedBy: currentuser.sub,
       scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : undefined,
     });
+
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    this.smsService
+      .sendToUser(
+        cuid,
+        vendorUserId.toString(),
+        `You've been assigned to service request #${mruid}.`,
+        SMSMessageType.MAINTENANCE_UPDATE,
+        currentuser.sub
+      )
+      .catch(() => {}); // swallow — SMSService logs internally
 
     return { success: true, data: updated, message: t('maintenance.success.assigned') };
   }
@@ -856,6 +901,19 @@ export class MaintenanceRequestService {
       tenantId: request.tenantId?.toString(),
       vendorId: currentuser.sub,
     });
+
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          `A technician has accepted your service request #${mruid}.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
 
     return { success: true, data: updated, message: t('maintenance.success.accepted') };
   }
@@ -956,7 +1014,7 @@ export class MaintenanceRequestService {
     return {
       success: true,
       data: updated,
-      message: 'Assignment released. The request has been returned for reassignment.',
+      message: t('maintenance.success.released'),
     };
   }
 
@@ -970,7 +1028,7 @@ export class MaintenanceRequestService {
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
     if (CurrentUser.isTenant(currentuser)) {
-      throw new ForbiddenError({ message: t('maintenance.errors.notAllowed') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
     if (CurrentUser.isVendor(currentuser)) {
       assertRecordOwnership(currentuser, request.vendorId, {
@@ -998,7 +1056,11 @@ export class MaintenanceRequestService {
       newStatus: data.status,
     });
 
-    return { success: true, data: updated, message: t('maintenance.success.statusUpdated') };
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.updated', { resource: 'Status' }),
+    };
   }
 
   /**
@@ -1082,6 +1144,19 @@ export class MaintenanceRequestService {
       invoiceDeadline: invoiceDeadline.toISOString(),
     });
 
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          `Work has been completed on your service request #${mruid}.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
+
     return { success: true, data: updated, message: t('maintenance.success.workDone') };
   }
 
@@ -1120,6 +1195,19 @@ export class MaintenanceRequestService {
       technicianId: request.assignedTechnician?.userId?.toString(),
       completedBy: currentuser.sub,
     });
+
+    // Send SMS notification (fire-and-forget — failures are logged internally)
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          `Your service request #${mruid} has been resolved.`,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
 
     // Auto-revert property/unit status if in maintenance and no other active SRs
     if (request.propertyId) {
@@ -1291,6 +1379,31 @@ export class MaintenanceRequestService {
       reason: data.reason,
     });
 
+    // Send SMS notifications (fire-and-forget — failures are logged internally)
+    const cancelMsg = `Service request #${mruid} has been cancelled.`;
+    if (request.tenantId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.tenantId.toString(),
+          cancelMsg,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
+    if (request.vendorId) {
+      this.smsService
+        .sendToUser(
+          cuid,
+          request.vendorId.toString(),
+          cancelMsg,
+          SMSMessageType.MAINTENANCE_UPDATE,
+          currentuser.sub
+        )
+        .catch(() => {}); // swallow — SMSService logs internally
+    }
+
     return { success: true, data: updated, message: t('maintenance.success.cancelled') };
   }
 
@@ -1358,7 +1471,11 @@ export class MaintenanceRequestService {
         propertyId: request.propertyId?.toString(),
       });
 
-      return { success: true, data: updated, message: t('maintenance.success.updated') };
+      return {
+        success: true,
+        data: updated,
+        message: t('common.success.updated', { resource: 'Maintenance request' }),
+      };
     }
 
     const titleChanged = data.title !== undefined && data.title !== request.title;
@@ -1438,7 +1555,11 @@ export class MaintenanceRequestService {
       propertyId: request.propertyId?.toString(),
     });
 
-    return { success: true, data: updated, message: t('maintenance.success.updated') };
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.updated', { resource: 'Maintenance request' }),
+    };
   }
 
   async getStats(ctx: IRequestContext, pid?: string): Promise<ISuccessReturnData> {
@@ -1501,7 +1622,10 @@ export class MaintenanceRequestService {
       tenantId: new Types.ObjectId(tenantUserId),
       deletedAt: null,
     });
-    if (!req) throw new NotFoundError({ message: t('maintenance.errors.notFound') });
+    if (!req)
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
     return { success: true, data: this.buildTenantView(req) };
   }
 

@@ -283,6 +283,19 @@ export const NotificationMessages = {
         'Administrative details on your lease {{leaseNumber}} have been updated by your property manager. Please log in to review the current terms.',
     },
   },
+
+  sms: {
+    quotaWarning: {
+      title: 'SMS Quota Warning',
+      message:
+        'Your SMS usage has reached {{percentUsed}}% of your monthly quota ({{used}}/{{limit}}). Consider upgrading your plan for more SMS capacity.',
+    },
+    quotaExhausted: {
+      title: 'SMS Quota Exhausted',
+      message:
+        'Your monthly SMS quota has been fully used ({{limit}}/{{limit}}). SMS sending is paused until your next billing cycle.',
+    },
+  },
 } as const;
 
 /**
@@ -348,7 +361,9 @@ export type NotificationMessageKey =
   | 'payment.invoiceOverdue'
   | 'payment.subscriptionRenewalUpcoming'
   | 'payment.failedTenant'
-  | 'payment.overdueTenant';
+  | 'payment.overdueTenant'
+  | 'sms.quotaWarning'
+  | 'sms.quotaExhausted';
 
 /**
  * Helper function to get formatted notification message by key.

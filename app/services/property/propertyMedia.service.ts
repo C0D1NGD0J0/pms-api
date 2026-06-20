@@ -68,11 +68,13 @@ export class PropertyMediaService {
     userid: string
   ): Promise<ISuccessReturnData> {
     if (!propertyUid) {
-      throw new BadRequestError({ message: t('property.errors.propertyIdRequired') });
+      throw new BadRequestError({ message: t('common.errors.required', { field: 'Property ID' }) });
     }
 
     if (!uploadResult || uploadResult.length === 0) {
-      throw new BadRequestError({ message: t('property.errors.uploadResultRequired') });
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Upload result' }),
+      });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -81,7 +83,7 @@ export class PropertyMediaService {
     });
 
     if (!property) {
-      throw new BadRequestError({ message: t('property.errors.unableToFind') });
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
     const updatedProperty = await this.propertyDAO.updatePropertyDocument(

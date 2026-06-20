@@ -146,7 +146,7 @@
     "@types/ua-parser-js": "0.7.39",
     "@types/uuid": "10.0.0",
     "@typescript-eslint/eslint-plugin": "6.21.0",
-    "concurrently": "9.2.1",
+    "concurrently": "9.2.3",
     "eslint": "8.57.1",
     "eslint-config-prettier": "10.0.2",
     "eslint-config-standard-with-typescript": "43.0.1",

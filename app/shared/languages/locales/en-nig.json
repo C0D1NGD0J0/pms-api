@@ -7,8 +7,6 @@
       "authenticationRequired": "You need to login first",
       "invalidAuthToken": "Dis auth token no correct",
       "accountVerificationPending": "Your account still dey wait for verification",
-      "userNotFound": "We no fit find dis user",
-      "clientNotFound": "We no fit find dis client",
       "noAccessToClient": "You no get access to dis client",
       "userNotCreated": "We no fit create dis user",
       "emailPasswordRequired": "Email and password dey needed.",
@@ -29,7 +27,6 @@
       "invalidTokenType": "Token type no correct",
       "allConnectionsDisabled": "All your connections don disable",
       "connectionInactive": "Your connection no dey active",
-      "insufficientPermissions": "You no get enough permission to do dis action",
       "permissionCheckFailed": "Permission check fail",
       "connectionCheckFailed": "Connection check fail",
       "adminRequired": "You need admin privilege to do dis action",
@@ -39,7 +36,16 @@
       "featureNotEntitled": "Dis feature no dey available for your current subscription plan. Please upgrade to access am.",
       "clientNotVerified": "You must verify your account before you fit do dis action. Please complete account verification.",
       "superAdminRequired": "You need super admin privilege to do dis action",
-      "subscriptionInactive": "Your subscription no dey active. Please renew your plan to continue."
+      "subscriptionInactive": "Your subscription no dey active. Please renew your plan to continue.",
+      "unsupportedCountry": "We're not yet available in {{country}}. Our payment processor does not support this country. Please contact support if you believe this is an error.",
+      "subscriptionCreationFailed": "Encountered an error while creating subscription",
+      "tenantOnlyPaymentSetup": "Only tenants can set up a payment method.",
+      "tenantOnlyViewPaymentMethods": "Only tenants can view payment methods.",
+      "tenantOnlyRemovePaymentMethods": "Only tenants can remove payment methods.",
+      "noPaymentMethodOnFile": "No payment method on file.",
+      "mustKeepOnePaymentMethod": "You must keep at least one payment method on file.",
+      "noPaymentMethodForManager": "No payment method found for this property manager.",
+      "tenantOnlyFirstPayment": "Only tenants can initiate a first payment."
     },
     "success": {
       "tokenRefreshed": "Token don refresh successfully",
@@ -55,49 +61,59 @@
       "onboardingCompleted": "Onboarding don complete successfully."
     }
   },
+  "connection": {
+    "errors": {
+      "userIdAndClientIdRequired": "User ID and client ID are required",
+      "userIdRequired": "User ID is required",
+      "userIdsRequired": "User IDs are required",
+      "connectionNotFound": "Connection not found",
+      "cannotDisconnectFromOtherClient": "Cannot disconnect users from other clients",
+      "cannotReconnectToOtherClient": "Cannot reconnect users to other clients",
+      "cannotDisconnectLastConnection": "Cannot disconnect the last active connection",
+      "cannotUpdateOtherClientConnections": "Cannot update connections for other clients",
+      "cannotCheckOtherClientConnections": "Cannot check connections for other clients",
+      "updatesRequired": "Updates are required for bulk operation"
+    },
+    "success": {
+      "disconnected": "User disconnected successfully",
+      "reconnected": "User reconnected successfully",
+      "connectionsRetrieved": "Connections retrieved successfully",
+      "bulkUpdateCompleted": "Bulk connection update completed successfully",
+      "connectionStatusRetrieved": "Connection status retrieved successfully",
+      "statsRetrieved": "Connection statistics retrieved successfully"
+    }
+  },
   "client": {
     "errors": {
-      "notFound": "Client no dey found",
-      "insufficientPermissions": "You no get enough permission to do dis action",
       "idNumberRequired": "ID number dey needed when you dey update identification type",
       "issuingAuthorityRequired": "Issuing authority dey needed when you dey update identification type",
       "idTypeRequired": "ID type dey needed when you dey update identification number",
       "invalidCompanyEmail": "Company email format no correct",
       "displayNameEmpty": "Display name no fit empty",
-      "validationFailed": "Validation fail",
       "updateFailed": "We no fit update client profile",
       "unableToFetch": "We no fit fetch client details.",
-      "detailsNotFound": "Client details no dey found.",
       "invalidRole": "Role wey you specify no correct",
-      "userNotFound": "We no fit find dis user",
       "userNotInClient": "Dis user no dey connect to dis client",
       "userAlreadyHasRole": "User already get role {{role}}",
       "cannotRemoveLastAdmin": "We no fit remove admin role from the last administrator",
       "cannotDisconnectLastAdmin": "We no fit disconnect the last administrator",
       "roleNotFound": "User no get the role wey you specify",
       "cannotDeleteAccountOwner": "We no fit delete account owner. Please transfer ownership to another admin or close your account instead.",
-      "clientIdRequired": "Client ID dey needed",
       "identitySessionFailed": "We no fit start identity verification. Please try again.",
       "identityNotVerified": "Identity verification via Stripe no complete. Please complete verification before approving.",
       "alreadyVerified": "Dis account don already verify.",
-      "verificationRequired": "You must verify your account to do dis action. Please complete identity verification."
+      "verificationRequired": "You must verify your account to do dis action. Please complete identity verification.",
+      "enterpriseProfileIncomplete": "Enterprise clients must have complete company profile information.",
+      "mustHaveAtLeastOneRole": "User must have at least one role.",
+      "invalidDepartment": "Invalid department value.",
+      "departmentEmployeeOnly": "Departments can only be assigned to employee roles.",
+      "verificationFailed": "Failed to verify account.",
+      "noTenantFeaturesProvided": "At least one tenant feature must be provided."
     },
     "success": {
-      "profileUpdated": "Client profile don update successfully",
-      "detailsUpdated": "Client details don update successfully",
-      "userRetrieved": "User information don retrieve successfully",
-      "userStatsRetrieved": "User statistics don retrieve successfully",
-      "tenantsRetrieved": "Tenants don retrieve successfully",
-      "retrieved": "Client details don retrieve successfully",
       "roleAssigned": "Role {{role}} don assign successfully",
       "roleRemoved": "Role {{role}} don remove successfully",
-      "rolesRetrieved": "User roles don retrieve successfully",
-      "userDisconnected": "User don disconnect successfully",
-      "userReconnected": "User don reconnect successfully",
-      "usersRetrieved": "Client users don retrieve successfully",
-      "filteredUsersRetrieved": "Users don retrieve successfully",
-      "verified": "Account don verify successfully",
-      "updated": "Client don update successfully"
+      "departmentAssigned": "Department '{{department}}' assigned successfully"
     },
     "logging": {
       "validationCompleted": "Client validation don complete"
@@ -113,10 +129,7 @@
     "errors": {
       "noCsvFileUploaded": "No CSV file upload",
       "invalidFormType": "Form type no correct: {{formType}}",
-      "validationFailed": "Property validation fail. Please correct the errors and try again.",
-      "unableToAddProperty": "We no fit add property to dis account.",
       "duplicateAddress": "Property with dis address already dey for dis client",
-      "unableToCreateProperty": "We no fit create property.",
       "minUnitsRequired": "{{propertyType}} properties need at least {{minUnits}} units",
       "noBedroomsForCommercial": "Commercial properties no suppose get bedrooms define for property level",
       "commercialMinArea": "Commercial properties must get at least 200 sq ft of total area",
@@ -125,30 +138,19 @@
       "occupiedRentalRequired": "Occupied properties must get valid rental amount",
       "businessRuleValidationFailed": "Property type business rule validation fail",
       "noCsvFilePath": "No CSV file path provide",
-      "propertyIdRequired": "Property ID dey needed.",
-      "uploadResultRequired": "Upload result dey needed.",
-      "propertyNotFound": "We no fit find client property.",
-      "unableToUpdateProperty": "We no fit update property.",
       "fileSizeTooLarge": "File size too big for processing.",
-      "clientIdRequired": "Client ID dey needed.",
       "unableToGetProperties": "We no fit get properties for dis account.",
       "clientIdAndPropertyIdRequired": "Client ID and Property ID dey needed.",
       "updateValidationFailed": "Update validation fail. Please correct the errors and try again.",
       "occupiedPropertiesMustHaveRental": "Occupied properties must get rental amount",
       "singleUnitCannotBePartiallyOccupied": "Single-unit properties no fit be partially occupied",
       "occupancyStatusValidationFailed": "Occupancy status change validation fail",
-      "unableToArchiveProperty": "We no fit archive property.",
       "csvFilePathMissing": "CSV file path no dey",
       "csvValidationFailed": "We no fit validate csv for dis account."
     },
     "success": {
-      "propertyCreated": "Property don create successfully.",
       "csvImportStarted": "CSV import job don start",
-      "propertyUpdated": "Property don update successfully",
-      "csvValidationStarted": "CSV validation process don start.",
-      "propertyArchived": "Property don archive successfully",
-      "assignableUsersRetrieved": "Assignable users don retrieve successfully",
-      "propertiesRetrieved": "Properties don retrieve successfully"
+      "csvValidationStarted": "CSV validation process don start."
     }
   },
   "propertyUnit": {
@@ -168,7 +170,6 @@
       "securityDepositMustBeNonNegative": "Security deposit must be non-negative number",
       "cannotSetOccupiedWhenProperty": "We no fit set unit as occupied when property dey {{status}}",
       "occupiedUnitsMustHaveRental": "Occupied units must get rental amount",
-      "validationFailed": "Validation fail",
       "documentDeletionNotImplemented": "Document deletion functionality need to be implemented",
       "maxCapacityReached": "We no fit add units to property, maximum capacity don reach.",
       "exceedsLimit": "We no fit add {{count}} units. Property get {{current}}/{{max}} units (including archived). Adding these units go exceed the limit.",
@@ -178,9 +179,6 @@
       "unitSuggestion": "Suggested unit number: {{suggestion}}"
     },
     "success": {
-      "unitRetrieved": "Unit don retrieve successfully.",
-      "unitsRetrieved": "Units don retrieve successfully.",
-      "unitUpdated": "Unit don update successfully",
       "unitCreationQueued": "Unit creation job don queue successfully",
       "unitsCreated": "{{created}} units don create successfully, {{failed}} fail",
       "allUnitsCreated": "All {{count}} units don create successfully",
@@ -203,14 +201,10 @@
       "invalidUrl": "URL no correct.",
       "companyNameRequired": "Company name dey needed",
       "invalidCompanyEmail": "Company email no correct",
-      "legalEntityNameRequired": "Legal entity name dey needed",
       "companyAddressRequired": "Company address dey needed",
       "companyPhoneRequired": "Company phone number dey needed",
       "contactPersonRequired": "Contact person dey needed",
       "businessRegNumberRequired": "Business registration number dey needed",
-      "idNumberRequired": "ID number dey needed",
-      "issuingAuthorityRequired": "Issuing authority dey needed",
-      "issuingStateRequired": "Issuing state dey needed",
       "companyProfileRequired": "Company profile dey needed for business accounts",
       "invalidEmergencyEmail": "Emergency contact email no correct",
       "invalidToken": "Token no correct",
@@ -291,17 +285,10 @@
     },
     "propertyUnit": {
       "invalidUnitId": "Unit ID no correct",
-      "totalAreaPositive": "Total area must be positive number",
       "roomsNonNegative": "Room must be non-negative integer",
-      "bathroomsNonNegative": "Bathrooms must be non-negative number",
-      "maxOccupantsMinOne": "Maximum occupants must be at least 1",
       "rentNonNegative": "Rent amount must be non-negative number",
-      "securityDepositNonNegative": "Security deposit must be non-negative number",
       "invalidPhotoUrl": "Photo URL format no correct",
-      "invalidDocumentUrl": "Document URL format no correct",
       "invalidExternalUrl": "External URL format no correct",
-      "descriptionMaxLength": "Description must be at most 150 characters",
-      "documentNameMaxLength": "Document name must be at most 100 characters",
       "invalidAttachmentUrl": "Attachment URL format no correct",
       "unitNumberRequired": "Unit number must no be empty",
       "unitNumberMaxLength": "Unit number must be at most 20 characters",
@@ -367,68 +354,36 @@
     }
   },
   "email": {
-    "accountUpdate": {
+    "common": {
       "greeting": "Hello {{fullname}},",
+      "alternativeText": "If the button doesn't work, copy and paste this link in your browser:"
+    },
+    "accountUpdate": {
       "message": "Dis email dey inform you say your account don update recently for {{updatedAt}}. If you feel say dis update no be you do am, please contact customer support.",
       "supportText": "customer support email: Customer support"
     },
     "forgotPassword": {
       "subject": "Reset Your Password",
-      "greeting": "Hello {{fullname}},",
       "message": "We receive request to reset your password. Click the button below to set new password for your PropertyDesk account.",
       "buttonText": "Reset Password",
-      "alternativeText": "If the button no work, copy and paste dis link for your browser:",
       "expiryText": "Dis link go expire for 1 hour. If you no request password reset, please ignore dis email."
     },
     "registration": {
       "subject": "Activate Your Account",
-      "greeting": "Hello {{fullname}},",
       "message": "Welcome to PropertyDesk! To complete your account setup, please click the button below to activate your account.",
       "buttonText": "Activate Account",
-      "alternativeText": "If the button no work, copy and paste dis link for your browser:",
       "expiryText": "Dis link go expire for 2 hours. If you no create account, please ignore dis email."
     },
     "resetPassword": {
-      "greeting": "Hello {{fullname}},",
       "message": "Your password don successfully update for your account.",
       "warningText": "If you no initiate dis request please contact customer care urgently."
     },
     "invitation": {
       "subject": "Dem don invite you to join {{companyName}}",
       "reminderSubject": "Reminder: Dem don invite you to join {{companyName}}"
-    }
-  },
-  "invitation": {
-    "success": {
-      "sent": "Invitation don send to {{email}}",
-      "resent": "Invitation reminder don send to {{email}}",
-      "reactivated": "Invitation don reactivate and send to {{email}}",
-      "revoked": "Invitation don revoke successfully",
-      "accepted": "Invitation don accept successfully",
-      "declined": "Invitation don decline successfully",
-      "retrieved": "Invitation don retrieve successfully",
-      "listed": "Invitations don list successfully",
-      "updated": "Invitation don update for {{email}}",
-      "draftCreated": "Draft invitation don create for {{email}}",
-      "tokenValid": "Invitation token dey valid",
-      "statsRetrieved": "Invitation statistics don retrieve successfully",
-      "expired": "{{count}} invitations don expire",
-      "csvImportStarted": "CSV import don start successfully",
-      "csvValidationStarted": "CSV validation don start",
-      "dryRunCompleted": "Dry run don complete",
-      "pendingProcessed": "Process {{processed}} of {{total}} pending invitations"
     },
-    "info": {
-      "noPendingFound": "No pending invitations dey found"
-    },
-    "errors": {
-      "notFound": "Invitation no dey found",
-      "invalidClient": "Client wey dem specify for invitation no correct",
-      "invalidOrExpired": "Invitation no correct or don expire",
-      "cannotResend": "We no fit resend dis invitation",
-      "expired": "Invitation don expire",
-      "noCsvFileUploaded": "No CSV file upload. Please select file to continue.",
-      "pendingInvitationExists": "Active invitation already dey for dis email address"
+    "accountDisconnected": {
+      "subject": "Your Account Connection Has Been Removed"
     }
   },
   "system": {
@@ -464,23 +419,56 @@
       "fieldMaxLengthExceeded": "{{fieldName}} no fit exceed {{maxLength}} characters"
     }
   },
-  "profile": {
+  "invitation": {
     "success": {
-      "roleInitialized": "User role don initialize successfully",
-      "profileRetrieved": "Profile don retrieve successfully",
-      "profileUpdated": "Profile don update successfully"
+      "sent": "Invitation don send to {{email}}",
+      "resent": "Invitation reminder don send to {{email}}",
+      "reactivated": "Invitation don reactivate and send to {{email}}",
+      "revoked": "Invitation don revoke successfully",
+      "accepted": "Invitation don accept successfully",
+      "declined": "Invitation don decline successfully",
+      "retrieved": "Invitation don retrieve successfully",
+      "listed": "Invitations don list successfully",
+      "updated": "Invitation don update for {{email}}",
+      "draftCreated": "Draft invitation don create for {{email}}",
+      "tokenValid": "Invitation token dey valid",
+      "statsRetrieved": "Invitation statistics don retrieve successfully",
+      "expired": "{{count}} invitations don expire",
+      "csvImportStarted": "CSV import don start successfully",
+      "csvValidationStarted": "CSV validation don start",
+      "dryRunCompleted": "Dry run don complete",
+      "pendingProcessed": "Process {{processed}} of {{total}} pending invitations"
+    },
+    "info": {
+      "noPendingFound": "No pending invitations dey found"
     },
     "errors": {
-      "notFound": "Profile no dey found"
+      "notFound": "Invitation no dey found",
+      "invalidClient": "Client wey dem specify for invitation no correct",
+      "invalidOrExpired": "Invitation no correct or don expire",
+      "cannotResend": "We no fit resend dis invitation",
+      "expired": "Invitation don expire",
+      "noCsvFileUploaded": "No CSV file upload. Please select file to continue.",
+      "pendingInvitationExists": "Active invitation already dey for dis email address"
+    }
+  },
+  "profile": {
+    "success": {
+      "roleInitialized": "User role don initialize successfully"
     }
   },
   "vendor": {
     "success": {
-      "statsRetrieved": "Vendor statistics don retrieve successfully",
-      "teamMembersRetrieved": "Team members don retrieve successfully"
+      "teamMemberActivated": "Team member activated successfully.",
+      "teamMemberDeactivated": "Team member deactivated successfully."
     },
     "errors": {
-      "notPrimaryVendor": "Access denied. Only primary vendor account holders fit do dis action"
+      "notPrimaryVendor": "Access denied. Only primary vendor account holders fit do dis action",
+      "duplicateClientConnections": "Duplicate client connections are not allowed.",
+      "onlyPrimaryCanUpdate": "You do not have permission to update this information.",
+      "notConnectedToClient": "Vendor is not connected to this account.",
+      "cannotChangeOwnStatus": "You cannot change your own active status.",
+      "payoutAccountNotFound": "Payout account not found."
     }
   },
   "tenant": {
@@ -491,20 +479,335 @@
       "notFound": "We no fit find dis tenant"
     }
   },
+  "user": {
+    "errors": {
+      "notFound": "User not found.",
+      "canOnlyUpdateOwnAccount": "You can only update your own account information.",
+      "cannotArchiveTenantWithActiveLeases": "Cannot archive tenant. This user has {{count}} active lease(s). Please terminate the lease(s) before archiving.",
+      "cannotArchiveManagerWithActiveLeases": "Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
+      "notATenant": "This action is only available for tenant accounts.",
+      "cannotDeactivateSelf": "You cannot deactivate your own account.",
+      "cannotDeactivateTenantWithActiveLeases": "Cannot deactivate a user with active leases. Please terminate leases first."
+    },
+    "success": {
+      "tenantDeactivated": "Tenant deactivated successfully."
+    }
+  },
+  "subscription": {
+    "errors": {
+      "missingRequiredData": "Missing required subscription data.",
+      "seatChangeCannotBeZero": "Seat change cannot be zero.",
+      "seatsNotAvailableOnEssential": "Seat management is not available on your current plan. Please upgrade to access this feature.",
+      "cannotRemoveSeats": "Cannot remove more seats than you currently have.",
+      "seatLimitExceeded": "Maximum additional seats limit exceeded for your plan.",
+      "cannotRemoveSeatsActiveUsers": "Cannot remove seats while active users exceed the resulting seat limit. Please archive users first.",
+      "noActiveSubscription": "No active subscription found.",
+      "unexpectedStatus": "Unexpected subscription status.",
+      "gracePeriodEnded": "Your grace period has ended. Please renew your subscription to restore access.",
+      "subscriptionExpired": "Your subscription has expired. Please renew to continue using premium features.",
+      "noLinkedSubscription": "No subscription linked to this record.",
+      "seatLimitReached": "Seat limit reached for your plan."
+    },
+    "success": {
+      "cancelAtPeriodEnd": "Your subscription will cancel at the end of your billing period. You'll retain access until then.",
+      "canceled": "Your subscription has been canceled successfully.",
+      "usageCountersUpdated": "Subscription usage counters updated.",
+      "essentialActivated": "Essential plan activated."
+    }
+  },
+  "payment": {
+    "errors": {
+      "paymentMethodFailed": "Payment could not be processed. Please try again or use a different payment method.",
+      "paymentFailedRetried": "Payment method failed. We are retrying with an alternate method.",
+      "paymentMethodFailedCardRequired": "Payment could not be processed. An alternate payment method is required.",
+      "paymentFailedNoFallback": "Payment failed and no alternate payment method is on file.",
+      "retryFailedMissingInfo": "Payment retry failed. Please update your account information.",
+      "paymentFailedAddPaymentMethod": "Payment failed. Please add a payment method to complete payment."
+    }
+  },
+  "sms": {
+    "errors": {
+      "notEnabled": "SMS notifications are not enabled for this account.",
+      "quotaExceeded": "Monthly SMS limit has been reached. SMS will resume on your next billing cycle.",
+      "recipientOptedOut": "Recipient has not opted in to SMS notifications.",
+      "phoneNumberMismatch": "Please update your profile phone number before verifying.",
+      "cooldownActive": "A verification code was recently sent. Please wait before requesting a new one.",
+      "invalidCode": "The verification code entered is incorrect. Please try again."
+    },
+    "success": {
+      "otpSent": "Verification code sent successfully.",
+      "phoneVerified": "Phone number verified successfully.",
+      "consentGranted": "SMS consent granted.",
+      "consentRevoked": "SMS consent revoked.",
+      "logsRetrieved": "SMS logs retrieved.",
+      "quotaRetrieved": "SMS quota status retrieved."
+    }
+  },
   "lease": {
     "errors": {
       "validationFailed": "Lease validation fail. Please check the details and try again.",
       "overlappingLease": "Lease dates dey overlap with existing active lease for dis unit",
       "cannotCreateOwnLease": "You no fit create lease for yourself as tenant - conflict of interest",
-      "cannotUpdateOwnLease": "You no fit update your own lease information - conflict of interest"
-    },
-    "invalid_access": "You no get permission to access dis lease",
-    "retrieved_successfully": "Lease don retrieve successfully",
-    "updatedSuccessfully": "Lease don update successfully"
+      "cannotUpdateOwnLease": "You no fit update your own lease information - conflict of interest",
+      "propertyUnderMaintenance": "Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first."
+    }
   },
   "common": {
     "errors": {
-      "invalidUserRole": "User role no correct"
+      "notFound": "{{resource}} not found.",
+      "operationFailed": "Unable to {{action}}. Please try again.",
+      "operationFailedContact": "Unable to {{action}}. Please contact support.",
+      "insufficientPermissions": "You do not have permission to perform this action.",
+      "validationFailed": "Validation failed. Please check your input and try again.",
+      "unauthorized": "Unauthorized access.",
+      "required": "{{field}} is required.",
+      "alreadyExists": "{{resource}} already exists.",
+      "alreadyInState": "{{resource}} is already {{state}}.",
+      "tryAgainLater": "Something went wrong. Please try again later.",
+      "invalidUserRole": "Invalid user role specified.",
+      "featureNotAvailable": "This feature is not available on your current plan."
+    },
+    "success": {
+      "retrieved": "{{resource}} retrieved successfully.",
+      "updated": "{{resource}} updated successfully.",
+      "created": "{{resource}} created successfully.",
+      "deleted": "{{resource}} deleted successfully.",
+      "archived": "{{resource}} archived successfully."
+    }
+  },
+  "maintenance": {
+    "errors": {
+      "invalidTransition": "Invalid status transition from {{current}} to {{next}}",
+      "notAssigned": "Request is not in assigned status",
+      "notYourAssignment": "You are not assigned to this request",
+      "noActiveLease": "You must have an active lease to submit a maintenance request",
+      "notYourUnit": "You do not have an active lease for this property",
+      "staffCannotCreateForOwnUnit": "Staff cannot create maintenance requests for units they occupy",
+      "invoiceInvalidStatus": "Invoice can only be submitted when work is in progress or awaiting invoice",
+      "invoiceForbidden": "Only the assigned vendor can submit an invoice",
+      "noInvoice": "No invoice found on this request",
+      "invoiceNotPending": "Invoice is not in pending status",
+      "noVendorAssigned": "No vendor assigned to this request",
+      "webhookSignatureInvalid": "Invalid webhook signature",
+      "workOrderPendingReview": "Work order is pending PM review — cannot start work yet",
+      "workOrderRejected": "Work order was rejected — please resubmit before starting",
+      "workOrderNotFound": "No work order found on this request",
+      "workOrderNotPending": "Work order is not in pending review status",
+      "workOrderForbidden": "Only the PM/manager can review work orders",
+      "workOrderRequired": "A work order must be submitted and approved before marking work as done",
+      "workOrderNotApproved": "The work order must be submitted and approved before this action can proceed",
+      "notCompleted": "Request must be completed before submitting feedback",
+      "notYourRequest": "You are not the tenant on this request",
+      "feedbackAlreadySubmitted": "Feedback has already been submitted for this request",
+      "editNotAllowed": "Request cannot be edited in its current status"
+    },
+    "success": {
+      "assigned": "Vendor assigned successfully",
+      "accepted": "Assignment accepted",
+      "declined": "Assignment declined",
+      "workDone": "Work marked as done. Please submit your invoice within 72 hours.",
+      "completed": "Maintenance request completed",
+      "cancelled": "Maintenance request cancelled",
+      "invoiceSubmitted": "Invoice submitted successfully",
+      "invoiceApproved": "Invoice approved",
+      "invoiceRejected": "Invoice rejected",
+      "workOrderSubmitted": "Work order submitted successfully",
+      "workOrderApproved": "Work order approved",
+      "workOrderRejected": "Work order rejected",
+      "feedbackSubmitted": "Thank you for your feedback"
+    }
+  },
+
+  "notifications": {
+    "property": {
+      "approvalRequired": {
+        "title": "Property Approval Required",
+        "message": "{{propertyName}} at {{address}} requires your approval"
+      },
+      "approved": {
+        "title": "Property Approved",
+        "message": "{{propertyName}} update has been approved by {{approverName}}"
+      },
+      "rejected": {
+        "title": "Property Rejected",
+        "message": "{{propertyName}} update was rejected. Reason: {{reason}}"
+      },
+      "updated": {
+        "title": "Property Updated",
+        "message": "{{propertyName}} has been updated by {{updatedBy}}"
+      },
+      "statusChanged": {
+        "title": "Property Status Changed",
+        "message": "{{propertyName}} status changed to {{newStatus}}"
+      },
+      "pendingChanges": {
+        "title": "Property Changes Submitted",
+        "message": "Changes to {{propertyName}} have been submitted for approval"
+      }
+    },
+    "task": {
+      "completed": {
+        "title": "Task Completed",
+        "message": "Your {{taskType}} task has finished processing successfully"
+      },
+      "failed": {
+        "title": "Task Failed",
+        "message": "Your {{taskType}} task failed: {{errorMessage}}"
+      },
+      "csvImportCompleted": {
+        "title": "CSV Import Completed",
+        "message": "Your {{entityType}} CSV import completed. {{successCount}} items processed successfully"
+      },
+      "csvImportFailed": {
+        "title": "CSV Import Failed",
+        "message": "Your {{entityType}} CSV import failed: {{errorMessage}}"
+      }
+    },
+    "user": {
+      "invitation": {
+        "received": {
+          "title": "New Invitation",
+          "message": "You've been invited to join {{companyName}} as {{role}}"
+        },
+        "reminder": {
+          "title": "Invitation Reminder",
+          "message": "Reminder: Your invitation to join {{companyName}} expires soon"
+        }
+      },
+      "accountUpdated": {
+        "title": "Account Updated",
+        "message": "Your account information has been updated by {{updatedBy}}"
+      }
+    },
+    "system": {
+      "maintenance": {
+        "title": "System Maintenance",
+        "message": "Scheduled maintenance on {{date}} from {{startTime}} to {{endTime}}"
+      },
+      "announcement": {
+        "title": "{{title}}",
+        "message": "{{message}}"
+      },
+      "serverUpdate": {
+        "title": "System Update",
+        "message": "The system will be updated on {{date}}. Expected downtime: {{duration}}"
+      }
+    },
+    "vendor": {
+      "connected": {
+        "title": "Vendor Connected",
+        "message": "{{vendorName}} has been connected to your account"
+      },
+      "disconnected": {
+        "title": "Vendor Disconnected",
+        "message": "{{vendorName}} has been disconnected from your account"
+      }
+    },
+    "maintenance": {
+      "requestCreated": {
+        "title": "New Maintenance Request",
+        "message": "A new {{priority}} priority request \"{{title}}\" has been submitted"
+      },
+      "requestAssigned": {
+        "title": "Request Assigned",
+        "message": "Maintenance request {{mruid}} has been assigned to a vendor"
+      },
+      "requestAssignedVendor": {
+        "title": "New Job Assigned",
+        "message": "You have been assigned maintenance request {{mruid}}"
+      },
+      "requestAccepted": {
+        "title": "Vendor Accepted Request",
+        "message": "A vendor has accepted maintenance request {{mruid}}"
+      },
+      "requestAcceptedTenant": {
+        "title": "Your Request is Being Handled",
+        "message": "A vendor has accepted your maintenance request {{mruid}}"
+      },
+      "requestDeclined": {
+        "title": "Vendor Declined Request",
+        "message": "A vendor has declined maintenance request {{mruid}}"
+      },
+      "requestCompleted": {
+        "title": "Maintenance Request Completed",
+        "message": "Maintenance request {{mruid}} has been marked as completed"
+      },
+      "requestCancelled": {
+        "title": "Maintenance Request Cancelled",
+        "message": "Maintenance request {{mruid}} has been cancelled"
+      },
+      "invoiceSubmitted": {
+        "title": "Invoice Submitted for Approval",
+        "message": "A vendor has submitted an invoice of {{amount}} for request {{mruid}}"
+      },
+      "invoiceApproved": {
+        "title": "Invoice Approved",
+        "message": "Your invoice for request {{mruid}} has been approved"
+      },
+      "invoiceRejected": {
+        "title": "Invoice Rejected",
+        "message": "Your invoice for request {{mruid}} was rejected"
+      },
+      "workOrderSubmitted": {
+        "title": "Work Order Submitted",
+        "message": "A work order has been submitted for maintenance request {{mruid}}"
+      },
+      "vendorScheduledVisit": {
+        "title": "Visit Scheduled",
+        "message": "Your vendor has scheduled a visit for request {{mruid}} on {{scheduledDate}}"
+      },
+      "workOrderApproved": {
+        "title": "Work Order Approved",
+        "message": "Your work order for request {{mruid}} has been approved — proceed with the job"
+      },
+      "workOrderApprovedTenant": {
+        "title": "Work Confirmed",
+        "message": "The work plan for your request {{mruid}} has been approved. Your vendor will be in touch shortly."
+      },
+      "workOrderRejected": {
+        "title": "Work Order Rejected",
+        "message": "Your work order for request {{mruid}} was rejected"
+      }
+    },
+    "lease": {
+      "pdfGenerationStarted": {
+        "title": "Lease PDF Generation Started",
+        "message": "Generating PDF for lease {{leaseNumber}}. You will be notified when it's ready."
+      },
+      "pdfGenerated": {
+        "title": "Lease PDF Ready",
+        "message": "PDF for lease {{leaseNumber}} has been generated and is now available for download."
+      },
+      "pdfGenerationFailed": {
+        "title": "Lease PDF Generation Failed",
+        "message": "Failed to generate PDF for lease {{leaseNumber}}: {{errorMessage}}"
+      }
+    },
+    "payment": {
+      "disputeCreated": {
+        "title": "Payment Dispute Opened",
+        "message": "A dispute of {{amount}} was filed for invoice {{invoiceNumber}}. The transfer has been reversed pending resolution."
+      },
+      "disputeWon": {
+        "title": "Dispute Resolved — Funds Returned",
+        "message": "The dispute for invoice {{invoiceNumber}} was resolved in your favor. {{amount}} has been re-transferred to your account."
+      },
+      "payoutAccountVerified": {
+        "title": "Payout Account Verified",
+        "message": "Your payout account has been verified. You can now receive rent payments directly to your bank account."
+      },
+      "succeeded": {
+        "title": "Payment Received",
+        "message": "A payment of {{amount}} has been successfully processed"
+      },
+      "failed": {
+        "title": "Payment Failed",
+        "message": "A payment of {{amount}} could not be processed"
+      },
+      "refunded": {
+        "title": "Payment Refunded",
+        "message": "A refund of {{amount}} has been issued"
+      }
     }
   }
 }

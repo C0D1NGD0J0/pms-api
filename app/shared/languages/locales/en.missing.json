@@ -60,5 +60,10 @@
     "success": {
       "updated": "maintenance.success.updated"
     }
+  },
+  "auth": {
+    "success": {
+      "otpSent": "auth.success.otpSent"
+    }
   }
 }

@@ -7,7 +7,7 @@ export interface ISMSLogDAO extends IBaseDAO<ISMSLogDocument> {
     cuid: string,
     filters?: { messageType?: SMSMessageType; status?: string },
     opts?: IFindOptions
-  ): ListResultWithPagination<ISMSLogDocument[]>;
+  ): Promise<ListResultWithPagination<ISMSLogDocument[]>>;
   getUsageByType(cuid: string, from: Date, to: Date): Promise<Record<string, number>>;
   createLog(data: Partial<ISMSLogDocument>): Promise<ISMSLogDocument>;
 }

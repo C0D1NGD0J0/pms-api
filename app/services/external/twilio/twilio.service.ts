@@ -1,11 +1,12 @@
-import Twilio from 'twilio';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
+import Twilio, { validateRequest } from 'twilio';
 
 export class TwilioService {
   private readonly log: Logger;
   private readonly client: Twilio.Twilio;
+  private readonly authToken: string;
   private readonly verifyServiceSid: string;
   private readonly messagingServiceSid: string;
 
@@ -15,16 +16,24 @@ export class TwilioService {
     const { ACCOUNT_SID, AUTH_TOKEN, MESSAGING_SERVICE_SID, VERIFY_SERVICE_SID } =
       envVariables.TWILIO;
 
-    if (envVariables.FEATURES.SMS_ENABLED && (!ACCOUNT_SID || !AUTH_TOKEN)) {
-      throw new Error(
-        'TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required when SMS feature is enabled'
-      );
+    if (envVariables.FEATURES.SMS_ENABLED) {
+      const missing = [
+        !ACCOUNT_SID && 'TWILIO_ACCOUNT_SID',
+        !AUTH_TOKEN && 'TWILIO_AUTH_TOKEN',
+        !VERIFY_SERVICE_SID && 'TWILIO_VERIFY_SERVICE_SID',
+        !MESSAGING_SERVICE_SID && 'TWILIO_MESSAGING_SERVICE_SID',
+      ].filter(Boolean);
+
+      if (missing.length) {
+        throw new Error(`${missing.join(', ')} required when SMS feature is enabled`);
+      }
     }
 
     if (!ACCOUNT_SID || !AUTH_TOKEN) {
       this.log.warn('Twilio credentials not configured — SMS features will be unavailable');
     }
 
+    this.authToken = AUTH_TOKEN || '';
     this.verifyServiceSid = VERIFY_SERVICE_SID;
     this.messagingServiceSid = MESSAGING_SERVICE_SID;
     this.client = Twilio(ACCOUNT_SID || 'missing', AUTH_TOKEN || 'missing');
@@ -87,5 +96,17 @@ export class TwilioService {
       this.log.error({ error, to }, 'Failed to verify OTP');
       throw new Error(`Twilio API Error: ${error.message}`);
     }
+  }
+
+  /**
+   * Validate an incoming Twilio webhook request using X-Twilio-Signature.
+   */
+  isValidWebhookSignature(
+    twilioSignature: string,
+    url: string,
+    params: Record<string, any>
+  ): boolean {
+    if (!this.authToken) return false;
+    return validateRequest(this.authToken, twilioSignature, url, params);
   }
 }

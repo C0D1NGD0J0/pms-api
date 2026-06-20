@@ -610,6 +610,7 @@
       "assigned": "Vendor assigned successfully",
       "accepted": "Assignment accepted",
       "declined": "Assignment declined",
+      "released": "Assignment released",
       "workDone": "Work marked as done. Please submit your invoice within 72 hours.",
       "completed": "Maintenance request completed",
       "cancelled": "Maintenance request cancelled",

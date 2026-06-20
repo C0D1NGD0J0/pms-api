@@ -1014,7 +1014,7 @@ export class MaintenanceRequestService {
     return {
       success: true,
       data: updated,
-      message: t('maintenance.success.declined'),
+      message: t('maintenance.success.released'),
     };
   }
 

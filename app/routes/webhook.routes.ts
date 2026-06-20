@@ -56,7 +56,7 @@ router.post(
 
 /**
  * Twilio webhooks (SMS delivery status + Verify events)
- * No signature verification — Twilio sends form-encoded POST data
+ * Signature verified via X-Twilio-Signature in the controller
  */
 router.post(
   '/twilio/status',

@@ -511,10 +511,17 @@ export class AuthService {
     }
 
     const profile = await this.profileDAO.findFirst({ user: user._id });
+    const loginType = profile?.settings?.loginType ?? 'password';
     const phone = profile?.settings?.phoneVerification?.verifiedPhone;
+    const phoneVerified = profile?.settings?.phoneVerification?.verified;
 
-    if (!phone) {
-      throw new BadRequestError({ message: t('auth.errors.phoneNotVerified') });
+    if (
+      loginType !== 'otp' ||
+      !this.featureFlagService.isEnabled(FeatureFlag.SMS) ||
+      !phoneVerified ||
+      !phone
+    ) {
+      throw new BadRequestError({ message: t('auth.errors.otpUnavailable') });
     }
 
     const result = await this.twilioService.verifyOTP(phone, otp);

@@ -28,7 +28,7 @@ export class SMSLogDAO extends BaseDAO<ISMSLogDocument> implements ISMSLogDAO {
     cuid: string,
     filters?: { messageType?: SMSMessageType; status?: string },
     opts?: IFindOptions
-  ): ListResultWithPagination<ISMSLogDocument[]> {
+  ): Promise<ListResultWithPagination<ISMSLogDocument[]>> {
     try {
       const query: QueryFilter<ISMSLogDocument> = { cuid };
 

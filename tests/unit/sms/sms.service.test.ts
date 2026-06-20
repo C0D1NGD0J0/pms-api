@@ -1,14 +1,14 @@
 import { Types } from 'mongoose';
 import { NotFoundError } from '@shared/customErrors';
+import {
+  ISubscriptionStatus,
+} from '@interfaces/index';
 import { SMSService } from '@services/smsService/sms.service';
 import {
   SMSMessageType,
   ISendSMSInput,
   SMSStatus,
 } from '@interfaces/sms.interface';
-import {
-  ISubscriptionStatus,
-} from '@interfaces/index';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 

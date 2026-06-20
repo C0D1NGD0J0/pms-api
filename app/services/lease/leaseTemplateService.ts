@@ -341,7 +341,9 @@ export class LeaseTemplateService {
       types: this.transformArrayToString(petPolicy.types) || 'Pets',
       deposit: MoneyUtils.formatCurrency(petPolicy.deposit, currency),
       monthlyFee:
-        petPolicy.monthlyFee > 0 ? MoneyUtils.formatCurrency(petPolicy.monthlyFee, currency) : null,
+        (petPolicy.monthlyFee ?? 0) > 0
+          ? MoneyUtils.formatCurrency(petPolicy.monthlyFee!, currency)
+          : null,
     };
   }
 

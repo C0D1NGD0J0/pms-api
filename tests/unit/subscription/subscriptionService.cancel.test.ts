@@ -72,6 +72,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
       authCache: mockAuthCache,
+      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       userDAO: {} as any,

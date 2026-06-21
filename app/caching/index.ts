@@ -1,4 +1,5 @@
 export * from './notification.cache';
+export * from './subscription.cache';
 export * from './idempotency.cache';
 export * from './property.cache';
 export * from './events.cache';

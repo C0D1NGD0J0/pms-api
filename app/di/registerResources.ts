@@ -21,6 +21,7 @@ import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
+  SubscriptionCache,
   NotificationCache,
   IdempotencyCache,
   PropertyCache,
@@ -296,6 +297,7 @@ const CacheResources = {
   userCache: asClass(UserCache).singleton(),
   vendorCache: asClass(VendorCache).singleton(),
   idempotencyCache: asClass(IdempotencyCache).singleton(),
+  subscriptionCache: asClass(SubscriptionCache).singleton(),
   notificationCache: asClass(NotificationCache).singleton(),
 };
 

@@ -2,7 +2,6 @@ import dayjs from 'dayjs';
 import Decimal from 'decimal.js';
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
-import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { MoneyUtils } from '@utils/money.utils';
@@ -11,6 +10,7 @@ import { calcSeatCost } from '@utils/financial.utils';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { BadRequestError } from '@shared/customErrors';
+import { SubscriptionCache, AuthCache } from '@caching/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import {
@@ -27,6 +27,7 @@ interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  subscriptionCache: SubscriptionCache;
   subscriptionDAO: SubscriptionDAO;
   sseService: SSEService;
   emailQueue: EmailQueue;
@@ -39,6 +40,7 @@ export class SubscriptionWebhookService {
   private userDAO: UserDAO;
   private clientDAO: ClientDAO;
   private authCache: AuthCache;
+  private subscriptionCache: SubscriptionCache;
   private sseService: SSEService;
   private emailQueue: EmailQueue;
   private log: ReturnType<typeof createLogger>;
@@ -51,6 +53,7 @@ export class SubscriptionWebhookService {
     userDAO,
     clientDAO,
     authCache,
+    subscriptionCache,
     sseService,
     emailQueue,
     subscriptionDAO,
@@ -61,6 +64,7 @@ export class SubscriptionWebhookService {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
+    this.subscriptionCache = subscriptionCache;
     this.sseService = sseService;
     this.emailQueue = emailQueue;
     this.subscriptionDAO = subscriptionDAO;
@@ -665,6 +669,9 @@ export class SubscriptionWebhookService {
           'Failed to invalidate account admin cache'
         );
       }
+
+      // Invalidate entitlements cache so next request gets fresh plan/feature data
+      await this.subscriptionCache.invalidate(cuid);
 
       const notificationPayload = {
         action: 'REFETCH_CURRENT_USER',

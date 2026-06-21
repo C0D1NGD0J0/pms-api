@@ -3,7 +3,6 @@ import Decimal from 'decimal.js';
 import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { ClientSession } from 'mongodb';
-import { AuthCache } from '@caching/index';
 import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
@@ -14,6 +13,7 @@ import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventEmitterService } from '@services/eventEmitter';
+import { SubscriptionCache, AuthCache } from '@caching/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { calcAnnualToMonthly, calcSeatCost } from '@utils/financial.utils';
@@ -39,6 +39,7 @@ interface IConstructor {
   subscriptionWebhookService: SubscriptionWebhookService;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  subscriptionCache: SubscriptionCache;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
@@ -54,6 +55,7 @@ export class SubscriptionService {
   private userDAO: UserDAO;
   private clientDAO: ClientDAO;
   private authCache: AuthCache;
+  private subscriptionCache: SubscriptionCache;
   private sseService: SSEService;
   private emailQueue: EmailQueue;
   private emitterService: EventEmitterService;
@@ -69,6 +71,7 @@ export class SubscriptionService {
     userDAO,
     clientDAO,
     authCache,
+    subscriptionCache,
     sseService,
     emailQueue,
     emitterService,
@@ -82,6 +85,7 @@ export class SubscriptionService {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
+    this.subscriptionCache = subscriptionCache;
     this.sseService = sseService;
     this.emailQueue = emailQueue;
     this.emitterService = emitterService;
@@ -578,6 +582,12 @@ export class SubscriptionService {
     userRole?: string
   ): IPromiseReturnedData<ISubscriptionEntitlements | null> {
     try {
+      // Check cache first — entitlements rarely change (only on plan/payment events)
+      const cached = await this.subscriptionCache.getEntitlements(cuid);
+      if (cached.success && cached.data) {
+        return { success: true, data: cached.data };
+      }
+
       const subscription = await this.subscriptionDAO.findFirst({
         cuid,
       });
@@ -649,6 +659,9 @@ export class SubscriptionService {
           },
         }),
       };
+
+      // Cache for subsequent requests — invalidated by webhook handlers
+      await this.subscriptionCache.cacheEntitlements(cuid, entitlements);
 
       return { data: entitlements, success: true };
     } catch (error) {

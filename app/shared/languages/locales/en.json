@@ -113,7 +113,8 @@
       "invalidDepartment": "Invalid department value.",
       "departmentEmployeeOnly": "Departments can only be assigned to employee roles.",
       "verificationFailed": "Failed to verify account.",
-      "noTenantFeaturesProvided": "At least one tenant feature must be provided."
+      "noTenantFeaturesProvided": "At least one tenant feature must be provided.",
+      "immutableFieldLocked": "This field is locked and cannot be changed. Please contact support if an update is required."
     },
     "success": {
       "roleAssigned": "Role {{role}} assigned successfully",
@@ -578,6 +579,9 @@
       "created": "{{resource}} created successfully.",
       "deleted": "{{resource}} deleted successfully.",
       "archived": "{{resource}} archived successfully."
+    },
+    "notices": {
+      "locationDeterminesPaymentProcessor": "Your location determines your payment provider and cannot be changed after account setup."
     }
   },
   "maintenance": {

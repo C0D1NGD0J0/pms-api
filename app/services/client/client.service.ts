@@ -28,6 +28,12 @@ import {
   IClientStats,
 } from '@interfaces/client.interface';
 import {
+  NotificationPriorityEnum,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
+import {
+  PaymentProcessorDAO,
   SubscriptionDAO,
   PropertyUnitDAO,
   PropertyDAO,
@@ -35,11 +41,6 @@ import {
   VendorDAO,
   UserDAO,
 } from '@dao/index';
-import {
-  NotificationPriorityEnum,
-  NotificationTypeEnum,
-  RecipientTypeEnum,
-} from '@interfaces/notification.interface';
 import {
   PaymentDisputeReversalFailedPayload,
   PaymentProcessorVerifiedPayload,
@@ -51,6 +52,7 @@ import {
 
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
+  paymentProcessorDAO: PaymentProcessorDAO;
   subscriptionService: SubscriptionService;
   notificationService: NotificationService;
   featureFlagService: FeatureFlagService;
@@ -82,6 +84,7 @@ export class ClientService {
   private readonly notificationService: NotificationService;
   private readonly emitterService: EventEmitterService;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly featureFlagService: FeatureFlagService;
   private readonly queueFactory: QueueFactory;
 
@@ -100,6 +103,7 @@ export class ClientService {
     featureFlagService,
     emitterService,
     paymentGatewayService,
+    paymentProcessorDAO,
     queueFactory,
   }: IConstructor) {
     this.log = createLogger('ClientService');
@@ -116,6 +120,7 @@ export class ClientService {
     this.notificationService = notificationService;
     this.subscriptionService = subscriptionService;
     this.paymentGatewayService = paymentGatewayService;
+    this.paymentProcessorDAO = paymentProcessorDAO;
     this.featureFlagService = featureFlagService;
     this.queueFactory = queueFactory;
     this.setupEventListeners();
@@ -143,6 +148,25 @@ export class ClientService {
         t('common.errors.notFound', { resource: 'Client' })
       );
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+
+    // ── Immutable field guard: block changes once payment infrastructure exists ──
+    const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
+    if (processor) {
+      const locked: string[] = [];
+      if (updateData.companyProfile?.companyAddress !== undefined) locked.push('company address');
+      if (updateData.companyProfile?.legalEntityName !== undefined)
+        locked.push('legal entity name');
+      if (updateData.companyProfile?.registrationNumber !== undefined)
+        locked.push('registration number');
+      if (updateData.settings?.defaultCurrency !== undefined) locked.push('default currency');
+      if ((updateData as any).accountType !== undefined) locked.push('account type');
+
+      if (locked.length > 0) {
+        throw new BadRequestError({
+          message: t('client.errors.immutableFieldLocked'),
+        });
+      }
     }
 
     const validationErrors: string[] = [];

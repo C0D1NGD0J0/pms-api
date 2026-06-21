@@ -9,6 +9,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         type: String,
         default: '',
         trim: true,
+        index: true,
         required: true,
       },
       displayName: {
@@ -47,7 +48,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         filename: String,
         key: String,
       },
-      phoneNumber: { type: String, default: '' },
+      phoneNumber: { type: String, default: '', index: true },
       bio: {
         type: String,
         maxlength: 700,

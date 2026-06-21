@@ -107,6 +107,26 @@ export class SubscriptionController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  getEntitlements = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { currentuser } = req.context;
+    const { cuid } = req.params;
+
+    if (!currentuser || currentuser.client.cuid !== cuid) {
+      throw new UnauthorizedError({ message: 'Unauthorized access' });
+    }
+
+    const entitlements = req.context.entitlements;
+    const clientEntitlements = currentuser.clientEntitlements;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...(entitlements && { subscription: entitlements }),
+        clientEntitlements: entitlements?.entitlements || clientEntitlements || null,
+      },
+    });
+  };
+
   getSMSQuota = async (req: AppRequest, res: Response): Promise<Response> => {
     const { cuid } = req.params;
     const { currentuser } = req.context;

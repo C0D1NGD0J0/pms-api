@@ -337,4 +337,78 @@ describe('Subscription Entitlements', () => {
       });
     });
   });
+
+  // ── AuthController.getCurrentUser — /me stripping ─────
+
+  describe('AuthController.getCurrentUser — /me response stripping', () => {
+    const { AuthController } = require('@controllers/index');
+
+    it('should strip entitlements, paymentFlow, and clientEntitlements from /me response', () => {
+      const controller = new AuthController({
+        authService: {} as any,
+      });
+
+      const req = {
+        context: {
+          currentuser: {
+            sub: testUserId,
+            uid: 'TEST_UID',
+            email: 'test@example.com',
+            client: { cuid: testCuid, role: 'super-admin' },
+            subscription: {
+              plan: { name: 'growth', status: 'active', billingInterval: 'monthly' },
+              entitlements: growthFeatures,
+              paymentFlow: { requiresPayment: false, reason: null, gracePeriodEndsAt: null, daysUntilDowngrade: null },
+            },
+            clientEntitlements: growthFeatures,
+            permissions: ['read:any'],
+          },
+        },
+      };
+
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn().mockReturnThis(),
+      };
+
+      controller.getCurrentUser(req as any, res as any);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+
+      const responseData = res.json.mock.calls[0][0].data;
+
+      // Should keep plan info
+      expect(responseData.subscription).toBeDefined();
+      expect(responseData.subscription.plan).toEqual({
+        name: 'growth',
+        status: 'active',
+        billingInterval: 'monthly',
+      });
+
+      // Should strip entitlements, paymentFlow, clientEntitlements
+      expect(responseData.subscription.entitlements).toBeUndefined();
+      expect(responseData.subscription.paymentFlow).toBeUndefined();
+      expect(responseData.clientEntitlements).toBeUndefined();
+
+      // Should keep other fields
+      expect(responseData.uid).toBe('TEST_UID');
+      expect(responseData.permissions).toEqual(['read:any']);
+    });
+
+    it('should return 401 when currentuser is null', () => {
+      const controller = new AuthController({
+        authService: {} as any,
+      });
+
+      const req = { context: { currentuser: null } };
+      const res = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn().mockReturnThis(),
+      };
+
+      controller.getCurrentUser(req as any, res as any);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+  });
 });

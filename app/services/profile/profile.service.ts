@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { AuthCache } from '@caching/auth.cache';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
@@ -27,6 +28,7 @@ interface IConstructor {
   vendorService: VendorService;
   userService: UserService;
   profileDAO: ProfileDAO;
+  authCache: AuthCache;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
 }
@@ -39,6 +41,7 @@ export class ProfileService {
   private readonly userService: UserService;
   private readonly emitterService: EventEmitterService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly authCache: AuthCache;
   private readonly logger: Logger;
 
   constructor({
@@ -49,9 +52,11 @@ export class ProfileService {
     userService,
     emitterService,
     mediaUploadService,
+    authCache,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.authCache = authCache;
     this.profileDAO = profileDAO;
     this.userService = userService;
     this.vendorService = vendorService;
@@ -722,6 +727,10 @@ export class ProfileService {
           message: t('common.errors.notFound', { resource: 'Profile' }),
         });
       }
+
+      // Invalidate cached currentUser so the /me endpoint returns fresh data
+      // (e.g. updated preferences.lang for locale switching).
+      await this.authCache.invalidateCurrentUser(userId, cuid);
 
       return {
         success: true,

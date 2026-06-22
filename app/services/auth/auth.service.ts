@@ -566,15 +566,6 @@ export class AuthService {
     }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
 
-    // Strip entitlements from login response — now served via GET /subscriptions/:cuid/entitlements
-    if (currentuser?.subscription) {
-      (currentuser.subscription as any).entitlements = undefined;
-      (currentuser.subscription as any).paymentFlow = undefined;
-    }
-    if (currentuser) {
-      (currentuser as any).clientEntitlements = undefined;
-    }
-
     const otherAccounts = connectedClients
       .filter((c: any) => c.cuid !== activeAccount.cuid)
       .map((c: any) => ({ cuid: c.cuid, clientDisplayName: c.clientDisplayName }));
@@ -619,13 +610,6 @@ export class AuthService {
         data: null,
       };
     }
-
-    // Strip entitlements from /me response — now served via GET /subscriptions/:cuid/entitlements
-    if (currentuser.subscription) {
-      (currentuser.subscription as any).entitlements = undefined;
-      (currentuser.subscription as any).paymentFlow = undefined;
-    }
-    (currentuser as any).clientEntitlements = undefined;
 
     return {
       success: true,

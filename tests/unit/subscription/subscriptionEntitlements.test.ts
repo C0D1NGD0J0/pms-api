@@ -3,8 +3,8 @@ import { ClientDAO } from '@dao/clientDAO';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { ISubscriptionStatus } from '@interfaces/index';
-import { SubscriptionController } from '@controllers/index';
 import { SubscriptionCache, AuthCache } from '@caching/index';
+import { SubscriptionController, AuthController } from '@controllers/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { SubscriptionWebhookService } from '@services/subscription/subscriptionWebhook.service';
@@ -341,8 +341,6 @@ describe('Subscription Entitlements', () => {
   // ── AuthController.getCurrentUser — /me stripping ─────
 
   describe('AuthController.getCurrentUser — /me response stripping', () => {
-    const { AuthController } = require('@controllers/index');
-
     it('should strip entitlements, paymentFlow, and clientEntitlements from /me response', () => {
       const controller = new AuthController({
         authService: {} as any,

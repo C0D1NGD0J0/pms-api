@@ -23,15 +23,6 @@ import {
   daysInMs,
 } from '@utils/index';
 import {
-  MaintenanceRequestDAO,
-  PropertyDAO,
-  ProfileDAO,
-  PaymentDAO,
-  ClientDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
-import {
   ISuccessReturnData,
   PermissionResource,
   PermissionAction,
@@ -39,6 +30,17 @@ import {
   IPaginateResult,
   MailType,
 } from '@interfaces/utils.interface';
+import {
+  MaintenanceRequestDAO,
+  PaymentProcessorDAO,
+  SubscriptionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  PaymentDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   IUserPopulatedDocument,
   FilteredUserTableData,
@@ -56,8 +58,10 @@ import {
 
 interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
+  paymentProcessorDAO: PaymentProcessorDAO;
   permissionService: PermissionService;
   emitterService: EventEmitterService;
+  subscriptionDAO: SubscriptionDAO;
   vendorService: VendorService;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -79,6 +83,8 @@ export class UserService {
   private readonly leaseDAO: LeaseDAO;
   private readonly paymentDAO: PaymentDAO;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
+  private readonly subscriptionDAO: SubscriptionDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -93,6 +99,8 @@ export class UserService {
     leaseDAO,
     paymentDAO,
     maintenanceRequestDAO,
+    paymentProcessorDAO,
+    subscriptionDAO,
     vendorService,
     emitterService,
     permissionService,
@@ -102,6 +110,8 @@ export class UserService {
     this.leaseDAO = leaseDAO;
     this.paymentDAO = paymentDAO;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.subscriptionDAO = subscriptionDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -1317,6 +1327,20 @@ export class UserService {
             message: t('common.errors.alreadyExists', { resource: 'Email' }),
           });
         }
+
+        // ── Immutable field guard: block email change while subscription with billing exists ──
+        const cuids = existingUser.cuids?.map((c: any) => c.cuid) ?? [];
+        if (cuids.length > 0) {
+          const subscription = await this.subscriptionDAO.findFirst({
+            cuid: { $in: cuids },
+            'billing.customerId': { $exists: true, $ne: '' },
+          });
+          if (subscription) {
+            throw new BadRequestError({
+              message: t('client.errors.immutableFieldLocked'),
+            });
+          }
+        }
       }
 
       // Update user information
@@ -1892,6 +1916,19 @@ export class UserService {
         });
       }
 
+      // ── Immutable field guard: individual accounts use personalInfo.location for provider routing ──
+      if (updateData.personalInfo?.location !== undefined) {
+        const client = await this.clientDAO.getClientByCuid(cuid);
+        if (client?.accountType?.category === 'individual') {
+          const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
+          if (processor) {
+            throw new BadRequestError({
+              message: t('client.errors.immutableFieldLocked'),
+            });
+          }
+        }
+      }
+
       // Update profile data
       const profileUpdateFields: Record<string, any> = {};
 
@@ -1936,6 +1973,18 @@ export class UserService {
             message: t('common.errors.alreadyExists', { resource: 'Email' }),
           });
         }
+
+        // ── Immutable field guard: block email change while subscription with billing exists ──
+        const subscription = await this.subscriptionDAO.findFirst({
+          cuid,
+          'billing.customerId': { $exists: true, $ne: '' },
+        });
+        if (subscription) {
+          throw new BadRequestError({
+            message: t('client.errors.immutableFieldLocked'),
+          });
+        }
+
         await this.userDAO.updateById(user._id.toString(), { email: updateData.email });
       }
 

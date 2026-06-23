@@ -661,6 +661,7 @@ export class AuthService {
       if (planConfig) currentuser.subscription.entitlements = planConfig.features;
     }
     currentuser && (await this.authCache.saveCurrentUser(currentuser));
+
     return {
       success: true,
       data: {

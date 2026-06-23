@@ -100,6 +100,7 @@ describe('SubscriptionController Integration Tests', () => {
       sseService: {} as any,
       clientDAO: {} as any,
       authCache: {} as any,
+      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
       userDAO: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,

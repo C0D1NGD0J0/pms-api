@@ -86,6 +86,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       authCache: mockAuthCache,
+      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
       userDAO: {} as any,
       emitterService: mockEmitterService,
       propertyDAO: {} as any,

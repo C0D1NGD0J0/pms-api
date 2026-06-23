@@ -90,6 +90,7 @@ describe('SubscriptionService Integration Tests', () => {
         client: { DEL: jest.fn(), GET: jest.fn(), SETEX: jest.fn() },
         invalidateCurrentUser: jest.fn(),
       } as any,
+      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
       userDAO: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,

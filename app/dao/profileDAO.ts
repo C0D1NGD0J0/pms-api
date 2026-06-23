@@ -505,10 +505,16 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // Vendor only
+            // Vendor only — only include when user has a vendor role AND a linked vendorId
             vendorInfo: {
               $cond: {
-                if: '$vendorInfo',
+                if: {
+                  $and: [
+                    '$vendorInfo',
+                    '$vendorInfo.vendorId',
+                    { $eq: ['$activeClientRole', 'vendor'] },
+                  ],
+                },
                 then: {
                   vendorId: { $toString: '$vendorInfo.vendorId' },
                   vuid: '$vendorDoc.vuid',

@@ -89,6 +89,17 @@ router.post(
 );
 
 router.get(
+  '/:cuid/entitlements',
+  isAuthenticated,
+  validateRequest({ params: UtilsValidations.cuid }),
+  subscriptionEntitlements,
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<SubscriptionController>('subscriptionController');
+    return controller.getEntitlements(req, res);
+  })
+);
+
+router.get(
   '/:cuid/sms-quota',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.READ),

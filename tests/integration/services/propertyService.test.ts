@@ -721,7 +721,7 @@ describe('PropertyService Integration Tests', () => {
             },
           ],
           createdBy: adminUser._id,
-        });
+        } as any);
 
         await expect(
           propertyService.archiveClientProperty(testClient.cuid, property.pid, {

@@ -108,6 +108,7 @@ describe('Invitation Metadata Transfer', () => {
       userService: mockUserService,
       emitterService,
       mediaUploadService: mockMediaUploadService,
+      authCache: { invalidateUserDetail: jest.fn() } as any,
     });
 
     invitationService = new InvitationService({

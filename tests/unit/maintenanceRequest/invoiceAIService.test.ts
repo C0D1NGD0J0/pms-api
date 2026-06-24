@@ -23,6 +23,8 @@ beforeEach(() => {
   service = new InvoiceAIService({
     anthropicService: mockAnthropicService,
     featureFlagService: mockFeatureFlagService,
+    subscriptionPlanConfig: { hasFeature: jest.fn().mockReturnValue(true) } as any,
+    subscriptionDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve({ planName: 'growth' })) } as any,
   });
 });
 
@@ -46,7 +48,7 @@ describe('InvoiceAIService', () => {
     it('returns failure when feature flag is disabled', async () => {
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(false);
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg');
+      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg', 'test-cuid');
 
       expect(result.success).toBe(false);
       expect(result.data).toBeNull();
@@ -72,7 +74,7 @@ describe('InvoiceAIService', () => {
         confidence: 0.95,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image-data'), 'image/jpeg');
+      const result = await service.extractInvoiceData(Buffer.from('fake-image-data'), 'image/jpeg', 'test-cuid');
 
       expect(result.success).toBe(true);
       expect(result.data).not.toBeNull();
@@ -92,7 +94,7 @@ describe('InvoiceAIService', () => {
         Promise.reject(new Error('API unavailable'))
       );
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg');
+      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg', 'test-cuid');
 
       expect(result.success).toBe(false);
       expect(result.data).toBeNull();
@@ -109,7 +111,7 @@ describe('InvoiceAIService', () => {
         confidence: 0.05,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg');
+      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg', 'test-cuid');
 
       expect(result.success).toBe(false);
       expect(result.data).toBeNull();
@@ -127,7 +129,7 @@ describe('InvoiceAIService', () => {
         confidence: 0.8,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/png');
+      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/png', 'test-cuid');
 
       expect(result.success).toBe(true);
       expect(result.data!.description).toBe('');
@@ -146,7 +148,7 @@ describe('InvoiceAIService', () => {
         confidence: 0.88,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-pdf-data'), 'application/pdf');
+      const result = await service.extractInvoiceData(Buffer.from('fake-pdf-data'), 'application/pdf', 'test-cuid');
 
       expect(result.success).toBe(true);
       expect(result.data!.description).toBe('PDF Invoice');
@@ -165,7 +167,7 @@ describe('InvoiceAIService', () => {
         confidence: 0.9,
       });
 
-      await service.extractInvoiceData(Buffer.from('fake-png'), 'image/png');
+      await service.extractInvoiceData(Buffer.from('fake-png'), 'image/png', 'test-cuid');
 
       const [, contentBlocks] = (mockAnthropicService.createVisionMessage as jest.Mock).mock.calls[0];
       expect(contentBlocks[0]).toMatchObject({ type: 'image' });
@@ -175,7 +177,7 @@ describe('InvoiceAIService', () => {
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(true);
       mockVisionResponse({ description: 'ok', amountInCents: 100, currency: 'USD', lineItems: [], confidence: 0.5 });
 
-      await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+      await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
 
       expect(mockAnthropicService.createVisionMessage).toHaveBeenCalledTimes(1);
     });
@@ -192,7 +194,7 @@ describe('InvoiceAIService', () => {
         })
       );
 
-      const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+      const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
 
       expect(result.success).toBe(true);
       expect(result.data!.description).toBe('Fix tap');
@@ -211,7 +213,7 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.description).toHaveLength(500);
       });
 
@@ -224,7 +226,7 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.vendorName).toHaveLength(200);
       });
 
@@ -237,7 +239,7 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.invoiceNumber).toHaveLength(50);
       });
 
@@ -256,7 +258,7 @@ describe('InvoiceAIService', () => {
           ],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.lineItems[0].description).toHaveLength(200);
       });
 
@@ -268,7 +270,7 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.currency).toBe('USD');
       });
 
@@ -280,7 +282,7 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.currency).toBe('CAD');
       });
 
@@ -292,7 +294,7 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg');
+        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
         expect(result.data!.currency).toBe('EUR');
       });
     });

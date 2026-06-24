@@ -117,7 +117,7 @@ describe('VendorController Integration Tests', () => {
       businessType: 'Plumber',
       registrationNumber: 'REG123456',
       taxId: 'TAX789',
-      servicesOffered: ['Plumbing', 'Repairs', 'Installation'],
+      servicesOffered: { plumbing: true, applianceRepair: true, maintenance: true },
       address: {
         street: '123 Main St',
         city: 'New York',

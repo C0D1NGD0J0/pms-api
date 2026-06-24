@@ -47,6 +47,7 @@ describe('ClientService - Account Verification', () => {
       vendorDAO: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 

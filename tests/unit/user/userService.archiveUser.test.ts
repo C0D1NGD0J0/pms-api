@@ -97,6 +97,8 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
       emitterService: mockEmitterService,
       permissionService: mockPermissionService as any,
       queueFactory: mockQueueFactory as any,
+      paymentProcessorDAO: {} as any,
+      subscriptionDAO: {} as any,
     });
   });
 

@@ -86,6 +86,7 @@ describe('InvitationService Integration Tests', () => {
       profileDAO,
       userDAO,
       clientDAO,
+      authCache: { invalidateCurrentUser: jest.fn() } as any,
       emitterService: mockEventEmitter as any,
       mediaUploadService: mockMediaUploadService as any,
       vendorService,

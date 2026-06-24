@@ -101,6 +101,7 @@ describe('Invitation Acceptance — Consent Recording', () => {
       userService: mockUserService,
       emitterService,
       mediaUploadService: { handleMediaDeletion: jest.fn() } as any,
+      authCache: { invalidateUserDetail: jest.fn() } as any,
     });
 
     invitationService = new InvitationService({

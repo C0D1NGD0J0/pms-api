@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { Subscription } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
-import { ISubscriptionStatus } from '@interfaces/subscription.interface';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 describe('SubscriptionDAO - updateResourceCount', () => {
   let subscriptionDAO: SubscriptionDAO;
@@ -20,7 +20,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       client: testClientId,
       cuid: 'TEST_CLIENT',
       planName: 'growth',
-      status: 'active',
+      status: ISubscriptionStatus.ACTIVE,
       currentProperties: 2,
       currentUnits: 5,
       currentSeats: 1,
@@ -28,7 +28,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       billingInterval: 'monthly',
       totalMonthlyPrice: 0,
       billing: {
-        provider: 'none',
+        provider: IPaymentGatewayProvider.NONE,
         customerId: 'none',
         planId: 'none',
       },

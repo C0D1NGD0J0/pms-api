@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { clearTestDatabase } from '@tests/helpers';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 
@@ -25,7 +26,6 @@ describe('LeaseDAO Integration Tests', () => {
       _id: testClientId,
       cuid: testCuid,
       displayName: 'Test Company',
-      status: 'active',
       accountAdmin: new Types.ObjectId(),
       accountType: { category: 'individual' },
     });
@@ -38,8 +38,6 @@ describe('LeaseDAO Integration Tests', () => {
       _id: testTenantId,
       uid: 'tenant-uid',
       email: 'tenant@example.com',
-      firstName: 'John',
-      lastName: 'Doe',
       password: 'hashed',
       activecuid: testCuid,
       cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['tenant'], isConnected: true }],
@@ -49,11 +47,9 @@ describe('LeaseDAO Integration Tests', () => {
       _id: testCreatorId,
       uid: 'creator-uid',
       email: 'creator@example.com',
-      firstName: 'Jane',
-      lastName: 'Smith',
       password: 'hashed',
       activecuid: testCuid,
-      cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['property_manager'], isConnected: true }],
+      cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['manager'], isConnected: true }],
     });
 
     // Create test property
@@ -71,7 +67,7 @@ describe('LeaseDAO Integration Tests', () => {
         fullAddress: '123 Main St, Toronto, ON M1A 1A1',
       },
       propertyType: 'apartment',
-      owner: testClientId,
+      owner: { type: 'self_owned' as any },
       createdBy: testCreatorId,
       managedBy: testCreatorId,
       description: {
@@ -95,7 +91,7 @@ describe('LeaseDAO Integration Tests', () => {
       status: 'available',
       fees: {
         rentAmount: 2000,
-        currency: 'CAD',
+        currency: CURRENCIES.CAD,
         securityDeposit: 2000,
       },
       specifications: {
@@ -267,8 +263,6 @@ describe('LeaseDAO Integration Tests', () => {
     beforeEach(async () => {
       await Profile.create({
         user: testTenantId,
-        cuid: testCuid,
-        puid: 'test-puid-tenant',
         personalInfo: {
           displayName: 'John Doe',
           firstName: 'John',
@@ -908,8 +902,6 @@ describe('LeaseDAO Integration Tests', () => {
         _id: tenant2,
         uid: 'tenant2-uid',
         email: 'tenant2@example.com',
-        firstName: 'Jane',
-        lastName: 'Doe',
         password: 'hashed',
         activecuid: testCuid,
         cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['tenant'], isConnected: true }],

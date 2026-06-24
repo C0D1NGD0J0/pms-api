@@ -1,14 +1,15 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
-import { ROLES } from '@shared/constants/roles.constants';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { IUserDocument } from '@interfaces/user.interface';
-import { ILeaseDocument } from '@interfaces/lease.interface';
 import { IClientDocument } from '@interfaces/client.interface';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
-import { IPropertyDocument } from '@interfaces/property.interface';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
+import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
+import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import {
   PropertyUnit,
   Invitation,
@@ -36,8 +37,6 @@ export const createTestClient = async (
   const adminUser = await User.create({
     uid: `uid-${faker.string.alphanumeric(12)}`,
     email: `admin-${Date.now()}@test.com`,
-    firstName: faker.person.firstName(),
-    lastName: faker.person.lastName(),
     password: '$2b$10$hashedPasswordForTesting',
     isActive: true,
     cuids: [
@@ -49,14 +48,11 @@ export const createTestClient = async (
       },
     ],
     activecuid: cuid,
-    createdAt: new Date(),
-    updatedAt: new Date(),
   });
 
   const client = await Client.create({
     cuid,
     displayName: options.displayName || faker.company.name(),
-    status: options.status || 'active',
     isVerified: options.isVerified ?? false,
     accountAdmin: adminUser._id,
     accountType: {
@@ -64,12 +60,10 @@ export const createTestClient = async (
       isEnterpriseAccount: false,
     },
     settings: {
-      timezone: 'America/Toronto',
-      currency: 'USD',
-      dateFormat: 'MM/DD/YYYY',
+      timeZone: 'America/Toronto',
+      defaultCurrency: 'USD',
+      lang: 'en',
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
   });
 
   // Create profile for the account admin
@@ -100,8 +94,6 @@ export const createTestUser = async (
   return User.create({
     uid: `uid-${faker.string.alphanumeric(12)}`,
     email: options.email || `user-${timestamp}@test.com`,
-    firstName: options.firstName || faker.person.firstName(),
-    lastName: options.lastName || faker.person.lastName(),
     password: options.password || '$2b$10$hashedPasswordForTesting',
     isActive: options.isActive ?? true,
     cuids: options.cuids || [
@@ -113,8 +105,6 @@ export const createTestUser = async (
       },
     ],
     activecuid: options.activecuid || clientCuid,
-    createdAt: new Date(),
-    updatedAt: new Date(),
   });
 };
 
@@ -184,7 +174,7 @@ export const createTestInvitation = async (
   return Invitation.create({
     iuid: `inv-${faker.string.alphanumeric(12)}`,
     inviteeEmail: options.inviteeEmail || `invitee-${timestamp}@test.com`,
-    role: options.role || ROLES.STAFF,
+    role: (options.role as IUserRole) || IUserRole.STAFF,
     status: options.status || 'pending',
     clientId,
     invitedBy: typeof invitedBy === 'string' ? new Types.ObjectId(invitedBy) : invitedBy,
@@ -196,10 +186,7 @@ export const createTestInvitation = async (
     },
     metadata: {
       remindersSent: 0,
-      lastReminderAt: null,
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
   });
 };
 
@@ -224,7 +211,6 @@ export const createTestProperty = async (
   return Property.create({
     pid: `prop-${faker.string.alphanumeric(12)}`,
     cuid,
-    clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
     name: options.name || `${faker.location.street()} Property`,
     propertyType: options.propertyType || 'apartment',
     operationalStatus: options.operationalStatus || 'available',
@@ -251,13 +237,11 @@ export const createTestProperty = async (
     },
     approvalStatus: 'approved', // Required for lease validation
     owner: {
-      type: 'company_owned', // Required for lease validation
+      type: OwnershipType.COMPANY_OWNED, // Required for lease validation
     },
     authorization: {
       isActive: true, // Required for lease validation
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
   });
 };
 
@@ -289,7 +273,7 @@ export const createTestPropertyUnit = async (
     floor: options.floor || 1,
     fees: {
       rentAmount: rentAmount, // In dollars - model setter converts to cents
-      currency: 'USD',
+      currency: CURRENCIES.USD,
     },
     specifications: {
       totalArea: squareFeet, // Required field
@@ -324,18 +308,9 @@ export const createTestProfile = async (
       displayName: `${firstName} ${lastName}`,
       location: faker.location.city(),
     },
-    type: options.type || 'employee',
-    contactInfo: {
-      phone: faker.phone.number(),
-      alternateEmail: faker.internet.email(),
+    settings: {
+      lang: 'en',
     },
-    emergencyContact: {
-      name: faker.person.fullName(),
-      phone: faker.phone.number(),
-      relationship: 'spouse',
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
   });
 };
 
@@ -349,7 +324,7 @@ export interface CreateLeaseOptions {
 export const createTestLease = async (
   propertyUnitId: string | Types.ObjectId,
   tenantId: string | Types.ObjectId,
-  clientId: string | Types.ObjectId,
+  cuid: string,
   options: CreateLeaseOptions = {}
 ): Promise<ILeaseDocument> => {
   const startDate = options.startDate || new Date();
@@ -357,23 +332,27 @@ export const createTestLease = async (
 
   return Lease.create({
     luid: `lease-${faker.string.alphanumeric(12)}`,
-    propertyUnitId:
-      typeof propertyUnitId === 'string' ? new Types.ObjectId(propertyUnitId) : propertyUnitId,
+    cuid,
     tenantId: typeof tenantId === 'string' ? new Types.ObjectId(tenantId) : tenantId,
-    clientId: typeof clientId === 'string' ? new Types.ObjectId(clientId) : clientId,
-    status: options.status || 'active',
-    term: {
+    property: {
+      id: typeof propertyUnitId === 'string' ? new Types.ObjectId(propertyUnitId) : propertyUnitId,
+      address: faker.location.streetAddress(),
+    },
+    status: (options.status as LeaseStatus) || LeaseStatus.DRAFT,
+    type: LeaseType.FIXED_TERM,
+    duration: {
       startDate,
       endDate,
-      type: 'fixed',
     },
     fees: {
-      rentAmount: options.rentAmount || faker.number.int({ min: 1000, max: 3000 }), // In dollars - model setter converts to cents
-      currency: 'USD',
-      securityDeposit: faker.number.int({ min: 500, max: 2000 }), // In dollars - model setter converts to cents
+      rentAmount: options.rentAmount || faker.number.int({ min: 1000, max: 3000 }),
+      currency: CURRENCIES.USD,
+      securityDeposit: faker.number.int({ min: 500, max: 2000 }),
+      acceptedPaymentMethod: 'e-transfer',
     },
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    signingMethod: 'manual',
+    templateType: 'generic',
+    createdBy: new Types.ObjectId(),
   });
 };
 

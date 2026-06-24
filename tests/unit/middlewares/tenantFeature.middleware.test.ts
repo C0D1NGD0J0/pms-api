@@ -96,7 +96,7 @@ describe('requireActiveTenant middleware', () => {
               maintenanceRequests: true,
               onlinePayments: true,
               smsNotifications: true,
-              visitorPass: true,
+              GuestPass: true,
             },
           },
           clients: [{ cuid: CUID, isConnected: true }],
@@ -128,9 +128,7 @@ describe('requireActiveTenant middleware', () => {
 
     requireActiveTenant('maintenanceRequests')(req as any, makeRes() as any, next);
 
-    expect(next).toHaveBeenCalledWith(
-      expect.objectContaining({ statusCode: 403 })
-    );
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
   });
 
   it('blocks disconnected former tenants', () => {

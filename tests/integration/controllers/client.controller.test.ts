@@ -99,6 +99,8 @@ describe('ClientController Integration Tests', () => {
       paymentDAO: {} as any,
       leaseDAO: {} as any,
       maintenanceRequestDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      subscriptionDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
@@ -130,6 +132,7 @@ describe('ClientController Integration Tests', () => {
       notificationService: {} as any,
       sseService: {} as any,
       paymentGatewayService: {} as any,
+      paymentProcessorDAO: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
@@ -146,10 +149,7 @@ describe('ClientController Integration Tests', () => {
     });
 
     const handle =
-      (
-        getCuid: ((req: any) => string) | 'param',
-        fn: (req: any, res: any) => Promise<void>
-      ) =>
+      (getCuid: ((req: any) => string) | 'param', fn: (req: any, res: any) => Promise<void>) =>
       async (req: any, res: any, next: any) => {
         const cuid = getCuid === 'param' ? req.params.cuid : getCuid(req);
         req.context = mockContext(adminUser, cuid, req) as any;
@@ -163,8 +163,9 @@ describe('ClientController Integration Tests', () => {
     // Setup routes matching client.routes.ts
     app.get(
       '/api/v1/clients/:cuid/client_details',
-      handle((req) => testClient?.cuid ?? req.params.cuid, (req, res) =>
-        clientController.getClient(req, res)
+      handle(
+        (req) => testClient?.cuid ?? req.params.cuid,
+        (req, res) => clientController.getClient(req, res)
       )
     );
 
@@ -895,14 +896,14 @@ describe('ClientController Integration Tests', () => {
     it('should update multiple tenant feature toggles in one request', async () => {
       const response = await request(app)
         .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
-        .send({ onlinePayments: false, visitorPass: true })
+        .send({ onlinePayments: false, GuestPass: true })
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
 
       const updated = await Client.findOne({ cuid: testClient.cuid });
       expect(updated?.settings?.tenantFeatures?.onlinePayments).toBe(false);
-      expect(updated?.settings?.tenantFeatures?.visitorPass).toBe(true);
+      expect(updated?.settings?.tenantFeatures?.guestPass).toBe(true);
     });
 
     it('should enable tenantPortalActive', async () => {

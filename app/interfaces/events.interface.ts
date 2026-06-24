@@ -46,12 +46,14 @@ export enum EventTypes {
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   IDENTITY_REQUIRES_INPUT = 'identity:requires:input',
   MAINTENANCE_VENDOR_PAID = 'maintenance:vendor:paid',
+  GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
   PAYMENT_DISPUTE_LOST = 'payment:dispute:lost',
+  GUEST_PASS_VALIDATED = 'guestPass:validated',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
@@ -61,6 +63,9 @@ export enum EventTypes {
   INVITATION_REVOKED = 'invitation:revoked',
   DELETE_LOCAL_ASSET = 'delete:local:asset',
   UNIT_BATCH_CREATED = 'unit:batch:created',
+  GUEST_PASS_CREATED = 'guestPass:created',
+  GUEST_PASS_EXPIRED = 'guestPass:expired',
+  GUEST_PASS_REVOKED = 'guestPass:revoked',
   PAYMENT_SUCCEEDED = 'payment:succeeded',
   IDENTITY_VERIFIED = 'identity:verified',
   USER_DISCONNECTED = 'user:disconnected',
@@ -176,6 +181,11 @@ export type EventPayloadMap = {
   [EventTypes.PAYOUT_FAILED]: PayoutFailedPayload;
   [EventTypes.PAYOUT_PAID]: PayoutPaidPayload;
   [EventTypes.INVOICE_OVERDUE]: InvoiceOverduePayload;
+  [EventTypes.GUEST_PASS_CREATED]: GuestPassCreatedPayload;
+  [EventTypes.GUEST_PASS_VALIDATED]: GuestPassValidatedPayload;
+  [EventTypes.GUEST_PASS_EXPIRED]: GuestPassExpiredPayload;
+  [EventTypes.GUEST_PASS_REVOKED]: GuestPassRevokedPayload;
+  [EventTypes.GUEST_PASS_ACKNOWLEDGED]: GuestPassAcknowledgedPayload;
   [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
 };
 
@@ -189,7 +199,6 @@ export interface UserSignupInitiatedPayload {
   userId: string; // MongoDB ObjectId of user
   email: string; // User email (required for Stripe customer creation)
 }
-
 export interface UnitChangedPayload {
   changeType: 'created' | 'updated' | 'archived' | 'unarchived' | 'status_changed';
   previousStatus?: string; // For status changes
@@ -503,6 +512,7 @@ export interface MaintenanceRequestCancelledPayload {
   mruid: string;
   cuid: string;
 }
+
 export interface InvoiceGeneratedPayload {
   generationTime?: number;
   jobId: string | number;
@@ -512,7 +522,6 @@ export interface InvoiceGeneratedPayload {
   s3Key: string;
   cuid: string;
 }
-
 export interface PaymentFailedPayload {
   hostedInvoiceUrl?: string;
   failureReason?: string;
@@ -695,6 +704,14 @@ export interface MaintenanceChargePaidPayload {
   cuid: string;
 }
 
+export interface GuestPassCreatedPayload {
+  visitorName: string;
+  propertyId: string;
+  createdBy: string;
+  vpuid: string;
+  cuid: string;
+}
+
 export interface PaymentMethodSetupCompletedPayload {
   paymentMethodId: string;
   pmAccountId: string;
@@ -716,12 +733,21 @@ export interface UserArchivePayload {
   cuid: string;
 }
 
+export type GuestPassRevokedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
+  revokedBy: string;
+  revokedAt: Date;
+};
+
 export interface MaintenanceFundsAvailablePayload {
   amountInCents: number;
   invuid: string;
   mruid: string;
   cuid: string;
 }
+
+export type GuestPassAcknowledgedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
+  acknowledgedBy: string;
+};
 
 export interface PaymentRefundedPayload {
   refundAmount: number;
@@ -736,6 +762,10 @@ export interface UserDisconnectedPayload {
   cuid: string;
   uid: string;
 }
+
+export type GuestPassValidatedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
+  validatedBy: string;
+};
 
 export interface EventMetadata {
   requestId?: string;
@@ -755,6 +785,10 @@ export interface PdfGenerationFailedPayload {
   resourceId: string;
   error: string;
 }
+
+export type GuestPassExpiredPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
+  expiredAt: Date;
+};
 
 export interface MaintenanceAITriageCompletedPayload {
   tenantId: string;
@@ -779,7 +813,6 @@ export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
 }
-
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;
 
 export type DeleteLocalAssetPayload = AssetIdentifiersPayload;

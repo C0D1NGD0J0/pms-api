@@ -4,7 +4,8 @@ import { Types } from 'mongoose';
 import { Application } from 'express';
 import { ROLES } from '@shared/constants/roles.constants';
 import { Subscription, Property, Lease } from '@models/index';
-import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 import { createAuthToken, createTestApp, authCookie } from '../../setup/testApp';
 import {
@@ -25,7 +26,8 @@ const createMockLeaseDocuments = (uploadedBy: Types.ObjectId) => [
     url: 'https://test.com/lease.pdf',
     key: 's3-key-test',
     filename: 'lease.pdf',
-    documentType: 'lease_agreement',
+    documentType: 'lease_agreement' as const,
+    status: 'active' as const,
     uploadedAt: new Date(),
     uploadedBy,
   },
@@ -36,16 +38,15 @@ const createMockSignatures = (tenantId: Types.ObjectId) => [
   {
     userId: tenantId,
     signedAt: new Date(),
-    role: 'tenant',
-    signatureMethod: 'electronic',
+    role: 'tenant' as const,
+    signatureMethod: 'electronic' as const,
   },
 ];
 
 // Helper function to create eSignature object
 const createMockESignature = () => ({
-  status: 'signed',
-  provider: 'boldsign',
-  documentId: 'test-doc-id',
+  status: ILeaseESignatureStatusEnum.SIGNED,
+  provider: 'boldsign' as const,
   sentAt: new Date(),
   completedAt: new Date(),
 });
@@ -84,8 +85,8 @@ describe('LeaseController Integration Tests', () => {
       suid: `test-suid-${Date.now()}`,
       client: testClient._id,
       planName: 'portfolio',
-      status: 'active',
-      billing: { customerId: 'none', provider: 'none', planId: 'none' },
+      status: ISubscriptionStatus.ACTIVE,
+      billing: { customerId: 'none', provider: IPaymentGatewayProvider.NONE, planId: 'none' },
       billingInterval: 'monthly',
       totalMonthlyPrice: 0,
       currentSeats: 1,
@@ -97,11 +98,15 @@ describe('LeaseController Integration Tests', () => {
       currentUnits: 0,
       entitlements: {
         eSignature: true,
-        MaintenanceRequestService: true,
-        VisitorPassService: true,
+        maintenanceRequestService: true,
+        guestPassService: true,
         reportingAnalytics: true,
         leaseTemplates: true,
         prioritySupport: true,
+        vendorManagement: true,
+        smsService: true,
+        aiTriage: true,
+        aiInvoiceScanning: true,
       },
     });
 
@@ -277,7 +282,7 @@ describe('LeaseController Integration Tests', () => {
       await Lease.create({
         luid: `lease-active-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -301,7 +306,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-ACTIVE-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -310,7 +315,7 @@ describe('LeaseController Integration Tests', () => {
       await Lease.create({
         luid: `lease-draft-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -374,7 +379,7 @@ describe('LeaseController Integration Tests', () => {
       const pendingLease = await Lease.create({
         luid: `lease-pending-ctrl-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -425,7 +430,7 @@ describe('LeaseController Integration Tests', () => {
       const ownLease = await Lease.create({
         luid: `lease-own-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: anotherTenant._id,
         property: {
           id: testProperty._id,
@@ -446,7 +451,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-OWN-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(anotherTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -500,7 +505,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-test-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -524,7 +529,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-READ-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -564,7 +569,7 @@ describe('LeaseController Integration Tests', () => {
       draftLease = await Lease.create({
         luid: `lease-draft-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -592,7 +597,7 @@ describe('LeaseController Integration Tests', () => {
       activeLease = await Lease.create({
         luid: `lease-active-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -616,7 +621,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-ACTIVE-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -697,7 +702,7 @@ describe('LeaseController Integration Tests', () => {
       draftLease = await Lease.create({
         luid: `lease-draft-del-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -725,7 +730,7 @@ describe('LeaseController Integration Tests', () => {
       activeLease = await Lease.create({
         luid: `lease-active-del-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -749,7 +754,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-ACTIVE-DEL-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -777,7 +782,7 @@ describe('LeaseController Integration Tests', () => {
       await Lease.create({
         luid: `lease-stats-1-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -801,7 +806,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-STATS-1-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -810,7 +815,7 @@ describe('LeaseController Integration Tests', () => {
       await Lease.create({
         luid: `lease-stats-2-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -861,7 +866,7 @@ describe('LeaseController Integration Tests', () => {
       await Lease.create({
         luid: `lease-expiring-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -885,7 +890,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-EXPIRING-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -943,7 +948,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-activate-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -989,7 +994,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-terminate-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -1013,7 +1018,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-TERMINATE-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -1042,7 +1047,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-pdf-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -1103,7 +1108,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-preview-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -1155,7 +1160,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-renew-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -1179,7 +1184,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-RENEW-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -1228,7 +1233,7 @@ describe('LeaseController Integration Tests', () => {
       testLease = await Lease.create({
         luid: `lease-auth-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,
@@ -1252,7 +1257,7 @@ describe('LeaseController Integration Tests', () => {
         leaseNumber: `LEASE-AUTH-${Date.now()}`,
         createdBy: testManager._id,
         signedDate: new Date(),
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: createMockESignature(),
         signatures: createMockSignatures(testTenant._id),
         leaseDocuments: createMockLeaseDocuments(testManager._id),
@@ -1352,7 +1357,7 @@ describe('LeaseController Integration Tests', () => {
       const lease = await Lease.create({
         luid: `lease-notes-update-${Date.now()}`,
         cuid: testClient.cuid,
-        clientId: testClient._id,
+        // clientId not in ILease - Mongoose ignores at runtime but TS complains
         tenantId: testTenant._id,
         property: {
           id: testProperty._id,

@@ -636,8 +636,8 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                           '$$sub.entitlements',
                           {
                             eSignature: false,
-                            MaintenanceRequestService: false,
-                            VisitorPassService: false,
+                            maintenanceRequestService: false,
+                            guestPassService: false,
                             reportingAnalytics: false,
                             leaseTemplates: false,
                             vendorManagement: false,
@@ -771,8 +771,8 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 '$subscriptionInfo.entitlements',
                 {
                   eSignature: false,
-                  MaintenanceRequestService: false,
-                  VisitorPassService: false,
+                  maintenanceRequestService: false,
+                  guestPassService: false,
                   reportingAnalytics: false,
                   leaseTemplates: false,
                   vendorManagement: false,

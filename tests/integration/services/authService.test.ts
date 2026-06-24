@@ -659,7 +659,7 @@ describe('AuthService Integration Tests', () => {
         password: '$2b$10$hashedPassword',
         isActive: false,
         activationToken,
-        activationExpires: new Date(Date.now() - 1000),
+        activationTokenExpiresAt: new Date(Date.now() - 1000),
         cuids: [
           {
             cuid: client.cuid,

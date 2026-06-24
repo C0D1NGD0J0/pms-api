@@ -14,6 +14,7 @@ import {
 export enum NotificationTypeEnum {
   ANNOUNCEMENT = 'announcement',
   MAINTENANCE = 'maintenance',
+  GUESTPASS = 'guestPass',
   PROPERTY = 'property',
   MESSAGE = 'message',
   COMMENT = 'comment',

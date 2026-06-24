@@ -2582,7 +2582,7 @@ describe('PaymentService - markOverduePayments', () => {
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    const updateCall = mockPaymentDAO.update.mock.calls[0][0];
+    const updateCall = mockPaymentDAO.update.mock.calls[0][0] as any;
     // autoDebit should NOT be in the $in list
     expect(updateCall._id.$in.map((id: any) => id.toString())).not.toContain(
       autoDebit._id.toString()
@@ -2785,7 +2785,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    const [query] = mockPaymentDAO.list.mock.calls[0];
+    const [query] = mockPaymentDAO.list.mock.calls[0] as [any];
     expect(query.paymentType).toBe(PaymentRecordType.RENT);
     expect(query.status.$in).toEqual(
       expect.arrayContaining([PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE])
@@ -2945,7 +2945,7 @@ describe('PaymentService - autoChargeOverdueMaintenancePayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeOverdueMaintenancePayments();
 
-    const [query] = mockPaymentDAO.list.mock.calls[0];
+    const [query] = mockPaymentDAO.list.mock.calls[0] as [any];
     expect(query.paymentType.$in).toEqual(
       expect.arrayContaining([PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE])
     );

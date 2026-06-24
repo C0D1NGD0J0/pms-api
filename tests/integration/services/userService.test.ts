@@ -60,6 +60,8 @@ const setupServices = () => {
     vendorService,
     leaseDAO: {} as any,
     paymentDAO: {} as any,
+    subscriptionDAO: {} as any,
+    paymentProcessorDAO: {} as any,
     maintenanceRequestDAO: {} as any,
     emitterService: { on: jest.fn(), emit: jest.fn(), off: jest.fn() } as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,

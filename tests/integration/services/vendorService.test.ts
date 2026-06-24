@@ -138,13 +138,12 @@ describe('VendorService Integration Tests - Write Operations', () => {
         registrationNumber: 'REG123456',
         connectedClients: [
           {
-            clientId: client._id,
             cuid: client.cuid,
-            isActive: true,
+            isConnected: true,
             primaryAccountHolderUserId: user._id,
           },
         ],
-      });
+      } as any);
 
       // Try to create another with same registration number but different client
       const vendorData = {
@@ -186,13 +185,12 @@ describe('VendorService Integration Tests - Write Operations', () => {
         registrationNumber: 'REG789',
         connectedClients: [
           {
-            clientId: client._id,
             cuid: client.cuid,
-            isActive: true,
+            isConnected: true,
             primaryAccountHolderUserId: user._id,
           },
         ],
-      });
+      } as any);
 
       const updateData = {
         companyName: 'Updated Company Name',
@@ -228,13 +226,12 @@ describe('VendorService Integration Tests - Write Operations', () => {
         registrationNumber: 'REG-GEO-001',
         connectedClients: [
           {
-            clientId: client._id,
             cuid: client.cuid,
-            isActive: true,
+            isConnected: true,
             primaryAccountHolderUserId: user._id,
           },
         ],
-      });
+      } as any);
 
       geoCoderService.parseLocation.mockReturnValue(
         Promise.resolve({
@@ -271,13 +268,12 @@ describe('VendorService Integration Tests - Write Operations', () => {
         registrationNumber: 'REG-GEO-002',
         connectedClients: [
           {
-            clientId: client._id,
             cuid: client.cuid,
-            isActive: true,
+            isConnected: true,
             primaryAccountHolderUserId: user._id,
           },
         ],
-      });
+      } as any);
 
       geoCoderService.parseLocation.mockReturnValue(
         Promise.resolve({ success: false })
@@ -302,13 +298,12 @@ describe('VendorService Integration Tests - Write Operations', () => {
         registrationNumber: `REG-OWN-${Date.now()}`,
         connectedClients: [
           {
-            clientId: client._id,
             cuid: client.cuid,
-            isActive: true,
+            isConnected: true,
             primaryAccountHolderUserId: user._id,
           },
         ],
-      });
+      } as any);
 
       const result = await vendorService.updateVendorInfo(
         vendor.vuid,
@@ -334,13 +329,12 @@ describe('VendorService Integration Tests - Write Operations', () => {
         registrationNumber: `REG-SEC-${Date.now()}`,
         connectedClients: [
           {
-            clientId: client._id,
             cuid: client.cuid,
-            isActive: true,
+            isConnected: true,
             primaryAccountHolderUserId: owner._id,
           },
         ],
-      });
+      } as any);
 
       await expect(
         vendorService.updateVendorInfo(
@@ -444,7 +438,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
         },
       ],
       activecuid: testClient.cuid,
-    });
+    } as any);
 
     testVendor = await Vendor.create({
       vuid: `vendor-${Date.now()}`,
@@ -526,7 +520,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
           email: 'novendors@test.com',
           phone: '555-0000',
         },
-      });
+      } as any);
 
       const result = await vendorService.getClientVendors(newClient.cuid);
 

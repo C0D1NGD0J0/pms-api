@@ -11,9 +11,9 @@ import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
-import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -369,17 +369,21 @@ describe('PaymentController Integration Tests', () => {
         cuid: localClient.cuid,
         client: localClient._id,
         planName: 'essential',
-        status: 'active',
+        status: ISubscriptionStatus.ACTIVE,
         billingInterval: 'monthly',
         startDate: new Date(),
         entitlements: {
           eSignature: false,
-          MaintenanceRequestService: false,
-          VisitorPassService: false,
+          maintenanceRequestService: false,
+          guestPassService: false,
           reportingAnalytics: false,
           leaseTemplates: false,
+          vendorManagement: false,
+          smsService: false,
+          aiTriage: false,
+          aiInvoiceScanning: false,
         },
-        billing: { provider: 'none', planId: 'essential-monthly' },
+        billing: { provider: IPaymentGatewayProvider.NONE, planId: 'essential-monthly' },
         totalMonthlyPrice: 0,
       });
     });

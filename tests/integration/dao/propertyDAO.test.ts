@@ -34,7 +34,6 @@ describe('PropertyDAO Integration Tests', () => {
       _id: testClientId,
       cuid: 'TEST_CLIENT',
       displayName: 'Test Company',
-      status: 'active',
       accountAdmin: testUserId,
       accountType: { category: 'individual' },
     });
@@ -44,8 +43,6 @@ describe('PropertyDAO Integration Tests', () => {
       _id: testUserId,
       uid: 'test-uid',
       email: 'test@example.com',
-      firstName: 'Test',
-      lastName: 'User',
       password: 'hashed',
       activecuid: 'TEST_CLIENT',
       cuids: [
@@ -88,7 +85,7 @@ describe('PropertyDAO Integration Tests', () => {
         bathrooms: 2,
       },
       fees: {
-        currency: 'USD',
+        currency: CURRENCIES.USD,
         rentAmount: 2000,
         managementFees: 200,
       },
@@ -205,7 +202,7 @@ describe('PropertyDAO Integration Tests', () => {
         computedLocation: { type: 'Point', coordinates: [-123.1207, 49.2827] },
         description: { text: 'Vancouver property' },
         specifications: {},
-        fees: { currency: 'CAD', rentAmount: 3500, managementFees: 300 },
+        fees: { currency: CURRENCIES.CAD, rentAmount: 3500, managementFees: 300 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 
@@ -571,7 +568,7 @@ describe('PropertyDAO Integration Tests', () => {
         description: { text: 'Brand new property' },
         specifications: { totalArea: 2000 },
         fees: {
-          currency: 'USD' as CURRENCIES,
+          currency: CURRENCIES.USD,
           rentAmount: 3000,
           managementFees: 250,
         },
@@ -796,9 +793,8 @@ describe('PropertyDAO Integration Tests', () => {
         status: PropertyUnitStatusEnum.AVAILABLE,
         createdBy: testUserId,
         managedBy: testUserId,
-        address: { fullAddress: '123 Main St, Unit 101, Toronto, ON M5B 2K3' },
         specifications: { totalArea: 800, bathrooms: 1 },
-        fees: { currency: 'USD', rentAmount: 1500 },
+        fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 
@@ -822,9 +818,8 @@ describe('PropertyDAO Integration Tests', () => {
         status: PropertyUnitStatusEnum.AVAILABLE,
         createdBy: testUserId,
         managedBy: testUserId,
-        address: { fullAddress: '123 Main St, Unit 201, Toronto, ON M5B 2K3' },
         specifications: { totalArea: 850, bathrooms: 1 },
-        fees: { currency: 'USD', rentAmount: 1600 },
+        fees: { currency: CURRENCIES.USD, rentAmount: 1600 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 
@@ -855,7 +850,7 @@ describe('PropertyDAO Integration Tests', () => {
           managedBy: testUserId,
           address: { fullAddress: '123 Main St, Unit 301' },
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -877,7 +872,7 @@ describe('PropertyDAO Integration Tests', () => {
           managedBy: testUserId,
           address: { fullAddress: '123 Main St, Unit 302' },
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -899,7 +894,7 @@ describe('PropertyDAO Integration Tests', () => {
           managedBy: testUserId,
           address: { fullAddress: '123 Main St, Unit 303' },
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -946,9 +941,8 @@ describe('PropertyDAO Integration Tests', () => {
           status: PropertyUnitStatusEnum.AVAILABLE,
           createdBy: testUserId,
           managedBy: testUserId,
-          address: { fullAddress: `123 Main St, Unit ${i}` },
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -1026,9 +1020,8 @@ describe('PropertyDAO Integration Tests', () => {
         status: PropertyUnitStatusEnum.AVAILABLE,
         createdBy: testUserId,
         managedBy: testUserId,
-        address: { fullAddress: '777 House St' },
         specifications: { totalArea: 2000, bathrooms: 2 },
-        fees: { currency: 'USD', rentAmount: 3500 },
+        fees: { currency: CURRENCIES.USD, rentAmount: 3500 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 
@@ -1070,7 +1063,7 @@ describe('PropertyDAO Integration Tests', () => {
           unitType: PropertyUnitTypeEnum.RESIDENTIAL,
           managedBy: testUserId,
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -1089,7 +1082,7 @@ describe('PropertyDAO Integration Tests', () => {
           unitType: PropertyUnitTypeEnum.RESIDENTIAL,
           managedBy: testUserId,
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -1120,7 +1113,7 @@ describe('PropertyDAO Integration Tests', () => {
           unitType: PropertyUnitTypeEnum.RESIDENTIAL,
           managedBy: testUserId,
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -1139,7 +1132,7 @@ describe('PropertyDAO Integration Tests', () => {
           unitType: PropertyUnitTypeEnum.RESIDENTIAL,
           managedBy: testUserId,
           specifications: { totalArea: 800, bathrooms: 1 },
-          fees: { currency: 'USD', rentAmount: 1500 },
+          fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
           utilities: {
             water: true,
             gas: true,
@@ -1173,11 +1166,10 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         status: PropertyUnitStatusEnum.AVAILABLE,
         createdBy: testUserId,
-        address: { fullAddress: '123 Main St, Unit 601' },
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         managedBy: testUserId,
         specifications: { totalArea: 800, bathrooms: 1 },
-        fees: { currency: 'USD', rentAmount: 1500 },
+        fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 
@@ -1212,11 +1204,10 @@ describe('PropertyDAO Integration Tests', () => {
         cuid: 'TEST_CLIENT',
         status: PropertyUnitStatusEnum.AVAILABLE,
         createdBy: testUserId,
-        address: { fullAddress: '123 Main St, Unit 701' },
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         managedBy: testUserId,
         specifications: { totalArea: 800, bathrooms: 1 },
-        fees: { currency: 'USD', rentAmount: 1500 },
+        fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
         utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
       });
 

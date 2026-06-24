@@ -60,8 +60,8 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     },
     entitlements: {
       eSignature: { type: Boolean, required: true, default: false },
-      MaintenanceRequestService: { type: Boolean, required: true, default: false },
-      VisitorPassService: { type: Boolean, required: true, default: false },
+      maintenanceRequestService: { type: Boolean, required: true, default: false },
+      guestPassService: { type: Boolean, required: true, default: false },
       reportingAnalytics: { type: Boolean, required: true, default: false },
       leaseTemplates: { type: Boolean, required: true, default: false },
       vendorManagement: { type: Boolean, required: true, default: false },

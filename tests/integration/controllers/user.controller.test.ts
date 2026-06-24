@@ -93,6 +93,8 @@ describe('UserController Integration Tests', () => {
       paymentDAO: {} as any,
       leaseDAO: {} as any,
       maintenanceRequestDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      subscriptionDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
@@ -120,6 +122,9 @@ describe('UserController Integration Tests', () => {
       userService,
       emitterService: mockEmitterService,
       mediaUploadService: mockMediaUploadService,
+      authCache: {
+        invalidateUserCache: jest.fn().mockResolvedValue(undefined),
+      } as any,
     });
 
     const authCache = {
@@ -139,6 +144,7 @@ describe('UserController Integration Tests', () => {
       notificationService: {} as any,
       sseService: {} as any,
       paymentGatewayService: {} as any,
+      paymentProcessorDAO: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
       vendorDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
@@ -149,6 +155,7 @@ describe('UserController Integration Tests', () => {
       profileService,
       mediaUploadService: mockMediaUploadService,
       queueFactory: {} as any,
+      smsService: {} as any,
     });
 
     clientController = new ClientController({ clientService });

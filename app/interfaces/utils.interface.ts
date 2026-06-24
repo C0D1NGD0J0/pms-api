@@ -66,6 +66,23 @@ export enum PermissionAction {
   SEND = 'send',
 }
 
+export enum PermissionResource {
+  SUBSCRIPTION = 'subscription',
+  NOTIFICATION = 'notification',
+  MAINTENANCE = 'maintenance',
+  GUEST_PASS = 'guest-pass',
+  INVITATION = 'invitation',
+  PROPERTY = 'property',
+  BILLING = 'billing',
+  PAYMENT = 'payment',
+  CLIENT = 'client',
+  TENANT = 'tenant',
+  VENDOR = 'vendor',
+  REPORT = 'report',
+  LEASE = 'lease',
+  USER = 'user',
+}
+
 export enum CURRENCIES {
   // Major / Stripe-supported
   USD = 'USD',
@@ -74,8 +91,6 @@ export enum CURRENCIES {
   CAD = 'CAD',
   AUD = 'AUD',
   JPY = 'JPY',
-  MXN = 'MXN',
-  SGD = 'SGD',
   AED = 'AED',
   CNY = 'CNY',
   // Africa
@@ -89,27 +104,12 @@ export enum CURRENCIES {
   BRL = 'BRL',
 }
 
-export enum PermissionResource {
-  SUBSCRIPTION = 'subscription',
-  NOTIFICATION = 'notification',
-  MAINTENANCE = 'maintenance',
-  INVITATION = 'invitation',
-  PROPERTY = 'property',
-  BILLING = 'billing',
-  PAYMENT = 'payment',
-  CLIENT = 'client',
-  TENANT = 'tenant',
-  VENDOR = 'vendor',
-  REPORT = 'report',
-  LEASE = 'lease',
-  USER = 'user',
-}
-
 export enum ResourceContext {
   SERVICE_REQUEST = 'service-request',
   TENANT_PROFILE = 'tenant-profile',
   USER_PROFILE = 'user-profile',
   MAINTENANCE = 'maintenance',
+  GUEST_PASS = 'guest-pass',
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
@@ -213,7 +213,14 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
-  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice'; //name of the resource
+  resourceName:
+    | 'property'
+    | 'profile'
+    | 'client'
+    | 'lease'
+    | 'maintenance'
+    | 'payment-invoice'
+    | 'guest-pass'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   fieldName: string; //name of the field

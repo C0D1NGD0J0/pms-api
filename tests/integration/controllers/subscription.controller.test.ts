@@ -11,6 +11,7 @@ import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { SubscriptionController } from '@controllers/SubscriptionController';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 describe('SubscriptionController Integration Tests', () => {
   let app: Application;
@@ -109,7 +110,7 @@ describe('SubscriptionController Integration Tests', () => {
       subscriptionWebhookService: {} as any,
     });
 
-    subscriptionController = new SubscriptionController({ subscriptionService });
+    subscriptionController = new SubscriptionController({ subscriptionService, smsService: {} as any });
 
     // Setup Express app
     app = express();
@@ -155,10 +156,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-test',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
           customerId: '',
-          provider: 'stripe',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -217,10 +218,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-admin',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
           customerId: '',
-          provider: 'stripe',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -258,10 +259,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-diff',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
           customerId: '',
-          provider: 'stripe',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -299,10 +300,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-active',
         client,
         planName: 'portfolio',
-        status: 'active',
+        status: ISubscriptionStatus.ACTIVE,
         billing: {
           customerId: 'cus_123',
-          provider: 'stripe',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -341,10 +342,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-annual',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
           customerId: '',
-          provider: 'stripe',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_annual',
         },
         totalMonthlyPrice: 9900,

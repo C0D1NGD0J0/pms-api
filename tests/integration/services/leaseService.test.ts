@@ -5,7 +5,6 @@ import { LeaseService } from '@services/lease/lease.service';
 import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
-import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
@@ -13,6 +12,7 @@ import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PropertyUnit, Property, Profile, Client, Vendor, Lease, User } from '@models/index';
+import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import {
   PropertyUnitDAO,
   InvitationDAO,
@@ -95,6 +95,8 @@ const setupServices = () => {
     vendorService,
     leaseDAO,
     paymentDAO: {} as any,
+    subscriptionDAO: {} as any,
+    paymentProcessorDAO: {} as any,
     emitterService,
     maintenanceRequestDAO: {} as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
@@ -543,7 +545,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -565,7 +567,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         type: LeaseType.FIXED_TERM,
         leaseNumber: `LEASE-${Date.now()}`,
         createdBy: manager._id,
-      });
+      } as any);
 
       const updateData = {
         fees: {
@@ -615,7 +617,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -640,7 +642,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -702,7 +704,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -730,7 +732,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -795,7 +797,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -842,7 +844,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -867,7 +869,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -909,7 +911,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -971,7 +973,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -1025,7 +1027,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -1088,7 +1090,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -1113,7 +1115,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -1187,7 +1189,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       return Lease.create({
         luid: `lease-guard-${Date.now()}-${Math.random()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId,
         property: {
           id: property._id,
@@ -1289,7 +1291,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-terminate-guard-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: dualRoleUser._id,
         property: { id: property._id, address: property.address.fullAddress },
         duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
@@ -1301,7 +1303,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         createdBy: dualRoleUser._id,
         signedDate: new Date(),
         signingMethod: 'electronic',
-        eSignature: { status: 'signed', provider: 'boldsign' },
+        eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
         signatures: [{ userId: dualRoleUser._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
         leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: dualRoleUser._id }],
       });
@@ -1357,7 +1359,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
     testLease = await Lease.create({
       luid: `lease-read-${Date.now()}`,
       cuid: testClient.cuid,
-      clientId: testClient._id,
+
       tenantId: testTenant._id,
       property: {
         id: testProperty._id,
@@ -1382,7 +1384,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       signedDate: new Date(),
       signingMethod: 'electronic',
       eSignature: {
-        status: 'signed',
+        status: ILeaseESignatureStatusEnum.SIGNED,
         provider: 'boldsign',
       },
       signatures: [
@@ -1511,7 +1513,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         draftLease = await Lease.create({
           luid: `lease-draft-tenant-${Date.now()}`,
           cuid: testClient.cuid,
-          clientId: testClient._id,
+    
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-06-01'), endDate: new Date('2026-06-01') },
@@ -1527,7 +1529,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         pendingSignatureLease = await Lease.create({
           luid: `lease-pending-sig-${Date.now()}`,
           cuid: testClient.cuid,
-          clientId: testClient._id,
+    
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-07-01'), endDate: new Date('2026-07-01') },
@@ -1606,7 +1608,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         const otherTenantLease = await Lease.create({
           luid: `lease-other-tenant-${Date.now()}`,
           cuid: testClient.cuid,
-          clientId: testClient._id,
+    
           tenantId: otherTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-08-01'), endDate: new Date('2026-08-01') },
@@ -1618,7 +1620,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           createdBy: testManager._id,
           signedDate: new Date(),
           signingMethod: 'electronic',
-          eSignature: { status: 'signed', provider: 'boldsign' },
+          eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
           signatures: [{ userId: otherTenant._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
           leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
         });
@@ -1711,12 +1713,12 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           securityDeposit: 2000,
           rentDueDay: 1,
           currency: 'USD',
-          acceptedPaymentMethod: 'e-transfer',
+          acceptedPaymentMethod: 'e-transfer' as const,
         },
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: {
-          provider: 'boldsign',
-          status: 'signed',
+          provider: 'boldsign' as const,
+          status: ILeaseESignatureStatusEnum.SIGNED,
         },
         renewalOptions: {
           autoRenew: true,
@@ -1732,7 +1734,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
             url: 'https://test.com/lease.pdf',
             key: 's3-key-test',
             filename: 'lease.pdf',
-            documentType: 'lease_agreement',
+            documentType: 'lease_agreement' as const,
             uploadedAt: new Date(),
             uploadedBy: testManager._id,
           },
@@ -1742,7 +1744,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       activeLeaseForRenewal = await Lease.create({
         ...leaseData,
         cuid: testClient.cuid,
-        status: 'active',
+        status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         createdBy: testManager._id,
         signedDate: new Date('2024-12-15'),

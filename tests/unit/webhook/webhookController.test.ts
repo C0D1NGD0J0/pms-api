@@ -63,6 +63,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       idempotencyCache: mockIdempotencyCache,
       maintenanceInvoiceService: {} as any,
       smsService: {} as any,
+      twilioService: {} as any,
     });
 
     mockRequest = {

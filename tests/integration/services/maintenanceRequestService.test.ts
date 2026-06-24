@@ -791,12 +791,12 @@ describe('MaintenanceRequestService', () => {
       });
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await service.submitInvoice(vendorCtx, created.data.mruid, {
+      await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
         amount: 30000,
         description: 'Fixed the issue',
       });
 
-      const result = await service.reviewInvoice(managerCtx, created.data.mruid, {
+      const result = await (service as any).reviewInvoice(managerCtx, created.data.mruid, {
         action: 'approve',
         isBillable: true,
       });
@@ -826,12 +826,12 @@ describe('MaintenanceRequestService', () => {
       });
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await service.submitInvoice(vendorCtx, created.data.mruid, {
+      await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
         amount: 90000,
         description: 'Extensive electrical work',
       });
 
-      const result = await service.reviewInvoice(managerCtx, created.data.mruid, {
+      const result = await (service as any).reviewInvoice(managerCtx, created.data.mruid, {
         action: 'reject',
         rejectionReason: 'Amount exceeds pre-approved budget',
       });
@@ -865,7 +865,7 @@ describe('MaintenanceRequestService', () => {
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
 
-      const invoiceResult = await service.submitInvoice(vendorCtx, created.data.mruid, {
+      const invoiceResult = await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
         amount: 25000, // $250 in cents
         currency: 'usd',
         description: 'Fixed the plumbing issue',
@@ -874,7 +874,7 @@ describe('MaintenanceRequestService', () => {
       expect(invoiceResult.success).toBe(true);
       expect(invoiceResult.data.status).toBe(InvoiceStatus.PENDING);
 
-      const approveResult = await service.approveInvoice(managerCtx, created.data.mruid);
+      const approveResult = await (service as any).approveInvoice(managerCtx, created.data.mruid);
 
       expect(approveResult.success).toBe(true);
       expect(approveResult.data.status).toBe(InvoiceStatus.APPROVED);
@@ -901,12 +901,12 @@ describe('MaintenanceRequestService', () => {
       });
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await service.submitInvoice(vendorCtx, created.data.mruid, {
+      await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
         amount: 75000,
         description: 'Electrical repairs',
       });
 
-      const result = await service.rejectInvoice(managerCtx, created.data.mruid, {
+      const result = await (service as any).rejectInvoice(managerCtx, created.data.mruid, {
         rejectionReason: 'Amount is higher than the pre-approved estimate',
       });
 

@@ -4,7 +4,7 @@ export enum SMSMessageType {
   MAINTENANCE_UPDATE = 'maintenance_update',
   PAYMENT_REMINDER = 'payment_reminder',
   LEASE_REMINDER = 'lease_reminder',
-  VISITOR_PASS = 'visitor_pass',
+  GUEST_PASS = 'guest_pass',
   SYSTEM = 'system',
   OTP = 'otp',
 }
@@ -12,7 +12,7 @@ export enum SMSMessageType {
 export const TRANSACTIONAL_SMS_TYPES: SMSMessageType[] = [
   SMSMessageType.OTP,
   SMSMessageType.SYSTEM,
-  SMSMessageType.VISITOR_PASS,
+  SMSMessageType.GUEST_PASS,
   SMSMessageType.PAYMENT_REMINDER,
 ];
 

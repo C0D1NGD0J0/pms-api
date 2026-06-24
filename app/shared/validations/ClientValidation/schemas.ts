@@ -6,7 +6,7 @@ const TenantFeaturesSchema = z.object({
   onlinePayments: z.boolean().optional(),
   maintenanceRequests: z.boolean().optional(),
   smsNotifications: z.boolean().optional(),
-  visitorPass: z.boolean().optional(),
+  guestPass: z.boolean().optional(),
 });
 
 export const UpdateTenantFeaturesSchema = TenantFeaturesSchema.refine(

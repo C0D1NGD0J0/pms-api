@@ -87,12 +87,12 @@
       "features": {
         "eSignature": false,
         "smsService": false,
-        "VisitorPassService": false,
+        "guestPassService": false,
         "reportingAnalytics": false,
         "leaseTemplates": false,
         "vendorManagement": false,
         "aiTriage": false,
-        "MaintenanceRequestService": false,
+        "maintenanceRequestService": false,
         "aiInvoiceScanning": false
       },
       "featureList": ["Tenant management", "Rent collection"],
@@ -152,9 +152,9 @@
         "leaseTemplates": false,
         "vendorManagement": true,
         "aiInvoiceScanning": true,
-        "VisitorPassService": true,
+        "guestPassService": true,
         "reportingAnalytics": false,
-        "MaintenanceRequestService": true
+        "maintenanceRequestService": true
       },
       "featureList": [
         "AI feature",
@@ -206,8 +206,8 @@
       },
       "features": {
         "eSignature": true,
-        "MaintenanceRequestService": true,
-        "VisitorPassService": true,
+        "maintenanceRequestService": true,
+        "guestPassService": true,
         "reportingAnalytics": true,
         "leaseTemplates": true,
         "vendorManagement": true,

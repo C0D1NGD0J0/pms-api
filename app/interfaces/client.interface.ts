@@ -104,7 +104,7 @@ export interface ITenantFeatureSettings {
   tenantPortalActive: boolean;
   smsNotifications: boolean;
   onlinePayments: boolean;
-  visitorPass: boolean;
+  guestPass: boolean;
 }
 
 /**

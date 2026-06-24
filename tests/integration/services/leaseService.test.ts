@@ -5,7 +5,6 @@ import { LeaseService } from '@services/lease/lease.service';
 import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
-import { LeaseStatus, LeaseType, ILeaseESignatureStatusEnum } from '@interfaces/lease.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
@@ -13,6 +12,7 @@ import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PropertyUnit, Property, Profile, Client, Vendor, Lease, User } from '@models/index';
+import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import {
   PropertyUnitDAO,
   InvitationDAO,

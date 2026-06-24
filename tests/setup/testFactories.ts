@@ -294,7 +294,7 @@ export interface CreateProfileOptions {
 export const createTestProfile = async (
   userId: string | Types.ObjectId,
   clientId: string | Types.ObjectId,
-  options: CreateProfileOptions = {}
+  _options: CreateProfileOptions = {}
 ): Promise<IProfileDocument> => {
   const firstName = faker.person.firstName();
   const lastName = faker.person.lastName();

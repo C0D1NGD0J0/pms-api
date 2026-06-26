@@ -7,13 +7,10 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { LanguageService } from '@shared/languages';
 import { GeoCoderService } from '@services/external';
-import InvoiceModel from '@models/invoice/invoice.model';
 import { ClamScannerService } from '@shared/config/index';
-import { DSARService } from '@services/dsar/dsar.service';
 import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
-import { ExpenseService } from '@services/expense/expense.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
@@ -58,16 +55,17 @@ import {
   PdfQueue,
 } from '@queues/index';
 import {
-  MaintenanceRequestModel,
-  NotificationModel,
+  MaintenanceRequest,
   PaymentProcessor,
   MetricsSnapshot,
-  PaymentModel,
+  Notification,
   PropertyUnit,
   Subscription,
-  ExpenseModel,
   Invitation,
   Property,
+  Payment,
+  Expense,
+  Invoice,
   Profile,
   SMSLog,
   Client,
@@ -83,6 +81,7 @@ import {
   NotificationDAO,
   SubscriptionDAO,
   InvitationDAO,
+  GuestPassDAO,
   PropertyDAO,
   MetricsDAO,
   PaymentDAO,
@@ -150,6 +149,7 @@ import {
   BoldSignService,
   LeasePdfService,
   InvoiceService,
+  ExpenseService,
   MetricsService,
   PaymentService,
   ProfileService,
@@ -159,6 +159,7 @@ import {
   VendorService,
   LeaseService,
   UserService,
+  DSARService,
   AuthService,
   CronService,
   SSEService,
@@ -191,21 +192,21 @@ const ModelResources = {
   userModel: asValue(User),
   assetModel: asValue(Asset),
   leaseModel: asValue(Lease),
+  smsLogModel: asValue(SMSLog),
   vendorModel: asValue(Vendor),
   clientModel: asValue(Client),
+  invoiceModel: asValue(Invoice),
   profileModel: asValue(Profile),
+  expenseModel: asValue(Expense),
+  paymentModel: asValue(Payment),
   propertyModel: asValue(Property),
-  smsLogModel: asValue(SMSLog),
-  expenseModel: asValue(ExpenseModel),
-  invoiceModel: asValue(InvoiceModel),
-  paymentModel: asValue(PaymentModel),
   invitationModel: asValue(Invitation),
   propertyUnitModel: asValue(PropertyUnit),
   subscriptionModel: asValue(Subscription),
-  notificationModel: asValue(NotificationModel),
+  notificationModel: asValue(Notification),
   metricsSnapshotModel: asValue(MetricsSnapshot),
   paymentProcessorModel: asValue(PaymentProcessor),
-  maintenanceRequestModel: asValue(MaintenanceRequestModel),
+  maintenanceRequestModel: asValue(MaintenanceRequest),
 };
 
 const ServiceResources = {
@@ -281,6 +282,7 @@ const DAOResources = {
   expenseDAO: asClass(ExpenseDAO).singleton(),
   invoiceDAO: asClass(InvoiceDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
+  guestPassDAO: asClass(GuestPassDAO).singleton(),
   invitationDAO: asClass(InvitationDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   subscriptionDAO: asClass(SubscriptionDAO).singleton(),

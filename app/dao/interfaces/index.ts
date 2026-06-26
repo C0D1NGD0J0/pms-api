@@ -2,6 +2,7 @@ export * from './propertyUnitDAO.interface';
 export * from './subscriptionDAO.interface';
 export * from './notificationDAO.interface';
 export * from './invitationDAO.interface';
+export * from './guestpassDAO.interface';
 export * from './propertyDAO.interface';
 export * from './paymentsDAO.interface';
 export * from './profileDAO.interface';

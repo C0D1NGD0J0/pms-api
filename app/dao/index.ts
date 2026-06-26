@@ -4,6 +4,7 @@ export * from './propertyUnitDAO';
 export * from './subscriptionDAO';
 export * from './notificationDAO';
 export * from './invitationDAO';
+export * from './guestpassDAO';
 export * from './propertyDAO';
 export * from './metricsDAO';
 export * from './expenseDAO';

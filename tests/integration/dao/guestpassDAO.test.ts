@@ -1,9 +1,9 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
-import { clearTestDatabase } from '@tests/helpers';
+import { Property, User } from '@models/index';
 import { GuestPassDAO } from '@dao/guestpassDAO';
+import { clearTestDatabase } from '@tests/helpers';
 import GuestPassModel from '@models/guestPass/guestpass.model';
-import { User, Property } from '@models/index';
 import { GuestPassStatus } from '@interfaces/guestPass.interface';
 
 describe('GuestPassDAO Integration Tests', () => {

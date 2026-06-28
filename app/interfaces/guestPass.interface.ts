@@ -85,33 +85,15 @@ export interface IGuestPass {
   propertyId: Types.ObjectId;
   revokedBy?: Types.ObjectId;
   createdBy: Types.ObjectId;
-
   sentVia: DeliveryMethod[];
   status: GuestPassStatus;
   isAcknowledged: boolean;
   expiryMinutes: number;
   acknowledgedAt?: Date;
-
   entryNotes?: string;
   revokedAt?: Date;
   note?: string;
-}
-
-export interface IGuestPassDocument extends IGuestPass, Document {
-  minutesRemaining: number;
-  _id: Types.ObjectId;
-  entryNotes?: string;
-  isExpired: boolean;
-  isValid(): boolean;
-  purpose?: string;
-  validUntil: Date;
-  revokedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  vpuid: string;
-  usedAt?: Date;
-  sentAt?: Date;
-  cuid: string;
+  code: string;
 }
 
 export interface ICreateGuestPassInput {
@@ -127,6 +109,21 @@ export interface ICreateGuestPassInput {
   purpose?: string;
   hostName: string;
   unitId?: string;
+}
+
+export interface IGuestPassDocument extends IGuestPass, Document {
+  minutesRemaining: number;
+  _id: Types.ObjectId;
+  entryNotes?: string;
+  isExpired: boolean;
+  isValid(): boolean;
+  purpose?: string;
+  validUntil: Date;
+  revokedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  vpuid: string;
+  cuid: string;
 }
 
 export interface IGuestPassFilters {

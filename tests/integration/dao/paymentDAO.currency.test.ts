@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { Payment, Client } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
-import { PaymentModel as Payment, Client } from '@models/index';
 import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
 
 describe('PaymentDAO — currency-aware getPaymentStats', () => {

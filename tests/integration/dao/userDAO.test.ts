@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseStatus } from '@interfaces/lease.interface';
-import { PaymentModel, Profile, Lease, User } from '@models/index';
+import { Payment, Profile, Lease, User } from '@models/index';
 import { clearTestDatabase, createTestClient } from '@tests/helpers';
 import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
 
@@ -186,7 +186,7 @@ describe('UserDAO Integration Tests', () => {
         },
       ];
 
-      await PaymentModel.insertMany(payments);
+      await Payment.insertMany(payments);
 
       const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
 
@@ -209,7 +209,7 @@ describe('UserDAO Integration Tests', () => {
 
     it('should populate payment history regardless of include parameter', async () => {
       // Create one payment
-      await PaymentModel.create({
+      await Payment.create({
         cuid: testCuid,
         tenant: testTenantId,
         pytuid: 'PAY_001',

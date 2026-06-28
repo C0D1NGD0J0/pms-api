@@ -16,7 +16,7 @@ import { VendorSuggestionService } from '@services/maintenanceRequest/vendorSugg
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 import {
-  MaintenanceRequestModel,
+  MaintenanceRequest,
   PropertyUnit,
   Property,
   Vendor,
@@ -49,7 +49,7 @@ const setupService = () => {
   const leaseDAO = new LeaseDAO({ leaseModel: Lease });
   const vendorDAO = new VendorDAO({ vendorModel: Vendor });
   const maintenanceRequestDAO = new MaintenanceRequestDAO({
-    maintenanceRequestModel: MaintenanceRequestModel,
+    maintenanceRequestModel: MaintenanceRequest,
   });
 
   const eventsRegistry = {
@@ -964,7 +964,7 @@ describe('MaintenanceRequestService', () => {
       });
       // Force status to COMPLETED directly — the full in_progress → awaiting_invoice → completed
       // flow requires work orders and invoices which are tested in dedicated suites.
-      await MaintenanceRequestModel.findOneAndUpdate(
+      await MaintenanceRequest.findOneAndUpdate(
         { mruid: created.data.mruid },
         { $set: { status: MaintenanceRequestStatus.COMPLETED } }
       );

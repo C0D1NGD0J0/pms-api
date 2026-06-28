@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { clearTestDatabase } from '@tests/helpers';
 import { NotificationDAO } from '@dao/notificationDAO';
-import { NotificationModel, User } from '@models/index';
+import { Notification as NotificationModel, User } from '@models/index';
 import { ResourceContext } from '@interfaces/utils.interface';
 import {
   NotificationPriorityEnum,
@@ -845,11 +845,11 @@ describe('NotificationDAO Integration Tests', () => {
       const notifications = await NotificationModel.find({
         recipient: testUserId,
         isRead: true,
-      });
+      }).lean();
 
-      notifications.forEach((n) => {
+      notifications.forEach((n: any) => {
         expect(n.readAt).toBeDefined();
-        expect(n.readAt!.getTime()).toBeGreaterThanOrEqual(beforeMark.getTime());
+        expect(new Date(n.readAt).getTime()).toBeGreaterThanOrEqual(beforeMark.getTime());
       });
     });
 

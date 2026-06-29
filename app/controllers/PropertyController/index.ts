@@ -360,6 +360,26 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  assignStaff = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    const result = await this.propertyService.assignStaff(
+      { cuid, pid, currentuser },
+      req.body.userId
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  unassignStaff = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    const result = await this.propertyService.unassignStaff(
+      { cuid, pid, currentuser },
+      req.body.userId
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   getLeaseableProperties = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const { currentuser } = req.context;

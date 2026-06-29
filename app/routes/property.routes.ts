@@ -211,6 +211,36 @@ router.get(
   })
 );
 
+router.post(
+  '/:cuid/client_properties/:pid/assign_staff',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  subscriptionEntitlements,
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+    body: PropertyValidations.assignStaff,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.assignStaff(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/client_properties/:pid/unassign_staff',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  subscriptionEntitlements,
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+    body: PropertyValidations.unassignStaff,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.unassignStaff(req, res);
+  })
+);
+
 router.patch(
   '/:cuid/client_properties/:pid',
   basicLimiter(),

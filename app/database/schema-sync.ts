@@ -242,6 +242,12 @@ const SYNC_RULES: SyncRule[] = [
     filter: { occupancyStatus: { $exists: false } },
     update: { occupancyStatus: 'vacant' },
   },
+  {
+    label: 'property.assignedStaff',
+    collection: 'properties',
+    filter: { assignedStaff: { $exists: false } },
+    update: { assignedStaff: [] },
+  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // UNITS

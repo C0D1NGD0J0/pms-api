@@ -2210,6 +2210,18 @@ export class UserService {
         }
       }
 
+      // Remove archived user from assignedStaff on all properties
+      const pullResult = await this.propertyDAO.updateMany(
+        { cuid, assignedStaff: user._id },
+        { $pull: { assignedStaff: user._id } }
+      );
+      if (pullResult.modifiedCount > 0) {
+        archivalSummary.actions.push({
+          action: 'removed_from_assigned_staff',
+          count: pullResult.modifiedCount,
+        });
+      }
+
       if (roles.includes(IUserRole.VENDOR as string) && !clientConnection.linkedVendorUid) {
         // This is a primary vendor - need to archive linked accounts
         try {

@@ -1226,6 +1226,17 @@ export class PropertyService {
         });
       }
 
+      // If managedBy changed, remove new manager from assignedStaff (can't be both)
+      if (cleanUpdateData.managedBy && result.assignedStaff?.length) {
+        const newManagerId = cleanUpdateData.managedBy.toString();
+        if (result.assignedStaff.some((id: any) => id.toString() === newManagerId)) {
+          await this.propertyDAO.update(
+            { _id: result._id },
+            { $pull: { assignedStaff: new Types.ObjectId(newManagerId) } }
+          );
+        }
+      }
+
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
       await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
@@ -2107,6 +2118,85 @@ export class PropertyService {
       });
       throw error;
     }
+  }
+
+  async assignStaff(
+    ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
+    userId: string
+  ): Promise<ISuccessReturnData> {
+    const { cuid, pid } = ctx;
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Property' }),
+      });
+    }
+
+    const user = await this.userDAO.findFirst({
+      _id: new Types.ObjectId(userId),
+      'cuids.cuid': cuid,
+      'cuids.isConnected': true,
+    });
+    if (!user) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'User' }),
+      });
+    }
+
+    if (property.managedBy?.toString() === userId) {
+      throw new BadRequestError({
+        message: 'User is already the primary manager of this property',
+      });
+    }
+
+    if (property.assignedStaff?.some((id) => id.toString() === userId)) {
+      throw new BadRequestError({
+        message: 'User is already assigned to this property',
+      });
+    }
+
+    if ((property.assignedStaff?.length || 0) >= 10) {
+      throw new BadRequestError({
+        message: 'Cannot assign more than 10 staff members to a property',
+      });
+    }
+
+    const updated = await this.propertyDAO.update(
+      { _id: property._id },
+      { $addToSet: { assignedStaff: new Types.ObjectId(userId) } }
+    );
+
+    return {
+      success: true,
+      data: updated,
+      message: 'Staff member assigned to property',
+    };
+  }
+
+  async unassignStaff(
+    ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
+    userId: string
+  ): Promise<ISuccessReturnData> {
+    const { cuid, pid } = ctx;
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Property' }),
+      });
+    }
+
+    const updated = await this.propertyDAO.update(
+      { _id: property._id },
+      { $pull: { assignedStaff: new Types.ObjectId(userId) } }
+    );
+
+    return {
+      success: true,
+      data: updated,
+      message: 'Staff member removed from property',
+    };
   }
 
   cleanupEventListeners(): void {

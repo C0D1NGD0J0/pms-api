@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
 import { CURRENCIES } from '@interfaces/utils.interface';
@@ -574,4 +575,16 @@ export const GetAssignableUsersSchema = z.object({
     .max(100, 'Limit cannot exceed 100')
     .optional()
     .default(10),
+});
+
+export const AssignStaffSchema = z.object({
+  userId: z
+    .string()
+    .refine((val) => Types.ObjectId.isValid(val), { message: 'Must be a valid user ID' }),
+});
+
+export const UnassignStaffSchema = z.object({
+  userId: z
+    .string()
+    .refine((val) => Types.ObjectId.isValid(val), { message: 'Must be a valid user ID' }),
 });

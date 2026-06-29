@@ -40,7 +40,6 @@ export {
 } from './subscription';
 export { InvitationCsvProcessor, PropertyCsvProcessor } from './csv';
 export { InvoiceTemplateRenderer, InvoiceService } from './invoice';
-// ── Services ─────────────────────────────────────────────
 export { ExpenseService } from './expense/expense.service';
 export { MetricsService } from './metrics/metrics.service';
 export { PaymentGatewayService } from './paymentGateway';
@@ -54,6 +53,7 @@ export { MediaUploadService } from './mediaUpload';
 export { InvoiceAIService, AIService } from './ai';
 export { InvitationService } from './invitation';
 export { PermissionService } from './permission';
+export { GuestPassService } from './guestpass';
 export { ProfileService } from './profile';
 export { SMSService } from './smsService';
 export { ClientService } from './client';

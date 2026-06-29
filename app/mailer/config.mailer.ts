@@ -224,6 +224,9 @@ export class MailService {
       case MailType.LEASE_ACTIVATED:
         template = await this.buildTemplate('lease-activated', emailData, 'lease');
         break;
+      case MailType.GUEST_PASS_CODE:
+        template = await this.buildTemplate('guest-pass-code', emailData, 'guestPass');
+        break;
       case MailType.PAYMENT_FAILED:
         template = await this.buildTemplate('payment-failed', emailData, 'payment');
         break;
@@ -362,6 +365,7 @@ export class MailService {
       [MailType.PAYMENT_FAILED]: 'Payment Could Not Be Processed',
       [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
+      [MailType.GUEST_PASS_CODE]: 'Your Visitor Access Code',
     };
 
     return subjectMap[mailType] || subjectMap.default;

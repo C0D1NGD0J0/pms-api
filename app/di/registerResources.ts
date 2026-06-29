@@ -12,6 +12,7 @@ import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
+import { GuestPassController } from '@controllers/GuestPassController';
 import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
@@ -170,24 +171,25 @@ import {
 } from '@services/index';
 
 const ControllerResources = {
-  metricsController: asClass(MetricsController).scoped(),
-  maintenanceController: asClass(MaintenanceController).scoped(),
-  adminController: asClass(AdminController).scoped(),
   authController: asClass(AuthController).scoped(),
+  dsarController: asClass(DSARController).scoped(),
   userController: asClass(UserController).scoped(),
+  adminController: asClass(AdminController).scoped(),
   leaseController: asClass(LeaseController).scoped(),
   clientController: asClass(ClientController).scoped(),
   vendorController: asClass(VendorController).scoped(),
+  webhookController: asClass(WebhookController).scoped(),
+  paymentController: asClass(PaymentController).scoped(),
+  expenseController: asClass(ExpenseController).scoped(),
+  metricsController: asClass(MetricsController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
+  guestPassController: asClass(GuestPassController).scoped(),
   invitationController: asClass(InvitationController).scoped(),
+  maintenanceController: asClass(MaintenanceController).scoped(),
   propertyUnitController: asClass(PropertyUnitController).scoped(),
   notificationController: asClass(NotificationController).scoped(),
   subscriptionController: asClass(SubscriptionController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
-  webhookController: asClass(WebhookController).scoped(),
-  paymentController: asClass(PaymentController).scoped(),
-  dsarController: asClass(DSARController).scoped(),
-  expenseController: asClass(ExpenseController).scoped(),
 };
 
 const ModelResources = {

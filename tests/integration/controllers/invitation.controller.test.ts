@@ -83,6 +83,7 @@ describe('InvitationController Integration Tests', () => {
       queueFactory: {} as any,
       tokenService: mockTokenService,
       authCache: mockAuthCache,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       vendorService,
       leaseDAO: {} as any,
       paymentProcessorDAO: {} as any,

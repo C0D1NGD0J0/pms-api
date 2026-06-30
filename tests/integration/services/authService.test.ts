@@ -42,6 +42,7 @@ describe('AuthService Integration Tests', () => {
       queueFactory: mockQueueFactory as any,
       tokenService: mockTokenService as any,
       authCache: mockAuthCache as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       vendorService,
       subscriptionService: mockSubscriptionService as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,

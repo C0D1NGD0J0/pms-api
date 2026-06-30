@@ -125,6 +125,7 @@ describe('AuthController Integration Tests', () => {
       queueFactory: mockQueueFactory as any,
       tokenService,
       authCache: mockAuthCache as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       vendorService,
       leaseDAO: {} as any,
       paymentProcessorDAO: {} as any,

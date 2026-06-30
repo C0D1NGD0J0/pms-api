@@ -106,6 +106,7 @@ describe('PaymentController Integration Tests', () => {
       queueFactory,
       paymentDAO,
       profileDAO,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       clientDAO,
       leaseDAO,
     });

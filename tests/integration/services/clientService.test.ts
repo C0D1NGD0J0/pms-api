@@ -40,6 +40,7 @@ const setupServices = () => {
     propertyDAO,
     propertyUnitDAO,
     authCache,
+    userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
     subscriptionDAO,
     subscriptionService: {} as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,

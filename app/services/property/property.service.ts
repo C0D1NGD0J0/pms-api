@@ -73,6 +73,8 @@ import {
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
   filterPropertyByDepartment,
+  isFinancialRestricted,
+  canViewMaintenance,
 } from './propertyHelpers';
 
 interface IConstructor {
@@ -702,6 +704,24 @@ export class PropertyService {
       ];
     }
 
+    // Security staff only see properties they're assigned to or manage
+    const userDepartment = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
+    if (userDepartment === EmployeeDepartment.SECURITY) {
+      const securityScope = {
+        $or: [
+          { assignedStaff: new Types.ObjectId(currentuser.sub) },
+          { managedBy: new Types.ObjectId(currentuser.sub) },
+        ],
+      };
+
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, securityScope];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, securityScope);
+      }
+    }
+
     if (filters) {
       if (filters.propertyType) {
         filter.propertyType = { $in: filters.propertyType } as any;
@@ -872,6 +892,17 @@ export class PropertyService {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
+    // Security staff can only view properties they're assigned to
+    const detailDept = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
+    if (detailDept === EmployeeDepartment.SECURITY) {
+      const isAssigned =
+        property.managedBy?.toString() === currentUser.sub ||
+        property.assignedStaff?.some((id: any) => id.toString() === currentUser.sub);
+      if (!isAssigned) {
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+      }
+    }
+
     if (currentUser?.client?.role === ROLES.TENANT) {
       const tenantLease = await this.leaseDAO.findFirst({
         'property.id': property._id,
@@ -1014,17 +1045,18 @@ export class PropertyService {
       propertyWithPreview as IPropertyDocument,
       department
     );
-    const isSecurityDept = department === EmployeeDepartment.SECURITY;
+    const hideFinancials = isFinancialRestricted(department);
 
     return {
       success: true,
       data: {
         property: filteredProperty as IPropertyDocument,
         hasLeaseHistory,
-        unitInfo: isSecurityDept ? undefined : unitInfo,
-        metrics: isSecurityDept ? undefined : metrics,
-        ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
-        ...(!isSecurityDept && maintenanceHistory !== undefined && { maintenanceHistory }),
+        unitInfo,
+        metrics: hideFinancials ? undefined : metrics,
+        ...(!hideFinancials && paymentHistory !== undefined && { paymentHistory }),
+        ...(canViewMaintenance(department) &&
+          maintenanceHistory !== undefined && { maintenanceHistory }),
       },
     };
   }

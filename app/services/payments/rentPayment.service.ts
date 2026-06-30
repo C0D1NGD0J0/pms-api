@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
+import { UserCache } from '@caching/user.cache';
 import { MoneyUtils } from '@utils/money.utils';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -50,6 +51,7 @@ interface IConstructor {
   queueFactory: QueueFactory;
   paymentDAO: PaymentDAO;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
 }
@@ -66,6 +68,7 @@ export class RentPaymentService {
   private readonly queueFactory: QueueFactory;
   private readonly paymentDAO: PaymentDAO;
   private readonly profileDAO: ProfileDAO;
+  private readonly userCache: UserCache;
   private readonly clientDAO: ClientDAO;
   private readonly leaseDAO: LeaseDAO;
 
@@ -80,6 +83,7 @@ export class RentPaymentService {
     queueFactory,
     paymentDAO,
     profileDAO,
+    userCache,
     clientDAO,
     leaseDAO,
   }: IConstructor) {
@@ -94,6 +98,7 @@ export class RentPaymentService {
     this.queueFactory = queueFactory;
     this.paymentDAO = paymentDAO;
     this.profileDAO = profileDAO;
+    this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.leaseDAO = leaseDAO;
     this.emitterService.on(
@@ -425,6 +430,7 @@ export class RentPaymentService {
             ['tenantInfo.paymentGatewayCustomers.platform']: tenantCustomerId,
           },
         });
+        await this.userCache.invalidateUserDetail(cuid, tenantProfile.user.uid);
       }
 
       const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(
@@ -605,6 +611,14 @@ export class RentPaymentService {
                 },
               }
             );
+
+            const tenantWithUser = (await this.profileDAO.findFirst(
+              { user: new Types.ObjectId(tenantUserId) },
+              { populate: ['user'] }
+            )) as IProfileWithUser | null;
+            if (tenantWithUser?.user?.uid) {
+              await this.userCache.invalidateUserDetail(cuid, tenantWithUser.user.uid);
+            }
 
             if (activeInvoiceId) {
               await this.paymentDAO.updateById(payment._id.toString(), {

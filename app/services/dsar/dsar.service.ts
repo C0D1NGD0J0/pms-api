@@ -4,6 +4,7 @@ import { LeaseDAO } from '@dao/leaseDAO';
 import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { UserCache } from '@caching/user.cache';
 import { LeaseStatus } from '@interfaces/lease.interface';
 
 export interface DSARExport {
@@ -27,6 +28,7 @@ export interface DSARExport {
 interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
@@ -37,13 +39,15 @@ export class DSARService {
   private readonly profileDAO: ProfileDAO;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly userCache: UserCache;
 
-  constructor({ propertyDAO, profileDAO, userDAO, leaseDAO }: IConstructor) {
+  constructor({ propertyDAO, profileDAO, userDAO, leaseDAO, userCache }: IConstructor) {
     this.log = createLogger('DSARService');
     this.propertyDAO = propertyDAO;
     this.profileDAO = profileDAO;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.userCache = userCache;
   }
 
   async exportUserData(userId: string): Promise<DSARExport> {
@@ -167,6 +171,11 @@ export class DSARService {
       processingConsentDate: new Date(),
       retentionExpiryDate: new Date(),
     });
+
+    for (const connection of user.cuids || []) {
+      await this.userCache.invalidateUserDetail(connection.cuid, user.uid);
+      await this.userCache.invalidateUserLists(connection.cuid);
+    }
 
     this.log.info(`DSAR anonymisation completed for userId=${userId}`);
   }

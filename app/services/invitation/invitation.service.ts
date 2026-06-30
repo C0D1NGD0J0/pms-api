@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
+import { UserCache } from '@caching/user.cache';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
@@ -50,6 +51,7 @@ interface IConstructor {
   subscriptionService: any;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
+  userCache: UserCache;
   userDAO: UserDAO;
   leaseDAO: any;
 }
@@ -69,6 +71,7 @@ export class InvitationService {
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly leaseDAO: any;
   private readonly subscriptionService: any;
+  private readonly userCache: UserCache;
 
   constructor({
     invitationDAO,
@@ -80,6 +83,7 @@ export class InvitationService {
     profileService,
     vendorService,
     userService,
+    userCache,
     leaseDAO,
     subscriptionService,
     paymentProcessorDAO,
@@ -97,6 +101,7 @@ export class InvitationService {
     this.userService = userService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
+    this.userCache = userCache;
     this.leaseDAO = leaseDAO;
     this.log = createLogger('InvitationService');
     this.setupEventListeners();
@@ -417,6 +422,9 @@ export class InvitationService {
     if (result.invitation.role === ROLES.TENANT) {
       await this.createTenantPaymentCustomer(result.user, cuid);
     }
+
+    await this.userCache.invalidateUserDetail(cuid, result.user.uid);
+    await this.userCache.invalidateUserLists(cuid);
   }
 
   private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {
@@ -530,6 +538,9 @@ export class InvitationService {
         cuid,
       });
     }
+
+    await this.userCache.invalidateUserDetail(cuid, result.user.uid);
+    await this.userCache.invalidateUserLists(cuid);
 
     return {
       success: true,

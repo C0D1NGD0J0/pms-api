@@ -1250,7 +1250,7 @@ export class UserService {
   async getUserAnnouncementFilters(
     userId: string,
     cuid: string
-  ): Promise<{ roles: string[]; vendorId?: string }> {
+  ): Promise<{ roles: string[]; vendorId?: string; department?: string }> {
     try {
       const user = await this.getUserWithClientContext(userId, cuid, {
         populate: 'profile',
@@ -1263,6 +1263,9 @@ export class UserService {
 
       const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
       const roles = clientConnection?.roles || [];
+
+      // Get department from employee profile
+      const department = user.profile?.employeeInfo?.department;
 
       // Get vendor ID for users associated with vendors
       let vendorId: string | undefined;
@@ -1290,7 +1293,7 @@ export class UserService {
         vendorId = user.profile.vendorInfo.linkedVendorUid;
       }
 
-      return { roles, vendorId };
+      return { roles, vendorId, department };
     } catch (error) {
       this.log.error('Error getting user announcement filters', { userId, cuid, error });
       return { roles: [] };

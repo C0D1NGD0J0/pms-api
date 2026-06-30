@@ -347,6 +347,30 @@ const CLEANUP_RULES: CleanupRule[] = [
     filter: { 'entitlements.RepairRequestService': { $exists: true } },
     unset: { 'entitlements.RepairRequestService': 1 },
   },
+  {
+    label: 'subscription.entitlements: remove stale GUESTPASSService',
+    collection: 'subscriptions',
+    filter: { 'entitlements.GUESTPASSService': { $exists: true } },
+    unset: { 'entitlements.GUESTPASSService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale GuestPassService (wrong casing)',
+    collection: 'subscriptions',
+    filter: { 'entitlements.GuestPassService': { $exists: true } },
+    unset: { 'entitlements.GuestPassService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale VisitorPassService',
+    collection: 'subscriptions',
+    filter: { 'entitlements.VisitorPassService': { $exists: true } },
+    unset: { 'entitlements.VisitorPassService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale MaintenanceRequestService (wrong casing)',
+    collection: 'subscriptions',
+    filter: { 'entitlements.MaintenanceRequestService': { $exists: true } },
+    unset: { 'entitlements.MaintenanceRequestService': 1 },
+  },
 ];
 
 export async function runSchemaSync(): Promise<void> {

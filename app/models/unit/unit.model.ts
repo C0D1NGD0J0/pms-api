@@ -205,7 +205,10 @@ const UnitSchema = new Schema<IUnitDocument>(
   }
 );
 
-UnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
+UnitSchema.index(
+  { propertyId: 1, unitNumber: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } }
+);
 UnitSchema.index({ cuid: 1, status: 1 });
 
 UnitSchema.virtual('leases', {

@@ -922,6 +922,27 @@ export class PropertyService {
       }
     }
 
+    // Fetch assigned staff details
+    let assignedStaffList: any[] = [];
+    if (property.assignedStaff?.length) {
+      const staffProfiles = await this.profileDAO.list(
+        { user: { $in: property.assignedStaff }, deletedAt: null },
+        {
+          projection:
+            'personalInfo.firstName personalInfo.lastName personalInfo.displayName employeeInfo.department user',
+          populate: { path: 'user', select: 'email uid' },
+        }
+      );
+      assignedStaffList = staffProfiles.items.map((profile: any) => ({
+        uid: profile.user?.uid,
+        email: profile.user?.email,
+        fullName:
+          profile.personalInfo?.displayName ||
+          `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim(),
+        department: profile.employeeInfo?.department,
+      }));
+    }
+
     // Calculate property metrics
     const metrics = await this.calculatePropertyMetrics(
       cuid,
@@ -985,6 +1006,7 @@ export class PropertyService {
       ...(pendingChangesPreview && { pendingChangesPreview }),
       fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       manager: propertyManager,
+      assignedStaff: assignedStaffList,
     };
 
     const department = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
@@ -1769,7 +1791,7 @@ export class PropertyService {
       if (filters.department) {
         pipeline.push({
           $match: {
-            'profile.employeeInfo.department': 'management',
+            'profile.employeeInfo.department': filters.department,
           },
         });
       }
@@ -1836,9 +1858,12 @@ export class PropertyService {
         },
       });
 
+      // Sort for deterministic pagination
+      pipeline.push({ $sort: { 'profile.personalInfo.displayName': 1, email: 1 } });
+
       // Execute aggregation with pagination
       const page = filters.page || 1;
-      const limit = filters.limit || 10;
+      const limit = filters.limit || 100;
       const skip = (page - 1) * limit;
 
       // Add pagination

@@ -7,9 +7,9 @@ import { GuestPassDAO } from '@dao/guestpassDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EventTypes } from '@interfaces/events.interface';
+import { PropertyUnit, Property, Lease } from '@models/index';
 import GuestPassModel from '@models/guestPass/guestpass.model';
 import { GuestPassStatus } from '@interfaces/guestPass.interface';
-import { PropertyUnit, Property, Lease, User } from '@models/index';
 import { GuestPassService } from '@services/guestpass/guestpass.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 
@@ -794,10 +794,7 @@ describe('GuestPassService', () => {
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
 
       // Assign staff to property1 only
-      await Property.updateOne(
-        { _id: property1._id },
-        { $set: { assignedStaff: [staff._id] } }
-      );
+      await Property.updateOne({ _id: property1._id }, { $set: { assignedStaff: [staff._id] } });
 
       await GuestPassModel.create({
         cuid: client.cuid,

@@ -1,17 +1,16 @@
 import { Types } from 'mongoose';
-import { faker } from '@faker-js/faker';
 import { ROLES } from '@shared/constants/roles.constants';
-import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { PropertyService } from '@services/property/property.service';
-import { IPropertyDocument } from '@interfaces/property.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { PropertyStatsService } from '@services/property/propertyStats.service';
-import { PropertyApprovalService } from '@services/property/propertyApproval.service';
-import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
-import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
-import { filterPropertyByDepartment } from '@services/property/propertyHelpers';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { IPropertyDocument } from '@interfaces/property.interface';
+import { PropertyService } from '@services/property/property.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { PropertyStatsService } from '@services/property/propertyStats.service';
+import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
+import { filterPropertyByDepartment } from '@services/property/propertyHelpers';
+import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
+import { PropertyApprovalService } from '@services/property/propertyApproval.service';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import {
   createTestProperty,
   clearTestDatabase,
@@ -108,7 +107,14 @@ const buildRequestContext = (
     path: '/properties',
     query: {},
   },
-  userAgent: { browser: 'Chrome', version: '120.0', os: 'MacOS', raw: 'test', isMobile: false, isBot: false },
+  userAgent: {
+    browser: 'Chrome',
+    version: '120.0',
+    os: 'MacOS',
+    raw: 'test',
+    isMobile: false,
+    isBot: false,
+  },
   langSetting: { lang: 'en', t: jest.fn((key: string) => key) },
   timing: { startTime: Date.now() },
   currentuser: buildCurrentUser(userId, cuid, role, employeeInfo),
@@ -228,9 +234,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const ctx = buildStaffCtx(client.cuid, property.pid, managerUser._id.toString());
 
-      await expect(
-        propertyService.assignStaff(ctx, managerUser._id.toString())
-      ).rejects.toThrow(BadRequestError);
+      await expect(propertyService.assignStaff(ctx, managerUser._id.toString())).rejects.toThrow(
+        BadRequestError
+      );
     });
 
     it('should reject if user is already assigned', async () => {
@@ -246,9 +252,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
 
-      await expect(
-        propertyService.assignStaff(ctx, staffUser._id.toString())
-      ).rejects.toThrow(BadRequestError);
+      await expect(propertyService.assignStaff(ctx, staffUser._id.toString())).rejects.toThrow(
+        BadRequestError
+      );
     });
 
     it('should reject when assignedStaff cap of 10 is reached', async () => {
@@ -264,9 +270,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const extraStaff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
 
-      await expect(
-        propertyService.assignStaff(ctx, extraStaff._id.toString())
-      ).rejects.toThrow(BadRequestError);
+      await expect(propertyService.assignStaff(ctx, extraStaff._id.toString())).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 
@@ -346,9 +352,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       // The staff user should have been pulled from assignedStaff
       const updated = await Property.findById(property._id);
       expect(updated!.managedBy!.toString()).toBe(staffUser._id.toString());
-      expect(
-        updated!.assignedStaff?.some((id) => id.toString() === staffUser._id.toString())
-      ).toBe(false);
+      expect(updated!.assignedStaff?.some((id) => id.toString() === staffUser._id.toString())).toBe(
+        false
+      );
     });
 
     it('should leave assignedStaff unchanged when new manager is not in the array', async () => {
@@ -397,12 +403,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
         $addToSet: { assignedStaff: secUser._id },
       });
 
-      const currentuser = buildCurrentUser(
-        secUser._id.toString(),
-        client.cuid,
-        ROLES.STAFF,
-        { department: EmployeeDepartment.SECURITY }
-      );
+      const currentuser = buildCurrentUser(secUser._id.toString(), client.cuid, ROLES.STAFF, {
+        department: EmployeeDepartment.SECURITY,
+      });
 
       const result = await propertyService.getClientProperties(client.cuid, currentuser, {
         pagination: { page: 1, sort: {} },
@@ -427,12 +430,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const managedProp = await createTestProperty(client.cuid, client._id);
       await Property.findByIdAndUpdate(managedProp._id, { managedBy: secUser._id });
 
-      const currentuser = buildCurrentUser(
-        secUser._id.toString(),
-        client.cuid,
-        ROLES.STAFF,
-        { department: EmployeeDepartment.SECURITY }
-      );
+      const currentuser = buildCurrentUser(secUser._id.toString(), client.cuid, ROLES.STAFF, {
+        department: EmployeeDepartment.SECURITY,
+      });
 
       const result = await propertyService.getClientProperties(client.cuid, currentuser, {
         pagination: { page: 1, sort: {} },
@@ -454,12 +454,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const property = await createTestProperty(client.cuid, client._id);
 
-      const currentuser = buildCurrentUser(
-        secUser._id.toString(),
-        client.cuid,
-        ROLES.STAFF,
-        { department: EmployeeDepartment.SECURITY }
-      );
+      const currentuser = buildCurrentUser(secUser._id.toString(), client.cuid, ROLES.STAFF, {
+        department: EmployeeDepartment.SECURITY,
+      });
 
       await expect(
         propertyService.getClientProperty(client.cuid, property.pid, currentuser)
@@ -479,12 +476,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       await createTestProperty(client.cuid, client._id);
       await createTestProperty(client.cuid, client._id);
 
-      const currentuser = buildCurrentUser(
-        opsUser._id.toString(),
-        client.cuid,
-        ROLES.STAFF,
-        { department: EmployeeDepartment.OPERATIONS }
-      );
+      const currentuser = buildCurrentUser(opsUser._id.toString(), client.cuid, ROLES.STAFF, {
+        department: EmployeeDepartment.OPERATIONS,
+      });
 
       const result = await propertyService.getClientProperties(client.cuid, currentuser, {
         pagination: { page: 1, sort: {} },

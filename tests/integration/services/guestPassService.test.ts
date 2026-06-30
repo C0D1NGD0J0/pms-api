@@ -6,12 +6,12 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { GuestPassDAO } from '@dao/guestpassDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ROLES } from '@shared/constants/roles.constants';
-import GuestPassModel from '@models/guestPass/guestpass.model';
 import { EventTypes } from '@interfaces/events.interface';
+import GuestPassModel from '@models/guestPass/guestpass.model';
 import { GuestPassStatus } from '@interfaces/guestPass.interface';
+import { PropertyUnit, Property, Lease, User } from '@models/index';
 import { GuestPassService } from '@services/guestpass/guestpass.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
-import { PropertyUnit, Property, Lease, User } from '@models/index';
 
 import { mockRequestContext } from '../../helpers/mockRequestContext';
 import { disconnectTestDatabase, setupTestDatabase } from '../../setup/testDatabase';

@@ -83,6 +83,7 @@ const setupServices = () => {
     vendorService,
     userService,
     authCache: { invalidateCurrentUser: jest.fn() } as any,
+    userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
     emitterService: mockEmitterService,
     mediaUploadService: mockMediaUploadService,
   });

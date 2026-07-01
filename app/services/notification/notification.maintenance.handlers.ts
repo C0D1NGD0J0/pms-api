@@ -34,6 +34,8 @@ import { INotificationContext } from './notification.types';
 import { getFormattedNotification } from './notificationMessages';
 import {
   fetchRequestAndEnqueueEmail,
+  MAINTENANCE_DEPARTMENTS,
+  FINANCE_DEPARTMENTS,
   notifyAnnouncement,
   notifyIndividuals,
   ALL_STAFF_ROLES,
@@ -376,7 +378,8 @@ export async function handleInvoiceSubmitted(
       { mruid, amount: fmt },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending invoice submitted notification', { error, payload });
@@ -535,7 +538,8 @@ export async function handleWorkOrderSubmitted(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending work order submitted notification', { error, payload });
@@ -807,7 +811,8 @@ export async function handleMRAccepted(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.LOW
+      NotificationPriorityEnum.LOW,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending MR accepted notification', { error, payload });
@@ -840,7 +845,8 @@ export async function handleMRCreated(
       { priority, title, mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending MR created notification', { error, payload });
@@ -900,7 +906,8 @@ export async function handleMRCompleted(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.LOW
+      NotificationPriorityEnum.LOW,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending MR completed notification', { error, payload });
@@ -973,7 +980,8 @@ export async function handleMRDeclined(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending MR declined notification', { error, payload });
@@ -1015,7 +1023,8 @@ export async function handleMRWorkDone(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      MAINTENANCE_DEPARTMENTS
     );
 
     if (tenantId) {
@@ -1060,7 +1069,8 @@ export async function handleMRCancelled(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.LOW
+      NotificationPriorityEnum.LOW,
+      MAINTENANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending MR cancelled notification', { error, payload });
@@ -1082,7 +1092,8 @@ export async function handleMaintenanceChargePaid(
       { amount: fmt, mruid },
       MGMT_ROLES,
       { mruid },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending maintenance charge paid notification', { error, payload });
@@ -1105,7 +1116,8 @@ export async function handleMaintenanceFundsAvailable(
       { mruid },
       ALL_STAFF_ROLES,
       { mruid },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      FINANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending funds available notification', { error, payload });

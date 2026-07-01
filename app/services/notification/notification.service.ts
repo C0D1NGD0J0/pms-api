@@ -232,6 +232,7 @@ export class NotificationService {
         metadata: validatedData.metadata,
         expiresAt: validatedData.expiresAt,
         targetRoles: validatedData.targetRoles,
+        targetDepartments: validatedData.targetDepartments,
         targetVendor: validatedData.targetVendor,
         cuid,
         isRead: false,

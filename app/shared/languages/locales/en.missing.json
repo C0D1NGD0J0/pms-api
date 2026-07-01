@@ -65,5 +65,10 @@
     "success": {
       "otpSent": "auth.success.otpSent"
     }
+  },
+  "profile": {
+    "success": {
+      "employeeInfoUpdated": "profile.success.employeeInfoUpdated"
+    }
   }
 }

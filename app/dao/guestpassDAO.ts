@@ -208,11 +208,20 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async getStats(cuid: string, propertyId?: string): Promise<IGuestPassStats> {
+  async getStats(
+    cuid: string,
+    propertyId?: string | string[],
+    createdBy?: string
+  ): Promise<IGuestPassStats> {
     try {
       const now = new Date();
       const matchStage: any = { cuid };
-      if (propertyId) matchStage.propertyId = new Types.ObjectId(propertyId);
+      if (Array.isArray(propertyId)) {
+        matchStage.propertyId = { $in: propertyId.map((id) => new Types.ObjectId(id)) };
+      } else if (propertyId) {
+        matchStage.propertyId = new Types.ObjectId(propertyId);
+      }
+      if (createdBy) matchStage.createdBy = new Types.ObjectId(createdBy);
 
       type FacetBucket = { count: number }[];
       type FacetResult = Record<keyof IGuestPassStats, FacetBucket>;

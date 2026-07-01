@@ -73,6 +73,8 @@ import {
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
   filterPropertyByDepartment,
+  isFinancialRestricted,
+  canViewMaintenance,
 } from './propertyHelpers';
 
 interface IConstructor {
@@ -702,6 +704,24 @@ export class PropertyService {
       ];
     }
 
+    // Security staff only see properties they're assigned to or manage
+    const userDepartment = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
+    if (userDepartment === EmployeeDepartment.SECURITY) {
+      const securityScope = {
+        $or: [
+          { assignedStaff: new Types.ObjectId(currentuser.sub) },
+          { managedBy: new Types.ObjectId(currentuser.sub) },
+        ],
+      };
+
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, securityScope];
+        delete filter.$or;
+      } else {
+        Object.assign(filter, securityScope);
+      }
+    }
+
     if (filters) {
       if (filters.propertyType) {
         filter.propertyType = { $in: filters.propertyType } as any;
@@ -872,6 +892,17 @@ export class PropertyService {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
+    // Security staff can only view properties they're assigned to
+    const detailDept = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
+    if (detailDept === EmployeeDepartment.SECURITY) {
+      const isAssigned =
+        property.managedBy?.toString() === currentUser.sub ||
+        property.assignedStaff?.some((id: any) => id.toString() === currentUser.sub);
+      if (!isAssigned) {
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+      }
+    }
+
     if (currentUser?.client?.role === ROLES.TENANT) {
       const tenantLease = await this.leaseDAO.findFirst({
         'property.id': property._id,
@@ -920,6 +951,27 @@ export class PropertyService {
           phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
         };
       }
+    }
+
+    // Fetch assigned staff details
+    let assignedStaffList: any[] = [];
+    if (property.assignedStaff?.length) {
+      const staffProfiles = await this.profileDAO.list(
+        { user: { $in: property.assignedStaff }, deletedAt: null },
+        {
+          projection:
+            'personalInfo.firstName personalInfo.lastName personalInfo.displayName employeeInfo.department user',
+          populate: { path: 'user', select: 'email uid' },
+        }
+      );
+      assignedStaffList = staffProfiles.items.map((profile: any) => ({
+        uid: profile.user?.uid,
+        email: profile.user?.email,
+        fullName:
+          profile.personalInfo?.displayName ||
+          `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim(),
+        department: profile.employeeInfo?.department,
+      }));
     }
 
     // Calculate property metrics
@@ -985,6 +1037,7 @@ export class PropertyService {
       ...(pendingChangesPreview && { pendingChangesPreview }),
       fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       manager: propertyManager,
+      assignedStaff: assignedStaffList,
     };
 
     const department = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
@@ -992,17 +1045,18 @@ export class PropertyService {
       propertyWithPreview as IPropertyDocument,
       department
     );
-    const isSecurityDept = department === EmployeeDepartment.SECURITY;
+    const hideFinancials = isFinancialRestricted(department);
 
     return {
       success: true,
       data: {
         property: filteredProperty as IPropertyDocument,
         hasLeaseHistory,
-        unitInfo: isSecurityDept ? undefined : unitInfo,
-        metrics: isSecurityDept ? undefined : metrics,
-        ...(!isSecurityDept && paymentHistory !== undefined && { paymentHistory }),
-        ...(!isSecurityDept && maintenanceHistory !== undefined && { maintenanceHistory }),
+        unitInfo,
+        metrics: hideFinancials ? undefined : metrics,
+        ...(!hideFinancials && paymentHistory !== undefined && { paymentHistory }),
+        ...(canViewMaintenance(department) &&
+          maintenanceHistory !== undefined && { maintenanceHistory }),
       },
     };
   }
@@ -1224,6 +1278,17 @@ export class PropertyService {
         throw new BadRequestError({
           message: t('common.errors.operationFailed', { action: 'update property' }),
         });
+      }
+
+      // If managedBy changed, remove new manager from assignedStaff (can't be both)
+      if (cleanUpdateData.managedBy && result.assignedStaff?.length) {
+        const newManagerId = cleanUpdateData.managedBy.toString();
+        if (result.assignedStaff.some((id: any) => id.toString() === newManagerId)) {
+          await this.propertyDAO.update(
+            { _id: result._id },
+            { $pull: { assignedStaff: new Types.ObjectId(newManagerId) } }
+          );
+        }
       }
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
@@ -1758,7 +1823,7 @@ export class PropertyService {
       if (filters.department) {
         pipeline.push({
           $match: {
-            'profile.employeeInfo.department': 'management',
+            'profile.employeeInfo.department': filters.department,
           },
         });
       }
@@ -1825,9 +1890,12 @@ export class PropertyService {
         },
       });
 
+      // Sort for deterministic pagination
+      pipeline.push({ $sort: { 'profile.personalInfo.displayName': 1, email: 1 } });
+
       // Execute aggregation with pagination
       const page = filters.page || 1;
-      const limit = filters.limit || 10;
+      const limit = filters.limit || 100;
       const skip = (page - 1) * limit;
 
       // Add pagination
@@ -2107,6 +2175,85 @@ export class PropertyService {
       });
       throw error;
     }
+  }
+
+  async assignStaff(
+    ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
+    userId: string
+  ): Promise<ISuccessReturnData> {
+    const { cuid, pid } = ctx;
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Property' }),
+      });
+    }
+
+    const user = await this.userDAO.findFirst({
+      _id: new Types.ObjectId(userId),
+      'cuids.cuid': cuid,
+      'cuids.isConnected': true,
+    });
+    if (!user) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'User' }),
+      });
+    }
+
+    if (property.managedBy?.toString() === userId) {
+      throw new BadRequestError({
+        message: 'User is already the primary manager of this property',
+      });
+    }
+
+    if (property.assignedStaff?.some((id) => id.toString() === userId)) {
+      throw new BadRequestError({
+        message: 'User is already assigned to this property',
+      });
+    }
+
+    if ((property.assignedStaff?.length || 0) >= 10) {
+      throw new BadRequestError({
+        message: 'Cannot assign more than 10 staff members to a property',
+      });
+    }
+
+    const updated = await this.propertyDAO.update(
+      { _id: property._id },
+      { $addToSet: { assignedStaff: new Types.ObjectId(userId) } }
+    );
+
+    return {
+      success: true,
+      data: updated,
+      message: 'Staff member assigned to property',
+    };
+  }
+
+  async unassignStaff(
+    ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
+    userId: string
+  ): Promise<ISuccessReturnData> {
+    const { cuid, pid } = ctx;
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Property' }),
+      });
+    }
+
+    const updated = await this.propertyDAO.update(
+      { _id: property._id },
+      { $pull: { assignedStaff: new Types.ObjectId(userId) } }
+    );
+
+    return {
+      success: true,
+      data: updated,
+      message: 'Staff member removed from property',
+    };
   }
 
   cleanupEventListeners(): void {

@@ -4,6 +4,7 @@ export * from './NotificationValidation';
 export * from './PropertyUnitValidation';
 export * from './SubscriptionValidation';
 export * from './InvitationValidation';
+export * from './GuestPassValidation';
 export * from './PropertyValidation';
 export * from './PaymentsValidation';
 export * from './MetricsValidation';

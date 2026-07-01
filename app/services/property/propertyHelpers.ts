@@ -108,41 +108,80 @@ export const generatePendingChangesPreview = (
 };
 
 /**
+ * Departments that should NOT see financial data (fees, financialDetails, metrics).
+ * Derived from frontend tab visibility rules.
+ */
+const FINANCIAL_RESTRICTED_DEPTS = [EmployeeDepartment.SECURITY, EmployeeDepartment.MAINTENANCE];
+const DOCUMENTS_ALLOWED_DEPTS = [EmployeeDepartment.OPERATIONS, EmployeeDepartment.MANAGEMENT];
+
+/**
  * Filter property fields based on the requesting user's department.
- * Security staff only see access/patrol-relevant info — no financial or internal workflow data.
+ * Security: only access/patrol-relevant info.
+ * Maintenance: property + unit info, no financials/documents.
+ * Accounting: property + financials, no maintenance/documents.
+ * Operations/Management: full access.
  */
 export const filterPropertyByDepartment = (
   property: IPropertyDocument,
   department?: EmployeeDepartment
 ): Partial<IPropertyDocument> => {
-  if (department !== EmployeeDepartment.SECURITY) {
-    return property;
+  if (!department) return property;
+
+  if (department === EmployeeDepartment.SECURITY) {
+    return {
+      _id: property._id,
+      pid: property.pid,
+      name: property.name,
+      propertyType: property.propertyType,
+      operationalStatus: property.operationalStatus,
+      occupancyStatus: property.occupancyStatus,
+      address: property.address,
+      computedLocation: property.computedLocation,
+      specifications: property.specifications,
+      communityAmenities: property.communityAmenities,
+      interiorAmenities: property.interiorAmenities,
+      utilities: property.utilities,
+      images: property.images,
+      maxAllowedUnits: property.maxAllowedUnits,
+      ...((property as any).unitInfo && { unitInfo: (property as any).unitInfo }),
+      assignedStaff: property.assignedStaff,
+      yearBuilt: property.yearBuilt,
+      managedBy: property.managedBy,
+      cuid: property.cuid,
+      createdAt: property.createdAt,
+      updatedAt: property.updatedAt,
+    };
   }
 
-  return {
-    _id: property._id,
-    pid: property.pid,
-    name: property.name,
-    propertyType: property.propertyType,
-    operationalStatus: property.operationalStatus,
-    occupancyStatus: property.occupancyStatus,
-    address: property.address,
-    computedLocation: property.computedLocation,
-    specifications: property.specifications,
-    communityAmenities: property.communityAmenities,
-    interiorAmenities: property.interiorAmenities,
-    utilities: property.utilities,
-    images: property.images,
-    maxAllowedUnits: property.maxAllowedUnits,
-    yearBuilt: property.yearBuilt,
-    managedBy: property.managedBy,
-    cuid: property.cuid,
-    createdAt: property.createdAt,
-    updatedAt: property.updatedAt,
-    // Excluded: fees, financialDetails, approvalDetails, approvalStatus,
-    //           pendingChanges, authorization, documents, notes, createdBy, owner
-  };
+  const propertyObj = property.toObject ? property.toObject() : { ...property };
+
+  // Strip financials for maintenance
+  if (FINANCIAL_RESTRICTED_DEPTS.includes(department)) {
+    delete propertyObj.fees;
+    delete propertyObj.financialDetails;
+  }
+
+  // Strip documents for non-operations/management
+  if (!DOCUMENTS_ALLOWED_DEPTS.includes(department)) {
+    delete propertyObj.documents;
+  }
+
+  return propertyObj;
 };
+
+export const isFinancialRestricted = (department?: EmployeeDepartment): boolean =>
+  !!department && FINANCIAL_RESTRICTED_DEPTS.includes(department);
+
+export const canViewDocuments = (department?: EmployeeDepartment): boolean =>
+  !department || DOCUMENTS_ALLOWED_DEPTS.includes(department);
+
+export const canViewMaintenance = (department?: EmployeeDepartment): boolean =>
+  !department ||
+  [
+    EmployeeDepartment.MAINTENANCE,
+    EmployeeDepartment.OPERATIONS,
+    EmployeeDepartment.MANAGEMENT,
+  ].includes(department);
 
 /**
  * Validate occupancy status changes

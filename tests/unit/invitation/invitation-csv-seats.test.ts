@@ -90,6 +90,7 @@ describe('Invitation CSV Import — Seat Enforcement', () => {
       leaseDAO: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }), invalidateUserLists: jest.fn().mockResolvedValue({ success: true }) } as any,
     });
   });
 

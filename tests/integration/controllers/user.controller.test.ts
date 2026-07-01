@@ -125,6 +125,7 @@ describe('UserController Integration Tests', () => {
       authCache: {
         invalidateUserCache: jest.fn().mockResolvedValue(undefined),
       } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
     });
 
     const authCache = {
@@ -138,6 +139,7 @@ describe('UserController Integration Tests', () => {
       propertyDAO,
       propertyUnitDAO,
       authCache,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
       subscriptionDAO: {} as any,
       subscriptionService: {} as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,

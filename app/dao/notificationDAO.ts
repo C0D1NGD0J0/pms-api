@@ -62,7 +62,7 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
   async findForUser(
     userId: string,
     cuid: string,
-    targetingInfo: { roles: string[]; vendorId?: string },
+    targetingInfo: { roles: string[]; vendorId?: string; department?: string },
     filters?: INotificationFilters,
     pagination?: IPaginationQuery,
     extraFilter?: QueryFilter<INotificationDocument>
@@ -91,6 +91,13 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
                   {
                     recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                     targetRoles: { $in: targetingInfo.roles },
+                    $or: [
+                      { targetDepartments: { $exists: false } },
+                      { targetDepartments: { $size: 0 } },
+                      ...(targetingInfo.department
+                        ? [{ targetDepartments: targetingInfo.department }]
+                        : []),
+                    ],
                   } as QueryFilter<INotificationDocument>,
                 ]
               : []),
@@ -119,6 +126,13 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
                 {
                   recipientType: RecipientTypeEnum.ANNOUNCEMENT,
                   targetRoles: { $in: targetingInfo.roles },
+                  $or: [
+                    { targetDepartments: { $exists: false } },
+                    { targetDepartments: { $size: 0 } },
+                    ...(targetingInfo.department
+                      ? [{ targetDepartments: targetingInfo.department }]
+                      : []),
+                  ],
                 } as QueryFilter<INotificationDocument>,
               ]
             : []),
@@ -201,14 +215,39 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
   async getUnreadCount(
     userId: string,
     cuid: string,
-    filters?: INotificationFilters
+    filters?: INotificationFilters,
+    targetingInfo?: { roles: string[]; department?: string }
   ): Promise<number> {
     try {
+      const announcementConditions: QueryFilter<INotificationDocument>[] = targetingInfo?.roles
+        ?.length
+        ? [
+            // role-matched announcements with department check
+            {
+              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+              targetRoles: { $in: targetingInfo.roles },
+              $or: [
+                { targetDepartments: { $exists: false } },
+                { targetDepartments: { $size: 0 } },
+                ...(targetingInfo.department
+                  ? [{ targetDepartments: targetingInfo.department }]
+                  : []),
+              ],
+            } as QueryFilter<INotificationDocument>,
+            // untargeted announcements (no roles, no vendor)
+            {
+              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+              targetRoles: { $exists: false },
+              targetVendor: { $exists: false },
+            },
+          ]
+        : [{ recipientType: RecipientTypeEnum.ANNOUNCEMENT }];
+
       const filter: QueryFilter<INotificationDocument> = {
         cuid,
         $or: [
           { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
-          { recipientType: RecipientTypeEnum.ANNOUNCEMENT },
+          ...announcementConditions,
         ],
         isRead: false,
         deletedAt: null,
@@ -239,15 +278,40 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     }
   }
 
-  async getUnreadCountByType(userId: string, cuid: string): Promise<Record<string, number>> {
+  async getUnreadCountByType(
+    userId: string,
+    cuid: string,
+    targetingInfo?: { roles: string[]; department?: string }
+  ): Promise<Record<string, number>> {
     try {
+      const announcementConditions = targetingInfo?.roles?.length
+        ? [
+            {
+              recipientType: 'announcement' as const,
+              targetRoles: { $in: targetingInfo.roles },
+              $or: [
+                { targetDepartments: { $exists: false } },
+                { targetDepartments: { $size: 0 } },
+                ...(targetingInfo.department
+                  ? [{ targetDepartments: targetingInfo.department }]
+                  : []),
+              ],
+            },
+            {
+              recipientType: 'announcement' as const,
+              targetRoles: { $exists: false },
+              targetVendor: { $exists: false },
+            },
+          ]
+        : [{ recipientType: 'announcement' as const }];
+
       const pipeline: PipelineStage[] = [
         {
           $match: {
             cuid,
             $or: [
               { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
-              { recipientType: 'announcement' },
+              ...announcementConditions,
             ],
             isRead: false,
             deletedAt: null,

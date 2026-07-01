@@ -7,6 +7,8 @@ import {
   UpdateOccupancySchema,
   UpdatePropertySchema,
   PropertySearchSchema,
+  UnassignStaffSchema,
+  AssignStaffSchema,
   PropertyCsvSchema,
 } from './schema';
 
@@ -20,4 +22,6 @@ export class PropertyValidations {
   static create = CreatePropertySchemaWithValidation;
   static validatePropertyAndClientIds = PropertyClientRelationshipSchema;
   static getAssignableUsers = GetAssignableUsersSchema;
+  static assignStaff = AssignStaffSchema;
+  static unassignStaff = UnassignStaffSchema;
 }

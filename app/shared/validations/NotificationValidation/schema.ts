@@ -41,6 +41,7 @@ export const CreateNotificationSchema = z.object({
   resourceInfo: ResourceInfoSchema.optional(),
   expiresAt: z.date().optional(),
   targetRoles: z.array(z.string()).optional(),
+  targetDepartments: z.array(z.string()).optional(),
   targetVendor: z.string().optional(),
 });
 
@@ -127,12 +128,12 @@ export const CreateNotificationWithRulesSchema = CreateNotificationSchema.superR
     // Business rule: targeting fields only valid for announcements
     if (
       data.recipientType === RecipientTypeEnum.INDIVIDUAL &&
-      (data.targetRoles || data.targetVendor)
+      (data.targetRoles || data.targetVendor || data.targetDepartments)
     ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          'Targeting fields (targetRoles, targetVendor) are only valid for announcement notifications',
+          'Targeting fields (targetRoles, targetVendor, targetDepartments) are only valid for announcement notifications',
         path: ['targetRoles'],
       });
     }

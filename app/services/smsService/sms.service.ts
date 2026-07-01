@@ -5,6 +5,7 @@ import { t } from '@shared/languages';
 import { SMSLogDAO } from '@dao/smsLogDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { ProfileDAO } from '@dao/profileDAO';
+import { UserCache } from '@caching/user.cache';
 import { TwilioService } from '@services/external';
 import { NotFoundError } from '@shared/customErrors';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
@@ -37,6 +38,7 @@ interface IConstructor {
   subscriptionDAO: SubscriptionDAO;
   twilioService: TwilioService;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   smsLogDAO: SMSLogDAO;
   clientDAO: ClientDAO;
 }
@@ -51,6 +53,7 @@ export class SMSService implements ICronProvider {
   private readonly featureFlagService: FeatureFlagService;
   private readonly notificationService: NotificationService;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
+  private readonly userCache: UserCache;
 
   constructor({
     subscriptionPlanConfig,
@@ -59,6 +62,7 @@ export class SMSService implements ICronProvider {
     subscriptionDAO,
     twilioService,
     profileDAO,
+    userCache,
     smsLogDAO,
     clientDAO,
   }: IConstructor) {
@@ -69,6 +73,7 @@ export class SMSService implements ICronProvider {
     this.subscriptionDAO = subscriptionDAO;
     this.twilioService = twilioService;
     this.profileDAO = profileDAO;
+    this.userCache = userCache;
     this.smsLogDAO = smsLogDAO;
     this.clientDAO = clientDAO;
   }
@@ -246,6 +251,7 @@ export class SMSService implements ICronProvider {
         }
       );
       isVerified = true;
+      await this.userCache.invalidateUserDetail(cuid, userId);
       return { success: true, data: isVerified };
     } catch (error: any) {
       this.log.error({ error, phone }, 'OTP verification failed');
@@ -280,6 +286,7 @@ export class SMSService implements ICronProvider {
         };
 
     await this.profileDAO.update({ user: userId }, update);
+    await this.userCache.invalidateUserDetail(cuid, userId);
     return { success: true, data: undefined };
   }
 

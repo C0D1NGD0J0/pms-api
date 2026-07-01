@@ -1,4 +1,4 @@
-import { Schema, model } from 'mongoose';
+import { Schema, Types, model } from 'mongoose';
 import { generateShortUID, createLogger } from '@utils/index';
 import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
 
@@ -151,6 +151,14 @@ const PropertySchema = new Schema<IPropertyDocument>(
       required: true,
       ref: 'User',
       index: true,
+    },
+    assignedStaff: {
+      type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
+      default: [],
+      validate: {
+        validator: (v: Types.ObjectId[]) => v.length <= 10,
+        message: 'Cannot assign more than 10 staff members to a property',
+      },
     },
     yearBuilt: {
       type: Number,
@@ -383,6 +391,7 @@ PropertySchema.index(
   }
 );
 
+PropertySchema.index({ assignedStaff: 1, cuid: 1 });
 PropertySchema.index({ computedLocation: '2dsphere' });
 PropertySchema.virtual('units', {
   ref: 'PropertyUnit',

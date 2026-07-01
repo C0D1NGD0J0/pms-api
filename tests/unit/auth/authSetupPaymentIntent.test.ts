@@ -102,6 +102,7 @@ const makeService = (overrides: Record<string, any> = {}) =>
     queueFactory: { getQueue: jest.fn() } as any,
     tokenService: {} as any,
     authCache: {} as any,
+    userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
     vendorService: {} as any,
     subscriptionService: {} as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,

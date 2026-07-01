@@ -1,0 +1,24 @@
+Your Visitor Access Code
+========================
+
+Hi <%= visitorName %>,
+
+You have been granted visitor access. Your access code is:
+
+  <%= code %>
+
+Valid for <%= expiryMinutes %> minutes.
+
+Property: <%= propertyName %>
+<% if (unitNumber) { %>Unit: <%= unitNumber %>
+<% } %><% if (propertyAddress) { %>Address: <%= propertyAddress %>
+<% } %>
+Your Host: <%= hostName %>
+<% if (hostPhone) { %>Contact: <%= hostPhone %>
+<% } %>
+
+Show this code to security personnel at the entrance gate.
+This code will expire automatically and can only be used once.
+
+--
+PropertyDesk

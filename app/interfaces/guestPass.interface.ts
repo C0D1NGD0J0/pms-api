@@ -97,6 +97,10 @@ export interface IGuestPass {
 }
 
 export interface ICreateGuestPassInput {
+  propertyInfo: {
+    pid: string;
+    puid?: string;
+  };
   notifySecurity?: boolean;
   expiryMinutes?: number;
   visitorPhone?: string;
@@ -104,7 +108,6 @@ export interface ICreateGuestPassInput {
   sendViaEmail: boolean;
   visitorName: string;
   sendViaSms: boolean;
-  propertyId: string;
   hostPhone?: string;
   purpose?: string;
   hostName: string;

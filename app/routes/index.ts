@@ -9,6 +9,7 @@ import expenseRoutes from './expense.routes';
 import metricsRoutes from './metrics.routes';
 import paymentRoutes from './payments.routes';
 import propertyRoutes from './property.routes';
+import guestPassRoutes from './guestpass.routes';
 import invitationRoutes from './invitation.routes';
 import notificationRoutes from './notification.routes';
 import subscriptionRoutes from './subscription.routes';
@@ -32,4 +33,5 @@ export const routes = {
   maintenanceRequestRoutes,
   metricsRoutes,
   expenseRoutes,
+  guestPassRoutes,
 };

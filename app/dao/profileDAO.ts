@@ -767,20 +767,28 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
             // client-plan-dependent features (AI, eSign, etc.) without leaking
             // billing details (plan name, status, paymentFlow) to external users.
             clientEntitlements: {
-              $ifNull: [
-                '$subscriptionInfo.entitlements',
-                {
-                  eSignature: false,
-                  maintenanceRequestService: false,
-                  guestPassService: false,
-                  reportingAnalytics: false,
-                  leaseTemplates: false,
-                  vendorManagement: false,
-                  prioritySupport: false,
-                  aiTriage: false,
-                  aiInvoiceScanning: false,
-                },
-              ],
+              eSignature: { $ifNull: ['$subscriptionInfo.entitlements.eSignature', false] },
+              maintenanceRequestService: {
+                $ifNull: ['$subscriptionInfo.entitlements.maintenanceRequestService', false],
+              },
+              guestPassService: {
+                $ifNull: ['$subscriptionInfo.entitlements.guestPassService', false],
+              },
+              reportingAnalytics: {
+                $ifNull: ['$subscriptionInfo.entitlements.reportingAnalytics', false],
+              },
+              leaseTemplates: { $ifNull: ['$subscriptionInfo.entitlements.leaseTemplates', false] },
+              vendorManagement: {
+                $ifNull: ['$subscriptionInfo.entitlements.vendorManagement', false],
+              },
+              prioritySupport: {
+                $ifNull: ['$subscriptionInfo.entitlements.prioritySupport', false],
+              },
+              aiTriage: { $ifNull: ['$subscriptionInfo.entitlements.aiTriage', false] },
+              aiInvoiceScanning: {
+                $ifNull: ['$subscriptionInfo.entitlements.aiInvoiceScanning', false],
+              },
+              smsService: { $ifNull: ['$subscriptionInfo.entitlements.smsService', false] },
             },
 
             // Payment processor status — only exposed for SUPER_ADMIN

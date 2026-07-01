@@ -102,6 +102,12 @@ const makeMocks = (overrides: Record<string, any> = {}) => {
     ...overrides.subscriptionPlanConfig,
   } as any;
 
+  const userCache = {
+    invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }),
+    invalidateUserLists: jest.fn().mockResolvedValue({ success: true }),
+    ...overrides.userCache,
+  } as any;
+
   return {
     smsLogDAO,
     clientDAO,
@@ -111,6 +117,7 @@ const makeMocks = (overrides: Record<string, any> = {}) => {
     featureFlagService,
     notificationService,
     subscriptionPlanConfig,
+    userCache,
   };
 };
 

@@ -105,6 +105,10 @@ const NotificationSchema = new Schema<INotificationDocument>(
       type: [String],
       default: undefined,
     },
+    targetDepartments: {
+      type: [String],
+      default: undefined,
+    },
     targetVendor: {
       type: String,
       trim: true,

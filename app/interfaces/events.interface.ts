@@ -719,6 +719,12 @@ export interface PaymentMethodSetupCompletedPayload {
   cuid: string;
 }
 
+export type GuestPassExpiredPayload = {
+  passes: Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'>[];
+  expiredAt: Date;
+  count: number;
+};
+
 export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
   propertyId: string;
@@ -785,10 +791,6 @@ export interface PdfGenerationFailedPayload {
   resourceId: string;
   error: string;
 }
-
-export type GuestPassExpiredPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
-  expiredAt: Date;
-};
 
 export interface MaintenanceAITriageCompletedPayload {
   tenantId: string;

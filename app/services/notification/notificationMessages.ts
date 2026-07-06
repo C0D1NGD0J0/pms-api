@@ -296,6 +296,21 @@ export const NotificationMessages = {
         'Your monthly SMS quota has been fully used ({{limit}}/{{limit}}). SMS sending is paused until your next billing cycle.',
     },
   },
+
+  guestPass: {
+    created: {
+      title: 'New Visitor Expected',
+      message: '{{visitorName}} is expected at {{propertyName}}',
+    },
+    validated: {
+      title: 'Visitor Arrived',
+      message: '{{visitorName}} has checked in at {{propertyName}}',
+    },
+    revoked: {
+      title: 'Guest Pass Revoked',
+      message: 'A guest pass for {{visitorName}} at {{propertyName}} has been cancelled',
+    },
+  },
 } as const;
 
 /**
@@ -363,7 +378,10 @@ export type NotificationMessageKey =
   | 'payment.failedTenant'
   | 'payment.overdueTenant'
   | 'sms.quotaWarning'
-  | 'sms.quotaExhausted';
+  | 'sms.quotaExhausted'
+  | 'guestPass.created'
+  | 'guestPass.validated'
+  | 'guestPass.revoked';
 
 /**
  * Helper function to get formatted notification message by key.

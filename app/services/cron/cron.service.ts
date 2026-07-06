@@ -1,18 +1,22 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { CronQueue } from '@queues/cron.queue';
-import { LeaseService } from '@services/lease/lease.service';
-import { SMSService } from '@services/smsService/sms.service';
-import { MetricsService } from '@services/metrics/metrics.service';
-import { QueueFactory } from '@services/queue/queueFactory.service';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
-import { PaymentService } from '@services/payments/payments.service';
-import { SubscriptionService } from '@services/subscription/subscription.service';
-import { NotificationService } from '@services/notification/notification.service';
+import {
+  SubscriptionService,
+  NotificationService,
+  GuestPassService,
+  MetricsService,
+  PaymentService,
+  QueueFactory,
+  LeaseService,
+  SMSService,
+} from '@services/index';
 
 interface IConstructor {
   notificationService?: NotificationService;
   subscriptionService: SubscriptionService;
+  guestPassService: GuestPassService;
   metricsService: MetricsService;
   paymentService: PaymentService;
   leaseService: LeaseService;
@@ -34,6 +38,7 @@ export class CronService {
   constructor({
     queueFactory,
     leaseService,
+    guestPassService,
     subscriptionService,
     paymentService,
     smsService,
@@ -47,6 +52,7 @@ export class CronService {
       leaseService,
       subscriptionService,
       paymentService,
+      guestPassService,
       smsService,
       metricsService,
     ].filter(Boolean);

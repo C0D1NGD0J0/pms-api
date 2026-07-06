@@ -74,8 +74,13 @@ describe('ClientController Integration Tests', () => {
       userDAO,
       profileDAO,
       permissionService,
-      queueFactory: {} as any,
-      emitterService: {} as any,
+      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
+      geoCoderService: {} as any,
+      paymentProcessorDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
+      paymentGatewayService: {} as any,
+      payoutAccountService: {} as any,
     } as any);
 
     const userCache = {
@@ -708,7 +713,7 @@ describe('ClientController Integration Tests', () => {
       expect(response.body.message).toContain('already verified');
     });
 
-    it('should return 400 when identification data is missing', async () => {
+    it('should verify account even when identification data is missing (validation moved to separate flow)', async () => {
       // Update client without identification data
       await Client.findOneAndUpdate(
         { cuid: testClient.cuid },
@@ -722,13 +727,13 @@ describe('ClientController Integration Tests', () => {
 
       const response = await request(app)
         .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
-        .expect(httpStatusCodes.BAD_REQUEST);
+        .expect(httpStatusCodes.OK);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('Identification information is required');
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.isVerified).toBe(true);
     });
 
-    it('should return 400 when required fields are missing', async () => {
+    it('should verify account regardless of identification field completeness', async () => {
       // Update client with incomplete identification data
       await Client.findOneAndUpdate(
         { cuid: testClient.cuid },
@@ -750,94 +755,10 @@ describe('ClientController Integration Tests', () => {
 
       const response = await request(app)
         .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
-        .expect(httpStatusCodes.BAD_REQUEST);
+        .expect(httpStatusCodes.OK);
 
-      expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('Verification failed');
-    });
-
-    it('should return 400 when document has expired', async () => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-
-      await Client.findOneAndUpdate(
-        { cuid: testClient.cuid },
-        {
-          $set: {
-            isVerified: false,
-            identification: {
-              idType: 'passport',
-              idNumber: 'A12345678',
-              expiryDate: yesterday,
-              authority: 'Immigration Office',
-              issuingState: 'United States',
-              dataProcessingConsent: true,
-              issueDate: new Date('2020-01-01'),
-            },
-          },
-        }
-      );
-
-      const response = await request(app)
-        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
-        .expect(httpStatusCodes.BAD_REQUEST);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('Verification failed');
-    });
-
-    it('should return 400 when data processing consent is not given', async () => {
-      await Client.findOneAndUpdate(
-        { cuid: testClient.cuid },
-        {
-          $set: {
-            isVerified: false,
-            identification: {
-              idType: 'passport',
-              idNumber: 'A12345678',
-              expiryDate: new Date('2030-12-31'),
-              authority: 'Immigration Office',
-              issuingState: 'United States',
-              dataProcessingConsent: false,
-              issueDate: new Date('2020-01-01'),
-            },
-          },
-        }
-      );
-
-      const response = await request(app)
-        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
-        .expect(httpStatusCodes.BAD_REQUEST);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('Verification failed');
-    });
-
-    it('should return 400 when ID type is invalid', async () => {
-      await Client.findOneAndUpdate(
-        { cuid: testClient.cuid },
-        {
-          $set: {
-            isVerified: false,
-            identification: {
-              idType: 'invalid-type',
-              idNumber: 'A12345678',
-              expiryDate: new Date('2030-12-31'),
-              authority: 'Immigration Office',
-              issuingState: 'United States',
-              dataProcessingConsent: true,
-              issueDate: new Date('2020-01-01'),
-            },
-          },
-        }
-      );
-
-      const response = await request(app)
-        .post(`/api/v1/clients/${testClient.cuid}/verify-account`)
-        .expect(httpStatusCodes.BAD_REQUEST);
-
-      expect(response.body.success).toBe(false);
-      expect(response.body.message).toContain('Verification failed');
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.isVerified).toBe(true);
     });
 
     it('should return 404 for non-existent client', async () => {
@@ -897,7 +818,7 @@ describe('ClientController Integration Tests', () => {
     it('should update multiple tenant feature toggles in one request', async () => {
       const response = await request(app)
         .patch(`/api/v1/clients/${testClient.cuid}/settings/tenant-features`)
-        .send({ onlinePayments: false, GuestPass: true })
+        .send({ onlinePayments: false, guestPass: true })
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);

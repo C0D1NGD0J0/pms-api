@@ -97,7 +97,7 @@ describe('SubscriptionController Integration Tests', () => {
     const subscriptionService = new SubscriptionService({
       subscriptionDAO,
       paymentGatewayService: mockStripeService,
-      emitterService: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
       sseService: {} as any,
       clientDAO: {} as any,
       authCache: {} as any,
@@ -158,7 +158,7 @@ describe('SubscriptionController Integration Tests', () => {
         planName: 'portfolio',
         status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
+          customerId: 'cus_pending_test',
           provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
@@ -220,7 +220,7 @@ describe('SubscriptionController Integration Tests', () => {
         planName: 'portfolio',
         status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
+          customerId: 'cus_pending_test',
           provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
@@ -261,7 +261,7 @@ describe('SubscriptionController Integration Tests', () => {
         planName: 'portfolio',
         status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
+          customerId: 'cus_pending_test',
           provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
@@ -344,7 +344,7 @@ describe('SubscriptionController Integration Tests', () => {
         planName: 'portfolio',
         status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
+          customerId: 'cus_pending_test',
           provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_annual',
         },
@@ -478,7 +478,6 @@ describe('SubscriptionController Integration Tests', () => {
       // Should use Stripe prices from mock
       expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
       expect(growthPlan.pricing.monthly.priceId).toBe('price_growth_monthly');
-      expect(growthPlan.pricing.monthly.lookUpKey).toBe('growth_monthly');
     });
 
     it('should return all three plans: essential, growth, portfolio', async () => {

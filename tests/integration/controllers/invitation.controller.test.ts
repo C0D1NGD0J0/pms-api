@@ -57,8 +57,13 @@ describe('InvitationController Integration Tests', () => {
       userDAO,
       profileDAO,
       permissionService,
-      queueFactory: {} as any,
-      emitterService: {} as any,
+      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
+      geoCoderService: {} as any,
+      paymentProcessorDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
+      paymentGatewayService: {} as any,
+      payoutAccountService: {} as any,
     } as any);
 
     const mockTokenService = {
@@ -108,6 +113,14 @@ describe('InvitationController Integration Tests', () => {
       queueFactory: {} as any,
       emailService: mockEmailService,
       permissionService,
+      emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
+      profileService: {} as any,
+      userService: {} as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
+      leaseDAO: {} as any,
+      subscriptionService: {} as any,
+      paymentProcessorDAO: {} as any,
+      paymentGatewayService: {} as any,
     } as any);
 
     invitationController = new InvitationController({

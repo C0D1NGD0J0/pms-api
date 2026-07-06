@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import express, { Application } from 'express';
-import { AuthTokenService } from '@services/index';
+import { AuthTokenService } from '@services/auth/authToken.service';
 import { Profile, Client, User } from '@models/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { AuthService } from '@services/auth/auth.service';
@@ -112,8 +112,15 @@ describe('AuthController Integration Tests', () => {
       vendorDAO: {} as any,
       userDAO,
       profileDAO,
-      queueFactory: mockQueueFactory as any,
-      emitterService: {} as any,
+      clientDAO,
+      permissionService: {} as any,
+      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
+      geoCoderService: {} as any,
+      paymentProcessorDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
+      paymentGatewayService: {} as any,
+      payoutAccountService: {} as any,
     } as any);
 
     tokenService = new AuthTokenService();

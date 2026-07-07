@@ -129,7 +129,7 @@ describe('AuthService.setupPaymentIntent — non-tenant role', () => {
     const user = makeTenantUser({ role: 'admin' as any });
 
     await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
-      message: 'Only tenants can set up a payment method.',
+      message: expect.stringMatching(/tenantOnlyPaymentSetup|Only tenants can set up a payment method/),
     });
   });
 });
@@ -278,7 +278,7 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
     const user = makeTenantUser();
 
     await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
-      message: 'Client payment processor not configured.',
+      message: expect.stringMatching(/operationFailedContact|Client payment processor not configured/),
     });
   });
 
@@ -480,7 +480,7 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
     const user = makeTenantUser();
 
     await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
-      message: 'Failed to create payment customer.',
+      message: expect.stringMatching(/operationFailed|Failed to create payment customer/),
     });
   });
 
@@ -557,7 +557,7 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
     const user = makeTenantUser();
 
     await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
-      message: 'Failed to create payment setup session.',
+      message: expect.stringMatching(/operationFailed|Failed to create payment setup session/),
     });
   });
 

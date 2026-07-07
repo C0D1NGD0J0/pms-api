@@ -44,6 +44,7 @@ const mockMaintenanceStats = {
   open: 3,
   assigned: 2,
   inProgress: 1,
+  awaitingInvoice: 0,
   completed: 20,
   cancelled: 1,
   pending: 0,

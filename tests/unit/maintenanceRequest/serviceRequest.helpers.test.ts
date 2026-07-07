@@ -20,6 +20,10 @@ const mockUserDAO = {
   findFirst: jest.fn(),
 } as any;
 
+const mockVendorDAO = {
+  getVendorByVuid: jest.fn(),
+} as any;
+
 const testCuid = 'CLIENT001';
 
 function makeCurrentUser(overrides: Record<string, unknown> = {}): any {
@@ -138,9 +142,9 @@ describe('resolvePrimaryVendorId', () => {
   it('returns null immediately when linkedVendorUid is not set', async () => {
     const currentuser = makeCurrentUser({ client: { cuid: testCuid, role: 'vendor' } });
 
-    const result = await resolvePrimaryVendorId(mockUserDAO, currentuser);
+    const result = await resolvePrimaryVendorId(mockVendorDAO, currentuser);
     expect(result).toBeNull();
-    expect(mockUserDAO.findFirst).not.toHaveBeenCalled();
+    expect(mockVendorDAO.getVendorByVuid).not.toHaveBeenCalled();
   });
 
   it('returns the ObjectId of the primary vendor user when found', async () => {
@@ -148,22 +152,24 @@ describe('resolvePrimaryVendorId', () => {
     const currentuser = makeCurrentUser({
       client: { cuid: testCuid, role: 'vendor', linkedVendorUid: 'vendor-uid-123' },
     });
-    mockUserDAO.findFirst.mockReturnValue(Promise.resolve({ _id: primaryId }));
-
-    const result = await resolvePrimaryVendorId(mockUserDAO, currentuser);
-    expect(result).toBe(primaryId);
-    expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ uid: 'vendor-uid-123' })
+    mockVendorDAO.getVendorByVuid.mockReturnValue(
+      Promise.resolve({
+        connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: primaryId }],
+      })
     );
+
+    const result = await resolvePrimaryVendorId(mockVendorDAO, currentuser);
+    expect(result).toBe(primaryId);
+    expect(mockVendorDAO.getVendorByVuid).toHaveBeenCalledWith('vendor-uid-123');
   });
 
   it('returns null when the primary vendor user is not found', async () => {
     const currentuser = makeCurrentUser({
       client: { cuid: testCuid, role: 'vendor', linkedVendorUid: 'vendor-uid-missing' },
     });
-    mockUserDAO.findFirst.mockReturnValue(Promise.resolve(null));
+    mockVendorDAO.getVendorByVuid.mockReturnValue(Promise.resolve(null));
 
-    const result = await resolvePrimaryVendorId(mockUserDAO, currentuser);
+    const result = await resolvePrimaryVendorId(mockVendorDAO, currentuser);
     expect(result).toBeNull();
   });
 });

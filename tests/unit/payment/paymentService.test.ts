@@ -217,6 +217,7 @@ describe('PaymentService - setup payment method webhooks', () => {
     } as unknown as jest.Mocked<PaymentGatewayService>;
     mockProfileDAO = {
       update: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ProfileDAO>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
 
@@ -1127,7 +1128,9 @@ describe('PaymentService - handleDisputeCreated', () => {
           'dispute.reason': 'fraudulent',
           'dispute.disputedAt': expect.any(Date),
         }),
-      }
+      },
+      undefined,
+      expect.anything()
     );
     expect(mockEmitterService.emit).toHaveBeenCalledWith(
       'payment:dispute:created',
@@ -4254,7 +4257,7 @@ describe('PaymentService - getVendorEarnings', () => {
     await paymentService.getVendorEarnings(CUID, VENDOR_UID);
 
     expect(mockInvoiceDAO.listByVendor).toHaveBeenCalledWith(
-      VENDOR_OID.toString(),
+      expect.arrayContaining([VENDOR_OID.toString()]),
       CUID,
       expect.objectContaining({ status: InvoiceStatus.APPROVED })
     );

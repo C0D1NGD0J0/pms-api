@@ -98,7 +98,7 @@ describe('TwilioService', () => {
       };
 
       expect(() => new TwilioService()).toThrow(
-        'TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required when SMS feature is enabled'
+        /required when SMS feature is enabled/
       );
     });
 

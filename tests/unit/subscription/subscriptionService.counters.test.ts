@@ -34,6 +34,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         }
       }),
       off: jest.fn(),
+      removeAllListeners: jest.fn(),
     } as any;
 
     subscriptionService = new SubscriptionService({
@@ -63,9 +64,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
 
     it('should remove event listeners on cleanup', () => {
       subscriptionService.cleanupEventListeners();
-      expect(mockEmitterService.off).toHaveBeenCalledWith(
-        EventTypes.UNIT_BATCH_CREATED,
-        expect.any(Function)
+      expect(mockEmitterService.removeAllListeners).toHaveBeenCalledWith(
+        EventTypes.UNIT_BATCH_CREATED
       );
     });
   });
@@ -249,7 +249,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         clientId: mockClientId.toString(),
       };
 
-      await expect(invitationSentHandler(payload)).rejects.toThrow('Seat limit reached');
+      await expect(invitationSentHandler(payload)).rejects.toThrow('subscription.errors.seatLimitReached');
     });
 
     it('should calculate correct limit with additional seats purchased', async () => {

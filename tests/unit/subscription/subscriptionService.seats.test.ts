@@ -263,7 +263,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         BadRequestError
       );
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 10)).rejects.toThrow(
-        /maximum of 25 additional seats/
+        /subscription\.errors\.seatLimitExceeded/
       );
     });
 
@@ -339,7 +339,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       // (No override needed — beforeEach default already returns monthly interval)
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
-        /billing interval mismatch/
+        /common\.errors\.operationFailedContact/
       );
     });
 
@@ -359,7 +359,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockPaymentGatewayService.getPriceByLookupKey.mockResolvedValue(null);
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 2)).rejects.toThrow(
-        /seat price configuration is missing/
+        /common\.errors\.operationFailedContact/
       );
     });
 
@@ -374,7 +374,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 3)).rejects.toThrow(
-        /Cannot manage seats on Essential plan/
+        /subscription\.errors\.seatsNotAvailableOnEssential/
       );
     });
   });
@@ -497,7 +497,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, -5)).rejects.toThrow(
-        /You only have 3 additional seats/
+        /subscription\.errors\.cannotRemoveSeats/
       );
     });
 
@@ -515,7 +515,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       // Trying to remove 6 seats would leave total = 10 included + 4 additional = 14
       // But currentSeats = 18, so 4 users would exceed the limit
       await expect(subscriptionService.updateAdditionalSeats(testCuid, -6)).rejects.toThrow(
-        /Please archive 4 user\(s\) first/
+        /subscription\.errors\.cannotRemoveSeatsActiveUsers/
       );
     });
 
@@ -596,7 +596,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         BadRequestError
       );
       await expect(subscriptionService.updateAdditionalSeats(testCuid, -8)).rejects.toThrow(
-        /Cannot remove 8 seats\. You currently have 35 active users but would only have 32 seats allowed\. Please archive 3 user\(s\) first/
+        /subscription\.errors\.cannotRemoveSeatsActiveUsers/
       );
     });
 
@@ -713,7 +713,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
   describe('updateAdditionalSeats - Validation', () => {
     it('should throw error for zero delta', async () => {
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 0)).rejects.toThrow(
-        /Seat change cannot be zero/
+        /subscription\.errors\.seatChangeCannotBeZero/
       );
     });
 
@@ -721,7 +721,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(null);
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, 5)).rejects.toThrow(
-        /Subscription not found/
+        /common\.errors\.notFound/
       );
     });
   });
@@ -790,7 +790,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         testCuid,
         expect.objectContaining({
           eventType: 'seats_purchased',
-          message: 'Successfully purchased 3 seats',
+          message: 'common.success.updated',
+          resource: 'subscription',
         }),
         'resource-event'
       );
@@ -862,7 +863,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         testCuid,
         expect.objectContaining({
           eventType: 'seats_purchased',
-          message: 'Successfully removed 2 seats',
+          message: 'common.success.updated',
+          resource: 'subscription',
         }),
         'resource-event'
       );

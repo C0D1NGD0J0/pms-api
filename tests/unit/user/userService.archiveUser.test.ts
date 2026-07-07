@@ -51,6 +51,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
     mockPropertyDAO = {
       getPropertiesByClientId: jest.fn().mockResolvedValue({ items: [] }),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
     } as any;
 
     mockEmitterService = {
@@ -292,7 +293,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
       await expect(
         userService.archiveUser(testCuid, testUid, mockCurrentUser as any)
-      ).rejects.toThrow(/active lease/);
+      ).rejects.toThrow(/cannotArchiveTenantWithActiveLeases|active lease/);
 
       expect(mockUserDAO.updateById).not.toHaveBeenCalled();
     });
@@ -531,7 +532,7 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
       await expect(
         userService.archiveUser(testCuid, testUid, mockCurrentUser as any)
-      ).rejects.toThrow(/2 active lease/);
+      ).rejects.toThrow(/cannotArchiveTenantWithActiveLeases|2 active lease/);
     });
 
     it('should handle user with no client connections', async () => {

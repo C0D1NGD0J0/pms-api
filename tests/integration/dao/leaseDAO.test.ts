@@ -262,6 +262,7 @@ describe('LeaseDAO Integration Tests', () => {
   describe('getFilteredLeases', () => {
     beforeEach(async () => {
       await Profile.create({
+        puid: `puid-lease-test-${Date.now()}`,
         user: testTenantId,
         personalInfo: {
           displayName: 'John Doe',

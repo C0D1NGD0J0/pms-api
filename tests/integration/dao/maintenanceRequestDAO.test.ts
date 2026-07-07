@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { clearTestDatabase } from '@tests/helpers';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
+import InvoiceModel from '@models/invoice/invoice.model';
 import { MaintenanceRequest as MaintenanceRequestModel } from '@models/index';
 import {
   MaintenanceRequestPriority,
@@ -401,35 +402,38 @@ describe('MaintenanceRequestDAO Integration Tests', () => {
     it('should count only pending invoices', async () => {
       const submittedBy = new Types.ObjectId();
 
-      await MaintenanceRequestModel.create(
-        makeRequest({
-          status: MaintenanceRequestStatus.COMPLETED,
-          invoice: {
-            status: InvoiceStatus.PENDING,
-            amountInCents: 10000,
-            description: 'Pending invoice',
-            source: 'manual',
-            submittedBy,
-            submittedAt: new Date(),
-            currency: 'usd',
-          },
-        })
+      // Create MRs first
+      const mr1 = await MaintenanceRequestModel.create(
+        makeRequest({ status: MaintenanceRequestStatus.COMPLETED })
       );
-      await MaintenanceRequestModel.create(
-        makeRequest({
-          status: MaintenanceRequestStatus.COMPLETED,
-          invoice: {
-            status: InvoiceStatus.APPROVED,
-            amountInCents: 5000,
-            description: 'Approved invoice',
-            source: 'manual',
-            submittedBy,
-            submittedAt: new Date(),
-            currency: 'usd',
-          },
-        })
+      const mr2 = await MaintenanceRequestModel.create(
+        makeRequest({ status: MaintenanceRequestStatus.COMPLETED })
       );
       await MaintenanceRequestModel.create(makeRequest({ status: MaintenanceRequestStatus.OPEN }));
+
+      // Create invoices in the separate Invoice collection (used by $lookup)
+      await InvoiceModel.create({
+        cuid: BASE_CUID,
+        maintenanceRequestId: mr1._id,
+        mruid: mr1.mruid || 'mr-pending',
+        status: InvoiceStatus.PENDING,
+        amountInCents: 10000,
+        description: 'Pending invoice',
+        submittedBy,
+        submittedAt: new Date(),
+        currency: 'USD',
+      });
+      await InvoiceModel.create({
+        cuid: BASE_CUID,
+        maintenanceRequestId: mr2._id,
+        mruid: mr2.mruid || 'mr-approved',
+        status: InvoiceStatus.APPROVED,
+        amountInCents: 5000,
+        description: 'Approved invoice',
+        submittedBy,
+        submittedAt: new Date(),
+        currency: 'USD',
+      });
 
       const stats = await dao.getStats(BASE_CUID);
 

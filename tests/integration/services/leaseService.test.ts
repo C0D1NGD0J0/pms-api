@@ -208,6 +208,9 @@ const setupServices = () => {
     leaseDocumentService,
     leasePdfService,
     leaseSignatureService,
+    paymentDAO: {
+      findByLease: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
+    } as any,
   } as any);
 
   return {
@@ -1150,8 +1153,8 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any;
 
       const terminationData = {
-        terminationDate: new Date('2026-06-01'), // Mid-lease termination
-        terminationReason: 'Tenant request',
+        terminationDate: new Date('2026-10-15'), // Future mid-lease termination
+        terminationReason: 'mutual_agreement', // Reason that allows immediate termination
       };
 
       const result = await leaseService.terminateLease(

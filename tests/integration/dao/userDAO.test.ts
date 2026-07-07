@@ -121,6 +121,7 @@ describe('UserDAO Integration Tests', () => {
       // Create test profile
       await Profile.create({
         _id: testProfileId,
+        puid: `puid-user-test-${Date.now()}`,
         user: testTenantId,
         personalInfo: {
           firstName: 'Test',

@@ -40,15 +40,20 @@ const setupService = () => {
   const emitterService = new EventEmitterService({ eventsRegistry });
   jest.spyOn(emitterService, 'emit');
 
+  const smsQueue = { addToSmsQueue: jest.fn() } as any;
+  const emailQueue = { addToEmailQueue: jest.fn() } as any;
+
   const service = new GuestPassService({
     leaseDAO,
     propertyDAO,
     guestPassDAO,
     propertyUnitDAO,
     emitterService,
+    smsQueue,
+    emailQueue,
   });
 
-  return { service, emitterService };
+  return { service, emitterService, smsQueue, emailQueue };
 };
 
 // ---------------------------------------------------------------------------
@@ -876,6 +881,562 @@ describe('GuestPassService', () => {
       const ctx = mockRequestContext(manager, client.cuid) as any;
 
       await expect(service.getStats(ctx, 'nonexistent-pid')).rejects.toThrow();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // validateCode
+  // -------------------------------------------------------------------------
+  describe('validateCode', () => {
+    it('should validate a code successfully and mark pass as USED', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const pass = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '999888',
+        propertyId: property._id,
+        visitorInfo: { name: 'Valid Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.validateCode(ctx, {
+        code: '999888',
+        propertyId: property.pid,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.valid).toBe(true);
+      expect(result.data.pass).toBeDefined();
+
+      // Verify DB state — pass should be USED
+      const dbPass = await GuestPassModel.findById(pass._id);
+      expect(dbPass!.status).toBe(GuestPassStatus.USED);
+    });
+
+    it('should return valid: false for non-existent code', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.validateCode(ctx, {
+        code: '000000',
+        propertyId: property.pid,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.valid).toBe(false);
+      expect(result.data.reason).toMatch(/not found/i);
+    });
+
+    it('should return valid: false for wrong property', async () => {
+      const client = await createTestClient();
+      const property1 = await createTestProperty(client.cuid, client._id);
+      const property2 = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '555444',
+        propertyId: property1._id,
+        visitorInfo: { name: 'Wrong Prop Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.validateCode(ctx, {
+        code: '555444',
+        propertyId: property2.pid, // wrong property
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.valid).toBe(false);
+      expect(result.data.reason).toMatch(/not valid for this property/i);
+    });
+
+    it('should return valid: false for expired pass', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '112233',
+        propertyId: property._id,
+        visitorInfo: { name: 'Expired Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().subtract(10, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.validateCode(ctx, {
+        code: '112233',
+        propertyId: property.pid,
+      });
+
+      // findByCode filters by validUntil > now, so expired pass won't be found
+      expect(result.data.valid).toBe(false);
+      expect(result.data.reason).toMatch(/not found|expired/i);
+    });
+
+    it('should emit GUEST_PASS_VALIDATED event on success', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '776655',
+        propertyId: property._id,
+        visitorInfo: { name: 'Event Visitor' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service, emitterService } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      await service.validateCode(ctx, {
+        code: '776655',
+        propertyId: property.pid,
+      });
+
+      expect(emitterService.emit).toHaveBeenCalledWith(
+        EventTypes.GUEST_PASS_VALIDATED,
+        expect.objectContaining({
+          cuid: client.cuid,
+          validatedBy: staff._id.toString(),
+        })
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // getExpectedVisitors
+  // -------------------------------------------------------------------------
+  describe('getExpectedVisitors', () => {
+    it('should return active passes for manager', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '111222',
+        propertyId: property._id,
+        visitorInfo: { name: 'Expected Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().add(60, 'minute').toDate(),
+        expiryMinutes: 60,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+      // Expired pass — should not appear
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '333444',
+        propertyId: property._id,
+        visitorInfo: { name: 'Expired Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().subtract(5, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.getExpectedVisitors(ctx, {});
+
+      expect(result.success).toBe(true);
+      expect(result.data.passes).toHaveLength(1);
+      expect(result.data.passes[0].visitorInfo.name).toBe('Expected Visitor');
+    });
+
+    it('should scope staff to assigned properties only', async () => {
+      const client = await createTestClient();
+      const property1 = await createTestProperty(client.cuid, client._id);
+      const property2 = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      // Assign staff to property1 only
+      await Property.updateOne(
+        { _id: property1._id },
+        { $set: { assignedStaff: [staff._id] } }
+      );
+
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '111111',
+        propertyId: property1._id,
+        visitorInfo: { name: 'Prop1 Visitor' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(60, 'minute').toDate(),
+        expiryMinutes: 60,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '222222',
+        propertyId: property2._id,
+        visitorInfo: { name: 'Prop2 Visitor' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(60, 'minute').toDate(),
+        expiryMinutes: 60,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      const result = await service.getExpectedVisitors(ctx, {});
+
+      expect(result.success).toBe(true);
+      expect(result.data.passes).toHaveLength(1);
+      expect(result.data.passes[0].visitorInfo.name).toBe('Prop1 Visitor');
+    });
+
+    it('should filter by timeWindow today', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      // Pass valid within today (2 hours from now, but use expiryMinutes within model max)
+      await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '444555',
+        propertyId: property._id,
+        visitorInfo: { name: 'Today Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().add(2, 'hour').toDate(),
+        expiryMinutes: 60,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+      // Pass valid until tomorrow — should be excluded by 'today' filter
+      // Use save with validateBeforeSave: false to bypass expiryMinutes max
+      const tomorrowPass = new GuestPassModel({
+        cuid: client.cuid,
+        code: '666777',
+        propertyId: property._id,
+        visitorInfo: { name: 'Tomorrow Visitor' },
+        createdBy: manager._id,
+        validUntil: dayjs().add(2, 'day').toDate(),
+        expiryMinutes: 60,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+      await tomorrowPass.save({ validateBeforeSave: true });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.getExpectedVisitors(ctx, { timeWindow: 'today' });
+
+      expect(result.success).toBe(true);
+      // Only the pass expiring within today should be returned
+      expect(result.data.passes).toHaveLength(1);
+      expect(result.data.passes[0].visitorInfo.name).toBe('Today Visitor');
+    });
+
+    it('should return empty when no expected visitors', async () => {
+      const client = await createTestClient();
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const result = await service.getExpectedVisitors(ctx, {});
+
+      expect(result.success).toBe(true);
+      expect(result.data.passes).toHaveLength(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // acknowledgePass
+  // -------------------------------------------------------------------------
+  describe('acknowledgePass', () => {
+    it('should acknowledge a pass successfully', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const pass = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '887766',
+        propertyId: property._id,
+        visitorInfo: { name: 'Acknowledge Visitor' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      const result = await service.acknowledgePass(ctx, pass._id.toString());
+
+      expect(result.success).toBe(true);
+      expect(result.data.isAcknowledged).toBe(true);
+
+      // Verify DB state
+      const dbPass = await GuestPassModel.findById(pass._id);
+      expect(dbPass!.isAcknowledged).toBe(true);
+      expect(dbPass!.acknowledgedAt).toBeDefined();
+    });
+
+    it('should emit GUEST_PASS_ACKNOWLEDGED event', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const pass = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '998877',
+        propertyId: property._id,
+        visitorInfo: { name: 'Event Ack Visitor' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service, emitterService } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      await service.acknowledgePass(ctx, pass._id.toString());
+
+      expect(emitterService.emit).toHaveBeenCalledWith(
+        EventTypes.GUEST_PASS_ACKNOWLEDGED,
+        expect.objectContaining({
+          cuid: client.cuid,
+          vpuid: pass.vpuid,
+          acknowledgedBy: staff._id.toString(),
+        })
+      );
+    });
+
+    it('should throw for already acknowledged pass', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const pass = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '554433',
+        propertyId: property._id,
+        visitorInfo: { name: 'Already Acked Visitor' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: true,
+        acknowledgedAt: new Date(),
+        acknowledgedBy: new Types.ObjectId(),
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      await expect(service.acknowledgePass(ctx, pass._id.toString())).rejects.toThrow(
+        /not found.*acknowledged|already acknowledged|not active/i
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // bulkAcknowledgePasses
+  // -------------------------------------------------------------------------
+  describe('bulkAcknowledgePasses', () => {
+    it('should bulk acknowledge multiple passes', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const pass1 = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '101010',
+        propertyId: property._id,
+        visitorInfo: { name: 'Bulk Visitor 1' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+      const pass2 = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '202020',
+        propertyId: property._id,
+        visitorInfo: { name: 'Bulk Visitor 2' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      const result = await service.bulkAcknowledgePasses(ctx, [
+        pass1._id.toString(),
+        pass2._id.toString(),
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.data.acknowledged).toBe(2);
+
+      // Verify DB state
+      const dbPass1 = await GuestPassModel.findById(pass1._id);
+      const dbPass2 = await GuestPassModel.findById(pass2._id);
+      expect(dbPass1!.isAcknowledged).toBe(true);
+      expect(dbPass2!.isAcknowledged).toBe(true);
+    });
+
+    it('should skip already acknowledged passes and return correct count', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const pass1 = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '303030',
+        propertyId: property._id,
+        visitorInfo: { name: 'Not Acked' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: false,
+      });
+      const pass2 = await GuestPassModel.create({
+        cuid: client.cuid,
+        code: '404040',
+        propertyId: property._id,
+        visitorInfo: { name: 'Already Acked' },
+        createdBy: new Types.ObjectId(),
+        validUntil: dayjs().add(30, 'minute').toDate(),
+        expiryMinutes: 30,
+        status: GuestPassStatus.ACTIVE,
+        isAcknowledged: true,
+        acknowledgedAt: new Date(),
+        acknowledgedBy: new Types.ObjectId(),
+      });
+
+      const { service } = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      const result = await service.bulkAcknowledgePasses(ctx, [
+        pass1._id.toString(),
+        pass2._id.toString(),
+      ]);
+
+      expect(result.success).toBe(true);
+      expect(result.data.acknowledged).toBe(1); // only pass1 was not yet acknowledged
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // createGuestPass delivery (Phase 4)
+  // -------------------------------------------------------------------------
+  describe('createGuestPass delivery', () => {
+    it('should enqueue SMS job when sendViaSms is true and visitorPhone provided', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const { service, smsQueue } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      await service.createGuestPass(ctx, {
+        ...baseGuestPassInput(property.pid),
+        sendViaSms: true,
+        sendViaEmail: false,
+        visitorPhone: '+15551234567',
+      });
+
+      expect(smsQueue.addToSmsQueue).toHaveBeenCalledWith(
+        'guest-pass-code',
+        expect.objectContaining({
+          to: '+15551234567',
+          cuid: client.cuid,
+        })
+      );
+    });
+
+    it('should enqueue email job when sendViaEmail is true and visitorEmail provided', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const { service, emailQueue } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      const visitorEmail = 'visitor@example.com';
+      await service.createGuestPass(ctx, {
+        ...baseGuestPassInput(property.pid),
+        sendViaEmail: true,
+        sendViaSms: false,
+        visitorEmail,
+      });
+
+      expect(emailQueue.addToEmailQueue).toHaveBeenCalledWith(
+        'guest-pass-code',
+        expect.objectContaining({
+          to: visitorEmail,
+          subject: 'Your Visitor Access Code',
+        })
+      );
+    });
+
+    it('should not enqueue SMS when sendViaSms is false', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const { service, smsQueue } = setupService();
+      const ctx = mockRequestContext(manager, client.cuid) as any;
+
+      await service.createGuestPass(ctx, {
+        ...baseGuestPassInput(property.pid),
+        sendViaSms: false,
+        sendViaEmail: true,
+      });
+
+      expect(smsQueue.addToSmsQueue).not.toHaveBeenCalled();
     });
   });
 });

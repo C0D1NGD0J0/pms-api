@@ -42,7 +42,9 @@ const setupServices = () => {
     authCache,
     userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
     subscriptionDAO,
-    subscriptionService: {} as any,
+    subscriptionService: {
+      getBillingHistory: jest.fn().mockResolvedValue([]),
+    } as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     notificationService: {} as any,
     sseService: {} as any,
@@ -326,7 +328,7 @@ describe('ClientService Integration Tests - Write Operations', () => {
         requestId: 'req-123',
       } as any;
 
-      const result = await clientService.disconnectUser(mockContext, user._id.toString());
+      const result = await clientService.disconnectUser(mockContext, user.uid);
 
       expect(result.success).toBe(true);
 
@@ -361,7 +363,7 @@ describe('ClientService Integration Tests - Write Operations', () => {
       } as any;
 
       await expect(
-        clientService.disconnectUser(mockContext, admin!._id.toString())
+        clientService.disconnectUser(mockContext, admin!.uid)
       ).rejects.toThrow('Cannot disconnect the last administrator');
     });
   });
@@ -396,10 +398,10 @@ describe('ClientService Integration Tests - Write Operations', () => {
       } as any;
 
       // First disconnect
-      await clientService.disconnectUser(mockContext, user._id.toString());
+      await clientService.disconnectUser(mockContext, user.uid);
 
       // Then reconnect
-      const result = await clientService.reconnectUser(mockContext, user._id.toString());
+      const result = await clientService.reconnectUser(mockContext, user.uid);
 
       expect(result.success).toBe(true);
 
@@ -559,7 +561,7 @@ describe('ClientService Integration Tests - Read Operations', () => {
 
       const result = await clientService.getUserRoles(
         mockContext,
-        seededData.users.admin1._id.toString()
+        seededData.users.admin1.uid
       );
 
       expect(result.success).toBe(true);

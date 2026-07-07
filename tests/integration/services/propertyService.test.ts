@@ -49,6 +49,7 @@ const mockPropertyCache = {
   saveClientProperties: jest.fn().mockResolvedValue({ success: true }),
   invalidateProperty: jest.fn().mockResolvedValue({ success: true }),
   invalidatePropertyLists: jest.fn().mockResolvedValue({ success: true }),
+  invalidateLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
   getLeaseableProperties: jest.fn().mockResolvedValue({ success: false }),
   cacheLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
 } as any;
@@ -143,7 +144,14 @@ describe('PropertyService Integration Tests', () => {
       propertyApprovalService,
       propertyStatsService,
       notificationService: mockNotificationService,
-      subscriptionDAO: {} as any,
+      subscriptionDAO: {
+        findFirst: jest.fn().mockResolvedValue({
+          planName: 'growth',
+          client: new (require('mongoose').Types.ObjectId)(),
+          currentProperties: 0,
+        }),
+        updateResourceCount: jest.fn().mockResolvedValue(true),
+      } as any,
       paymentDAO: {} as any,
     });
   });

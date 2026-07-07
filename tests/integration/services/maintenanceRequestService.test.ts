@@ -20,9 +20,11 @@ import {
   PropertyUnit,
   Property,
   Vendor,
+  Client,
   Lease,
   User,
 } from '@models/index';
+import { ClientDAO } from '@dao/index';
 import {
   MaintenanceRequestPriority,
   MaintenanceRequestStatus,
@@ -61,6 +63,18 @@ const setupService = () => {
   const emitterService = new EventEmitterService({ eventsRegistry });
   const invoiceDAO = new InvoiceDAO({ invoiceModel: InvoiceModel });
   const paymentDAO = new PaymentDAO({ paymentModel: PaymentModel });
+  const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
+  const smsService = { sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })) } as any;
+
+  const maintenanceInvoiceService = new MaintenanceInvoiceService({
+    maintenanceRequestDAO,
+    emitterService,
+    invoiceDAO,
+    vendorDAO,
+    smsService,
+    clientDAO,
+  });
+
   return new MaintenanceRequestService({
     maintenanceRequestDAO,
     propertyDAO,
@@ -71,17 +85,14 @@ const setupService = () => {
     leaseDAO,
     vendorDAO,
     emitterService,
-    smsService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })) } as any,
+    smsService,
     vendorSuggestionService: {
       runAITriage: jest.fn().mockReturnValue(Promise.resolve()),
       suggestVendor: jest.fn().mockReturnValue(Promise.resolve(null)),
       acceptAISuggestion: jest.fn(),
       dismissAISuggestion: jest.fn(),
     } as unknown as VendorSuggestionService,
-    maintenanceInvoiceService: {
-      submitInvoice: jest.fn(),
-      reviewInvoice: jest.fn(),
-    } as unknown as MaintenanceInvoiceService,
+    maintenanceInvoiceService,
   });
 };
 
@@ -791,12 +802,12 @@ describe('MaintenanceRequestService', () => {
       });
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
+      await (service as any).maintenanceInvoiceService.submitInvoice(vendorCtx, created.data.mruid, {
         amount: 30000,
         description: 'Fixed the issue',
       });
 
-      const result = await (service as any).reviewInvoice(managerCtx, created.data.mruid, {
+      const result = await (service as any).maintenanceInvoiceService.reviewInvoice(managerCtx, created.data.mruid, {
         action: 'approve',
         isBillable: true,
       });
@@ -826,12 +837,12 @@ describe('MaintenanceRequestService', () => {
       });
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
+      await (service as any).maintenanceInvoiceService.submitInvoice(vendorCtx, created.data.mruid, {
         amount: 90000,
         description: 'Extensive electrical work',
       });
 
-      const result = await (service as any).reviewInvoice(managerCtx, created.data.mruid, {
+      const result = await (service as any).maintenanceInvoiceService.reviewInvoice(managerCtx, created.data.mruid, {
         action: 'reject',
         rejectionReason: 'Amount exceeds pre-approved budget',
       });
@@ -865,7 +876,7 @@ describe('MaintenanceRequestService', () => {
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
 
-      const invoiceResult = await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
+      const invoiceResult = await (service as any).maintenanceInvoiceService.submitInvoice(vendorCtx, created.data.mruid, {
         amount: 25000, // $250 in cents
         currency: 'usd',
         description: 'Fixed the plumbing issue',
@@ -874,7 +885,7 @@ describe('MaintenanceRequestService', () => {
       expect(invoiceResult.success).toBe(true);
       expect(invoiceResult.data.status).toBe(InvoiceStatus.PENDING);
 
-      const approveResult = await (service as any).approveInvoice(managerCtx, created.data.mruid);
+      const approveResult = await (service as any).maintenanceInvoiceService.approveInvoice(managerCtx, created.data.mruid);
 
       expect(approveResult.success).toBe(true);
       expect(approveResult.data.status).toBe(InvoiceStatus.APPROVED);
@@ -901,12 +912,12 @@ describe('MaintenanceRequestService', () => {
       });
       await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
       await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
-      await (service as any).submitInvoice(vendorCtx, created.data.mruid, {
+      await (service as any).maintenanceInvoiceService.submitInvoice(vendorCtx, created.data.mruid, {
         amount: 75000,
         description: 'Electrical repairs',
       });
 
-      const result = await (service as any).rejectInvoice(managerCtx, created.data.mruid, {
+      const result = await (service as any).maintenanceInvoiceService.rejectInvoice(managerCtx, created.data.mruid, {
         rejectionReason: 'Amount is higher than the pre-approved estimate',
       });
 

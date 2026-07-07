@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { ROLES } from '@shared/constants/roles.constants';
 import { UserController } from '@controllers/UserController';
 import { DSARController } from '@controllers/DSARController';
 import { ClientController } from '@controllers/ClientController';
@@ -21,6 +22,7 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  requireRole,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -414,6 +416,7 @@ router.post(
   '/:cuid/initialize-queues',
   basicLimiter(),
   isAuthenticated,
+  requireRole([ROLES.SUPER_ADMIN]),
   validateRequest({
     params: UtilsValidations.cuid,
   }),

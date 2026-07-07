@@ -13,8 +13,13 @@ import { LanguageService } from '@shared/languages/language.service';
 import { ITenantFeatureSettings } from '@interfaces/client.interface';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { PermissionService } from '@services/permission/permission.service';
-import { InvalidRequestError, UnauthorizedError, ForbiddenError } from '@shared/customErrors';
 import { extractMulterFiles, generateShortUID, JWT_KEY_NAMES, createLogger } from '@utils/index';
+import {
+  ServiceUnavailableError,
+  InvalidRequestError,
+  UnauthorizedError,
+  ForbiddenError,
+} from '@shared/customErrors';
 import {
   RateLimitOptions,
   IPermissionCheck,
@@ -437,7 +442,11 @@ export const subscriptionEntitlements = async (
     next();
   } catch (error) {
     logger.error('Error in subscriptionEntitlements middleware:', error);
-    next();
+    next(
+      new ServiceUnavailableError({
+        message: 'Subscription service is temporarily unavailable. Please try again.',
+      })
+    );
   }
 };
 
@@ -634,7 +643,11 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
 export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
   const entitlements = req.context?.entitlements;
   if (!entitlements) {
-    return next();
+    return next(
+      new ServiceUnavailableError({
+        message: 'Unable to verify subscription status. Please try again.',
+      })
+    );
   }
   const { status } = entitlements.plan;
   if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {

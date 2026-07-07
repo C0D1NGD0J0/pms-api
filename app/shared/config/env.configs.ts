@@ -150,12 +150,18 @@ class EnvVariables {
       TEST_URL: process.env.TEST_DB_URL || '',
       DEV_URL: process.env.DEV_DB_URL || process.env.DATABASE_URL || '',
     };
+    if (!process.env.JWT_SECRET) {
+      throw new Error('FATAL: JWT_SECRET environment variable is required but not set.');
+    }
+    if (!process.env.JWT_REFRESH_SECRET) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET environment variable is required but not set.');
+    }
     this.JWT = {
-      EXPIREIN: process.env.JWT_EXPIREIN || '',
-      SECRET: process.env.JWT_SECRET || '',
+      EXPIREIN: process.env.JWT_EXPIREIN || '15m',
+      SECRET: process.env.JWT_SECRET,
       REFRESH: {
-        EXPIRESIN: process.env.JWT_REFRESH_EXPIRESIN || '',
-        SECRET: process.env.JWT_REFRESH_SECRET || '',
+        EXPIRESIN: process.env.JWT_REFRESH_EXPIRESIN || '7d',
+        SECRET: process.env.JWT_REFRESH_SECRET,
       },
       EXTENDED_ACCESS_TOKEN_EXPIRY: process.env.JWT_EXTENDED_EXPIRY || '',
       EXTENDED_REFRESH_TOKEN_EXPIRY: process.env.JWT_EXTENDED_REFRESH_TOKEN_EXPIRY || '',

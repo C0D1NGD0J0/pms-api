@@ -15,15 +15,18 @@ import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { DatabaseService, RedisService } from '@database/index';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
   scopedMiddleware,
   setUserLanguage,
+  isAuthenticated,
   contextBuilder,
   detectLanguage,
   requestLogger,
+  requireRole,
 } from '@shared/middlewares';
 
 export interface IAppSetup {
@@ -143,16 +146,22 @@ export class App implements IAppSetup {
           uptime: process.uptime(),
           message: 'Health check failed',
           timestamp: Date.now(),
-          database: 'Unknown',
-          error: error.message,
-          redis: 'Unknown',
         });
       }
     });
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { serverAdapter } = require('@queues/index');
-      app.use(`${this.BASE_PATH}/queues`, serverAdapter.getRouter());
+      if (process.env.NODE_ENV === 'development') {
+        app.use(`${this.BASE_PATH}/queues`, serverAdapter.getRouter());
+      } else {
+        app.use(
+          `${this.BASE_PATH}/queues`,
+          isAuthenticated,
+          requireRole([IUserRole.SUPER_ADMIN]),
+          serverAdapter.getRouter()
+        );
+      }
     }
     app.use(`${this.BASE_PATH}/admin`, routes.adminRoutes);
     app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);

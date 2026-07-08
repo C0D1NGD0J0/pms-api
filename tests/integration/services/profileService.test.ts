@@ -592,6 +592,7 @@ describe('ProfileService Integration Tests - Read Operations', () => {
         propertyUpdates: true,
         emailNotifications: true,
         inAppNotifications: true,
+        smsNotifications: false,
         emailFrequency: 'immediate',
       });
     });

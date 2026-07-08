@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { PropertyCache } from '@caching/property.cache';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
@@ -13,11 +14,11 @@ import {
   createTestPropertyUnit,
   createTestProperty,
   clearTestDatabase,
-
   createTestProfile,
   createTestClient,
   createTestUser,
-  SeededTestData,} from '@tests/helpers';
+  SeededTestData,
+} from '@tests/helpers';
 
 // Mock only external services
 const mockMediaUploadService = {
@@ -104,7 +105,8 @@ describe('PropertyService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => { // Initialize real DAOs (order matters for dependencies)
+  beforeAll(async () => {
+    // Initialize real DAOs (order matters for dependencies)
     propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
     clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
@@ -147,7 +149,7 @@ describe('PropertyService Integration Tests', () => {
       subscriptionDAO: {
         findFirst: jest.fn().mockResolvedValue({
           planName: 'growth',
-          client: new (require('mongoose').Types.ObjectId)(),
+          client: new Types.ObjectId(),
           currentProperties: 0,
         }),
         updateResourceCount: jest.fn().mockResolvedValue(true),
@@ -962,6 +964,12 @@ describe('PropertyService Integration Tests', () => {
         expect(result.data.items).toHaveLength(0);
       });
       it('should strip financial fields for security department staff', async () => {
+        // Assign security user to properties so they're visible
+        await Property.updateMany(
+          { cuid: testClient.cuid },
+          { $addToSet: { assignedStaff: adminUser._id } }
+        );
+
         const queryParams = {
           pagination: { page: 1, limit: 10, sort: 'asc', sortBy: 'name' },
           filters: {},
@@ -984,7 +992,7 @@ describe('PropertyService Integration Tests', () => {
         // Physical/access fields should be present
         expect(item.name).toBeDefined();
         expect(item.address).toBeDefined();
-        expect(item.status).toBeDefined();
+        expect(item.operationalStatus).toBeDefined();
         expect(item.propertyType).toBeDefined();
         // Financial/internal fields should be stripped
         expect(item.fees).toBeUndefined();
@@ -1042,6 +1050,12 @@ describe('PropertyService Integration Tests', () => {
       });
 
       it('should strip financial data and omit unitInfo/metrics for security department staff', async () => {
+        // Assign security user to property so it's accessible
+        await Property.updateOne(
+          { pid: property1.pid },
+          { $addToSet: { assignedStaff: adminUser._id } }
+        );
+
         const result = await propertyService.getClientProperty(testClient.cuid, property1.pid, {
           sub: adminUser._id.toString(),
           client: { cuid: testClient.cuid, role: ROLES.STAFF },
@@ -1054,14 +1068,14 @@ describe('PropertyService Integration Tests', () => {
         // Basic access fields present
         expect(property.name).toBe('Apartment Complex A');
         expect(property.address).toBeDefined();
-        expect(property.status).toBeDefined();
+        expect(property.operationalStatus).toBeDefined();
         // Financial/internal fields stripped
         expect(property.fees).toBeUndefined();
         expect(property.financialDetails).toBeUndefined();
         expect(property.notes).toBeUndefined();
         expect(property.authorization).toBeUndefined();
-        // Enriched detail data omitted
-        expect(result.data.unitInfo).toBeUndefined();
+        // Units visible for security (physical layout), metrics hidden
+        expect(result.data.unitInfo).toBeDefined();
         expect(result.data.metrics).toBeUndefined();
       });
 

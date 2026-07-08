@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import request from 'supertest';
 import { Types } from 'mongoose';
+import { asValue } from 'awilix';
 import { Application } from 'express';
+import { container } from '@di/index';
+import GuestPassModel from '@models/guestPass/guestpass.model';
 import { ROLES } from '@shared/constants/roles.constants';
-import { Subscription, Property, Lease } from '@models/index';
+import { Subscription, Property, PropertyUnit, Lease } from '@models/index';
 import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
@@ -71,6 +74,10 @@ describe('LeaseController Integration Tests', () => {
     // Ensure Lease model indexes are built
     await Lease.init();
     await Property.init();
+
+    // Register GuestPassModel (capital M) — the DAO constructor destructures { GuestPassModel }
+    // but registerResources registers it as guestPassModel (lowercase m).
+    container.register({ GuestPassModel: asValue(GuestPassModel) });
 
     app = createTestApp();
 
@@ -143,6 +150,8 @@ describe('LeaseController Integration Tests', () => {
   beforeEach(async () => {
     // Clear only leases to maintain test users/properties
     await Lease.deleteMany({});
+    // Reset unit status so subsequent lease-create tests don't fail with "occupied"
+    await PropertyUnit.updateMany({}, { $set: { status: 'available' } });
   });
 
   describe('POST /api/v1/leases/:cuid - Create Lease', () => {
@@ -1026,12 +1035,14 @@ describe('LeaseController Integration Tests', () => {
     });
 
     it('should terminate an ACTIVE lease successfully', async () => {
+      // terminationDate must be at least 30 days from now to satisfy notice period validation
+      const terminationDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const response = await request(app)
         .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/terminate`)
         .set('Cookie', authCookie(managerToken))
         .set('idempotency-key', `terminate-${Date.now()}`)
         .send({
-          terminationDate: new Date('2026-06-01'),
+          terminationDate,
           terminationReason: 'Tenant request to end the lease early',
         });
 
@@ -1157,6 +1168,8 @@ describe('LeaseController Integration Tests', () => {
     let testLease: any;
 
     beforeEach(async () => {
+      // endDate must be within 30 days from now so the renewal window is open
+      const endDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000); // 20 days from now
       testLease = await Lease.create({
         luid: `lease-renew-${Date.now()}`,
         cuid: testClient.cuid,
@@ -1169,7 +1182,7 @@ describe('LeaseController Integration Tests', () => {
         },
         duration: {
           startDate: new Date('2025-01-01'),
-          endDate: new Date('2026-12-31'),
+          endDate,
         },
         fees: {
           rentAmount: 150000,
@@ -1192,10 +1205,13 @@ describe('LeaseController Integration Tests', () => {
     });
 
     it('should initiate lease renewal successfully', async () => {
+      // Renewal period starts after the current lease ends
+      const renewalStart = new Date(Date.now() + 25 * 24 * 60 * 60 * 1000);
+      const renewalEnd = new Date(Date.now() + 390 * 24 * 60 * 60 * 1000);
       const renewalData = {
         duration: {
-          startDate: new Date('2027-01-01'),
-          endDate: new Date('2028-01-01'),
+          startDate: renewalStart,
+          endDate: renewalEnd,
         },
         fees: {
           rentAmount: 1600,
@@ -1206,13 +1222,14 @@ describe('LeaseController Integration Tests', () => {
         },
       };
 
+      // Lease renewal route requires ADMIN or SUPER_ADMIN role
       const response = await request(app)
         .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/lease_renewal`)
-        .set('Cookie', authCookie(managerToken))
+        .set('Cookie', authCookie(adminToken))
         .set('idempotency-key', `renewal-${Date.now()}`)
-        .send(renewalData)
-        .expect(200);
+        .send(renewalData);
 
+      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.data).toBeDefined();
       expect(response.body.message).toContain('renewal');
@@ -1343,9 +1360,9 @@ describe('LeaseController Integration Tests', () => {
         .post(`/api/v1/leases/${testClient.cuid}`)
         .set('Cookie', authCookie(managerToken))
         .set('idempotency-key', `create-with-notes-${Date.now()}`)
-        .send(leaseData)
-        .expect(200);
+        .send(leaseData);
 
+      expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.data.data.internalNotes).toBeDefined();
       expect(response.body.data.data.internalNotes).toHaveLength(1);

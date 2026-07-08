@@ -11,6 +11,7 @@ import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
+import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
@@ -90,10 +91,26 @@ describe('PaymentController Integration Tests', () => {
     const leaseDAO = new LeaseDAO({ leaseModel: Lease });
     const userDAO = new UserDAO({ userModel: User });
     const emitterService = { emit: jest.fn(), on: jest.fn() } as any;
-    const subscriptionPlanConfig = {} as any;
+    const subscriptionPlanConfig = { getTransactionFeePercent: jest.fn().mockReturnValue(0) } as any;
     const queueFactory = { getQueue: jest.fn() } as any;
     const invoiceDAO = {} as any;
     const stripeService = {} as any;
+
+    const maintenancePaymentService = new MaintenancePaymentService({
+      subscriptionPlanConfig,
+      paymentGatewayService: mockPaymentGatewayService,
+      paymentProcessorDAO,
+      emitterService,
+      subscriptionDAO,
+      smsService: {} as any,
+      invoiceDAO,
+      profileDAO,
+      paymentDAO,
+      clientDAO,
+      vendorDAO: {} as any,
+      leaseDAO,
+      userDAO,
+    });
 
     const rentPaymentService = new RentPaymentService({
       subscriptionPlanConfig,
@@ -112,7 +129,7 @@ describe('PaymentController Integration Tests', () => {
     });
 
     const paymentService = new PaymentService({
-      maintenancePaymentService: {} as any,
+      maintenancePaymentService,
       paymentWebhookService: {} as any,
       payoutAccountService: {} as any,
       paymentCronService: {} as any,

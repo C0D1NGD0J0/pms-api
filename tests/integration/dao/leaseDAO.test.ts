@@ -126,6 +126,8 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment' as const,
         leaseNumber: 'L2024-001',
+        tenantId: testTenantId,
+        createdBy: testCreatorId,
         tenantInfo: { id: testTenantId.toString() },
         property: {
           id: testPropertyId,
@@ -161,6 +163,8 @@ describe('LeaseDAO Integration Tests', () => {
         type: LeaseType.FIXED_TERM,
         templateType: 'residential-apartment' as const,
         leaseNumber: 'L2024-002',
+        tenantId: testTenantId,
+        createdBy: testCreatorId,
         tenantInfo: { id: testTenantId.toString() },
         property: {
           id: testPropertyId,

@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { clearTestDatabase } from '@tests/helpers';
-import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import InvoiceModel from '@models/invoice/invoice.model';
+import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { MaintenanceRequest as MaintenanceRequestModel } from '@models/index';
 import {
   MaintenanceRequestPriority,

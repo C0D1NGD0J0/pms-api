@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Request } from 'express';
 import { envVariables } from '@shared/config';
 import { TokenType } from '@interfaces/utils.interface';
+import { UnauthorizedError } from '@shared/customErrors';
 import { JWT_KEY_NAMES, createLogger } from '@utils/index';
 import jwt, { SignOptions, JwtPayload } from 'jsonwebtoken';
 
@@ -79,7 +80,7 @@ export class AuthTokenService {
       };
     } catch (error) {
       this.logger.error('JWT verification failed: ', (error as Error).message);
-      throw error;
+      throw new UnauthorizedError({ message: 'Session expired.' });
     }
   }
 

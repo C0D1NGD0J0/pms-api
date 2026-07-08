@@ -28,6 +28,13 @@ jest.mock('@utils/index', () => ({
     ACCESS_TOKEN: 'accessToken',
     REFRESH_TOKEN: 'refreshToken',
   },
+  httpStatusCodes: {
+    OK: 200,
+    UNAUTHORIZED: 401,
+    FORBIDDEN: 403,
+    NOT_FOUND: 404,
+    INTERNAL_SERVER: 500,
+  },
   createLogger: jest.fn(() => ({
     error: jest.fn(),
     info: jest.fn(),
@@ -152,7 +159,7 @@ describe('AuthTokenService', () => {
 
       // Act & Assert
       await expect(authTokenService.verifyJwtToken('accessToken', mockToken)).rejects.toThrow(
-        'Token expired'
+        'Session expired.'
       );
     });
 

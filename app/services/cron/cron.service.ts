@@ -34,6 +34,7 @@ export class CronService {
   private log: Logger;
   private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
+  private aborted = false;
 
   constructor({
     queueFactory,
@@ -76,6 +77,11 @@ export class CronService {
    */
   private async registerAllCronJobs(services: ICronProvider[]): Promise<void> {
     for (const service of services) {
+      if (this.aborted) {
+        this.log.info('CronService: aborting registration — shutdown in progress');
+        return;
+      }
+
       const serviceName = service.constructor.name;
 
       try {
@@ -133,6 +139,10 @@ export class CronService {
     const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
     const registeredJobNames = Array.from(this.cronJobs.keys());
     await cronQueue.removeUnregisteredRepeatJobs(registeredJobNames);
+  }
+
+  destroy(): void {
+    this.aborted = true;
   }
 
   getJobHandler(jobName: string): (() => Promise<void>) | undefined {

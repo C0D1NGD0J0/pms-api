@@ -11,8 +11,8 @@ import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
-import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 import {

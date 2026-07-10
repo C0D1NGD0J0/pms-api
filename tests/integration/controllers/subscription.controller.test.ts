@@ -1,13 +1,13 @@
 import request from 'supertest';
 import { Types } from 'mongoose';
 import cookieParser from 'cookie-parser';
+import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
+import { Client, User } from '@models/index';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
-import { ClientDAO } from '@dao/clientDAO';
-import { Client, User } from '@models/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';

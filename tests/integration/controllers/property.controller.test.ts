@@ -4,8 +4,8 @@ import request from 'supertest';
 import cookieParser from 'cookie-parser';
 import { envVariables } from '@shared/config';
 import { ROLES } from '@shared/constants/roles.constants';
-import { PropertyUnit, Property, Lease, Subscription } from '@models/index';
 import { clearTestDatabase } from '@tests/setup/testDatabase';
+import { PropertyUnit, Subscription, Property, Lease } from '@models/index';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import express, { NextFunction, Application, Response, Request } from 'express';
 import {

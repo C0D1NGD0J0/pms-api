@@ -4,10 +4,10 @@ import { ForbiddenError } from '@shared/customErrors';
 import {
   resolveHighestRole,
   ROLE_PRIORITY,
-  ROLES,
-  IUserRole,
   ROLE_GROUPS,
   RoleHelpers,
+  IUserRole,
+  ROLES,
 } from '@shared/constants/roles.constants';
 
 describe('resolveHighestRole', () => {

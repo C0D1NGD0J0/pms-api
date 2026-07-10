@@ -4,9 +4,9 @@ import { Types } from 'mongoose';
 import { asValue } from 'awilix';
 import { Application } from 'express';
 import { container } from '@di/index';
-import GuestPassModel from '@models/guestPass/guestpass.model';
 import { ROLES } from '@shared/constants/roles.constants';
-import { Subscription, Property, PropertyUnit, Lease } from '@models/index';
+import GuestPassModel from '@models/guestPass/guestpass.model';
+import { Subscription, PropertyUnit, Property, Lease } from '@models/index';
 import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 

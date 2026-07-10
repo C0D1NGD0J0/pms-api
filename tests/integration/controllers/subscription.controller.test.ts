@@ -1,9 +1,7 @@
 import request from 'supertest';
 import { Types } from 'mongoose';
 import cookieParser from 'cookie-parser';
-import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
-import { Client, User } from '@models/index';
 import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { clearTestDatabase } from '@tests/helpers';

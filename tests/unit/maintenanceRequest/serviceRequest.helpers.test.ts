@@ -16,7 +16,7 @@ const mockDAO = {
   getByMruid: jest.fn(),
 } as any;
 
-const mockUserDAO = {
+const _mockUserDAO = {
   findFirst: jest.fn(),
 } as any;
 

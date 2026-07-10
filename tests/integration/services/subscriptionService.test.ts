@@ -772,7 +772,7 @@ describe('SubscriptionService Integration Tests', () => {
   describe('initSubscriptionPayment', () => {
     it('should create checkout session for pending_payment subscription', async () => {
       const client = new Types.ObjectId();
-      const subscription = await Subscription.create({
+      const _subscription = await Subscription.create({
         cuid: 'client-payment',
         suid: 'suid-payment',
         client,

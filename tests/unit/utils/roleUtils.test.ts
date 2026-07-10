@@ -1,7 +1,14 @@
 import { Types } from 'mongoose';
 import { preventTenantConflict } from '@utils/index';
 import { ForbiddenError } from '@shared/customErrors';
-import { resolveHighestRole, ROLE_PRIORITY } from '@shared/constants/roles.constants';
+import {
+  resolveHighestRole,
+  ROLE_PRIORITY,
+  ROLES,
+  IUserRole,
+  ROLE_GROUPS,
+  RoleHelpers,
+} from '@shared/constants/roles.constants';
 
 describe('resolveHighestRole', () => {
   it('returns the single role when the array has one entry', () => {
@@ -35,6 +42,52 @@ describe('resolveHighestRole', () => {
     expect(ROLE_PRIORITY.indexOf('manager')).toBeLessThan(ROLE_PRIORITY.indexOf('staff'));
     expect(ROLE_PRIORITY.indexOf('staff')).toBeLessThan(ROLE_PRIORITY.indexOf('tenant'));
     expect(ROLE_PRIORITY.indexOf('tenant')).toBeLessThan(ROLE_PRIORITY.indexOf('vendor'));
+  });
+
+  it('root-admin is at index 0 (highest priority)', () => {
+    expect(ROLE_PRIORITY[0]).toBe('root-admin');
+  });
+
+  it('returns root-admin when present alongside admin', () => {
+    expect(resolveHighestRole(['root-admin', 'admin'])).toBe('root-admin');
+  });
+
+  it('returns root-admin when present alongside super-admin', () => {
+    expect(resolveHighestRole(['super-admin', 'root-admin'])).toBe('root-admin');
+  });
+});
+
+describe('IUserRole enum and ROLES constants', () => {
+  it('IUserRole.ROOT_ADMIN equals "root-admin"', () => {
+    expect(IUserRole.ROOT_ADMIN).toBe('root-admin');
+  });
+
+  it('ROLES.ROOT_ADMIN equals "root-admin"', () => {
+    expect(ROLES.ROOT_ADMIN).toBe('root-admin');
+  });
+});
+
+describe('ROLE_GROUPS', () => {
+  it('BILLING_ROLES includes ROOT_ADMIN', () => {
+    expect(ROLE_GROUPS.BILLING_ROLES).toContain('root-admin');
+  });
+
+  it('BILLING_ROLES includes SUPER_ADMIN', () => {
+    expect(ROLE_GROUPS.BILLING_ROLES).toContain('super-admin');
+  });
+});
+
+describe('RoleHelpers', () => {
+  it('isValidRole returns true for root-admin', () => {
+    expect(RoleHelpers.isValidRole('root-admin')).toBe(true);
+  });
+
+  it('isValidRole returns false for an unknown role', () => {
+    expect(RoleHelpers.isValidRole('made-up-role')).toBe(false);
+  });
+
+  it('getAllRoles includes root-admin', () => {
+    expect(RoleHelpers.getAllRoles()).toContain('root-admin');
   });
 });
 

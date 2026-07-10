@@ -1,7 +1,6 @@
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { PaymentValidations } from '@shared/validations';
-import { ROLES } from '@shared/constants/roles.constants';
 import { PaymentController } from '@controllers/PaymentController';
 import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
@@ -12,7 +11,6 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
-  requireRole,
   idempotency,
   diskUpload,
   scanFile,
@@ -321,19 +319,5 @@ router.patch(
     return controller.updatePayoutSchedule(req, res);
   })
 );
-
-// ── Dev-only: manually trigger cron handlers ──────────────────────────────────
-if (process.env.NODE_ENV !== 'production') {
-  router.post(
-    '/:cuid/dev/trigger-cron/:jobName',
-    isAuthenticated,
-    requireRole([ROLES.SUPER_ADMIN]),
-    validateRequest({ params: UtilsValidations.cuid.passthrough() }),
-    asyncWrapper((req, res) => {
-      const controller = req.container.resolve<PaymentController>('paymentController');
-      return controller.triggerCronJob(req, res);
-    })
-  );
-}
 
 export default router;

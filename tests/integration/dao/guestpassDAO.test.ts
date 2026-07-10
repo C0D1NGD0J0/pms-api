@@ -16,7 +16,7 @@ describe('GuestPassDAO Integration Tests', () => {
   let propertyId2: Types.ObjectId;
 
   beforeAll(async () => {
-    dao = new GuestPassDAO({ GuestPassModel });
+    dao = new GuestPassDAO({ guestPassModel: GuestPassModel });
   });
 
   beforeEach(async () => {

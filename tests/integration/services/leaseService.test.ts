@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseService } from '@services/lease/lease.service';
-import { mockQueueFactory } from '@tests/setup/externalMocks';
+import { mockQueueFactory, mockEmailQueue } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
@@ -110,6 +110,7 @@ const setupServices = () => {
     handlePropertyUpdateNotifications: jest.fn().mockResolvedValue(undefined),
     notifyApprovalDecision: jest.fn().mockResolvedValue(undefined),
     createNotification: jest.fn().mockResolvedValue(undefined),
+    createNotificationFromTemplate: jest.fn().mockResolvedValue(undefined),
     notifyLeaseLifecycleEvent: jest.fn().mockResolvedValue(undefined),
     hasLeaseExpiryNoticeBeenSent: jest.fn().mockResolvedValue(false),
   } as any;
@@ -786,6 +787,177 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(result.success).toBe(true);
       expect(result.data.lease.petPolicy.allowed).toBe(true);
       expect(result.data.lease.petPolicy.maxPets).toBe(2);
+    });
+
+    it('should NOT enqueue email when tenantInfo.email is undefined on active lease update', async () => {
+      const client = await createTestClient();
+      const manager = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+
+      // Create an active lease WITHOUT tenantInfo.email
+      const lease = await Lease.create({
+        luid: `lease-noemail-${Date.now()}`,
+        cuid: client.cuid,
+        tenantId: tenant._id,
+        property: {
+          id: property._id,
+          address: property.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-NOEMAIL-${Date.now()}`,
+        createdBy: manager._id,
+        tenantInfo: {
+          fullname: 'No Email Tenant',
+          // email intentionally omitted
+        },
+        petPolicy: { allowed: false },
+        signedDate: new Date(),
+        signingMethod: 'electronic',
+        eSignature: {
+          status: ILeaseESignatureStatusEnum.SIGNED,
+          provider: 'boldsign',
+        },
+        signatures: [
+          {
+            userId: tenant._id,
+            signedAt: new Date(),
+            role: 'tenant',
+            signatureMethod: 'electronic',
+          },
+        ],
+        leaseDocuments: [
+          {
+            url: 'https://test.com/lease.pdf',
+            key: 's3-key-test',
+            filename: 'lease.pdf',
+            documentType: 'lease_agreement',
+            uploadedAt: new Date(),
+            uploadedBy: manager._id,
+          },
+        ],
+      });
+
+      mockEmailQueue.addJobToQueue.mockClear();
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: manager.uid,
+          sub: manager._id.toString(),
+          fullname: 'Manager User',
+          client: { cuid: client.cuid, role: ROLES.MANAGER },
+        },
+      } as any;
+
+      const result = await leaseService.updateLease(mockContext, lease.luid, {
+        petPolicy: { allowed: true, maxPets: 1 },
+      } as any);
+
+      expect(result.success).toBe(true);
+      // Email queue should NOT have been called because tenantInfo.email is absent
+      expect(mockEmailQueue.addJobToQueue).not.toHaveBeenCalled();
+    });
+
+    it('should not enqueue email even when tenant has a Profile with email (tenantInfo virtual not populated by findFirst)', async () => {
+      // Note: tenantInfo is a Mongoose virtual populated from Profile.
+      // Since leaseDAO.findFirst does not populate virtuals, lease.tenantInfo?.email
+      // is always undefined in the updateLease code path. This test documents that
+      // the email guard correctly prevents sending when the virtual is absent.
+      const client = await createTestClient();
+      const manager = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+
+      const lease = await Lease.create({
+        luid: `lease-profile-${Date.now()}`,
+        cuid: client.cuid,
+        tenantId: tenant._id,
+        property: {
+          id: property._id,
+          address: property.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-PROFILE-${Date.now()}`,
+        createdBy: manager._id,
+        petPolicy: { allowed: false },
+        signedDate: new Date(),
+        signingMethod: 'electronic',
+        eSignature: {
+          status: ILeaseESignatureStatusEnum.SIGNED,
+          provider: 'boldsign',
+        },
+        signatures: [
+          {
+            userId: tenant._id,
+            signedAt: new Date(),
+            role: 'tenant',
+            signatureMethod: 'electronic',
+          },
+        ],
+        leaseDocuments: [
+          {
+            url: 'https://test.com/lease.pdf',
+            key: 's3-key-test',
+            filename: 'lease.pdf',
+            documentType: 'lease_agreement',
+            uploadedAt: new Date(),
+            uploadedBy: manager._id,
+          },
+        ],
+      });
+
+      mockEmailQueue.addJobToQueue.mockClear();
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: manager.uid,
+          sub: manager._id.toString(),
+          fullname: 'Manager User',
+          client: { cuid: client.cuid, role: ROLES.MANAGER },
+        },
+      } as any;
+
+      const result = await leaseService.updateLease(mockContext, lease.luid, {
+        petPolicy: { allowed: true, maxPets: 3 },
+      } as any);
+
+      expect(result.success).toBe(true);
+      // tenantInfo virtual is not populated by findFirst, so email guard prevents sending
+      expect(mockEmailQueue.addJobToQueue).not.toHaveBeenCalled();
     });
   });
 

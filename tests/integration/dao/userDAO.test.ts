@@ -258,9 +258,12 @@ describe('UserDAO Integration Tests', () => {
         createdBy: testTenantId,
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved' as const,
-        type: 'fixed_term' as const,
+        type: 'fixed_term' as any,
         signingMethod: 'manual' as const,
         templateType: 'residential-apartment' as const,
+        signedDate: new Date(),
+        signatures: [{ userId: testTenantId, signedAt: new Date(), role: 'tenant' as const, signatureMethod: 'manual' as const }],
+        leaseDocuments: [{ documentType: 'lease_agreement' as const, url: 'https://example.com/doc.pdf', uploadedAt: new Date(), uploadedBy: testTenantId, filename: 'lease.pdf', key: 'leases/lease.pdf' }],
         property: {
           id: new Types.ObjectId(),
           address: '123 Test St',

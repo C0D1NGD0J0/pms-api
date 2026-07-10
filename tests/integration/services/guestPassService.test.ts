@@ -31,7 +31,7 @@ const setupService = () => {
   const propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
   const propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
   const leaseDAO = new LeaseDAO({ leaseModel: Lease });
-  const guestPassDAO = new GuestPassDAO({ GuestPassModel });
+  const guestPassDAO = new GuestPassDAO({ guestPassModel: GuestPassModel });
   const eventsRegistry = {
     trackEvent: jest.fn().mockResolvedValue(undefined),
     getEventLog: jest.fn().mockResolvedValue([]),

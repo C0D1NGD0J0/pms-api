@@ -403,15 +403,23 @@ export class SMSService implements ICronProvider {
       return { success: false, used: 0, limit: 0, remaining: 0 };
     }
 
-    // Lazy-init: if smsUsage subdoc doesn't exist on pre-existing subscriptions,
+    // Lazy-init: if smsUsage subdoc doesn't exist or countThisPeriod is missing,
     // initialize it before attempting the atomic increment
     if (subscription.smsUsage?.countThisPeriod === undefined) {
       await this.subscriptionDAO.update(
-        { cuid, smsUsage: { $exists: false } },
+        {
+          cuid,
+          $or: [
+            { smsUsage: { $exists: false } },
+            { smsUsage: null },
+            { 'smsUsage.countThisPeriod': { $exists: false } },
+          ],
+        },
         {
           $set: {
             'smsUsage.countThisPeriod': 0,
             'smsUsage.periodStart': new Date(),
+            'smsUsage.lastResetAt': new Date(),
             'smsUsage.notifiedAt80': false,
             'smsUsage.notifiedAt100': false,
           },

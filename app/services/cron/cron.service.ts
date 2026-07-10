@@ -131,6 +131,8 @@ export class CronService {
         },
         jobId: `cron:${cronJob.name}`, // Prevent duplicates
         timeout: cronJob.timeout || 300000, // 5 min default
+        removeOnComplete: { age: 600, count: 10 },
+        removeOnFail: { age: 3600, count: 20 },
       }
     );
   }

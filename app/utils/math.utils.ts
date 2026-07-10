@@ -12,14 +12,14 @@ export const calcOccupancyRate = (occupied: number, total: number): number =>
 export const calcCollectionRate = (collected: number, expected: number): number =>
   calcPercentage(collected, expected);
 
-/** Raw ms diff → whole days (ceiling). */
-export const msToDays = (ms: number): number => Math.ceil(ms / (1000 * 60 * 60 * 24));
+/** Raw ms diff → whole days (floor — a partial day is not a full day late). */
+export const msToDays = (ms: number): number => Math.floor(ms / (1000 * 60 * 60 * 24));
 
 export const calcDaysRemaining = (futureDate: Date, from = new Date()): number =>
   Math.max(0, Math.ceil(dayjs(futureDate).diff(dayjs(from), 'day', true)));
 
 export const calcDaysElapsed = (pastDate: Date, from = new Date()): number =>
-  Math.max(0, Math.ceil(dayjs(from).diff(dayjs(pastDate), 'day', true)));
+  Math.max(0, Math.floor(dayjs(from).diff(dayjs(pastDate), 'day', true)));
 
 export const calcLeaseProgress = (elapsed: number, remaining: number): number =>
   calcPercentage(elapsed, elapsed + remaining);

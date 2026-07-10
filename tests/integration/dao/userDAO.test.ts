@@ -115,12 +115,13 @@ describe('UserDAO Integration Tests', () => {
         password: 'hashed',
         isActive: true,
         activecuid: testCuid,
-        cuids: [],
+        cuids: [{ cuid: testCuid, roles: ['tenant'], isConnected: true }],
       });
 
       // Create test profile
       await Profile.create({
         _id: testProfileId,
+        puid: `puid-user-test-${Date.now()}`,
         user: testTenantId,
         personalInfo: {
           firstName: 'Test',
@@ -254,7 +255,15 @@ describe('UserDAO Integration Tests', () => {
         luid: 'LEASE_001',
         leaseNumber: 'L2024-001',
         tenantId: testTenantId,
+        createdBy: testTenantId,
         status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved' as const,
+        type: 'fixed_term' as any,
+        signingMethod: 'manual' as const,
+        templateType: 'residential-apartment' as const,
+        signedDate: new Date(),
+        signatures: [{ userId: testTenantId, signedAt: new Date(), role: 'tenant' as const, signatureMethod: 'manual' as const }],
+        leaseDocuments: [{ documentType: 'lease_agreement' as const, url: 'https://example.com/doc.pdf', uploadedAt: new Date(), uploadedBy: testTenantId, filename: 'lease.pdf', key: 'leases/lease.pdf' }],
         property: {
           id: new Types.ObjectId(),
           address: '123 Test St',
@@ -262,6 +271,7 @@ describe('UserDAO Integration Tests', () => {
         },
         fees: {
           rentAmount: 200000,
+          acceptedPaymentMethod: 'e-transfer' as const,
         },
         duration: {
           startDate: new Date('2024-01-01'),

@@ -329,6 +329,20 @@ const SYNC_RULES: SyncRule[] = [
     filter: { 'settings.theme': { $exists: false } },
     update: { 'settings.theme': 'light' },
   },
+  {
+    label: 'subscription.smsUsage',
+    collection: 'subscriptions',
+    filter: { smsUsage: { $exists: false } },
+    update: {
+      smsUsage: {
+        countThisPeriod: 0,
+        periodStart: new Date(),
+        lastResetAt: null,
+        notifiedAt80: false,
+        notifiedAt100: false,
+      },
+    },
+  },
 ];
 
 const CLEANUP_RULES: CleanupRule[] = [

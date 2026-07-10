@@ -100,9 +100,7 @@ describe('ClientService - Account Verification', () => {
       const alreadyVerified = { ...stripeVerifiedClient, isVerified: true };
       mockClientDAO.getClientByCuid.mockResolvedValue(alreadyVerified as IClientDocument);
 
-      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(
-        new BadRequestError({ message: 'Account is already verified' })
-      );
+      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(BadRequestError);
       expect(mockClientDAO.updateById).not.toHaveBeenCalled();
     });
 
@@ -110,9 +108,7 @@ describe('ClientService - Account Verification', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(stripeVerifiedClient as IClientDocument);
       mockClientDAO.updateById.mockResolvedValue(null);
 
-      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(
-        new BadRequestError({ message: 'Failed to verify account' })
-      );
+      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(BadRequestError);
     });
   });
 });

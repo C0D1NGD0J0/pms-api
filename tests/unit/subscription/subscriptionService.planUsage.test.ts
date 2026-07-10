@@ -248,7 +248,7 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         BadRequestError
       );
       await expect(subscriptionService.getSubscriptionPlanUsage(mockContext)).rejects.toThrow(
-        'Client not found'
+        'common.errors.notFound'
       );
     });
 

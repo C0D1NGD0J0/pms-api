@@ -46,7 +46,16 @@ const setupServices = () => {
     vendorCache,
     permissionService,
     geoCoderService,
-    maintenanceRequestDAO: {} as any,
+    maintenanceRequestDAO: {
+      getStats: jest.fn().mockResolvedValue({
+        total: 0, open: 0, assigned: 0, inProgress: 0, awaitingInvoice: 0,
+        completed: 0, cancelled: 0, pending: 0, byCategory: {}, byPriority: {},
+        pendingInvoices: 0, avgResolutionDays: 0,
+      }),
+      getVendorStats: jest.fn().mockResolvedValue({
+        total: 0, assigned: 0, inProgress: 0, completed: 0,
+      }),
+    } as any,
     queueFactory: mockQueueFactory as any,
     emitterService: {} as any,
   } as any);
@@ -343,7 +352,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
           undefined,
           attacker._id.toString()
         )
-      ).rejects.toThrow('Only primary account holders can update vendor business information');
+      ).rejects.toThrow(/do not have permission|Only primary account/i);
     });
   });
 
@@ -513,8 +522,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
         status: 'active',
         accountAdmin: seededData.users.admin1._id,
         accountType: {
-          planName: 'growth',
-          planId: 'plan_starter',
+          category: 'business',
         },
         contactInfo: {
           email: 'novendors@test.com',

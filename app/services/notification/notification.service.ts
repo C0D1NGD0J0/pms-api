@@ -6,7 +6,7 @@ import { NotificationCache } from '@caching/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { NotificationDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import { NotificationDAO, GuestPassDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { EventEmitterService, ProfileService, UserService, SSEService } from '@services/index';
 import { ISuccessReturnData, IPaginationQuery, ResourceContext } from '@interfaces/utils.interface';
 import {
@@ -26,6 +26,12 @@ import {
 import { INotificationContext } from './notification.types';
 import { handleLeaseActivated } from './notification.lease.handlers';
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
+import {
+  handleGuestPassValidated,
+  handleGuestPassCreated,
+  handleGuestPassRevoked,
+  handleGuestPassExpired,
+} from './notification.guestpass.handlers';
 import {
   notifyLeaseESignatureFailed as notifyLeaseESignatureFailedFn,
   notifyLeaseESignatureSent as notifyLeaseESignatureSentFn,
@@ -80,6 +86,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   notificationDAO: NotificationDAO;
   profileService: ProfileService;
+  guestPassDAO: GuestPassDAO;
   userService: UserService;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
@@ -92,6 +99,7 @@ export class NotificationService {
   private readonly notificationDAO: NotificationDAO;
   private readonly notificationCache: NotificationCache;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly guestPassDAO: GuestPassDAO;
   private readonly emitterService: EventEmitterService;
   private readonly userService: UserService;
   private readonly sseService: SSEService;
@@ -114,9 +122,11 @@ export class NotificationService {
     userService,
     sseService,
     profileService,
+    guestPassDAO,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
+    this.guestPassDAO = guestPassDAO;
     this.propertyDAO = propertyDAO;
     this.sseService = sseService;
     this.emailQueue = emailQueue;
@@ -1546,6 +1556,14 @@ export class NotificationService {
     this.emitterService.on(EventTypes.MAINTENANCE_AI_TRIAGE_COMPLETED, (p) =>
       handleAITriageCompleted(ctx, p)
     );
+
+    // Guest pass events
+    this.emitterService.on(EventTypes.GUEST_PASS_CREATED, (p) => handleGuestPassCreated(ctx, p));
+    this.emitterService.on(EventTypes.GUEST_PASS_VALIDATED, (p) =>
+      handleGuestPassValidated(ctx, p)
+    );
+    this.emitterService.on(EventTypes.GUEST_PASS_REVOKED, (p) => handleGuestPassRevoked(ctx, p));
+    this.emitterService.on(EventTypes.GUEST_PASS_EXPIRED, (p) => handleGuestPassExpired(ctx, p));
   }
 
   private buildContext(): INotificationContext {
@@ -1560,6 +1578,7 @@ export class NotificationService {
       clientDAO: this.clientDAO,
       propertyDAO: this.propertyDAO,
       maintenanceRequestDAO: this.maintenanceRequestDAO,
+      guestPassDAO: this.guestPassDAO,
       sseService: this.sseService,
       log: this.log,
     };

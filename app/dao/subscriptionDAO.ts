@@ -216,7 +216,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
             [fieldName]: { $lt: maxLimit },
           },
           { $inc: { [fieldName]: delta } },
-          { new: true },
+          { returnDocument: 'after' as const },
           session
         );
         return result;
@@ -230,7 +230,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
             [fieldName]: { $gte: Math.abs(delta) }, // Ensure current value >= amount to subtract
           },
           { $inc: { [fieldName]: delta } },
-          { new: true },
+          { returnDocument: 'after' as const },
           session
         );
         return result;
@@ -240,7 +240,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       return await this.update(
         { client: new Types.ObjectId(clientId) },
         { $inc: { [fieldName]: delta } },
-        { new: true },
+        { returnDocument: 'after' as const },
         session
       );
     } catch (error) {

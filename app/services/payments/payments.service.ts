@@ -665,13 +665,19 @@ export class PaymentService implements ICronProvider {
           // PROCESSING: charge submitted to the bank, awaiting settlement (bank transfer).
           // Treated identically to PENDING — expected but not yet collected.
           // PENDING: payment is due but not yet collected.
-          // Counts toward expectedRevenue because it is expected to be paid.
+          // If past due date, treat as overdue (cron may not have flipped status yet).
           case PaymentRecordStatus.PROCESSING:
-          case PaymentRecordStatus.PENDING:
+          case PaymentRecordStatus.PENDING: {
+            const isPendingPastDue = payment.dueDate && new Date(payment.dueDate) < new Date();
             expectedRevenue += amount;
-            pending += amount;
+            if (isPendingPastDue) {
+              overdue += amount;
+            } else {
+              pending += amount;
+            }
             if (isRent) rentExpected += amount;
             break;
+          }
           // CANCELLED: obligation waived, excluded from all stats.
           case PaymentRecordStatus.CANCELLED:
             break;

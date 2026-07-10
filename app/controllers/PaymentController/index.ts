@@ -323,7 +323,7 @@ export class PaymentController {
       return res.status(404).json({ message: 'Not found' });
     }
 
-    const { cuid, jobName } = req.params;
+    const { jobName } = req.params;
 
     // Maps short dev-friendly alias → full registered job name in CronService
     const aliasMap: Record<string, string> = {
@@ -332,6 +332,8 @@ export class PaymentController {
       'mark-overdue': 'payment.mark-overdue',
       'auto-charge-rent': 'payment.auto-charge-due-rent',
       'auto-charge-maintenance': 'payment.auto-charge-overdue-maintenance',
+      'reconcile-processing': 'payment.reconcile-stale-processing',
+      'expire-guest-passes': 'guestpass.expire-stale-passes',
     };
 
     const fullJobName = aliasMap[jobName];
@@ -346,7 +348,7 @@ export class PaymentController {
       return res.status(500).json({ message: `Handler not registered for: ${fullJobName}` });
     }
 
-    this.log.info({ cuid, jobName, fullJobName }, 'Dev: manually triggering cron job');
+    this.log.info({ jobName, fullJobName }, 'Dev: manually triggering cron job');
     await handler();
     return res.status(200).json({ success: true, jobName, fullJobName });
   }

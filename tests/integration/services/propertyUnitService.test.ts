@@ -73,8 +73,14 @@ describe('PropertyUnitService Integration Tests', () => {
       propertyCache: mockPropertyCache as any,
       emitterService: mockEventEmitter as any,
       unitNumberingService,
-      subscriptionDAO: {} as any,
-      leaseDAO: { list: jest.fn().mockReturnValue(Promise.resolve({ items: [] })) } as any,
+      subscriptionDAO: {
+        findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
+      } as any,
+      leaseDAO: {
+        list: jest.fn().mockReturnValue(Promise.resolve({ items: [] })),
+        findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
+        hasNonDraftLeaseForUnit: jest.fn().mockReturnValue(Promise.resolve(false)),
+      } as any,
     });
   });
 
@@ -117,6 +123,7 @@ describe('PropertyUnitService Integration Tests', () => {
                 currency: 'USD',
               },
               status: 'available' as const,
+              managedBy: adminUser._id,
             },
           ],
           cuid: testClient.cuid,
@@ -159,6 +166,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: { totalArea: 650, bedrooms: 1, bathrooms: 1 },
               fees: { rentAmount: 1200, currency: 'USD' },
               status: 'available' as const,
+              managedBy: adminUser._id,
             },
             {
               unitNumber: '102',
@@ -167,6 +175,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
               fees: { rentAmount: 1500, currency: 'USD' },
               status: 'available' as const,
+              managedBy: adminUser._id,
             },
             {
               unitNumber: '103',
@@ -175,6 +184,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: { totalArea: 950, bedrooms: 2, bathrooms: 2 },
               fees: { rentAmount: 1700, currency: 'USD' },
               status: 'available' as const,
+              managedBy: adminUser._id,
             },
           ],
           cuid: testClient.cuid,
@@ -494,9 +504,16 @@ describe('PropertyUnitService Integration Tests', () => {
         });
 
         // Simulate active lease
+        const leaseId = new Types.ObjectId();
         await PropertyUnit.findByIdAndUpdate(unit._id, {
-          currentLease: new Types.ObjectId(),
+          currentLease: leaseId,
         });
+
+        // Mock leaseDAO.list to return a blocking lease for this call
+        const leaseDAOMock = (propertyUnitService as any).leaseDAO;
+        leaseDAOMock.list.mockReturnValueOnce(
+          Promise.resolve({ items: [{ _id: leaseId, status: 'active' }] })
+        );
 
         const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
           sub: adminUser._id.toString(),

@@ -39,6 +39,7 @@ import {
   EmailWorker,
   CronWorker,
   UserWorker,
+  SmsWorker,
   PdfWorker,
 } from '@workers/index';
 import {
@@ -53,6 +54,7 @@ import {
   EmailQueue,
   CronQueue,
   UserQueue,
+  SmsQueue,
   PdfQueue,
 } from '@queues/index';
 import {
@@ -312,6 +314,7 @@ const CacheResources = {
 const WorkerResources = {
   cronWorker: asClass(CronWorker).singleton(),
   emailWorker: asClass(EmailWorker).singleton(),
+  smsWorker: asClass(SmsWorker).singleton(),
   uploadWorker: asClass(UploadWorker).singleton(),
   pdfGeneratorWorker: asClass(PdfWorker).singleton(),
   propertyWorker: asClass(PropertyWorker).singleton(),
@@ -326,6 +329,7 @@ const WorkerResources = {
 const QueuesResources = {
   cronQueue: asClass(CronQueue).singleton(),
   emailQueue: asClass(EmailQueue).singleton(),
+  smsQueue: asClass(SmsQueue).singleton(),
   uploadQueue: asClass(UploadQueue).singleton(),
   pdfGeneratorQueue: asClass(PdfQueue).singleton(),
   propertyQueue: asClass(PropertyQueue).singleton(),

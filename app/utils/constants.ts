@@ -33,9 +33,12 @@ export const EMAIL_TEMPLATES = {
 };
 
 export const QUEUE_NAMES = {
+  SMS_QUEUE: 'smsQueue',
+  USER_QUEUE: 'userQueue',
   CRON_QUEUE: 'cronQueue',
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
+  PAYMENT_QUEUE: 'paymentQueue',
   PROPERTY_QUEUE: 'propertyQueue',
   EVENT_BUS_QUEUE: 'eventBusQueue',
   INVITATION_QUEUE: 'invitationQueue',
@@ -44,8 +47,6 @@ export const QUEUE_NAMES = {
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
   PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
-  PAYMENT_QUEUE: 'paymentQueue',
-  USER_QUEUE: 'userQueue',
 };
 
 export const JOB_NAME = {

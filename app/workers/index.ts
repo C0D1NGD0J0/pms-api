@@ -9,3 +9,4 @@ export * from './upload.worker';
 export * from './email.worker';
 export * from './cron.worker';
 export * from './user.worker';
+export * from './sms.worker';

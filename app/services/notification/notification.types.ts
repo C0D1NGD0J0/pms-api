@@ -1,8 +1,8 @@
 import Logger from 'bunyan';
 import { SSEService } from '@services/index';
 import { EmailQueue } from '@queues/email.queue';
-import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
+import { GuestPassDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData, ResourceContext } from '@interfaces/utils.interface';
 import {
   ICreateNotificationRequest,
@@ -38,6 +38,7 @@ export interface INotificationContext {
   getUserDisplayName: (userId: string, cuid: string) => Promise<string>;
   findApprovers: (userId: string, cuid: string) => Promise<string[]>;
   maintenanceRequestDAO: MaintenanceRequestDAO;
+  guestPassDAO: GuestPassDAO;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
   sseService: SSEService;

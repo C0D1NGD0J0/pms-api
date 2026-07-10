@@ -505,8 +505,11 @@ describe('NotificationDAO Integration Tests', () => {
         type: NotificationTypeEnum.INFO,
       });
 
-      // Cursor is set AFTER the old notification exists
-      const cursor = new Date();
+      // Use the old notification's createdAt as cursor so the new one is strictly after
+      const cursor = old.createdAt!;
+
+      // Small delay to ensure distinct timestamps
+      await new Promise((r) => setTimeout(r, 10));
 
       const newNotif = await notificationDAO.create({
         cuid: testCuid,

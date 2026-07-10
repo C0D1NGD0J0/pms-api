@@ -1,5 +1,9 @@
 {
   "roles": {
+    "root-admin": {
+      "$extend": ["super-admin"],
+      "client": ["read:any", "update:any", "settings:any", "manage_users:any"]
+    },
     "super-admin": {
       "$extend": ["admin"],
       "subscription": ["read:any", "update:any", "manage:any"],

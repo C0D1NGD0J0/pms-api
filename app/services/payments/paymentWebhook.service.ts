@@ -166,6 +166,9 @@ export class PaymentWebhookService {
             status: PaymentRecordStatus.PAID,
             paidAt: dayjs().toDate(),
             gatewayChargeId: chargeId,
+            ...(paymentDetails.paymentMethodType && {
+              stripePaymentMethodType: paymentDetails.paymentMethodType,
+            }),
             ...(payment.paymentMethod === PaymentMethod.OTHER && {
               paymentMethod: PaymentMethod.ONLINE,
             }),

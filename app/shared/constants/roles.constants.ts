@@ -12,6 +12,7 @@
  */
 export enum IUserRole {
   SUPER_ADMIN = 'super-admin',
+  ROOT_ADMIN = 'root-admin',
   MANAGER = 'manager',
   TENANT = 'tenant',
   VENDOR = 'vendor',
@@ -24,6 +25,7 @@ export enum IUserRole {
  * Provides the same values as IUserRole enum but in object format
  */
 export const ROLES = {
+  ROOT_ADMIN: 'root-admin',
   SUPER_ADMIN: 'super-admin',
   ADMIN: 'admin',
   MANAGER: 'manager',
@@ -36,6 +38,7 @@ export const ROLES = {
  * Type definition for user roles (maintained for backward compatibility)
  */
 export type IUserRoleType =
+  | 'root-admin'
   | 'super-admin'
   | 'admin'
   | 'tenant'
@@ -58,7 +61,7 @@ export const ROLE_GROUPS = {
   MANAGEMENT_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
   PROPERTY_APPROVAL_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
   PROPERTY_STAFF_ROLES: [ROLES.STAFF],
-  BILLING_ROLES: [ROLES.SUPER_ADMIN],
+  BILLING_ROLES: [ROLES.ROOT_ADMIN, ROLES.SUPER_ADMIN],
   EXTERNAL_ROLES: [ROLES.TENANT, ROLES.VENDOR],
 } as const;
 
@@ -114,6 +117,7 @@ export const RoleHelpers = {
  * Used to determine the effective (primary) role when a user holds multiple roles.
  */
 export const ROLE_PRIORITY: IUserRoleType[] = [
+  'root-admin',
   'super-admin',
   'admin',
   'manager',

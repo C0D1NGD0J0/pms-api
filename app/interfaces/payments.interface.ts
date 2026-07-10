@@ -72,6 +72,7 @@ export interface IPaymentDocument extends Document {
     description: string;
     amountInCents: number;
   }[];
+  stripePaymentMethodType?: string; // e.g. 'card', 'acss_debit', 'us_bank_account'
   paymentType: PaymentRecordType;
   maintenanceRequestUid?: string; // mruid — links maintenance expense/charge back to its request
   paymentSource?: PaymentSource;
@@ -94,6 +95,7 @@ export interface IPaymentDocument extends Document {
   baseAmount: number;
   currency: string; // ISO 4217 uppercase, e.g. 'USD', 'CAD', 'GBP'
   deletedAt?: Date;
+  chargedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   pytuid: string;
@@ -110,6 +112,7 @@ export interface IPaymentListItem {
   tenant: { firstName: string; lastName: string; fullName: string } | null;
   lineItems: { description: string; amountInCents: number }[];
   receipt?: { url?: string; filename?: string; key?: string };
+  stripePaymentMethodType?: string;
   paymentType: PaymentRecordType;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;

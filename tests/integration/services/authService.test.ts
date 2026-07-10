@@ -100,7 +100,7 @@ describe('AuthService Integration Tests', () => {
 
       expect(savedUser!.cuids).toHaveLength(1);
       expect(savedUser!.cuids[0].cuid).toBe(savedClient!.cuid);
-      expect(savedUser!.cuids[0].roles).toContain(ROLES.ADMIN);
+      expect(savedUser!.cuids[0].roles).toContain(ROLES.SUPER_ADMIN);
       expect(savedUser!.activecuid).toBe(savedClient!.cuid);
 
       const savedProfile = await Profile.findOne({ user: savedUser!._id });

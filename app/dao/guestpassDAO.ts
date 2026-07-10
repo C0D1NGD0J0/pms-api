@@ -13,8 +13,8 @@ import { IGuestPassDAO } from './interfaces/guestpassDAO.interface';
 export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestPassDAO {
   protected logger: Logger;
 
-  constructor({ GuestPassModel }: { GuestPassModel: Model<IGuestPassDocument> }) {
-    super(GuestPassModel);
+  constructor({ guestPassModel }: { guestPassModel: Model<IGuestPassDocument> }) {
+    super(guestPassModel);
     this.logger = createLogger('GuestPassDAO');
   }
 

@@ -119,7 +119,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
 
       expect(result.success).toBe(true);
       expect(result.data?.checkoutUrl).toBeUndefined(); // No redirect for updates
-      expect(result.data?.message).toBe('Subscription updated successfully');
+      expect(result.data?.message).toBe('common.success.updated');
 
       expect(mockPaymentGatewayService.updateSubscription).toHaveBeenCalledWith(
         IPaymentGatewayProvider.STRIPE,
@@ -193,7 +193,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
           priceId: 'price_growth_annual',
           billingInterval: 'annual',
         })
-      ).rejects.toThrow('Client subscription not found');
+      ).rejects.toThrow('common.errors.notFound');
 
       expect(mockPaymentGatewayService.updateSubscription).not.toHaveBeenCalled();
     });

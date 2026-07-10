@@ -157,13 +157,13 @@ export interface ICreateInvoiceResponse {
   amountDue: number;
   dueDate?: Date;
 }
+
 export interface ICreateIdentitySessionInput {
   allowedTypes?: Array<'driving_license' | 'passport' | 'id_card'>;
   metadata?: Record<string, string>;
   returnUrl: string;
   email?: string;
 }
-
 export interface ICreateCustomerInput {
   metadata?: Record<string, string>;
   provider: IPaymentGatewayProvider;
@@ -194,6 +194,13 @@ export interface IPayoutSchedule {
   weeklyAnchor?: string;
   delayDays?: number;
 }
+
+export type StripePaymentMethodType =
+  | 'acss_debit'
+  | 'us_bank_account'
+  | 'sepa_debit'
+  | 'bacs_debit'
+  | 'card';
 
 export interface IIdentityVerificationReport {
   issuingCountry?: string;

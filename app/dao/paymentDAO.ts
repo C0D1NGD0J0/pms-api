@@ -275,26 +275,29 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         0
       );
 
-      const paymentsWithDueDate = paidPayments.filter((p: any) => p.dueDate && p.paidAt);
-      const onTimePayments = paymentsWithDueDate.filter((p: any) => {
-        const dueDate = new Date(p.dueDate);
-        const paidDate = new Date(p.paidAt);
-        return paidDate <= dueDate;
+      // Paid payments with due dates — for on-time calculation
+      const paidWithDueDate = paidPayments.filter((p: any) => p.dueDate && p.paidAt);
+      const onTimePayments = paidWithDueDate.filter((p: any) => {
+        return new Date(p.paidAt) <= new Date(p.dueDate);
       });
-      const onTimePaymentRate =
-        paymentsWithDueDate.length > 0
-          ? calcPercentage(onTimePayments.length, paymentsWithDueDate.length)
-          : 0;
 
+      // Currently overdue: status OVERDUE, or PENDING/FAILED with past due date
       const overduePayments = allPayments.filter(
         (p: any) =>
           p.status === PaymentRecordStatus.OVERDUE ||
-          (p.status === PaymentRecordStatus.PENDING &&
+          ((p.status === PaymentRecordStatus.PENDING || p.status === PaymentRecordStatus.FAILED) &&
             p.dueDate &&
             dayjs().isAfter(dayjs(p.dueDate)))
       );
 
-      const paidDelays = paymentsWithDueDate.map((p: any) => {
+      // On-time rate denominator includes both paid and currently overdue payments
+      // so the rate drops when payments are missed (not just when they're eventually paid late)
+      const totalRelevant = paidWithDueDate.length + overduePayments.length;
+      const onTimePaymentRate =
+        totalRelevant > 0 ? calcPercentage(onTimePayments.length, totalRelevant) : 0;
+
+      // Delay calculation — combines paid late delays with currently overdue delays
+      const paidDelays = paidWithDueDate.map((p: any) => {
         const diffMs = new Date(p.paidAt).getTime() - new Date(p.dueDate).getTime();
         return Math.max(0, msToDays(diffMs));
       });
@@ -392,7 +395,22 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
             { $match: { status: PaymentRecordStatus.PENDING } },
             { $group: { _id: '$currency', pendingAmount: { $sum: '$baseAmount' } } },
           ],
-          overdue: [{ $match: { status: PaymentRecordStatus.OVERDUE } }, { $count: 'count' }],
+          // Count payments that are overdue by status OR pending/failed with past due date
+          overdue: [
+            {
+              $match: {
+                $or: [
+                  { status: PaymentRecordStatus.OVERDUE },
+                  {
+                    status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.FAILED] },
+                    dueDate: { $lt: now },
+                  },
+                ],
+              },
+            },
+            { $count: 'count' },
+          ],
+          // On-time rate: paid-on-time / (total paid with due date + currently overdue)
           timing: [
             {
               $match: {
@@ -426,6 +444,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     const totalPaid = timing.totalPaid || 0;
     const onTimeCount = timing.onTimeCount || 0;
     const avgDelayMs = timing.avgDelayMs || 0;
+    const overdueCount = raw.overdue?.[0]?.count || 0;
 
     // Zip revenue and pending arrays by currency
     const revMap = new Map<string, { totalRevenue: number; monthRevenue: number }>(
@@ -445,11 +464,14 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       pendingAmount: pendMap.get(currency) ?? 0,
     }));
 
+    // On-time rate denominator includes overdue so the rate drops when payments are missed
+    const onTimeDenominator = totalPaid + overdueCount;
+
     return {
       byCurrency,
-      overdueCount: raw.overdue?.[0]?.count || 0,
+      overdueCount,
       totalCount: raw.total?.[0]?.count || 0,
-      onTimeRate: totalPaid > 0 ? calcPercentage(onTimeCount, totalPaid) : 0,
+      onTimeRate: onTimeDenominator > 0 ? calcPercentage(onTimeCount, onTimeDenominator) : 0,
       avgPaymentDelayDays: avgDelayMs > 0 ? Math.round(msToDays(avgDelayMs)) : 0,
     };
   }

@@ -11,6 +11,7 @@ import {
   IIdentitySessionResponse,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
+  StripePaymentMethodType,
   ICreateInvoiceResponse,
   ICreateCheckoutInput,
   ICreateCustomerInput,
@@ -1201,7 +1202,12 @@ export class StripeService implements IPaymentProvider {
 
   async retrievePaymentMethod(
     paymentMethodId: string
-  ): Promise<{ type: string; bankName?: string; last4?: string; accountType?: string }> {
+  ): Promise<{
+    type: StripePaymentMethodType;
+    bankName?: string;
+    last4?: string;
+    accountType?: string;
+  }> {
     try {
       const pm = await this.stripe.paymentMethods.retrieve(paymentMethodId);
 
@@ -1227,7 +1233,7 @@ export class StripeService implements IPaymentProvider {
         last4 = pm.card.last4 ?? undefined;
       }
 
-      return { type, bankName, last4, accountType };
+      return { type: type as StripePaymentMethodType, bankName, last4, accountType };
     } catch (error) {
       this.log.error({ error, paymentMethodId }, 'Error retrieving payment method');
       throw error;

@@ -778,20 +778,33 @@ export class LeaseService {
           if (result?.success && !result.data?.requiresApproval && lease.tenantId) {
             const leaseUrl = `${envVariables.FRONTEND.URL}/tenants/${cuid}/${lease.tenantId}/lease`;
             try {
-              const emailQueue = this.queueFactory.getQueue('emailQueue');
-              emailQueue.addJobToQueue(JOB_NAME.LEASE_ADMIN_UPDATED_JOB, {
-                emailType: MailType.LEASE_ADMIN_UPDATED,
-                subject: 'Your Lease Has Been Updated',
-                to: lease.tenantInfo?.email,
-                data: {
-                  tenantName: lease.tenantInfo?.fullname || 'Tenant',
-                  leaseNumber: lease.leaseNumber,
-                  propertyAddress: lease.property?.address || '',
-                  updatedBy: currentUser.fullname || 'Property Manager',
-                  leaseUrl,
-                },
-                client: { cuid },
-              });
+              // tenantInfo is a virtual that requires population — resolve tenant email from profile/user directly
+              const tenantProfile = await this.profileDAO.findFirst(
+                { user: lease.tenantId, deletedAt: null },
+                { populate: { path: 'user', select: 'email' } }
+              );
+              const tenantEmail = (tenantProfile as any)?.user?.email;
+              const tenantName =
+                tenantProfile?.personalInfo?.firstName && tenantProfile?.personalInfo?.lastName
+                  ? `${tenantProfile.personalInfo.firstName} ${tenantProfile.personalInfo.lastName}`
+                  : 'Tenant';
+
+              if (tenantEmail) {
+                const emailQueue = this.queueFactory.getQueue('emailQueue');
+                emailQueue.addJobToQueue(JOB_NAME.LEASE_ADMIN_UPDATED_JOB, {
+                  emailType: MailType.LEASE_ADMIN_UPDATED,
+                  subject: 'Your Lease Has Been Updated',
+                  to: tenantEmail,
+                  data: {
+                    tenantName,
+                    leaseNumber: lease.leaseNumber,
+                    propertyAddress: lease.property?.address || '',
+                    updatedBy: currentUser.fullname || 'Property Manager',
+                    leaseUrl,
+                  },
+                  client: { cuid },
+                });
+              }
             } catch (error) {
               this.log.error(`Failed to queue admin-update email for lease ${lease.luid}:`, error);
             }

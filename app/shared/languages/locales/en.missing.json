@@ -10,38 +10,38 @@
         "message": "A payment of {{amount}} has been cancelled"
       },
       "failedTenant": {
-        "title": "notifications.payment.failedTenant.title",
-        "message": "notifications.payment.failedTenant.message"
+        "title": "Payment Could Not Be Processed",
+        "message": "Your payment of {{amount}} could not be processed. Please use the payment link provided or add a card to complete your payment."
       }
     },
     "maintenance": {
       "chargeCreated": {
-        "title": "notifications.maintenance.chargeCreated.title",
-        "message": "notifications.maintenance.chargeCreated.message"
+        "title": "Maintenance Charge Created",
+        "message": "A maintenance charge of {{amount}} has been created for {{propertyName}}"
       },
       "invoiceBillableNotice": {
-        "title": "notifications.maintenance.invoiceBillableNotice.title",
-        "message": "notifications.maintenance.invoiceBillableNotice.message"
+        "title": "Billable Invoice Notice",
+        "message": "A billable invoice for maintenance request {{mruid}} has been approved"
       },
       "requestUpdatedByTenant": {
         "title": "Request Updated by Tenant",
         "message": "Tenant has updated maintenance request {{mruid}}"
       },
       "workDone": {
-        "title": "notifications.maintenance.workDone.title",
-        "message": "notifications.maintenance.workDone.message"
+        "title": "Work Completed",
+        "message": "Vendor has completed work on maintenance request {{mruid}}"
       },
       "workDoneTenant": {
-        "title": "notifications.maintenance.workDoneTenant.title",
-        "message": "notifications.maintenance.workDoneTenant.message"
+        "title": "Maintenance Work Completed",
+        "message": "Work on your maintenance request {{mruid}} has been completed"
       },
       "invoiceApprovedTenant": {
-        "title": "notifications.maintenance.invoiceApprovedTenant.title",
-        "message": "notifications.maintenance.invoiceApprovedTenant.message"
+        "title": "Invoice Approved",
+        "message": "The invoice for your maintenance request {{mruid}} has been approved"
       },
       "chargePaid": {
-        "title": "notifications.maintenance.chargePaid.title",
-        "message": "notifications.maintenance.chargePaid.message"
+        "title": "Maintenance Charge Paid",
+        "message": "Tenant has paid the maintenance charge for request {{mruid}}"
       }
     }
   },
@@ -64,6 +64,9 @@
   "auth": {
     "success": {
       "otpSent": "auth.success.otpSent"
+    },
+    "errors": {
+      "forbidden": "auth.errors.forbidden"
     }
   },
   "profile": {

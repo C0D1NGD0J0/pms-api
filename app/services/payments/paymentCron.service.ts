@@ -119,6 +119,15 @@ export class PaymentCronService implements ICronProvider {
         timeout: 300000,
       },
       {
+        name: 'payment.reconcile-stale-processing',
+        schedule: '0 2 * * *',
+        handler: this.reconcileStaleProcessingPayments.bind(this),
+        enabled: true,
+        service: 'PaymentCronService',
+        description: 'Reconcile PROCESSING payments by checking Stripe invoice status',
+        timeout: 300000,
+      },
+      {
         name: 'payment.check-funds-availability-morning',
         schedule: '0 6 * * *',
         handler: this.checkFundsAvailability.bind(this),
@@ -627,7 +636,9 @@ export class PaymentCronService implements ICronProvider {
         await this.payPendingChargeInternal(payment, tenantUserId);
 
         await this.paymentDAO.updateById(payment._id.toString(), {
+          status: PaymentRecordStatus.PROCESSING,
           paymentMethod: PaymentMethod.BANK_TRANSFER,
+          chargedAt: new Date(),
         });
 
         return true;
@@ -688,6 +699,7 @@ export class PaymentCronService implements ICronProvider {
         );
         await this.paymentDAO.updateById(payment._id.toString(), {
           status: PaymentRecordStatus.PROCESSING,
+          chargedAt: new Date(),
         });
 
         return true;
@@ -964,6 +976,113 @@ export class PaymentCronService implements ICronProvider {
     this.log.info(
       { flipped, skipped, total: invoices.length },
       '[Cron] Funds availability check complete'
+    );
+  }
+
+  /**
+   * Daily cron (2 AM): reconcile payments stuck in PROCESSING by checking their
+   * Stripe invoice status. Catches missed webhooks, voided invoices, and
+   * charges that never completed.
+   */
+  private async reconcileStaleProcessingPayments(): Promise<void> {
+    const stalePayments = await this.paymentDAO.list(
+      {
+        status: PaymentRecordStatus.PROCESSING,
+        $or: [
+          { chargedAt: { $lt: dayjs().subtract(24, 'hour').toDate() } },
+          {
+            chargedAt: { $exists: false },
+            dueDate: { $lt: dayjs().subtract(24, 'hour').toDate() },
+          },
+        ],
+        gatewayPaymentId: { $exists: true },
+        gatewayChargeId: { $exists: false },
+        deletedAt: null,
+      },
+      { limit: 200 }
+    );
+
+    if (stalePayments.items.length === 0) {
+      this.log.info('[Cron] No stale PROCESSING payments to reconcile');
+      return;
+    }
+
+    let reconciled = 0;
+    let markedOverdue = 0;
+    let cancelled = 0;
+
+    for (const payment of stalePayments.items) {
+      try {
+        const invoice = await this.stripeService.getInvoice(payment.gatewayPaymentId!);
+
+        if (invoice.status === 'paid') {
+          // Stripe charged successfully — webhook was missed
+          const paymentDetails = await this.stripeService.getInvoicePaymentDetails(
+            payment.gatewayPaymentId!
+          );
+
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            status: PaymentRecordStatus.PAID,
+            paidAt: invoice.status_transitions?.paid_at
+              ? new Date(invoice.status_transitions.paid_at * 1000)
+              : new Date(),
+            gatewayChargeId: paymentDetails.chargeId,
+            ...(paymentDetails.paymentMethodType && {
+              stripePaymentMethodType: paymentDetails.paymentMethodType,
+            }),
+            ...(invoice.hosted_invoice_url && { 'receipt.url': invoice.hosted_invoice_url }),
+          });
+
+          this.emitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
+            cuid: payment.cuid,
+            pytuid: payment.pytuid,
+            amount: payment.baseAmount,
+            invoiceId: payment.gatewayPaymentId!,
+            paidAt: invoice.status_transitions?.paid_at
+              ? new Date(invoice.status_transitions.paid_at * 1000)
+              : new Date(),
+            paymentType: payment.paymentType,
+            ...(invoice.hosted_invoice_url && { receiptUrl: invoice.hosted_invoice_url }),
+          });
+
+          reconciled++;
+          this.log.info(
+            { pytuid: payment.pytuid, cuid: payment.cuid },
+            '[Cron] Reconciled stale PROCESSING payment to PAID'
+          );
+        } else if (invoice.status === 'void') {
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            status: PaymentRecordStatus.CANCELLED,
+          });
+          cancelled++;
+          this.log.info(
+            { pytuid: payment.pytuid },
+            '[Cron] Voided Stripe invoice — marked CANCELLED'
+          );
+        } else if (['uncollectible', 'open'].includes(invoice.status || '')) {
+          // Charge failed or never completed
+          const hoursStale = dayjs().diff(dayjs(payment.chargedAt ?? payment.dueDate), 'hour');
+          if (hoursStale > 72) {
+            await this.paymentDAO.updateById(payment._id.toString(), {
+              status: PaymentRecordStatus.OVERDUE,
+              'failure.reason': `Stripe invoice status: ${invoice.status} — charge not completed after 72+ hours`,
+              'failure.lastFailedAt': new Date(),
+            });
+            markedOverdue++;
+            this.log.warn(
+              { pytuid: payment.pytuid, stripeStatus: invoice.status },
+              '[Cron] Stale PROCESSING payment marked OVERDUE'
+            );
+          }
+        }
+      } catch (err) {
+        this.log.error({ err, pytuid: payment.pytuid }, '[Cron] Failed to reconcile payment');
+      }
+    }
+
+    this.log.info(
+      { reconciled, markedOverdue, cancelled, total: stalePayments.items.length },
+      '[Cron] Payment reconciliation complete'
     );
   }
 

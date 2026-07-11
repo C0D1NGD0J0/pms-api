@@ -86,6 +86,8 @@ describe('InvitationService Integration Tests', () => {
       profileDAO,
       userDAO,
       clientDAO,
+      authCache: { invalidateCurrentUser: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       emitterService: mockEventEmitter as any,
       mediaUploadService: mockMediaUploadService as any,
       vendorService,
@@ -106,6 +108,7 @@ describe('InvitationService Integration Tests', () => {
       subscriptionService: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }), invalidateUserLists: jest.fn().mockResolvedValue({ success: true }) } as any,
     });
   });
 

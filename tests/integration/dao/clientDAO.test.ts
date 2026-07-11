@@ -20,8 +20,6 @@ describe('ClientDAO Integration Tests', () => {
       _id: testAdminId,
       uid: 'admin-uid',
       email: 'admin@example.com',
-      firstName: 'Admin',
-      lastName: 'User',
       password: 'hashed',
       activecuid: 'TEST_CUID',
       cuids: [
@@ -66,7 +64,6 @@ describe('ClientDAO Integration Tests', () => {
         accountType: { category: 'individual' },
         cuid: 'FIND_ME',
         displayName: 'Findable Company',
-        status: 'active',
         accountAdmin: testAdminId,
       });
 
@@ -89,7 +86,6 @@ describe('ClientDAO Integration Tests', () => {
         accountType: { category: 'individual' },
         cuid: 'UPDATE_ME',
         displayName: 'Old Name',
-        status: 'active',
         accountAdmin: testAdminId,
       });
 
@@ -109,7 +105,6 @@ describe('ClientDAO Integration Tests', () => {
         accountType: { category: 'individual' },
         cuid: 'SETTINGS_TEST',
         displayName: 'Settings Company',
-        status: 'active',
         accountAdmin: testAdminId,
         settings: {
           timeZone: 'America/Toronto',
@@ -133,7 +128,6 @@ describe('ClientDAO Integration Tests', () => {
         accountType: { category: 'individual' },
         cuid: 'ACCOUNT_TYPE',
         displayName: 'Account Type Test',
-        status: 'active',
         accountAdmin: testAdminId,
       });
 

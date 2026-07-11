@@ -277,7 +277,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const lease = await this.update(
         { _id: leaseId, cuid, deletedAt: null },
         { $set: data },
-        { new: true, runValidators: true }
+        { returnDocument: 'after' as const, runValidators: true }
       );
 
       return lease;
@@ -601,7 +601,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         updateData.$set.internalNotes = terminationData.notes;
       }
 
-      return await this.update({ _id: leaseId, cuid, deletedAt: null }, updateData, { new: true });
+      return await this.update({ _id: leaseId, cuid, deletedAt: null }, updateData, {
+        returnDocument: 'after' as const,
+      });
     } catch (error: any) {
       this.log.error('Error terminating lease:', error);
       throw error;

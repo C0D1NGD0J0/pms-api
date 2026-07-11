@@ -158,6 +158,20 @@ describe('SSEService', () => {
       expect(JSON.parse(raw).targetRoles).toBeUndefined();
     });
 
+    it('includes targetDepartments in the published payload when provided', async () => {
+      await service.broadcastToClient('cuid-1', { msg: 'security only' }, 'announcements', undefined, ['staff'], ['security']);
+
+      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      expect(JSON.parse(raw).targetDepartments).toEqual(['security']);
+    });
+
+    it('omits targetDepartments from the published payload when not provided', async () => {
+      await service.broadcastToClient('cuid-1', {});
+
+      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      expect(JSON.parse(raw).targetDepartments).toBeUndefined();
+    });
+
     it('defaults eventType to "announcement"', async () => {
       await service.broadcastToClient('cuid-1', {});
 
@@ -236,7 +250,7 @@ describe('SSEService', () => {
         eventType: 'announcement',
       }));
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'hello everyone' }, 'announcement', undefined, undefined);
+      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'hello everyone' }, 'announcement', undefined, undefined, undefined);
     });
 
     it('routes type=broadcast messages with eventId to _localBroadcastToClient', () => {
@@ -252,7 +266,7 @@ describe('SSEService', () => {
         eventId,
       }));
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'hello everyone' }, 'announcements', eventId, undefined);
+      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'hello everyone' }, 'announcements', eventId, undefined, undefined);
     });
 
     it('routes type=broadcast messages with targetRoles to _localBroadcastToClient', () => {
@@ -267,7 +281,23 @@ describe('SSEService', () => {
         targetRoles: ['admin', 'staff'],
       }));
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'admins only' }, 'announcements', undefined, ['admin', 'staff']);
+      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'admins only' }, 'announcements', undefined, ['admin', 'staff'], undefined);
+    });
+
+    it('routes type=broadcast messages with targetDepartments to _localBroadcastToClient', () => {
+      const localBroadcast = jest.spyOn(service as any, '_localBroadcastToClient').mockImplementation(() => undefined);
+      const handler = getMessageHandler();
+
+      handler('pms:sse:events', JSON.stringify({
+        type: 'broadcast',
+        cuid: 'cuid-1',
+        data: { text: 'security only' },
+        eventType: 'announcements',
+        targetRoles: ['staff'],
+        targetDepartments: ['security'],
+      }));
+
+      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'security only' }, 'announcements', undefined, ['staff'], ['security']);
     });
 
     it('ignores messages with an unknown type without throwing', () => {
@@ -452,6 +482,72 @@ describe('SSEService', () => {
       (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, ['admin', 'staff']);
 
       expect(pushFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('only delivers to sessions whose department is in targetDepartments', () => {
+      const securityPush = jest.fn();
+      const accountingPush = jest.fn();
+
+      (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
+        { isConnected: true, push: securityPush, state: { userRole: 'staff', userDepartment: 'security' } },
+      ]);
+      (service as any).activeSessions.set('cuid-1:staff-2:announcement', [
+        { isConnected: true, push: accountingPush, state: { userRole: 'staff', userDepartment: 'accounting' } },
+      ]);
+
+      (service as any)._localBroadcastToClient('cuid-1', { msg: 'security only' }, 'announcement', undefined, ['staff'], ['security']);
+
+      expect(securityPush).toHaveBeenCalledTimes(1);
+      expect(accountingPush).not.toHaveBeenCalled();
+    });
+
+    it('skips sessions with no department when targetDepartments is set', () => {
+      const pushFn = jest.fn();
+
+      (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
+        { isConnected: true, push: pushFn, state: { userRole: 'staff' } }, // no userDepartment
+      ]);
+
+      (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, ['staff'], ['security']);
+
+      expect(pushFn).not.toHaveBeenCalled();
+    });
+
+    it('broadcasts to all departments when targetDepartments is not set', () => {
+      const pushFn = jest.fn();
+
+      (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
+        { isConnected: true, push: pushFn, state: { userRole: 'staff', userDepartment: 'security' } },
+      ]);
+      (service as any).activeSessions.set('cuid-1:staff-2:announcement', [
+        { isConnected: true, push: pushFn, state: { userRole: 'staff', userDepartment: 'accounting' } },
+      ]);
+
+      (service as any)._localBroadcastToClient('cuid-1', { msg: 'all staff' }, 'announcement', undefined, ['staff']);
+
+      expect(pushFn).toHaveBeenCalledTimes(2);
+    });
+
+    it('filters by both role AND department when both are provided', () => {
+      const staffSecurityPush = jest.fn();
+      const adminPush = jest.fn();
+      const staffAccountingPush = jest.fn();
+
+      (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
+        { isConnected: true, push: staffSecurityPush, state: { userRole: 'staff', userDepartment: 'security' } },
+      ]);
+      (service as any).activeSessions.set('cuid-1:admin-1:announcement', [
+        { isConnected: true, push: adminPush, state: { userRole: 'admin', userDepartment: 'management' } },
+      ]);
+      (service as any).activeSessions.set('cuid-1:staff-2:announcement', [
+        { isConnected: true, push: staffAccountingPush, state: { userRole: 'staff', userDepartment: 'accounting' } },
+      ]);
+
+      (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, ['staff'], ['security']);
+
+      expect(staffSecurityPush).toHaveBeenCalledTimes(1);
+      expect(adminPush).not.toHaveBeenCalled();
+      expect(staffAccountingPush).not.toHaveBeenCalled();
     });
   });
 

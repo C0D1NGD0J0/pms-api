@@ -162,7 +162,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       await expect(subscriptionService.cancelSubscription(mockContext as any)).rejects.toThrow(
-        'Subscription already canceled'
+        'common.errors.alreadyInState'
       );
 
       expect(mockPaymentGatewayService.cancelSubscription).not.toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe('SubscriptionService - User-Initiated Cancellation', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(null);
 
       await expect(subscriptionService.cancelSubscription(mockContext as any)).rejects.toThrow(
-        'Subscription not found'
+        'common.errors.notFound'
       );
     });
 

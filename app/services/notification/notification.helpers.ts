@@ -11,8 +11,16 @@ import {
 import { INotificationContext } from './notification.types';
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
 
-export const MGMT_ROLES = [ROLES.ADMIN, ROLES.SUPER_ADMIN] as const;
-export const ALL_STAFF_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STAFF] as const;
+export const MGMT_ROLES = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER] as const;
+export const ALL_STAFF_ROLES = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.MANAGER,
+  ROLES.STAFF,
+] as const;
+
+export const MAINTENANCE_DEPARTMENTS = ['maintenance', 'operations', 'management'] as const;
+export const FINANCE_DEPARTMENTS = ['accounting', 'operations', 'management'] as const;
 
 /**
  * Fetch a maintenance request + user by ID, then enqueue an email.
@@ -105,7 +113,8 @@ export async function notifyAnnouncement(
   vars: Record<string, any>,
   targetRoles: readonly string[],
   metadata: Record<string, any>,
-  priority: NotificationPriorityEnum = NotificationPriorityEnum.MEDIUM
+  priority: NotificationPriorityEnum = NotificationPriorityEnum.MEDIUM,
+  targetDepartments?: readonly string[]
 ): Promise<void> {
   const { title, message } = getFormattedNotification(messageKey, vars);
   const data: ICreateNotificationRequest = {
@@ -116,6 +125,7 @@ export async function notifyAnnouncement(
     priority,
     recipientType: RecipientTypeEnum.ANNOUNCEMENT,
     targetRoles: targetRoles as string[],
+    ...(targetDepartments && { targetDepartments: targetDepartments as string[] }),
     metadata,
   };
   await ctx.createNotification(cuid, type, data);

@@ -320,17 +320,4 @@ router.patch(
   })
 );
 
-// ── Dev-only: manually trigger cron handlers ──────────────────────────────────
-if (process.env.NODE_ENV !== 'production') {
-  router.post(
-    '/:cuid/dev/trigger-cron/:jobName',
-    isAuthenticated,
-    validateRequest({ params: UtilsValidations.cuid.passthrough() }),
-    asyncWrapper((req, res) => {
-      const controller = req.container.resolve<PaymentController>('paymentController');
-      return controller.triggerCronJob(req, res);
-    })
-  );
-}
-
 export default router;

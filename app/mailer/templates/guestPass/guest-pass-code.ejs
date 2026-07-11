@@ -1,0 +1,70 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Your Guest Access Code</h2>
+      <p>Hi <strong><%= visitorName %></strong>,</p>
+      <p>
+        You have been granted guest access. Please present this code to security at the entrance gate.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td style="padding: 0 36px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+        style="background-color: #062f4f; border-radius: 12px; text-align: center;">
+        <tr>
+          <td style="padding: 28px 20px;">
+            <p style="margin: 0 0 6px 0; font-size: 13px; color: rgba(255,255,255,0.75);">
+              Your Access Code
+            </p>
+            <p style="margin: 0; font-size: 38px; font-weight: 800; letter-spacing: 8px; color: #ffffff; font-family: 'Courier New', monospace;">
+              <%= code %>
+            </p>
+            <p style="margin: 10px 0 0 0; font-size: 13px; color: rgba(255,255,255,0.75);">
+              Valid for <strong style="color: #ffffff;"><%= expiryMinutes %> minutes</strong>
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <table class="detail-table" role="presentation">
+        <tr>
+          <td class="detail-label">Property</td>
+          <td class="detail-value"><%= propertyName %></td>
+        </tr>
+        <% if (unitNumber) { %>
+        <tr>
+          <td class="detail-label">Unit</td>
+          <td class="detail-value"><%= unitNumber %></td>
+        </tr>
+        <% } %>
+        <% if (propertyAddress) { %>
+        <tr>
+          <td class="detail-label">Address</td>
+          <td class="detail-value"><%= propertyAddress %></td>
+        </tr>
+        <% } %>
+        <tr>
+          <td class="detail-label">Your Host</td>
+          <td class="detail-value"><%= hostName %></td>
+        </tr>
+        <% if (hostPhone) { %>
+        <tr>
+          <td class="detail-label">Contact</td>
+          <td class="detail-value"><%= hostPhone %></td>
+        </tr>
+        <% } %>
+      </table>
+
+      <div class="notice-box warning" style="margin-top: 20px;">
+        <strong>Show this code to security personnel</strong> at the entrance gate.
+        This code will expire automatically after the valid period and can only be used once.
+      </div>
+    </td>
+  </tr>
+</table>

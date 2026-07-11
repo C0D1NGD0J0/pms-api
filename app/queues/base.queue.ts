@@ -11,8 +11,8 @@ export const DEFAULT_JOB_OPTIONS: BullJobOptions = {
   attempts: 3,
   timeout: 60000,
   backoff: { type: 'fixed', delay: 10000 },
-  removeOnComplete: 100,
-  removeOnFail: 500,
+  removeOnComplete: { age: 3600, count: 50 },
+  removeOnFail: { age: 86400, count: 100 },
   delay: 5000,
 };
 

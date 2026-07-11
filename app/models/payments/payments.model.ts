@@ -74,6 +74,9 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     gatewayChargeId: {
       type: String,
     },
+    stripePaymentMethodType: {
+      type: String,
+    },
     refund: {
       refundedAt: { type: Date },
       amount: {
@@ -109,6 +112,7 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       type: Date,
       required: [true, 'Due date is required'],
     },
+    chargedAt: Date,
     paidAt: Date,
     period: {
       month: {

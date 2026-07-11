@@ -11,9 +11,10 @@ import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
-import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -21,8 +22,8 @@ import {
 } from '@interfaces/payments.interface';
 import {
   PaymentProcessor,
-  PaymentModel,
   Subscription,
+  Payment,
   Profile,
   Client,
   Lease,
@@ -79,7 +80,7 @@ describe('PaymentController Integration Tests', () => {
     testProfile = await createTestProfile(adminUser._id, testClient._id, { type: 'tenant' });
 
     // Wire up real DAOs with real DB
-    const paymentDAO = new PaymentDAO({ paymentModel: PaymentModel });
+    const paymentDAO = new PaymentDAO({ paymentModel: Payment });
     const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
     const profileDAO = new ProfileDAO({ profileModel: Profile });
     const paymentProcessorDAO = new PaymentProcessorDAO({
@@ -90,10 +91,26 @@ describe('PaymentController Integration Tests', () => {
     const leaseDAO = new LeaseDAO({ leaseModel: Lease });
     const userDAO = new UserDAO({ userModel: User });
     const emitterService = { emit: jest.fn(), on: jest.fn() } as any;
-    const subscriptionPlanConfig = {} as any;
+    const subscriptionPlanConfig = { getTransactionFeePercent: jest.fn().mockReturnValue(0) } as any;
     const queueFactory = { getQueue: jest.fn() } as any;
     const invoiceDAO = {} as any;
     const stripeService = {} as any;
+
+    const maintenancePaymentService = new MaintenancePaymentService({
+      subscriptionPlanConfig,
+      paymentGatewayService: mockPaymentGatewayService,
+      paymentProcessorDAO,
+      emitterService,
+      subscriptionDAO,
+      smsService: {} as any,
+      invoiceDAO,
+      profileDAO,
+      paymentDAO,
+      clientDAO,
+      vendorDAO: {} as any,
+      leaseDAO,
+      userDAO,
+    });
 
     const rentPaymentService = new RentPaymentService({
       subscriptionPlanConfig,
@@ -106,12 +123,13 @@ describe('PaymentController Integration Tests', () => {
       queueFactory,
       paymentDAO,
       profileDAO,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       clientDAO,
       leaseDAO,
     });
 
     const paymentService = new PaymentService({
-      maintenancePaymentService: {} as any,
+      maintenancePaymentService,
       paymentWebhookService: {} as any,
       payoutAccountService: {} as any,
       paymentCronService: {} as any,
@@ -193,13 +211,13 @@ describe('PaymentController Integration Tests', () => {
 
   beforeEach(async () => {
     await clearTestDatabase();
-    await PaymentModel.deleteMany({});
+    await Payment.deleteMany({});
     jest.clearAllMocks();
     // Restore default mock implementations cleared above
     mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
     mockRequestInvoice.mockReturnValue(Promise.resolve({ status: 'queued', jobId: 'job-123' }));
 
-    testPayment = await PaymentModel.create({
+    testPayment = await Payment.create({
       cuid: testClient.cuid,
       tenant: testProfile._id,
       paymentType: PaymentRecordType.RENT,
@@ -275,7 +293,7 @@ describe('PaymentController Integration Tests', () => {
     });
 
     it('should return 400 when trying to refund a PENDING payment', async () => {
-      await PaymentModel.findByIdAndUpdate(testPayment._id, {
+      await Payment.findByIdAndUpdate(testPayment._id, {
         status: PaymentRecordStatus.PENDING,
         gatewayChargeId: null,
         paidAt: null,
@@ -291,7 +309,7 @@ describe('PaymentController Integration Tests', () => {
     });
 
     it('should return 400 when trying to refund a CANCELLED payment', async () => {
-      await PaymentModel.findByIdAndUpdate(testPayment._id, {
+      await Payment.findByIdAndUpdate(testPayment._id, {
         status: PaymentRecordStatus.CANCELLED,
         gatewayChargeId: null,
       });
@@ -316,7 +334,7 @@ describe('PaymentController Integration Tests', () => {
     });
 
     it('should return 400 for manual entry payments without a gatewayChargeId', async () => {
-      const manualPayment = await PaymentModel.create({
+      const manualPayment = await Payment.create({
         cuid: testClient.cuid,
         tenant: testProfile._id,
         paymentType: PaymentRecordType.RENT,
@@ -369,17 +387,21 @@ describe('PaymentController Integration Tests', () => {
         cuid: localClient.cuid,
         client: localClient._id,
         planName: 'essential',
-        status: 'active',
+        status: ISubscriptionStatus.ACTIVE,
         billingInterval: 'monthly',
         startDate: new Date(),
         entitlements: {
           eSignature: false,
-          MaintenanceRequestService: false,
-          VisitorPassService: false,
+          maintenanceRequestService: false,
+          guestPassService: false,
           reportingAnalytics: false,
           leaseTemplates: false,
+          vendorManagement: false,
+          smsService: false,
+          aiTriage: false,
+          aiInvoiceScanning: false,
         },
-        billing: { provider: 'none', planId: 'essential-monthly' },
+        billing: { provider: IPaymentGatewayProvider.NONE, planId: 'essential-monthly' },
         totalMonthlyPrice: 0,
       });
     });
@@ -397,7 +419,7 @@ describe('PaymentController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
 
-      const created = await PaymentModel.findOne({ maintenanceRequestUid: 'MR-TEST-001' });
+      const created = await Payment.findOne({ maintenanceRequestUid: 'MR-TEST-001' });
       expect(created).not.toBeNull();
       expect(created!.status).toBe(PaymentRecordStatus.PENDING);
       expect(created!.paymentType).toBe(PaymentRecordType.MAINTENANCE);
@@ -421,7 +443,7 @@ describe('PaymentController Integration Tests', () => {
         })
         .expect(201);
 
-      const created = await PaymentModel.findOne({ maintenanceRequestUid: 'MR-TEST-002' });
+      const created = await Payment.findOne({ maintenanceRequestUid: 'MR-TEST-002' });
       expect(created!.description).toBe('HVAC filter replacement');
     });
 

@@ -22,7 +22,7 @@ import {
 
 import { INotificationContext } from './notification.types';
 import { getFormattedNotification } from './notificationMessages';
-import { notifyAnnouncement, MGMT_ROLES } from './notification.helpers';
+import { FINANCE_DEPARTMENTS, notifyAnnouncement, MGMT_ROLES } from './notification.helpers';
 
 export async function handlePaymentFailed(
   ctx: INotificationContext,
@@ -40,7 +40,8 @@ export async function handlePaymentFailed(
       { amount: fmt },
       MGMT_ROLES,
       { pytuid, tenantId },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS
     );
 
     if (tenantId) {
@@ -103,7 +104,8 @@ export async function handlePaymentSucceeded(
       { amount: fmt },
       MGMT_ROLES,
       { pytuid: payload.pytuid },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      FINANCE_DEPARTMENTS
     );
 
     // Queue payment receipt email to tenant
@@ -170,7 +172,8 @@ export async function handleSubscriptionRenewalUpcoming(
       { planName, amount: fmt, renewalDate: renewalDateStr },
       MGMT_ROLES,
       { stripeSubscriptionId: payload.stripeSubscriptionId, planName, renewalDate: renewalDateStr },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      FINANCE_DEPARTMENTS
     );
 
     // Also email the account admin
@@ -225,7 +228,8 @@ export async function handlePaymentOverdue(
       { amount: fmt, dueDate: dueDateStr },
       MGMT_ROLES,
       { pytuid: payload.pytuid, tenantId },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS
     );
 
     if (tenantId) {
@@ -341,7 +345,8 @@ export async function handlePayoutFailed(
       { amount: fmt, reason: reason || 'unknown error' },
       MGMT_ROLES,
       { payoutId: payload.payoutId, accountId: payload.accountId },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending payout failed notification', { error, payload });
@@ -363,7 +368,8 @@ export async function handleInvoiceOverdue(
       { amount: fmt },
       MGMT_ROLES,
       { pytuid: payload.pytuid, invoiceId: payload.invoiceId, tenantId: payload.tenantId },
-      NotificationPriorityEnum.HIGH
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending invoice overdue notification', { error, payload });
@@ -385,7 +391,8 @@ export async function handlePayoutPaid(
       { amount: fmt },
       MGMT_ROLES,
       { payoutId: payload.payoutId, accountId: payload.accountId },
-      NotificationPriorityEnum.MEDIUM
+      NotificationPriorityEnum.MEDIUM,
+      FINANCE_DEPARTMENTS
     );
   } catch (error) {
     ctx.log.error('Error sending payout paid notification', { error, payload });

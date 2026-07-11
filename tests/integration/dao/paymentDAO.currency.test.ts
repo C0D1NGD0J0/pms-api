@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { Payment, Client } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
-import { PaymentModel as Payment, Client } from '@models/index';
 import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
 
 describe('PaymentDAO — currency-aware getPaymentStats', () => {
@@ -87,6 +87,44 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     expect(stats.byCurrency).toEqual([]);
     expect(stats.overdueCount).toBe(0);
     expect(stats.totalCount).toBe(0);
+  });
+
+  it('stores and retrieves chargedAt field', async () => {
+    const chargedDate = new Date('2025-06-15T10:00:00Z');
+    const paymentData = makePayment('USD', 100000, PaymentRecordStatus.PAID, new Date());
+    const created = await Payment.create({ ...paymentData, chargedAt: chargedDate });
+
+    const found = await Payment.findById(created._id).lean();
+    expect(found).toBeDefined();
+    expect(found!.chargedAt).toEqual(chargedDate);
+  });
+
+  it('stores and retrieves stripePaymentMethodType field', async () => {
+    const paymentData = makePayment('USD', 50000, PaymentRecordStatus.PAID, new Date());
+    const created = await Payment.create({
+      ...paymentData,
+      stripePaymentMethodType: 'acss_debit',
+    });
+
+    const found = await Payment.findById(created._id).lean();
+    expect(found).toBeDefined();
+    expect(found!.stripePaymentMethodType).toBe('acss_debit');
+  });
+
+  it('chargedAt defaults to undefined when not provided', async () => {
+    const paymentData = makePayment('USD', 75000, PaymentRecordStatus.PENDING);
+    const created = await Payment.create(paymentData);
+
+    const found = await Payment.findById(created._id).lean();
+    expect(found!.chargedAt).toBeUndefined();
+  });
+
+  it('stripePaymentMethodType defaults to undefined when not provided', async () => {
+    const paymentData = makePayment('CAD', 60000, PaymentRecordStatus.PENDING);
+    const created = await Payment.create(paymentData);
+
+    const found = await Payment.findById(created._id).lean();
+    expect(found!.stripePaymentMethodType).toBeUndefined();
   });
 
   it('does not mix currencies into a single revenue total', async () => {

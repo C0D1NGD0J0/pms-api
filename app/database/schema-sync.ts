@@ -162,8 +162,8 @@ const SYNC_RULES: SyncRule[] = [
         tenantPortalActive: true,
         onlinePayments: true,
         maintenanceRequests: true,
-        smsNotifications: true,
-        visitorPass: true,
+        smsNotifications: false,
+        guestPass: false,
       },
     },
   },
@@ -242,6 +242,12 @@ const SYNC_RULES: SyncRule[] = [
     filter: { occupancyStatus: { $exists: false } },
     update: { occupancyStatus: 'vacant' },
   },
+  {
+    label: 'property.assignedStaff',
+    collection: 'properties',
+    filter: { assignedStaff: { $exists: false } },
+    update: { assignedStaff: [] },
+  },
 
   // ═══════════════════════════════════════════════════════════════════════════
   // UNITS
@@ -273,8 +279,6 @@ const SYNC_RULES: SyncRule[] = [
     update: {
       entitlements: {
         eSignature: false,
-        MaintenanceRequestService: false,
-        VisitorPassService: false,
         reportingAnalytics: false,
         leaseTemplates: false,
         vendorManagement: false,
@@ -323,6 +327,20 @@ const SYNC_RULES: SyncRule[] = [
     filter: { 'settings.theme': { $exists: false } },
     update: { 'settings.theme': 'light' },
   },
+  {
+    label: 'subscription.smsUsage',
+    collection: 'subscriptions',
+    filter: { smsUsage: { $exists: false } },
+    update: {
+      smsUsage: {
+        countThisPeriod: 0,
+        periodStart: new Date(),
+        lastResetAt: null,
+        notifiedAt80: false,
+        notifiedAt100: false,
+      },
+    },
+  },
 ];
 
 const CLEANUP_RULES: CleanupRule[] = [
@@ -340,6 +358,30 @@ const CLEANUP_RULES: CleanupRule[] = [
     collection: 'subscriptions',
     filter: { 'entitlements.RepairRequestService': { $exists: true } },
     unset: { 'entitlements.RepairRequestService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale GUESTPASSService',
+    collection: 'subscriptions',
+    filter: { 'entitlements.GUESTPASSService': { $exists: true } },
+    unset: { 'entitlements.GUESTPASSService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale GuestPassService (wrong casing)',
+    collection: 'subscriptions',
+    filter: { 'entitlements.GuestPassService': { $exists: true } },
+    unset: { 'entitlements.GuestPassService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale VisitorPassService',
+    collection: 'subscriptions',
+    filter: { 'entitlements.VisitorPassService': { $exists: true } },
+    unset: { 'entitlements.VisitorPassService': 1 },
+  },
+  {
+    label: 'subscription.entitlements: remove stale MaintenanceRequestService (wrong casing)',
+    collection: 'subscriptions',
+    filter: { 'entitlements.MaintenanceRequestService': { $exists: true } },
+    unset: { 'entitlements.MaintenanceRequestService': 1 },
   },
 ];
 

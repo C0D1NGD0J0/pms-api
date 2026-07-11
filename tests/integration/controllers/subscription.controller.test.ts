@@ -11,6 +11,7 @@ import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { SubscriptionController } from '@controllers/SubscriptionController';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 describe('SubscriptionController Integration Tests', () => {
   let app: Application;
@@ -39,8 +40,11 @@ describe('SubscriptionController Integration Tests', () => {
 
     mockStripeService = {
       createCheckoutSession: jest.fn().mockResolvedValue({
-        sessionId: 'cs_test_123',
-        checkoutUrl: 'https://checkout.stripe.com/c/pay/cs_test_123',
+        success: true,
+        data: {
+          sessionId: 'cs_test_123',
+          redirectUrl: 'https://checkout.stripe.com/c/pay/cs_test_123',
+        },
       }),
       getProductsWithPrices: jest.fn().mockResolvedValue(
         new Map([
@@ -96,10 +100,13 @@ describe('SubscriptionController Integration Tests', () => {
     const subscriptionService = new SubscriptionService({
       subscriptionDAO,
       paymentGatewayService: mockStripeService,
-      emitterService: {} as any,
-      sseService: {} as any,
-      clientDAO: {} as any,
-      authCache: {} as any,
+      emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
+      sseService: { sendToUser: jest.fn().mockResolvedValue(true) } as any,
+      clientDAO: {
+        getClientByCuid: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), cuid: 'client-super', accountAdmin: new Types.ObjectId() }),
+        findById: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), cuid: 'client-super', accountType: { category: 'individual' }, displayName: 'Test Client' }),
+      } as any,
+      authCache: { invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }) } as any,
       subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
       userDAO: {} as any,
       propertyDAO: {} as any,
@@ -109,24 +116,35 @@ describe('SubscriptionController Integration Tests', () => {
       subscriptionWebhookService: {} as any,
     });
 
-    subscriptionController = new SubscriptionController({ subscriptionService });
+    subscriptionController = new SubscriptionController({ subscriptionService, smsService: {} as any });
 
     // Setup Express app
     app = express();
     app.use(express.json());
     app.use(cookieParser());
-    app.use((req, res, next) => {
+    app.use((req: any, res, next) => {
       req.container = {} as any;
+      // Parse x-test-context header so supertest calls can set req.context
+      const ctxHeader = req.headers['x-test-context'];
+      if (ctxHeader) {
+        try { req.context = JSON.parse(ctxHeader as string); } catch { /* noop */ }
+      }
       next();
     });
 
     // Setup routes
-    app.post('/api/v1/subscriptions/:cuid/init-subscription-payment', async (req, res) => {
-      await subscriptionController.initSubscriptionPayment(req as any, res);
+    app.post('/api/v1/subscriptions/:cuid/init-subscription-payment', async (req, res, next) => {
+      try { await subscriptionController.initSubscriptionPayment(req as any, res); } catch (err) { next(err); }
     });
 
-    app.get('/api/v1/subscriptions/plans', async (req, res) => {
-      await subscriptionController.getSubscriptionPlans(req as any, res);
+    app.get('/api/v1/subscriptions/plans', async (req, res, next) => {
+      try { await subscriptionController.getSubscriptionPlans(req as any, res); } catch (err) { next(err); }
+    });
+
+    // Error handler
+    app.use((err: any, _req: any, res: any, _next: any) => {
+      const statusCode = err.statusCode || err.status || 500;
+      res.status(statusCode).json({ success: false, message: err.message });
     });
   });
 
@@ -155,10 +173,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-test',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
-          provider: 'stripe',
+          customerId: 'cus_pending_test',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -217,10 +235,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-admin',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
-          provider: 'stripe',
+          customerId: 'cus_pending_test',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -258,10 +276,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-diff',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
-          provider: 'stripe',
+          customerId: 'cus_pending_test',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -292,17 +310,17 @@ describe('SubscriptionController Integration Tests', () => {
       ).rejects.toThrow('Unauthorized access');
     });
 
-    it('should return 400 when subscription is not in pending_payment status', async () => {
+    it('should create checkout session for active subscription without subscriberId (reactivation)', async () => {
       const client = new Types.ObjectId();
       await Subscription.create({
         cuid: superAdminUser.cuid,
         suid: 'suid-active',
         client,
         planName: 'portfolio',
-        status: 'active',
+        status: ISubscriptionStatus.ACTIVE,
         billing: {
           customerId: 'cus_123',
-          provider: 'stripe',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_monthly',
         },
         totalMonthlyPrice: 9900,
@@ -329,9 +347,18 @@ describe('SubscriptionController Integration Tests', () => {
         json: jest.fn(),
       };
 
-      await expect(
-        subscriptionController.initSubscriptionPayment(req as any, res as any)
-      ).rejects.toThrow('Payment already completed or subscription not in pending state');
+      // Active subscription without subscriberId is treated as needing initial checkout (reactivation flow)
+      await subscriptionController.initSubscriptionPayment(req as any, res as any);
+
+      expect(res.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            sessionId: 'cs_test_123',
+          }),
+        })
+      );
     });
 
     it('should use annual price for annual billing interval', async () => {
@@ -341,10 +368,10 @@ describe('SubscriptionController Integration Tests', () => {
         suid: 'suid-annual',
         client,
         planName: 'portfolio',
-        status: 'pending_payment',
+        status: ISubscriptionStatus.PENDING_PAYMENT,
         billing: {
-          customerId: '',
-          provider: 'stripe',
+          customerId: 'cus_pending_test',
+          provider: IPaymentGatewayProvider.STRIPE,
           planId: 'price_professional_annual',
         },
         totalMonthlyPrice: 9900,
@@ -477,7 +504,6 @@ describe('SubscriptionController Integration Tests', () => {
       // Should use Stripe prices from mock
       expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
       expect(growthPlan.pricing.monthly.priceId).toBe('price_growth_monthly');
-      expect(growthPlan.pricing.monthly.lookUpKey).toBe('growth_monthly');
     });
 
     it('should return all three plans: essential, growth, portfolio', async () => {

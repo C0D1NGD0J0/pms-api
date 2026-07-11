@@ -42,6 +42,7 @@ describe('AuthService Integration Tests', () => {
       queueFactory: mockQueueFactory as any,
       tokenService: mockTokenService as any,
       authCache: mockAuthCache as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       vendorService,
       subscriptionService: mockSubscriptionService as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
@@ -99,7 +100,7 @@ describe('AuthService Integration Tests', () => {
 
       expect(savedUser!.cuids).toHaveLength(1);
       expect(savedUser!.cuids[0].cuid).toBe(savedClient!.cuid);
-      expect(savedUser!.cuids[0].roles).toContain(ROLES.ADMIN);
+      expect(savedUser!.cuids[0].roles).toContain(ROLES.SUPER_ADMIN);
       expect(savedUser!.activecuid).toBe(savedClient!.cuid);
 
       const savedProfile = await Profile.findOne({ user: savedUser!._id });
@@ -659,7 +660,7 @@ describe('AuthService Integration Tests', () => {
         password: '$2b$10$hashedPassword',
         isActive: false,
         activationToken,
-        activationExpires: new Date(Date.now() - 1000),
+        activationTokenExpiresAt: new Date(Date.now() - 1000),
         cuids: [
           {
             cuid: client.cuid,

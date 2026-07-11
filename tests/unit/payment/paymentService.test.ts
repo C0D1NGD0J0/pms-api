@@ -104,6 +104,7 @@ const makeServiceWithMocks = (
     emitterService,
     stripeService: stripeService as unknown as StripeService,
     smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
+    userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
     profileDAO,
     paymentDAO,
     invoiceDAO,
@@ -160,6 +161,7 @@ const makeServiceWithMocks = (
     queueFactory,
     paymentDAO,
     profileDAO,
+    userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
     clientDAO,
     leaseDAO,
   });
@@ -215,6 +217,7 @@ describe('PaymentService - setup payment method webhooks', () => {
     } as unknown as jest.Mocked<PaymentGatewayService>;
     mockProfileDAO = {
       update: jest.fn().mockResolvedValue({}),
+      findFirst: jest.fn().mockResolvedValue(null),
     } as unknown as jest.Mocked<ProfileDAO>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
 
@@ -1125,7 +1128,9 @@ describe('PaymentService - handleDisputeCreated', () => {
           'dispute.reason': 'fraudulent',
           'dispute.disputedAt': expect.any(Date),
         }),
-      }
+      },
+      undefined,
+      expect.anything()
     );
     expect(mockEmitterService.emit).toHaveBeenCalledWith(
       'payment:dispute:created',
@@ -2582,7 +2587,7 @@ describe('PaymentService - markOverduePayments', () => {
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    const updateCall = mockPaymentDAO.update.mock.calls[0][0];
+    const updateCall = mockPaymentDAO.update.mock.calls[0][0] as any;
     // autoDebit should NOT be in the $in list
     expect(updateCall._id.$in.map((id: any) => id.toString())).not.toContain(
       autoDebit._id.toString()
@@ -2785,7 +2790,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    const [query] = mockPaymentDAO.list.mock.calls[0];
+    const [query] = mockPaymentDAO.list.mock.calls[0] as [any];
     expect(query.paymentType).toBe(PaymentRecordType.RENT);
     expect(query.status.$in).toEqual(
       expect.arrayContaining([PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE])
@@ -2945,7 +2950,7 @@ describe('PaymentService - autoChargeOverdueMaintenancePayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeOverdueMaintenancePayments();
 
-    const [query] = mockPaymentDAO.list.mock.calls[0];
+    const [query] = mockPaymentDAO.list.mock.calls[0] as [any];
     expect(query.paymentType.$in).toEqual(
       expect.arrayContaining([PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE])
     );
@@ -4252,7 +4257,7 @@ describe('PaymentService - getVendorEarnings', () => {
     await paymentService.getVendorEarnings(CUID, VENDOR_UID);
 
     expect(mockInvoiceDAO.listByVendor).toHaveBeenCalledWith(
-      VENDOR_OID.toString(),
+      expect.arrayContaining([VENDOR_OID.toString()]),
       CUID,
       expect.objectContaining({ status: InvoiceStatus.APPROVED })
     );
@@ -5230,6 +5235,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
       emitterService: mockEmitter as unknown as EventEmitterService,
       stripeService: { getInvoicePaymentDetails: jest.fn().mockResolvedValue({ chargeId: CHARGE_ID }) } as any,
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       profileDAO: {} as any,
       paymentDAO: mockPaymentDAO,
       invoiceDAO: mockInvoiceDAO,
@@ -5263,6 +5269,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
       emitterService: mockEmitter as unknown as EventEmitterService,
       stripeService: { getInvoicePaymentDetails: jest.fn().mockResolvedValue({ chargeId: null }) } as any,
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       profileDAO: {} as any,
       paymentDAO: mockPaymentDAO,
       invoiceDAO: mockInvoiceDAO,

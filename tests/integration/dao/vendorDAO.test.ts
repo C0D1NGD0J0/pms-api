@@ -25,8 +25,6 @@ describe('VendorDAO Integration Tests', () => {
       _id: testUserId,
       uid: 'user-uid-1',
       email: 'user1@example.com',
-      firstName: 'Test',
-      lastName: 'User',
       password: 'hashed',
       activecuid: testCuid,
       cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client 1', roles: [], isConnected: true }],
@@ -36,8 +34,6 @@ describe('VendorDAO Integration Tests', () => {
       _id: testUserId2,
       uid: 'user-uid-2',
       email: 'user2@example.com',
-      firstName: 'Test',
-      lastName: 'User2',
       password: 'hashed',
       activecuid: testCuid2,
       cuids: [

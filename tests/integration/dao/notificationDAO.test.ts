@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { clearTestDatabase } from '@tests/helpers';
 import { NotificationDAO } from '@dao/notificationDAO';
-import { NotificationModel, User } from '@models/index';
 import { ResourceContext } from '@interfaces/utils.interface';
+import { Notification as NotificationModel, User } from '@models/index';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
@@ -28,8 +28,6 @@ describe('NotificationDAO Integration Tests', () => {
       _id: testUserId,
       uid: 'user-1-uid',
       email: 'user1@example.com',
-      firstName: 'User',
-      lastName: 'One',
       password: 'hashed',
       activecuid: testCuid,
       cuids: [],
@@ -39,8 +37,6 @@ describe('NotificationDAO Integration Tests', () => {
       _id: testUserId2,
       uid: 'user-2-uid',
       email: 'user2@example.com',
-      firstName: 'User',
-      lastName: 'Two',
       password: 'hashed',
       activecuid: testCuid,
       cuids: [],
@@ -509,8 +505,11 @@ describe('NotificationDAO Integration Tests', () => {
         type: NotificationTypeEnum.INFO,
       });
 
-      // Cursor is set AFTER the old notification exists
-      const cursor = new Date();
+      // Use the old notification's createdAt as cursor so the new one is strictly after
+      const cursor = old.createdAt!;
+
+      // Small delay to ensure distinct timestamps
+      await new Promise((r) => setTimeout(r, 10));
 
       const newNotif = await notificationDAO.create({
         cuid: testCuid,
@@ -849,11 +848,11 @@ describe('NotificationDAO Integration Tests', () => {
       const notifications = await NotificationModel.find({
         recipient: testUserId,
         isRead: true,
-      });
+      }).lean();
 
-      notifications.forEach((n) => {
+      notifications.forEach((n: any) => {
         expect(n.readAt).toBeDefined();
-        expect(n.readAt!.getTime()).toBeGreaterThanOrEqual(beforeMark.getTime());
+        expect(new Date(n.readAt).getTime()).toBeGreaterThanOrEqual(beforeMark.getTime());
       });
     });
 
@@ -1170,6 +1169,121 @@ describe('NotificationDAO Integration Tests', () => {
       const result = await notificationDAO.cleanup();
 
       expect(result.deletedCount).toBe(1);
+    });
+  });
+
+  describe('department-scoped announcements', () => {
+    beforeEach(async () => {
+      // Announcement with targetDepartments
+      await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        title: 'Maintenance Dept Only',
+        message: 'For maintenance staff',
+        type: NotificationTypeEnum.MAINTENANCE,
+        targetRoles: ['staff'],
+        targetDepartments: ['maintenance', 'operations'],
+      });
+
+      // Announcement without targetDepartments (old format)
+      await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        title: 'All Staff Announcement',
+        message: 'For all staff roles',
+        type: NotificationTypeEnum.MAINTENANCE,
+        targetRoles: ['staff'],
+      });
+
+      // Announcement with empty targetDepartments
+      await notificationDAO.create({
+        cuid: testCuid,
+        recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        title: 'Empty Dept Announcement',
+        message: 'Also for all staff',
+        type: NotificationTypeEnum.MAINTENANCE,
+        targetRoles: ['staff'],
+        targetDepartments: [],
+      });
+    });
+
+    it('should show department-targeted announcement to user in matching department', async () => {
+      const result = await notificationDAO.findForUser(
+        testUserId.toString(),
+        testCuid,
+        { roles: ['staff'], department: 'maintenance' },
+        { recipientType: RecipientTypeEnum.ANNOUNCEMENT }
+      );
+
+      const titles = result.data.map((n) => n.title);
+      expect(titles).toContain('Maintenance Dept Only');
+      expect(titles).toContain('All Staff Announcement');
+      expect(titles).toContain('Empty Dept Announcement');
+    });
+
+    it('should NOT show department-targeted announcement to user in non-matching department', async () => {
+      const result = await notificationDAO.findForUser(
+        testUserId.toString(),
+        testCuid,
+        { roles: ['staff'], department: 'accounting' },
+        { recipientType: RecipientTypeEnum.ANNOUNCEMENT }
+      );
+
+      const titles = result.data.map((n) => n.title);
+      expect(titles).not.toContain('Maintenance Dept Only');
+      // Old format (no targetDepartments) should still be visible
+      expect(titles).toContain('All Staff Announcement');
+      expect(titles).toContain('Empty Dept Announcement');
+    });
+
+    it('should show announcements without targetDepartments to all matching roles (backwards compat)', async () => {
+      const result = await notificationDAO.findForUser(
+        testUserId.toString(),
+        testCuid,
+        { roles: ['staff'], department: 'security' },
+        { recipientType: RecipientTypeEnum.ANNOUNCEMENT }
+      );
+
+      const titles = result.data.map((n) => n.title);
+      expect(titles).toContain('All Staff Announcement');
+      expect(titles).toContain('Empty Dept Announcement');
+      expect(titles).not.toContain('Maintenance Dept Only');
+    });
+
+    it('getUnreadCount should exclude announcements not matching department', async () => {
+      // User in accounting should not see maintenance-dept announcement
+      const count = await notificationDAO.getUnreadCount(
+        testUserId.toString(),
+        testCuid,
+        undefined,
+        { roles: ['staff'], department: 'accounting' }
+      );
+
+      // Should see the 2 non-dept-targeted announcements but not the department-targeted one
+      expect(count).toBe(2);
+    });
+
+    it('getUnreadCount should include announcements matching department', async () => {
+      const count = await notificationDAO.getUnreadCount(
+        testUserId.toString(),
+        testCuid,
+        undefined,
+        { roles: ['staff'], department: 'maintenance' }
+      );
+
+      // Should see all 3 announcements
+      expect(count).toBe(3);
+    });
+
+    it('getUnreadCountByType should respect department filtering', async () => {
+      const counts = await notificationDAO.getUnreadCountByType(
+        testUserId.toString(),
+        testCuid,
+        { roles: ['staff'], department: 'accounting' }
+      );
+
+      // Only 2 maintenance announcements visible (the ones without dept targeting)
+      expect(counts[NotificationTypeEnum.MAINTENANCE]).toBe(2);
     });
   });
 });

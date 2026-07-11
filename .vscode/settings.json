@@ -7,8 +7,10 @@
     "cuids",
     "currentuser",
     "docusign",
+    "DSAR",
     "dsphere",
     "Financials",
+    "GUESTPASS",
     "IAWS",
     "invitationuid",
     "ISSE",
@@ -36,6 +38,7 @@
     "validatepuid",
     "Validatevuid",
     "virtuals",
+    "vpuid",
     "vuid"
   ]
 }

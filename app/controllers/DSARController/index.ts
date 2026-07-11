@@ -17,17 +17,17 @@ export class DSARController {
   }
 
   exportUserData = async (req: AppRequest, res: Response): Promise<void> => {
-    const { uid } = req.params;
-    const requestingUserId = req.context.currentuser?.sub;
-    const userRole = req.context.currentuser?.client?.role;
-    const isSelf = requestingUserId === uid;
+    const { uid, cuid } = req.params;
+    const currentUser = req.context.currentuser;
+    const isSelf = currentUser?.uid === uid;
+    const userRole = currentUser?.client?.role;
     const isAdmin = userRole === ROLES.SUPER_ADMIN || userRole === ROLES.ADMIN;
 
     if (!isSelf && !isAdmin) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
 
-    const data = await this.dsarService.exportUserData(uid);
+    const data = await this.dsarService.exportUserData(uid, cuid);
 
     res.setHeader(
       'Content-Disposition',
@@ -37,17 +37,17 @@ export class DSARController {
   };
 
   anonymiseUser = async (req: AppRequest, res: Response): Promise<void> => {
-    const { uid } = req.params;
-    const requestingUserId = req.context.currentuser?.sub;
-    const userRole = req.context.currentuser?.client?.role;
-    const isSelf = requestingUserId === uid;
+    const { uid, cuid } = req.params;
+    const currentUser = req.context.currentuser;
+    const isSelf = currentUser?.uid === uid;
+    const userRole = currentUser?.client?.role;
     const isAdmin = userRole === ROLES.SUPER_ADMIN || userRole === ROLES.ADMIN;
 
     if (!isSelf && !isAdmin) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
 
-    await this.dsarService.anonymiseUser(uid, requestingUserId ?? uid);
+    await this.dsarService.anonymiseUser(uid, cuid, currentUser?.uid ?? uid);
     res.status(httpStatusCodes.OK).json({ success: true, message: 'Account data anonymised' });
   };
 }

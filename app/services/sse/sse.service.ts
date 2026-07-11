@@ -37,7 +37,8 @@ export class SSEService {
             msg.data,
             msg.eventType,
             msg.eventId,
-            msg.targetRoles
+            msg.targetRoles,
+            msg.targetDepartments
           );
         }
       } catch (err) {
@@ -52,7 +53,8 @@ export class SSEService {
     userId: string,
     cuid: string,
     channelType: 'individual' | 'announcement',
-    userRole?: string
+    userRole?: string,
+    userDepartment?: string
   ): Promise<Session> {
     try {
       const session = await createSession(req, res);
@@ -62,6 +64,7 @@ export class SSEService {
         channelType,
         connectedAt: new Date(),
         userRole,
+        userDepartment,
       };
 
       const sessionKey = this.getSessionKey(userId, cuid, channelType);
@@ -99,12 +102,21 @@ export class SSEService {
     data: any,
     eventType: string = 'announcement',
     eventId?: string,
-    targetRoles?: string[]
+    targetRoles?: string[],
+    targetDepartments?: string[]
   ): Promise<number> {
     const plainData = data?.toObject ? data.toObject() : data;
     await this.redisPub.publish(
       'pms:sse:events',
-      JSON.stringify({ type: 'broadcast', cuid, data: plainData, eventType, eventId, targetRoles })
+      JSON.stringify({
+        type: 'broadcast',
+        cuid,
+        data: plainData,
+        eventType,
+        eventId,
+        targetRoles,
+        targetDepartments,
+      })
     );
     return 1;
   }
@@ -160,7 +172,8 @@ export class SSEService {
     data: any,
     eventType: string,
     eventId?: string,
-    targetRoles?: string[]
+    targetRoles?: string[],
+    targetDepartments?: string[]
   ): void {
     try {
       let sentCount = 0;
@@ -172,6 +185,10 @@ export class SSEService {
               const sessionRole = (session.state as any)?.userRole;
               if (!sessionRole || !targetRoles.includes(sessionRole)) continue;
             }
+            if (targetDepartments?.length) {
+              const sessionDept = (session.state as any)?.userDepartment;
+              if (!sessionDept || !targetDepartments.includes(sessionDept)) continue;
+            }
             if (eventId) {
               session.push(data, eventType, eventId);
             } else {
@@ -181,7 +198,12 @@ export class SSEService {
           }
         }
       }
-      this.log.info('Broadcast message to client', { cuid, sentCount, targetRoles });
+      this.log.info('Broadcast message to client', {
+        cuid,
+        sentCount,
+        targetRoles,
+        targetDepartments,
+      });
     } catch (error) {
       this.log.error('Failed to broadcast to client', { error, cuid });
     }

@@ -3,6 +3,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { UserCache } from '@caching/user.cache';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SMSService } from '@services/smsService/sms.service';
@@ -53,6 +54,7 @@ interface IConstructor {
   invoiceDAO: InvoiceDAO;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
+  userCache: UserCache;
 }
 
 interface IStripePayoutWebhookData {
@@ -100,6 +102,7 @@ export class PaymentWebhookService {
   private readonly stripeService: StripeService;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly smsService: SMSService;
+  private readonly userCache: UserCache;
   private readonly profileDAO: ProfileDAO;
   private readonly paymentDAO: PaymentDAO;
 
@@ -110,6 +113,7 @@ export class PaymentWebhookService {
     emitterService,
     stripeService,
     smsService,
+    userCache,
     invoiceDAO,
     profileDAO,
     paymentDAO,
@@ -121,6 +125,7 @@ export class PaymentWebhookService {
     this.emitterService = emitterService;
     this.stripeService = stripeService;
     this.smsService = smsService;
+    this.userCache = userCache;
     this.invoiceDAO = invoiceDAO;
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
@@ -161,6 +166,9 @@ export class PaymentWebhookService {
             status: PaymentRecordStatus.PAID,
             paidAt: dayjs().toDate(),
             gatewayChargeId: chargeId,
+            ...(paymentDetails.paymentMethodType && {
+              stripePaymentMethodType: paymentDetails.paymentMethodType,
+            }),
             ...(payment.paymentMethod === PaymentMethod.OTHER && {
               paymentMethod: PaymentMethod.ONLINE,
             }),
@@ -769,6 +777,13 @@ export class PaymentWebhookService {
             { pytuid, paymentMethodId },
             'Card saved to tenant profile for future payments'
           );
+          const tenantProfile = await this.profileDAO.findFirst(
+            { user: new Types.ObjectId(tenantId) },
+            { populate: ['user'] }
+          );
+          if ((tenantProfile as any)?.user?.uid) {
+            await this.userCache.invalidateUserDetail(cuid, (tenantProfile as any).user.uid);
+          }
         }
       } catch (err) {
         this.log.warn({ err, pytuid }, 'Could not save card — payment still succeeded');
@@ -1199,6 +1214,21 @@ export class PaymentWebhookService {
     }
 
     await this.profileDAO.update({ user: new Types.ObjectId(tenantId) }, { $set: profileUpdate });
+
+    try {
+      const tenantProfile = await this.profileDAO.findFirst(
+        { user: new Types.ObjectId(tenantId) },
+        { populate: ['user'] }
+      );
+      if ((tenantProfile as any)?.user?.uid) {
+        await this.userCache.invalidateUserDetail(cuid, (tenantProfile as any).user.uid);
+      }
+    } catch (err) {
+      this.log.warn(
+        { err, tenantId, cuid },
+        'Could not invalidate user cache after payment method save'
+      );
+    }
 
     if (customerId) {
       await this.paymentGatewayService.updateCustomerDefaultPaymentMethod(

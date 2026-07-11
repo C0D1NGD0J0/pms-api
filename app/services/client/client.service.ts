@@ -6,6 +6,7 @@ import { EmailQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { AuthCache } from '@caching/auth.cache';
+import { UserCache } from '@caching/user.cache';
 import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -66,6 +67,7 @@ interface IConstructor {
   vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   authCache: AuthCache;
+  userCache: UserCache;
   userDAO: UserDAO;
 }
 
@@ -78,6 +80,7 @@ export class ClientService {
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly authCache: AuthCache;
+  private readonly userCache: UserCache;
   private readonly sseService: SSEService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly subscriptionService: SubscriptionService;
@@ -96,6 +99,7 @@ export class ClientService {
     userDAO,
     profileDAO,
     authCache,
+    userCache,
     sseService,
     subscriptionDAO,
     subscriptionService,
@@ -115,6 +119,7 @@ export class ClientService {
     this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.authCache = authCache;
+    this.userCache = userCache;
     this.sseService = sseService;
     this.subscriptionDAO = subscriptionDAO;
     this.notificationService = notificationService;
@@ -401,8 +406,8 @@ export class ClientService {
           tenantPortalActive: client.settings.tenantFeatures?.tenantPortalActive ?? true,
           onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? true,
           maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? true,
-          smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? true,
-          visitorPass: client.settings.tenantFeatures?.visitorPass ?? true,
+          smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? false,
+          guestPass: client.settings.tenantFeatures?.guestPass ?? false,
         },
       },
       clientStats: {
@@ -531,6 +536,9 @@ export class ClientService {
       t('client.logging.roleAssigned')
     );
 
+    await this.userCache.invalidateUserDetail(clientId, targetUserId);
+    await this.userCache.invalidateUserLists(clientId);
+
     return {
       success: true,
       data: null,
@@ -604,6 +612,9 @@ export class ClientService {
       },
       t('client.logging.roleRemoved')
     );
+
+    await this.userCache.invalidateUserDetail(clientId, targetUserId);
+    await this.userCache.invalidateUserLists(clientId);
 
     return {
       success: true,
@@ -752,6 +763,9 @@ export class ClientService {
       t('client.logging.userDisconnected')
     );
 
+    await this.userCache.invalidateUserDetail(clientId, targetUserId);
+    await this.userCache.invalidateUserLists(clientId);
+
     return {
       success: true,
       data: null,
@@ -812,6 +826,9 @@ export class ClientService {
       t('client.logging.userReconnected')
     );
 
+    await this.userCache.invalidateUserDetail(clientId, targetUserId);
+    await this.userCache.invalidateUserLists(clientId);
+
     return {
       success: true,
       data: null,
@@ -870,6 +887,7 @@ export class ClientService {
       department: department,
     });
     await this.authCache.invalidateUserSession(user._id.toString(), clientId);
+    await this.userCache.invalidateUserDetail(clientId, targetUserId);
 
     this.log.info(
       {
@@ -1269,7 +1287,7 @@ export class ClientService {
       'maintenanceRequests',
       'onlinePayments',
       'smsNotifications',
-      'visitorPass',
+      'guestPass',
     ];
 
     const updateSet: Record<string, boolean> = {};

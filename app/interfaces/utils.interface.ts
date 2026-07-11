@@ -40,6 +40,7 @@ export enum MailType {
   PAYMENT_RECEIPT = 'PAYMENT_RECEIPT',
   LEASE_ACTIVATED = 'LEASE_ACTIVATED',
   FORGOT_PASSWORD = 'FORGOT_PASSWORD',
+  GUEST_PASS_CODE = 'GUEST_PASS_CODE',
   PAYMENT_FAILED = 'PAYMENT_FAILED',
   PASSWORD_RESET = 'PASSWORD_RESET',
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
@@ -66,33 +67,11 @@ export enum PermissionAction {
   SEND = 'send',
 }
 
-export enum CURRENCIES {
-  // Major / Stripe-supported
-  USD = 'USD',
-  EUR = 'EUR',
-  GBP = 'GBP',
-  CAD = 'CAD',
-  AUD = 'AUD',
-  JPY = 'JPY',
-  MXN = 'MXN',
-  SGD = 'SGD',
-  AED = 'AED',
-  CNY = 'CNY',
-  // Africa
-  NGN = 'NGN',
-  ZAR = 'ZAR',
-  // Europe (non-EUR)
-  CHF = 'CHF',
-  // Asia-Pacific
-  INR = 'INR',
-  // South America
-  BRL = 'BRL',
-}
-
 export enum PermissionResource {
   SUBSCRIPTION = 'subscription',
   NOTIFICATION = 'notification',
   MAINTENANCE = 'maintenance',
+  GUEST_PASS = 'guest-pass',
   INVITATION = 'invitation',
   PROPERTY = 'property',
   BILLING = 'billing',
@@ -105,11 +84,35 @@ export enum PermissionResource {
   USER = 'user',
 }
 
+export enum CURRENCIES {
+  // Major / Stripe-supported
+  USD = 'USD',
+  EUR = 'EUR',
+  GBP = 'GBP',
+  CAD = 'CAD',
+  AUD = 'AUD',
+  JPY = 'JPY',
+  AED = 'AED',
+  CNY = 'CNY',
+  // Africa
+  NGN = 'NGN',
+  ZAR = 'ZAR',
+  // Europe (non-EUR)
+  CHF = 'CHF',
+  // Asia-Pacific
+  INR = 'INR',
+  MXN = 'MXN',
+  SGD = 'SGD',
+  // South America
+  BRL = 'BRL',
+}
+
 export enum ResourceContext {
   SERVICE_REQUEST = 'service-request',
   TENANT_PROFILE = 'tenant-profile',
   USER_PROFILE = 'user-profile',
   MAINTENANCE = 'maintenance',
+  GUEST_PASS = 'guest-pass',
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
@@ -213,7 +216,14 @@ export interface IAWSFileUploadResponse {
 }
 
 export interface ResourceInfo {
-  resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice'; //name of the resource
+  resourceName:
+    | 'property'
+    | 'profile'
+    | 'client'
+    | 'lease'
+    | 'maintenance'
+    | 'payment-invoice'
+    | 'guest-pass'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   fieldName: string; //name of the field

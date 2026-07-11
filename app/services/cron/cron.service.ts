@@ -1,18 +1,22 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { CronQueue } from '@queues/cron.queue';
-import { LeaseService } from '@services/lease/lease.service';
-import { SMSService } from '@services/smsService/sms.service';
-import { MetricsService } from '@services/metrics/metrics.service';
-import { QueueFactory } from '@services/queue/queueFactory.service';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
-import { PaymentService } from '@services/payments/payments.service';
-import { SubscriptionService } from '@services/subscription/subscription.service';
-import { NotificationService } from '@services/notification/notification.service';
+import {
+  SubscriptionService,
+  NotificationService,
+  GuestPassService,
+  MetricsService,
+  PaymentService,
+  QueueFactory,
+  LeaseService,
+  SMSService,
+} from '@services/index';
 
 interface IConstructor {
   notificationService?: NotificationService;
   subscriptionService: SubscriptionService;
+  guestPassService: GuestPassService;
   metricsService: MetricsService;
   paymentService: PaymentService;
   leaseService: LeaseService;
@@ -30,10 +34,12 @@ export class CronService {
   private log: Logger;
   private queueFactory: QueueFactory;
   private cronJobs: Map<string, ICronJob> = new Map();
+  private aborted = false;
 
   constructor({
     queueFactory,
     leaseService,
+    guestPassService,
     subscriptionService,
     paymentService,
     smsService,
@@ -47,6 +53,7 @@ export class CronService {
       leaseService,
       subscriptionService,
       paymentService,
+      guestPassService,
       smsService,
       metricsService,
     ].filter(Boolean);
@@ -70,6 +77,11 @@ export class CronService {
    */
   private async registerAllCronJobs(services: ICronProvider[]): Promise<void> {
     for (const service of services) {
+      if (this.aborted) {
+        this.log.info('CronService: aborting registration — shutdown in progress');
+        return;
+      }
+
       const serviceName = service.constructor.name;
 
       try {
@@ -119,6 +131,8 @@ export class CronService {
         },
         jobId: `cron:${cronJob.name}`, // Prevent duplicates
         timeout: cronJob.timeout || 300000, // 5 min default
+        removeOnComplete: { age: 600, count: 10 },
+        removeOnFail: { age: 3600, count: 20 },
       }
     );
   }
@@ -127,6 +141,10 @@ export class CronService {
     const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
     const registeredJobNames = Array.from(this.cronJobs.keys());
     await cronQueue.removeUnregisteredRepeatJobs(registeredJobNames);
+  }
+
+  destroy(): void {
+    this.aborted = true;
   }
 
   getJobHandler(jobName: string): (() => Promise<void>) | undefined {

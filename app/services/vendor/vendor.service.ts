@@ -882,6 +882,9 @@ export class VendorService {
         }
       }
 
+      await this.userCache.invalidateUserDetail(cuid, uid);
+      await this.userCache.invalidateUserLists(cuid);
+
       return {
         success: true,
         data: { uid, ...updateData },
@@ -943,6 +946,9 @@ export class VendorService {
       }
 
       await this.userDAO.updateById(user._id.toString(), { $set: { isActive } });
+
+      await this.userCache.invalidateUserDetail(cuid, uid);
+      await this.userCache.invalidateUserLists(cuid);
 
       return {
         success: true,

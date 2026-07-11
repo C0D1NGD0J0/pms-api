@@ -41,6 +41,7 @@ const mockPropertyCache = {
   invalidatePropertyLists: jest.fn().mockResolvedValue({ success: true }),
   getLeaseableProperties: jest.fn().mockResolvedValue({ success: false }),
   cacheLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
+  invalidateLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
 } as any;
 
 const mockPropertyCsvProcessor = {
@@ -133,17 +134,23 @@ describe('PropertyService — currency guard on country update', () => {
     });
 
     // Create an active lease on this property
+    const leaseTenantId = new Types.ObjectId();
     await Lease.create({
       cuid: client.cuid,
       luid: 'TEST-LUID-GUARD',
       leaseNumber: 'LN-GUARD',
-      leaseType: LeaseType.FIXED_TERM,
+      type: LeaseType.FIXED_TERM,
       status: LeaseStatus.ACTIVE,
+      approvalStatus: 'approved' as const,
+      templateType: 'residential-apartment' as const,
       signingMethod: SigningMethod.MANUAL,
       property: { id: property._id, address: property.address },
-      tenant: new Types.ObjectId(),
-      creator: new Types.ObjectId(),
-      fees: { rentAmount: 150000, currency: 'USD', securityDeposit: 0, rentDueDay: 1 },
+      tenantId: leaseTenantId,
+      createdBy: leaseTenantId,
+      fees: { rentAmount: 150000, currency: 'USD', securityDeposit: 0, rentDueDay: 1, acceptedPaymentMethod: 'e-transfer' as const },
+      signedDate: new Date(),
+      signatures: [{ userId: leaseTenantId, signedAt: new Date(), role: 'tenant' as const, signatureMethod: 'manual' as const }],
+      leaseDocuments: [{ documentType: 'lease_agreement' as const, url: 'https://example.com/doc.pdf', uploadedAt: new Date(), uploadedBy: leaseTenantId, filename: 'lease.pdf', key: 'leases/lease.pdf' }],
       duration: {
         startDate: new Date(),
         endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),

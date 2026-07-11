@@ -54,6 +54,7 @@ export interface IProperty {
   financialDetails?: FinancialDetails;
   operationalStatus: PropertyStatus;
   occupancyStatus: OccupancyStatus;
+  assignedStaff?: Types.ObjectId[];
   documents?: MediaDocumentItem[];
   images?: PropertyImageItem[];
   utilities: PropertyUtilities;

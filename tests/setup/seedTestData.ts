@@ -1,15 +1,19 @@
 import { Types } from 'mongoose';
 import { faker } from '@faker-js/faker';
-import { ROLES } from '@shared/constants/roles.constants';
 import { IUserDocument } from '@interfaces/user.interface';
 import { ILeaseDocument } from '@interfaces/lease.interface';
 import { IClientDocument } from '@interfaces/client.interface';
 import { IProfileDocument } from '@interfaces/profile.interface';
 import { IPropertyDocument } from '@interfaces/property.interface';
+import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { ISubscriptionDocument } from '@interfaces/subscription.interface';
 import { Subscription, Invitation, Profile, Client, User } from '@models/index';
+import {
+  IPaymentGatewayProvider,
+  ISubscriptionDocument,
+  ISubscriptionStatus,
+} from '@interfaces/subscription.interface';
 
 export interface SeededTestData {
   invitations: {
@@ -111,10 +115,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     uid: `uid-admin1-${faker.string.alphanumeric(10)}`,
     email: 'admin1@test.com',
     password: '$2b$10$hashedPasswordForTesting',
-    firstName: 'John',
-    lastName: 'Admin',
     isActive: true,
-    isEmailVerified: true,
     cuids: [
       {
         cuid: client1.cuid,
@@ -124,17 +125,13 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       },
     ],
     activecuid: client1.cuid,
-    accountAdmin: true,
   });
 
   const staff1 = await User.create({
     uid: `uid-staff1-${faker.string.alphanumeric(10)}`,
     email: 'staff1@test.com',
     password: '$2b$10$hashedPasswordForTesting',
-    firstName: 'Jane',
-    lastName: 'Staff',
     isActive: true,
-    isEmailVerified: true,
     cuids: [
       {
         cuid: client1.cuid,
@@ -144,17 +141,13 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       },
     ],
     activecuid: client1.cuid,
-    accountAdmin: false,
   });
 
   const admin2 = await User.create({
     uid: `uid-admin2-${faker.string.alphanumeric(10)}`,
     email: 'admin2@test.com',
     password: '$2b$10$hashedPasswordForTesting',
-    firstName: 'Bob',
-    lastName: 'Manager',
     isActive: true,
-    isEmailVerified: true,
     cuids: [
       {
         cuid: client2.cuid,
@@ -164,17 +157,13 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       },
     ],
     activecuid: client2.cuid,
-    accountAdmin: true,
   });
 
   const staff2 = await User.create({
     uid: `uid-staff2-${faker.string.alphanumeric(10)}`,
     email: 'staff2@test.com',
     password: '$2b$10$hashedPasswordForTesting',
-    firstName: 'Alice',
-    lastName: 'Worker',
     isActive: true,
-    isEmailVerified: true,
     cuids: [
       {
         cuid: client2.cuid,
@@ -184,17 +173,13 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       },
     ],
     activecuid: client2.cuid,
-    accountAdmin: false,
   });
 
   const admin3 = await User.create({
     uid: `uid-admin3-${faker.string.alphanumeric(10)}`,
     email: 'admin3@test.com',
     password: '$2b$10$hashedPasswordForTesting',
-    firstName: 'Charlie',
-    lastName: 'Director',
     isActive: true,
-    isEmailVerified: true,
     cuids: [
       {
         cuid: client3.cuid,
@@ -204,17 +189,13 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       },
     ],
     activecuid: client3.cuid,
-    accountAdmin: true,
   });
 
   const multiClientUser = await User.create({
     uid: `uid-multi-${faker.string.alphanumeric(10)}`,
     email: 'multiclient@test.com',
     password: '$2b$10$hashedPasswordForTesting',
-    firstName: 'Multi',
-    lastName: 'Access',
     isActive: true,
-    isEmailVerified: true,
     cuids: [
       {
         cuid: client1.cuid,
@@ -230,7 +211,6 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       },
     ],
     activecuid: client1.cuid,
-    accountAdmin: false,
   });
 
   const admin1Profile = await Profile.create({
@@ -273,7 +253,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     iuid: `inv-pending1-${faker.string.alphanumeric(10)}`,
     clientId: client1._id,
     inviteeEmail: 'pending1@test.com',
-    role: ROLES.STAFF,
+    role: IUserRole.STAFF,
     status: 'pending',
     invitedBy: admin1._id,
     invitationToken: faker.string.alphanumeric(64),
@@ -288,7 +268,7 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     iuid: `inv-pending2-${faker.string.alphanumeric(10)}`,
     clientId: client1._id,
     inviteeEmail: 'pending2@test.com',
-    role: ROLES.MANAGER,
+    role: IUserRole.MANAGER,
     status: 'pending',
     invitedBy: admin1._id,
     invitationToken: faker.string.alphanumeric(64),
@@ -302,9 +282,8 @@ export const seedTestData = async (): Promise<SeededTestData> => {
   const accepted1 = await Invitation.create({
     iuid: `inv-accepted1-${faker.string.alphanumeric(10)}`,
     clientId: client2._id,
-    cuid: client2.cuid,
     inviteeEmail: staff2.email,
-    role: ROLES.STAFF,
+    role: IUserRole.STAFF,
     status: 'accepted',
     invitedBy: admin2._id,
     invitationToken: faker.string.alphanumeric(64),
@@ -319,9 +298,8 @@ export const seedTestData = async (): Promise<SeededTestData> => {
   const declined1 = await Invitation.create({
     iuid: `inv-declined1-${faker.string.alphanumeric(10)}`,
     clientId: client1._id,
-    cuid: client1.cuid,
     inviteeEmail: 'declined@test.com',
-    role: ROLES.STAFF,
+    role: IUserRole.STAFF,
     status: 'declined',
     invitedBy: admin1._id,
     invitationToken: faker.string.alphanumeric(64),
@@ -335,9 +313,8 @@ export const seedTestData = async (): Promise<SeededTestData> => {
   const revoked1 = await Invitation.create({
     iuid: `inv-revoked1-${faker.string.alphanumeric(10)}`,
     clientId: client1._id,
-    cuid: client1.cuid,
     inviteeEmail: 'revoked@test.com',
-    role: ROLES.STAFF,
+    role: IUserRole.STAFF,
     status: 'revoked',
     invitedBy: admin1._id,
     invitationToken: faker.string.alphanumeric(64),
@@ -356,14 +333,26 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     cuid: client1.cuid,
     client: client1._id,
     planName: 'portfolio',
-    status: 'active',
+    status: ISubscriptionStatus.ACTIVE,
     startDate: new Date(),
     endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
     billingInterval: 'monthly',
     billing: {
       customerId: 'cus_test123',
-      provider: 'stripe',
+      subscriberId: 'sub_test123',
+      provider: IPaymentGatewayProvider.STRIPE,
       planId: 'price_portfolio123',
+    },
+    entitlements: {
+      eSignature: true,
+      maintenanceRequestService: true,
+      guestPassService: true,
+      reportingAnalytics: true,
+      leaseTemplates: true,
+      vendorManagement: true,
+      smsService: true,
+      aiTriage: true,
+      aiInvoiceScanning: true,
     },
     totalMonthlyPrice: 4900,
     currentSeats: 2,
@@ -375,14 +364,25 @@ export const seedTestData = async (): Promise<SeededTestData> => {
     cuid: client2.cuid,
     client: client2._id,
     planName: 'essential',
-    status: 'active',
+    status: ISubscriptionStatus.ACTIVE,
     startDate: new Date(),
     endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year from now
     billingInterval: 'monthly',
     billing: {
       customerId: 'none',
-      provider: 'none',
+      provider: IPaymentGatewayProvider.NONE,
       planId: 'plan_essential',
+    },
+    entitlements: {
+      eSignature: false,
+      maintenanceRequestService: false,
+      guestPassService: false,
+      reportingAnalytics: false,
+      leaseTemplates: false,
+      vendorManagement: false,
+      smsService: false,
+      aiTriage: false,
+      aiInvoiceScanning: false,
     },
     totalMonthlyPrice: 0,
     currentSeats: 2,

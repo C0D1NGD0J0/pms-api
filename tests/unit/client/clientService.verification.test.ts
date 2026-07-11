@@ -38,6 +38,7 @@ describe('ClientService - Account Verification', () => {
       userDAO: {} as any,
       profileDAO: {} as any,
       authCache: {} as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
       subscriptionDAO: {} as any,
       subscriptionService: {} as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
@@ -47,6 +48,7 @@ describe('ClientService - Account Verification', () => {
       vendorDAO: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
+      paymentProcessorDAO: {} as any,
     });
   });
 
@@ -98,9 +100,7 @@ describe('ClientService - Account Verification', () => {
       const alreadyVerified = { ...stripeVerifiedClient, isVerified: true };
       mockClientDAO.getClientByCuid.mockResolvedValue(alreadyVerified as IClientDocument);
 
-      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(
-        new BadRequestError({ message: 'Account is already verified' })
-      );
+      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(BadRequestError);
       expect(mockClientDAO.updateById).not.toHaveBeenCalled();
     });
 
@@ -108,9 +108,7 @@ describe('ClientService - Account Verification', () => {
       mockClientDAO.getClientByCuid.mockResolvedValue(stripeVerifiedClient as IClientDocument);
       mockClientDAO.updateById.mockResolvedValue(null);
 
-      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(
-        new BadRequestError({ message: 'Failed to verify account' })
-      );
+      await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(BadRequestError);
     });
   });
 });

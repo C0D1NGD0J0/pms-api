@@ -6,6 +6,7 @@ import { EmailQueue } from '@queues/index';
 import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
+import { UserCache } from '@caching/user.cache';
 import { ISignupData } from '@interfaces/user.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -57,6 +58,7 @@ interface IConstructor {
   vendorService: VendorService;
   queueFactory: QueueFactory;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   authCache: AuthCache;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
@@ -68,6 +70,7 @@ export class AuthService {
   private readonly userDAO: UserDAO;
   private readonly clientDAO: ClientDAO;
   private readonly authCache: AuthCache;
+  private readonly userCache: UserCache;
   private readonly profileDAO: ProfileDAO;
   private readonly queueFactory: QueueFactory;
   private readonly tokenService: AuthTokenService;
@@ -88,6 +91,7 @@ export class AuthService {
     queueFactory,
     tokenService,
     authCache,
+    userCache,
     vendorService,
     leaseDAO,
     paymentProcessorDAO,
@@ -101,6 +105,7 @@ export class AuthService {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
+    this.userCache = userCache;
     this.profileDAO = profileDAO;
     this.queueFactory = queueFactory;
     this.tokenService = tokenService;
@@ -546,6 +551,12 @@ export class AuthService {
       await this.userDAO.updateById(user._id.toString(), {
         $set: { activecuid: activeAccount.cuid },
       });
+      await this.userCache.invalidateUserDetail(activeAccount.cuid, user.uid).catch((err) => {
+        this.log.warn(
+          { err, cuid: activeAccount.cuid },
+          'Cache invalidation failed after active account fallback'
+        );
+      });
     }
 
     const tokens = this.tokenService.createJwtTokens({
@@ -647,6 +658,9 @@ export class AuthService {
     }
 
     await this.userDAO.updateById(userId, { $set: { activecuid: newcuid } });
+    await this.userCache.invalidateUserDetail(newcuid, user.uid).catch((err) => {
+      this.log.warn({ err, cuid: newcuid }, 'Cache invalidation failed after account switch');
+    });
     const activeAccount = user.cuids.find((c) => c.cuid === newcuid)!;
     const tokens = this.tokenService.createJwtTokens({
       sub: user._id.toString(),
@@ -931,8 +945,8 @@ export class AuthService {
 
     await this.profileDAO.updateById(profile._id.toString(), { $set: updateFields });
 
+    const user = await this.userDAO.getUserById(userId);
     if (body.newPassword) {
-      const user = await this.userDAO.getUserById(userId);
       if (user) {
         user.password = body.newPassword;
         await user.save();
@@ -948,7 +962,14 @@ export class AuthService {
     });
 
     await this.userDAO.clearOnboardingFlag(userId, cuid);
-    await this.authCache.invalidateCurrentUser(userId, cuid);
+    await this.authCache.invalidateCurrentUser(userId, cuid).catch((err) => {
+      this.log.warn({ err, cuid }, 'Cache invalidation failed after onboarding');
+    });
+    if (user) {
+      await this.userCache.invalidateUserDetail(cuid, user.uid).catch((err) => {
+        this.log.warn({ err, cuid }, 'Cache invalidation failed after onboarding');
+      });
+    }
 
     return { success: true, message: t('auth.success.onboardingCompleted'), data: null };
   }
@@ -1029,6 +1050,9 @@ export class AuthService {
           $set: {
             ['tenantInfo.paymentGatewayCustomers.platform']: customerId,
           },
+        });
+        await this.userCache.invalidateUserDetail(cuid, currentuser.uid).catch((err) => {
+          this.log.warn({ err, cuid }, 'Cache invalidation failed after Stripe customer mapping');
         });
       }
 
@@ -1229,6 +1253,9 @@ export class AuthService {
       { user: new Types.ObjectId(currentuser.sub) },
       { $unset: { [`tenantInfo.paymentMethods.${processor.accountId}`]: '' } }
     );
+    await this.userCache.invalidateUserDetail(cuid, currentuser.uid).catch((err) => {
+      this.log.warn({ err, cuid }, 'Cache invalidation failed after payment method removal');
+    });
 
     this.log.info(
       { tenantId: currentuser.sub, cuid, paymentMethodId },

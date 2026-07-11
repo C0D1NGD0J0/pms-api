@@ -1,5 +1,9 @@
 {
   "roles": {
+    "root-admin": {
+      "$extend": ["super-admin"],
+      "client": ["read:any", "update:any", "settings:any", "manage_users:any"]
+    },
     "super-admin": {
       "$extend": ["admin"],
       "subscription": ["read:any", "update:any", "manage:any"],
@@ -30,6 +34,7 @@
       "tenant": ["create:any", "read:any", "update:any", "list:any"],
       "vendor": ["create:any", "read:any", "update:any", "list:any"],
       "lease": ["create:any", "list:any", "read:any", "update:any"],
+      "guest_pass": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
       "maintenance": [
         "create:mine",
         "delete:mine",
@@ -60,6 +65,7 @@
       "maintenance": ["read:any", "list:any"],
       "payment": ["read:any", "list:any"],
       "report": ["read:any", "list:any"],
+      "guest_pass": ["read:any", "list:any"],
       "departments": {
         "accounting": {
           "payment": ["read:any", "list:any", "create:any", "update:any"],
@@ -104,7 +110,7 @@
         },
         "security": {
           "property": ["read:any", "list:any"],
-          "visitor_pass": ["read:any", "list:any"],
+          "guest_pass": ["read:any", "list:any", "update:any"],
           "user": ["read:mine", "update:mine"],
           "client": ["read:mine"]
         }
@@ -117,6 +123,7 @@
       "maintenance": ["create:mine", "read:mine", "update:mine", "list:mine", "stats:mine"],
       "lease": ["read:mine", "list:mine", "update:mine"],
       "payment": ["read:mine", "create:mine", "list:mine"],
+      "guest_pass": ["create:mine", "read:mine", "delete:mine", "list:mine"],
       "report": ["read:mine"]
     },
     "vendor": {
@@ -204,10 +211,10 @@
       "scopes": ["any", "mine"],
       "description": "Billing and payment processing operations"
     },
-    "visitor_pass": {
+    "guest_pass": {
       "actions": ["create", "read", "update", "delete", "list"],
       "scopes": ["any", "mine", "assigned"],
-      "description": "Visitor pass and access request operations"
+      "description": "Guest pass and access request operations"
     }
   },
   "scopes": {

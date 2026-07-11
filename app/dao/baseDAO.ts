@@ -209,7 +209,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     session?: ClientSession
   ): Promise<T | null> {
     try {
-      const options = { new: true, ...opts };
+      const options = { returnDocument: 'after' as const, ...opts };
       let query = this.model.findOneAndUpdate(
         { _id: new Types.ObjectId(id) },
         updateOperation,
@@ -241,7 +241,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     session?: ClientSession
   ): Promise<T | null> {
     try {
-      const options = { new: true, ...opts, upsert: false };
+      const options = { returnDocument: 'after' as const, ...opts, upsert: false };
       let query = this.model.findOneAndUpdate(filter, updateOperation, options);
 
       if (session) {

@@ -101,6 +101,8 @@ describe('Invitation Acceptance — Consent Recording', () => {
       userService: mockUserService,
       emitterService,
       mediaUploadService: { handleMediaDeletion: jest.fn() } as any,
+      authCache: { invalidateUserDetail: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
     });
 
     invitationService = new InvitationService({
@@ -120,6 +122,7 @@ describe('Invitation Acceptance — Consent Recording', () => {
       leaseDAO: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }), invalidateUserLists: jest.fn().mockResolvedValue({ success: true }) } as any,
     });
 
     // Common mock setup

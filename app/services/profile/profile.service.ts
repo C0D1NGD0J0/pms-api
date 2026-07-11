@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { AuthCache } from '@caching/auth.cache';
+import { UserCache } from '@caching/user.cache';
 import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
@@ -29,6 +30,7 @@ interface IConstructor {
   userService: UserService;
   profileDAO: ProfileDAO;
   authCache: AuthCache;
+  userCache: UserCache;
   clientDAO: ClientDAO;
   userDAO: UserDAO;
 }
@@ -42,6 +44,7 @@ export class ProfileService {
   private readonly emitterService: EventEmitterService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly authCache: AuthCache;
+  private readonly userCache: UserCache;
   private readonly logger: Logger;
 
   constructor({
@@ -53,10 +56,12 @@ export class ProfileService {
     emitterService,
     mediaUploadService,
     authCache,
+    userCache,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
+    this.userCache = userCache;
     this.profileDAO = profileDAO;
     this.userService = userService;
     this.vendorService = vendorService;
@@ -731,6 +736,10 @@ export class ProfileService {
       // Invalidate cached currentUser so the /me endpoint returns fresh data
       // (e.g. updated preferences.lang for locale switching).
       await this.authCache.invalidateCurrentUser(userId, cuid);
+
+      // Invalidate user detail cache so the detail page returns fresh data
+      // (e.g. when an admin updates a staff member's department).
+      await this.userCache.invalidateUserDetail(cuid, targetUid);
 
       return {
         success: true,

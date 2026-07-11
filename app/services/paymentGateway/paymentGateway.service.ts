@@ -11,6 +11,7 @@ import {
   IIdentitySessionResponse,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
+  StripePaymentMethodType,
   ICreateInvoiceResponse,
   ICreateCustomerInput,
   ICreateCheckoutInput,
@@ -819,7 +820,7 @@ export class PaymentGatewayService {
     provider: IPaymentGatewayProvider,
     paymentMethodId: string
   ): IPromiseReturnedData<{
-    type: string;
+    type: StripePaymentMethodType;
     bankName?: string;
     last4?: string;
     accountType?: string;

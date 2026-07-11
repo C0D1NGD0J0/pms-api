@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { PropertyUnit } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
@@ -33,7 +34,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         floor: 1,
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         status: PropertyUnitStatusEnum.AVAILABLE,
-        fees: { rentAmount: 1000, currency: 'USD', securityDeposit: 1000 },
+        fees: { rentAmount: 1000, currency: CURRENCIES.USD, securityDeposit: 1000 },
         specifications: { totalArea: 500, bathrooms: 1 },
         utilities: { water: true, heating: true, gas: false, trash: false, centralAC: false },
         amenities: {
@@ -56,7 +57,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         floor: 1,
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         status: PropertyUnitStatusEnum.OCCUPIED,
-        fees: { rentAmount: 1200, currency: 'USD', securityDeposit: 1200 },
+        fees: { rentAmount: 1200, currency: CURRENCIES.USD, securityDeposit: 1200 },
         specifications: { totalArea: 600, bathrooms: 1 },
         utilities: { water: true, heating: true, gas: false, trash: false, centralAC: false },
         amenities: {
@@ -80,7 +81,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         floor: 2,
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         status: PropertyUnitStatusEnum.MAINTENANCE,
-        fees: { rentAmount: 1500, currency: 'USD', securityDeposit: 1500 },
+        fees: { rentAmount: 1500, currency: CURRENCIES.USD, securityDeposit: 1500 },
         specifications: { totalArea: 750, bathrooms: 2 },
         utilities: { water: true, heating: true, gas: true, trash: true, centralAC: true },
         amenities: {
@@ -247,7 +248,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         floor: 1,
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         status: PropertyUnitStatusEnum.AVAILABLE,
-        fees: { rentAmount: 900, currency: 'USD' },
+        fees: { rentAmount: 900, currency: CURRENCIES.USD },
         specifications: { totalArea: 400, bathrooms: 1 },
         utilities: { water: true, heating: true, gas: false, trash: false, centralAC: false },
         amenities: {
@@ -365,7 +366,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         floor: 1,
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         status: PropertyUnitStatusEnum.AVAILABLE,
-        fees: { rentAmount: 1100, currency: 'USD' },
+        fees: { rentAmount: 1100, currency: CURRENCIES.USD },
         specifications: { totalArea: 550, bathrooms: 1 },
         utilities: { water: true, heating: true, gas: false, trash: false, centralAC: false },
         amenities: {
@@ -665,7 +666,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
         floor: 1,
         unitType: PropertyUnitTypeEnum.RESIDENTIAL,
         status: PropertyUnitStatusEnum.AVAILABLE,
-        fees: { rentAmount: 1100, currency: 'USD' },
+        fees: { rentAmount: 1100, currency: CURRENCIES.USD },
         specifications: { totalArea: 550, bathrooms: 1 },
         utilities: { water: true, heating: true, gas: false, trash: false, centralAC: false },
         amenities: {

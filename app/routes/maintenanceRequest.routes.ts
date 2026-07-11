@@ -58,7 +58,7 @@ router
     requirePermission(PermissionResource.MAINTENANCE, PermissionAction.CREATE),
     requireActiveTenant('maintenanceRequests'),
     subscriptionEntitlements,
-    requireFeature('MaintenanceRequestService'),
+    requireFeature('maintenanceRequestService'),
     idempotency,
     diskUpload(['media[*][file]']),
     scanFile,
@@ -116,7 +116,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -137,7 +137,7 @@ router.patch(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -300,7 +300,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -317,7 +317,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -338,7 +338,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
   }),
@@ -359,7 +359,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -376,7 +376,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
-  requireFeature('MaintenanceRequestService'),
+  requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),

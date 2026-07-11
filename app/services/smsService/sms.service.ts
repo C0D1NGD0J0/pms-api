@@ -5,6 +5,7 @@ import { t } from '@shared/languages';
 import { SMSLogDAO } from '@dao/smsLogDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { ProfileDAO } from '@dao/profileDAO';
+import { UserCache } from '@caching/user.cache';
 import { TwilioService } from '@services/external';
 import { NotFoundError } from '@shared/customErrors';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
@@ -37,6 +38,7 @@ interface IConstructor {
   subscriptionDAO: SubscriptionDAO;
   twilioService: TwilioService;
   profileDAO: ProfileDAO;
+  userCache: UserCache;
   smsLogDAO: SMSLogDAO;
   clientDAO: ClientDAO;
 }
@@ -51,6 +53,7 @@ export class SMSService implements ICronProvider {
   private readonly featureFlagService: FeatureFlagService;
   private readonly notificationService: NotificationService;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
+  private readonly userCache: UserCache;
 
   constructor({
     subscriptionPlanConfig,
@@ -59,6 +62,7 @@ export class SMSService implements ICronProvider {
     subscriptionDAO,
     twilioService,
     profileDAO,
+    userCache,
     smsLogDAO,
     clientDAO,
   }: IConstructor) {
@@ -69,6 +73,7 @@ export class SMSService implements ICronProvider {
     this.subscriptionDAO = subscriptionDAO;
     this.twilioService = twilioService;
     this.profileDAO = profileDAO;
+    this.userCache = userCache;
     this.smsLogDAO = smsLogDAO;
     this.clientDAO = clientDAO;
   }
@@ -246,6 +251,9 @@ export class SMSService implements ICronProvider {
         }
       );
       isVerified = true;
+      await this.userCache.invalidateUserDetail(cuid, userId).catch((err) => {
+        this.log.warn({ err, cuid, userId }, 'Failed to invalidate user cache after OTP verify');
+      });
       return { success: true, data: isVerified };
     } catch (error: any) {
       this.log.error({ error, phone }, 'OTP verification failed');
@@ -280,6 +288,9 @@ export class SMSService implements ICronProvider {
         };
 
     await this.profileDAO.update({ user: userId }, update);
+    await this.userCache.invalidateUserDetail(cuid, userId).catch((err) => {
+      this.log.warn({ err, cuid, userId }, 'Failed to invalidate user cache after consent update');
+    });
     return { success: true, data: undefined };
   }
 
@@ -396,15 +407,24 @@ export class SMSService implements ICronProvider {
       return { success: false, used: 0, limit: 0, remaining: 0 };
     }
 
-    // Lazy-init: if smsUsage subdoc doesn't exist on pre-existing subscriptions,
+    // Lazy-init: if smsUsage subdoc doesn't exist or countThisPeriod is missing,
     // initialize it before attempting the atomic increment
-    if (subscription.smsUsage?.countThisPeriod === undefined) {
+    if (subscription.smsUsage?.countThisPeriod == null) {
       await this.subscriptionDAO.update(
-        { cuid, smsUsage: { $exists: false } },
+        {
+          cuid,
+          $or: [
+            { smsUsage: { $exists: false } },
+            { smsUsage: null },
+            { 'smsUsage.countThisPeriod': { $exists: false } },
+            { 'smsUsage.countThisPeriod': null },
+          ],
+        },
         {
           $set: {
             'smsUsage.countThisPeriod': 0,
             'smsUsage.periodStart': new Date(),
+            'smsUsage.lastResetAt': new Date(),
             'smsUsage.notifiedAt80': false,
             'smsUsage.notifiedAt100': false,
           },

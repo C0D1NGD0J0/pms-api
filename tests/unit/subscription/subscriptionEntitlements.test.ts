@@ -390,7 +390,8 @@ describe('Subscription Entitlements', () => {
 
       // Should keep other fields
       expect(responseData.uid).toBe('TEST_UID');
-      expect(responseData.permissions).toEqual(['read:any']);
+      // permissions is destructured out of currentuser along with clientEntitlements
+      expect(responseData.permissions).toBeUndefined();
     });
 
     it('should return 401 when currentuser is null', () => {

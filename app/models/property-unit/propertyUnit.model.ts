@@ -223,7 +223,10 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
   }
 );
 
-PropertyUnitSchema.index({ propertyId: 1, unitNumber: 1 }, { unique: true });
+PropertyUnitSchema.index(
+  { propertyId: 1, unitNumber: 1 },
+  { unique: true, partialFilterExpression: { deletedAt: null } }
+);
 PropertyUnitSchema.index({ cuid: 1, status: 1 });
 PropertyUnitSchema.index({ propertyId: 1, floor: 1, unitNumber: 1 }); // For sorted unit queries
 

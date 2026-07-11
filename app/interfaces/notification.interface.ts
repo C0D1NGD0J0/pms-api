@@ -14,6 +14,7 @@ import {
 export enum NotificationTypeEnum {
   ANNOUNCEMENT = 'announcement',
   MAINTENANCE = 'maintenance',
+  GUESTPASS = 'guestPass',
   PROPERTY = 'property',
   MESSAGE = 'message',
   COMMENT = 'comment',
@@ -99,6 +100,7 @@ export interface INotification {
   recipientType: RecipientTypeEnum;
   metadata?: Record<string, any>;
   archivedBy?: Types.ObjectId[];
+  targetDepartments?: string[];
   type: NotificationTypeEnum;
   recipient?: Types.ObjectId; // Optional - only required for individual notifications
   readBy?: Types.ObjectId[];
@@ -132,6 +134,7 @@ export interface ICreateNotificationRequest {
   recipientType: RecipientTypeEnum;
   author?: string | Types.ObjectId; // User who created the notification
   metadata?: Record<string, any>;
+  targetDepartments?: string[];
   type: NotificationTypeEnum;
   targetRoles?: string[];
   targetVendor?: string;

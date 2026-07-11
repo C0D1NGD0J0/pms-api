@@ -2,17 +2,17 @@ import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseService } from '@services/lease/lease.service';
-import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
-import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
+import { mockQueueFactory, mockEmailQueue } from '@tests/setup/externalMocks';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PropertyUnit, Property, Profile, Client, Vendor, Lease, User } from '@models/index';
+import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import {
   PropertyUnitDAO,
   InvitationDAO,
@@ -95,6 +95,8 @@ const setupServices = () => {
     vendorService,
     leaseDAO,
     paymentDAO: {} as any,
+    subscriptionDAO: {} as any,
+    paymentProcessorDAO: {} as any,
     emitterService,
     maintenanceRequestDAO: {} as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
@@ -108,6 +110,7 @@ const setupServices = () => {
     handlePropertyUpdateNotifications: jest.fn().mockResolvedValue(undefined),
     notifyApprovalDecision: jest.fn().mockResolvedValue(undefined),
     createNotification: jest.fn().mockResolvedValue(undefined),
+    createNotificationFromTemplate: jest.fn().mockResolvedValue(undefined),
     notifyLeaseLifecycleEvent: jest.fn().mockResolvedValue(undefined),
     hasLeaseExpiryNoticeBeenSent: jest.fn().mockResolvedValue(false),
   } as any;
@@ -206,6 +209,9 @@ const setupServices = () => {
     leaseDocumentService,
     leasePdfService,
     leaseSignatureService,
+    paymentDAO: {
+      findByLease: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
+    } as any,
   } as any);
 
   return {
@@ -543,7 +549,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -565,7 +571,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         type: LeaseType.FIXED_TERM,
         leaseNumber: `LEASE-${Date.now()}`,
         createdBy: manager._id,
-      });
+      } as any);
 
       const updateData = {
         fees: {
@@ -615,7 +621,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -640,7 +646,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -702,7 +708,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -730,7 +736,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -782,6 +788,177 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(result.data.lease.petPolicy.allowed).toBe(true);
       expect(result.data.lease.petPolicy.maxPets).toBe(2);
     });
+
+    it('should NOT enqueue email when tenantInfo.email is undefined on active lease update', async () => {
+      const client = await createTestClient();
+      const manager = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+
+      // Create an active lease WITHOUT tenantInfo.email
+      const lease = await Lease.create({
+        luid: `lease-noemail-${Date.now()}`,
+        cuid: client.cuid,
+        tenantId: tenant._id,
+        property: {
+          id: property._id,
+          address: property.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-NOEMAIL-${Date.now()}`,
+        createdBy: manager._id,
+        tenantInfo: {
+          fullname: 'No Email Tenant',
+          // email intentionally omitted
+        },
+        petPolicy: { allowed: false },
+        signedDate: new Date(),
+        signingMethod: 'electronic',
+        eSignature: {
+          status: ILeaseESignatureStatusEnum.SIGNED,
+          provider: 'boldsign',
+        },
+        signatures: [
+          {
+            userId: tenant._id,
+            signedAt: new Date(),
+            role: 'tenant',
+            signatureMethod: 'electronic',
+          },
+        ],
+        leaseDocuments: [
+          {
+            url: 'https://test.com/lease.pdf',
+            key: 's3-key-test',
+            filename: 'lease.pdf',
+            documentType: 'lease_agreement',
+            uploadedAt: new Date(),
+            uploadedBy: manager._id,
+          },
+        ],
+      });
+
+      mockEmailQueue.addJobToQueue.mockClear();
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: manager.uid,
+          sub: manager._id.toString(),
+          fullname: 'Manager User',
+          client: { cuid: client.cuid, role: ROLES.MANAGER },
+        },
+      } as any;
+
+      const result = await leaseService.updateLease(mockContext, lease.luid, {
+        petPolicy: { allowed: true, maxPets: 1 },
+      } as any);
+
+      expect(result.success).toBe(true);
+      // Email queue should NOT have been called because tenantInfo.email is absent
+      expect(mockEmailQueue.addJobToQueue).not.toHaveBeenCalled();
+    });
+
+    it('should not enqueue email even when tenant has a Profile with email (tenantInfo virtual not populated by findFirst)', async () => {
+      // Note: tenantInfo is a Mongoose virtual populated from Profile.
+      // Since leaseDAO.findFirst does not populate virtuals, lease.tenantInfo?.email
+      // is always undefined in the updateLease code path. This test documents that
+      // the email guard correctly prevents sending when the virtual is absent.
+      const client = await createTestClient();
+      const manager = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+
+      const lease = await Lease.create({
+        luid: `lease-profile-${Date.now()}`,
+        cuid: client.cuid,
+        tenantId: tenant._id,
+        property: {
+          id: property._id,
+          address: property.address.fullAddress,
+        },
+        duration: {
+          startDate: new Date('2025-01-01'),
+          endDate: new Date('2026-01-01'),
+        },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-PROFILE-${Date.now()}`,
+        createdBy: manager._id,
+        petPolicy: { allowed: false },
+        signedDate: new Date(),
+        signingMethod: 'electronic',
+        eSignature: {
+          status: ILeaseESignatureStatusEnum.SIGNED,
+          provider: 'boldsign',
+        },
+        signatures: [
+          {
+            userId: tenant._id,
+            signedAt: new Date(),
+            role: 'tenant',
+            signatureMethod: 'electronic',
+          },
+        ],
+        leaseDocuments: [
+          {
+            url: 'https://test.com/lease.pdf',
+            key: 's3-key-test',
+            filename: 'lease.pdf',
+            documentType: 'lease_agreement',
+            uploadedAt: new Date(),
+            uploadedBy: manager._id,
+          },
+        ],
+      });
+
+      mockEmailQueue.addJobToQueue.mockClear();
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: manager.uid,
+          sub: manager._id.toString(),
+          fullname: 'Manager User',
+          client: { cuid: client.cuid, role: ROLES.MANAGER },
+        },
+      } as any;
+
+      const result = await leaseService.updateLease(mockContext, lease.luid, {
+        petPolicy: { allowed: true, maxPets: 3 },
+      } as any);
+
+      expect(result.success).toBe(true);
+      // tenantInfo virtual is not populated by findFirst, so email guard prevents sending
+      expect(mockEmailQueue.addJobToQueue).not.toHaveBeenCalled();
+    });
   });
 
   describe('deleteLease', () => {
@@ -795,7 +972,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -842,7 +1019,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -867,7 +1044,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -909,7 +1086,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -971,7 +1148,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -1025,7 +1202,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -1088,7 +1265,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: tenant._id,
         property: {
           id: property._id,
@@ -1113,7 +1290,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: {
-          status: 'signed',
+          status: ILeaseESignatureStatusEnum.SIGNED,
           provider: 'boldsign',
         },
         signatures: [
@@ -1148,8 +1325,8 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any;
 
       const terminationData = {
-        terminationDate: new Date('2026-06-01'), // Mid-lease termination
-        terminationReason: 'Tenant request',
+        terminationDate: new Date('2026-10-15'), // Future mid-lease termination
+        terminationReason: 'mutual_agreement', // Reason that allows immediate termination
       };
 
       const result = await leaseService.terminateLease(
@@ -1187,7 +1364,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       return Lease.create({
         luid: `lease-guard-${Date.now()}-${Math.random()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId,
         property: {
           id: property._id,
@@ -1289,7 +1466,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const lease = await Lease.create({
         luid: `lease-terminate-guard-${Date.now()}`,
         cuid: client.cuid,
-        clientId: client._id,
+
         tenantId: dualRoleUser._id,
         property: { id: property._id, address: property.address.fullAddress },
         duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
@@ -1301,7 +1478,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         createdBy: dualRoleUser._id,
         signedDate: new Date(),
         signingMethod: 'electronic',
-        eSignature: { status: 'signed', provider: 'boldsign' },
+        eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
         signatures: [{ userId: dualRoleUser._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
         leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: dualRoleUser._id }],
       });
@@ -1357,7 +1534,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
     testLease = await Lease.create({
       luid: `lease-read-${Date.now()}`,
       cuid: testClient.cuid,
-      clientId: testClient._id,
+
       tenantId: testTenant._id,
       property: {
         id: testProperty._id,
@@ -1382,7 +1559,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       signedDate: new Date(),
       signingMethod: 'electronic',
       eSignature: {
-        status: 'signed',
+        status: ILeaseESignatureStatusEnum.SIGNED,
         provider: 'boldsign',
       },
       signatures: [
@@ -1511,7 +1688,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         draftLease = await Lease.create({
           luid: `lease-draft-tenant-${Date.now()}`,
           cuid: testClient.cuid,
-          clientId: testClient._id,
+    
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-06-01'), endDate: new Date('2026-06-01') },
@@ -1527,7 +1704,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         pendingSignatureLease = await Lease.create({
           luid: `lease-pending-sig-${Date.now()}`,
           cuid: testClient.cuid,
-          clientId: testClient._id,
+    
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-07-01'), endDate: new Date('2026-07-01') },
@@ -1606,7 +1783,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         const otherTenantLease = await Lease.create({
           luid: `lease-other-tenant-${Date.now()}`,
           cuid: testClient.cuid,
-          clientId: testClient._id,
+    
           tenantId: otherTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-08-01'), endDate: new Date('2026-08-01') },
@@ -1618,7 +1795,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           createdBy: testManager._id,
           signedDate: new Date(),
           signingMethod: 'electronic',
-          eSignature: { status: 'signed', provider: 'boldsign' },
+          eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
           signatures: [{ userId: otherTenant._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
           leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
         });
@@ -1711,12 +1888,12 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           securityDeposit: 2000,
           rentDueDay: 1,
           currency: 'USD',
-          acceptedPaymentMethod: 'e-transfer',
+          acceptedPaymentMethod: 'e-transfer' as const,
         },
-        signingMethod: 'electronic',
+        signingMethod: 'electronic' as const,
         eSignature: {
-          provider: 'boldsign',
-          status: 'signed',
+          provider: 'boldsign' as const,
+          status: ILeaseESignatureStatusEnum.SIGNED,
         },
         renewalOptions: {
           autoRenew: true,
@@ -1732,7 +1909,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
             url: 'https://test.com/lease.pdf',
             key: 's3-key-test',
             filename: 'lease.pdf',
-            documentType: 'lease_agreement',
+            documentType: 'lease_agreement' as const,
             uploadedAt: new Date(),
             uploadedBy: testManager._id,
           },
@@ -1742,7 +1919,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       activeLeaseForRenewal = await Lease.create({
         ...leaseData,
         cuid: testClient.cuid,
-        status: 'active',
+        status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         createdBy: testManager._id,
         signedDate: new Date('2024-12-15'),

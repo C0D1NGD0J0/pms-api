@@ -1,8 +1,10 @@
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { ROLES } from '@shared/constants/roles.constants';
-import { PaymentModel, Profile, Lease, User } from '@models/index';
+import { LeaseStatus } from '@interfaces/lease.interface';
+import { Payment, Profile, Lease, User } from '@models/index';
 import { clearTestDatabase, createTestClient } from '@tests/helpers';
+import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
 
 describe('UserDAO Integration Tests', () => {
   let userDAO: UserDAO;
@@ -19,8 +21,6 @@ describe('UserDAO Integration Tests', () => {
       await User.create({
         uid: 'unique-uid-123',
         email: 'test@example.com',
-        firstName: 'John',
-        lastName: 'Doe',
         password: 'hashed',
         activecuid: 'TEST_CLIENT',
         cuids: [],
@@ -44,8 +44,6 @@ describe('UserDAO Integration Tests', () => {
       await User.create({
         uid: 'uid-active',
         email: 'active@example.com',
-        firstName: 'Active',
-        lastName: 'User',
         password: 'hashed',
         isActive: true,
         activecuid: 'TEST_CLIENT',
@@ -62,8 +60,6 @@ describe('UserDAO Integration Tests', () => {
       await User.create({
         uid: 'uid-inactive',
         email: 'inactive@example.com',
-        firstName: 'Inactive',
-        lastName: 'User',
         password: 'hashed',
         isActive: false,
         activecuid: 'TEST_CLIENT',
@@ -81,8 +77,6 @@ describe('UserDAO Integration Tests', () => {
       await User.create({
         uid: 'uid-unique-test',
         email: 'unique@example.com',
-        firstName: 'Unique',
-        lastName: 'Test',
         password: 'hashed',
         isActive: true,
         activecuid: 'CLIENT_1',
@@ -118,36 +112,28 @@ describe('UserDAO Integration Tests', () => {
         _id: testTenantId,
         uid: testTenantUid,
         email: 'tenant@example.com',
-        firstName: 'Test',
-        lastName: 'Tenant',
         password: 'hashed',
         isActive: true,
         activecuid: testCuid,
-        cuids: [testCuid],
-        status: 'active',
-        joinedDate: new Date('2024-01-01'),
+        cuids: [{ cuid: testCuid, roles: ['tenant'], isConnected: true }],
       });
 
       // Create test profile
       await Profile.create({
         _id: testProfileId,
+        puid: `puid-user-test-${Date.now()}`,
         user: testTenantId,
-        cuid: testCuid,
-        firstName: 'Test',
-        lastName: 'Tenant',
-        email: 'tenant@example.com',
-        phoneNumber: '+1234567890',
+        personalInfo: {
+          firstName: 'Test',
+          lastName: 'Tenant',
+          displayName: 'Test Tenant',
+          location: 'Toronto',
+          phoneNumber: '+1234567890',
+        },
         tenantInfo: {
           activeLeases: [],
           leaseHistory: [],
           leaseStatus: 'active',
-        },
-        tenantMetrics: {
-          totalRentPaid: 0,
-          onTimePaymentRate: 100,
-          averagePaymentDelay: 0,
-          totalMaintenanceRequests: 0,
-          currentRentStatus: 'current',
         },
       });
     });
@@ -162,9 +148,9 @@ describe('UserDAO Integration Tests', () => {
           invoiceNumber: 'INV-001',
           baseAmount: 200000, // $2000 in cents
           processingFee: 1000, // $10 in cents
-          status: 'paid',
-          paymentMethod: 'card',
-          paymentType: 'rent',
+          status: PaymentRecordStatus.PAID,
+          paymentMethod: PaymentMethod.ONLINE,
+          paymentType: PaymentRecordType.RENT,
           dueDate: new Date('2024-01-01'),
           paidAt: new Date('2024-01-01'), // Paid on time
           description: 'Rent payment',
@@ -177,9 +163,9 @@ describe('UserDAO Integration Tests', () => {
           invoiceNumber: 'INV-002',
           baseAmount: 200000,
           processingFee: 1000,
-          status: 'paid',
-          paymentMethod: 'card',
-          paymentType: 'rent',
+          status: PaymentRecordStatus.PAID,
+          paymentMethod: PaymentMethod.ONLINE,
+          paymentType: PaymentRecordType.RENT,
           dueDate: new Date('2024-02-01'),
           paidAt: new Date('2024-02-05'), // Paid 4 days late
           description: 'Rent payment',
@@ -192,16 +178,16 @@ describe('UserDAO Integration Tests', () => {
           invoiceNumber: 'INV-003',
           baseAmount: 200000,
           processingFee: 1000,
-          status: 'pending',
-          paymentMethod: 'card',
-          paymentType: 'rent',
+          status: PaymentRecordStatus.PENDING,
+          paymentMethod: PaymentMethod.ONLINE,
+          paymentType: PaymentRecordType.RENT,
           dueDate: new Date('2024-03-01'),
           description: 'Rent payment',
           period: { month: 3, year: 2024 },
         },
       ];
 
-      await PaymentModel.insertMany(payments);
+      await Payment.insertMany(payments);
 
       const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
 
@@ -224,16 +210,16 @@ describe('UserDAO Integration Tests', () => {
 
     it('should populate payment history regardless of include parameter', async () => {
       // Create one payment
-      await PaymentModel.create({
+      await Payment.create({
         cuid: testCuid,
         tenant: testTenantId,
         pytuid: 'PAY_001',
         invoiceNumber: 'INV-001',
         baseAmount: 200000,
         processingFee: 1000,
-        status: 'paid',
-        paymentMethod: 'card',
-        paymentType: 'rent',
+        status: PaymentRecordStatus.PAID,
+        paymentMethod: PaymentMethod.ONLINE,
+        paymentType: PaymentRecordType.RENT,
         dueDate: new Date('2024-01-01'),
         paidAt: new Date('2024-01-01'),
         description: 'Rent payment',
@@ -269,16 +255,23 @@ describe('UserDAO Integration Tests', () => {
         luid: 'LEASE_001',
         leaseNumber: 'L2024-001',
         tenantId: testTenantId,
-        status: 'active',
+        createdBy: testTenantId,
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved' as const,
+        type: 'fixed_term' as any,
+        signingMethod: 'manual' as const,
+        templateType: 'residential-apartment' as const,
+        signedDate: new Date(),
+        signatures: [{ userId: testTenantId, signedAt: new Date(), role: 'tenant' as const, signatureMethod: 'manual' as const }],
+        leaseDocuments: [{ documentType: 'lease_agreement' as const, url: 'https://example.com/doc.pdf', uploadedAt: new Date(), uploadedBy: testTenantId, filename: 'lease.pdf', key: 'leases/lease.pdf' }],
         property: {
           id: new Types.ObjectId(),
           address: '123 Test St',
-        },
-        unit: {
-          unitNumber: '101',
+          unitId: new Types.ObjectId().toString(),
         },
         fees: {
           rentAmount: 200000,
+          acceptedPaymentMethod: 'e-transfer' as const,
         },
         duration: {
           startDate: new Date('2024-01-01'),
@@ -306,8 +299,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-alice-001',
           email: 'alice.smith@example.com',
-          firstName: 'Alice',
-          lastName: 'Smith',
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
@@ -316,8 +307,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-bob-001',
           email: 'bob.jones@example.com',
-          firstName: 'Bob',
-          lastName: 'Jones',
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
@@ -326,8 +315,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-carol-001',
           email: 'carol.adams@example.com',
-          firstName: 'Carol',
-          lastName: 'Adams',
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
@@ -336,8 +323,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-alice-other',
           email: 'alice.other@example.com',
-          firstName: 'Alice',
-          lastName: 'Other',
           password: 'hashed',
           isActive: true,
           activecuid: otherCuid,
@@ -629,8 +614,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-tenant-alice',
           email: 'alice.tenant@example.com',
-          firstName: 'Alice',
-          lastName: 'Walker',
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
@@ -639,8 +622,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-tenant-bob',
           email: 'bob.tenant@example.com',
-          firstName: 'Bob',
-          lastName: 'Walker',
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
@@ -649,8 +630,6 @@ describe('UserDAO Integration Tests', () => {
         {
           uid: 'uid-staff-dave',
           email: 'dave.staff@example.com',
-          firstName: 'Dave',
-          lastName: 'Staff',
           password: 'hashed',
           isActive: true,
           activecuid: cuid,

@@ -66,6 +66,7 @@ export const mockQueue = {
 
 export const mockEmailQueue = {
   addToEmailQueue: jest.fn(),
+  addJobToQueue: jest.fn(),
   add: jest.fn(),
   process: jest.fn(),
   on: jest.fn(),
@@ -101,6 +102,7 @@ export const setupQueueMocks = () => {
   mockQueue.close.mockResolvedValue(undefined);
 
   mockEmailQueue.addToEmailQueue.mockResolvedValue({ success: true });
+  mockEmailQueue.addJobToQueue.mockResolvedValue({ id: 'email-job-id' });
   mockEmailQueue.add.mockResolvedValue({ id: 'email-job-id' });
 
   mockInvitationQueue.addCsvValidationJob.mockResolvedValue({ jobId: 'job-123' });
@@ -116,6 +118,7 @@ export const resetQueueMocks = () => {
   mockQueue.getJobs.mockClear();
 
   mockEmailQueue.addToEmailQueue.mockClear();
+  mockEmailQueue.addJobToQueue.mockClear();
   mockEmailQueue.add.mockClear();
   mockEmailQueue.process.mockClear();
   mockEmailQueue.on.mockClear();

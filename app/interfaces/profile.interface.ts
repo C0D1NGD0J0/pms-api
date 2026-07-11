@@ -35,13 +35,8 @@ export enum DataRetentionPolicy {
   MINIMAL = 'minimal',
 }
 
-/**
- * Tenant Information Interface
- * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
- * - rentalReferences, pets, emergencyContact are shared across all clients
- * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
- */
 export interface ITenantInfo {
+  padMandateDetails?: Map<string, IPadMandateDetails>;
   paymentGatewayCustomers?: Map<string, string>;
   backgroundChecks?: IBackgroundCheckItem[];
   cardPaymentMethods?: Map<string, string>;
@@ -197,6 +192,23 @@ export interface IProfile {
   user: Types.ObjectId;
   settings: ISettings;
   policies: IPolicies;
+}
+
+/**
+ * Tenant Information Interface
+ * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
+ * - rentalReferences, pets, emergencyContact are shared across all clients
+ * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
+ */
+export interface IPadMandateDetails {
+  cancellationRights?: string;
+  payeeName?: string;
+  mandateId?: string;
+  confirmedAt?: Date;
+  frequency: string;
+  debitDay?: number;
+  startDate?: Date;
+  amount: number;
 }
 
 /**

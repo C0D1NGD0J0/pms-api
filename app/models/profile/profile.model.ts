@@ -243,6 +243,26 @@ const ProfileSchema = new Schema<IProfileDocument>(
           of: String,
           default: {},
         },
+        padMandateDetails: {
+          type: Map,
+          of: new Schema(
+            {
+              payeeName: { type: String, trim: true },
+              amount: { type: Number, default: 0 },
+              frequency: { type: String, default: 'monthly' },
+              debitDay: { type: Number, min: 1, max: 31 },
+              startDate: { type: Date },
+              mandateId: { type: String },
+              cancellationRights: {
+                type: String,
+                default: 'You may cancel this authorization at any time by contacting the payee.',
+              },
+              confirmedAt: { type: Date },
+            },
+            { _id: false }
+          ),
+          default: {},
+        },
       },
       default: null,
     },

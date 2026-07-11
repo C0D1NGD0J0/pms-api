@@ -32,6 +32,7 @@ export enum EventTypes {
   MAINTENANCE_REQUEST_CREATED = 'maintenance:request:created',
   MAINTENANCE_REQUEST_UPDATED = 'maintenance:request:updated',
   MAINTENANCE_FUNDS_AVAILABLE = 'maintenance:funds:available',
+  PAD_PRE_DEBIT_NOTIFICATION = 'pad:pre:debit:notification',
   LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
   PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
@@ -49,6 +50,7 @@ export enum EventTypes {
   GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  PAD_MANDATE_CONFIRMED = 'pad:mandate:confirmed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
@@ -171,6 +173,8 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
   [EventTypes.PAYMENT_OVERDUE]: PaymentOverduePayload;
   [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
+  [EventTypes.PAD_MANDATE_CONFIRMED]: PadMandateConfirmedPayload;
+  [EventTypes.PAD_PRE_DEBIT_NOTIFICATION]: PadPreDebitNotificationPayload;
   [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
   [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
   [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
@@ -712,6 +716,14 @@ export interface GuestPassCreatedPayload {
   cuid: string;
 }
 
+export interface PadPreDebitNotificationPayload {
+  currency: string;
+  tenantId: string;
+  amount: number;
+  pytuid: string;
+  cuid: string;
+}
+
 export interface PaymentMethodSetupCompletedPayload {
   paymentMethodId: string;
   pmAccountId: string;
@@ -748,6 +760,13 @@ export interface MaintenanceFundsAvailablePayload {
   amountInCents: number;
   invuid: string;
   mruid: string;
+  cuid: string;
+}
+
+export interface PadMandateConfirmedPayload {
+  pmAccountId: string;
+  mandateId: string;
+  tenantId: string;
   cuid: string;
 }
 

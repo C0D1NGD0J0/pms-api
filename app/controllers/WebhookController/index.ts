@@ -244,6 +244,12 @@ export class WebhookController {
             break;
           }
 
+          case 'charge.pending': {
+            const charge = event.data.object as any;
+            await this.paymentService.handleChargePending(charge.id, charge);
+            break;
+          }
+
           case 'invoice.paid': {
             const invoice = event.data.object as any;
             await this.subscriptionService.handleInvoicePaid(invoice);

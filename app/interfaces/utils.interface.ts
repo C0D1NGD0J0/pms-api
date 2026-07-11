@@ -101,6 +101,8 @@ export enum CURRENCIES {
   CHF = 'CHF',
   // Asia-Pacific
   INR = 'INR',
+  MXN = 'MXN',
+  SGD = 'SGD',
   // South America
   BRL = 'BRL',
 }

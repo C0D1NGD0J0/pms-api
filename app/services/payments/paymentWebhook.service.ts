@@ -1215,12 +1215,19 @@ export class PaymentWebhookService {
 
     await this.profileDAO.update({ user: new Types.ObjectId(tenantId) }, { $set: profileUpdate });
 
-    const tenantProfile = await this.profileDAO.findFirst(
-      { user: new Types.ObjectId(tenantId) },
-      { populate: ['user'] }
-    );
-    if ((tenantProfile as any)?.user?.uid) {
-      await this.userCache.invalidateUserDetail(cuid, (tenantProfile as any).user.uid);
+    try {
+      const tenantProfile = await this.profileDAO.findFirst(
+        { user: new Types.ObjectId(tenantId) },
+        { populate: ['user'] }
+      );
+      if ((tenantProfile as any)?.user?.uid) {
+        await this.userCache.invalidateUserDetail(cuid, (tenantProfile as any).user.uid);
+      }
+    } catch (err) {
+      this.log.warn(
+        { err, tenantId, cuid },
+        'Could not invalidate user cache after payment method save'
+      );
     }
 
     if (customerId) {

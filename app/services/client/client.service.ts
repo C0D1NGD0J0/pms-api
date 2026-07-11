@@ -403,9 +403,9 @@ export class ClientService {
         lang: client.settings.lang,
         vendorPayoutMode: client.settings.vendorPayoutMode,
         tenantFeatures: {
-          tenantPortalActive: client.settings.tenantFeatures?.tenantPortalActive ?? false,
-          onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? false,
-          maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? false,
+          tenantPortalActive: client.settings.tenantFeatures?.tenantPortalActive ?? true,
+          onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? true,
+          maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? true,
           smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? false,
           guestPass: client.settings.tenantFeatures?.guestPass ?? false,
         },

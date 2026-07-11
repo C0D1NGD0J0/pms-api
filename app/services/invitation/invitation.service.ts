@@ -423,8 +423,12 @@ export class InvitationService {
       await this.createTenantPaymentCustomer(result.user, cuid);
     }
 
-    await this.userCache.invalidateUserDetail(cuid, result.user.uid);
-    await this.userCache.invalidateUserLists(cuid);
+    try {
+      await this.userCache.invalidateUserDetail(cuid, result.user.uid);
+      await this.userCache.invalidateUserLists(cuid);
+    } catch (err) {
+      this.log.warn({ err, cuid }, 'Cache invalidation failed after invitation finalization');
+    }
   }
 
   private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {
@@ -539,8 +543,12 @@ export class InvitationService {
       });
     }
 
-    await this.userCache.invalidateUserDetail(cuid, result.user.uid);
-    await this.userCache.invalidateUserLists(cuid);
+    try {
+      await this.userCache.invalidateUserDetail(cuid, result.user.uid);
+      await this.userCache.invalidateUserLists(cuid);
+    } catch (err) {
+      this.log.warn({ err, cuid }, 'Cache invalidation failed after invitation acceptance');
+    }
 
     return {
       success: true,

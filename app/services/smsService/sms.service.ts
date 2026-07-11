@@ -251,7 +251,9 @@ export class SMSService implements ICronProvider {
         }
       );
       isVerified = true;
-      await this.userCache.invalidateUserDetail(cuid, userId);
+      await this.userCache.invalidateUserDetail(cuid, userId).catch((err) => {
+        this.log.warn({ err, cuid, userId }, 'Failed to invalidate user cache after OTP verify');
+      });
       return { success: true, data: isVerified };
     } catch (error: any) {
       this.log.error({ error, phone }, 'OTP verification failed');
@@ -286,7 +288,9 @@ export class SMSService implements ICronProvider {
         };
 
     await this.profileDAO.update({ user: userId }, update);
-    await this.userCache.invalidateUserDetail(cuid, userId);
+    await this.userCache.invalidateUserDetail(cuid, userId).catch((err) => {
+      this.log.warn({ err, cuid, userId }, 'Failed to invalidate user cache after consent update');
+    });
     return { success: true, data: undefined };
   }
 
@@ -405,7 +409,7 @@ export class SMSService implements ICronProvider {
 
     // Lazy-init: if smsUsage subdoc doesn't exist or countThisPeriod is missing,
     // initialize it before attempting the atomic increment
-    if (subscription.smsUsage?.countThisPeriod === undefined) {
+    if (subscription.smsUsage?.countThisPeriod == null) {
       await this.subscriptionDAO.update(
         {
           cuid,
@@ -413,6 +417,7 @@ export class SMSService implements ICronProvider {
             { smsUsage: { $exists: false } },
             { smsUsage: null },
             { 'smsUsage.countThisPeriod': { $exists: false } },
+            { 'smsUsage.countThisPeriod': null },
           ],
         },
         {

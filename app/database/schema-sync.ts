@@ -159,9 +159,9 @@ const SYNC_RULES: SyncRule[] = [
     filter: { 'settings.tenantFeatures': { $exists: false } },
     update: {
       'settings.tenantFeatures': {
-        tenantPortalActive: false,
-        onlinePayments: false,
-        maintenanceRequests: false,
+        tenantPortalActive: true,
+        onlinePayments: true,
+        maintenanceRequests: true,
         smsNotifications: false,
         guestPass: false,
       },
@@ -279,8 +279,6 @@ const SYNC_RULES: SyncRule[] = [
     update: {
       entitlements: {
         eSignature: false,
-        maintenanceRequestService: false,
-        guestPassService: false,
         reportingAnalytics: false,
         leaseTemplates: false,
         vendorManagement: false,

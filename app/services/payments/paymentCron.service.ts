@@ -1059,18 +1059,36 @@ export class PaymentCronService implements ICronProvider {
             { pytuid: payment.pytuid },
             '[Cron] Voided Stripe invoice — marked CANCELLED'
           );
-        } else if (['uncollectible', 'open'].includes(invoice.status || '')) {
-          // Charge failed or never completed
+        } else if (invoice.status === 'uncollectible') {
+          // Terminal failure — mark overdue immediately
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            status: PaymentRecordStatus.OVERDUE,
+            'failure.reason': 'Stripe invoice status: uncollectible',
+            'failure.lastFailedAt': new Date(),
+          });
+          markedOverdue++;
+          this.log.warn(
+            { pytuid: payment.pytuid, stripeStatus: invoice.status },
+            '[Cron] Uncollectible Stripe invoice — marked OVERDUE'
+          );
+        } else if (invoice.status === 'open') {
+          // Open invoices may still be processing (ACSS/SEPA/Bacs bank debits can take days).
+          // Check the underlying PaymentIntent before marking overdue.
+          const paymentDetails = await this.stripeService.getInvoicePaymentDetails(
+            payment.gatewayPaymentId!
+          );
+          const piStatus = paymentDetails.lastPaymentError ? 'failed' : 'processing';
+
           const hoursStale = dayjs().diff(dayjs(payment.chargedAt ?? payment.dueDate), 'hour');
-          if (hoursStale > 72) {
+          if (piStatus === 'failed' || hoursStale > 72) {
             await this.paymentDAO.updateById(payment._id.toString(), {
               status: PaymentRecordStatus.OVERDUE,
-              'failure.reason': `Stripe invoice status: ${invoice.status} — charge not completed after 72+ hours`,
+              'failure.reason': `Stripe invoice open — ${piStatus === 'failed' ? 'payment failed' : 'not completed after 72+ hours'}`,
               'failure.lastFailedAt': new Date(),
             });
             markedOverdue++;
             this.log.warn(
-              { pytuid: payment.pytuid, stripeStatus: invoice.status },
+              { pytuid: payment.pytuid, stripeStatus: invoice.status, piStatus, hoursStale },
               '[Cron] Stale PROCESSING payment marked OVERDUE'
             );
           }

@@ -1387,7 +1387,8 @@ export class NotificationService {
           ssePayload,
           'announcements',
           eventId,
-          notification.targetRoles
+          notification.targetRoles,
+          notification.targetDepartments
         );
       }
     } catch (error) {

@@ -184,13 +184,15 @@ export class NotificationController {
       ]);
 
       const userRole = req.context?.currentuser?.client?.role;
+      const userDepartment = req.context?.currentuser?.employeeInfo?.department;
       const session = await this.sseService.connect(
         req,
         res,
         userId,
         cuid,
         'announcement',
-        userRole
+        userRole,
+        userDepartment
       );
 
       if (missedData?.success && missedData.data?.notifications?.length) {

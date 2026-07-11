@@ -7,10 +7,10 @@ import { QueueFactory } from '@services/queue';
 import { type QueryFilter, Types } from 'mongoose';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { LeaseStatus, EventTypes } from '@interfaces/index';
 import { NotificationService } from '@services/notification';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
+import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
 import {
@@ -1077,7 +1077,9 @@ export class PropertyService {
       throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
     }
 
-    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    // Select +owner when owner update is included to preserve ownership history
+    const selectOpts = updateData.owner ? { select: '+owner' } : {};
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null }, selectOpts);
     if (!property) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
@@ -1255,6 +1257,28 @@ export class PropertyService {
 
       // apply admin changes directly and clear pending changes
       const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
+
+      // Preserve ownership history when owner changes
+      const pushOperations: Record<string, any> = {
+        approvalDetails: {
+          timestamp: new Date(),
+          action: hasPendingChanges ? 'overridden' : 'updated',
+          actor: new Types.ObjectId(ctx.currentuser.sub),
+          ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
+        },
+      };
+
+      if (cleanUpdateData.owner && property.owner) {
+        pushOperations.ownershipHistory = {
+          owner: property.owner,
+          effectiveFrom: property.createdAt || new Date(),
+          effectiveTo: new Date(),
+          transferNote: 'Ownership updated',
+          recordedBy: new Types.ObjectId(ctx.currentuser.sub),
+          recordedAt: new Date(),
+        };
+      }
+
       const updateOperation: any = {
         $set: {
           ...safeUpdateData,
@@ -1262,14 +1286,7 @@ export class PropertyService {
           lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
           pendingChanges: null, // Clear any pending changes
         },
-        $push: {
-          approvalDetails: {
-            timestamp: new Date(),
-            action: hasPendingChanges ? 'overridden' : 'updated',
-            actor: new Types.ObjectId(ctx.currentuser.sub),
-            ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
-          },
-        },
+        $push: pushOperations,
       };
 
       const result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
@@ -1504,6 +1521,38 @@ export class PropertyService {
           ],
         },
       });
+    }
+
+    // Business Rule: Cannot archive property with unsettled payments
+    const allLeases = await this.leaseDAO.list(
+      { cuid, 'property.id': property._id, deletedAt: null },
+      { projection: { _id: 1 } },
+      true
+    );
+    if (allLeases.items.length > 0) {
+      const { items: unsettledPayments } = await this.paymentDAO.list(
+        {
+          cuid,
+          lease: { $in: allLeases.items.map((l) => l._id) },
+          status: {
+            $in: [
+              PaymentRecordStatus.PENDING,
+              PaymentRecordStatus.OVERDUE,
+              PaymentRecordStatus.PROCESSING,
+            ],
+          },
+          deletedAt: null,
+        },
+        { limit: 1 }
+      );
+      if (unsettledPayments.length > 0) {
+        throw new ValidationRequestError({
+          message: 'Cannot archive property with unsettled payments',
+          errorInfo: {
+            property: ['Resolve or cancel all pending/overdue payments before archiving.'],
+          },
+        });
+      }
     }
 
     const archivedProperty = await this.propertyDAO.archiveProperty(property.id, currentUser.sub);

@@ -83,11 +83,10 @@ export class PropertyApprovalService {
       });
     }
 
-    const property = await this.propertyDAO.findFirst({
-      pid,
-      cuid,
-      deletedAt: null,
-    });
+    const property = await this.propertyDAO.findFirst(
+      { pid, cuid, deletedAt: null },
+      { select: '+owner' }
+    );
 
     if (!property) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
@@ -133,6 +132,21 @@ export class PropertyApprovalService {
         approvalStatus: 'approved',
         lastModifiedBy: new Types.ObjectId(currentuser.sub),
       };
+
+      // Preserve ownership history when owner changes via approval
+      if (property.pendingChanges.owner && property.owner) {
+        updateData.$push = {
+          ...((updateData as any).$push || {}),
+          ownershipHistory: {
+            owner: property.owner,
+            effectiveFrom: property.createdAt || new Date(),
+            effectiveTo: new Date(),
+            transferNote: 'Ownership updated via approval',
+            recordedBy: new Types.ObjectId(currentuser.sub),
+            recordedAt: new Date(),
+          },
+        };
+      }
 
       this.log.info('Applying pending changes during approval with safe updates', {
         propertyId: property.id,

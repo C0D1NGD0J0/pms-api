@@ -375,6 +375,21 @@ const PropertySchema = new Schema<IPropertyDocument>(
       type: PropertyAuthorizationSchema,
       select: false,
     },
+    ownershipHistory: {
+      type: [
+        {
+          owner: { type: PropertyOwnerSchema },
+          effectiveFrom: { type: Date, required: true },
+          effectiveTo: { type: Date },
+          transferNote: { type: String, trim: true, maxlength: 500 },
+          recordedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+          recordedAt: { type: Date, default: Date.now },
+          _id: false,
+        },
+      ],
+      select: false,
+      default: [],
+    },
   },
   {
     timestamps: true,

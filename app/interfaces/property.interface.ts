@@ -43,6 +43,7 @@ export interface IProperty {
     html?: string;
     text?: string;
   };
+  ownershipHistory?: IOwnershipHistoryEntry[];
   approvalDetails?: PropertyApprovalEntry[];
   approvalStatus?: PropertyApprovalStatus;
   communityAmenities?: CommunityAmenities;
@@ -231,9 +232,6 @@ export interface MediaDocumentItem {
   url: string;
 }
 
-/**
- * Property Owner Interface
- */
 export interface IPropertyOwner {
   bankDetails?: {
     accountName?: string;
@@ -387,6 +385,18 @@ export interface InteriorAmenities {
   furnished: boolean;
   heating: boolean;
   fridge: boolean;
+}
+
+/**
+ * Property Owner Interface
+ */
+export interface IOwnershipHistoryEntry {
+  recordedBy?: Types.ObjectId;
+  owner: IPropertyOwner;
+  transferNote?: string;
+  effectiveFrom: Date;
+  effectiveTo?: Date;
+  recordedAt?: Date;
 }
 
 /**

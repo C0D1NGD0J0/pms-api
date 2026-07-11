@@ -555,11 +555,14 @@ export class PaymentCronService implements ICronProvider {
         }
       }
 
-      const pendingIds = pendingPayments.map((p) => p._id);
-      await this.paymentDAO.update(
-        { _id: { $in: pendingIds }, deletedAt: null },
-        { $set: { status: PaymentRecordStatus.OVERDUE } }
-      );
+      for (const payment of pendingPayments) {
+        await this.paymentDAO.updateById(payment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.OVERDUE,
+            overdueAt: new Date(),
+          },
+        });
+      }
 
       for (const payment of pendingPayments) {
         this.emitterService.emit(EventTypes.PAYMENT_OVERDUE, {
@@ -585,7 +588,7 @@ export class PaymentCronService implements ICronProvider {
       }
 
       this.log.info(
-        { marked: pendingIds.length, total: pastDuePayments.length },
+        { marked: pendingPayments.length, total: pastDuePayments.length },
         '[Cron] Marked overdue payments complete'
       );
     } catch (error: any) {
@@ -606,6 +609,7 @@ export class PaymentCronService implements ICronProvider {
         isManualEntry: false,
         gatewayChargeId: { $exists: false },
         dueDate: { $lt: now },
+        'dispute.status': { $nin: ['open', 'needs_response'] },
         deletedAt: null,
       },
       { limit: 500 }
@@ -665,6 +669,7 @@ export class PaymentCronService implements ICronProvider {
         gatewayPaymentId: { $exists: true, $ne: null },
         gatewayChargeId: { $exists: false },
         dueDate: { $lte: now },
+        'dispute.status': { $nin: ['open', 'needs_response'] },
         deletedAt: null,
       },
       { limit: 500 }

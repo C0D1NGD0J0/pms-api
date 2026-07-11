@@ -1099,6 +1099,7 @@ export class PaymentService implements ICronProvider {
 
       const updated = await this.paymentDAO.updateById(payment._id.toString(), {
         status: PaymentRecordStatus.CANCELLED,
+        cancelledAt: dayjs().toDate(),
         $unset: { gatewayPaymentId: 1 },
         ...(reason
           ? {
@@ -1544,6 +1545,18 @@ export class PaymentService implements ICronProvider {
     invoiceData: IStripeInvoiceWebhookData
   ): IPromiseReturnedData<void> {
     return this.paymentWebhookService.handleInvoicePaymentFailed(invoiceId, invoiceData);
+  }
+
+  async handleChargePending(
+    chargeId: string,
+    chargeData: {
+      invoice?: string | null;
+      payment_intent?: string | null;
+      amount?: number;
+      currency?: string;
+    }
+  ): IPromiseReturnedData<void> {
+    return this.paymentWebhookService.handleChargePending(chargeId, chargeData);
   }
 
   async handleChargeRefunded(

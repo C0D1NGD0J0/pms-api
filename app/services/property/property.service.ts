@@ -2192,8 +2192,7 @@ export class PropertyService {
 
     const user = await this.userDAO.findFirst({
       _id: new Types.ObjectId(userId),
-      'cuids.cuid': cuid,
-      'cuids.isConnected': true,
+      cuids: { $elemMatch: { cuid, isConnected: true } },
     });
     if (!user) {
       throw new NotFoundError({

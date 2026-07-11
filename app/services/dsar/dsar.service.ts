@@ -200,15 +200,16 @@ export class DSARService {
     if (avatarKey) {
       try {
         await this.s3Service.deleteFile(avatarKey);
-        await this.profileDAO.updateAvatar(profile._id.toString(), {
-          url: '',
-          filename: '',
-          key: '',
-        });
         this.log.info(`Deleted avatar from S3 for uid=${uid}`);
       } catch (error: any) {
         this.log.warn(`Failed to delete avatar from S3 for uid=${uid}: ${error.message}`);
       }
+      // Always clear avatar metadata — even if S3 delete failed, remove PII from profile
+      await this.profileDAO.updateAvatar(profile._id.toString(), {
+        url: '',
+        filename: '',
+        key: '',
+      });
     }
 
     // Anonymise tenant info

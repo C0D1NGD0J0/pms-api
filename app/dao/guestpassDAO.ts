@@ -48,11 +48,13 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     notes?: string
   ): Promise<IGuestPassDocument | null> {
     try {
+      const now = new Date();
       return await this.update(
         {
           _id: new Types.ObjectId(id),
           cuid,
           status: GuestPassStatus.ACTIVE,
+          validUntil: { $gt: now },
         },
         {
           $set: {
@@ -74,11 +76,13 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     revokedBy: string
   ): Promise<IGuestPassDocument | null> {
     try {
+      const now = new Date();
       return await this.update(
         {
           _id: new Types.ObjectId(id),
           cuid,
           status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.PENDING] },
+          validUntil: { $gt: now },
         },
         {
           $set: {
@@ -147,6 +151,7 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
           _id: { $in: passIds.map((id) => new Types.ObjectId(id)) },
           cuid,
           isAcknowledged: false,
+          status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
         },
         {
           $set: {

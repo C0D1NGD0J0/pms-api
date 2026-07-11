@@ -97,7 +97,7 @@ export async function handleGuestPassCreated(
       },
       'guest-pass-created',
       undefined,
-      ['staff']
+      securityStaffIds.length > 0 ? securityStaffIds : []
     );
   } catch (err) {
     ctx.log.error({ err, vpuid, cuid }, 'Failed to handle guest pass created notification');

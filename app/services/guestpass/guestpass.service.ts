@@ -82,18 +82,6 @@ export class GuestPassService {
     const start = process.hrtime.bigint();
 
     try {
-      if (currentuser.client.role === ROLES.TENANT) {
-        const activeLease = await this.leaseDAO.findFirst({
-          cuid,
-          tenantId: new Types.ObjectId(currentuser.sub),
-          status: LeaseStatus.ACTIVE,
-          deletedAt: null,
-        });
-        if (!activeLease) {
-          throw new ForbiddenError({ message: t('maintenance.errors.noActiveLease') });
-        }
-      }
-
       const property = await this.propertyDAO.findFirst({
         pid: data.propertyInfo.pid,
         cuid,
@@ -102,6 +90,19 @@ export class GuestPassService {
       });
       if (!property)
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+
+      if (currentuser.client.role === ROLES.TENANT) {
+        const activeLease = await this.leaseDAO.findFirst({
+          cuid,
+          tenantId: new Types.ObjectId(currentuser.sub),
+          'property.id': property._id,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+        });
+        if (!activeLease) {
+          throw new ForbiddenError({ message: t('maintenance.errors.noActiveLease') });
+        }
+      }
 
       let unit = null;
       if (data.propertyInfo.puid) {
@@ -116,7 +117,7 @@ export class GuestPassService {
           throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
       }
 
-      const code = await this.generateUniqueCode();
+      const code = await this.generateUniqueCode(cuid);
       const expiryMinutes = data.expiryMinutes || 15;
       const validUntil = dayjs().add(expiryMinutes, 'minute').toDate();
 
@@ -239,10 +240,42 @@ export class GuestPassService {
       const query: any = { cuid };
       if (currentuser.client.role === ROLES.TENANT) {
         query.createdBy = new Types.ObjectId(currentuser.sub);
+      } else if (currentuser.client.role === ROLES.STAFF) {
+        // Staff only see passes for their assigned properties
+        const assignedProperties = await this.propertyDAO.list(
+          { cuid, assignedStaff: new Types.ObjectId(currentuser.sub), deletedAt: null },
+          { projection: '_id' }
+        );
+        const assignedIds = assignedProperties.items.map((p: any) => p._id);
+        if (assignedIds.length === 0) {
+          return {
+            success: true,
+            data: {
+              passes: [],
+              pagination: {
+                hasMoreResource: false,
+                currentPage: 1,
+                totalPages: 0,
+                perPage: limit,
+                total: 0,
+              },
+            },
+          };
+        }
+        query.propertyId = { $in: assignedIds };
       }
 
       if (filters.status) query.status = filters.status;
-      if (filters.propertyId) query.propertyId = new Types.ObjectId(filters.propertyId);
+      if (filters.propertyId) {
+        // If staff, validate the requested property is in their assigned set
+        if (currentuser.client.role === ROLES.STAFF && query.propertyId?.$in) {
+          const requestedId = new Types.ObjectId(filters.propertyId);
+          if (!query.propertyId.$in.some((id: any) => id.equals(requestedId))) {
+            throw new ForbiddenError({ message: t('common.errors.forbidden') });
+          }
+        }
+        query.propertyId = new Types.ObjectId(filters.propertyId);
+      }
 
       const result = await this.guestPassDAO.list(query, {
         sort: { createdAt: -1 },
@@ -389,15 +422,35 @@ export class GuestPassService {
       const role = currentuser.client.role;
       if (role === ROLES.TENANT) {
         createdBy = currentuser.sub;
-      } else if (role === ROLES.STAFF && !pid) {
+      } else if (role === ROLES.STAFF) {
         // Staff (e.g. security) only see stats for properties they're assigned to
         const assignedProperties = await this.propertyDAO.list(
           { cuid, assignedStaff: new Types.ObjectId(currentuser.sub), deletedAt: null },
           { projection: '_id' }
         );
-        const ids = assignedProperties.items.map((p: any) => p._id.toString());
-        if (ids.length > 0) {
-          propertyId = ids;
+        const assignedIds = assignedProperties.items.map((p: any) => p._id.toString());
+        if (assignedIds.length === 0) {
+          // Unassigned staff — return empty stats
+          return {
+            success: true,
+            data: {
+              total: 0,
+              active: 0,
+              expired: 0,
+              revoked: 0,
+              used: 0,
+              unacknowledged: 0,
+              pending: 0,
+            },
+          };
+        }
+        if (pid && propertyId) {
+          // Verify the requested property is in their assigned set
+          if (!assignedIds.includes(propertyId as string)) {
+            throw new ForbiddenError({ message: t('common.errors.forbidden') });
+          }
+        } else {
+          propertyId = assignedIds;
         }
       }
 
@@ -542,17 +595,42 @@ export class GuestPassService {
         validUntil: { $gt: now.toDate() },
       };
 
-      if (filters.propertyId) {
-        query.propertyId = new Types.ObjectId(filters.propertyId);
-      } else if (currentuser.client.role === ROLES.STAFF) {
+      if (currentuser.client.role === ROLES.TENANT) {
+        query.createdBy = new Types.ObjectId(currentuser.sub);
+      }
+
+      if (currentuser.client.role === ROLES.STAFF) {
         const assignedProperties = await this.propertyDAO.list(
           { cuid, assignedStaff: new Types.ObjectId(currentuser.sub), deletedAt: null },
           { projection: '_id' }
         );
-        const ids = assignedProperties.items.map((p: any) => p._id);
-        if (ids.length > 0) {
-          query.propertyId = { $in: ids };
+        const assignedIds = assignedProperties.items.map((p: any) => p._id);
+        if (assignedIds.length === 0) {
+          return {
+            success: true,
+            data: {
+              passes: [],
+              pagination: {
+                hasMoreResource: false,
+                currentPage: 1,
+                totalPages: 0,
+                perPage: limit,
+                total: 0,
+              },
+            },
+          };
         }
+        if (filters.propertyId) {
+          const requestedId = new Types.ObjectId(filters.propertyId);
+          if (!assignedIds.some((id: any) => id.equals(requestedId))) {
+            throw new ForbiddenError({ message: t('common.errors.forbidden') });
+          }
+          query.propertyId = requestedId;
+        } else {
+          query.propertyId = { $in: assignedIds };
+        }
+      } else if (filters.propertyId) {
+        query.propertyId = new Types.ObjectId(filters.propertyId);
       }
 
       if (filters.timeWindow === 'next_hour') {
@@ -807,22 +885,18 @@ export class GuestPassService {
         count: expiredCount,
       });
 
-      // Mark undelivered SMS/email as FAILED
-      await this.guestPassDAO.updateMany(
-        {
-          status: GuestPassStatus.EXPIRED,
-          $or: [
-            { 'deliveryStatus.sms': DeliveryStatusEnum.PENDING },
-            { 'deliveryStatus.email': DeliveryStatusEnum.PENDING },
-          ],
-        },
-        {
-          $set: {
-            'deliveryStatus.sms': DeliveryStatusEnum.FAILED,
-            'deliveryStatus.email': DeliveryStatusEnum.FAILED,
-          },
-        }
-      );
+      // Mark undelivered SMS/email as FAILED — update each channel independently
+      // to avoid overwriting a successful delivery state on the other channel
+      await Promise.all([
+        this.guestPassDAO.updateMany(
+          { status: GuestPassStatus.EXPIRED, 'deliveryStatus.sms': DeliveryStatusEnum.PENDING },
+          { $set: { 'deliveryStatus.sms': DeliveryStatusEnum.FAILED } }
+        ),
+        this.guestPassDAO.updateMany(
+          { status: GuestPassStatus.EXPIRED, 'deliveryStatus.email': DeliveryStatusEnum.PENDING },
+          { $set: { 'deliveryStatus.email': DeliveryStatusEnum.FAILED } }
+        ),
+      ]);
 
       this.log.info(
         {
@@ -843,7 +917,18 @@ export class GuestPassService {
     }
   }
 
-  private async generateUniqueCode(): Promise<string> {
-    return crypto.randomInt(100000, 999999).toString();
+  private async generateUniqueCode(cuid: string, maxRetries = 5): Promise<string> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const code = crypto.randomInt(100000, 999999).toString();
+      const existing = await this.guestPassDAO.findFirst({
+        cuid,
+        code,
+        status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.PENDING] },
+      });
+      if (!existing) return code;
+    }
+    throw new BadRequestError({
+      message: 'Unable to generate unique guest pass code. Please try again.',
+    });
   }
 }

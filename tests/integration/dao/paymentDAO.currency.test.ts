@@ -150,4 +150,78 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     expect(totals).not.toContain(200);
     expect(totals.every((t) => t === 100)).toBe(true);
   });
+
+  // ===========================================================================
+  // splitInvoices field tests
+  // ===========================================================================
+
+  describe('splitInvoices field', () => {
+    it('stores and retrieves splitInvoices with rent and fees entries', async () => {
+      const paymentData = makePayment('CAD', 395000, PaymentRecordStatus.PROCESSING);
+      const splitInvoices = [
+        { invoiceId: 'in_rent_001', amount: 350000, category: 'rent' as const, status: 'pending' as const },
+        { invoiceId: 'in_fees_001', amount: 45000, category: 'fees' as const, status: 'pending' as const },
+      ];
+
+      const created = await Payment.create({ ...paymentData, splitInvoices });
+      const found = await Payment.findById(created._id).lean();
+
+      expect(found).toBeDefined();
+      expect(found!.splitInvoices).toHaveLength(2);
+
+      const rent = found!.splitInvoices!.find((si: any) => si.category === 'rent');
+      const fees = found!.splitInvoices!.find((si: any) => si.category === 'fees');
+
+      expect(rent).toMatchObject({ invoiceId: 'in_rent_001', amount: 350000, category: 'rent', status: 'pending' });
+      expect(fees).toMatchObject({ invoiceId: 'in_fees_001', amount: 45000, category: 'fees', status: 'pending' });
+    });
+
+    it('defaults splitInvoices to empty array when not provided', async () => {
+      const paymentData = makePayment('CAD', 200000, PaymentRecordStatus.PENDING);
+      const created = await Payment.create(paymentData);
+      const found = await Payment.findById(created._id).lean();
+
+      expect(found).toBeDefined();
+      // Mongoose stores empty sub-doc arrays as [] by default
+      expect(found!.splitInvoices).toEqual([]);
+    });
+
+    it('stores chargeId and paidAt on individual split entries', async () => {
+      const paidDate = new Date('2026-07-10T14:00:00Z');
+      const splitInvoices = [
+        { invoiceId: 'in_rent_002', amount: 300000, category: 'rent' as const, status: 'paid' as const, chargeId: 'ch_rent_002', paidAt: paidDate },
+        { invoiceId: 'in_fees_002', amount: 50000, category: 'fees' as const, status: 'pending' as const },
+      ];
+
+      const paymentData = makePayment('CAD', 350000, PaymentRecordStatus.PROCESSING);
+      const created = await Payment.create({ ...paymentData, splitInvoices });
+      const found = await Payment.findById(created._id).lean();
+
+      const rent = found!.splitInvoices!.find((si: any) => si.category === 'rent');
+      const fees = found!.splitInvoices!.find((si: any) => si.category === 'fees');
+
+      expect(rent!.chargeId).toBe('ch_rent_002');
+      expect(rent!.paidAt).toEqual(paidDate);
+      expect(fees!.chargeId).toBeUndefined();
+      expect(fees!.paidAt).toBeUndefined();
+    });
+
+    it('rejects invalid category values', async () => {
+      const paymentData = makePayment('CAD', 100000, PaymentRecordStatus.PENDING);
+      const splitInvoices = [
+        { invoiceId: 'in_bad', amount: 100000, category: 'invalid_category' as any, status: 'pending' as const },
+      ];
+
+      await expect(Payment.create({ ...paymentData, splitInvoices })).rejects.toThrow();
+    });
+
+    it('rejects invalid status values on split entries', async () => {
+      const paymentData = makePayment('CAD', 100000, PaymentRecordStatus.PENDING);
+      const splitInvoices = [
+        { invoiceId: 'in_bad_status', amount: 100000, category: 'rent' as const, status: 'invalid_status' as any },
+      ];
+
+      await expect(Payment.create({ ...paymentData, splitInvoices })).rejects.toThrow();
+    });
+  });
 });

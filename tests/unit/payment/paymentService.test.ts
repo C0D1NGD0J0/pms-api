@@ -106,6 +106,7 @@ const makeServiceWithMocks = (
   const paymentWebhookService = new PaymentWebhookService({
     paymentGatewayService,
     paymentProcessorDAO,
+    subscriptionPlanConfig,
     subscriptionDAO,
     emitterService,
     stripeService: stripeService as unknown as StripeService,
@@ -5635,7 +5636,12 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
     webhookService = new PaymentWebhookService({
       paymentGatewayService: {} as any,
       paymentProcessorDAO: {} as any,
-      subscriptionDAO: {} as any,
+      subscriptionPlanConfig: {
+        getTransactionFeePercent: jest.fn().mockReturnValue(4.0),
+        calculatePaymentGatewayFee: jest.fn().mockReturnValue(80),
+        calculateAchApplicationFee: jest.fn().mockReturnValue(6913),
+      } as any,
+      subscriptionDAO: { findFirst: jest.fn().mockResolvedValue({ planName: 'growth' }) } as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
       stripeService: {
         getInvoicePaymentDetails: jest.fn().mockResolvedValue({ chargeId: CHARGE_ID }),
@@ -5671,7 +5677,12 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
     webhookService = new PaymentWebhookService({
       paymentGatewayService: {} as any,
       paymentProcessorDAO: {} as any,
-      subscriptionDAO: {} as any,
+      subscriptionPlanConfig: {
+        getTransactionFeePercent: jest.fn().mockReturnValue(4.0),
+        calculatePaymentGatewayFee: jest.fn().mockReturnValue(80),
+        calculateAchApplicationFee: jest.fn().mockReturnValue(6913),
+      } as any,
+      subscriptionDAO: { findFirst: jest.fn().mockResolvedValue({ planName: 'growth' }) } as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
       stripeService: {
         getInvoicePaymentDetails: jest.fn().mockResolvedValue({ chargeId: null }),

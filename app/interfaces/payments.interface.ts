@@ -126,10 +126,10 @@ export interface IPaymentListItem {
   paymentType: PaymentRecordType;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
+  platformRevenue?: number; // Platform's net revenue — only returned for ROOT_ADMIN
   period?: IPaymentPeriod;
-  platformRevenue: number; // Platform's net revenue after Stripe gateway fee
   applicationFee: number; // Platform's application fee in cents
-  processingFee: number;
+  processingFee?: number; // Stripe gateway fee — only returned for ROOT_ADMIN
   baseAmount: number;
   property: string;
   currency: string;

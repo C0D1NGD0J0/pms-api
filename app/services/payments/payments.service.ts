@@ -321,6 +321,11 @@ export class PaymentService implements ICronProvider {
         true
       );
 
+      // Only ROOT_ADMIN (platform internal) sees gateway fees and platform revenue.
+      // Client super admins see applicationFee (what's deducted from their payout)
+      // but not the internal split between Stripe costs and platform profit.
+      const isPlatformAdmin = role === 'root-admin';
+
       const cleanItems = (result.items as unknown as IPaymentPopulated[]).map((payment) => {
         const addr = payment.lease?.property?.address;
         const addressStr = typeof addr === 'string' ? addr : (addr?.fullAddress ?? '');
@@ -346,11 +351,13 @@ export class PaymentService implements ICronProvider {
             }
             return 'Unknown Property';
           })(),
-          amount: payment.baseAmount + (payment.processingFee || 0),
+          amount: payment.baseAmount,
           baseAmount: payment.baseAmount,
-          processingFee: payment.processingFee || 0,
           applicationFee: payment.applicationFee || 0,
-          platformRevenue: (payment as any).platformRevenue || 0,
+          ...(isPlatformAdmin && {
+            processingFee: payment.processingFee || 0,
+            platformRevenue: (payment as any).platformRevenue || 0,
+          }),
           status: payment.status,
           paymentType: payment.paymentType,
           paymentMethod: payment.paymentMethod,
@@ -495,6 +502,15 @@ export class PaymentService implements ICronProvider {
       const paymentObj = payment.toObject();
       delete paymentObj.tenant;
       delete paymentObj.lease;
+
+      // Strip internal platform economics from non-platform-admin responses.
+      // PMs see applicationFee (what's deducted from their payout) but not
+      // the breakdown between Stripe costs and platform profit.
+      const detailRole = context?.currentuser?.client?.role;
+      if (detailRole !== 'root-admin') {
+        delete paymentObj.processingFee;
+        delete paymentObj.platformRevenue;
+      }
 
       // For maintenance payments, look up the invoice for line items and vendor payout info
       let vendorPayout = null;

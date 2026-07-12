@@ -320,6 +320,17 @@ export class PaymentWebhookService {
         return { success: false, data: undefined, message: 'Payment record not found' };
       }
 
+      // Mark the specific split invoice as failed if this is a split payment
+      if (payment.splitInvoices?.length) {
+        const splitIndex = payment.splitInvoices.findIndex((si) => si.invoiceId === invoiceId);
+        if (splitIndex >= 0) {
+          await this.paymentDAO.update(
+            { _id: payment._id },
+            { $set: { [`splitInvoices.${splitIndex}.status`]: 'failed' } }
+          );
+        }
+      }
+
       // ── Detect bank-debit (ACSS) failure and attempt card retry ────────────────
       // Check the invoice's default_payment_method type from Stripe. This is the
       // only reliable signal — Stripe often rejects ACSS before creating a
@@ -621,17 +632,25 @@ export class PaymentWebhookService {
       return false;
     }
 
-    await this.paymentDAO.update(
-      { _id: payment._id, cuid: payment.cuid },
-      {
-        $set: {
-          gatewayPaymentId: invoiceResult.data.invoiceId,
-          status: PaymentRecordStatus.PROCESSING,
-          paymentMethod: PaymentMethod.ONLINE,
-        },
-        $unset: { failure: '' },
+    const updateOps: any = {
+      $set: {
+        gatewayPaymentId: invoiceResult.data.invoiceId,
+        status: PaymentRecordStatus.PROCESSING,
+        paymentMethod: PaymentMethod.ONLINE,
+      },
+      $unset: { failure: '' },
+    };
+
+    // Update the failed split invoice entry with the new card invoice ID
+    if (payment.splitInvoices?.length) {
+      const splitIndex = payment.splitInvoices.findIndex((si) => si.invoiceId === failedInvoiceId);
+      if (splitIndex >= 0) {
+        updateOps.$set[`splitInvoices.${splitIndex}.invoiceId`] = invoiceResult.data.invoiceId;
+        updateOps.$set[`splitInvoices.${splitIndex}.status`] = 'pending';
       }
-    );
+    }
+
+    await this.paymentDAO.update({ _id: payment._id, cuid: payment.cuid }, updateOps);
 
     this.log.info(
       { pytuid: payment.pytuid, cuid, newInvoiceId: invoiceResult.data.invoiceId },

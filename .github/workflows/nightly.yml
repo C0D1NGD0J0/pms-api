@@ -6,9 +6,15 @@ on:
     - cron: "0 2 * * *"
   workflow_dispatch:
 
+concurrency:
+  group: nightly-tests
+  cancel-in-progress: false
+
 env:
   NODE_ENV: test
   NODE_VERSION: "22"
+  JWT_SECRET: ci-test-secret
+  JWT_REFRESH_SECRET: ci-test-refresh-secret
 
 jobs:
   full-suite:
@@ -61,11 +67,32 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            const labelName = 'nightly-failure';
             const title = `Nightly build failed — ${new Date().toISOString().split('T')[0]}`;
+
+            // Ensure the label exists before creating an issue with it
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: labelName,
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: labelName,
+                  color: 'e11d48',
+                  description: 'Nightly CI test suite failure',
+                });
+              }
+            }
+
             const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              labels: 'nightly-failure',
+              labels: labelName,
               state: 'open',
             });
             if (issues.length > 0) {
@@ -81,6 +108,6 @@ jobs:
                 repo: context.repo.repo,
                 title,
                 body: `The nightly test suite failed.\n\n[View run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
-                labels: ['nightly-failure'],
+                labels: [labelName],
               });
             }

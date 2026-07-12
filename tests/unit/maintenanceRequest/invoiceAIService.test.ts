@@ -24,7 +24,9 @@ beforeEach(() => {
     anthropicService: mockAnthropicService,
     featureFlagService: mockFeatureFlagService,
     subscriptionPlanConfig: { hasFeature: jest.fn().mockReturnValue(true) } as any,
-    subscriptionDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve({ planName: 'growth' })) } as any,
+    subscriptionDAO: {
+      findFirst: jest.fn().mockReturnValue(Promise.resolve({ planName: 'growth' })),
+    } as any,
   });
 });
 
@@ -48,7 +50,11 @@ describe('InvoiceAIService', () => {
     it('returns failure when feature flag is disabled', async () => {
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(false);
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('fake-image'),
+        'image/jpeg',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(false);
       expect(result.data).toBeNull();
@@ -65,7 +71,12 @@ describe('InvoiceAIService', () => {
         amountInCents: 18500,
         currency: 'USD',
         lineItems: [
-          { description: 'Faucet cartridge', quantity: 1, unitPriceInCents: 4500, amountInCents: 4500 },
+          {
+            description: 'Faucet cartridge',
+            quantity: 1,
+            unitPriceInCents: 4500,
+            amountInCents: 4500,
+          },
           { description: 'Labor', quantity: 2, unitPriceInCents: 7000, amountInCents: 14000 },
         ],
         vendorName: "Joe's Plumbing",
@@ -74,7 +85,11 @@ describe('InvoiceAIService', () => {
         confidence: 0.95,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image-data'), 'image/jpeg', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('fake-image-data'),
+        'image/jpeg',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data).not.toBeNull();
@@ -94,7 +109,11 @@ describe('InvoiceAIService', () => {
         Promise.reject(new Error('API unavailable'))
       );
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('fake-image'),
+        'image/jpeg',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(false);
       expect(result.data).toBeNull();
@@ -111,7 +130,11 @@ describe('InvoiceAIService', () => {
         confidence: 0.05,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/jpeg', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('fake-image'),
+        'image/jpeg',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(false);
       expect(result.data).toBeNull();
@@ -129,7 +152,11 @@ describe('InvoiceAIService', () => {
         confidence: 0.8,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-image'), 'image/png', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('fake-image'),
+        'image/png',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data!.description).toBe('');
@@ -148,12 +175,17 @@ describe('InvoiceAIService', () => {
         confidence: 0.88,
       });
 
-      const result = await service.extractInvoiceData(Buffer.from('fake-pdf-data'), 'application/pdf', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('fake-pdf-data'),
+        'application/pdf',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data!.description).toBe('PDF Invoice');
 
-      const [, contentBlocks] = (mockAnthropicService.createVisionMessage as jest.Mock).mock.calls[0];
+      const [, contentBlocks] = (mockAnthropicService.createVisionMessage as jest.Mock).mock
+        .calls[0];
       expect(contentBlocks[0]).toMatchObject({ type: 'document' });
     });
 
@@ -169,13 +201,20 @@ describe('InvoiceAIService', () => {
 
       await service.extractInvoiceData(Buffer.from('fake-png'), 'image/png', 'test-cuid');
 
-      const [, contentBlocks] = (mockAnthropicService.createVisionMessage as jest.Mock).mock.calls[0];
+      const [, contentBlocks] = (mockAnthropicService.createVisionMessage as jest.Mock).mock
+        .calls[0];
       expect(contentBlocks[0]).toMatchObject({ type: 'image' });
     });
 
     it('routes through AnthropicService (not a direct Anthropic client)', async () => {
       (mockFeatureFlagService.isEnabled as jest.Mock).mockReturnValue(true);
-      mockVisionResponse({ description: 'ok', amountInCents: 100, currency: 'USD', lineItems: [], confidence: 0.5 });
+      mockVisionResponse({
+        description: 'ok',
+        amountInCents: 100,
+        currency: 'USD',
+        lineItems: [],
+        confidence: 0.5,
+      });
 
       await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
 
@@ -187,14 +226,19 @@ describe('InvoiceAIService', () => {
       // Simulate AI wrapping response in markdown fences despite instructions
       (mockAnthropicService.createVisionMessage as jest.Mock).mockReturnValue(
         Promise.resolve({
-          content: '```json\n{"description":"Fix tap","amountInCents":5000,"currency":"USD","lineItems":[],"confidence":0.9}\n```',
+          content:
+            '```json\n{"description":"Fix tap","amountInCents":5000,"currency":"USD","lineItems":[],"confidence":0.9}\n```',
           inputTokens: 100,
           outputTokens: 50,
           model: 'claude-haiku-4-5-20251001',
         })
       );
 
-      const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+      const result = await service.extractInvoiceData(
+        Buffer.from('data'),
+        'image/jpeg',
+        'test-cuid'
+      );
 
       expect(result.success).toBe(true);
       expect(result.data!.description).toBe('Fix tap');
@@ -213,7 +257,11 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.description).toHaveLength(500);
       });
 
@@ -226,7 +274,11 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.vendorName).toHaveLength(200);
       });
 
@@ -239,7 +291,11 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.invoiceNumber).toHaveLength(50);
       });
 
@@ -258,7 +314,11 @@ describe('InvoiceAIService', () => {
           ],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.lineItems[0].description).toHaveLength(200);
       });
 
@@ -270,7 +330,11 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.currency).toBe('USD');
       });
 
@@ -282,7 +346,11 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.currency).toBe('CAD');
       });
 
@@ -294,7 +362,11 @@ describe('InvoiceAIService', () => {
           lineItems: [],
           confidence: 0.8,
         });
-        const result = await service.extractInvoiceData(Buffer.from('data'), 'image/jpeg', 'test-cuid');
+        const result = await service.extractInvoiceData(
+          Buffer.from('data'),
+          'image/jpeg',
+          'test-cuid'
+        );
         expect(result.data!.currency).toBe('EUR');
       });
     });

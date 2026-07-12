@@ -38,12 +38,8 @@ const createService = (mocks: {
     update: jest.fn(),
     updateById: jest.fn(),
     // batch methods return empty Maps by default → vendors appear as "new"
-    getVendorStatsBatch: jest
-      .fn()
-      .mockReturnValue(Promise.resolve(new Map<string, any>())),
-    getVendorAvgRatingBatch: jest
-      .fn()
-      .mockReturnValue(Promise.resolve(new Map<string, number>())),
+    getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(new Map<string, any>())),
+    getVendorAvgRatingBatch: jest.fn().mockReturnValue(Promise.resolve(new Map<string, number>())),
   };
 
   return new VendorSuggestionService({
@@ -120,8 +116,14 @@ describe('VendorSuggestionService.suggestVendor', () => {
     });
 
     const statsMap = new Map([
-      [highRated._id.toString(), makeStats({ total: 20, completed: 19, inProgress: 1, avgCompletionDays: 3 })],
-      [lowRated._id.toString(), makeStats({ total: 20, completed: 10, inProgress: 1, avgCompletionDays: 3 })],
+      [
+        highRated._id.toString(),
+        makeStats({ total: 20, completed: 19, inProgress: 1, avgCompletionDays: 3 }),
+      ],
+      [
+        lowRated._id.toString(),
+        makeStats({ total: 20, completed: 10, inProgress: 1, avgCompletionDays: 3 }),
+      ],
     ]);
     const ratingMap = new Map([
       [highRated._id.toString(), 4.8],
@@ -130,7 +132,9 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [highRated, lowRated] })),
+        getClientVendors: jest
+          .fn()
+          .mockReturnValue(Promise.resolve({ items: [highRated, lowRated] })),
       },
       maintenanceRequestDAO: {
         getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
@@ -154,8 +158,14 @@ describe('VendorSuggestionService.suggestVendor', () => {
     });
 
     const statsMap = new Map([
-      [busy._id.toString(), makeStats({ total: 20, completed: 15, inProgress: 8, assigned: 2, avgCompletionDays: 3 })],
-      [idle._id.toString(), makeStats({ total: 20, completed: 15, inProgress: 0, assigned: 0, avgCompletionDays: 3 })],
+      [
+        busy._id.toString(),
+        makeStats({ total: 20, completed: 15, inProgress: 8, assigned: 2, avgCompletionDays: 3 }),
+      ],
+      [
+        idle._id.toString(),
+        makeStats({ total: 20, completed: 15, inProgress: 0, assigned: 0, avgCompletionDays: 3 }),
+      ],
     ]);
     const ratingMap = new Map([
       [busy._id.toString(), 4.0],
@@ -188,8 +198,14 @@ describe('VendorSuggestionService.suggestVendor', () => {
     });
 
     const statsMap = new Map([
-      [slow._id.toString(), makeStats({ total: 20, completed: 18, inProgress: 1, avgCompletionDays: 20 })],
-      [fast._id.toString(), makeStats({ total: 20, completed: 18, inProgress: 1, avgCompletionDays: 2 })],
+      [
+        slow._id.toString(),
+        makeStats({ total: 20, completed: 18, inProgress: 1, avgCompletionDays: 20 }),
+      ],
+      [
+        fast._id.toString(),
+        makeStats({ total: 20, completed: 18, inProgress: 1, avgCompletionDays: 2 }),
+      ],
     ]);
     const ratingMap = new Map([
       [slow._id.toString(), 4.0],
@@ -222,8 +238,14 @@ describe('VendorSuggestionService.suggestVendor', () => {
     });
 
     const statsMap = new Map([
-      [decent._id.toString(), makeStats({ total: 10, completed: 7, inProgress: 3, avgCompletionDays: 10 })],
-      [best._id.toString(), makeStats({ total: 50, completed: 48, inProgress: 1, avgCompletionDays: 2 })],
+      [
+        decent._id.toString(),
+        makeStats({ total: 10, completed: 7, inProgress: 3, avgCompletionDays: 10 }),
+      ],
+      [
+        best._id.toString(),
+        makeStats({ total: 50, completed: 48, inProgress: 1, avgCompletionDays: 2 }),
+      ],
     ]);
     const ratingMap = new Map([
       [decent._id.toString(), 3.5],
@@ -253,7 +275,10 @@ describe('VendorSuggestionService.suggestVendor', () => {
     });
 
     const statsMap = new Map([
-      [vendor._id.toString(), makeStats({ total: 10, completed: 9, inProgress: 1, avgCompletionDays: 5 })],
+      [
+        vendor._id.toString(),
+        makeStats({ total: 10, completed: 9, inProgress: 1, avgCompletionDays: 5 }),
+      ],
     ]);
     const ratingMap = new Map([[vendor._id.toString(), 4.5]]);
 
@@ -320,14 +345,20 @@ describe('VendorSuggestionService.suggestVendor', () => {
           getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
         },
         propertyDAO: {
-          findFirst: jest.fn().mockReturnValue(
-            Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
-          ),
+          findFirst: jest
+            .fn()
+            .mockReturnValue(
+              Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
+            ),
         },
         serviceAreaService: { isLocationInVendorServiceArea: mockIsInRange },
       });
 
-      const result = await service.suggestVendor('CUID1', MaintenanceCategory.PLUMBING, 'prop-id-1');
+      const result = await service.suggestVendor(
+        'CUID1',
+        MaintenanceCategory.PLUMBING,
+        'prop-id-1'
+      );
 
       expect(result).not.toBeNull();
       expect(mockIsInRange).not.toHaveBeenCalled();
@@ -348,18 +379,24 @@ describe('VendorSuggestionService.suggestVendor', () => {
           getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
         },
         propertyDAO: {
-          findFirst: jest.fn().mockReturnValue(
-            Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
-          ),
+          findFirst: jest
+            .fn()
+            .mockReturnValue(
+              Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
+            ),
         },
         serviceAreaService: {
-          isLocationInVendorServiceArea: jest.fn().mockReturnValue(
-            Promise.resolve({ isInRange: false })
-          ),
+          isLocationInVendorServiceArea: jest
+            .fn()
+            .mockReturnValue(Promise.resolve({ isInRange: false })),
         },
       });
 
-      const result = await service.suggestVendor('CUID1', MaintenanceCategory.PLUMBING, 'prop-id-1');
+      const result = await service.suggestVendor(
+        'CUID1',
+        MaintenanceCategory.PLUMBING,
+        'prop-id-1'
+      );
 
       // Falls back to the qualified list — returns a result, not null
       expect(result).not.toBeNull();
@@ -378,18 +415,24 @@ describe('VendorSuggestionService.suggestVendor', () => {
           getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
         },
         propertyDAO: {
-          findFirst: jest.fn().mockReturnValue(
-            Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
-          ),
+          findFirst: jest
+            .fn()
+            .mockReturnValue(
+              Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
+            ),
         },
         serviceAreaService: {
-          isLocationInVendorServiceArea: jest.fn().mockReturnValue(
-            Promise.resolve({ isInRange: true, distance: 5 })
-          ),
+          isLocationInVendorServiceArea: jest
+            .fn()
+            .mockReturnValue(Promise.resolve({ isInRange: true, distance: 5 })),
         },
       });
 
-      const result = await service.suggestVendor('CUID1', MaintenanceCategory.PLUMBING, 'prop-id-1');
+      const result = await service.suggestVendor(
+        'CUID1',
+        MaintenanceCategory.PLUMBING,
+        'prop-id-1'
+      );
 
       expect(result).not.toBeNull();
     });
@@ -410,23 +453,29 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest.fn().mockReturnValue(
-            Promise.resolve({ items: [vendor1, vendor2] })
-          ),
+          getClientVendors: jest
+            .fn()
+            .mockReturnValue(Promise.resolve({ items: [vendor1, vendor2] })),
         },
         propertyDAO: {
-          findFirst: jest.fn().mockReturnValue(
-            Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
-          ),
+          findFirst: jest
+            .fn()
+            .mockReturnValue(
+              Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.25] } })
+            ),
         },
         serviceAreaService: {
-          isLocationInVendorServiceArea: jest.fn().mockReturnValue(
-            Promise.resolve({ isInRange: false })
-          ),
+          isLocationInVendorServiceArea: jest
+            .fn()
+            .mockReturnValue(Promise.resolve({ isInRange: false })),
         },
       });
 
-      const result = await service.suggestVendor('CUID1', MaintenanceCategory.PLUMBING, 'prop-id-1');
+      const result = await service.suggestVendor(
+        'CUID1',
+        MaintenanceCategory.PLUMBING,
+        'prop-id-1'
+      );
 
       // Falls back to qualified list — returns one of the two vendors
       expect(result).not.toBeNull();
@@ -446,7 +495,12 @@ describe('VendorSuggestionService.suggestVendor', () => {
         serviceAreas: { maxDistance: 25 },
       });
 
-      const identicalStats = makeStats({ total: 20, completed: 18, inProgress: 1, avgCompletionDays: 5 });
+      const identicalStats = makeStats({
+        total: 20,
+        completed: 18,
+        inProgress: 1,
+        avgCompletionDays: 5,
+      });
       const statsMap = new Map([
         [fartherVendor._id.toString(), identicalStats],
         [closerVendor._id.toString(), identicalStats],
@@ -463,23 +517,29 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest.fn().mockReturnValue(
-            Promise.resolve({ items: [closerVendor, fartherVendor] })
-          ),
+          getClientVendors: jest
+            .fn()
+            .mockReturnValue(Promise.resolve({ items: [closerVendor, fartherVendor] })),
         },
         maintenanceRequestDAO: {
           getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
           getVendorAvgRatingBatch: jest.fn().mockReturnValue(Promise.resolve(ratingMap)),
         },
         propertyDAO: {
-          findFirst: jest.fn().mockReturnValue(
-            Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.2] } })
-          ),
+          findFirst: jest
+            .fn()
+            .mockReturnValue(
+              Promise.resolve({ computedLocation: { coordinates: [-123.1, 49.2] } })
+            ),
         },
         serviceAreaService: { isLocationInVendorServiceArea },
       });
 
-      const result = await service.suggestVendor('CUID1', MaintenanceCategory.PLUMBING, 'prop-id-1');
+      const result = await service.suggestVendor(
+        'CUID1',
+        MaintenanceCategory.PLUMBING,
+        'prop-id-1'
+      );
 
       expect(result).not.toBeNull();
       expect(result!.companyName).toBe('Closer Plumber');

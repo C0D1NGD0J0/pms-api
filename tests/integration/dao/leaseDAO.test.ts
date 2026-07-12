@@ -40,7 +40,9 @@ describe('LeaseDAO Integration Tests', () => {
       email: 'tenant@example.com',
       password: 'hashed',
       activecuid: testCuid,
-      cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['tenant'], isConnected: true }],
+      cuids: [
+        { cuid: testCuid, clientDisplayName: 'Test Client', roles: ['tenant'], isConnected: true },
+      ],
     });
 
     await User.create({
@@ -49,7 +51,9 @@ describe('LeaseDAO Integration Tests', () => {
       email: 'creator@example.com',
       password: 'hashed',
       activecuid: testCuid,
-      cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['manager'], isConnected: true }],
+      cuids: [
+        { cuid: testCuid, clientDisplayName: 'Test Client', roles: ['manager'], isConnected: true },
+      ],
     });
 
     // Create test property
@@ -285,25 +289,35 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: testTenantId,
           property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
           duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-          fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 2000,
+            securityDeposit: 2000,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           signingMethod: 'manual',
           signedDate: new Date(),
           createdBy: testCreatorId,
-          leaseDocuments: [{
-            url: 'https://example.com/lease.pdf',
-            key: 'lease-key',
-            filename: 'lease.pdf',
-            uploadedBy: testCreatorId,
-            status: 'active',
-          }],
-          signatures: [{
-            userId: testTenantId,
-            role: 'tenant',
-            signedAt: new Date(),
-            signatureMethod: 'manual',
-          }],
+          leaseDocuments: [
+            {
+              url: 'https://example.com/lease.pdf',
+              key: 'lease-key',
+              filename: 'lease.pdf',
+              uploadedBy: testCreatorId,
+              status: 'active',
+            },
+          ],
+          signatures: [
+            {
+              userId: testTenantId,
+              role: 'tenant',
+              signedAt: new Date(),
+              signatureMethod: 'manual',
+            },
+          ],
         },
         {
           cuid: testCuid,
@@ -313,7 +327,13 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: testTenantId,
           property: { id: testPropertyId, address: '456 Oak Ave' },
           duration: { startDate: new Date('2024-02-01'), endDate: new Date('2025-01-31') },
-          fees: { rentAmount: 1500, securityDeposit: 1500, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 1500,
+            securityDeposit: 1500,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.DRAFT,
           signingMethod: 'pending',
           createdBy: testCreatorId,
@@ -404,7 +424,13 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
       });
@@ -447,7 +473,13 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
       });
@@ -476,25 +508,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const overlaps = await leaseDAO.checkOverlappingLeases(
@@ -516,25 +558,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 5000, securityDeposit: 5000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 5000,
+          securityDeposit: 5000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const overlaps = await leaseDAO.checkOverlappingLeases(
@@ -556,25 +608,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-06-30') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const overlaps = await leaseDAO.checkOverlappingLeases(
@@ -596,25 +658,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const overlaps = await leaseDAO.checkOverlappingLeases(
@@ -639,25 +711,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 5000, securityDeposit: 5000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 5000,
+          securityDeposit: 5000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const lease = await leaseDAO.findPropertyLevelLease(
@@ -691,25 +773,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const leases = await leaseDAO.findActiveUnitLeases(
@@ -743,25 +835,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const lease = await leaseDAO.getActiveLeaseByTenant(testCuid, testTenantId.toString());
@@ -786,25 +888,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const lease = await leaseDAO.getActiveLeaseByUnit(testCuid, testUnitId.toString());
@@ -833,25 +945,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: futureDate },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const leases = await leaseDAO.getExpiringLeases(testCuid, 60);
@@ -870,25 +992,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: futureDate },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const leases = await leaseDAO.getExpiringLeases(testCuid, 60);
@@ -909,7 +1041,14 @@ describe('LeaseDAO Integration Tests', () => {
         email: 'tenant2@example.com',
         password: 'hashed',
         activecuid: testCuid,
-        cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client', roles: ['tenant'], isConnected: true }],
+        cuids: [
+          {
+            cuid: testCuid,
+            clientDisplayName: 'Test Client',
+            roles: ['tenant'],
+            isConnected: true,
+          },
+        ],
       });
 
       await Lease.insertMany([
@@ -921,25 +1060,35 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: tenant2,
           property: { id: testPropertyId, address: '456 Oak Ave' },
           duration: { startDate: new Date('2024-01-01'), endDate: date2 },
-          fees: { rentAmount: 1500, securityDeposit: 1500, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 1500,
+            securityDeposit: 1500,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           signingMethod: 'manual',
           signedDate: new Date(),
           createdBy: testCreatorId,
-          leaseDocuments: [{
-            url: 'https://example.com/lease.pdf',
-            key: 'lease-key',
-            filename: 'lease.pdf',
-            uploadedBy: testCreatorId,
-            status: 'active',
-          }],
-          signatures: [{
-            userId: tenant2,
-            role: 'tenant',
-            signedAt: new Date(),
-            signatureMethod: 'manual',
-          }],
+          leaseDocuments: [
+            {
+              url: 'https://example.com/lease.pdf',
+              key: 'lease-key',
+              filename: 'lease.pdf',
+              uploadedBy: testCreatorId,
+              status: 'active',
+            },
+          ],
+          signatures: [
+            {
+              userId: tenant2,
+              role: 'tenant',
+              signedAt: new Date(),
+              signatureMethod: 'manual',
+            },
+          ],
         },
         {
           cuid: testCuid,
@@ -949,25 +1098,35 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: testTenantId,
           property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
           duration: { startDate: new Date('2024-01-01'), endDate: date1 },
-          fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 2000,
+            securityDeposit: 2000,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           signingMethod: 'manual',
           signedDate: new Date(),
           createdBy: testCreatorId,
-          leaseDocuments: [{
-            url: 'https://example.com/lease.pdf',
-            key: 'lease-key',
-            filename: 'lease.pdf',
-            uploadedBy: testCreatorId,
-            status: 'active',
-          }],
-          signatures: [{
-            userId: testTenantId,
-            role: 'tenant',
-            signedAt: new Date(),
-            signatureMethod: 'manual',
-          }],
+          leaseDocuments: [
+            {
+              url: 'https://example.com/lease.pdf',
+              key: 'lease-key',
+              filename: 'lease.pdf',
+              uploadedBy: testCreatorId,
+              status: 'active',
+            },
+          ],
+          signatures: [
+            {
+              userId: testTenantId,
+              role: 'tenant',
+              signedAt: new Date(),
+              signatureMethod: 'manual',
+            },
+          ],
         },
       ]);
 
@@ -989,7 +1148,13 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.DRAFT,
         signingMethod: 'pending',
         createdBy: testCreatorId,
@@ -1027,25 +1192,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
 
       const terminationData = {
@@ -1099,25 +1274,35 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: testTenantId,
           property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
           duration: { startDate: new Date('2024-01-01'), endDate: date30 },
-          fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 2000,
+            securityDeposit: 2000,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           signingMethod: 'manual',
           signedDate: new Date(),
           createdBy: testCreatorId,
-          leaseDocuments: [{
-            url: 'https://example.com/lease.pdf',
-            key: 'lease-key',
-            filename: 'lease.pdf',
-            uploadedBy: testCreatorId,
-            status: 'active',
-          }],
-          signatures: [{
-            userId: testTenantId,
-            role: 'tenant',
-            signedAt: new Date(),
-            signatureMethod: 'manual',
-          }],
+          leaseDocuments: [
+            {
+              url: 'https://example.com/lease.pdf',
+              key: 'lease-key',
+              filename: 'lease.pdf',
+              uploadedBy: testCreatorId,
+              status: 'active',
+            },
+          ],
+          signatures: [
+            {
+              userId: testTenantId,
+              role: 'tenant',
+              signedAt: new Date(),
+              signatureMethod: 'manual',
+            },
+          ],
         },
         {
           cuid: testCuid,
@@ -1127,25 +1312,35 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: testTenantId,
           property: { id: testPropertyId, address: '456 Oak Ave' },
           duration: { startDate: new Date('2024-01-01'), endDate: date60 },
-          fees: { rentAmount: 1500, securityDeposit: 1500, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 1500,
+            securityDeposit: 1500,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           signingMethod: 'manual',
           signedDate: new Date(),
           createdBy: testCreatorId,
-          leaseDocuments: [{
-            url: 'https://example.com/lease.pdf',
-            key: 'lease-key',
-            filename: 'lease.pdf',
-            uploadedBy: testCreatorId,
-            status: 'active',
-          }],
-          signatures: [{
-            userId: testTenantId,
-            role: 'tenant',
-            signedAt: new Date(),
-            signatureMethod: 'manual',
-          }],
+          leaseDocuments: [
+            {
+              url: 'https://example.com/lease.pdf',
+              key: 'lease-key',
+              filename: 'lease.pdf',
+              uploadedBy: testCreatorId,
+              status: 'active',
+            },
+          ],
+          signatures: [
+            {
+              userId: testTenantId,
+              role: 'tenant',
+              signedAt: new Date(),
+              signatureMethod: 'manual',
+            },
+          ],
         },
         {
           cuid: testCuid,
@@ -1155,7 +1350,13 @@ describe('LeaseDAO Integration Tests', () => {
           tenantId: testTenantId,
           property: { id: testPropertyId, address: '789 Pine Rd' },
           duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-          fees: { rentAmount: 1800, securityDeposit: 1800, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 1800,
+            securityDeposit: 1800,
+            rentDueDay: 1,
+            currency: 'CAD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.DRAFT,
           signingMethod: 'pending',
           createdBy: testCreatorId,
@@ -1199,25 +1400,35 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         signingMethod: 'manual',
         signedDate: new Date(),
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
-        signatures: [{
-          userId: testTenantId,
-          role: 'tenant',
-          signedAt: new Date(),
-          signatureMethod: 'manual',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
       });
     });
 
@@ -1253,7 +1464,13 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
       });
@@ -1289,17 +1506,25 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          documentType: 'lease_agreement',
-          url: 'https://example.com/old-lease.pdf',
-          key: 'leases/old-lease.pdf',
-          filename: 'old-lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
+        leaseDocuments: [
+          {
+            documentType: 'lease_agreement',
+            url: 'https://example.com/old-lease.pdf',
+            key: 'leases/old-lease.pdf',
+            filename: 'old-lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
       });
 
       const uploadResults = [
@@ -1332,16 +1557,24 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
       });
 
       const updated = await leaseDAO.updateLeaseDocumentStatus(
@@ -1361,16 +1594,24 @@ describe('LeaseDAO Integration Tests', () => {
         tenantId: testTenantId,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
-        leaseDocuments: [{
-          url: 'https://example.com/lease.pdf',
-          key: 'lease-key',
-          filename: 'lease.pdf',
-          uploadedBy: testCreatorId,
-          status: 'active',
-        }],
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
       });
 
       const updated = await leaseDAO.updateLeaseDocumentStatus(lease.luid, 'active');
@@ -1391,7 +1632,13 @@ describe('LeaseDAO Integration Tests', () => {
         useInvitationIdAsTenantId: true,
         property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
         duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
-        fees: { rentAmount: 2000, securityDeposit: 2000, rentDueDay: 1, currency: 'CAD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         signingMethod: 'pending',
         createdBy: testCreatorId,
       });

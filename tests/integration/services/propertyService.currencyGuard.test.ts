@@ -147,10 +147,32 @@ describe('PropertyService — currency guard on country update', () => {
       property: { id: property._id, address: property.address },
       tenantId: leaseTenantId,
       createdBy: leaseTenantId,
-      fees: { rentAmount: 150000, currency: 'USD', securityDeposit: 0, rentDueDay: 1, acceptedPaymentMethod: 'e-transfer' as const },
+      fees: {
+        rentAmount: 150000,
+        currency: 'USD',
+        securityDeposit: 0,
+        rentDueDay: 1,
+        acceptedPaymentMethod: 'e-transfer' as const,
+      },
       signedDate: new Date(),
-      signatures: [{ userId: leaseTenantId, signedAt: new Date(), role: 'tenant' as const, signatureMethod: 'manual' as const }],
-      leaseDocuments: [{ documentType: 'lease_agreement' as const, url: 'https://example.com/doc.pdf', uploadedAt: new Date(), uploadedBy: leaseTenantId, filename: 'lease.pdf', key: 'leases/lease.pdf' }],
+      signatures: [
+        {
+          userId: leaseTenantId,
+          signedAt: new Date(),
+          role: 'tenant' as const,
+          signatureMethod: 'manual' as const,
+        },
+      ],
+      leaseDocuments: [
+        {
+          documentType: 'lease_agreement' as const,
+          url: 'https://example.com/doc.pdf',
+          uploadedAt: new Date(),
+          uploadedBy: leaseTenantId,
+          filename: 'lease.pdf',
+          key: 'leases/lease.pdf',
+        },
+      ],
       duration: {
         startDate: new Date(),
         endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),

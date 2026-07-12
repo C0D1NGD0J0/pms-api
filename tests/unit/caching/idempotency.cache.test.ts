@@ -165,7 +165,13 @@ describe('IdempotencyCache', () => {
       mockClient.GET.mockReturnValue(Promise.resolve(null));
 
       // Act
-      const result = await cache.getCachedRouteResponse('POST', '/api/v1/test', 'user1', 'cuid1', 'key1');
+      const result = await cache.getCachedRouteResponse(
+        'POST',
+        '/api/v1/test',
+        'user1',
+        'cuid1',
+        'key1'
+      );
 
       // Assert
       expect(result).toBeNull();
@@ -177,7 +183,13 @@ describe('IdempotencyCache', () => {
       mockClient.GET.mockReturnValue(Promise.resolve(JSON.stringify(payload)));
 
       // Act
-      const result = await cache.getCachedRouteResponse('POST', '/api/v1/test', 'user1', 'cuid1', 'key1');
+      const result = await cache.getCachedRouteResponse(
+        'POST',
+        '/api/v1/test',
+        'user1',
+        'cuid1',
+        'key1'
+      );
 
       // Assert
       expect(result).toEqual(payload);
@@ -241,7 +253,15 @@ describe('IdempotencyCache', () => {
       const expectedKey = `idmp:r:${expectedHash}`;
 
       // Act
-      await cache.cacheRouteResponse(method, routePath, userId, cuid, idempotencyKey, statusCode, body);
+      await cache.cacheRouteResponse(
+        method,
+        routePath,
+        userId,
+        cuid,
+        idempotencyKey,
+        statusCode,
+        body
+      );
 
       // Assert
       expect(mockClient.SETEX).toHaveBeenCalledWith(

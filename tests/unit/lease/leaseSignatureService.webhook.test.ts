@@ -102,8 +102,7 @@ const buildMocks = () => {
   };
 };
 
-const buildService = (mocks: ReturnType<typeof buildMocks>) =>
-  new LeaseSignatureService(mocks);
+const buildService = (mocks: ReturnType<typeof buildMocks>) => new LeaseSignatureService(mocks);
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 describe('LeaseSignatureService - handleESignatureWebhook', () => {
@@ -139,8 +138,7 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
 
       expect(mocks.sseService.sendToUser).toHaveBeenCalledTimes(2);
 
-      const calls: Array<[string, string, any, string]> =
-        mocks.sseService.sendToUser.mock.calls;
+      const calls: Array<[string, string, any, string]> = mocks.sseService.sendToUser.mock.calls;
 
       const tenantCall = calls.find(([userId]) => userId === lease.tenantId.toString());
       const pmCall = calls.find(([userId]) => userId === lease.createdBy.toString());
@@ -158,8 +156,8 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
       const mocks = buildMocks();
       // Tenant's session is offline — sendToUser returns false
       mocks.sseService.sendToUser
-        .mockReturnValueOnce(Promise.resolve(false))  // tenant
-        .mockReturnValueOnce(Promise.resolve(true));  // PM
+        .mockReturnValueOnce(Promise.resolve(false)) // tenant
+        .mockReturnValueOnce(Promise.resolve(true)); // PM
 
       const service = buildService(mocks);
 
@@ -201,9 +199,7 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
   describe('Completed event — SSE failure isolation', () => {
     it('should still resolve when both SSE sends reject', async () => {
       const mocks = buildMocks();
-      mocks.sseService.sendToUser.mockReturnValue(
-        Promise.reject(new Error('SSE transport error'))
-      );
+      mocks.sseService.sendToUser.mockReturnValue(Promise.reject(new Error('SSE transport error')));
       const service = buildService(mocks);
 
       // Promise.allSettled swallows rejections — the webhook handler must not rethrow

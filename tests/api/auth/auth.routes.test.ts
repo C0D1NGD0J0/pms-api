@@ -895,10 +895,7 @@ describe('Auth Routes Integration Tests', () => {
     };
 
     it('should complete onboarding with valid consent body', async () => {
-      const response = await request(app)
-        .post(endpoint)
-        .send(validBody)
-        .expect(httpStatusCodes.OK);
+      const response = await request(app).post(endpoint).send(validBody).expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('Onboarding');
@@ -927,7 +924,13 @@ describe('Auth Routes Integration Tests', () => {
     it('should return 200 when marketing is accepted', async () => {
       const response = await request(app)
         .post(endpoint)
-        .send({ policies: { tos: { accepted: true }, privacy: { accepted: true }, marketing: { accepted: true } } })
+        .send({
+          policies: {
+            tos: { accepted: true },
+            privacy: { accepted: true },
+            marketing: { accepted: true },
+          },
+        })
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);

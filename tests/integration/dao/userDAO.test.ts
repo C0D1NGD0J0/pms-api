@@ -4,7 +4,11 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { Payment, Profile, Lease, User } from '@models/index';
 import { clearTestDatabase, createTestClient } from '@tests/helpers';
-import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
+import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  PaymentMethod,
+} from '@interfaces/payments.interface';
 
 describe('UserDAO Integration Tests', () => {
   let userDAO: UserDAO;
@@ -262,8 +266,24 @@ describe('UserDAO Integration Tests', () => {
         signingMethod: 'manual' as const,
         templateType: 'residential-apartment' as const,
         signedDate: new Date(),
-        signatures: [{ userId: testTenantId, signedAt: new Date(), role: 'tenant' as const, signatureMethod: 'manual' as const }],
-        leaseDocuments: [{ documentType: 'lease_agreement' as const, url: 'https://example.com/doc.pdf', uploadedAt: new Date(), uploadedBy: testTenantId, filename: 'lease.pdf', key: 'leases/lease.pdf' }],
+        signatures: [
+          {
+            userId: testTenantId,
+            signedAt: new Date(),
+            role: 'tenant' as const,
+            signatureMethod: 'manual' as const,
+          },
+        ],
+        leaseDocuments: [
+          {
+            documentType: 'lease_agreement' as const,
+            url: 'https://example.com/doc.pdf',
+            uploadedAt: new Date(),
+            uploadedBy: testTenantId,
+            filename: 'lease.pdf',
+            key: 'leases/lease.pdf',
+          },
+        ],
         property: {
           id: new Types.ObjectId(),
           address: '123 Test St',
@@ -302,7 +322,9 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
-          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+          cuids: [
+            { cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' },
+          ],
         },
         {
           uid: 'uid-bob-001',
@@ -310,7 +332,9 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
-          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+          cuids: [
+            { cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' },
+          ],
         },
         {
           uid: 'uid-carol-001',
@@ -318,7 +342,9 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
-          cuids: [{ cuid, roles: [ROLES.MANAGER], isConnected: true, clientDisplayName: 'Test Client' }],
+          cuids: [
+            { cuid, roles: [ROLES.MANAGER], isConnected: true, clientDisplayName: 'Test Client' },
+          ],
         },
         {
           uid: 'uid-alice-other',
@@ -326,7 +352,14 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: otherCuid,
-          cuids: [{ cuid: otherCuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Other Client' }],
+          cuids: [
+            {
+              cuid: otherCuid,
+              roles: [ROLES.STAFF],
+              isConnected: true,
+              clientDisplayName: 'Other Client',
+            },
+          ],
         },
       ]);
     });
@@ -407,7 +440,13 @@ describe('UserDAO Integration Tests', () => {
 
       const user = await userDAO.createBulkUserWithDefaults(
         { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
-        { email, firstName: 'Bulk', lastName: 'User', role: ROLES.TENANT, defaultPassword: 'TempPass123!' }
+        {
+          email,
+          firstName: 'Bulk',
+          lastName: 'User',
+          role: ROLES.TENANT,
+          defaultPassword: 'TempPass123!',
+        }
       );
 
       expect(user.isActive).toBe(true);
@@ -617,7 +656,9 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
-          cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' }],
+          cuids: [
+            { cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' },
+          ],
         },
         {
           uid: 'uid-tenant-bob',
@@ -625,7 +666,9 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
-          cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' }],
+          cuids: [
+            { cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test Client' },
+          ],
         },
         {
           uid: 'uid-staff-dave',
@@ -633,7 +676,9 @@ describe('UserDAO Integration Tests', () => {
           password: 'hashed',
           isActive: true,
           activecuid: cuid,
-          cuids: [{ cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' }],
+          cuids: [
+            { cuid, roles: [ROLES.STAFF], isConnected: true, clientDisplayName: 'Test Client' },
+          ],
         },
       ]);
     });

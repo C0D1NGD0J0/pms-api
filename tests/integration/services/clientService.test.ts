@@ -8,7 +8,8 @@ import {
   PropertyDAO,
   ProfileDAO,
   ClientDAO,
-  UserDAO,} from '@dao/index';
+  UserDAO,
+} from '@dao/index';
 
 import {
   setupAllExternalMocks,
@@ -16,7 +17,8 @@ import {
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '../../helpers';
+  seedTestData,
+} from '../../helpers';
 
 const setupServices = () => {
   const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
@@ -40,7 +42,10 @@ const setupServices = () => {
     propertyDAO,
     propertyUnitDAO,
     authCache,
-    userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
+    userCache: {
+      invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
+      invalidateUserLists: jest.fn().mockResolvedValue(undefined),
+    } as any,
     subscriptionDAO,
     subscriptionService: {
       getBillingHistory: jest.fn().mockResolvedValue([]),
@@ -177,11 +182,7 @@ describe('ClientService Integration Tests - Write Operations', () => {
         requestId: 'req-123',
       } as any;
 
-      const result = await clientService.assignUserRole(
-        mockContext,
-        user.uid,
-        ROLES.MANAGER
-      );
+      const result = await clientService.assignUserRole(mockContext, user.uid, ROLES.MANAGER);
 
       expect(result.success).toBe(true);
 
@@ -254,11 +255,7 @@ describe('ClientService Integration Tests - Write Operations', () => {
         requestId: 'req-123',
       } as any;
 
-      const result = await clientService.removeUserRole(
-        mockContext,
-        admin1.uid,
-        ROLES.ADMIN
-      );
+      const result = await clientService.removeUserRole(mockContext, admin1.uid, ROLES.ADMIN);
 
       expect(result.success).toBe(true);
 
@@ -361,9 +358,9 @@ describe('ClientService Integration Tests - Write Operations', () => {
         requestId: 'req-123',
       } as any;
 
-      await expect(
-        clientService.disconnectUser(mockContext, admin!.uid)
-      ).rejects.toThrow('Cannot disconnect the last administrator');
+      await expect(clientService.disconnectUser(mockContext, admin!.uid)).rejects.toThrow(
+        'Cannot disconnect the last administrator'
+      );
     });
   });
 
@@ -558,10 +555,7 @@ describe('ClientService Integration Tests - Read Operations', () => {
         requestId: 'req-123',
       } as any;
 
-      const result = await clientService.getUserRoles(
-        mockContext,
-        seededData.users.admin1.uid
-      );
+      const result = await clientService.getUserRoles(mockContext, seededData.users.admin1.uid);
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();

@@ -1,14 +1,8 @@
 import { Types } from 'mongoose';
 import { NotFoundError } from '@shared/customErrors';
-import {
-  ISubscriptionStatus,
-} from '@interfaces/index';
+import { ISubscriptionStatus } from '@interfaces/index';
 import { SMSService } from '@services/smsService/sms.service';
-import {
-  SMSMessageType,
-  ISendSMSInput,
-  SMSStatus,
-} from '@interfaces/sms.interface';
+import { SMSMessageType, ISendSMSInput, SMSStatus } from '@interfaces/sms.interface';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 
@@ -276,9 +270,7 @@ describe('SMSService', () => {
       });
 
       // SYSTEM is transactional — should bypass recipient gates
-      const result = await service.sendSMS(
-        makeSendInput({ messageType: SMSMessageType.SYSTEM })
-      );
+      const result = await service.sendSMS(makeSendInput({ messageType: SMSMessageType.SYSTEM }));
 
       expect(result.success).toBe(true);
       expect(twilioService.sendSMS).toHaveBeenCalled();
@@ -334,12 +326,7 @@ describe('SMSService', () => {
     it('should look up phone from profile and delegate to sendSMS', async () => {
       const { service, twilioService } = makeService();
 
-      const result = await service.sendToUser(
-        CUID,
-        USER_ID,
-        'Hello!',
-        SMSMessageType.SYSTEM
-      );
+      const result = await service.sendToUser(CUID, USER_ID, 'Hello!', SMSMessageType.SYSTEM);
 
       expect(result.success).toBe(true);
       expect(twilioService.sendSMS).toHaveBeenCalledWith(PHONE, 'Hello!');
@@ -355,12 +342,7 @@ describe('SMSService', () => {
         },
       });
 
-      const result = await service.sendToUser(
-        CUID,
-        USER_ID,
-        'Hello!',
-        SMSMessageType.SYSTEM
-      );
+      const result = await service.sendToUser(CUID, USER_ID, 'Hello!', SMSMessageType.SYSTEM);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('unverified_phone');
@@ -375,12 +357,7 @@ describe('SMSService', () => {
         },
       });
 
-      const result = await service.sendToUser(
-        CUID,
-        USER_ID,
-        'Hello!',
-        SMSMessageType.SYSTEM
-      );
+      const result = await service.sendToUser(CUID, USER_ID, 'Hello!', SMSMessageType.SYSTEM);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('unverified_phone');
@@ -394,12 +371,7 @@ describe('SMSService', () => {
         },
       });
 
-      const result = await service.sendToUser(
-        CUID,
-        USER_ID,
-        'Hello!',
-        SMSMessageType.SYSTEM
-      );
+      const result = await service.sendToUser(CUID, USER_ID, 'Hello!', SMSMessageType.SYSTEM);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('delivery_failed');
@@ -671,7 +643,8 @@ describe('SMSService', () => {
 
   describe('checkThresholds (via sendSMS)', () => {
     it('should notify at 80% threshold and set notifiedAt80 flag', async () => {
-      const mockUpdate = jest.fn()
+      const mockUpdate = jest
+        .fn()
         // First call: incrementQuota — getActiveSubscription
         .mockResolvedValueOnce({ smsUsage: { countThisPeriod: 32 } })
         // Second call: checkThresholds — update notifiedAt80
@@ -703,7 +676,8 @@ describe('SMSService', () => {
     });
 
     it('should notify at 100% threshold and set notifiedAt100 flag', async () => {
-      const mockUpdate = jest.fn()
+      const mockUpdate = jest
+        .fn()
         // incrementQuota returns the updated doc at count=40
         .mockResolvedValueOnce({ smsUsage: { countThisPeriod: 40 } })
         // checkThresholds updates notifiedAt100
@@ -734,7 +708,8 @@ describe('SMSService', () => {
     });
 
     it('should not send duplicate notification when already notified at 80%', async () => {
-      const mockUpdate = jest.fn()
+      const mockUpdate = jest
+        .fn()
         // incrementQuota
         .mockResolvedValueOnce({ smsUsage: { countThisPeriod: 33 } })
         // checkThresholds — already notified, returns null

@@ -15,7 +15,7 @@ import {
 
 function makeLease(overrides: Record<string, any> = {}): any {
   const startDate = daysFromNow(1); // tomorrow by default
-  const endDate = daysFromNow(60);  // 60 days out — well above the 30-day minimum
+  const endDate = daysFromNow(60); // 60 days out — well above the 30-day minimum
   return {
     status: LeaseStatus.READY_FOR_SIGNATURE,
     eSignature: {},
@@ -283,7 +283,7 @@ describe('calculateFinancialSummary — first payment composition', () => {
     });
     const summary = calculateFinancialSummary(lease);
     const proRatedRent = Math.ceil((200000 * 16) / 30); // 106667
-    const proRatedMgmt = Math.ceil((15000 * 16) / 30);  // 8000
+    const proRatedMgmt = Math.ceil((15000 * 16) / 30); // 8000
     expect(summary.proRatedManagementFeeAmount).toBe(proRatedMgmt);
     expect(summary.firstPaymentAmount).toBe(proRatedRent + proRatedMgmt + 200000); // + security deposit
   });

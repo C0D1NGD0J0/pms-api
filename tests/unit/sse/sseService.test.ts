@@ -90,14 +90,20 @@ describe('SSEService', () => {
 
       expect(mockPublish).toHaveBeenCalledWith(
         'pms:sse:events',
-        JSON.stringify({ type: 'user', userId: 'user-1', cuid: 'cuid-1', data, eventType: 'notification' })
+        JSON.stringify({
+          type: 'user',
+          userId: 'user-1',
+          cuid: 'cuid-1',
+          data,
+          eventType: 'notification',
+        })
       );
     });
 
     it('defaults eventType to "notification"', async () => {
       await service.sendToUser('user-1', 'cuid-1', {});
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventType).toBe('notification');
     });
 
@@ -105,14 +111,14 @@ describe('SSEService', () => {
       const eventId = '2026-01-15T10:30:00.000Z';
       await service.sendToUser('user-1', 'cuid-1', { foo: 1 }, 'my-notifications', eventId);
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventId).toBe(eventId);
     });
 
     it('omits eventId from the published payload when not provided', async () => {
       await service.sendToUser('user-1', 'cuid-1', {}, 'notification');
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventId).toBeUndefined();
     });
 
@@ -120,7 +126,7 @@ describe('SSEService', () => {
       const mongoDoc = { value: 42, toObject: () => ({ value: 42 }) };
       await service.sendToUser('user-1', 'cuid-1', mongoDoc);
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       const parsed = JSON.parse(raw);
       expect(parsed.data).toEqual({ value: 42 });
       expect(parsed.data.toObject).toBeUndefined();
@@ -139,43 +145,61 @@ describe('SSEService', () => {
       const data = { text: 'Scheduled maintenance tonight' };
       await service.broadcastToClient('cuid-1', data, 'announcement');
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       const parsed = JSON.parse(raw);
-      expect(parsed).toMatchObject({ type: 'broadcast', cuid: 'cuid-1', data, eventType: 'announcement' });
+      expect(parsed).toMatchObject({
+        type: 'broadcast',
+        cuid: 'cuid-1',
+        data,
+        eventType: 'announcement',
+      });
     });
 
     it('includes targetRoles in the published payload when provided', async () => {
-      await service.broadcastToClient('cuid-1', { msg: 'admins only' }, 'announcements', undefined, ['admin', 'staff']);
+      await service.broadcastToClient(
+        'cuid-1',
+        { msg: 'admins only' },
+        'announcements',
+        undefined,
+        ['admin', 'staff']
+      );
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).targetRoles).toEqual(['admin', 'staff']);
     });
 
     it('omits targetRoles from the published payload when not provided', async () => {
       await service.broadcastToClient('cuid-1', {});
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).targetRoles).toBeUndefined();
     });
 
     it('includes targetDepartments in the published payload when provided', async () => {
-      await service.broadcastToClient('cuid-1', { msg: 'security only' }, 'announcements', undefined, ['staff'], ['security']);
+      await service.broadcastToClient(
+        'cuid-1',
+        { msg: 'security only' },
+        'announcements',
+        undefined,
+        ['staff'],
+        ['security']
+      );
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).targetDepartments).toEqual(['security']);
     });
 
     it('omits targetDepartments from the published payload when not provided', async () => {
       await service.broadcastToClient('cuid-1', {});
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).targetDepartments).toBeUndefined();
     });
 
     it('defaults eventType to "announcement"', async () => {
       await service.broadcastToClient('cuid-1', {});
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventType).toBe('announcement');
     });
 
@@ -183,14 +207,14 @@ describe('SSEService', () => {
       const eventId = '2026-01-15T10:30:00.000Z';
       await service.broadcastToClient('cuid-1', { msg: 'hi' }, 'announcements', eventId);
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventId).toBe(eventId);
     });
 
     it('omits eventId from the published payload when not provided', async () => {
       await service.broadcastToClient('cuid-1', {});
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventId).toBeUndefined();
     });
 
@@ -198,7 +222,7 @@ describe('SSEService', () => {
       const mongoDoc = { msg: 'broadcast', toObject: () => ({ msg: 'broadcast' }) };
       await service.broadcastToClient('cuid-1', mongoDoc);
 
-      const [, raw] = (mockPublish.mock.calls[0] as [string, string]);
+      const [, raw] = mockPublish.mock.calls[0] as [string, string];
       const parsed = JSON.parse(raw);
       expect(parsed.data).toEqual({ msg: 'broadcast' });
     });
@@ -208,96 +232,166 @@ describe('SSEService', () => {
 
   describe('Redis message routing', () => {
     it('routes type=user messages to _localSendToUser', () => {
-      const localSend = jest.spyOn(service as any, '_localSendToUser').mockImplementation(() => undefined);
+      const localSend = jest
+        .spyOn(service as any, '_localSendToUser')
+        .mockImplementation(() => undefined);
       const handler = getMessageHandler();
 
-      handler('pms:sse:events', JSON.stringify({
-        type: 'user',
-        userId: 'user-1',
-        cuid: 'cuid-1',
-        data: { msg: 'hello' },
-        eventType: 'notification',
-      }));
+      handler(
+        'pms:sse:events',
+        JSON.stringify({
+          type: 'user',
+          userId: 'user-1',
+          cuid: 'cuid-1',
+          data: { msg: 'hello' },
+          eventType: 'notification',
+        })
+      );
 
-      expect(localSend).toHaveBeenCalledWith('user-1', 'cuid-1', { msg: 'hello' }, 'notification', undefined);
+      expect(localSend).toHaveBeenCalledWith(
+        'user-1',
+        'cuid-1',
+        { msg: 'hello' },
+        'notification',
+        undefined
+      );
     });
 
     it('routes type=user messages with eventId to _localSendToUser', () => {
-      const localSend = jest.spyOn(service as any, '_localSendToUser').mockImplementation(() => undefined);
+      const localSend = jest
+        .spyOn(service as any, '_localSendToUser')
+        .mockImplementation(() => undefined);
       const handler = getMessageHandler();
       const eventId = '2026-01-15T10:30:00.000Z';
 
-      handler('pms:sse:events', JSON.stringify({
-        type: 'user',
-        userId: 'user-1',
-        cuid: 'cuid-1',
-        data: { msg: 'hello' },
-        eventType: 'my-notifications',
-        eventId,
-      }));
+      handler(
+        'pms:sse:events',
+        JSON.stringify({
+          type: 'user',
+          userId: 'user-1',
+          cuid: 'cuid-1',
+          data: { msg: 'hello' },
+          eventType: 'my-notifications',
+          eventId,
+        })
+      );
 
-      expect(localSend).toHaveBeenCalledWith('user-1', 'cuid-1', { msg: 'hello' }, 'my-notifications', eventId);
+      expect(localSend).toHaveBeenCalledWith(
+        'user-1',
+        'cuid-1',
+        { msg: 'hello' },
+        'my-notifications',
+        eventId
+      );
     });
 
     it('routes type=broadcast messages to _localBroadcastToClient', () => {
-      const localBroadcast = jest.spyOn(service as any, '_localBroadcastToClient').mockImplementation(() => undefined);
+      const localBroadcast = jest
+        .spyOn(service as any, '_localBroadcastToClient')
+        .mockImplementation(() => undefined);
       const handler = getMessageHandler();
 
-      handler('pms:sse:events', JSON.stringify({
-        type: 'broadcast',
-        cuid: 'cuid-1',
-        data: { text: 'hello everyone' },
-        eventType: 'announcement',
-      }));
+      handler(
+        'pms:sse:events',
+        JSON.stringify({
+          type: 'broadcast',
+          cuid: 'cuid-1',
+          data: { text: 'hello everyone' },
+          eventType: 'announcement',
+        })
+      );
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'hello everyone' }, 'announcement', undefined, undefined, undefined);
+      expect(localBroadcast).toHaveBeenCalledWith(
+        'cuid-1',
+        { text: 'hello everyone' },
+        'announcement',
+        undefined,
+        undefined,
+        undefined
+      );
     });
 
     it('routes type=broadcast messages with eventId to _localBroadcastToClient', () => {
-      const localBroadcast = jest.spyOn(service as any, '_localBroadcastToClient').mockImplementation(() => undefined);
+      const localBroadcast = jest
+        .spyOn(service as any, '_localBroadcastToClient')
+        .mockImplementation(() => undefined);
       const handler = getMessageHandler();
       const eventId = '2026-01-15T10:30:00.000Z';
 
-      handler('pms:sse:events', JSON.stringify({
-        type: 'broadcast',
-        cuid: 'cuid-1',
-        data: { text: 'hello everyone' },
-        eventType: 'announcements',
-        eventId,
-      }));
+      handler(
+        'pms:sse:events',
+        JSON.stringify({
+          type: 'broadcast',
+          cuid: 'cuid-1',
+          data: { text: 'hello everyone' },
+          eventType: 'announcements',
+          eventId,
+        })
+      );
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'hello everyone' }, 'announcements', eventId, undefined, undefined);
+      expect(localBroadcast).toHaveBeenCalledWith(
+        'cuid-1',
+        { text: 'hello everyone' },
+        'announcements',
+        eventId,
+        undefined,
+        undefined
+      );
     });
 
     it('routes type=broadcast messages with targetRoles to _localBroadcastToClient', () => {
-      const localBroadcast = jest.spyOn(service as any, '_localBroadcastToClient').mockImplementation(() => undefined);
+      const localBroadcast = jest
+        .spyOn(service as any, '_localBroadcastToClient')
+        .mockImplementation(() => undefined);
       const handler = getMessageHandler();
 
-      handler('pms:sse:events', JSON.stringify({
-        type: 'broadcast',
-        cuid: 'cuid-1',
-        data: { text: 'admins only' },
-        eventType: 'announcements',
-        targetRoles: ['admin', 'staff'],
-      }));
+      handler(
+        'pms:sse:events',
+        JSON.stringify({
+          type: 'broadcast',
+          cuid: 'cuid-1',
+          data: { text: 'admins only' },
+          eventType: 'announcements',
+          targetRoles: ['admin', 'staff'],
+        })
+      );
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'admins only' }, 'announcements', undefined, ['admin', 'staff'], undefined);
+      expect(localBroadcast).toHaveBeenCalledWith(
+        'cuid-1',
+        { text: 'admins only' },
+        'announcements',
+        undefined,
+        ['admin', 'staff'],
+        undefined
+      );
     });
 
     it('routes type=broadcast messages with targetDepartments to _localBroadcastToClient', () => {
-      const localBroadcast = jest.spyOn(service as any, '_localBroadcastToClient').mockImplementation(() => undefined);
+      const localBroadcast = jest
+        .spyOn(service as any, '_localBroadcastToClient')
+        .mockImplementation(() => undefined);
       const handler = getMessageHandler();
 
-      handler('pms:sse:events', JSON.stringify({
-        type: 'broadcast',
-        cuid: 'cuid-1',
-        data: { text: 'security only' },
-        eventType: 'announcements',
-        targetRoles: ['staff'],
-        targetDepartments: ['security'],
-      }));
+      handler(
+        'pms:sse:events',
+        JSON.stringify({
+          type: 'broadcast',
+          cuid: 'cuid-1',
+          data: { text: 'security only' },
+          eventType: 'announcements',
+          targetRoles: ['staff'],
+          targetDepartments: ['security'],
+        })
+      );
 
-      expect(localBroadcast).toHaveBeenCalledWith('cuid-1', { text: 'security only' }, 'announcements', undefined, ['staff'], ['security']);
+      expect(localBroadcast).toHaveBeenCalledWith(
+        'cuid-1',
+        { text: 'security only' },
+        'announcements',
+        undefined,
+        ['staff'],
+        ['security']
+      );
     });
 
     it('ignores messages with an unknown type without throwing', () => {
@@ -343,11 +437,15 @@ describe('SSEService', () => {
       const sessionKey = 'cuid-1:user-1:individual';
       const eventId = '2026-01-15T10:30:00.000Z';
 
-      (service as any).activeSessions.set(sessionKey, [
-        { isConnected: true, push: pushFn },
-      ]);
+      (service as any).activeSessions.set(sessionKey, [{ isConnected: true, push: pushFn }]);
 
-      (service as any)._localSendToUser('user-1', 'cuid-1', { data: 1 }, 'my-notifications', eventId);
+      (service as any)._localSendToUser(
+        'user-1',
+        'cuid-1',
+        { data: 1 },
+        'my-notifications',
+        eventId
+      );
 
       expect(pushFn).toHaveBeenCalledWith({ data: 1 }, 'my-notifications', eventId);
     });
@@ -356,14 +454,16 @@ describe('SSEService', () => {
       const pushFn = jest.fn();
       const sessionKey = 'cuid-1:user-1:individual';
 
-      (service as any).activeSessions.set(sessionKey, [
-        { isConnected: true, push: pushFn },
-      ]);
+      (service as any).activeSessions.set(sessionKey, [{ isConnected: true, push: pushFn }]);
 
       (service as any)._localSendToUser('user-1', 'cuid-1', { data: 1 }, 'notification');
 
       expect(pushFn).toHaveBeenCalledWith({ data: 1 }, 'notification');
-      expect(pushFn).not.toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.anything());
+      expect(pushFn).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.anything()
+      );
     });
 
     it('skips sessions that are no longer connected', () => {
@@ -432,7 +532,13 @@ describe('SSEService', () => {
         { isConnected: true, push: pushFn, state: { userRole: 'vendor' } },
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', { msg: 'all' }, 'announcement', undefined, undefined);
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        { msg: 'all' },
+        'announcement',
+        undefined,
+        undefined
+      );
 
       expect(pushFn).toHaveBeenCalledTimes(2);
     });
@@ -448,7 +554,13 @@ describe('SSEService', () => {
         { isConnected: true, push: vendorPush, state: { userRole: 'vendor' } },
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', { msg: 'pm only' }, 'announcement', undefined, ['admin', 'staff']);
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        { msg: 'pm only' },
+        'announcement',
+        undefined,
+        ['admin', 'staff']
+      );
 
       expect(adminPush).toHaveBeenCalledTimes(1);
       expect(vendorPush).not.toHaveBeenCalled();
@@ -479,7 +591,10 @@ describe('SSEService', () => {
         { isConnected: true, push: jest.fn(), state: { userRole: 'vendor' } },
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, ['admin', 'staff']);
+      (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, [
+        'admin',
+        'staff',
+      ]);
 
       expect(pushFn).toHaveBeenCalledTimes(2);
     });
@@ -489,13 +604,28 @@ describe('SSEService', () => {
       const accountingPush = jest.fn();
 
       (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
-        { isConnected: true, push: securityPush, state: { userRole: 'staff', userDepartment: 'security' } },
+        {
+          isConnected: true,
+          push: securityPush,
+          state: { userRole: 'staff', userDepartment: 'security' },
+        },
       ]);
       (service as any).activeSessions.set('cuid-1:staff-2:announcement', [
-        { isConnected: true, push: accountingPush, state: { userRole: 'staff', userDepartment: 'accounting' } },
+        {
+          isConnected: true,
+          push: accountingPush,
+          state: { userRole: 'staff', userDepartment: 'accounting' },
+        },
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', { msg: 'security only' }, 'announcement', undefined, ['staff'], ['security']);
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        { msg: 'security only' },
+        'announcement',
+        undefined,
+        ['staff'],
+        ['security']
+      );
 
       expect(securityPush).toHaveBeenCalledTimes(1);
       expect(accountingPush).not.toHaveBeenCalled();
@@ -508,7 +638,14 @@ describe('SSEService', () => {
         { isConnected: true, push: pushFn, state: { userRole: 'staff' } }, // no userDepartment
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, ['staff'], ['security']);
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        {},
+        'announcement',
+        undefined,
+        ['staff'],
+        ['security']
+      );
 
       expect(pushFn).not.toHaveBeenCalled();
     });
@@ -517,13 +654,27 @@ describe('SSEService', () => {
       const pushFn = jest.fn();
 
       (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
-        { isConnected: true, push: pushFn, state: { userRole: 'staff', userDepartment: 'security' } },
+        {
+          isConnected: true,
+          push: pushFn,
+          state: { userRole: 'staff', userDepartment: 'security' },
+        },
       ]);
       (service as any).activeSessions.set('cuid-1:staff-2:announcement', [
-        { isConnected: true, push: pushFn, state: { userRole: 'staff', userDepartment: 'accounting' } },
+        {
+          isConnected: true,
+          push: pushFn,
+          state: { userRole: 'staff', userDepartment: 'accounting' },
+        },
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', { msg: 'all staff' }, 'announcement', undefined, ['staff']);
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        { msg: 'all staff' },
+        'announcement',
+        undefined,
+        ['staff']
+      );
 
       expect(pushFn).toHaveBeenCalledTimes(2);
     });
@@ -534,16 +685,35 @@ describe('SSEService', () => {
       const staffAccountingPush = jest.fn();
 
       (service as any).activeSessions.set('cuid-1:staff-1:announcement', [
-        { isConnected: true, push: staffSecurityPush, state: { userRole: 'staff', userDepartment: 'security' } },
+        {
+          isConnected: true,
+          push: staffSecurityPush,
+          state: { userRole: 'staff', userDepartment: 'security' },
+        },
       ]);
       (service as any).activeSessions.set('cuid-1:admin-1:announcement', [
-        { isConnected: true, push: adminPush, state: { userRole: 'admin', userDepartment: 'management' } },
+        {
+          isConnected: true,
+          push: adminPush,
+          state: { userRole: 'admin', userDepartment: 'management' },
+        },
       ]);
       (service as any).activeSessions.set('cuid-1:staff-2:announcement', [
-        { isConnected: true, push: staffAccountingPush, state: { userRole: 'staff', userDepartment: 'accounting' } },
+        {
+          isConnected: true,
+          push: staffAccountingPush,
+          state: { userRole: 'staff', userDepartment: 'accounting' },
+        },
       ]);
 
-      (service as any)._localBroadcastToClient('cuid-1', {}, 'announcement', undefined, ['staff'], ['security']);
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        {},
+        'announcement',
+        undefined,
+        ['staff'],
+        ['security']
+      );
 
       expect(staffSecurityPush).toHaveBeenCalledTimes(1);
       expect(adminPush).not.toHaveBeenCalled();
@@ -599,9 +769,7 @@ describe('SSEService', () => {
     });
 
     it('clears all active sessions', async () => {
-      (service as any).activeSessions.set('cuid-1:user-1:individual', [
-        { isConnected: true },
-      ]);
+      (service as any).activeSessions.set('cuid-1:user-1:individual', [{ isConnected: true }]);
 
       await service.cleanup();
 

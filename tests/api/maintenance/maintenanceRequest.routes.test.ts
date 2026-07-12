@@ -207,10 +207,7 @@ describe('Maintenance Request Routes', () => {
       });
 
       // Public webhook route (no auth)
-      testApp.post(
-        `${baseUrl}/webhooks/invoice/:source`,
-        mockMaintenanceController.handleWebhook
-      );
+      testApp.post(`${baseUrl}/webhooks/invoice/:source`, mockMaintenanceController.handleWebhook);
 
       // Authenticated routes
       testApp.post(`${baseUrl}/:cuid`, mockMaintenanceController.createRequest);
@@ -242,10 +239,7 @@ describe('Maintenance Request Routes', () => {
         `${baseUrl}/:cuid/:mruid/invoice_review`,
         mockMaintenanceController.reviewInvoice
       );
-      testApp.post(
-        `${baseUrl}/:cuid/:mruid/work_order`,
-        mockMaintenanceController.submitWorkOrder
-      );
+      testApp.post(`${baseUrl}/:cuid/:mruid/work_order`, mockMaintenanceController.submitWorkOrder);
       testApp.patch(
         `${baseUrl}/:cuid/:mruid/work_order_review`,
         mockMaintenanceController.reviewWorkOrder
@@ -258,10 +252,7 @@ describe('Maintenance Request Routes', () => {
         `${baseUrl}/:cuid/:mruid/ai_suggestion/dismiss`,
         mockMaintenanceController.dismissAISuggestion
       );
-      testApp.post(
-        `${baseUrl}/:cuid/:mruid/scan_invoice`,
-        mockMaintenanceController.scanInvoice
-      );
+      testApp.post(`${baseUrl}/:cuid/:mruid/scan_invoice`, mockMaintenanceController.scanInvoice);
     });
   });
 
@@ -322,7 +313,14 @@ describe('Maintenance Request Routes', () => {
 
       await request(app)
         .post(`${baseUrl}/webhooks/invoice/quickbooks`)
-        .send({ mruid: 'MR-NOTFOUND', amount: 5000, currency: 'usd', description: 'Test', externalInvoiceId: 'X-001', source: 'quickbooks' })
+        .send({
+          mruid: 'MR-NOTFOUND',
+          amount: 5000,
+          currency: 'usd',
+          description: 'Test',
+          externalInvoiceId: 'X-001',
+          source: 'quickbooks',
+        })
         .expect(httpStatusCodes.NOT_FOUND);
     });
   });
@@ -392,9 +390,7 @@ describe('Maintenance Request Routes', () => {
 
   describe('GET /:cuid (list requests)', () => {
     it('should return paginated list of requests', async () => {
-      const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}`)
-        .expect(httpStatusCodes.OK);
+      const response = await request(app).get(`${baseUrl}/${mockCuid}`).expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
       expect(Array.isArray(response.body.data)).toBe(true);
@@ -722,7 +718,12 @@ describe('Maintenance Request Routes', () => {
       const withLineItems = {
         ...validWorkOrder,
         lineItems: [
-          { description: 'Water heater unit', quantity: 1, unitPriceInCents: 60000, amountInCents: 60000 },
+          {
+            description: 'Water heater unit',
+            quantity: 1,
+            unitPriceInCents: 60000,
+            amountInCents: 60000,
+          },
           { description: 'Labour', quantity: 2, unitPriceInCents: 7500, amountInCents: 15000 },
         ],
         notes: 'Customer requested same-day service',

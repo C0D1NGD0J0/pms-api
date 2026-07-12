@@ -32,12 +32,7 @@ describe('validateUnitLeaseImmutableFields', () => {
     const unit = makeUnit({ currentLease: null });
 
     await expect(
-      validateUnitLeaseImmutableFields(
-        unit,
-        'client-123',
-        { unitNumber: 'A1', floor: 2 },
-        leaseDAO
-      )
+      validateUnitLeaseImmutableFields(unit, 'client-123', { unitNumber: 'A1', floor: 2 }, leaseDAO)
     ).resolves.toBeUndefined();
 
     expect(leaseDAO.hasNonDraftLeaseForUnit).toHaveBeenCalledTimes(1);

@@ -121,15 +121,21 @@ describe('AuthService.setupPaymentIntent — non-tenant role', () => {
     const service = makeService();
     const user = makeTenantUser({ role: 'staff' as any });
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(BadRequestError);
+    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws BadRequestError with correct message for non-tenant role', async () => {
     const service = makeService();
     const user = makeTenantUser({ role: 'admin' as any });
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
-      message: expect.stringMatching(/tenantOnlyPaymentSetup|Only tenants can set up a payment method/),
+    await expect(
+      service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(
+        /tenantOnlyPaymentSetup|Only tenants can set up a payment method/
+      ),
     });
   });
 });
@@ -267,7 +273,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
     const service = makeService({ leaseDAO, paymentProcessorDAO });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(NotFoundError);
+    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(
+      NotFoundError
+    );
   });
 
   it('throws NotFoundError with correct message when processor not found', async () => {
@@ -277,8 +285,12 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
     const service = makeService({ leaseDAO, paymentProcessorDAO });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
-      message: expect.stringMatching(/operationFailedContact|Client payment processor not configured/),
+    await expect(
+      service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(
+        /operationFailedContact|Client payment processor not configured/
+      ),
     });
   });
 
@@ -289,7 +301,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, processor not fou
     const service = makeService({ leaseDAO, paymentProcessorDAO });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(NotFoundError);
+    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(
+      NotFoundError
+    );
 
     expect(paymentProcessorDAO.findFirst).toHaveBeenCalledWith({
       cuid: CUID,
@@ -324,7 +338,9 @@ describe('AuthService.setupPaymentIntent — electronic lease, profile not found
     const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(NotFoundError);
+    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(
+      NotFoundError
+    );
   });
 });
 
@@ -355,7 +371,12 @@ describe('AuthService.setupPaymentIntent — electronic lease, existing customer
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -371,7 +392,12 @@ describe('AuthService.setupPaymentIntent — electronic lease, existing customer
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -418,7 +444,12 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
     );
     profileDAO.updateById.mockResolvedValue({});
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -444,7 +475,12 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
     );
     profileDAO.updateById.mockResolvedValue({});
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -462,10 +498,17 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
       Promise.resolve({ success: false, data: null })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(BadRequestError);
+    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws BadRequestError with correct message when createCustomer fails', async () => {
@@ -476,10 +519,17 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
       Promise.resolve({ success: false, data: null })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
+    await expect(
+      service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)
+    ).rejects.toMatchObject({
       message: expect.stringMatching(/operationFailed|Failed to create payment customer/),
     });
   });
@@ -496,7 +546,12 @@ describe('AuthService.setupPaymentIntent — electronic lease, new customer crea
     );
     profileDAO.updateById.mockResolvedValue({});
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -539,10 +594,17 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
       Promise.resolve({ success: false, data: null })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(BadRequestError);
+    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws BadRequestError with correct message when createSetupCheckoutSession fails', async () => {
@@ -553,10 +615,17 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
       Promise.resolve({ success: false, data: null })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
-    await expect(service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)).rejects.toMatchObject({
+    await expect(
+      service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL)
+    ).rejects.toMatchObject({
       message: expect.stringMatching(/operationFailed|Failed to create payment setup session/),
     });
   });
@@ -569,7 +638,12 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     const result = await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -593,7 +667,12 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
       Promise.resolve({ success: true, data: { url: specificUrl } })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     const result = await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
@@ -609,7 +688,12 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
       Promise.resolve({ success: true, data: { url: CHECKOUT_URL } })
     );
 
-    const service = makeService({ leaseDAO, paymentProcessorDAO, profileDAO, paymentGatewayService });
+    const service = makeService({
+      leaseDAO,
+      paymentProcessorDAO,
+      profileDAO,
+      paymentGatewayService,
+    });
     const user = makeTenantUser();
 
     const result = await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);

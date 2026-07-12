@@ -12,11 +12,11 @@ import {
   createTestInvitation,
   createTestAdminUser,
   clearTestDatabase,
-
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '@tests/helpers';
+  seedTestData,
+} from '@tests/helpers';
 
 const mockMediaUploadService = {
   handleAvatarDeletion: jest.fn().mockResolvedValue(undefined),
@@ -60,7 +60,8 @@ describe('InvitationService Integration Tests', () => {
     timestamp: new Date(),
   });
 
-  beforeAll(async () => { invitationDAO = new InvitationDAO();
+  beforeAll(async () => {
+    invitationDAO = new InvitationDAO();
     userDAO = new UserDAO({ userModel: User });
     clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
     profileDAO = new ProfileDAO({ profileModel: Profile });
@@ -108,7 +109,10 @@ describe('InvitationService Integration Tests', () => {
       subscriptionService: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
-      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }), invalidateUserLists: jest.fn().mockResolvedValue({ success: true }) } as any,
+      userCache: {
+        invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }),
+        invalidateUserLists: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
     });
   });
 

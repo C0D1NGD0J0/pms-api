@@ -49,7 +49,11 @@ const mockEmitter = { emit: jest.fn() } as any;
 const testCuid = 'CLIENT001';
 const vendorObjectId = new Types.ObjectId();
 
-function makeCtx(role: string, sub?: string, extras: Record<string, unknown> = {}): IRequestContext {
+function makeCtx(
+  role: string,
+  sub?: string,
+  extras: Record<string, unknown> = {}
+): IRequestContext {
   return {
     currentuser: {
       sub: sub ?? new Types.ObjectId().toString(),
@@ -102,8 +106,12 @@ beforeEach(() => {
     invoiceDAO: mockInvoiceDAO,
     emitterService: mockEmitter,
     vendorDAO: mockVendorDAO,
-    smsService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })) } as any,
-    clientDAO: { getClientByCuid: jest.fn().mockResolvedValue({ settings: { defaultCurrency: 'USD' } }) } as any,
+    smsService: {
+      sendToUser: jest.fn().mockReturnValue(Promise.resolve({ success: true })),
+    } as any,
+    clientDAO: {
+      getClientByCuid: jest.fn().mockResolvedValue({ settings: { defaultCurrency: 'USD' } }),
+    } as any,
   });
 });
 
@@ -280,7 +288,9 @@ describe('submitInvoice', () => {
       );
 
       const ctx = makeCtx('vendor', otherTeamMemberId, { linkedVendorUid: 'primary-vendor-uid' });
-      await expect(service.submitInvoice(ctx, 'MR001', invoiceData)).rejects.toThrow(ForbiddenError);
+      await expect(service.submitInvoice(ctx, 'MR001', invoiceData)).rejects.toThrow(
+        ForbiddenError
+      );
     });
 
     it('allows any linked team member to submit invoice when no specific technician is set (fallback)', async () => {
@@ -677,9 +687,9 @@ describe('reviewWorkOrder', () => {
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
 
     const ctx = makeCtx('manager');
-    await expect(
-      service.reviewWorkOrder(ctx, 'MR001', { action: 'approve' })
-    ).rejects.toThrow(BadRequestError);
+    await expect(service.reviewWorkOrder(ctx, 'MR001', { action: 'approve' })).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws BadRequestError when work order is not PENDING_REVIEW', async () => {
@@ -689,9 +699,9 @@ describe('reviewWorkOrder', () => {
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
 
     const ctx = makeCtx('manager');
-    await expect(
-      service.reviewWorkOrder(ctx, 'MR001', { action: 'reject' })
-    ).rejects.toThrow(BadRequestError);
+    await expect(service.reviewWorkOrder(ctx, 'MR001', { action: 'reject' })).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws ForbiddenError when a vendor tries to review', async () => {
@@ -701,9 +711,9 @@ describe('reviewWorkOrder', () => {
     mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
 
     const ctx = makeCtx('vendor');
-    await expect(
-      service.reviewWorkOrder(ctx, 'MR001', { action: 'approve' })
-    ).rejects.toThrow(ForbiddenError);
+    await expect(service.reviewWorkOrder(ctx, 'MR001', { action: 'approve' })).rejects.toThrow(
+      ForbiddenError
+    );
   });
 
   it('approves the work order and emits MAINTENANCE_WORK_ORDER_APPROVED', async () => {
@@ -803,12 +813,7 @@ describe('handleInvoiceWebhook', () => {
     mockInvoiceDAO.insert.mockReturnValue(Promise.resolve(createdInvoice));
     mockDAO.updateById.mockReturnValue(Promise.resolve(request));
 
-    const result = await service.handleInvoiceWebhook(
-      'manual',
-      rawBody,
-      headers,
-      makePayload()
-    );
+    const result = await service.handleInvoiceWebhook('manual', rawBody, headers, makePayload());
 
     expect(result.success).toBe(true);
     expect(mockInvoiceDAO.insert).toHaveBeenCalled();

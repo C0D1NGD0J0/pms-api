@@ -91,7 +91,9 @@ describe('PaymentController Integration Tests', () => {
     const leaseDAO = new LeaseDAO({ leaseModel: Lease });
     const userDAO = new UserDAO({ userModel: User });
     const emitterService = { emit: jest.fn(), on: jest.fn() } as any;
-    const subscriptionPlanConfig = { getTransactionFeePercent: jest.fn().mockReturnValue(0) } as any;
+    const subscriptionPlanConfig = {
+      getTransactionFeePercent: jest.fn().mockReturnValue(0),
+    } as any;
     const queueFactory = { getQueue: jest.fn() } as any;
     const invoiceDAO = {} as any;
     const stripeService = {} as any;

@@ -57,11 +57,19 @@ describe('CurrentUser.isVendor', () => {
   });
 
   it('returns false when role is admin', () => {
-    expect(CurrentUser.isVendor(makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } }))).toBe(false);
+    expect(
+      CurrentUser.isVendor(
+        makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } })
+      )
+    ).toBe(false);
   });
 
   it('returns false when role is tenant', () => {
-    expect(CurrentUser.isVendor(makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true } }))).toBe(false);
+    expect(
+      CurrentUser.isVendor(
+        makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true } })
+      )
+    ).toBe(false);
   });
 });
 
@@ -92,7 +100,9 @@ describe('CurrentUser.isPrimaryVendor', () => {
   });
 
   it('returns false for a non-vendor role', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
+    });
     expect(CurrentUser.isPrimaryVendor(user)).toBe(false);
   });
 });
@@ -113,13 +123,22 @@ describe('CurrentUser.isVendorTeamMember', () => {
   });
 
   it('returns false for primary vendor (no linkedVendorUid, isPrimaryVendor=true)', () => {
-    const user = makeVendor({ linkedVendorUid: undefined }, { isPrimaryVendor: true, isLinkedAccount: false });
+    const user = makeVendor(
+      { linkedVendorUid: undefined },
+      { isPrimaryVendor: true, isLinkedAccount: false }
+    );
     expect(CurrentUser.isVendorTeamMember(user)).toBe(false);
   });
 
   it('returns false when role is not vendor', () => {
     const user = makeUser({
-      client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true, linkedVendorUid: 'SOMEUID' },
+      client: {
+        cuid: 'C1',
+        displayname: 'x',
+        role: 'staff',
+        isVerified: true,
+        linkedVendorUid: 'SOMEUID',
+      },
     });
     expect(CurrentUser.isVendorTeamMember(user)).toBe(false);
   });
@@ -159,7 +178,9 @@ describe('CurrentUser.isVendorTeamMemberOf', () => {
   });
 
   it('returns false when user is not a vendor role', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
+    });
     expect(CurrentUser.isVendorTeamMemberOf(user, vuid, primaryUserId)).toBe(false);
   });
 
@@ -187,13 +208,10 @@ describe('CurrentUser.isStaff', () => {
     }
   );
 
-  it.each(['tenant', 'vendor'] as IUserRoleType[])(
-    'returns false for role %s',
-    (role) => {
-      const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role, isVerified: true } });
-      expect(CurrentUser.isStaff(user)).toBe(false);
-    }
-  );
+  it.each(['tenant', 'vendor'] as IUserRoleType[])('returns false for role %s', (role) => {
+    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role, isVerified: true } });
+    expect(CurrentUser.isStaff(user)).toBe(false);
+  });
 });
 
 // ===========================================================================
@@ -202,22 +220,30 @@ describe('CurrentUser.isStaff', () => {
 
 describe('CurrentUser.isPM', () => {
   it('returns true for admin', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
+    });
     expect(CurrentUser.isPM(user)).toBe(true);
   });
 
   it('returns true for manager', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true },
+    });
     expect(CurrentUser.isPM(user)).toBe(true);
   });
 
   it('returns false for staff', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true },
+    });
     expect(CurrentUser.isPM(user)).toBe(false);
   });
 
   it('returns false for tenant', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true },
+    });
     expect(CurrentUser.isPM(user)).toBe(false);
   });
 });
@@ -228,7 +254,9 @@ describe('CurrentUser.isPM', () => {
 
 describe('CurrentUser.isTenant', () => {
   it('returns true for tenant', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true },
+    });
     expect(CurrentUser.isTenant(user)).toBe(true);
   });
 
@@ -243,22 +271,34 @@ describe('CurrentUser.isTenant', () => {
 
 describe('CurrentUser role single-checks', () => {
   it('isAdmin returns true only for admin', () => {
-    const admin = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } });
-    const manager = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true } });
+    const admin = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
+    });
+    const manager = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true },
+    });
     expect(CurrentUser.isAdmin(admin)).toBe(true);
     expect(CurrentUser.isAdmin(manager)).toBe(false);
   });
 
   it('isManager returns true only for manager', () => {
-    const manager = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true } });
-    const staff = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true } });
+    const manager = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true },
+    });
+    const staff = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true },
+    });
     expect(CurrentUser.isManager(manager)).toBe(true);
     expect(CurrentUser.isManager(staff)).toBe(false);
   });
 
   it('isSuperAdmin returns true only for super-admin', () => {
-    const superAdmin = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'super-admin', isVerified: true } });
-    const admin = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } });
+    const superAdmin = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'super-admin', isVerified: true },
+    });
+    const admin = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
+    });
     expect(CurrentUser.isSuperAdmin(superAdmin)).toBe(true);
     expect(CurrentUser.isSuperAdmin(admin)).toBe(false);
   });
@@ -269,21 +309,15 @@ describe('CurrentUser role single-checks', () => {
 // ===========================================================================
 
 describe('CurrentUser.isManagement', () => {
-  it.each(['super-admin', 'admin', 'manager'] as IUserRoleType[])(
-    'returns true for %s',
-    (role) => {
-      const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role, isVerified: true } });
-      expect(CurrentUser.isManagement(user)).toBe(true);
-    }
-  );
+  it.each(['super-admin', 'admin', 'manager'] as IUserRoleType[])('returns true for %s', (role) => {
+    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role, isVerified: true } });
+    expect(CurrentUser.isManagement(user)).toBe(true);
+  });
 
-  it.each(['staff', 'tenant', 'vendor'] as IUserRoleType[])(
-    'returns false for %s',
-    (role) => {
-      const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role, isVerified: true } });
-      expect(CurrentUser.isManagement(user)).toBe(false);
-    }
-  );
+  it.each(['staff', 'tenant', 'vendor'] as IUserRoleType[])('returns false for %s', (role) => {
+    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role, isVerified: true } });
+    expect(CurrentUser.isManagement(user)).toBe(false);
+  });
 });
 
 // ===========================================================================
@@ -292,7 +326,9 @@ describe('CurrentUser.isManagement', () => {
 
 describe('CurrentUser.isExternal', () => {
   it('returns true for tenant', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'tenant', isVerified: true },
+    });
     expect(CurrentUser.isExternal(user)).toBe(true);
   });
 
@@ -301,12 +337,16 @@ describe('CurrentUser.isExternal', () => {
   });
 
   it('returns false for admin', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
+    });
     expect(CurrentUser.isExternal(user)).toBe(false);
   });
 
   it('returns false for staff', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true },
+    });
     expect(CurrentUser.isExternal(user)).toBe(false);
   });
 });
@@ -317,12 +357,16 @@ describe('CurrentUser.isExternal', () => {
 
 describe('CurrentUser.hasRole', () => {
   it('returns true when the role matches exactly', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'manager', isVerified: true },
+    });
     expect(CurrentUser.hasRole(user, 'manager' as any)).toBe(true);
   });
 
   it('returns false when the role does not match', () => {
-    const user = makeUser({ client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true } });
+    const user = makeUser({
+      client: { cuid: 'C1', displayname: 'x', role: 'staff', isVerified: true },
+    });
     expect(CurrentUser.hasRole(user, 'admin' as any)).toBe(false);
   });
 });

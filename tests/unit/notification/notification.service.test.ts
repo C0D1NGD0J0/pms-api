@@ -2,8 +2,17 @@ import { Types } from 'mongoose';
 import { EventTypes } from '@interfaces/events.interface';
 import { NotificationService } from '@services/notification/notification.service';
 import { handleMaintenanceChargePaid } from '@services/notification/notification.maintenance.handlers';
-import { handlePaymentSucceeded, handlePaymentOverdue, handlePaymentFailed } from '@services/notification/notification.payment.handlers';
-import { NotificationPriorityEnum, INotificationDocument, NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
+import {
+  handlePaymentSucceeded,
+  handlePaymentOverdue,
+  handlePaymentFailed,
+} from '@services/notification/notification.payment.handlers';
+import {
+  NotificationPriorityEnum,
+  INotificationDocument,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
 import {
   MaintenanceChargePaidPayload,
   PaymentSucceededPayload,
@@ -93,13 +102,17 @@ describe('NotificationService - New Methods', () => {
     } as any);
 
     // Mock createNotification to avoid database calls
-    jest.spyOn(notificationService, 'createNotification').mockReturnValue(Promise.resolve({
-      success: true,
-      data: { nuid: 'test-notification-id' } as unknown as INotificationDocument,
-    }));
+    jest.spyOn(notificationService, 'createNotification').mockReturnValue(
+      Promise.resolve({
+        success: true,
+        data: { nuid: 'test-notification-id' } as unknown as INotificationDocument,
+      })
+    );
 
     // Spy on the actual logger methods
-    jest.spyOn(notificationService['log'], 'error').mockImplementation((_msg: unknown) => undefined);
+    jest
+      .spyOn(notificationService['log'], 'error')
+      .mockImplementation((_msg: unknown) => undefined);
     jest.spyOn(notificationService['log'], 'info').mockImplementation((_msg: unknown) => undefined);
     jest.spyOn(notificationService['log'], 'warn').mockImplementation((_msg: unknown) => undefined);
   });
@@ -282,9 +295,11 @@ describe('NotificationService - New Methods', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      (notificationService.createNotification as jest.MockedFunction<typeof notificationService.createNotification>).mockRejectedValueOnce(
-        new Error('Database error')
-      );
+      (
+        notificationService.createNotification as jest.MockedFunction<
+          typeof notificationService.createNotification
+        >
+      ).mockRejectedValueOnce(new Error('Database error'));
 
       const params = {
         eventType: 'expired' as const,
@@ -302,9 +317,7 @@ describe('NotificationService - New Methods', () => {
       };
 
       // Should not throw
-      await expect(
-        notificationService.notifyLeaseLifecycleEvent(params)
-      ).resolves.not.toThrow();
+      await expect(notificationService.notifyLeaseLifecycleEvent(params)).resolves.not.toThrow();
 
       expect(notificationService['log'].error).toHaveBeenCalledWith(
         'Failed to send lease lifecycle event notifications',
@@ -408,9 +421,11 @@ describe('NotificationService - New Methods', () => {
     });
 
     it('should handle errors gracefully', async () => {
-      (notificationService.createNotification as jest.MockedFunction<typeof notificationService.createNotification>).mockRejectedValueOnce(
-        new Error('Notification creation failed')
-      );
+      (
+        notificationService.createNotification as jest.MockedFunction<
+          typeof notificationService.createNotification
+        >
+      ).mockRejectedValueOnce(new Error('Notification creation failed'));
 
       const params = {
         cuid: 'client-123',
@@ -464,7 +479,11 @@ describe('NotificationService - New Methods', () => {
 
     beforeEach(() => {
       mockChargePaidCtx = {
-        createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'test-notification-id' } })),
+        createNotification: jest
+          .fn()
+          .mockReturnValue(
+            Promise.resolve({ success: true, data: { nuid: 'test-notification-id' } })
+          ),
         log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
       };
     });
@@ -497,9 +516,7 @@ describe('NotificationService - New Methods', () => {
     it('does not throw when createNotification rejects', async () => {
       mockChargePaidCtx.createNotification.mockRejectedValueOnce(new Error('DB error'));
 
-      await expect(
-        handleMaintenanceChargePaid(mockChargePaidCtx, payload)
-      ).resolves.not.toThrow();
+      await expect(handleMaintenanceChargePaid(mockChargePaidCtx, payload)).resolves.not.toThrow();
     });
 
     it('logs error when createNotification rejects', async () => {
@@ -632,20 +649,52 @@ describe('NotificationService - MR event handlers', () => {
 
   const mockMRDAO = {
     // scope stored as object (sanitized by submitWorkOrder service)
-    getByMruid: jest.fn().mockReturnValue(
-      Promise.resolve({ mruid: 'MR-001', title: 'Leaking pipe', category: 'plumbing', priority: 'high', tenantId: 'tid1', invoice: { amount: 50000, currency: 'USD' }, workOrder: { estimatedCostInCents: 20000, scope: { text: 'Fix pipe', html: '<p>Fix pipe</p>' }, notes: null, lineItems: [] } })
-    ),
+    getByMruid: jest
+      .fn()
+      .mockReturnValue(
+        Promise.resolve({
+          mruid: 'MR-001',
+          title: 'Leaking pipe',
+          category: 'plumbing',
+          priority: 'high',
+          tenantId: 'tid1',
+          invoice: { amount: 50000, currency: 'USD' },
+          workOrder: {
+            estimatedCostInCents: 20000,
+            scope: { text: 'Fix pipe', html: '<p>Fix pipe</p>' },
+            notes: null,
+            lineItems: [],
+          },
+        })
+      ),
   } as any;
 
   const mockUserDAOMR = {
-    findFirst: jest.fn().mockReturnValue(
-      Promise.resolve({ _id: 'uid1', email: 'user@test.com', firstName: 'Test', firstName2: 'User' })
-    ),
+    findFirst: jest
+      .fn()
+      .mockReturnValue(
+        Promise.resolve({
+          _id: 'uid1',
+          email: 'user@test.com',
+          firstName: 'Test',
+          firstName2: 'User',
+        })
+      ),
     findById: jest.fn(),
   } as any;
 
-  const mockNotificationDAOMR = { create: jest.fn(), findFirst: jest.fn(), list: jest.fn(), updateById: jest.fn(), updateMany: jest.fn(), findByNuid: jest.fn() } as any;
-  const mockNotificationCacheMR = { markAnnouncementsRead: jest.fn(), getReadAnnouncementNuids: jest.fn() } as any;
+  const mockNotificationDAOMR = {
+    create: jest.fn(),
+    findFirst: jest.fn(),
+    list: jest.fn(),
+    updateById: jest.fn(),
+    updateMany: jest.fn(),
+    findByNuid: jest.fn(),
+  } as any;
+  const mockNotificationCacheMR = {
+    markAnnouncementsRead: jest.fn(),
+    getReadAnnouncementNuids: jest.fn(),
+  } as any;
 
   let service: NotificationService;
 
@@ -667,7 +716,9 @@ describe('NotificationService - MR event handlers', () => {
       profileService: { getProfile: jest.fn() } as any,
     } as any);
 
-    jest.spyOn(service, 'createNotification').mockReturnValue(Promise.resolve({ success: true, data: {} as any }));
+    jest
+      .spyOn(service, 'createNotification')
+      .mockReturnValue(Promise.resolve({ success: true, data: {} as any }));
   });
 
   afterEach(async () => {
@@ -676,8 +727,14 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should create in-app notification and enqueue email on MAINTENANCE_REQUEST_CREATED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CREATED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', tenantId: testTenantId,
-      propertyId: 'pid', title: 'Leaking pipe', category: 'plumbing', priority: 'high',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      tenantId: testTenantId,
+      propertyId: 'pid',
+      title: 'Leaking pipe',
+      category: 'plumbing',
+      priority: 'high',
     });
     await flushPromises();
 
@@ -690,7 +747,11 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should notify vendor and enqueue assignment email on MAINTENANCE_REQUEST_ASSIGNED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_ASSIGNED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId, assignedBy: testUserId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      assignedBy: testUserId,
     });
     await flushPromises();
 
@@ -703,7 +764,11 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should notify tenant and enqueue accepted email on MAINTENANCE_REQUEST_ACCEPTED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_ACCEPTED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId, tenantId: testTenantId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      tenantId: testTenantId,
     });
     await flushPromises();
 
@@ -715,7 +780,11 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should enqueue declined email on MAINTENANCE_REQUEST_DECLINED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_DECLINED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId, reason: 'Busy',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      reason: 'Busy',
     });
     await flushPromises();
 
@@ -727,8 +796,12 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should notify tenant and enqueue completed email on MAINTENANCE_REQUEST_COMPLETED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', tenantId: testTenantId,
-      vendorId: testVendorId, completedBy: testUserId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      tenantId: testTenantId,
+      vendorId: testVendorId,
+      completedBy: testUserId,
     });
     await flushPromises();
 
@@ -740,9 +813,17 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should enqueue invoice approved email on MAINTENANCE_INVOICE_APPROVED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', invoiceId: 'inv1',
-      tenantId: testTenantId, vendorId: testVendorId, amount: 50000, currency: 'USD',
-      isBillable: true, approvedBy: testUserId, title: 'Leaking pipe',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      invoiceId: 'inv1',
+      tenantId: testTenantId,
+      vendorId: testVendorId,
+      amount: 50000,
+      currency: 'USD',
+      isBillable: true,
+      approvedBy: testUserId,
+      title: 'Leaking pipe',
     });
     await flushPromises();
 
@@ -754,8 +835,13 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should enqueue invoice rejected email on MAINTENANCE_INVOICE_REJECTED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', invoiceId: 'inv1',
-      vendorId: testVendorId, rejectionReason: 'Insufficient detail', rejectedBy: testUserId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      invoiceId: 'inv1',
+      vendorId: testVendorId,
+      rejectionReason: 'Insufficient detail',
+      rejectedBy: testUserId,
     });
     await flushPromises();
 
@@ -767,7 +853,11 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should enqueue work order approved email on MAINTENANCE_WORK_ORDER_APPROVED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId, approvedBy: testUserId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      approvedBy: testUserId,
     });
     await flushPromises();
 
@@ -779,8 +869,12 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should enqueue work order rejected email on MAINTENANCE_WORK_ORDER_REJECTED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId,
-      rejectedBy: testUserId, rejectionReason: 'Out of scope',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      rejectedBy: testUserId,
+      rejectionReason: 'Out of scope',
     });
     await flushPromises();
 
@@ -792,8 +886,13 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should not enqueue email when payload has no tenantId for MAINTENANCE_REQUEST_CREATED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CREATED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid',
-      propertyId: 'pid', title: 'Leaking pipe', category: 'plumbing', priority: 'high',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      propertyId: 'pid',
+      title: 'Leaking pipe',
+      category: 'plumbing',
+      priority: 'high',
     });
     await flushPromises();
 
@@ -801,11 +900,19 @@ describe('NotificationService - MR event handlers', () => {
   });
 
   it('should still create in-app notification even if emailQueue throws', async () => {
-    mockEmailQueue.addToEmailQueue.mockImplementationOnce(() => { throw new Error('queue full'); });
+    mockEmailQueue.addToEmailQueue.mockImplementationOnce(() => {
+      throw new Error('queue full');
+    });
 
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CREATED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', tenantId: testTenantId,
-      propertyId: 'pid', title: 'Pipe', category: 'plumbing', priority: 'medium',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      tenantId: testTenantId,
+      propertyId: 'pid',
+      title: 'Pipe',
+      category: 'plumbing',
+      priority: 'medium',
     });
     await flushPromises();
 
@@ -814,7 +921,9 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should create in-app notification and enqueue PM email on MAINTENANCE_WORK_ORDER_SUBMITTED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
-      cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      vendorId: testVendorId,
     });
     await flushPromises();
 
@@ -831,7 +940,9 @@ describe('NotificationService - MR event handlers', () => {
 
   it('flattens work order scope from object to string for email on MAINTENANCE_WORK_ORDER_SUBMITTED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
-      cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      vendorId: testVendorId,
     });
     await flushPromises();
 
@@ -847,7 +958,9 @@ describe('NotificationService - MR event handlers', () => {
 
   it('should enqueue tenant email when tenantId is present on MAINTENANCE_WORK_ORDER_SUBMITTED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, {
-      cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      vendorId: testVendorId,
     });
     await flushPromises();
 
@@ -860,7 +973,11 @@ describe('NotificationService - MR event handlers', () => {
 
   it('flattens work order scope on MAINTENANCE_WORK_ORDER_APPROVED email', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId, approvedBy: testUserId,
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      approvedBy: testUserId,
     });
     await flushPromises();
 
@@ -876,8 +993,12 @@ describe('NotificationService - MR event handlers', () => {
 
   it('flattens work order scope on MAINTENANCE_WORK_ORDER_REJECTED email', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
-      cuid: 'cuid1', mruid: 'MR-001', requestId: 'rid', vendorId: testVendorId,
-      rejectedBy: testUserId, rejectionReason: 'Out of scope',
+      cuid: 'cuid1',
+      mruid: 'MR-001',
+      requestId: 'rid',
+      vendorId: testVendorId,
+      rejectedBy: testUserId,
+      rejectionReason: 'Out of scope',
     });
     await flushPromises();
 
@@ -898,8 +1019,11 @@ describe('NotificationService - MR event handlers', () => {
   describe('handleWorkOrderApproved — technician notifications', () => {
     it('sends 2 notifications when technicianId is present and differs from vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testTechnicianId, approvedBy: testUserId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testTechnicianId,
+        approvedBy: testUserId,
       });
       await flushPromises();
 
@@ -913,8 +1037,11 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends 1 notification when technicianId equals vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testVendorId, approvedBy: testUserId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testVendorId,
+        approvedBy: testUserId,
       });
       await flushPromises();
 
@@ -926,7 +1053,10 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends 1 notification when technicianId is absent', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_APPROVED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId, approvedBy: testUserId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        approvedBy: testUserId,
       });
       await flushPromises();
 
@@ -941,20 +1071,29 @@ describe('NotificationService - MR event handlers', () => {
   describe('handleWorkOrderRejected — technician notifications', () => {
     it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testTechnicianId, rejectedBy: testUserId, rejectionReason: 'Scope unclear',
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testTechnicianId,
+        rejectedBy: testUserId,
+        rejectionReason: 'Scope unclear',
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).toContain(testTechnicianId);
     });
 
     it('sends only 1 individual notification when technicianId equals vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testVendorId, rejectedBy: testUserId, rejectionReason: 'N/A',
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testVendorId,
+        rejectedBy: testUserId,
+        rejectionReason: 'N/A',
       });
       await flushPromises();
 
@@ -966,8 +1105,11 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends only 1 notification when technicianId is absent', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_WORK_ORDER_REJECTED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        rejectedBy: testUserId, rejectionReason: 'Out of scope',
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        rejectedBy: testUserId,
+        rejectionReason: 'Out of scope',
       });
       await flushPromises();
 
@@ -981,22 +1123,33 @@ describe('NotificationService - MR event handlers', () => {
   describe('handleInvoiceApproved — technician notifications', () => {
     it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testTechnicianId, approvedBy: testUserId,
-        amount: 50000, currency: 'USD', isBillable: false,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testTechnicianId,
+        approvedBy: testUserId,
+        amount: 50000,
+        currency: 'USD',
+        isBillable: false,
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).toContain(testTechnicianId);
     });
 
     it('sends only 1 vendor notification when technicianId equals vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testVendorId, approvedBy: testUserId,
-        amount: 50000, currency: 'USD', isBillable: false,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testVendorId,
+        approvedBy: testUserId,
+        amount: 50000,
+        currency: 'USD',
+        isBillable: false,
       });
       await flushPromises();
 
@@ -1008,8 +1161,13 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends only 1 notification when technicianId is absent', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        approvedBy: testUserId, amount: 50000, currency: 'USD', isBillable: false,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        approvedBy: testUserId,
+        amount: 50000,
+        currency: 'USD',
+        isBillable: false,
       });
       await flushPromises();
 
@@ -1023,20 +1181,29 @@ describe('NotificationService - MR event handlers', () => {
   describe('handleInvoiceRejected — technician notifications', () => {
     it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testTechnicianId, rejectedBy: testUserId, rejectionReason: 'Invalid amount',
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testTechnicianId,
+        rejectedBy: testUserId,
+        rejectionReason: 'Invalid amount',
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).toContain(testTechnicianId);
     });
 
     it('sends only 1 individual notification when technicianId equals vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        technicianId: testVendorId, rejectedBy: testUserId, rejectionReason: 'N/A',
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        technicianId: testVendorId,
+        rejectedBy: testUserId,
+        rejectionReason: 'N/A',
       });
       await flushPromises();
 
@@ -1048,8 +1215,11 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends only 1 notification when technicianId is absent', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_INVOICE_REJECTED, {
-        cuid: 'cuid1', mruid: 'MR-001', vendorId: testVendorId,
-        rejectedBy: testUserId, rejectionReason: 'Insufficient detail',
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        vendorId: testVendorId,
+        rejectedBy: testUserId,
+        rejectionReason: 'Insufficient detail',
       });
       await flushPromises();
 
@@ -1063,20 +1233,27 @@ describe('NotificationService - MR event handlers', () => {
   describe('handleMRCancelled — technician notifications', () => {
     it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CANCELLED, {
-        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
-        vendorId: testVendorId, technicianId: testTechnicianId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        tenantId: testTenantId,
+        vendorId: testVendorId,
+        technicianId: testTechnicianId,
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).toContain(testTechnicianId);
     });
 
     it('sends only 1 vendor notification when technicianId equals vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CANCELLED, {
-        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
-        vendorId: testVendorId, technicianId: testVendorId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        tenantId: testTenantId,
+        vendorId: testVendorId,
+        technicianId: testVendorId,
       });
       await flushPromises();
 
@@ -1088,12 +1265,16 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends only vendor notification when technicianId is absent', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CANCELLED, {
-        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId, vendorId: testVendorId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        tenantId: testTenantId,
+        vendorId: testVendorId,
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).not.toContain(testTechnicianId);
     });
   });
@@ -1101,20 +1282,29 @@ describe('NotificationService - MR event handlers', () => {
   describe('handleMRCompleted — technician notifications', () => {
     it('sends individual notification to technician when technicianId present and different from vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
-        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
-        vendorId: testVendorId, technicianId: testTechnicianId, completedBy: testUserId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        tenantId: testTenantId,
+        vendorId: testVendorId,
+        technicianId: testTechnicianId,
+        completedBy: testUserId,
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).toContain(testTechnicianId);
     });
 
     it('sends only 1 vendor notification when technicianId equals vendorId', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
-        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
-        vendorId: testVendorId, technicianId: testVendorId, completedBy: testUserId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        tenantId: testTenantId,
+        vendorId: testVendorId,
+        technicianId: testVendorId,
+        completedBy: testUserId,
       });
       await flushPromises();
 
@@ -1126,13 +1316,17 @@ describe('NotificationService - MR event handlers', () => {
 
     it('sends only vendor/tenant notifications when technicianId is absent', async () => {
       syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
-        cuid: 'cuid1', mruid: 'MR-001', tenantId: testTenantId,
-        vendorId: testVendorId, completedBy: testUserId,
+        cuid: 'cuid1',
+        mruid: 'MR-001',
+        tenantId: testTenantId,
+        vendorId: testVendorId,
+        completedBy: testUserId,
       });
       await flushPromises();
 
       const recipients = (service.createNotification as jest.Mock).mock.calls
-        .map((c: any[]) => c[2]?.recipient).filter(Boolean);
+        .map((c: any[]) => c[2]?.recipient)
+        .filter(Boolean);
       expect(recipients).not.toContain(testTechnicianId);
     });
   });
@@ -1156,7 +1350,9 @@ describe('NotificationService - handlePaymentFailed', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCtx = {
-      createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      createNotification: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
       log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
     };
   });
@@ -1205,9 +1401,7 @@ describe('NotificationService - handlePaymentFailed', () => {
   it('does not throw when createNotification rejects', async () => {
     mockCtx.createNotification.mockRejectedValue(new Error('DB'));
 
-    await expect(
-      handlePaymentFailed(mockCtx, basePayload)
-    ).resolves.not.toThrow();
+    await expect(handlePaymentFailed(mockCtx, basePayload)).resolves.not.toThrow();
   });
 });
 
@@ -1226,7 +1420,9 @@ describe('NotificationService - handlePaymentOverdue', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCtx = {
-      createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      createNotification: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
       log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
     };
   });
@@ -1275,9 +1471,7 @@ describe('NotificationService - handlePaymentOverdue', () => {
   it('does not throw when createNotification rejects', async () => {
     mockCtx.createNotification.mockRejectedValue(new Error('DB'));
 
-    await expect(
-      handlePaymentOverdue(mockCtx, basePayload)
-    ).resolves.not.toThrow();
+    await expect(handlePaymentOverdue(mockCtx, basePayload)).resolves.not.toThrow();
   });
 });
 
@@ -1295,7 +1489,9 @@ describe('NotificationService - handlePaymentSucceeded', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockCtx = {
-      createNotification: jest.fn().mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      createNotification: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
       emailQueue: { addToEmailQueue: jest.fn() },
       userDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) },
       log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },

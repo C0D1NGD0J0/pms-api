@@ -103,11 +103,28 @@ describe('SubscriptionController Integration Tests', () => {
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
       sseService: { sendToUser: jest.fn().mockResolvedValue(true) } as any,
       clientDAO: {
-        getClientByCuid: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), cuid: 'client-super', accountAdmin: new Types.ObjectId() }),
-        findById: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), cuid: 'client-super', accountType: { category: 'individual' }, displayName: 'Test Client' }),
+        getClientByCuid: jest
+          .fn()
+          .mockResolvedValue({
+            _id: new Types.ObjectId(),
+            cuid: 'client-super',
+            accountAdmin: new Types.ObjectId(),
+          }),
+        findById: jest
+          .fn()
+          .mockResolvedValue({
+            _id: new Types.ObjectId(),
+            cuid: 'client-super',
+            accountType: { category: 'individual' },
+            displayName: 'Test Client',
+          }),
       } as any,
       authCache: { invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }) } as any,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       userDAO: {} as any,
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
@@ -116,7 +133,10 @@ describe('SubscriptionController Integration Tests', () => {
       subscriptionWebhookService: {} as any,
     });
 
-    subscriptionController = new SubscriptionController({ subscriptionService, smsService: {} as any });
+    subscriptionController = new SubscriptionController({
+      subscriptionService,
+      smsService: {} as any,
+    });
 
     // Setup Express app
     app = express();
@@ -127,18 +147,30 @@ describe('SubscriptionController Integration Tests', () => {
       // Parse x-test-context header so supertest calls can set req.context
       const ctxHeader = req.headers['x-test-context'];
       if (ctxHeader) {
-        try { req.context = JSON.parse(ctxHeader as string); } catch { /* noop */ }
+        try {
+          req.context = JSON.parse(ctxHeader as string);
+        } catch {
+          /* noop */
+        }
       }
       next();
     });
 
     // Setup routes
     app.post('/api/v1/subscriptions/:cuid/init-subscription-payment', async (req, res, next) => {
-      try { await subscriptionController.initSubscriptionPayment(req as any, res); } catch (err) { next(err); }
+      try {
+        await subscriptionController.initSubscriptionPayment(req as any, res);
+      } catch (err) {
+        next(err);
+      }
     });
 
     app.get('/api/v1/subscriptions/plans', async (req, res, next) => {
-      try { await subscriptionController.getSubscriptionPlans(req as any, res); } catch (err) { next(err); }
+      try {
+        await subscriptionController.getSubscriptionPlans(req as any, res);
+      } catch (err) {
+        next(err);
+      }
     });
 
     // Error handler

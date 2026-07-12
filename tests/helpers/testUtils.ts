@@ -5,7 +5,9 @@
 /**
  * Creates a mock Express.Multer.File object for use in tests
  */
-export const createMockMulterFile = (overrides: Partial<Express.Multer.File> = {}): Express.Multer.File => ({
+export const createMockMulterFile = (
+  overrides: Partial<Express.Multer.File> = {}
+): Express.Multer.File => ({
   fieldname: 'file',
   originalname: 'test-file.pdf',
   encoding: '7bit',

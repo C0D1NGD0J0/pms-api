@@ -19,9 +19,7 @@ const makeLease = (overrides: Record<string, any> = {}) => ({
   luid: testLuid,
   tenantId: tenantUserId,
   property: { id: propertyId, unitId: null },
-  leaseDocuments: [
-    { documentType: 'lease_agreement', status: 'active', key: 's3-key-test' },
-  ],
+  leaseDocuments: [{ documentType: 'lease_agreement', status: 'active', key: 's3-key-test' }],
   coTenants: [],
   ...overrides,
 });
@@ -59,7 +57,13 @@ const makeJob = () =>
   ({
     id: 'job-1',
     data: {
-      resource: { actorId: pmUserId.toString(), resourceId: leaseId.toString(), resourceName: 'lease', resourceType: 'document', fieldName: 'eSignature' },
+      resource: {
+        actorId: pmUserId.toString(),
+        resourceId: leaseId.toString(),
+        resourceName: 'lease',
+        resourceType: 'document',
+        fieldName: 'eSignature',
+      },
       cuid: testCuid,
       luid: testLuid,
       leaseId: leaseId.toString(),
@@ -92,9 +96,9 @@ const buildMocks = (property: ReturnType<typeof makeProperty>) => {
   } as any;
 
   const boldSignService = {
-    sendDocumentForSignature: jest.fn().mockReturnValue(
-      Promise.resolve({ documentId: 'boldsign-doc-123' })
-    ),
+    sendDocumentForSignature: jest
+      .fn()
+      .mockReturnValue(Promise.resolve({ documentId: 'boldsign-doc-123' })),
   } as any;
 
   const mediaUploadService = {
@@ -174,7 +178,11 @@ describe('ESignatureWorker — Landlord Signer Selection', () => {
       const signersArg = mocks.boldSignService.sendDocumentForSignature.mock.calls[0][0].signers;
       expect(signersArg).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ role: 'landlord', email: 'landlord@example.com', name: 'John Landlord' }),
+          expect.objectContaining({
+            role: 'landlord',
+            email: 'landlord@example.com',
+            name: 'John Landlord',
+          }),
           expect.objectContaining({ role: 'tenant', email: 'tenant@example.com' }),
         ])
       );

@@ -645,9 +645,7 @@ describe('AuthService Integration Tests', () => {
     });
 
     it('should reject invalid activation token', async () => {
-      await expect(
-        authService.accountActivation('invalid-token', consentData)
-      ).rejects.toThrow();
+      await expect(authService.accountActivation('invalid-token', consentData)).rejects.toThrow();
     });
 
     it('should reject expired activation token', async () => {
@@ -672,9 +670,7 @@ describe('AuthService Integration Tests', () => {
         activecuid: client.cuid,
       });
 
-      await expect(
-        authService.accountActivation(activationToken, consentData)
-      ).rejects.toThrow();
+      await expect(authService.accountActivation(activationToken, consentData)).rejects.toThrow();
     });
   });
 
@@ -826,10 +822,19 @@ describe('AuthService Integration Tests', () => {
       await Profile.create({
         puid: `puid-${Date.now()}`,
         user: user._id,
-        personalInfo: { firstName: 'Jane', lastName: 'Doe', displayName: 'Jane Doe', location: 'US' },
+        personalInfo: {
+          firstName: 'Jane',
+          lastName: 'Doe',
+          displayName: 'Jane Doe',
+          location: 'US',
+        },
       });
 
-      const result = await authService.completeOnboarding(user._id.toString(), client.cuid, onboardingBody);
+      const result = await authService.completeOnboarding(
+        user._id.toString(),
+        client.cuid,
+        onboardingBody
+      );
 
       expect(result.success).toBe(true);
 
@@ -847,13 +852,26 @@ describe('AuthService Integration Tests', () => {
       const client = await createTestClient();
       const user = await createTestUser(client.cuid, {
         email: `onboarding-policies-${Date.now()}@example.com`,
-        cuids: [{ cuid: client.cuid, roles: [ROLES.STAFF], isConnected: true, requiresOnboarding: true, clientDisplayName: client.displayName }],
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
       });
 
       const profile = await Profile.create({
         puid: `puid-pol-${Date.now()}`,
         user: user._id,
-        personalInfo: { firstName: 'John', lastName: 'Smith', displayName: 'John Smith', location: 'CA' },
+        personalInfo: {
+          firstName: 'John',
+          lastName: 'Smith',
+          displayName: 'John Smith',
+          location: 'CA',
+        },
       });
 
       await authService.completeOnboarding(user._id.toString(), client.cuid, {
@@ -875,13 +893,26 @@ describe('AuthService Integration Tests', () => {
       const user = await createTestUser(client.cuid, {
         email: `onboarding-pwd-${Date.now()}@example.com`,
         password: originalPassword,
-        cuids: [{ cuid: client.cuid, roles: [ROLES.STAFF], isConnected: true, requiresOnboarding: true, clientDisplayName: client.displayName }],
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
       });
 
       await Profile.create({
         puid: `puid-pwd-${Date.now()}`,
         user: user._id,
-        personalInfo: { firstName: 'John', lastName: 'Smith', displayName: 'John Smith', location: 'CA' },
+        personalInfo: {
+          firstName: 'John',
+          lastName: 'Smith',
+          displayName: 'John Smith',
+          location: 'CA',
+        },
       });
 
       const newPassword = 'NewSecure1A!';
@@ -909,13 +940,26 @@ describe('AuthService Integration Tests', () => {
       const client = await createTestClient();
       const user = await createTestUser(client.cuid, {
         email: `onboarding-prefs-${Date.now()}@example.com`,
-        cuids: [{ cuid: client.cuid, roles: [ROLES.STAFF], isConnected: true, requiresOnboarding: true, clientDisplayName: client.displayName }],
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.STAFF],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
       });
 
       const profile = await Profile.create({
         puid: `puid-prefs-${Date.now()}`,
         user: user._id,
-        personalInfo: { firstName: 'Alice', lastName: 'Test', displayName: 'Alice Test', location: 'US' },
+        personalInfo: {
+          firstName: 'Alice',
+          lastName: 'Test',
+          displayName: 'Alice Test',
+          location: 'US',
+        },
       });
 
       await authService.completeOnboarding(user._id.toString(), client.cuid, {

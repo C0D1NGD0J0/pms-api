@@ -1200,9 +1200,7 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async retrievePaymentMethod(
-    paymentMethodId: string
-  ): Promise<{
+  async retrievePaymentMethod(paymentMethodId: string): Promise<{
     type: StripePaymentMethodType;
     bankName?: string;
     last4?: string;

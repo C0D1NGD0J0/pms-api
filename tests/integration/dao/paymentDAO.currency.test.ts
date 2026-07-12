@@ -2,7 +2,11 @@ import { Types } from 'mongoose';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { Payment, Client } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
-import { PaymentRecordStatus, PaymentRecordType, PaymentMethod } from '@interfaces/payments.interface';
+import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  PaymentMethod,
+} from '@interfaces/payments.interface';
 
 describe('PaymentDAO — currency-aware getPaymentStats', () => {
   let paymentDAO: PaymentDAO;
@@ -24,7 +28,12 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     });
   });
 
-  const makePayment = (currency: string, baseAmount: number, status: PaymentRecordStatus, paidAt?: Date) => ({
+  const makePayment = (
+    currency: string,
+    baseAmount: number,
+    status: PaymentRecordStatus,
+    paidAt?: Date
+  ) => ({
     cuid: testCuid,
     currency,
     baseAmount,

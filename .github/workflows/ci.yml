@@ -5,10 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled]
 
 env:
   NODE_ENV: test
   NODE_VERSION: "22"
+  JWT_SECRET: ci-test-secret
+  JWT_REFRESH_SECRET: ci-test-refresh-secret
 
 jobs:
   lint:

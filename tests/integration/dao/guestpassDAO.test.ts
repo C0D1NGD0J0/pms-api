@@ -173,11 +173,7 @@ describe('GuestPassDAO Integration Tests', () => {
 
     it('should return null when pass is already USED', async () => {
       const pass = await createPass({ status: GuestPassStatus.USED });
-      const result = await dao.markAsUsed(
-        pass._id.toString(),
-        testCuid,
-        validatorId.toString()
-      );
+      const result = await dao.markAsUsed(pass._id.toString(), testCuid, validatorId.toString());
       expect(result).toBeNull();
     });
   });
@@ -188,11 +184,7 @@ describe('GuestPassDAO Integration Tests', () => {
   describe('revokePass', () => {
     it('should revoke an ACTIVE pass', async () => {
       const pass = await createPass();
-      const result = await dao.revokePass(
-        pass._id.toString(),
-        testCuid,
-        userId.toString()
-      );
+      const result = await dao.revokePass(pass._id.toString(), testCuid, userId.toString());
 
       expect(result).not.toBeNull();
       expect(result!.status).toBe(GuestPassStatus.REVOKED);
@@ -202,11 +194,7 @@ describe('GuestPassDAO Integration Tests', () => {
 
     it('should revoke a PENDING pass', async () => {
       const pass = await createPass({ status: GuestPassStatus.PENDING });
-      const result = await dao.revokePass(
-        pass._id.toString(),
-        testCuid,
-        userId.toString()
-      );
+      const result = await dao.revokePass(pass._id.toString(), testCuid, userId.toString());
 
       expect(result).not.toBeNull();
       expect(result!.status).toBe(GuestPassStatus.REVOKED);
@@ -300,8 +288,12 @@ describe('GuestPassDAO Integration Tests', () => {
       const acked = await createPass({ code: 'ACK001', isAcknowledged: true });
       const expired = await createPass({ code: 'EXP001', status: GuestPassStatus.EXPIRED });
 
-      expect(await dao.acknowledgePass(testCuid, acked._id.toString(), validatorId.toString())).toBeNull();
-      expect(await dao.acknowledgePass(testCuid, expired._id.toString(), validatorId.toString())).toBeNull();
+      expect(
+        await dao.acknowledgePass(testCuid, acked._id.toString(), validatorId.toString())
+      ).toBeNull();
+      expect(
+        await dao.acknowledgePass(testCuid, expired._id.toString(), validatorId.toString())
+      ).toBeNull();
     });
   });
 
@@ -342,13 +334,23 @@ describe('GuestPassDAO Integration Tests', () => {
   describe('getUnacknowledgedPasses', () => {
     it('should return only unacknowledged active/used passes for specific property', async () => {
       await createPass({ code: 'UNA001', propertyId, isAcknowledged: false });
-      await createPass({ code: 'UNA002', propertyId, status: GuestPassStatus.USED, isAcknowledged: false });
+      await createPass({
+        code: 'UNA002',
+        propertyId,
+        status: GuestPassStatus.USED,
+        isAcknowledged: false,
+      });
       // wrong property
       await createPass({ code: 'UNA003', propertyId: propertyId2, isAcknowledged: false });
       // acknowledged
       await createPass({ code: 'UNA004', propertyId, isAcknowledged: true });
       // expired status
-      await createPass({ code: 'UNA005', propertyId, status: GuestPassStatus.EXPIRED, isAcknowledged: false });
+      await createPass({
+        code: 'UNA005',
+        propertyId,
+        status: GuestPassStatus.EXPIRED,
+        isAcknowledged: false,
+      });
 
       const passes = await dao.getUnacknowledgedPasses(testCuid, propertyId.toString());
 

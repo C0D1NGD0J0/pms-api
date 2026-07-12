@@ -12,7 +12,8 @@ import {
   createTestProperty,
   createTestProfile,
   createTestClient,
-  createTestUser,} from '@tests/setup/testFactories';
+  createTestUser,
+} from '@tests/setup/testFactories';
 
 // Mock heavy middleware to skip real auth/subscription/file/validation flow
 // since we use mockContextBuilder to set up authentication context
@@ -190,8 +191,23 @@ describe('PropertyController Integration Tests', () => {
       status: 'active' as any,
       startDate: new Date(),
       billingInterval: 'monthly' as any,
-      billing: { customerId: 'cus_test', subscriberId: 'sub_test', provider: 'none' as any, planId: 'price_test' },
-      entitlements: { eSignature: true, maintenanceRequestService: true, guestPassService: true, reportingAnalytics: true, leaseTemplates: true, vendorManagement: true, smsService: false, aiTriage: false, aiInvoiceScanning: false },
+      billing: {
+        customerId: 'cus_test',
+        subscriberId: 'sub_test',
+        provider: 'none' as any,
+        planId: 'price_test',
+      },
+      entitlements: {
+        eSignature: true,
+        maintenanceRequestService: true,
+        guestPassService: true,
+        reportingAnalytics: true,
+        leaseTemplates: true,
+        vendorManagement: true,
+        smsService: false,
+        aiTriage: false,
+        aiInvoiceScanning: false,
+      },
       totalMonthlyPrice: 4900,
       currentProperties: 0,
       currentUnits: 0,

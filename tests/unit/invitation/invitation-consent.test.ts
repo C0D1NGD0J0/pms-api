@@ -122,7 +122,10 @@ describe('Invitation Acceptance — Consent Recording', () => {
       leaseDAO: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       paymentGatewayService: { createCustomer: jest.fn() } as any,
-      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }), invalidateUserLists: jest.fn().mockResolvedValue({ success: true }) } as any,
+      userCache: {
+        invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }),
+        invalidateUserLists: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
     });
 
     // Common mock setup
@@ -130,11 +133,17 @@ describe('Invitation Acceptance — Consent Recording', () => {
     (mockDAOs.invitationDAO.withTransaction as jest.Mock).mockImplementation(
       async (_session: any, callback: any) => callback(_session)
     );
-    (mockDAOs.invitationDAO.findByToken as jest.Mock).mockReturnValue(Promise.resolve(mockInvitation));
+    (mockDAOs.invitationDAO.findByToken as jest.Mock).mockReturnValue(
+      Promise.resolve(mockInvitation)
+    );
     (mockDAOs.clientDAO.getClientByCuid as jest.Mock).mockReturnValue(Promise.resolve(mockClient));
     (mockDAOs.clientDAO.findFirst as jest.Mock).mockReturnValue(Promise.resolve(mockClient));
-    (mockDAOs.userDAO.createUserFromInvitation as jest.Mock).mockReturnValue(Promise.resolve(mockUser));
-    (mockDAOs.profileDAO.createUserProfile as jest.Mock).mockReturnValue(Promise.resolve(mockProfile));
+    (mockDAOs.userDAO.createUserFromInvitation as jest.Mock).mockReturnValue(
+      Promise.resolve(mockUser)
+    );
+    (mockDAOs.profileDAO.createUserProfile as jest.Mock).mockReturnValue(
+      Promise.resolve(mockProfile)
+    );
     (mockDAOs.invitationDAO.acceptInvitation as jest.Mock).mockReturnValue(Promise.resolve(true));
     (mockDAOs.profileDAO.findFirst as jest.Mock).mockReturnValue(Promise.resolve(mockProfile));
     (mockDAOs.userDAO.getUserById as jest.Mock).mockReturnValue(Promise.resolve(mockUser));
@@ -215,8 +224,8 @@ describe('Invitation Acceptance — Consent Recording', () => {
 
     await invitationService.acceptInvitation('client-abc', acceptanceData);
 
-    const updateCall = (mockDAOs.userDAO.update as jest.Mock).mock.calls.find((args) =>
-      args[1]?.$set?.consent
+    const updateCall = (mockDAOs.userDAO.update as jest.Mock).mock.calls.find(
+      (args) => args[1]?.$set?.consent
     );
     expect(updateCall?.[1].$set.consent.acceptedBy).toBe('Doe');
   });

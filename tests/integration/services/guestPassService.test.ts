@@ -1086,10 +1086,7 @@ describe('GuestPassService', () => {
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
 
       // Assign staff to property1 only
-      await Property.updateOne(
-        { _id: property1._id },
-        { $set: { assignedStaff: [staff._id] } }
-      );
+      await Property.updateOne({ _id: property1._id }, { $set: { assignedStaff: [staff._id] } });
 
       await GuestPassModel.create({
         cuid: client.cuid,

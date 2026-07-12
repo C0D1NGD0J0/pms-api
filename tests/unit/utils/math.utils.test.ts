@@ -76,14 +76,16 @@ describe('daysInMs', () => {
 describe('roundToDecimal', () => {
   it('rounds half-up: 2.455 → 2.46', () => expect(roundToDecimal(2.455, 2)).toBe(2.46));
   it('rounds down: 2.454 → 2.45', () => expect(roundToDecimal(2.454, 2)).toBe(2.45));
-  it('handles negatives: -2.455 → -2.46 (away from zero)', () => expect(roundToDecimal(-2.455, 2)).toBe(-2.46));
+  it('handles negatives: -2.455 → -2.46 (away from zero)', () =>
+    expect(roundToDecimal(-2.455, 2)).toBe(-2.46));
 });
 
 describe('calcPercentChange', () => {
   it('returns 0 when prior is 0', () => expect(calcPercentChange(100, 0)).toBe(0));
   it('returns positive change', () => expect(calcPercentChange(120, 100)).toBe(20.0));
   it('returns negative change', () => expect(calcPercentChange(80, 100)).toBe(-20.0));
-  it('rounds to 1 decimal place: 11/99 → 11.1%', () => expect(calcPercentChange(110, 99)).toBe(11.1));
+  it('rounds to 1 decimal place: 11/99 → 11.1%', () =>
+    expect(calcPercentChange(110, 99)).toBe(11.1));
 });
 
 describe('calcTotalPages', () => {

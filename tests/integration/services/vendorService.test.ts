@@ -48,12 +48,24 @@ const setupServices = () => {
     geoCoderService,
     maintenanceRequestDAO: {
       getStats: jest.fn().mockResolvedValue({
-        total: 0, open: 0, assigned: 0, inProgress: 0, awaitingInvoice: 0,
-        completed: 0, cancelled: 0, pending: 0, byCategory: {}, byPriority: {},
-        pendingInvoices: 0, avgResolutionDays: 0,
+        total: 0,
+        open: 0,
+        assigned: 0,
+        inProgress: 0,
+        awaitingInvoice: 0,
+        completed: 0,
+        cancelled: 0,
+        pending: 0,
+        byCategory: {},
+        byPriority: {},
+        pendingInvoices: 0,
+        avgResolutionDays: 0,
       }),
       getVendorStats: jest.fn().mockResolvedValue({
-        total: 0, assigned: 0, inProgress: 0, completed: 0,
+        total: 0,
+        assigned: 0,
+        inProgress: 0,
+        completed: 0,
       }),
     } as any,
     queueFactory: mockQueueFactory as any,
@@ -284,9 +296,7 @@ describe('VendorService Integration Tests - Write Operations', () => {
         ],
       } as any);
 
-      geoCoderService.parseLocation.mockReturnValue(
-        Promise.resolve({ success: false })
-      );
+      geoCoderService.parseLocation.mockReturnValue(Promise.resolve({ success: false }));
 
       const result = await vendorService.updateVendorInfo(vendor.vuid, {
         address: { fullAddress: 'Unknown Address 999' } as any,
@@ -862,9 +872,9 @@ describe('VendorService.getVendorTeamMembers — auth guard', () => {
       vendorInfo: { isLinkedAccount: true },
     });
 
-    await expect(
-      vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)
-    ).rejects.toThrow(ForbiddenError);
+    await expect(vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)).rejects.toThrow(
+      ForbiddenError
+    );
   });
 
   it('tenant is forbidden from retrieving vendor team members', async () => {
@@ -877,8 +887,8 @@ describe('VendorService.getVendorTeamMembers — auth guard', () => {
       cuid: client.cuid,
     });
 
-    await expect(
-      vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)
-    ).rejects.toThrow(ForbiddenError);
+    await expect(vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)).rejects.toThrow(
+      ForbiddenError
+    );
   });
 });

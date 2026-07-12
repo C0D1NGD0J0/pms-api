@@ -85,7 +85,11 @@ describe('SubscriptionService - Webhook Handlers', () => {
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
       authCache: mockAuthCache,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       emailQueue: {} as any,
@@ -98,7 +102,11 @@ describe('SubscriptionService - Webhook Handlers', () => {
       clientDAO: mockClientDAO,
       userDAO: mockUserDAO,
       authCache: mockAuthCache,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       paymentGatewayService: mockPaymentGatewayService,
       emitterService: mockEmitterService,
       sseService: mockSSEService,
@@ -189,7 +197,10 @@ describe('SubscriptionService - Webhook Handlers', () => {
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
-      mockSubscriptionDAO.update.mockResolvedValue({ ...mockSubscription, status: ISubscriptionStatus.ACTIVE } as any);
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        status: ISubscriptionStatus.ACTIVE,
+      } as any);
       mockPaymentGatewayService.getInvoicePaymentDetails = jest.fn().mockResolvedValue({
         data: { chargeId: 'ch_test123' },
       });
@@ -232,7 +243,10 @@ describe('SubscriptionService - Webhook Handlers', () => {
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
-      mockSubscriptionDAO.update.mockResolvedValue({ ...mockSubscription, status: ISubscriptionStatus.ACTIVE } as any);
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        status: ISubscriptionStatus.ACTIVE,
+      } as any);
       mockPaymentGatewayService.getInvoicePaymentDetails = jest.fn().mockResolvedValue({
         data: { chargeId: 'ch_renewal' },
       });
@@ -269,7 +283,10 @@ describe('SubscriptionService - Webhook Handlers', () => {
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
-      mockSubscriptionDAO.update.mockResolvedValue({ ...mockSubscription, status: ISubscriptionStatus.ACTIVE } as any);
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        status: ISubscriptionStatus.ACTIVE,
+      } as any);
 
       await subscriptionService.handleInvoicePaid({
         id: 'in_test123',
@@ -294,7 +311,10 @@ describe('SubscriptionService - Webhook Handlers', () => {
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
-      mockSubscriptionDAO.update.mockResolvedValue({ ...mockSubscription, status: ISubscriptionStatus.ACTIVE } as any);
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        status: ISubscriptionStatus.ACTIVE,
+      } as any);
       mockPaymentGatewayService.getCharge = jest.fn().mockResolvedValue({
         success: true,
         data: { payment_method_details: {} },
@@ -686,9 +706,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       const result = await subscriptionService.handleSubscriptionUpdated({
         stripeSubscriptionId: 'sub_test123',
         status: 'active',
-        items: [
-          { id: 'si_base123', price: { lookup_key: 'growth_monthly_price' }, quantity: 1 },
-        ],
+        items: [{ id: 'si_base123', price: { lookup_key: 'growth_monthly_price' }, quantity: 1 }],
       });
 
       expect(result.success).toBe(true);

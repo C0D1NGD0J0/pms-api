@@ -214,7 +214,10 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       await Subscription.updateOne({ client: testClientId }, { status: 'pending_payment' });
       const subscription = await Subscription.findOne({ client: testClientId });
 
-      const result = await subscriptionDAO.updateStatus(subscription!._id, ISubscriptionStatus.ACTIVE);
+      const result = await subscriptionDAO.updateStatus(
+        subscription!._id,
+        ISubscriptionStatus.ACTIVE
+      );
 
       expect(result?.status).toBe('active');
     });
@@ -222,7 +225,10 @@ describe('SubscriptionDAO - updateResourceCount', () => {
     it('should transition to inactive', async () => {
       const subscription = await Subscription.findOne({ client: testClientId });
 
-      const result = await subscriptionDAO.updateStatus(subscription!._id, ISubscriptionStatus.INACTIVE);
+      const result = await subscriptionDAO.updateStatus(
+        subscription!._id,
+        ISubscriptionStatus.INACTIVE
+      );
 
       expect(result?.status).toBe('inactive');
     });

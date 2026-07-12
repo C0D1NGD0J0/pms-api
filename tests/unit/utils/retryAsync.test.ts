@@ -11,14 +11,22 @@ async function run<T>(op: () => Promise<T>): Promise<T> {
 }
 
 describe('retryAsync', () => {
-  beforeEach(() => { jest.useFakeTimers(); });
-  afterEach(() => { jest.useRealTimers(); });
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
 
   it('returns value immediately on first success', async () => {
     const fn = jest.fn();
     fn.mockReturnValue(Promise.resolve('ok'));
 
-    const result = await retryAsync(fn as () => Promise<string>, { attempts: 3, backoff: 'fixed', delay: 50 });
+    const result = await retryAsync(fn as () => Promise<string>, {
+      attempts: 3,
+      backoff: 'fixed',
+      delay: 50,
+    });
 
     expect(result).toBe('ok');
     expect(fn).toHaveBeenCalledTimes(1);
@@ -26,10 +34,13 @@ describe('retryAsync', () => {
 
   it('retries on failure and returns value on later success', async () => {
     const fn = jest.fn();
-    fn.mockImplementationOnce(() => Promise.reject(new Error('transient')))
-      .mockImplementation(() => Promise.resolve('recovered'));
+    fn.mockImplementationOnce(() => Promise.reject(new Error('transient'))).mockImplementation(() =>
+      Promise.resolve('recovered')
+    );
 
-    const result = await run(() => retryAsync(fn as () => Promise<string>, { attempts: 3, backoff: 'fixed', delay: 50 }));
+    const result = await run(() =>
+      retryAsync(fn as () => Promise<string>, { attempts: 3, backoff: 'fixed', delay: 50 })
+    );
 
     expect(result).toBe('recovered');
     expect(fn).toHaveBeenCalledTimes(2);
@@ -40,7 +51,9 @@ describe('retryAsync', () => {
     fn.mockImplementation(() => Promise.reject(new Error('always fails')));
 
     await expect(
-      run(() => retryAsync(fn as () => Promise<never>, { attempts: 3, backoff: 'fixed', delay: 50 }))
+      run(() =>
+        retryAsync(fn as () => Promise<never>, { attempts: 3, backoff: 'fixed', delay: 50 })
+      )
     ).rejects.toThrow('always fails');
 
     expect(fn).toHaveBeenCalledTimes(3);
@@ -52,7 +65,14 @@ describe('retryAsync', () => {
     const retryOn = asCallback<(e: Error) => boolean>(jest.fn().mockReturnValue(false));
 
     await expect(
-      run(() => retryAsync(fn as () => Promise<never>, { attempts: 3, backoff: 'fixed', delay: 50, retryOn }))
+      run(() =>
+        retryAsync(fn as () => Promise<never>, {
+          attempts: 3,
+          backoff: 'fixed',
+          delay: 50,
+          retryOn,
+        })
+      )
     ).rejects.toThrow('fatal');
 
     expect(fn).toHaveBeenCalledTimes(1);
@@ -67,7 +87,9 @@ describe('retryAsync', () => {
       .mockImplementation(() => Promise.resolve('done'));
     const onRetry = jest.fn();
 
-    await run(() => retryAsync(fn as () => Promise<string>, { attempts: 3, backoff: 'fixed', delay: 50, onRetry }));
+    await run(() =>
+      retryAsync(fn as () => Promise<string>, { attempts: 3, backoff: 'fixed', delay: 50, onRetry })
+    );
 
     expect(onRetry).toHaveBeenCalledTimes(2);
     expect(onRetry).toHaveBeenNthCalledWith(1, err1, 1);
@@ -79,7 +101,9 @@ describe('retryAsync', () => {
     const spy = jest.spyOn(globalThis, 'setTimeout');
 
     await expect(
-      run(() => retryAsync(fn as () => Promise<never>, { attempts: 3, backoff: 'fixed', delay: 200 }))
+      run(() =>
+        retryAsync(fn as () => Promise<never>, { attempts: 3, backoff: 'fixed', delay: 200 })
+      )
     ).rejects.toThrow();
 
     const delays = spy.mock.calls.map((c) => c[1] as number);
@@ -92,7 +116,9 @@ describe('retryAsync', () => {
     const spy = jest.spyOn(globalThis, 'setTimeout');
 
     await expect(
-      run(() => retryAsync(fn as () => Promise<never>, { attempts: 4, backoff: 'exponential', delay: 100 }))
+      run(() =>
+        retryAsync(fn as () => Promise<never>, { attempts: 4, backoff: 'exponential', delay: 100 })
+      )
     ).rejects.toThrow();
 
     const delays = spy.mock.calls.map((c) => c[1] as number);

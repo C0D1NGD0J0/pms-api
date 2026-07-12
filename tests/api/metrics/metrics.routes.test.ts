@@ -11,11 +11,35 @@ const mockMetricsController = {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: {
-        leases: { totalLeases: 5, leasesByStatus: { active: 4 }, occupancyRate: 80, monthlyRentByCurrency: [{ currency: 'USD', total: 12000 }], expiringIn30Days: 1 },
-        payments: { byCurrency: [{ currency: 'USD', totalRevenue: 50000, monthRevenue: 5000, pendingAmount: 2000 }], overdueCount: 1, totalCount: 20, onTimeRate: 90, avgPaymentDelayDays: 3 },
+        leases: {
+          totalLeases: 5,
+          leasesByStatus: { active: 4 },
+          occupancyRate: 80,
+          monthlyRentByCurrency: [{ currency: 'USD', total: 12000 }],
+          expiringIn30Days: 1,
+        },
+        payments: {
+          byCurrency: [
+            { currency: 'USD', totalRevenue: 50000, monthRevenue: 5000, pendingAmount: 2000 },
+          ],
+          overdueCount: 1,
+          totalCount: 20,
+          onTimeRate: 90,
+          avgPaymentDelayDays: 3,
+        },
         properties: { total: 5, occupied: 4, vacant: 1, occupancyRate: 80 },
         users: { total: 10, tenants: 5, staff: 3 },
-        maintenance: { open: 2, assigned: 1, inProgress: 1, completed: 5, cancelled: 0, pending: 0, avgResolutionDays: 4, byPriority: { high: 1, medium: 1 }, byCategory: { plumbing: 2 } },
+        maintenance: {
+          open: 2,
+          assigned: 1,
+          inProgress: 1,
+          completed: 5,
+          cancelled: 0,
+          pending: 0,
+          avgResolutionDays: 4,
+          byPriority: { high: 1, medium: 1 },
+          byCategory: { plumbing: 2 },
+        },
         generatedAt: new Date().toISOString(),
       },
     });
@@ -25,7 +49,11 @@ const mockMetricsController = {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: [
-        { metadata: { cuid: 'cuid123', metricType: 'payment' }, measurements: { totalRevenue: 45000 }, timestamp: new Date().toISOString() },
+        {
+          metadata: { cuid: 'cuid123', metricType: 'payment' },
+          measurements: { totalRevenue: 45000 },
+          timestamp: new Date().toISOString(),
+        },
       ],
     });
   }),

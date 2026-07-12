@@ -202,14 +202,11 @@ describe('PaymentGatewayService Integration Tests', () => {
 
       mockStripeService.createRefund.mockResolvedValue(mockRefundResult);
 
-      const result = await paymentGatewayService.createRefund(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          chargeId: 'ch_test_abc',
-          amountInCents: 150000,
-          reason: 'requested_by_customer',
-        }
-      );
+      const result = await paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
+        chargeId: 'ch_test_abc',
+        amountInCents: 150000,
+        reason: 'requested_by_customer',
+      });
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockRefundResult);
@@ -223,10 +220,9 @@ describe('PaymentGatewayService Integration Tests', () => {
     it('should return error when createRefund fails', async () => {
       mockStripeService.createRefund.mockRejectedValue(new Error('Stripe refund failed'));
 
-      const result = await paymentGatewayService.createRefund(
-        IPaymentGatewayProvider.STRIPE,
-        { chargeId: 'ch_bad' }
-      );
+      const result = await paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
+        chargeId: 'ch_bad',
+      });
 
       expect(result.success).toBe(false);
       expect(result.message).toBe('Stripe refund failed');
@@ -240,10 +236,9 @@ describe('PaymentGatewayService Integration Tests', () => {
         currency: 'usd',
       });
 
-      const result = await paymentGatewayService.createRefund(
-        IPaymentGatewayProvider.STRIPE,
-        { chargeId: 'ch_full' }
-      );
+      const result = await paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
+        chargeId: 'ch_full',
+      });
 
       expect(result.success).toBe(true);
       expect(mockStripeService.createRefund).toHaveBeenCalledWith({
@@ -311,7 +306,9 @@ describe('PaymentGatewayService Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toEqual(mockList);
-      expect(mockStripeService.listConnectPayouts).toHaveBeenCalledWith('acct_test_123', { limit: 20 });
+      expect(mockStripeService.listConnectPayouts).toHaveBeenCalledWith('acct_test_123', {
+        limit: 20,
+      });
     });
 
     it('should return error when StripeService.listConnectPayouts throws', async () => {

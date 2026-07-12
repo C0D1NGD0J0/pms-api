@@ -124,18 +124,9 @@ describe('SMS User Routes', () => {
       });
 
       // Register SMS user routes — mirrors app/routes/users.routes.ts
-      testApp.post(
-        `${baseUrl}/:cuid/verify-phone`,
-        mockUserController.sendPhoneOTP
-      );
-      testApp.post(
-        `${baseUrl}/:cuid/confirm-otp`,
-        mockUserController.verifyPhoneOTP
-      );
-      testApp.patch(
-        `${baseUrl}/:cuid/sms-consent`,
-        mockUserController.updateSMSConsent
-      );
+      testApp.post(`${baseUrl}/:cuid/verify-phone`, mockUserController.sendPhoneOTP);
+      testApp.post(`${baseUrl}/:cuid/confirm-otp`, mockUserController.verifyPhoneOTP);
+      testApp.patch(`${baseUrl}/:cuid/sms-consent`, mockUserController.updateSMSConsent);
     });
   });
 
@@ -172,14 +163,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when phoneNumber is missing', async () => {
-      mockUserController.sendPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'phoneNumber is required',
-          });
-        }
-      );
+      mockUserController.sendPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'phoneNumber is required',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -191,14 +180,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when phoneNumber is not E.164 format', async () => {
-      mockUserController.sendPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'Must be E.164 format (e.g., +14155551234)',
-          });
-        }
-      );
+      mockUserController.sendPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Must be E.164 format (e.g., +14155551234)',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -210,14 +197,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should handle rate limit exceeded', async () => {
-      mockUserController.sendPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.RATE_LIMITER).json({
-            success: false,
-            message: 'Too many OTP requests, please try again later',
-          });
-        }
-      );
+      mockUserController.sendPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.RATE_LIMITER).json({
+          success: false,
+          message: 'Too many OTP requests, please try again later',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -228,14 +213,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should handle quota exceeded error', async () => {
-      mockUserController.sendPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.FORBIDDEN).json({
-            success: false,
-            message: 'SMS quota exceeded for this billing period',
-          });
-        }
-      );
+      mockUserController.sendPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.FORBIDDEN).json({
+          success: false,
+          message: 'SMS quota exceeded for this billing period',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -267,14 +250,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when otp is missing', async () => {
-      mockUserController.verifyPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'otp is required',
-          });
-        }
-      );
+      mockUserController.verifyPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'otp is required',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -286,14 +267,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when otp is not exactly 6 digits', async () => {
-      mockUserController.verifyPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'OTP must be 6 digits',
-          });
-        }
-      );
+      mockUserController.verifyPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'OTP must be 6 digits',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -305,14 +284,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when phoneNumber is invalid E.164', async () => {
-      mockUserController.verifyPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'Must be E.164 format',
-          });
-        }
-      );
+      mockUserController.verifyPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Must be E.164 format',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -324,14 +301,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when both phoneNumber and otp are missing', async () => {
-      mockUserController.verifyPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'phoneNumber and otp are required',
-          });
-        }
-      );
+      mockUserController.verifyPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'phoneNumber and otp are required',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -343,14 +318,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should handle expired OTP error', async () => {
-      mockUserController.verifyPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'OTP has expired or is invalid',
-          });
-        }
-      );
+      mockUserController.verifyPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'OTP has expired or is invalid',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -362,14 +335,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should handle too many failed verification attempts', async () => {
-      mockUserController.verifyPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.RATE_LIMITER).json({
-            success: false,
-            message: 'Too many failed attempts, request a new OTP',
-          });
-        }
-      );
+      mockUserController.verifyPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.RATE_LIMITER).json({
+          success: false,
+          message: 'Too many failed attempts, request a new OTP',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -413,14 +384,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when consent field is missing', async () => {
-      mockUserController.updateSMSConsent.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'consent is required',
-          });
-        }
-      );
+      mockUserController.updateSMSConsent.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'consent is required',
+        });
+      });
 
       const response = await request(app)
         .patch(endpoint)
@@ -432,14 +401,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should return 400 when consent is not a boolean', async () => {
-      mockUserController.updateSMSConsent.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'consent must be a boolean',
-          });
-        }
-      );
+      mockUserController.updateSMSConsent.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'consent must be a boolean',
+        });
+      });
 
       const response = await request(app)
         .patch(endpoint)
@@ -450,14 +417,12 @@ describe('SMS User Routes', () => {
     });
 
     it('should handle unverified phone error', async () => {
-      mockUserController.updateSMSConsent.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'Phone number must be verified before granting SMS consent',
-          });
-        }
-      );
+      mockUserController.updateSMSConsent.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Phone number must be verified before granting SMS consent',
+        });
+      });
 
       const response = await request(app)
         .patch(endpoint)
@@ -533,14 +498,12 @@ describe('SMS User Routes', () => {
   // -------------------------------------------------------------------------
   describe('Cross-tenant access', () => {
     it('should return 403 when cuid does not match user client', async () => {
-      mockUserController.sendPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.FORBIDDEN).json({
-            success: false,
-            message: 'Unauthorized access to this client',
-          });
-        }
-      );
+      mockUserController.sendPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.FORBIDDEN).json({
+          success: false,
+          message: 'Unauthorized access to this client',
+        });
+      });
 
       const wrongCuid = faker.string.uuid();
       const response = await request(app)
@@ -557,14 +520,12 @@ describe('SMS User Routes', () => {
   // -------------------------------------------------------------------------
   describe('Error Handling', () => {
     it('should handle internal server errors gracefully', async () => {
-      mockUserController.sendPhoneOTP.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            message: 'Internal server error',
-          });
-        }
-      );
+      mockUserController.sendPhoneOTP.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: 'Internal server error',
+        });
+      });
 
       const response = await request(app)
         .post(`${baseUrl}/${mockCuid}/verify-phone`)
@@ -642,14 +603,8 @@ describe('SMS Subscription Routes', () => {
         next();
       });
 
-      testApp.get(
-        `${baseUrl}/:cuid/sms-quota`,
-        suiteSubscriptionController.getSMSQuota
-      );
-      testApp.get(
-        `${baseUrl}/:cuid/sms-logs`,
-        suiteSubscriptionController.getSMSLogs
-      );
+      testApp.get(`${baseUrl}/:cuid/sms-quota`, suiteSubscriptionController.getSMSQuota);
+      testApp.get(`${baseUrl}/:cuid/sms-logs`, suiteSubscriptionController.getSMSLogs);
     });
 
     // Unauthenticated app

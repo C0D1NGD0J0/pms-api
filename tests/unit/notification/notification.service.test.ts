@@ -649,37 +649,33 @@ describe('NotificationService - MR event handlers', () => {
 
   const mockMRDAO = {
     // scope stored as object (sanitized by submitWorkOrder service)
-    getByMruid: jest
-      .fn()
-      .mockReturnValue(
-        Promise.resolve({
-          mruid: 'MR-001',
-          title: 'Leaking pipe',
-          category: 'plumbing',
-          priority: 'high',
-          tenantId: 'tid1',
-          invoice: { amount: 50000, currency: 'USD' },
-          workOrder: {
-            estimatedCostInCents: 20000,
-            scope: { text: 'Fix pipe', html: '<p>Fix pipe</p>' },
-            notes: null,
-            lineItems: [],
-          },
-        })
-      ),
+    getByMruid: jest.fn().mockReturnValue(
+      Promise.resolve({
+        mruid: 'MR-001',
+        title: 'Leaking pipe',
+        category: 'plumbing',
+        priority: 'high',
+        tenantId: 'tid1',
+        invoice: { amount: 50000, currency: 'USD' },
+        workOrder: {
+          estimatedCostInCents: 20000,
+          scope: { text: 'Fix pipe', html: '<p>Fix pipe</p>' },
+          notes: null,
+          lineItems: [],
+        },
+      })
+    ),
   } as any;
 
   const mockUserDAOMR = {
-    findFirst: jest
-      .fn()
-      .mockReturnValue(
-        Promise.resolve({
-          _id: 'uid1',
-          email: 'user@test.com',
-          firstName: 'Test',
-          firstName2: 'User',
-        })
-      ),
+    findFirst: jest.fn().mockReturnValue(
+      Promise.resolve({
+        _id: 'uid1',
+        email: 'user@test.com',
+        firstName: 'Test',
+        firstName2: 'User',
+      })
+    ),
     findById: jest.fn(),
   } as any;
 

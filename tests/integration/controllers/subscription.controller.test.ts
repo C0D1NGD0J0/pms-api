@@ -103,21 +103,17 @@ describe('SubscriptionController Integration Tests', () => {
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
       sseService: { sendToUser: jest.fn().mockResolvedValue(true) } as any,
       clientDAO: {
-        getClientByCuid: jest
-          .fn()
-          .mockResolvedValue({
-            _id: new Types.ObjectId(),
-            cuid: 'client-super',
-            accountAdmin: new Types.ObjectId(),
-          }),
-        findById: jest
-          .fn()
-          .mockResolvedValue({
-            _id: new Types.ObjectId(),
-            cuid: 'client-super',
-            accountType: { category: 'individual' },
-            displayName: 'Test Client',
-          }),
+        getClientByCuid: jest.fn().mockResolvedValue({
+          _id: new Types.ObjectId(),
+          cuid: 'client-super',
+          accountAdmin: new Types.ObjectId(),
+        }),
+        findById: jest.fn().mockResolvedValue({
+          _id: new Types.ObjectId(),
+          cuid: 'client-super',
+          accountType: { category: 'individual' },
+          displayName: 'Test Client',
+        }),
       } as any,
       authCache: { invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }) } as any,
       subscriptionCache: {

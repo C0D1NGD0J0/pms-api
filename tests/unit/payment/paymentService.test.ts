@@ -251,10 +251,15 @@ describe('PaymentService - setup payment method webhooks', () => {
     expect(mockProfileDAO.update).toHaveBeenCalledWith(
       { user: new Types.ObjectId(tenantId) },
       {
-        $set: {
+        $set: expect.objectContaining({
           [`tenantInfo.paymentMethods.${pmAccountId}`]: 'pm_123',
           [`tenantInfo.paymentMandates.${pmAccountId}`]: 'mandate_123',
-        },
+          [`tenantInfo.padMandateDetails.${pmAccountId}`]: expect.objectContaining({
+            mandateId: 'mandate_123',
+            frequency: 'monthly',
+            amount: 0,
+          }),
+        }),
       }
     );
     expect(mockPaymentGatewayService.updateCustomerDefaultPaymentMethod).toHaveBeenCalledWith(
@@ -2817,7 +2822,7 @@ describe('PaymentService - markOverduePayments', () => {
   beforeEach(() => {
     mockPaymentDAO = {
       findOverduePayments: jest.fn(),
-      update: jest.fn(),
+      updateById: jest.fn(),
     } as unknown as jest.Mocked<PaymentDAO>;
 
     mockEmitter = { emit: jest.fn(), on: jest.fn() };
@@ -2833,13 +2838,19 @@ describe('PaymentService - markOverduePayments', () => {
     const p1 = makeOverduePayment();
     const p2 = makeOverduePayment();
     mockPaymentDAO.findOverduePayments.mockResolvedValue({ items: [p1, p2], total: 2 } as any);
-    mockPaymentDAO.update.mockResolvedValue(undefined as any);
+    mockPaymentDAO.updateById.mockResolvedValue(undefined as any);
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      expect.objectContaining({ _id: { $in: expect.arrayContaining([p1._id, p2._id]) } }),
-      { $set: { status: PaymentRecordStatus.OVERDUE } }
+    expect(mockPaymentDAO.updateById).toHaveBeenCalledTimes(2);
+    expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(
+      p1._id.toString(),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          status: PaymentRecordStatus.OVERDUE,
+          overdueAt: expect.any(Date),
+        }),
+      })
     );
     expect(mockEmitter.emit).toHaveBeenCalledTimes(2);
   });
@@ -2853,19 +2864,15 @@ describe('PaymentService - markOverduePayments', () => {
       items: [manual, autoDebit, noGateway],
       total: 3,
     } as any);
-    mockPaymentDAO.update.mockResolvedValue(undefined as any);
+    mockPaymentDAO.updateById.mockResolvedValue(undefined as any);
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    const updateCall = mockPaymentDAO.update.mock.calls[0][0] as any;
-    // autoDebit should NOT be in the $in list
-    expect(updateCall._id.$in.map((id: any) => id.toString())).not.toContain(
-      autoDebit._id.toString()
-    );
-    // manual (has gatewayPaymentId but isManualEntry=true) should be included
-    expect(updateCall._id.$in.map((id: any) => id.toString())).toContain(manual._id.toString());
-    // noGateway (isManualEntry=false, no gatewayPaymentId) should be included
-    expect(updateCall._id.$in.map((id: any) => id.toString())).toContain(noGateway._id.toString());
+    // autoDebit should be skipped — only manual and noGateway should be updated
+    const updatedIds = mockPaymentDAO.updateById.mock.calls.map((c: any) => c[0]);
+    expect(updatedIds).not.toContain(autoDebit._id.toString());
+    expect(updatedIds).toContain(manual._id.toString());
+    expect(updatedIds).toContain(noGateway._id.toString());
   });
 
   it('should do nothing when there are no past-due payments', async () => {
@@ -2873,7 +2880,7 @@ describe('PaymentService - markOverduePayments', () => {
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    expect(mockPaymentDAO.update).not.toHaveBeenCalled();
+    expect(mockPaymentDAO.updateById).not.toHaveBeenCalled();
     expect(mockEmitter.emit).not.toHaveBeenCalled();
   });
 
@@ -2886,7 +2893,7 @@ describe('PaymentService - markOverduePayments', () => {
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    expect(mockPaymentDAO.update).not.toHaveBeenCalled();
+    expect(mockPaymentDAO.updateById).not.toHaveBeenCalled();
   });
 });
 

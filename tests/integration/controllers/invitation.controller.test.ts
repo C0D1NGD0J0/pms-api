@@ -154,17 +154,15 @@ describe('InvitationController Integration Tests', () => {
           .fn()
           .mockResolvedValue({ success: true, data: { available: true } }),
         incrementSeatCount: jest.fn().mockResolvedValue({ success: true }),
-        getAvailableSeats: jest
-          .fn()
-          .mockResolvedValue({
-            availableSeats: 10,
-            currentSeats: 0,
-            totalAllowed: 10,
-            includedSeats: 10,
-            additionalSeats: 0,
-            maxAdditionalSeats: 5,
-            canPurchaseMore: true,
-          }),
+        getAvailableSeats: jest.fn().mockResolvedValue({
+          availableSeats: 10,
+          currentSeats: 0,
+          totalAllowed: 10,
+          includedSeats: 10,
+          additionalSeats: 0,
+          maxAdditionalSeats: 5,
+          canPurchaseMore: true,
+        }),
       } as any,
       paymentProcessorDAO: {} as any,
       paymentGatewayService: {

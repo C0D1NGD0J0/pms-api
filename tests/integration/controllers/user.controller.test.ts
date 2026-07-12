@@ -120,12 +120,10 @@ describe('UserController Integration Tests', () => {
       vendorService,
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
       paymentDAO: {
-        getTenantPaymentMetrics: jest
-          .fn()
-          .mockResolvedValue({
-            metrics: { totalRentPaid: 0, onTimePaymentRate: 0, averagePaymentDelay: 0 },
-            payments: [],
-          }),
+        getTenantPaymentMetrics: jest.fn().mockResolvedValue({
+          metrics: { totalRentPaid: 0, onTimePaymentRate: 0, averagePaymentDelay: 0 },
+          payments: [],
+        }),
       } as any,
       leaseDAO: {
         list: jest.fn().mockResolvedValue({ items: [], pagination: { total: 0 } }),

@@ -162,7 +162,7 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       expect(_updateSpy).toHaveBeenCalledWith(
         { client: mockClientId },
         { $inc: { currentSeats: 5 } },
-        { new: true },
+        { returnDocument: 'after' },
         undefined
       );
     });

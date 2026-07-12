@@ -37,7 +37,7 @@ describe('calcOccupancyRate / calcCollectionRate', () => {
 
 describe('msToDays', () => {
   it('returns 1 for exactly one day', () => expect(msToDays(86_400_000)).toBe(1));
-  it('ceils a partial day', () => expect(msToDays(86_400_000 * 1.5)).toBe(2));
+  it('floors a partial day', () => expect(msToDays(86_400_000 * 1.5)).toBe(1));
 });
 
 describe('calcDaysRemaining', () => {

@@ -437,18 +437,68 @@ export class RentPaymentService {
         paymentProcessor.accountId
       );
 
-      const { invoiceId, hostedInvoiceUrl } = await this.createAndFinalizeInvoice({
+      // Split ACSS payments that exceed the per-transaction limit into rent vs fees
+      const acssLimit = envVariables.STRIPE.ACSS_PER_TXN_LIMIT;
+      const rentItems = lineItems.filter((li) => li.description.toLowerCase().includes('rent'));
+      const feeItems = lineItems.filter((li) => !li.description.toLowerCase().includes('rent'));
+      const needsSplit =
+        isAch && totalAmountInCents > acssLimit && rentItems.length > 0 && feeItems.length > 0;
+
+      let invoiceId: string;
+      let hostedInvoiceUrl: string | undefined;
+      let splitInvoices: typeof payment.splitInvoices;
+
+      const invoiceOpts = {
         tenantCustomerId,
         connectedAccountId: paymentProcessor.accountId,
-        applicationFee: feeBreakdown.applicationFee,
         currency: leaseFees.currency.toLowerCase(),
-        description: data.description || `Rent for ${data.period?.month}/${data.period?.year}`,
         dueDate: data.dueDate,
-        lineItems,
         cuid,
         paymentMethodId,
         leaseUid: lease.luid,
-      });
+      };
+
+      if (needsSplit) {
+        const rentInvoice = await this.createAndFinalizeInvoice({
+          ...invoiceOpts,
+          applicationFee: 0,
+          description: `Rent for ${data.period?.month}/${data.period?.year}`,
+          lineItems: rentItems,
+        });
+
+        const feesInvoice = await this.createAndFinalizeInvoice({
+          ...invoiceOpts,
+          applicationFee: feeBreakdown.applicationFee,
+          description: `Fees for ${data.period?.month}/${data.period?.year}`,
+          lineItems: feeItems,
+        });
+
+        invoiceId = rentInvoice.invoiceId;
+        hostedInvoiceUrl = rentInvoice.hostedInvoiceUrl;
+        splitInvoices = [
+          {
+            invoiceId: rentInvoice.invoiceId,
+            amount: rentItems.reduce((s, li) => s + li.amountInCents, 0),
+            category: 'rent' as const,
+            status: 'pending' as const,
+          },
+          {
+            invoiceId: feesInvoice.invoiceId,
+            amount: feeItems.reduce((s, li) => s + li.amountInCents, 0),
+            category: 'fees' as const,
+            status: 'pending' as const,
+          },
+        ];
+      } else {
+        const result = await this.createAndFinalizeInvoice({
+          ...invoiceOpts,
+          applicationFee: feeBreakdown.applicationFee,
+          description: data.description || `Rent for ${data.period?.month}/${data.period?.year}`,
+          lineItems,
+        });
+        invoiceId = result.invoiceId;
+        hostedInvoiceUrl = result.hostedInvoiceUrl;
+      }
 
       const payment = await this.paymentDAO.insert({
         cuid,
@@ -473,6 +523,7 @@ export class RentPaymentService {
           amountInCents,
         })),
         ...(hostedInvoiceUrl && { receipt: { url: hostedInvoiceUrl } }),
+        ...(splitInvoices && { splitInvoices }),
       });
 
       this.emitterService.emit(EventTypes.PAYMENT_REQUEST_CREATED, {

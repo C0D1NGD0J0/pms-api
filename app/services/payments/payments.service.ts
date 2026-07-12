@@ -1299,6 +1299,44 @@ export class PaymentService implements ICronProvider {
       const totalAmountCents = payment.baseAmount ?? 0;
       const currency = payment.currency ?? 'usd';
 
+      // Recalculate application fee for card rates.
+      // The payment record may have been created with ACH/ACSS rates (1.75%)
+      // but card payments incur higher Stripe fees (2.9% + $0.30). We must
+      // use the plan's card transaction fee (3.5-4.5%) to ensure the platform
+      // covers Stripe's card processing cost from the application fee.
+      let cardApplicationFee = payment.applicationFee ?? 0;
+      if (!payment.paymentType || payment.paymentType !== PaymentRecordType.MAINTENANCE) {
+        try {
+          const subscription = await this.subscriptionDAO.findFirst({ cuid });
+          if (subscription?.planName) {
+            const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
+              subscription.planName
+            );
+            const recalculated = Math.round(totalAmountCents * (cardTxFeePercent / 100));
+            // Only use the recalculated fee if it's higher — never lower the fee
+            // below what was originally set (protects against config edge cases).
+            if (recalculated > cardApplicationFee) {
+              cardApplicationFee = recalculated;
+              this.log.info(
+                {
+                  pytuid,
+                  cuid,
+                  originalFee: payment.applicationFee,
+                  cardFee: cardApplicationFee,
+                  rate: cardTxFeePercent,
+                },
+                'Recalculated application fee for card checkout'
+              );
+            }
+          }
+        } catch (feeError: any) {
+          this.log.warn(
+            { pytuid, cuid, error: feeError.message },
+            'Failed to recalculate card application fee — using original'
+          );
+        }
+      }
+
       const tenantUser = await this.userDAO.findFirst({
         _id: new Types.ObjectId(tenantUserId),
       });
@@ -1340,7 +1378,7 @@ export class PaymentService implements ICronProvider {
             currency,
           },
         ],
-        applicationFeeAmount: payment.applicationFee ?? 0,
+        applicationFeeAmount: cardApplicationFee,
         destinationAccountId: paymentProcessor.accountId,
         metadata: { pytuid, cuid, uid, type: 'card_payment' },
         successUrl,

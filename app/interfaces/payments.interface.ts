@@ -40,6 +40,14 @@ export interface IPaymentDocument extends Document {
     reason?: string;
     disputedAt?: Date;
   };
+  splitInvoices?: {
+    invoiceId: string;
+    amount: number;
+    category: 'rent' | 'fees';
+    status: 'pending' | 'paid' | 'failed';
+    chargeId?: string;
+    paidAt?: Date;
+  }[];
   receipt?: {
     url?: string;
     filename?: string;

@@ -13,6 +13,7 @@ import { TenantPaymentStatus } from '@interfaces/invoice.interface';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { PaymentProcessorDAO, SubscriptionDAO, PaymentDAO, ProfileDAO } from '@dao/index';
+import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import {
   IPaymentGatewayProvider,
   PaymentRecordStatus,
@@ -45,6 +46,7 @@ export interface IStripeInvoiceWebhookData {
 }
 
 interface IConstructor {
+  subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
@@ -104,11 +106,13 @@ export class PaymentWebhookService {
   private readonly smsService: SMSService;
   private readonly userCache: UserCache;
   private readonly profileDAO: ProfileDAO;
+  private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly paymentDAO: PaymentDAO;
 
   constructor({
     paymentGatewayService,
     paymentProcessorDAO,
+    subscriptionPlanConfig,
     subscriptionDAO,
     emitterService,
     stripeService,
@@ -121,6 +125,7 @@ export class PaymentWebhookService {
     this.log = createLogger('PaymentWebhookService');
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
+    this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.subscriptionDAO = subscriptionDAO;
     this.emitterService = emitterService;
     this.stripeService = stripeService;
@@ -159,25 +164,92 @@ export class PaymentWebhookService {
 
       const hostedInvoiceUrl = invoiceData.hosted_invoice_url || null;
 
-      await this.paymentDAO.update(
-        { _id: payment._id, cuid: payment.cuid },
-        {
-          $set: {
-            status: PaymentRecordStatus.PAID,
-            paidAt: dayjs().toDate(),
-            gatewayChargeId: chargeId,
-            ...(paymentDetails.paymentMethodType && {
-              stripePaymentMethodType: paymentDetails.paymentMethodType,
-            }),
-            ...(payment.paymentMethod === PaymentMethod.OTHER && {
-              paymentMethod: PaymentMethod.ONLINE,
-            }),
-            ...(hostedInvoiceUrl && { 'receipt.url': hostedInvoiceUrl }),
-          },
+      // Handle split invoice payments
+      if (payment.splitInvoices?.length) {
+        const splitIndex = payment.splitInvoices.findIndex((si) => si.invoiceId === invoiceId);
+        if (splitIndex >= 0) {
+          await this.paymentDAO.update(
+            { _id: payment._id, cuid: payment.cuid },
+            {
+              $set: {
+                [`splitInvoices.${splitIndex}.status`]: 'paid',
+                [`splitInvoices.${splitIndex}.chargeId`]: chargeId,
+                [`splitInvoices.${splitIndex}.paidAt`]: dayjs().toDate(),
+              },
+            }
+          );
+
+          // Re-fetch to check if all splits are paid
+          const refreshed = await this.paymentDAO.findFirst({ _id: payment._id });
+          const allPaid = refreshed?.splitInvoices?.every((si) => si.status === 'paid');
+
+          if (allPaid) {
+            await this.paymentDAO.update(
+              { _id: payment._id, cuid: payment.cuid },
+              {
+                $set: {
+                  status: PaymentRecordStatus.PAID,
+                  paidAt: dayjs().toDate(),
+                  gatewayChargeId: chargeId,
+                  ...(paymentDetails.paymentMethodType && {
+                    stripePaymentMethodType: paymentDetails.paymentMethodType,
+                  }),
+                  ...(hostedInvoiceUrl && { 'receipt.url': hostedInvoiceUrl }),
+                },
+              }
+            );
+            this.log.info('All split invoices paid — payment marked as PAID', {
+              pytuid: payment.pytuid,
+              invoiceId,
+            });
+          } else {
+            // Ensure parent is PROCESSING while partial
+            if (payment.status !== PaymentRecordStatus.PROCESSING) {
+              await this.paymentDAO.update(
+                { _id: payment._id },
+                { $set: { status: PaymentRecordStatus.PROCESSING } }
+              );
+            }
+            this.log.info('Split invoice paid (partial)', {
+              pytuid: payment.pytuid,
+              invoiceId,
+              paidCount: refreshed?.splitInvoices?.filter((si) => si.status === 'paid').length,
+              totalCount: refreshed?.splitInvoices?.length,
+            });
+            return {
+              success: true,
+              data: undefined,
+              message: 'Split invoice partial payment recorded',
+            };
+          }
         }
-      );
+      } else {
+        // Non-split: direct update
+        await this.paymentDAO.update(
+          { _id: payment._id, cuid: payment.cuid },
+          {
+            $set: {
+              status: PaymentRecordStatus.PAID,
+              paidAt: dayjs().toDate(),
+              gatewayChargeId: chargeId,
+              ...(paymentDetails.paymentMethodType && {
+                stripePaymentMethodType: paymentDetails.paymentMethodType,
+              }),
+              ...(payment.paymentMethod === PaymentMethod.OTHER && {
+                paymentMethod: PaymentMethod.ONLINE,
+              }),
+              ...(hostedInvoiceUrl && { 'receipt.url': hostedInvoiceUrl }),
+            },
+          }
+        );
+      }
 
       this.log.info('Payment marked as paid', { pytuid: payment.pytuid, invoiceId, chargeId });
+
+      // Reconcile fee fields based on actual payment method used.
+      // The original fees may have been estimated for ACSS but the payment
+      // could have been collected via card (retry or tenant checkout).
+      await this.reconcilePaymentFees(payment, paymentDetails.paymentMethodType);
 
       // Look up tenant user ID from the Profile ref for receipt email
       let tenantUserId: string | undefined;
@@ -470,9 +542,37 @@ export class PaymentWebhookService {
       );
     }
 
-    // Create a new invoice with the card payment method.
-    // Use the application fee already stored on the payment record — no need
-    // to re-derive from subscription.
+    // Recalculate application fee for card rates since the original fee was
+    // computed for ACH/ACSS. Card processing costs are higher (2.9% + $0.30 vs
+    // flat $0.80), so the platform needs a higher application fee to cover them.
+    let cardApplicationFee = payment.applicationFee ?? 0;
+    try {
+      const subscription = await this.subscriptionDAO.findFirst({ cuid });
+      if (subscription?.planName) {
+        const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
+          subscription.planName
+        );
+        const recalculated = Math.round(payment.baseAmount * (cardTxFeePercent / 100));
+        if (recalculated > cardApplicationFee) {
+          cardApplicationFee = recalculated;
+          this.log.info(
+            {
+              pytuid: payment.pytuid,
+              cuid,
+              originalFee: payment.applicationFee,
+              cardFee: cardApplicationFee,
+            },
+            'Recalculated application fee for card retry'
+          );
+        }
+      }
+    } catch (feeError: any) {
+      this.log.warn(
+        { pytuid: payment.pytuid, cuid, error: feeError.message },
+        'Failed to recalculate card application fee for retry — using original'
+      );
+    }
+
     const lineItems = payment.lineItems?.length
       ? (payment.lineItems as { description: string; amountInCents: number }[])
       : [
@@ -487,7 +587,7 @@ export class PaymentWebhookService {
       {
         tenantCustomerId,
         connectedAccountId: processor.accountId,
-        applicationFeeAmountInCents: payment.applicationFee ?? 0,
+        applicationFeeAmountInCents: cardApplicationFee,
         currency: (payment.currency ?? 'USD').toLowerCase(),
         description: payment.description || `Card retry for ${payment.pytuid}`,
         autoChargeDueDate: dayjs().toDate(),
@@ -827,6 +927,9 @@ export class PaymentWebhookService {
       { pytuid, sessionId: session.id, paymentIntentId, hasReceipt: !!receiptUrl },
       'Payment marked as PAID via card checkout'
     );
+
+    // Card checkout always uses card — reconcile fees accordingly.
+    await this.reconcilePaymentFees(payment, 'card');
 
     // Save the card to a separate field so the bank account (primary) is not
     // overwritten. This card is used by retryPaymentWithCard for ACSS fallback
@@ -1193,6 +1296,97 @@ export class PaymentWebhookService {
       amount: disputeData.amount,
       currency: disputeData.currency,
     };
+  }
+
+  /**
+   * Reconcile processingFee, applicationFee, and platformRevenue on a payment
+   * record based on the actual payment method used. The original values may have
+   * been estimated for ACSS but the actual charge went through on a card.
+   */
+  private async reconcilePaymentFees(
+    payment: IPaymentDocument,
+    actualPaymentMethodType?: string
+  ): Promise<void> {
+    try {
+      const { cuid } = payment;
+      const isCard =
+        actualPaymentMethodType === 'card' ||
+        actualPaymentMethodType === 'us_bank_account' ||
+        (!actualPaymentMethodType && payment.paymentMethod === PaymentMethod.ONLINE);
+      const isAcss = actualPaymentMethodType === 'acss_debit';
+
+      // Determine actual gateway fee
+      const gatewayFeeType = isAcss ? 'auto-debit' : undefined;
+      const actualGatewayFee = this.subscriptionPlanConfig.calculatePaymentGatewayFee(
+        payment.baseAmount,
+        'stripe',
+        gatewayFeeType
+      );
+
+      // Determine actual application fee
+      let actualApplicationFee = payment.applicationFee ?? 0;
+      if (isCard && !isAcss) {
+        // Card payment — use plan's card transaction fee rate
+        const subscription = await this.subscriptionDAO.findFirst({ cuid });
+        if (subscription?.planName) {
+          const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
+            subscription.planName
+          );
+          actualApplicationFee = Math.round(payment.baseAmount * (cardTxFeePercent / 100));
+        }
+      } else if (isAcss) {
+        // ACSS payment — use ACH application fee rate
+        actualApplicationFee = this.subscriptionPlanConfig.calculateAchApplicationFee(
+          payment.baseAmount
+        );
+      }
+
+      const actualPlatformRevenue = actualApplicationFee - actualGatewayFee;
+
+      // Only update if values differ from what's stored
+      const feeChanged =
+        actualGatewayFee !== (payment.processingFee ?? 0) ||
+        actualApplicationFee !== (payment.applicationFee ?? 0) ||
+        actualPlatformRevenue !== (payment.platformRevenue ?? 0);
+
+      if (feeChanged) {
+        await this.paymentDAO.update(
+          { _id: payment._id, cuid },
+          {
+            $set: {
+              processingFee: actualGatewayFee,
+              applicationFee: actualApplicationFee,
+              platformRevenue: actualPlatformRevenue,
+            },
+          }
+        );
+
+        this.log.info(
+          {
+            pytuid: payment.pytuid,
+            cuid,
+            actualPaymentMethodType,
+            old: {
+              processingFee: payment.processingFee,
+              applicationFee: payment.applicationFee,
+              platformRevenue: payment.platformRevenue,
+            },
+            new: {
+              processingFee: actualGatewayFee,
+              applicationFee: actualApplicationFee,
+              platformRevenue: actualPlatformRevenue,
+            },
+          },
+          'Reconciled payment fees based on actual payment method'
+        );
+      }
+    } catch (error: any) {
+      // Fee reconciliation is non-critical — log but don't fail the webhook
+      this.log.error(
+        { pytuid: payment.pytuid, cuid: payment.cuid, error: error.message },
+        'Failed to reconcile payment fees'
+      );
+    }
   }
 
   private async markMaintenanceChargePaid(

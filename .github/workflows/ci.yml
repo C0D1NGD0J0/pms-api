@@ -7,6 +7,10 @@ on:
     branches: [main]
     types: [opened, synchronize, reopened, labeled]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_ENV: test
   NODE_VERSION: "22"

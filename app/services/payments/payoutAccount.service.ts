@@ -67,7 +67,11 @@ export class PayoutAccountService {
   }
 
   private async getProcessorOrThrow(cuid: string) {
-    const processor = await this.paymentProcessorDAO.findFirst({ cuid });
+    const processor = await this.paymentProcessorDAO.findFirst({
+      cuid,
+      ownerType: 'client',
+      deletedAt: null,
+    });
     if (!processor?.accountId) {
       throw new BadRequestError({ message: 'Payment account not configured' });
     }
@@ -356,6 +360,42 @@ export class PayoutAccountService {
       return { success: true, data: null, message: 'Payout schedule updated successfully' };
     } catch (error) {
       this.log.error('Error updating payout schedule', error);
+      throw error;
+    }
+  }
+
+  async unblockPayouts(cuid: string, userId: string): IPromiseReturnedData<null> {
+    try {
+      const processor = await this.getProcessorOrThrow(cuid);
+
+      if (!processor.payoutsBlocked) {
+        return { success: true, data: null, message: 'Payouts are not blocked' };
+      }
+
+      // Only allow unblocking if there are no open disputes
+      if (processor.disputeStats?.open && processor.disputeStats.open > 0) {
+        throw new BadRequestError({
+          message: `Cannot unblock payouts — ${processor.disputeStats.open} dispute(s) are still open`,
+        });
+      }
+
+      await this.paymentProcessorDAO.update(
+        { _id: processor._id },
+        {
+          $set: {
+            payoutsBlocked: false,
+            payoutsBlockedReason: undefined,
+            payoutsBlockedAt: undefined,
+            payoutsBlockedBy: undefined,
+          },
+        }
+      );
+
+      this.log.info({ cuid, userId, ppuid: processor.ppuid }, 'Payouts unblocked by admin');
+
+      return { success: true, data: null, message: 'Payouts unblocked successfully' };
+    } catch (error) {
+      this.log.error('Error unblocking payouts', error);
       throw error;
     }
   }

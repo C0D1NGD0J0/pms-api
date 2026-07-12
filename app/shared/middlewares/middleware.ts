@@ -972,6 +972,28 @@ export const requireRole = (roles: string[]) => {
   };
 };
 
+/**
+ * Restricts payout routes to super admins and staff in the accounting department.
+ * Payout data (balances, history, schedules) is sensitive financial information
+ * that should not be accessible to general staff or maintenance departments.
+ */
+export const requirePayoutAccess = (req: Request, _res: Response, next: NextFunction) => {
+  const appReq = req as AppRequest;
+  const role = appReq.context?.currentuser?.client?.role;
+  const department = appReq.context?.currentuser?.employeeInfo?.department;
+
+  const isSuperAdmin = role === ROLES.SUPER_ADMIN || role === ROLES.ROOT_ADMIN;
+  const isAccountingStaff = role === ROLES.STAFF && department === 'accounting';
+
+  if (!isSuperAdmin && !isAccountingStaff) {
+    return next(
+      new ForbiddenError({ message: 'Payout access requires super admin or accounting role.' })
+    );
+  }
+
+  return next();
+};
+
 export const idempotency = async (
   req: AppRequest,
   res: Response,

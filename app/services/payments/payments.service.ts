@@ -1517,6 +1517,10 @@ export class PaymentService implements ICronProvider {
     return this.payoutAccountService.updatePayoutSchedule(cuid, interval, weeklyAnchor);
   }
 
+  async unblockPayouts(cuid: string, userId: string): IPromiseReturnedData<null> {
+    return this.payoutAccountService.unblockPayouts(cuid, userId);
+  }
+
   // ── Maintenance Payment ─────────────────────────────────────────────
 
   async chargeForMaintenance(

@@ -6,12 +6,14 @@ import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
   requireVerifiedClient,
+  requirePayoutAccess,
   requireNotSuspended,
   requireActiveTenant,
   requirePermission,
   isAuthenticated,
   basicLimiter,
   idempotency,
+  requireRole,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -266,6 +268,7 @@ router.get(
   '/:cuid/payout-account/dashboard',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
@@ -277,6 +280,7 @@ router.get(
   '/:cuid/payout-account/balance',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
@@ -288,6 +292,7 @@ router.get(
   '/:cuid/payout-account/history',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
   validateRequest({ params: UtilsValidations.cuid, query: PaymentValidations.payoutHistoryQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
@@ -299,6 +304,7 @@ router.get(
   '/:cuid/payout-account/schedule',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
@@ -310,6 +316,7 @@ router.patch(
   '/:cuid/payout-account/schedule',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
   validateRequest({
     params: UtilsValidations.cuid,
     body: PaymentValidations.updatePayoutScheduleBody,
@@ -317,6 +324,18 @@ router.patch(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.updatePayoutSchedule(req, res);
+  })
+);
+
+// Unblock payouts — ROOT_ADMIN only (platform admin, not client super admin)
+router.patch(
+  '/:cuid/payout-account/unblock',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requireRole(['root-admin']),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.unblockPayouts(req, res);
   })
 );
 

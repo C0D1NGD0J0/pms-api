@@ -15,6 +15,7 @@ env:
   NODE_VERSION: "22"
   JWT_SECRET: ci-test-secret
   JWT_REFRESH_SECRET: ci-test-refresh-secret
+  STRIPE_SECRET_KEY: sk_test_ci_placeholder
 
 jobs:
   full-suite:

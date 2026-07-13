@@ -145,6 +145,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       return await this.list({
         status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
         dueDate: { $lt: dayjs().toDate() },
+        'dispute.status': { $nin: ['open', 'needs_response'] },
         deletedAt: null,
       });
     } catch (error: any) {

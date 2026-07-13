@@ -75,7 +75,9 @@ describe('InvitationValidations', () => {
         cuid: 'test-client',
       };
 
-      await expect(schema.parseAsync(invalidData)).rejects.toThrow('linkedVendorUid must be a valid vendor UID');
+      await expect(schema.parseAsync(invalidData)).rejects.toThrow(
+        'linkedVendorUid must be a valid vendor UID'
+      );
     });
 
     it('should reject vendor UIDs with invalid characters', async () => {
@@ -89,7 +91,9 @@ describe('InvitationValidations', () => {
         cuid: 'test-client',
       };
 
-      await expect(schema.parseAsync(invalidData)).rejects.toThrow('linkedVendorUid must be a valid vendor UID');
+      await expect(schema.parseAsync(invalidData)).rejects.toThrow(
+        'linkedVendorUid must be a valid vendor UID'
+      );
     });
   });
 });

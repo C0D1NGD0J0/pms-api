@@ -1,7 +1,11 @@
 import { JOB_NAME } from '@utils/constants';
 import { PaymentWorker } from '@workers/payment.worker';
 import { PaymentRecordType } from '@interfaces/payments.interface';
-import { ICreateRentInvoiceJobData, ICancelPaymentJobData, PaymentQueue } from '@queues/payment.queue';
+import {
+  ICreateRentInvoiceJobData,
+  ICancelPaymentJobData,
+  PaymentQueue,
+} from '@queues/payment.queue';
 
 // Mock BaseQueue so we don't need Redis in unit tests
 jest.mock('@queues/base.queue', () => {
@@ -20,9 +24,11 @@ const makeWorker = (): jest.Mocked<PaymentWorker> =>
   ({
     handleCreateRentInvoice: jest.fn(),
     handleCancelPayment: jest.fn(),
-  } as unknown as jest.Mocked<PaymentWorker>);
+  }) as unknown as jest.Mocked<PaymentWorker>;
 
-const makeRentJobData = (overrides: Partial<ICreateRentInvoiceJobData> = {}): ICreateRentInvoiceJobData => ({
+const makeRentJobData = (
+  overrides: Partial<ICreateRentInvoiceJobData> = {}
+): ICreateRentInvoiceJobData => ({
   cuid: 'MMQHHVX09JJT',
   leaseId: 'lease-object-id-123',
   tenantId: 'tenant-profile-id-456',
@@ -32,7 +38,9 @@ const makeRentJobData = (overrides: Partial<ICreateRentInvoiceJobData> = {}): IC
   ...overrides,
 });
 
-const makeCancelJobData = (overrides: Partial<ICancelPaymentJobData> = {}): ICancelPaymentJobData => ({
+const makeCancelJobData = (
+  overrides: Partial<ICancelPaymentJobData> = {}
+): ICancelPaymentJobData => ({
   cuid: 'MMQHHVX09JJT',
   pytuid: 'PYT001',
   ...overrides,
@@ -98,7 +106,10 @@ describe('PaymentQueue', () => {
       expect((queue as any).addJobToQueue).toHaveBeenCalledWith(
         JOB_NAME.CREATE_RENT_INVOICE_JOB,
         data,
-        expect.objectContaining({ attempts: 5, backoff: expect.objectContaining({ type: 'exponential' }) })
+        expect.objectContaining({
+          attempts: 5,
+          backoff: expect.objectContaining({ type: 'exponential' }),
+        })
       );
     });
 
@@ -137,10 +148,7 @@ describe('PaymentQueue', () => {
       const data = makeCancelJobData();
       await queue.addCancelPaymentJob(data);
 
-      expect((queue as any).addJobToQueue).toHaveBeenCalledWith(
-        JOB_NAME.CANCEL_PAYMENT_JOB,
-        data
-      );
+      expect((queue as any).addJobToQueue).toHaveBeenCalledWith(JOB_NAME.CANCEL_PAYMENT_JOB, data);
     });
 
     it('should include optional reason when provided', async () => {

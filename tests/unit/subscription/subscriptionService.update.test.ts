@@ -73,7 +73,11 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
       authCache: mockAuthCache,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       paymentGatewayService: mockPaymentGatewayService,
       sseService: mockSSEService,
       userDAO: {} as any,
@@ -215,7 +219,10 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         .spyOn(subscriptionService as any, 'createCheckoutSession')
         .mockResolvedValue({
           success: true,
-          data: { checkoutUrl: 'https://checkout.stripe.com/reactivate', sessionId: 'cs_reactivate' },
+          data: {
+            checkoutUrl: 'https://checkout.stripe.com/reactivate',
+            sessionId: 'cs_reactivate',
+          },
         });
 
       const result = await subscriptionService.initSubscriptionPayment(mockContext as any, {

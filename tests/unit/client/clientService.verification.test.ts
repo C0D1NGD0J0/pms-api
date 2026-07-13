@@ -38,7 +38,10 @@ describe('ClientService - Account Verification', () => {
       userDAO: {} as any,
       profileDAO: {} as any,
       authCache: {} as any,
-      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
+      userCache: {
+        invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
+        invalidateUserLists: jest.fn().mockResolvedValue(undefined),
+      } as any,
       subscriptionDAO: {} as any,
       subscriptionService: {} as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,

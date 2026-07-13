@@ -48,7 +48,9 @@ const makeService = (
     queueFactory: { getQueue } as any,
     pdfGeneratorService: {} as any,
     mediaUploadService: {} as any,
-    invoiceTemplateRenderer: { render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')) } as any,
+    invoiceTemplateRenderer: {
+      render: jest.fn().mockReturnValue(Promise.resolve('<html></html>')),
+    } as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     sseService: { sendToUser: jest.fn() } as any,
   });
@@ -69,7 +71,9 @@ describe('InvoiceService - requestInvoice', () => {
     } as unknown as jest.Mocked<PaymentDAO>;
   });
 
-  afterEach(() => { jest.clearAllMocks(); });
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('returns { status: "ready", url } immediately when invoiceDocument.url is already cached', async () => {
     const cachedUrl = 'https://s3.example.com/invoices/inv-001.pdf';
@@ -109,9 +113,7 @@ describe('InvoiceService - requestInvoice', () => {
   });
 
   it('enqueues a PDF job and returns { status: "queued", jobId } when no URL is cached', async () => {
-    (mockPaymentDAO.findFirst as jest.Mock).mockReturnValue(
-      Promise.resolve(makePayment())
-    );
+    (mockPaymentDAO.findFirst as jest.Mock).mockReturnValue(Promise.resolve(makePayment()));
 
     const { service, getQueue, addToPdfQueue } = makeService({ paymentDAO: mockPaymentDAO });
     const result = await service.requestInvoice(PYTUID, CUID);
@@ -131,12 +133,10 @@ describe('InvoiceService - requestInvoice', () => {
   });
 
   it('returns the job id from the queue in the queued response', async () => {
-    (mockPaymentDAO.findFirst as jest.Mock).mockReturnValue(
-      Promise.resolve(makePayment())
-    );
-    const addToPdfQueue = jest.fn().mockReturnValue(
-      Promise.resolve({ id: 'specific-job-id' })
-    ) as jest.Mock;
+    (mockPaymentDAO.findFirst as jest.Mock).mockReturnValue(Promise.resolve(makePayment()));
+    const addToPdfQueue = jest
+      .fn()
+      .mockReturnValue(Promise.resolve({ id: 'specific-job-id' })) as jest.Mock;
 
     const { service } = makeService({ paymentDAO: mockPaymentDAO, addToPdfQueue });
     const result = await service.requestInvoice(PYTUID, CUID);

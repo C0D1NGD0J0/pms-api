@@ -409,7 +409,9 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         } as any,
       };
 
-      const updateData: Partial<ILeaseFormData> = { fees: { rentAmount: 500 } as ILeaseFormData['fees'] };
+      const updateData: Partial<ILeaseFormData> = {
+        fees: { rentAmount: 500 } as ILeaseFormData['fees'],
+      };
 
       await expect(
         leaseService.updateLease(staffTenantContext as IRequestContext, testLuid, updateData)
@@ -430,7 +432,9 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
       mockLeaseDAO.update.mockResolvedValue(mockLease as any);
 
-      const updateData: Partial<ILeaseFormData> = { fees: { rentAmount: 1200 } as ILeaseFormData['fees'] };
+      const updateData: Partial<ILeaseFormData> = {
+        fees: { rentAmount: 1200 } as ILeaseFormData['fees'],
+      };
 
       // This should succeed because lease tenant !== current user
       const result = await leaseService.updateLease(
@@ -505,7 +509,13 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       { luid: 'L-002', status: LeaseStatus.EXPIRED },
     ];
 
-    const mockPagination = { total: 2, page: 1, perPage: 10, totalPages: 1, hasMoreResource: false };
+    const mockPagination = {
+      total: 2,
+      page: 1,
+      perPage: 10,
+      totalPages: 1,
+      hasMoreResource: false,
+    };
 
     beforeEach(() => {
       // Provide full leaseCache mock required by getFilteredLeases

@@ -222,7 +222,11 @@ describe('AIService', () => {
         })
       );
 
-      const result = await service.categorizeMaintenanceRequest('Dripping tap', 'Slow drip', TEST_PLAN);
+      const result = await service.categorizeMaintenanceRequest(
+        'Dripping tap',
+        'Slow drip',
+        TEST_PLAN
+      );
       expect(result!.reasoning).toHaveLength(300);
     });
 

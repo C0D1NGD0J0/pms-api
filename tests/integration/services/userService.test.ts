@@ -12,15 +12,17 @@ import {
   ProfileDAO,
   ClientDAO,
   VendorDAO,
-  UserDAO,} from '@dao/index';
+  UserDAO,
+} from '@dao/index';
 
-import { setupAllExternalMocks,
-
+import {
+  setupAllExternalMocks,
   clearTestDatabase,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '../../helpers';
+  seedTestData,
+} from '../../helpers';
 
 const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
@@ -97,7 +99,11 @@ describe('UserService Integration Tests - Write Operations', () => {
         client: { cuid: client.cuid, role: ROLES.TENANT },
       } as any;
 
-      const result = await userService.updateUserInfo(user.uid, { email: 'updated@test.com' }, currentuser);
+      const result = await userService.updateUserInfo(
+        user.uid,
+        { email: 'updated@test.com' },
+        currentuser
+      );
 
       expect(result.success).toBe(true);
       expect(result.data.email).toBe('updated@test.com');
@@ -155,7 +161,10 @@ describe('UserService Integration Tests - Write Operations', () => {
     it('should allow admin to update any user info', async () => {
       const client = await createTestClient();
       const target = await createTestUser(client.cuid, { email: 'target@test.com' });
-      const admin = await createTestUser(client.cuid, { email: 'admin@test.com', roles: [ROLES.ADMIN] });
+      const admin = await createTestUser(client.cuid, {
+        email: 'admin@test.com',
+        roles: [ROLES.ADMIN],
+      });
 
       const adminCurrentuser = {
         sub: admin._id.toString(),
@@ -164,7 +173,11 @@ describe('UserService Integration Tests - Write Operations', () => {
         client: { cuid: client.cuid, role: ROLES.ADMIN },
       } as any;
 
-      const result = await userService.updateUserInfo(target.uid, { email: 'updated-by-admin@test.com' }, adminCurrentuser);
+      const result = await userService.updateUserInfo(
+        target.uid,
+        { email: 'updated-by-admin@test.com' },
+        adminCurrentuser
+      );
       expect(result.success).toBe(true);
       expect(result.data.email).toBe('updated-by-admin@test.com');
     });
@@ -306,7 +319,9 @@ describe('UserService Integration Tests - Read Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.profile).toBeDefined();
-      expect((result.data.profile as unknown as IBaseUserProfile).uid).toBe(seededData.users.staff1.uid);
+      expect((result.data.profile as unknown as IBaseUserProfile).uid).toBe(
+        seededData.users.staff1.uid
+      );
     });
 
     it('should fail when user does not exist', async () => {

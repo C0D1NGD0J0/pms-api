@@ -9,7 +9,9 @@ import {
 import {
   PaymentMethodSetupCompletedPayload,
   SubscriptionRenewalUpcomingPayload,
+  PadPreDebitNotificationPayload,
   PaymentRequestCreatedPayload,
+  PadMandateConfirmedPayload,
   PaymentCancelledPayload,
   PaymentSucceededPayload,
   PaymentRefundedPayload,
@@ -204,6 +206,104 @@ export async function handleSubscriptionRenewalUpcoming(
     }
   } catch (error) {
     ctx.log.error('Error sending subscription renewal upcoming notification', { error, payload });
+  }
+}
+
+/**
+ * PAD mandate confirmed — sends Rule H1 confirmation email within 5 days of mandate creation.
+ */
+export async function handlePadMandateConfirmed(
+  ctx: INotificationContext,
+  payload: PadMandateConfirmedPayload
+): Promise<void> {
+  try {
+    const { tenantId, cuid, mandateId } = payload;
+
+    const tenantUser = await ctx.userDAO.findFirst({
+      _id: new Types.ObjectId(tenantId),
+      deletedAt: null,
+    });
+    if (!tenantUser?.email) return;
+
+    const client = await ctx.clientDAO.getClientByCuid(cuid);
+    const payeeName =
+      client?.companyProfile?.tradingName ||
+      client?.companyProfile?.legalEntityName ||
+      client?.displayName ||
+      'Your Property Manager';
+
+    const tenantName =
+      tenantUser.profile?.personalInfo?.firstName || tenantUser.fullname || tenantUser.email;
+
+    ctx.emailQueue.addToEmailQueue('padMandateConfirmation', {
+      to: tenantUser.email,
+      emailType: MailType.PAD_MANDATE_CONFIRMATION,
+      subject: '',
+      data: {
+        tenantName,
+        payeeName,
+        amount: 'As per your lease agreement',
+        frequency: 'Monthly',
+        debitDay: null,
+        startDate: new Date().toLocaleDateString('en-CA'),
+        cancellationRights:
+          'You may cancel this authorization at any time by contacting the payee.',
+        mandateId,
+      },
+    });
+
+    ctx.log.info({ tenantId, cuid, mandateId }, 'PAD mandate confirmation email queued');
+  } catch (error) {
+    ctx.log.error('Error handling PAD mandate confirmed', { error, payload });
+  }
+}
+
+/**
+ * PAD pre-debit notification — sends before each ACSS debit (Rule H1 requirement).
+ */
+export async function handlePadPreDebitNotification(
+  ctx: INotificationContext,
+  payload: PadPreDebitNotificationPayload
+): Promise<void> {
+  try {
+    const { tenantId, cuid, amount, currency, pytuid } = payload;
+
+    if (!tenantId) return;
+
+    const tenantUser = await ctx.userDAO.findFirst({
+      _id: new Types.ObjectId(tenantId),
+      deletedAt: null,
+    });
+    if (!tenantUser?.email) return;
+
+    const client = await ctx.clientDAO.getClientByCuid(cuid);
+    const payeeName =
+      client?.companyProfile?.tradingName ||
+      client?.companyProfile?.legalEntityName ||
+      client?.displayName ||
+      'Your Property Manager';
+
+    const tenantName =
+      tenantUser.profile?.personalInfo?.firstName || tenantUser.fullname || tenantUser.email;
+
+    const fmt = MoneyUtils.formatCurrency(amount || 0);
+
+    ctx.emailQueue.addToEmailQueue('padPreDebitNotification', {
+      to: tenantUser.email,
+      emailType: MailType.PAD_PRE_DEBIT_NOTIFICATION,
+      subject: '',
+      data: {
+        tenantName,
+        payeeName,
+        amount: fmt,
+        currency: (currency || 'CAD').toUpperCase(),
+        pytuid,
+      },
+    });
+
+    ctx.log.info({ tenantId, cuid, pytuid }, 'PAD pre-debit notification email queued');
+  } catch (error) {
+    ctx.log.error('Error handling PAD pre-debit notification', { error, payload });
   }
 }
 

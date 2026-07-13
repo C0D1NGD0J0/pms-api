@@ -21,7 +21,8 @@ import {
   ProfileDAO,
   ClientDAO,
   VendorDAO,
-  UserDAO,} from '@dao/index';
+  UserDAO,
+} from '@dao/index';
 
 describe('UserController Integration Tests', () => {
   let app: Application;
@@ -87,7 +88,11 @@ describe('UserController Integration Tests', () => {
       userDAO,
       profileDAO,
       permissionService,
-      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      vendorCache: {
+        getVendorDetail: jest.fn().mockResolvedValue({ success: false }),
+        cacheVendorDetail: jest.fn(),
+        invalidateVendor: jest.fn(),
+      } as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       geoCoderService: {} as any,
       paymentProcessorDAO: {} as any,
@@ -115,7 +120,10 @@ describe('UserController Integration Tests', () => {
       vendorService,
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
       paymentDAO: {
-        getTenantPaymentMetrics: jest.fn().mockResolvedValue({ metrics: { totalRentPaid: 0, onTimePaymentRate: 0, averagePaymentDelay: 0 }, payments: [] }),
+        getTenantPaymentMetrics: jest.fn().mockResolvedValue({
+          metrics: { totalRentPaid: 0, onTimePaymentRate: 0, averagePaymentDelay: 0 },
+          payments: [],
+        }),
       } as any,
       leaseDAO: {
         list: jest.fn().mockResolvedValue({ items: [], pagination: { total: 0 } }),
@@ -158,7 +166,10 @@ describe('UserController Integration Tests', () => {
         invalidateCurrentUser: jest.fn().mockResolvedValue(undefined),
         saveCurrentUser: jest.fn().mockResolvedValue({ success: true }),
       } as any,
-      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
+      userCache: {
+        invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
+        invalidateUserLists: jest.fn().mockResolvedValue(undefined),
+      } as any,
     });
 
     const authCache = {
@@ -172,7 +183,10 @@ describe('UserController Integration Tests', () => {
       propertyDAO,
       propertyUnitDAO,
       authCache,
-      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined), invalidateUserLists: jest.fn().mockResolvedValue(undefined) } as any,
+      userCache: {
+        invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
+        invalidateUserLists: jest.fn().mockResolvedValue(undefined),
+      } as any,
       subscriptionDAO: {} as any,
       subscriptionService: {} as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
@@ -210,91 +224,142 @@ describe('UserController Integration Tests', () => {
     };
 
     // Setup routes matching users.routes.ts
-    app.get('/api/v1/users/:cuid/users', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getFilteredUsers(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/users',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getFilteredUsers(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/users/stats', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getUserStats(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/users/stats',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getUserStats(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/profile_details', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getUserProfile(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/profile_details',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getUserProfile(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/user_details/:uid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getClientUserInfo(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/user_details/:uid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getClientUserInfo(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/users/:cuid/update_profile', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.updateUserProfile(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/users/:cuid/update_profile',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.updateUserProfile(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/notification-preferences', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getNotificationPreferences(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/notification-preferences',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getNotificationPreferences(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/filtered-tenants', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getFilteredTenants(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/filtered-tenants',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getFilteredTenants(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/available-tenants', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getAvailableTenantsForLease(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/available-tenants',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getAvailableTenantsForLease(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/stats', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getTenantsStats(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/stats',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getTenantsStats(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/tenant_details/:uid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getTenantUserInfo(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/tenant_details/:uid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getTenantUserInfo(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/users/:cuid/tenant_details/:uid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.updateTenantProfile(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/users/:cuid/tenant_details/:uid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.updateTenantProfile(req as any, res);
+      })
+    );
 
-    app.delete('/api/v1/users/:cuid/tenant_details/:uid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.deactivateTenant(req as any, res);
-    }));
+    app.delete(
+      '/api/v1/users/:cuid/tenant_details/:uid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.deactivateTenant(req as any, res);
+      })
+    );
 
-    app.delete('/api/v1/users/:cuid/:uid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.archiveUser(req as any, res);
-    }));
+    app.delete(
+      '/api/v1/users/:cuid/:uid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.archiveUser(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/users/:cuid/client_tenant/:uid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await userController.getClientTenantDetails(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/client_tenant/:uid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await userController.getClientTenantDetails(req as any, res);
+      })
+    );
 
     // Client controller routes
-    app.get('/api/v1/users/:cuid/users/:uid/roles', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await clientController.getUserRoles(req as any, res);
-    }));
+    app.get(
+      '/api/v1/users/:cuid/users/:uid/roles',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await clientController.getUserRoles(req as any, res);
+      })
+    );
 
-    app.post('/api/v1/users/:cuid/users/:uid/roles', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await clientController.assignUserRole(req as any, res);
-    }));
+    app.post(
+      '/api/v1/users/:cuid/users/:uid/roles',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await clientController.assignUserRole(req as any, res);
+      })
+    );
 
-    app.delete('/api/v1/users/:cuid/users/:uid/roles/:role', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid, req) as any;
-      await clientController.removeUserRole(req as any, res);
-    }));
+    app.delete(
+      '/api/v1/users/:cuid/users/:uid/roles/:role',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid, req) as any;
+        await clientController.removeUserRole(req as any, res);
+      })
+    );
 
     // Error handler to prevent test timeouts from unhandled errors
     app.use((err: any, _req: any, res: any, _next: any) => {

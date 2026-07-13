@@ -356,7 +356,12 @@ describe('Subscription Entitlements', () => {
             subscription: {
               plan: { name: 'growth', status: 'active', billingInterval: 'monthly' },
               entitlements: growthFeatures,
-              paymentFlow: { requiresPayment: false, reason: null, gracePeriodEndsAt: null, daysUntilDowngrade: null },
+              paymentFlow: {
+                requiresPayment: false,
+                reason: null,
+                gracePeriodEndsAt: null,
+                daysUntilDowngrade: null,
+              },
             },
             clientEntitlements: growthFeatures,
             permissions: ['read:any'],

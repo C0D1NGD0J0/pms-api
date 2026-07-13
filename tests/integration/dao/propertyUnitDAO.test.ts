@@ -426,7 +426,11 @@ describe('PropertyUnitDAO Integration Tests', () => {
 
     it('should throw error if unit ID is missing', async () => {
       await expect(
-        propertyUnitDAO.updateUnitStatus('', PropertyUnitStatusEnum.AVAILABLE, testUserId.toString())
+        propertyUnitDAO.updateUnitStatus(
+          '',
+          PropertyUnitStatusEnum.AVAILABLE,
+          testUserId.toString()
+        )
       ).rejects.toThrow();
     });
 
@@ -522,7 +526,11 @@ describe('PropertyUnitDAO Integration Tests', () => {
 
     it('should throw error if unit ID is missing', async () => {
       await expect(
-        propertyUnitDAO.addInspection('', { status: InspectionStatusEnum.PASSED }, testUserId.toString())
+        propertyUnitDAO.addInspection(
+          '',
+          { status: InspectionStatusEnum.PASSED },
+          testUserId.toString()
+        )
       ).rejects.toThrow();
     });
 
@@ -536,7 +544,11 @@ describe('PropertyUnitDAO Integration Tests', () => {
     it('should throw error if user ID is missing', async () => {
       const unit = await PropertyUnit.findOne({ unitNumber: '101' });
       await expect(
-        propertyUnitDAO.addInspection(unit!._id.toString(), { status: InspectionStatusEnum.PASSED }, '')
+        propertyUnitDAO.addInspection(
+          unit!._id.toString(),
+          { status: InspectionStatusEnum.PASSED },
+          ''
+        )
       ).rejects.toThrow();
     });
   });
@@ -575,7 +587,10 @@ describe('PropertyUnitDAO Integration Tests', () => {
     });
 
     it('should handle units with inactive status', async () => {
-      await PropertyUnit.updateOne({ unitNumber: '101' }, { status: PropertyUnitStatusEnum.INACTIVE });
+      await PropertyUnit.updateOne(
+        { unitNumber: '101' },
+        { status: PropertyUnitStatusEnum.INACTIVE }
+      );
 
       const result = await propertyUnitDAO.getPropertyUnitInfo(testPropertyId.toString());
 
@@ -584,7 +599,10 @@ describe('PropertyUnitDAO Integration Tests', () => {
     });
 
     it('should handle units with reserved status', async () => {
-      await PropertyUnit.updateOne({ unitNumber: '101' }, { status: PropertyUnitStatusEnum.RESERVED });
+      await PropertyUnit.updateOne(
+        { unitNumber: '101' },
+        { status: PropertyUnitStatusEnum.RESERVED }
+      );
 
       const result = await propertyUnitDAO.getPropertyUnitInfo(testPropertyId.toString());
 

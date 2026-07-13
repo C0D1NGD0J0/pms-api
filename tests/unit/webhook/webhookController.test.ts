@@ -204,7 +204,10 @@ describe('WebhookController - Stripe Webhooks', () => {
       await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleInvoicePaid).toHaveBeenCalledWith(mockInvoice);
-      expect(mockPaymentService.handleInvoicePaymentSucceeded).toHaveBeenCalledWith(mockInvoice.id, mockInvoice);
+      expect(mockPaymentService.handleInvoicePaymentSucceeded).toHaveBeenCalledWith(
+        mockInvoice.id,
+        mockInvoice
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
     });
@@ -229,7 +232,10 @@ describe('WebhookController - Stripe Webhooks', () => {
       await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
       expect(mockSubscriptionService.handleInvoicePaymentFailed).toHaveBeenCalledWith(mockInvoice);
-      expect(mockPaymentService.handleInvoicePaymentFailed).toHaveBeenCalledWith(mockInvoice.id, mockInvoice);
+      expect(mockPaymentService.handleInvoicePaymentFailed).toHaveBeenCalledWith(
+        mockInvoice.id,
+        mockInvoice
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
     });
@@ -252,7 +258,10 @@ describe('WebhookController - Stripe Webhooks', () => {
 
       await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
 
-      expect(mockPaymentService.handleInvoiceOverdue).toHaveBeenCalledWith(mockInvoice.id, mockInvoice);
+      expect(mockPaymentService.handleInvoiceOverdue).toHaveBeenCalledWith(
+        mockInvoice.id,
+        mockInvoice
+      );
       expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({ success: true, received: true });
     });
@@ -338,7 +347,10 @@ describe('WebhookController - Stripe Webhooks', () => {
       mockRequest.headers = { 'stripe-signature': 'test_connect_signature' };
       mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
 
-      await webhookController.handleStripeConnectWebhook(mockRequest as Request, mockResponse as Response);
+      await webhookController.handleStripeConnectWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
 
       expect(mockPaymentService.handlePayoutPaid).toHaveBeenCalledWith(
         mockPayout.id,
@@ -370,7 +382,10 @@ describe('WebhookController - Stripe Webhooks', () => {
       mockRequest.headers = { 'stripe-signature': 'test_connect_signature' };
       mockStripeService.verifyWebhookSignature.mockResolvedValue(mockEvent);
 
-      await webhookController.handleStripeConnectWebhook(mockRequest as Request, mockResponse as Response);
+      await webhookController.handleStripeConnectWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
 
       expect(mockPaymentService.handlePayoutFailed).toHaveBeenCalledWith(
         mockPayout.id,

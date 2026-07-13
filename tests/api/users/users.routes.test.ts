@@ -306,22 +306,10 @@ describe('Users Routes Integration Tests', () => {
       );
       testApp.get(`${baseUrl}/:cuid/filtered-tenants`, mockUserController.getFilteredTenants);
       testApp.get(`${baseUrl}/:cuid/stats`, mockUserController.getTenantsStats);
-      testApp.get(
-        `${baseUrl}/:cuid/client_tenant/:uid`,
-        mockUserController.getClientTenantDetails
-      );
-      testApp.get(
-        `${baseUrl}/:cuid/tenant_details/:uid`,
-        mockUserController.getTenantUserInfo
-      );
-      testApp.patch(
-        `${baseUrl}/:cuid/tenant_details/:uid`,
-        mockUserController.updateTenantProfile
-      );
-      testApp.delete(
-        `${baseUrl}/:cuid/tenant_details/:uid`,
-        mockUserController.deactivateTenant
-      );
+      testApp.get(`${baseUrl}/:cuid/client_tenant/:uid`, mockUserController.getClientTenantDetails);
+      testApp.get(`${baseUrl}/:cuid/tenant_details/:uid`, mockUserController.getTenantUserInfo);
+      testApp.patch(`${baseUrl}/:cuid/tenant_details/:uid`, mockUserController.updateTenantProfile);
+      testApp.delete(`${baseUrl}/:cuid/tenant_details/:uid`, mockUserController.deactivateTenant);
       testApp.delete(`${baseUrl}/:cuid/:uid`, mockUserController.archiveUser);
     });
   });
@@ -450,10 +438,7 @@ describe('Users Routes Integration Tests', () => {
     it('should assign role to user successfully', async () => {
       const roleData = { role: ROLES.MANAGER };
 
-      const response = await request(app)
-        .post(endpoint)
-        .send(roleData)
-        .expect(httpStatusCodes.OK);
+      const response = await request(app).post(endpoint).send(roleData).expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('assigned');
@@ -461,14 +446,12 @@ describe('Users Routes Integration Tests', () => {
     });
 
     it('should handle invalid role assignment', async () => {
-      mockClientController.assignUserRole.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'Invalid role provided',
-          });
-        }
-      );
+      mockClientController.assignUserRole.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Invalid role provided',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -492,18 +475,14 @@ describe('Users Routes Integration Tests', () => {
     });
 
     it('should handle role not found', async () => {
-      mockClientController.removeUserRole.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.NOT_FOUND).json({
-            success: false,
-            message: 'Role not found',
-          });
-        }
-      );
+      mockClientController.removeUserRole.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.NOT_FOUND).json({
+          success: false,
+          message: 'Role not found',
+        });
+      });
 
-      const response = await request(app)
-        .delete(endpoint)
-        .expect(httpStatusCodes.NOT_FOUND);
+      const response = await request(app).delete(endpoint).expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
     });
@@ -558,9 +537,7 @@ describe('Users Routes Integration Tests', () => {
         }
       );
 
-      const response = await request(app)
-        .get(endpoint)
-        .expect(httpStatusCodes.NOT_FOUND);
+      const response = await request(app).get(endpoint).expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
     });
@@ -718,9 +695,7 @@ describe('Users Routes Integration Tests', () => {
           }
         );
 
-        const response = await request(app)
-          .delete(endpoint)
-          .expect(httpStatusCodes.NOT_FOUND);
+        const response = await request(app).delete(endpoint).expect(httpStatusCodes.NOT_FOUND);
 
         expect(response.body.success).toBe(false);
       });
@@ -754,14 +729,12 @@ describe('Users Routes Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle internal server errors gracefully', async () => {
-      mockUserController.getFilteredUsers.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
-            success: false,
-            message: 'Internal server error',
-          });
-        }
-      );
+      mockUserController.getFilteredUsers.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
+          success: false,
+          message: 'Internal server error',
+        });
+      });
 
       const response = await request(app)
         .get(`${baseUrl}/${mockCuid}/users`)
@@ -771,14 +744,12 @@ describe('Users Routes Integration Tests', () => {
     });
 
     it('should handle unauthorized access', async () => {
-      mockUserController.getFilteredUsers.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.UNAUTHORIZED).json({
-            success: false,
-            message: 'Unauthorized',
-          });
-        }
-      );
+      mockUserController.getFilteredUsers.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.UNAUTHORIZED).json({
+          success: false,
+          message: 'Unauthorized',
+        });
+      });
 
       const response = await request(app)
         .get(`${baseUrl}/${mockCuid}/users`)
@@ -788,14 +759,12 @@ describe('Users Routes Integration Tests', () => {
     });
 
     it('should handle forbidden access', async () => {
-      mockUserController.getFilteredUsers.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.FORBIDDEN).json({
-            success: false,
-            message: 'Insufficient permissions',
-          });
-        }
-      );
+      mockUserController.getFilteredUsers.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.FORBIDDEN).json({
+          success: false,
+          message: 'Insufficient permissions',
+        });
+      });
 
       const response = await request(app)
         .get(`${baseUrl}/${mockCuid}/users`)

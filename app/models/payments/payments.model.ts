@@ -200,6 +200,14 @@ const PaymentSchema = new Schema<IPaymentDocument>(
         },
       },
     ],
+    overdueAt: {
+      type: Date,
+      default: null,
+    },
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
     deletedAt: {
       type: Date,
       default: null,

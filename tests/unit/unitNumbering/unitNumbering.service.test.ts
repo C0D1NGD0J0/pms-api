@@ -14,30 +14,30 @@ describe('UnitNumberingService', () => {
       expect(service.detectNumberingPattern('25')).toBe('sequential');
       expect(service.detectNumberingPattern('101')).toBe('sequential');
       expect(service.detectNumberingPattern('1001')).toBe('sequential');
-      
+
       // Alpha-numeric patterns
       expect(service.detectNumberingPattern('A-1001')).toBe('alpha_numeric');
       expect(service.detectNumberingPattern('B-205')).toBe('alpha_numeric');
-      
+
       // Building-unit patterns
       expect(service.detectNumberingPattern('B1U01')).toBe('building_unit');
       expect(service.detectNumberingPattern('B10U05')).toBe('building_unit');
-      
+
       // Wing-unit patterns
       expect(service.detectNumberingPattern('A101')).toBe('wing_unit');
       expect(service.detectNumberingPattern('C205')).toBe('wing_unit');
-      
+
       // Non-matching patterns fall through to custom
       expect(service.detectNumberingPattern('XYZ-123')).toBe('custom'); // Doesn't match any specific pattern
-      
+
       // Suite patterns (fallback detection)
       expect(service.detectNumberingPattern('Suite-101')).toBe('suite');
       expect(service.detectNumberingPattern('suite-205')).toBe('suite');
-      
+
       // Custom patterns
       expect(service.detectNumberingPattern('Unit-001')).toBe('custom');
       expect(service.detectNumberingPattern('Apt-123')).toBe('custom');
-      
+
       // Empty/null cases
       expect(service.detectNumberingPattern('')).toBe('numeric');
       expect(service.detectNumberingPattern(null as any)).toBe('numeric');
@@ -50,24 +50,24 @@ describe('UnitNumberingService', () => {
       const validAlpha = service.validateUnitNumberFloorCorrelation('A-1001', 1);
       expect(validAlpha.isValid).toBe(true);
       expect(validAlpha.message).toBe('');
-      
+
       const validBuilding = service.validateUnitNumberFloorCorrelation('B2U01', 2);
       expect(validBuilding.isValid).toBe(true);
-      
+
       const validFloorBased = service.validateUnitNumberFloorCorrelation('2105', 2);
       expect(validFloorBased.isValid).toBe(true);
-      
+
       // Invalid correlations
       const invalidAlpha = service.validateUnitNumberFloorCorrelation('A-1001', 2);
       expect(invalidAlpha.isValid).toBe(false);
       expect(invalidAlpha.message).toContain('suggests Floor 1');
       expect(invalidAlpha.suggestedFloor).toBe(1);
-      
+
       const invalidBuilding = service.validateUnitNumberFloorCorrelation('B2U01', 1);
       expect(invalidBuilding.isValid).toBe(false);
       expect(invalidBuilding.message).toContain('suggests Floor 2');
       expect(invalidBuilding.suggestedFloor).toBe(2);
-      
+
       // Patterns with null extraction should be valid
       const sequentialPattern = service.validateUnitNumberFloorCorrelation('25', 3);
       expect(sequentialPattern.isValid).toBe(true);

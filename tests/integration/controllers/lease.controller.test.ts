@@ -1036,7 +1036,9 @@ describe('LeaseController Integration Tests', () => {
 
     it('should terminate an ACTIVE lease successfully', async () => {
       // terminationDate must be at least 30 days from now to satisfy notice period validation
-      const terminationDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const terminationDate = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0];
       const response = await request(app)
         .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/terminate`)
         .set('Cookie', authCookie(managerToken))

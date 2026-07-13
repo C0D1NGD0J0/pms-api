@@ -235,14 +235,8 @@ describe('Property Routes Integration Tests', () => {
         `${baseUrl}/:cuid/import_properties_csv`,
         mockPropertyController.createPropertiesFromCsv
       );
-      testApp.get(
-        `${baseUrl}/:cuid/client_properties`,
-        mockPropertyController.getClientProperties
-      );
-      testApp.get(
-        `${baseUrl}/:cuid/client_property/:pid`,
-        mockPropertyController.getProperty
-      );
+      testApp.get(`${baseUrl}/:cuid/client_properties`, mockPropertyController.getClientProperties);
+      testApp.get(`${baseUrl}/:cuid/client_property/:pid`, mockPropertyController.getProperty);
       testApp.get(
         `${baseUrl}/:cuid/properties/pending`,
         mockPropertyController.getPendingApprovals

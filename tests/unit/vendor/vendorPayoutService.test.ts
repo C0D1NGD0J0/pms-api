@@ -12,13 +12,7 @@ import { VendorService } from '@services/vendor/vendor.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import {
-  PaymentProcessorDAO,
-  ProfileDAO,
-  VendorDAO,
-  ClientDAO,
-  UserDAO,
-} from '@dao/index';
+import { PaymentProcessorDAO, ProfileDAO, VendorDAO, ClientDAO, UserDAO } from '@dao/index';
 
 // ── Shared constants ──────────────────────────────────────────────────────────
 
@@ -79,13 +73,17 @@ const makeService = (
   }> = {}
 ) =>
   new VendorService({
-    vendorDAO: (overrides.vendorDAO ?? { updateClientPayoutAccount: jest.fn(), findFirst: jest.fn() }) as jest.Mocked<VendorDAO>,
+    vendorDAO: (overrides.vendorDAO ?? {
+      updateClientPayoutAccount: jest.fn(),
+      findFirst: jest.fn(),
+    }) as jest.Mocked<VendorDAO>,
     clientDAO: (overrides.clientDAO ?? {}) as jest.Mocked<ClientDAO>,
     userDAO: {} as jest.Mocked<UserDAO>,
     profileDAO: {} as jest.Mocked<ProfileDAO>,
     vendorCache: {} as jest.Mocked<VendorCache>,
     permissionService: {} as jest.Mocked<PermissionService>,
-    paymentGatewayService: (overrides.paymentGatewayService ?? {}) as jest.Mocked<PaymentGatewayService>,
+    paymentGatewayService: (overrides.paymentGatewayService ??
+      {}) as jest.Mocked<PaymentGatewayService>,
     payoutAccountService: (overrides.payoutAccountService ?? {}) as any,
     paymentProcessorDAO: (overrides.paymentProcessorDAO ?? {}) as jest.Mocked<PaymentProcessorDAO>,
     maintenanceRequestDAO: {} as any,
@@ -136,7 +134,9 @@ describe('VendorService - initiatePayoutOnboarding', () => {
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
 
     // Act & Assert
-    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
+    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(
+      BadRequestError
+    );
     expect(mockPaymentProcessorDAO.findByVuid).not.toHaveBeenCalled();
   });
 
@@ -146,13 +146,19 @@ describe('VendorService - initiatePayoutOnboarding', () => {
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
 
     // Act & Assert
-    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
+    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('should return existing accountId and sync connectedClients when a processor record already exists (idempotent)', async () => {
     // Arrange
     const client = makeClient();
-    const processor = makeProcessor({ detailsSubmitted: true, payoutsEnabled: true, chargesEnabled: true });
+    const processor = makeProcessor({
+      detailsSubmitted: true,
+      payoutsEnabled: true,
+      chargesEnabled: true,
+    });
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
     mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(processor));
     mockVendorDAO.updateClientPayoutAccount.mockReturnValue(Promise.resolve({}));
@@ -195,11 +201,15 @@ describe('VendorService - initiatePayoutOnboarding', () => {
     mockClientDAO.getClientByCuid.mockReturnValue(Promise.resolve(client));
     mockPaymentProcessorDAO.findByVuid.mockReturnValue(Promise.resolve(null));
     mockPayoutAccountService.initiateVendorAccount.mockReturnValue(
-      Promise.reject(new BadRequestError({ message: 'Failed to create payout account with provider.' }))
+      Promise.reject(
+        new BadRequestError({ message: 'Failed to create payout account with provider.' })
+      )
     );
 
     // Act & Assert
-    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(BadRequestError);
+    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(
+      BadRequestError
+    );
   });
 });
 
@@ -233,7 +243,10 @@ describe('VendorService - getPayoutOnboardingLink', () => {
 
     // Assert
     expect(mockPayoutAccountService.getVendorKycOnboardingLink).toHaveBeenCalledWith(
-      CUID, VUID, RETURN_URL, REFRESH_URL
+      CUID,
+      VUID,
+      RETURN_URL,
+      REFRESH_URL
     );
     expect(result.success).toBe(true);
     expect(result.data).toEqual({ url: onboardingUrl });
@@ -266,7 +279,6 @@ describe('VendorService - getPayoutOnboardingLink', () => {
     expect(result.success).toBe(true);
     expect(result.data).toEqual({ url: onboardingUrl });
   });
-
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -331,7 +343,9 @@ describe('VendorService - syncPayoutAccountStatus', () => {
     );
 
     // Act & Assert
-    await expect(vendorService.syncPayoutAccountStatus(CUID, VUID)).rejects.toThrow(BadRequestError);
+    await expect(vendorService.syncPayoutAccountStatus(CUID, VUID)).rejects.toThrow(
+      BadRequestError
+    );
     expect(mockPaymentProcessorDAO.upsertForVendor).not.toHaveBeenCalled();
   });
 
@@ -344,7 +358,9 @@ describe('VendorService - syncPayoutAccountStatus', () => {
     );
 
     // Act & Assert
-    await expect(vendorService.syncPayoutAccountStatus(CUID, VUID)).rejects.toThrow(BadRequestError);
+    await expect(vendorService.syncPayoutAccountStatus(CUID, VUID)).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('should call upsertForVendor with updated status fields from provider', async () => {
@@ -471,7 +487,11 @@ describe('VendorService - syncPayoutAccountStatus', () => {
     mockPaymentGatewayService.getConnectAccount.mockReturnValue(
       Promise.resolve({
         success: true,
-        data: { charges_enabled: undefined, payouts_enabled: undefined, details_submitted: undefined },
+        data: {
+          charges_enabled: undefined,
+          payouts_enabled: undefined,
+          details_submitted: undefined,
+        },
       })
     );
     mockPaymentProcessorDAO.upsertForVendor.mockReturnValue(Promise.resolve({}));

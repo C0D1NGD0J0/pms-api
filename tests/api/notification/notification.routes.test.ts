@@ -205,9 +205,7 @@ describe('Notification Routes Integration Tests', () => {
       );
 
       const invalidEndpoint = `${baseUrl}/invalid-cuid/my-notifications/stream`;
-      const response = await request(app)
-        .get(invalidEndpoint)
-        .expect(httpStatusCodes.BAD_REQUEST);
+      const response = await request(app).get(invalidEndpoint).expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Invalid');
     });
@@ -280,9 +278,7 @@ describe('Notification Routes Integration Tests', () => {
       );
 
       const invalidEndpoint = `${baseUrl}/invalid-cuid/announcements/stream`;
-      const response = await request(app)
-        .get(invalidEndpoint)
-        .expect(httpStatusCodes.BAD_REQUEST);
+      const response = await request(app).get(invalidEndpoint).expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Invalid');
     });

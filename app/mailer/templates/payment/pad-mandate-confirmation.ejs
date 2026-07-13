@@ -1,0 +1,41 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Pre-Authorized Debit Agreement Confirmation</h2>
+      <p>Hi <%= tenantName %>,</p>
+      <p>
+        This confirms that you have authorized <strong><%= payeeName %></strong> to debit your bank account under the following terms:
+      </p>
+
+      <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr>
+          <td style="padding: 8px; border: 1px solid #e0e0e0; font-weight: bold;">Amount</td>
+          <td style="padding: 8px; border: 1px solid #e0e0e0;"><%= amount %></td>
+        </tr>
+        <tr>
+          <td style="padding: 8px; border: 1px solid #e0e0e0; font-weight: bold;">Frequency</td>
+          <td style="padding: 8px; border: 1px solid #e0e0e0;"><%= frequency %></td>
+        </tr>
+        <% if (typeof debitDay !== 'undefined' && debitDay) { %>
+        <tr>
+          <td style="padding: 8px; border: 1px solid #e0e0e0; font-weight: bold;">Debit Day</td>
+          <td style="padding: 8px; border: 1px solid #e0e0e0;">Day <%= debitDay %> of each month</td>
+        </tr>
+        <% } %>
+        <tr>
+          <td style="padding: 8px; border: 1px solid #e0e0e0; font-weight: bold;">Start Date</td>
+          <td style="padding: 8px; border: 1px solid #e0e0e0;"><%= startDate %></td>
+        </tr>
+      </table>
+
+      <p style="font-size: 13px; color: #555;">
+        <strong>Cancellation Rights:</strong> <%= cancellationRights %>
+      </p>
+
+      <p>
+        If you did not authorize this debit or believe this is an error, please contact
+        <strong><%= payeeName %></strong> immediately.
+      </p>
+    </td>
+  </tr>
+</table>

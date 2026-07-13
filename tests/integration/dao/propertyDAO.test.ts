@@ -4,11 +4,8 @@ import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { PropertyUnit, Property, Client, User } from '@models/index';
+import { OccupancyStatus, PropertyStatus, PropertyType } from '@interfaces/property.interface';
 import { PropertyUnitStatusEnum, PropertyUnitTypeEnum } from '@interfaces/propertyUnit.interface';
-import {
-  OccupancyStatus,
-  PropertyStatus,
-  PropertyType,} from '@interfaces/property.interface';
 
 describe('PropertyDAO Integration Tests', () => {
   let propertyDAO: PropertyDAO;
@@ -95,7 +92,10 @@ describe('PropertyDAO Integration Tests', () => {
         electricity: true,
         internet: false,
         cableTV: false,
-       trash: false, heating: true, centralAC: false },
+        trash: false,
+        heating: true,
+        centralAC: false,
+      },
       financialDetails: {
         marketValue: 500000,
         purchasePrice: 450000,
@@ -123,8 +123,17 @@ describe('PropertyDAO Integration Tests', () => {
           coordinates: [-79.4, 43.65],
         },
         description: { text: 'House description' },
-        
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       const result = await propertyDAO.getFilteredProperties(
@@ -160,8 +169,17 @@ describe('PropertyDAO Integration Tests', () => {
         address: { fullAddress: '789 Luxury Blvd, Toronto, ON M5D 2B2' },
         computedLocation: { type: 'Point', coordinates: [-79.39, 43.66] },
         description: { text: 'Luxury condo' },
-        
-        utilities: { water: true, gas: true, electricity: true, internet: true, cableTV: true, trash: false, heating: true, centralAC: false },
+
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: true,
+          cableTV: true,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
         financialDetails: { marketValue: 1000000 },
       });
 
@@ -203,7 +221,16 @@ describe('PropertyDAO Integration Tests', () => {
         description: { text: 'Vancouver property' },
         specifications: {},
         fees: { currency: CURRENCIES.CAD, rentAmount: 3500, managementFees: 300 },
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       const result = await propertyDAO.getFilteredProperties(
@@ -235,14 +262,17 @@ describe('PropertyDAO Integration Tests', () => {
           address: { fullAddress: `${i} Street, Toronto, ON M${i}A ${i}B${i}` },
           computedLocation: { type: 'Point', coordinates: [-79.38 - i * 0.01, 43.65 + i * 0.01] },
           description: { text: 'Test' },
-          
+
           utilities: {
             water: true,
             gas: true,
             electricity: true,
             internet: false,
             cableTV: false,
-           trash: false, heating: true, centralAC: false },
+            trash: false,
+            heating: true,
+            centralAC: false,
+          },
         });
       }
 
@@ -319,14 +349,27 @@ describe('PropertyDAO Integration Tests', () => {
         address: { fullAddress: '999 Last St, Toronto, ON M9Z 9Z9' },
         computedLocation: { type: 'Point', coordinates: [-79.5, 43.7] },
         description: { text: 'Another property' },
-        
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
-      const result = await propertyDAO.getPropertiesByClientId('TEST_CLIENT', {}, {
-        sortBy: 'name',
-        sort: 'asc',
-      });
+      const result = await propertyDAO.getPropertiesByClientId(
+        'TEST_CLIENT',
+        {},
+        {
+          sortBy: 'name',
+          sort: 'asc',
+        }
+      );
 
       expect(result.items.length).toBe(2);
       expect(result.items[0].name).toBe('Another Property');
@@ -344,15 +387,28 @@ describe('PropertyDAO Integration Tests', () => {
         address: { fullAddress: '100 Budget St, Toronto, ON M1B 1B1' },
         computedLocation: { type: 'Point', coordinates: [-79.35, 43.6] },
         description: { text: 'Affordable housing' },
-        
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
         financialDetails: { marketValue: 300000 },
       });
 
-      const result = await propertyDAO.getPropertiesByClientId('TEST_CLIENT', {}, {
-        sortBy: 'price',
-        sort: 'asc',
-      });
+      const result = await propertyDAO.getPropertiesByClientId(
+        'TEST_CLIENT',
+        {},
+        {
+          sortBy: 'price',
+          sort: 'asc',
+        }
+      );
 
       expect(result.items.length).toBe(2);
       expect(result.items[0].financialDetails?.marketValue).toBe(300000);
@@ -480,15 +536,20 @@ describe('PropertyDAO Integration Tests', () => {
           coordinates: [-79.385, 43.654], // Very close to test property
         },
         description: { text: 'Nearby property' },
-        
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
-      const result = await propertyDAO.findPropertiesNearby(
-        'TEST_CLIENT',
-        [-79.3832, 43.6532],
-        5
-      );
+      const result = await propertyDAO.findPropertiesNearby('TEST_CLIENT', [-79.3832, 43.6532], 5);
 
       expect(result.length).toBeGreaterThanOrEqual(1);
     });
@@ -506,9 +567,7 @@ describe('PropertyDAO Integration Tests', () => {
     });
 
     it('should throw error if clientId not provided', async () => {
-      await expect(
-        propertyDAO.findPropertiesNearby('', [-79.3832, 43.6532], 5)
-      ).rejects.toThrow();
+      await expect(propertyDAO.findPropertiesNearby('', [-79.3832, 43.6532], 5)).rejects.toThrow();
     });
   });
 
@@ -534,10 +593,7 @@ describe('PropertyDAO Integration Tests', () => {
     });
 
     it('should return null for non-existent address', async () => {
-      const result = await propertyDAO.findPropertyByAddress(
-        '999 Nonexistent St',
-        'TEST_CLIENT'
-      );
+      const result = await propertyDAO.findPropertyByAddress('999 Nonexistent St', 'TEST_CLIENT');
 
       expect(result).toBeNull();
     });
@@ -578,7 +634,10 @@ describe('PropertyDAO Integration Tests', () => {
           electricity: true,
           internet: true,
           cableTV: false,
-         trash: false, heating: true, centralAC: false },
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
         occupancyStatus: 'vacant' as OccupancyStatus,
       };
 
@@ -795,7 +854,16 @@ describe('PropertyDAO Integration Tests', () => {
         managedBy: testUserId,
         specifications: { totalArea: 800, bathrooms: 1 },
         fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       await expect(
@@ -820,7 +888,16 @@ describe('PropertyDAO Integration Tests', () => {
         managedBy: testUserId,
         specifications: { totalArea: 850, bathrooms: 1 },
         fees: { currency: CURRENCIES.USD, rentAmount: 1600 },
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       const result = await propertyDAO.getPropertyUnits(testPropertyId.toString(), {
@@ -1006,8 +1083,17 @@ describe('PropertyDAO Integration Tests', () => {
         address: { fullAddress: '777 House St, Toronto, ON M7H 7H7' },
         computedLocation: { type: 'Point', coordinates: [-79.45, 43.68] },
         description: { text: 'Single house' },
-        
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
         maxAllowedUnits: 5,
       });
 
@@ -1022,7 +1108,16 @@ describe('PropertyDAO Integration Tests', () => {
         managedBy: testUserId,
         specifications: { totalArea: 2000, bathrooms: 2 },
         fees: { currency: CURRENCIES.USD, rentAmount: 3500 },
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       const result = await propertyDAO.validateUnitToPropertyCompatibility(
@@ -1035,9 +1130,7 @@ describe('PropertyDAO Integration Tests', () => {
     });
 
     it('should throw error if propertyId not provided', async () => {
-      await expect(
-        propertyDAO.validateUnitToPropertyCompatibility('', '2BR')
-      ).rejects.toThrow();
+      await expect(propertyDAO.validateUnitToPropertyCompatibility('', '2BR')).rejects.toThrow();
     });
   });
 
@@ -1070,8 +1163,20 @@ describe('PropertyDAO Integration Tests', () => {
             electricity: true,
             internet: false,
             cableTV: false,
-           trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
+            trash: false,
+            heating: true,
+            centralAC: false,
+          },
+          amenities: {
+            parking: false,
+            cableTV: false,
+            storage: false,
+            internet: false,
+            dishwasher: false,
+            washerDryer: false,
+            airConditioning: false,
+          },
+        },
         {
           propertyId: testPropertyId,
           unitNumber: 'Unit-402',
@@ -1089,8 +1194,20 @@ describe('PropertyDAO Integration Tests', () => {
             electricity: true,
             internet: false,
             cableTV: false,
-           trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
+            trash: false,
+            heating: true,
+            centralAC: false,
+          },
+          amenities: {
+            parking: false,
+            cableTV: false,
+            storage: false,
+            internet: false,
+            dishwasher: false,
+            washerDryer: false,
+            airConditioning: false,
+          },
+        },
       ]);
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnits(
@@ -1120,8 +1237,20 @@ describe('PropertyDAO Integration Tests', () => {
             electricity: true,
             internet: false,
             cableTV: false,
-           trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
+            trash: false,
+            heating: true,
+            centralAC: false,
+          },
+          amenities: {
+            parking: false,
+            cableTV: false,
+            storage: false,
+            internet: false,
+            dishwasher: false,
+            washerDryer: false,
+            airConditioning: false,
+          },
+        },
         {
           propertyId: testPropertyId,
           unitNumber: 'Unit-502',
@@ -1139,8 +1268,20 @@ describe('PropertyDAO Integration Tests', () => {
             electricity: true,
             internet: false,
             cableTV: false,
-           trash: false, heating: true, centralAC: false },
-        amenities: { parking: false, cableTV: false, storage: false, internet: false, dishwasher: false, washerDryer: false, airConditioning: false }},
+            trash: false,
+            heating: true,
+            centralAC: false,
+          },
+          amenities: {
+            parking: false,
+            cableTV: false,
+            storage: false,
+            internet: false,
+            dishwasher: false,
+            washerDryer: false,
+            airConditioning: false,
+          },
+        },
       ]);
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnits(
@@ -1170,7 +1311,16 @@ describe('PropertyDAO Integration Tests', () => {
         managedBy: testUserId,
         specifications: { totalArea: 800, bathrooms: 1 },
         fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       const result = await propertyDAO.syncPropertyOccupancyWithUnitsEnhanced(
@@ -1208,7 +1358,16 @@ describe('PropertyDAO Integration Tests', () => {
         managedBy: testUserId,
         specifications: { totalArea: 800, bathrooms: 1 },
         fees: { currency: CURRENCIES.USD, rentAmount: 1500 },
-        utilities: { water: true, gas: true, electricity: true, internet: false, cableTV: false, trash: false, heating: true, centralAC: false },
+        utilities: {
+          water: true,
+          gas: true,
+          electricity: true,
+          internet: false,
+          cableTV: false,
+          trash: false,
+          heating: true,
+          centralAC: false,
+        },
       });
 
       const result = await propertyDAO.canArchiveProperty(testPropertyId.toString());

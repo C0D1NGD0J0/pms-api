@@ -41,7 +41,11 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
       subscriptionDAO: mockSubscriptionDAO,
       clientDAO: mockClientDAO,
       authCache: {} as any,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       paymentGatewayService: {} as any,
       sseService: {} as any,
       userDAO: { list: jest.fn().mockResolvedValue([]) } as any,

@@ -16,9 +16,7 @@ const mockLeaseStats = {
 };
 
 const mockPaymentStats = {
-  byCurrency: [
-    { currency: 'USD', totalRevenue: 100000, monthRevenue: 8000, pendingAmount: 3000 },
-  ],
+  byCurrency: [{ currency: 'USD', totalRevenue: 100000, monthRevenue: 8000, pendingAmount: 3000 }],
   overdueCount: 2,
   totalCount: 40,
   onTimeRate: 92,
@@ -55,13 +53,27 @@ const mockMaintenanceStats = {
   pendingInvoices: 0,
 };
 
-const mockLeaseDAO = { getLeaseStats: jest.fn().mockReturnValue(Promise.resolve(mockLeaseStats)) } as any;
-const mockPaymentDAO = { getPaymentStats: jest.fn().mockReturnValue(Promise.resolve(mockPaymentStats)) } as any;
-const mockPropertyUnitDAO = { getPropertyUnitCounts: jest.fn().mockReturnValue(Promise.resolve(mockPropertyCounts)) } as any;
-const mockPropertyDAO = { getPropertyCount: jest.fn().mockReturnValue(Promise.resolve(mockPropertyCount)) } as any;
-const mockUserDAO = { getUserStats: jest.fn().mockReturnValue(Promise.resolve(mockUserStats)) } as any;
-const mockMaintenanceRequestDAO = { getStats: jest.fn().mockReturnValue(Promise.resolve(mockMaintenanceStats)) } as any;
-const mockClientDAO = { getActiveCuids: jest.fn().mockReturnValue(Promise.resolve(['cuid1', 'cuid2'])) } as any;
+const mockLeaseDAO = {
+  getLeaseStats: jest.fn().mockReturnValue(Promise.resolve(mockLeaseStats)),
+} as any;
+const mockPaymentDAO = {
+  getPaymentStats: jest.fn().mockReturnValue(Promise.resolve(mockPaymentStats)),
+} as any;
+const mockPropertyUnitDAO = {
+  getPropertyUnitCounts: jest.fn().mockReturnValue(Promise.resolve(mockPropertyCounts)),
+} as any;
+const mockPropertyDAO = {
+  getPropertyCount: jest.fn().mockReturnValue(Promise.resolve(mockPropertyCount)),
+} as any;
+const mockUserDAO = {
+  getUserStats: jest.fn().mockReturnValue(Promise.resolve(mockUserStats)),
+} as any;
+const mockMaintenanceRequestDAO = {
+  getStats: jest.fn().mockReturnValue(Promise.resolve(mockMaintenanceStats)),
+} as any;
+const mockClientDAO = {
+  getActiveCuids: jest.fn().mockReturnValue(Promise.resolve(['cuid1', 'cuid2'])),
+} as any;
 
 const mockMetricsDAO = {
   insertSnapshot: jest.fn().mockReturnValue(Promise.resolve(undefined)),
@@ -176,10 +188,20 @@ describe('MetricsService', () => {
       const recentDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000); // 10 days ago
       const priorDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000); // 40 days ago
 
-      mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 1000 }, timestamp: priorDate },
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 2000 }, timestamp: recentDate },
-      ]));
+      mockMetricsDAO.findSince.mockReturnValue(
+        Promise.resolve([
+          {
+            metadata: { cuid: 'c', metricType: 'payment' },
+            measurements: { overdueCount: 1000 },
+            timestamp: priorDate,
+          },
+          {
+            metadata: { cuid: 'c', metricType: 'payment' },
+            measurements: { overdueCount: 2000 },
+            timestamp: recentDate,
+          },
+        ])
+      );
 
       const result = await service.getTrend('cuid123', MetricType.PAYMENT, 30);
       expect(result.changePercent).toBe(100); // (2000 - 1000) / 1000 * 100
@@ -191,10 +213,20 @@ describe('MetricsService', () => {
       const recentDate = new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000);
       const priorDate = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
-      mockMetricsDAO.findSince.mockReturnValue(Promise.resolve([
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 4000 }, timestamp: priorDate },
-        { metadata: { cuid: 'c', metricType: 'payment' }, measurements: { overdueCount: 2000 }, timestamp: recentDate },
-      ]));
+      mockMetricsDAO.findSince.mockReturnValue(
+        Promise.resolve([
+          {
+            metadata: { cuid: 'c', metricType: 'payment' },
+            measurements: { overdueCount: 4000 },
+            timestamp: priorDate,
+          },
+          {
+            metadata: { cuid: 'c', metricType: 'payment' },
+            measurements: { overdueCount: 2000 },
+            timestamp: recentDate,
+          },
+        ])
+      );
 
       const result = await service.getTrend('cuid123', MetricType.PAYMENT, 30);
       expect(result.changePercent).toBe(-50); // (2000 - 4000) / 4000 * 100
@@ -272,7 +304,10 @@ describe('MetricsService', () => {
     });
 
     it('should push invalidate for MAINTENANCE_REQUEST_COMPLETED', async () => {
-      mockEmitterService.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, { cuid: 'cuid123', mruid: 'MR-001' });
+      mockEmitterService.emit(EventTypes.MAINTENANCE_REQUEST_COMPLETED, {
+        cuid: 'cuid123',
+        mruid: 'MR-001',
+      });
       await Promise.resolve();
 
       expect(mockSSEService.broadcastToClient).toHaveBeenCalledWith(
@@ -321,7 +356,10 @@ describe('MetricsService', () => {
     });
 
     it('should not push if cuid is missing in payload', async () => {
-      mockEmitterService.emit(EventTypes.PAYMENT_SUCCEEDED, { amount: 500, paidAt: new Date().toISOString() });
+      mockEmitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
+        amount: 500,
+        paidAt: new Date().toISOString(),
+      });
       await Promise.resolve();
 
       expect(mockSSEService.broadcastToClient).not.toHaveBeenCalled();

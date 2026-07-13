@@ -33,7 +33,7 @@ export enum PaymentMethod {
 
 export interface IPaymentDocument extends Document {
   dispute?: {
-    status?: 'open' | 'won' | 'lost';
+    status?: 'open' | 'won' | 'lost' | 'needs_response';
     resolvedAt?: Date;
     disputeId?: string;
     amount?: number;
@@ -92,7 +92,9 @@ export interface IPaymentDocument extends Document {
   processingFee: number;
   description?: string;
   _id: Types.ObjectId;
+  cancelledAt?: Date;
   baseAmount: number;
+  overdueAt?: Date;
   currency: string; // ISO 4217 uppercase, e.g. 'USD', 'CAD', 'GBP'
   deletedAt?: Date;
   chargedAt?: Date;

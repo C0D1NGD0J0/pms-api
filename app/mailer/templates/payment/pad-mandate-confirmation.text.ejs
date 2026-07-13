@@ -1,0 +1,14 @@
+Pre-Authorized Debit Agreement Confirmation
+
+Hi <%= tenantName %>,
+
+This confirms that you have authorized <%= payeeName %> to debit your bank account under the following terms:
+
+Amount: <%= amount %>
+Frequency: <%= frequency %>
+<% if (typeof debitDay !== 'undefined' && debitDay) { %>Debit Day: Day <%= debitDay %> of each month
+<% } %>Start Date: <%= startDate %>
+
+Cancellation Rights: <%= cancellationRights %>
+
+If you did not authorize this debit or believe this is an error, please contact <%= payeeName %> immediately.

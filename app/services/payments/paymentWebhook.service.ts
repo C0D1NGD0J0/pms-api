@@ -333,6 +333,7 @@ export class PaymentWebhookService {
               'failure.reason': failureReason,
               'failure.lastFailedAt': dayjs().toDate(),
               'failure.retryCount': newRetryCount,
+              overdueAt: dayjs().toDate(),
             },
           }
         );
@@ -538,6 +539,73 @@ export class PaymentWebhookService {
     );
 
     return true;
+  }
+
+  /**
+   * Handles charge.pending events — fires when an ACSS/PAD debit is initiated
+   * but not yet settled. Updates payment to PROCESSING and sends pre-debit
+   * notification per Payments Canada Rule H1.
+   */
+  async handleChargePending(
+    chargeId: string,
+    chargeData: {
+      invoice?: string | null;
+      payment_intent?: string | null;
+      amount?: number;
+      currency?: string;
+    }
+  ): IPromiseReturnedData<void> {
+    try {
+      const gatewayId = chargeData.invoice || chargeData.payment_intent;
+      if (!gatewayId) {
+        this.log.warn('charge.pending: no invoice or payment_intent on charge', { chargeId });
+        return { success: false, data: undefined, message: 'No gateway reference' };
+      }
+
+      const payment = await this.paymentDAO.findFirst({
+        gatewayPaymentId: gatewayId,
+        deletedAt: null,
+      });
+
+      if (!payment) {
+        this.log.info('charge.pending: no matching payment record', { chargeId, gatewayId });
+        return { success: false, data: undefined, message: 'Payment record not found' };
+      }
+
+      if (payment.status === PaymentRecordStatus.PAID) {
+        return { success: true, data: undefined, message: 'Already paid' };
+      }
+
+      await this.paymentDAO.update(
+        { _id: payment._id, cuid: payment.cuid },
+        {
+          $set: {
+            status: PaymentRecordStatus.PROCESSING,
+            chargedAt: dayjs().toDate(),
+            gatewayChargeId: chargeId,
+          },
+        }
+      );
+
+      this.log.info('Payment marked as PROCESSING via charge.pending', {
+        pytuid: payment.pytuid,
+        chargeId,
+      });
+
+      // Pre-debit notification (Rule H1)
+      this.emitterService.emit(EventTypes.PAD_PRE_DEBIT_NOTIFICATION, {
+        amount: chargeData.amount ?? payment.baseAmount,
+        currency: chargeData.currency ?? payment.currency ?? 'cad',
+        tenantId: payment.tenant?.toString(),
+        pytuid: payment.pytuid,
+        cuid: payment.cuid,
+      });
+
+      return { success: true, data: undefined, message: 'Payment marked as processing' };
+    } catch (error: any) {
+      this.log.error('Error handling charge.pending', { chargeId, error });
+      throw error;
+    }
   }
 
   async handleChargeRefunded(
@@ -1213,6 +1281,17 @@ export class PaymentWebhookService {
       }
     }
 
+    // For ACSS debit (PAD), store mandate details for Rule H1 compliance
+    if (pmType === 'acss_debit' && mandateId) {
+      profileUpdate[`tenantInfo.padMandateDetails.${pmAccountId}`] = {
+        mandateId,
+        startDate: new Date(),
+        confirmedAt: new Date(),
+        frequency: 'monthly',
+        amount: 0, // Will be populated by notification handler from lease data
+      };
+    }
+
     await this.profileDAO.update({ user: new Types.ObjectId(tenantId) }, { $set: profileUpdate });
 
     try {
@@ -1249,6 +1328,16 @@ export class PaymentWebhookService {
       paymentMethodId,
       pmAccountId,
     });
+
+    // Emit PAD mandate confirmed event for Rule H1 confirmation notification
+    if (pmType === 'acss_debit' && mandateId) {
+      this.emitterService.emit(EventTypes.PAD_MANDATE_CONFIRMED, {
+        tenantId,
+        cuid,
+        mandateId,
+        pmAccountId,
+      });
+    }
   }
 
   async handlePayoutPaid(

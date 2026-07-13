@@ -16,7 +16,8 @@ import {
   createTestInvitation,
   createTestProfile,
   createTestClient,
-  createTestUser,} from '@tests/setup/testFactories';
+  createTestUser,
+} from '@tests/setup/testFactories';
 
 describe('InvitationController Integration Tests', () => {
   let app: Application;
@@ -59,7 +60,11 @@ describe('InvitationController Integration Tests', () => {
       userDAO,
       profileDAO,
       permissionService,
-      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      vendorCache: {
+        getVendorDetail: jest.fn().mockResolvedValue({ success: false }),
+        cacheVendorDetail: jest.fn(),
+        invalidateVendor: jest.fn(),
+      } as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       geoCoderService: {} as any,
       paymentProcessorDAO: {} as any,
@@ -107,7 +112,9 @@ describe('InvitationController Integration Tests', () => {
       paymentGatewayService: {} as any,
       paymentService: {} as any,
       subscriptionService: {
-        createSubscription: jest.fn().mockResolvedValue({ success: true, data: { subscriptionId: 'sub_mock' } }),
+        createSubscription: jest
+          .fn()
+          .mockResolvedValue({ success: true, data: { subscriptionId: 'sub_mock' } }),
       } as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
       twilioService: {} as any,
@@ -115,16 +122,16 @@ describe('InvitationController Integration Tests', () => {
     });
 
     const mockUserService = {
-      processUserForClientInvitation: jest.fn().mockImplementation(
-        async (invitation: any, invitationData: any, client: any) => {
+      processUserForClientInvitation: jest
+        .fn()
+        .mockImplementation(async (invitation: any, invitationData: any, client: any) => {
           // Create a real user in the DB to simulate the service behavior
           const newUser = await createTestUser(client.cuid, {
             email: invitation.inviteeEmail,
             roles: [invitation.role],
           });
           return newUser;
-        }
-      ),
+        }),
     };
 
     const invitationService = new InvitationService({
@@ -143,12 +150,26 @@ describe('InvitationController Integration Tests', () => {
       } as any,
       leaseDAO: { updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }) } as any,
       subscriptionService: {
-        checkSeatAvailability: jest.fn().mockResolvedValue({ success: true, data: { available: true } }),
+        checkSeatAvailability: jest
+          .fn()
+          .mockResolvedValue({ success: true, data: { available: true } }),
         incrementSeatCount: jest.fn().mockResolvedValue({ success: true }),
-        getAvailableSeats: jest.fn().mockResolvedValue({ availableSeats: 10, currentSeats: 0, totalAllowed: 10, includedSeats: 10, additionalSeats: 0, maxAdditionalSeats: 5, canPurchaseMore: true }),
+        getAvailableSeats: jest.fn().mockResolvedValue({
+          availableSeats: 10,
+          currentSeats: 0,
+          totalAllowed: 10,
+          includedSeats: 10,
+          additionalSeats: 0,
+          maxAdditionalSeats: 5,
+          canPurchaseMore: true,
+        }),
       } as any,
       paymentProcessorDAO: {} as any,
-      paymentGatewayService: { createCustomer: jest.fn().mockResolvedValue({ success: true, data: { customerId: 'cus_mock' } }) } as any,
+      paymentGatewayService: {
+        createCustomer: jest
+          .fn()
+          .mockResolvedValue({ success: true, data: { customerId: 'cus_mock' } }),
+      } as any,
     } as any);
 
     invitationController = new InvitationController({
@@ -171,70 +192,103 @@ describe('InvitationController Integration Tests', () => {
     };
 
     // Setup routes matching invitation.routes.ts
-    app.post('/api/v1/invites/:cuid/send_invite', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await invitationController.sendInvitation(req as any, res);
-    }));
+    app.post(
+      '/api/v1/invites/:cuid/send_invite',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid) as any;
+        await invitationController.sendInvitation(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/invites/:cuid/validate_token', wrap(async (req, res, _next) => {
-      req.context = { currentuser: null } as any;
-      await invitationController.validateInvitation(req as any, res);
-    }));
+    app.get(
+      '/api/v1/invites/:cuid/validate_token',
+      wrap(async (req, res, _next) => {
+        req.context = { currentuser: null } as any;
+        await invitationController.validateInvitation(req as any, res);
+      })
+    );
 
-    app.post('/api/v1/invites/:cuid/accept_invite/:token', wrap(async (req, res, _next) => {
-      req.context = { currentuser: null } as any;
-      // Controller reads token from req.body, so merge params.token into body
-      req.body.token = req.params.token;
-      await invitationController.acceptInvitation(req as any, res);
-    }));
+    app.post(
+      '/api/v1/invites/:cuid/accept_invite/:token',
+      wrap(async (req, res, _next) => {
+        req.context = { currentuser: null } as any;
+        // Controller reads token from req.body, so merge params.token into body
+        req.body.token = req.params.token;
+        await invitationController.acceptInvitation(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/invites/:cuid/decline_invite/:token', wrap(async (req, res, _next) => {
-      req.context = { currentuser: null } as any;
-      await invitationController.declineInvitation(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/invites/:cuid/decline_invite/:token',
+      wrap(async (req, res, _next) => {
+        req.context = { currentuser: null } as any;
+        await invitationController.declineInvitation(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/invites/:cuid/revoke/:iuid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await invitationController.revokeInvitation(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/invites/:cuid/revoke/:iuid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid) as any;
+        await invitationController.revokeInvitation(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/invites/:cuid/resend/:iuid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await invitationController.resendInvitation(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/invites/:cuid/resend/:iuid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid) as any;
+        await invitationController.resendInvitation(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/invites/clients/:cuid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await invitationController.getInvitations(req as any, res);
-    }));
+    app.get(
+      '/api/v1/invites/clients/:cuid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid) as any;
+        await invitationController.getInvitations(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/invites/clients/:cuid/stats', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      // The controller passes cuid to service.getInvitationStats, but DAO expects clientId (ObjectId).
-      // Look up the client and override params.cuid with client._id for the stats query.
-      const client = await Client.findOne({ cuid: req.params.cuid });
-      if (client) {
-        req.params.cuid = client._id.toString();
-      }
-      await invitationController.getInvitationStats(req as any, res);
-    }));
+    app.get(
+      '/api/v1/invites/clients/:cuid/stats',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid) as any;
+        // The controller passes cuid to service.getInvitationStats, but DAO expects clientId (ObjectId).
+        // Look up the client and override params.cuid with client._id for the stats query.
+        const client = await Client.findOne({ cuid: req.params.cuid });
+        if (client) {
+          req.params.cuid = client._id.toString();
+        }
+        await invitationController.getInvitationStats(req as any, res);
+      })
+    );
 
-    app.get('/api/v1/invites/:iuid', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, testClient.cuid) as any;
-      await invitationController.getInvitationById(req as any, res);
-    }));
+    app.get(
+      '/api/v1/invites/:iuid',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, testClient.cuid) as any;
+        await invitationController.getInvitationById(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/invites/:cuid/update_invite/:iuid', wrap(async (req, res, _next) => {
-      const ctx = mockContext(adminUser, req.params.cuid) as any;
-      ctx.request.params = { cuid: req.params.cuid, iuid: req.params.iuid };
-      req.context = ctx;
-      await invitationController.updateInvitation(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/invites/:cuid/update_invite/:iuid',
+      wrap(async (req, res, _next) => {
+        const ctx = mockContext(adminUser, req.params.cuid) as any;
+        ctx.request.params = { cuid: req.params.cuid, iuid: req.params.iuid };
+        req.context = ctx;
+        await invitationController.updateInvitation(req as any, res);
+      })
+    );
 
-    app.patch('/api/v1/invites/:cuid/process-pending', wrap(async (req, res, _next) => {
-      req.context = mockContext(adminUser, req.params.cuid) as any;
-      await invitationController.processPendingInvitations(req as any, res);
-    }));
+    app.patch(
+      '/api/v1/invites/:cuid/process-pending',
+      wrap(async (req, res, _next) => {
+        req.context = mockContext(adminUser, req.params.cuid) as any;
+        await invitationController.processPendingInvitations(req as any, res);
+      })
+    );
 
     // Error handler to prevent test timeouts from unhandled errors
     app.use((err: any, _req: any, res: any, _next: any) => {
@@ -500,7 +554,9 @@ describe('InvitationController Integration Tests', () => {
       // The service will still process it (password validation is in middleware, not service).
       // Just verify the request is handled without a crash.
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/accept_invite/${weakPwInvitation.invitationToken}`)
+        .post(
+          `/api/v1/invites/${testClient.cuid}/accept_invite/${weakPwInvitation.invitationToken}`
+        )
         .send(acceptData);
 
       // With proper mocks, this may succeed (200) since validation is at middleware level
@@ -831,7 +887,11 @@ describe('InvitationController Integration Tests', () => {
 
       const response = await request(app)
         .patch(`/api/v1/invites/${testClient.cuid}/update_invite/${acceptedInvitation.iuid}`)
-        .send({ inviteeEmail: acceptedInvitation.inviteeEmail, role: ROLES.STAFF, personalInfo: { firstName: 'Test', lastName: 'User' } })
+        .send({
+          inviteeEmail: acceptedInvitation.inviteeEmail,
+          role: ROLES.STAFF,
+          personalInfo: { firstName: 'Test', lastName: 'User' },
+        })
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.success).toBe(false);
@@ -905,7 +965,9 @@ describe('InvitationController Integration Tests', () => {
           req.context = { currentuser: null } as any;
           req.container = {} as any;
           await invitationController.sendInvitation(req as any, res);
-        } catch (e) { next(e); }
+        } catch (e) {
+          next(e);
+        }
       });
       noAuthApp.use((err: any, _req: any, res: any, _next: any) => {
         res.status(err.statusCode || 500).json({ success: false, message: err.message });

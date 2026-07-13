@@ -34,9 +34,7 @@ describe('Lease Helpers', () => {
     });
 
     it('should allow internalNotes for ACTIVE status', () => {
-      expect(() =>
-        validateAllowedFields({ internalNotes: [] }, LeaseStatus.ACTIVE)
-      ).not.toThrow();
+      expect(() => validateAllowedFields({ internalNotes: [] }, LeaseStatus.ACTIVE)).not.toThrow();
     });
   });
 

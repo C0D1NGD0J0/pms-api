@@ -184,6 +184,12 @@ export class MailService {
       case MailType.MAINTENANCE_CHARGE_CREATED:
         template = await this.buildTemplate('maintenance-charge-created', emailData, 'maintenance');
         break;
+      case MailType.PAD_PRE_DEBIT_NOTIFICATION:
+        template = await this.buildTemplate('pad-pre-debit-notification', emailData, 'payment');
+        break;
+      case MailType.PAD_MANDATE_CONFIRMATION:
+        template = await this.buildTemplate('pad-mandate-confirmation', emailData, 'payment');
+        break;
       case MailType.MAINTENANCE_VENDOR_PAID:
         template = await this.buildTemplate('maintenance-vendor-paid', emailData, 'maintenance');
         break;
@@ -363,6 +369,8 @@ export class MailService {
       [MailType.MAINTENANCE_REQUEST_COMPLETED]: 'Your Maintenance Request Has Been Completed',
       [MailType.PAYMENT_RECEIPT]: 'Payment Receipt',
       [MailType.PAYMENT_FAILED]: 'Payment Could Not Be Processed',
+      [MailType.PAD_MANDATE_CONFIRMATION]: 'Pre-Authorized Debit Agreement Confirmation',
+      [MailType.PAD_PRE_DEBIT_NOTIFICATION]: 'Upcoming Pre-Authorized Debit Notification',
       [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
       [MailType.GUEST_PASS_CODE]: 'Your Visitor Access Code',

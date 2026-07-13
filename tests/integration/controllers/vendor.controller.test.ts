@@ -53,7 +53,11 @@ describe('VendorController Integration Tests', () => {
       permissionService,
       queueFactory: {} as any,
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
-      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      vendorCache: {
+        getVendorDetail: jest.fn().mockResolvedValue({ success: false }),
+        cacheVendorDetail: jest.fn(),
+        invalidateVendor: jest.fn(),
+      } as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       geoCoderService: {} as any,
       paymentProcessorDAO: {} as any,

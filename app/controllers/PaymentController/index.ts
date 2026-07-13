@@ -1,6 +1,5 @@
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
-import { ForbiddenError } from '@shared/customErrors';
 import ROLES from '@shared/constants/roles.constants';
 import { CronService } from '@services/cron/cron.service';
 import { MediaUploadService } from '@services/mediaUpload';
@@ -162,13 +161,6 @@ export class PaymentController {
 
   async getLoginLink(req: AppRequest, res: Response) {
     const { cuid } = req.params;
-
-    if (req.context?.currentuser?.client.role !== ROLES.SUPER_ADMIN) {
-      throw new ForbiddenError({
-        message: 'Only the account owner can access the payout dashboard.',
-      });
-    }
-
     const result = await this.paymentService.getExternalDashboardLoginLink(cuid);
     return res.status(200).json(result);
   }
@@ -202,6 +194,13 @@ export class PaymentController {
       weeklyAnchor?: string;
     };
     const result = await this.paymentService.updatePayoutSchedule(cuid, interval, weeklyAnchor);
+    return res.status(200).json(result);
+  }
+
+  async unblockPayouts(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub ?? '';
+    const result = await this.paymentService.unblockPayouts(cuid, userId);
     return res.status(200).json(result);
   }
 

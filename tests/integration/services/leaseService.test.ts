@@ -21,21 +21,23 @@ import {
   ClientDAO,
   VendorDAO,
   LeaseDAO,
-  UserDAO,} from '@dao/index';
+  UserDAO,
+} from '@dao/index';
 
-import { createTestPropertyUnit,
+import {
+  createTestPropertyUnit,
   setupAllExternalMocks,
   createTestManagerUser,
   createTestTenantUser,
   createTestAdminUser,
   createTestProperty,
-
   clearTestDatabase,
   createTestProfile,
   createTestClient,
   createTestUser,
   SeededTestData,
-  seedTestData,} from '../../helpers';
+  seedTestData,
+} from '../../helpers';
 
 const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
@@ -1425,11 +1427,15 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         },
       } as any;
 
-      const result = await leaseService.updateLease(
-        mockContext,
-        lease.luid,
-        { fees: { rentAmount: 2000, securityDeposit: 4000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' } } as any
-      );
+      const result = await leaseService.updateLease(mockContext, lease.luid, {
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 4000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+      } as any);
       expect(result.success).toBe(true);
     });
 
@@ -1470,7 +1476,13 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         tenantId: dualRoleUser._id,
         property: { id: property._id, address: property.address.fullAddress },
         duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-12-31') },
-        fees: { rentAmount: 150000, securityDeposit: 300000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
         status: LeaseStatus.ACTIVE,
         approvalStatus: 'approved',
         type: LeaseType.FIXED_TERM,
@@ -1479,8 +1491,24 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         signedDate: new Date(),
         signingMethod: 'electronic',
         eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
-        signatures: [{ userId: dualRoleUser._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
-        leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: dualRoleUser._id }],
+        signatures: [
+          {
+            userId: dualRoleUser._id,
+            signedAt: new Date(),
+            role: 'tenant',
+            signatureMethod: 'electronic',
+          },
+        ],
+        leaseDocuments: [
+          {
+            url: 'https://test.com/lease.pdf',
+            key: 's3-key',
+            filename: 'lease.pdf',
+            documentType: 'lease_agreement',
+            uploadedAt: new Date(),
+            uploadedBy: dualRoleUser._id,
+          },
+        ],
       });
 
       const mockContext = {
@@ -1492,10 +1520,15 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any;
 
       await expect(
-        leaseService.terminateLease(client.cuid, lease.luid, {
-          terminationDate: new Date('2026-06-01'),
-          terminationReason: 'Test',
-        } as any, mockContext)
+        leaseService.terminateLease(
+          client.cuid,
+          lease.luid,
+          {
+            terminationDate: new Date('2026-06-01'),
+            terminationReason: 'Test',
+          } as any,
+          mockContext
+        )
       ).rejects.toThrow();
     });
   });
@@ -1688,11 +1721,17 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         draftLease = await Lease.create({
           luid: `lease-draft-tenant-${Date.now()}`,
           cuid: testClient.cuid,
-    
+
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-06-01'), endDate: new Date('2026-06-01') },
-          fees: { rentAmount: 120000, securityDeposit: 240000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 120000,
+            securityDeposit: 240000,
+            rentDueDay: 1,
+            currency: 'USD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.DRAFT,
           approvalStatus: 'draft',
           type: LeaseType.FIXED_TERM,
@@ -1704,17 +1743,32 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         pendingSignatureLease = await Lease.create({
           luid: `lease-pending-sig-${Date.now()}`,
           cuid: testClient.cuid,
-    
+
           tenantId: testTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-07-01'), endDate: new Date('2026-07-01') },
-          fees: { rentAmount: 130000, securityDeposit: 260000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 130000,
+            securityDeposit: 260000,
+            rentDueDay: 1,
+            currency: 'USD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.PENDING_SIGNATURE,
           approvalStatus: 'approved',
           type: LeaseType.FIXED_TERM,
           leaseNumber: `LEASE-PENDING-CTX-${Date.now()}`,
           createdBy: testManager._id,
-          leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key-pending', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
+          leaseDocuments: [
+            {
+              url: 'https://test.com/lease.pdf',
+              key: 's3-key-pending',
+              filename: 'lease.pdf',
+              documentType: 'lease_agreement',
+              uploadedAt: new Date(),
+              uploadedBy: testManager._id,
+            },
+          ],
         });
       });
 
@@ -1776,18 +1830,24 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         });
       });
 
-      it('should scope results to the tenant\'s own leases via tenantId enforcement', async () => {
+      it("should scope results to the tenant's own leases via tenantId enforcement", async () => {
         // Create a second tenant to verify isolation
         const otherTenant = await createTestTenantUser(testClient.cuid, testClient._id);
 
         const otherTenantLease = await Lease.create({
           luid: `lease-other-tenant-${Date.now()}`,
           cuid: testClient.cuid,
-    
+
           tenantId: otherTenant._id,
           property: { id: testProperty._id, address: testProperty.address.fullAddress },
           duration: { startDate: new Date('2025-08-01'), endDate: new Date('2026-08-01') },
-          fees: { rentAmount: 140000, securityDeposit: 280000, rentDueDay: 1, currency: 'USD', acceptedPaymentMethod: 'e-transfer' },
+          fees: {
+            rentAmount: 140000,
+            securityDeposit: 280000,
+            rentDueDay: 1,
+            currency: 'USD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
           status: LeaseStatus.ACTIVE,
           approvalStatus: 'approved',
           type: LeaseType.FIXED_TERM,
@@ -1796,8 +1856,24 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           signedDate: new Date(),
           signingMethod: 'electronic',
           eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
-          signatures: [{ userId: otherTenant._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' }],
-          leaseDocuments: [{ url: 'https://test.com/lease.pdf', key: 's3-key', filename: 'lease.pdf', documentType: 'lease_agreement', uploadedAt: new Date(), uploadedBy: testManager._id }],
+          signatures: [
+            {
+              userId: otherTenant._id,
+              signedAt: new Date(),
+              role: 'tenant',
+              signatureMethod: 'electronic',
+            },
+          ],
+          leaseDocuments: [
+            {
+              url: 'https://test.com/lease.pdf',
+              key: 's3-key',
+              filename: 'lease.pdf',
+              documentType: 'lease_agreement',
+              uploadedAt: new Date(),
+              uploadedBy: testManager._id,
+            },
+          ],
         });
 
         try {

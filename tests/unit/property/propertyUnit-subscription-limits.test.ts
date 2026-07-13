@@ -57,9 +57,9 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           maxCapacity: 50,
         })
       ),
-      getPropertyUnits: jest.fn().mockReturnValue(
-        Promise.resolve({ items: [], pagination: { total: 0 } })
-      ),
+      getPropertyUnits: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ items: [], pagination: { total: 0 } })),
       syncPropertyOccupancyWithUnits: jest.fn(),
     };
 
@@ -72,9 +72,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           ...data,
         })
       ),
-      list: jest.fn().mockReturnValue(
-        Promise.resolve({ items: [], pagination: { total: 0 } })
-      ),
+      list: jest.fn().mockReturnValue(Promise.resolve({ items: [], pagination: { total: 0 } })),
     };
 
     mockEmitterService = {
@@ -122,16 +120,14 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
 
       const cxt = createMockContext(testCuid, testPid);
       const data = {
-        units: [
-          { unitNumber: '101', floor: 1, unitType: 'apartment', status: 'available' },
-        ],
+        units: [{ unitNumber: '101', floor: 1, unitType: 'apartment', status: 'available' }],
         cuid: testCuid,
         pid: testPid,
       };
 
-      await expect(
-        propertyUnitService.addPropertyUnit(cxt, data as any)
-      ).rejects.toThrow(/Unit limit reached/);
+      await expect(propertyUnitService.addPropertyUnit(cxt, data as any)).rejects.toThrow(
+        /Unit limit reached/
+      );
 
       // Should NOT proceed to create units
       expect(mockPropertyUnitDAO.insert).not.toHaveBeenCalled();
@@ -158,9 +154,9 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
         pid: testPid,
       };
 
-      await expect(
-        propertyUnitService.addPropertyUnit(cxt, data as any)
-      ).rejects.toThrow(/Cannot add 3 units.*2 remaining/);
+      await expect(propertyUnitService.addPropertyUnit(cxt, data as any)).rejects.toThrow(
+        /Cannot add 3 units.*2 remaining/
+      );
     });
 
     it('should allow units when within subscription limit', async () => {
@@ -175,9 +171,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
 
       const cxt = createMockContext(testCuid, testPid);
       const data = {
-        units: [
-          { unitNumber: '101', floor: 1, unitType: 'apartment', status: 'available' },
-        ],
+        units: [{ unitNumber: '101', floor: 1, unitType: 'apartment', status: 'available' }],
         cuid: testCuid,
         pid: testPid,
       };
@@ -192,9 +186,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
 
       const cxt = createMockContext(testCuid, testPid);
       const data = {
-        units: [
-          { unitNumber: '101', floor: 1, unitType: 'apartment', status: 'available' },
-        ],
+        units: [{ unitNumber: '101', floor: 1, unitType: 'apartment', status: 'available' }],
         cuid: testCuid,
         pid: testPid,
       };
@@ -223,13 +215,12 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
         originalname: 'units.csv',
       };
 
-      await expect(
-        propertyUnitService.importUnitsFromCsv(cxt, csvFile as any)
-      ).rejects.toThrow(/Unit limit reached/);
+      await expect(propertyUnitService.importUnitsFromCsv(cxt, csvFile as any)).rejects.toThrow(
+        /Unit limit reached/
+      );
 
       // Should clean up CSV file
       expect(mockEmitterService.emit).toHaveBeenCalled();
     });
-
   });
 });

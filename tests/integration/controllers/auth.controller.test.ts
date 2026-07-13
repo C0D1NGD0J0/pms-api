@@ -36,8 +36,13 @@ describe('AuthController Integration Tests', () => {
       const accessToken = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
       if (accessToken) {
         try {
-          const rawToken = accessToken.startsWith('Bearer ') ? accessToken.split(' ')[1] : accessToken;
-          const decoded = await tokenService.verifyJwtToken(JWT_KEY_NAMES.ACCESS_TOKEN as any, rawToken);
+          const rawToken = accessToken.startsWith('Bearer ')
+            ? accessToken.split(' ')[1]
+            : accessToken;
+          const decoded = await tokenService.verifyJwtToken(
+            JWT_KEY_NAMES.ACCESS_TOKEN as any,
+            rawToken
+          );
           if (decoded.success && decoded.data) {
             const user = await User.findById(decoded.data.sub);
             if (user) {
@@ -66,45 +71,78 @@ describe('AuthController Integration Tests', () => {
     };
 
     // Auth routes
-    testApp.post('/api/v1/auth/signup', wrap(async (req, res, _next) => {
-      await authController.signup(req, res);
-    }));
+    testApp.post(
+      '/api/v1/auth/signup',
+      wrap(async (req, res, _next) => {
+        await authController.signup(req, res);
+      })
+    );
 
-    testApp.post('/api/v1/auth/login', wrap(async (req, res, _next) => {
-      await authController.login(req, res);
-    }));
+    testApp.post(
+      '/api/v1/auth/login',
+      wrap(async (req, res, _next) => {
+        await authController.login(req, res);
+      })
+    );
 
-    testApp.get('/api/v1/auth/:cuid/me', mockAuthMiddleware, wrap(async (req, res, _next) => {
-      await authController.getCurrentUser(req as any, res);
-    }));
+    testApp.get(
+      '/api/v1/auth/:cuid/me',
+      mockAuthMiddleware,
+      wrap(async (req, res, _next) => {
+        await authController.getCurrentUser(req as any, res);
+      })
+    );
 
-    testApp.patch('/api/v1/auth/:cuid/account_activation', wrap(async (req, res, _next) => {
-      await authController.accountActivation(req, res);
-    }));
+    testApp.patch(
+      '/api/v1/auth/:cuid/account_activation',
+      wrap(async (req, res, _next) => {
+        await authController.accountActivation(req, res);
+      })
+    );
 
-    testApp.patch('/api/v1/auth/resend_activation_link', wrap(async (req, res, _next) => {
-      await authController.sendActivationLink(req, res);
-    }));
+    testApp.patch(
+      '/api/v1/auth/resend_activation_link',
+      wrap(async (req, res, _next) => {
+        await authController.sendActivationLink(req, res);
+      })
+    );
 
-    testApp.patch('/api/v1/auth/switch_client_account', mockAuthMiddleware, wrap(async (req, res, _next) => {
-      await authController.switchClientAccount(req as any, res);
-    }));
+    testApp.patch(
+      '/api/v1/auth/switch_client_account',
+      mockAuthMiddleware,
+      wrap(async (req, res, _next) => {
+        await authController.switchClientAccount(req as any, res);
+      })
+    );
 
-    testApp.patch('/api/v1/auth/forgot_password', wrap(async (req, res, _next) => {
-      await authController.forgotPassword(req, res);
-    }));
+    testApp.patch(
+      '/api/v1/auth/forgot_password',
+      wrap(async (req, res, _next) => {
+        await authController.forgotPassword(req, res);
+      })
+    );
 
-    testApp.patch('/api/v1/auth/reset_password', wrap(async (req, res, _next) => {
-      await authController.resetPassword(req, res);
-    }));
+    testApp.patch(
+      '/api/v1/auth/reset_password',
+      wrap(async (req, res, _next) => {
+        await authController.resetPassword(req, res);
+      })
+    );
 
-    testApp.delete('/api/v1/auth/:cuid/logout', mockAuthMiddleware, wrap(async (req, res, _next) => {
-      await authController.logout(req, res);
-    }));
+    testApp.delete(
+      '/api/v1/auth/:cuid/logout',
+      mockAuthMiddleware,
+      wrap(async (req, res, _next) => {
+        await authController.logout(req, res);
+      })
+    );
 
-    testApp.post('/api/v1/auth/refresh_token', wrap(async (req, res, _next) => {
-      await authController.refreshToken(req, res);
-    }));
+    testApp.post(
+      '/api/v1/auth/refresh_token',
+      wrap(async (req, res, _next) => {
+        await authController.refreshToken(req, res);
+      })
+    );
 
     // Error handler to prevent test timeouts from unhandled errors
     testApp.use((err: any, _req: any, res: any, _next: any) => {
@@ -133,7 +171,11 @@ describe('AuthController Integration Tests', () => {
       profileDAO,
       clientDAO,
       permissionService: {} as any,
-      vendorCache: { getVendorDetail: jest.fn().mockResolvedValue({ success: false }), cacheVendorDetail: jest.fn(), invalidateVendor: jest.fn() } as any,
+      vendorCache: {
+        getVendorDetail: jest.fn().mockResolvedValue({ success: false }),
+        cacheVendorDetail: jest.fn(),
+        invalidateVendor: jest.fn(),
+      } as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
       geoCoderService: {} as any,
       paymentProcessorDAO: {} as any,
@@ -158,7 +200,9 @@ describe('AuthController Integration Tests', () => {
       paymentGatewayService: {} as any,
       paymentService: {} as any,
       subscriptionService: {
-        createSubscription: jest.fn().mockResolvedValue({ success: true, data: { subscriptionId: 'sub_mock' } }),
+        createSubscription: jest
+          .fn()
+          .mockResolvedValue({ success: true, data: { subscriptionId: 'sub_mock' } }),
       } as any,
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
       twilioService: {} as any,

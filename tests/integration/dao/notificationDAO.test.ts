@@ -6,7 +6,8 @@ import { Notification as NotificationModel, User } from '@models/index';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
-  RecipientTypeEnum,} from '@interfaces/notification.interface';
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
 
 describe('NotificationDAO Integration Tests', () => {
   let notificationDAO: NotificationDAO;
@@ -367,11 +368,9 @@ describe('NotificationDAO Integration Tests', () => {
     });
 
     it('should find all notifications for user including announcements', async () => {
-      const result = await notificationDAO.findForUser(
-        testUserId.toString(),
-        testCuid,
-        { roles: ['tenant'] }
-      );
+      const result = await notificationDAO.findForUser(testUserId.toString(), testCuid, {
+        roles: ['tenant'],
+      });
 
       expect(result.data.length).toBeGreaterThanOrEqual(3);
       expect(result.total).toBeGreaterThanOrEqual(3);
@@ -804,10 +803,7 @@ describe('NotificationDAO Integration Tests', () => {
     });
 
     it('should mark all user notifications as read', async () => {
-      const result = await notificationDAO.markAllAsReadForUser(
-        testUserId.toString(),
-        testCuid
-      );
+      const result = await notificationDAO.markAllAsReadForUser(testUserId.toString(), testCuid);
 
       expect(result.modifiedCount).toBe(2);
 
@@ -953,10 +949,7 @@ describe('NotificationDAO Integration Tests', () => {
       const notifications = await NotificationModel.find({
         'resourceInfo.resourceId': resourceId,
       });
-      await NotificationModel.updateOne(
-        { _id: notifications[0]._id },
-        { deletedAt: new Date() }
-      );
+      await NotificationModel.updateOne({ _id: notifications[0]._id }, { deletedAt: new Date() });
 
       const result = await notificationDAO.findByResource(
         ResourceContext.PROPERTY,
@@ -1276,11 +1269,10 @@ describe('NotificationDAO Integration Tests', () => {
     });
 
     it('getUnreadCountByType should respect department filtering', async () => {
-      const counts = await notificationDAO.getUnreadCountByType(
-        testUserId.toString(),
-        testCuid,
-        { roles: ['staff'], department: 'accounting' }
-      );
+      const counts = await notificationDAO.getUnreadCountByType(testUserId.toString(), testCuid, {
+        roles: ['staff'],
+        department: 'accounting',
+      });
 
       // Only 2 maintenance announcements visible (the ones without dept targeting)
       expect(counts[NotificationTypeEnum.MAINTENANCE]).toBe(2);

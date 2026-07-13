@@ -189,10 +189,7 @@ describe('Property Unit Routes Integration Tests', () => {
         squareFeet: 850,
       };
 
-      const response = await request(app)
-        .post(endpoint)
-        .send(unitData)
-        .expect(httpStatusCodes.OK);
+      const response = await request(app).post(endpoint).send(unitData).expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
       expect(response.body.message).toContain('created');
@@ -201,15 +198,13 @@ describe('Property Unit Routes Integration Tests', () => {
     });
 
     it('should validate required fields', async () => {
-      mockPropertyUnitController.addUnit.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.BAD_REQUEST).json({
-            success: false,
-            message: 'Validation failed',
-            errors: ['Unit number is required'],
-          });
-        }
-      );
+      mockPropertyUnitController.addUnit.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.BAD_REQUEST).json({
+          success: false,
+          message: 'Validation failed',
+          errors: ['Unit number is required'],
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -220,14 +215,12 @@ describe('Property Unit Routes Integration Tests', () => {
     });
 
     it('should return 403 for insufficient permissions', async () => {
-      mockPropertyUnitController.addUnit.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.FORBIDDEN).json({
-            success: false,
-            message: 'Insufficient permissions',
-          });
-        }
-      );
+      mockPropertyUnitController.addUnit.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.FORBIDDEN).json({
+          success: false,
+          message: 'Insufficient permissions',
+        });
+      });
 
       const response = await request(app)
         .post(endpoint)
@@ -608,9 +601,7 @@ describe('Property Unit Routes Integration Tests', () => {
       );
 
       const invalidEndpoint = `${baseUrl}/${mockCuid}/client_properties/invalid-pid/units`;
-      const response = await request(app)
-        .get(invalidEndpoint)
-        .expect(httpStatusCodes.BAD_REQUEST);
+      const response = await request(app).get(invalidEndpoint).expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Invalid');
     });

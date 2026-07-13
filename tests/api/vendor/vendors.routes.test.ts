@@ -140,19 +140,10 @@ describe('Vendors Routes Integration Tests', () => {
       // Define vendor routes
       testApp.get(`${baseUrl}/:cuid/vendors/stats`, mockVendorController.getVendorStats);
       testApp.get(`${baseUrl}/:cuid/filteredVendors`, mockVendorController.getFilteredVendors);
-      testApp.get(
-        `${baseUrl}/:cuid/vendor_details/:vuid`,
-        mockVendorController.getSingleVendor
-      );
-      testApp.get(
-        `${baseUrl}/:cuid/team_members/:vuid`,
-        mockVendorController.getVendorTeamMembers
-      );
+      testApp.get(`${baseUrl}/:cuid/vendor_details/:vuid`, mockVendorController.getSingleVendor);
+      testApp.get(`${baseUrl}/:cuid/team_members/:vuid`, mockVendorController.getVendorTeamMembers);
       testApp.get(`${baseUrl}/:cuid/vendor/:vuid/edit`, mockVendorController.getVendorForEdit);
-      testApp.patch(
-        `${baseUrl}/:cuid/vendor/:vuid`,
-        mockVendorController.updateVendorDetails
-      );
+      testApp.patch(`${baseUrl}/:cuid/vendor/:vuid`, mockVendorController.updateVendorDetails);
     });
   });
 
@@ -190,14 +181,12 @@ describe('Vendors Routes Integration Tests', () => {
     });
 
     it('should return 403 for insufficient permissions', async () => {
-      mockVendorController.getVendorStats.mockImplementationOnce(
-        (_req: Request, res: Response) => {
-          res.status(httpStatusCodes.FORBIDDEN).json({
-            success: false,
-            message: 'Insufficient permissions',
-          });
-        }
-      );
+      mockVendorController.getVendorStats.mockImplementationOnce((_req: Request, res: Response) => {
+        res.status(httpStatusCodes.FORBIDDEN).json({
+          success: false,
+          message: 'Insufficient permissions',
+        });
+      });
 
       const response = await request(app).get(endpoint).expect(httpStatusCodes.FORBIDDEN);
 

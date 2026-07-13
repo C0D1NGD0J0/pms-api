@@ -1,5 +1,10 @@
 import { AuthService } from '@services/auth/auth.service';
-import { InvalidRequestError, UnauthorizedError, BadRequestError, NotFoundError } from '@shared/customErrors';
+import {
+  InvalidRequestError,
+  UnauthorizedError,
+  BadRequestError,
+  NotFoundError,
+} from '@shared/customErrors';
 
 // ── Mock factories ──────────────────────────────────────────────────────────
 
@@ -35,7 +40,9 @@ const makeService = (mocks: Record<string, any> = {}) => {
 
   const profileDAO = {
     findFirst: jest.fn(),
-    generateCurrentUserInfo: jest.fn().mockResolvedValue({ sub: 'user-id-1', client: { cuid: 'CUID1' } }),
+    generateCurrentUserInfo: jest
+      .fn()
+      .mockResolvedValue({ sub: 'user-id-1', client: { cuid: 'CUID1' } }),
     ...mocks.profileDAO,
   };
 
@@ -177,7 +184,9 @@ describe('AuthService.login', () => {
         userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
       });
 
-      await expect(service.login({ email: 'test@example.com' })).rejects.toThrow(InvalidRequestError);
+      await expect(service.login({ email: 'test@example.com' })).rejects.toThrow(
+        InvalidRequestError
+      );
     });
   });
 
@@ -235,7 +244,9 @@ describe('AuthService.login', () => {
         },
         profileDAO: {
           findFirst: jest.fn().mockResolvedValue(profile),
-          generateCurrentUserInfo: jest.fn().mockResolvedValue({ sub: 'user-id-1', client: { cuid: 'CUID1' } }),
+          generateCurrentUserInfo: jest
+            .fn()
+            .mockResolvedValue({ sub: 'user-id-1', client: { cuid: 'CUID1' } }),
         },
         twilioService: { verifyOTP: jest.fn().mockResolvedValue({ valid: true }) },
       });
@@ -264,9 +275,9 @@ describe('AuthService.login', () => {
         twilioService: { verifyOTP: jest.fn().mockResolvedValue({ valid: false }) },
       });
 
-      await expect(
-        service.login({ email: 'test@example.com', otp: '000000' })
-      ).rejects.toThrow(UnauthorizedError);
+      await expect(service.login({ email: 'test@example.com', otp: '000000' })).rejects.toThrow(
+        UnauthorizedError
+      );
     });
 
     it('throws BadRequestError when phone not verified', async () => {
@@ -279,9 +290,9 @@ describe('AuthService.login', () => {
         profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
       });
 
-      await expect(
-        service.login({ email: 'test@example.com', otp: '123456' })
-      ).rejects.toThrow(BadRequestError);
+      await expect(service.login({ email: 'test@example.com', otp: '123456' })).rejects.toThrow(
+        BadRequestError
+      );
     });
   });
 });

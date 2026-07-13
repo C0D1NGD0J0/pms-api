@@ -60,7 +60,10 @@ const full: Record<string, any> = {
     description: 'Faucet repair',
     status: 'approved',
     source: 'vendor',
-    lineItems: [{ desc: 'Labour', amountInCents: 15000 }, { desc: 'Parts', amountInCents: 5000 }],
+    lineItems: [
+      { desc: 'Labour', amountInCents: 15000 },
+      { desc: 'Parts', amountInCents: 5000 },
+    ],
     attachmentUrl: 'https://example.com/inv.pdf',
     attachmentKey: 'inv.pdf',
     reviewedAt: '2026-01-05T00:00:00Z',
@@ -246,7 +249,12 @@ describe('serializeMaintenanceRequest — unknown role fallback', () => {
 });
 
 describe('serializeMaintenanceRequest — missing nested objects', () => {
-  const withoutNested = { ...full, workOrder: undefined, invoice: undefined, assignedTechnician: undefined };
+  const withoutNested = {
+    ...full,
+    workOrder: undefined,
+    invoice: undefined,
+    assignedTechnician: undefined,
+  };
 
   it('vendor: handles missing invoice gracefully', () => {
     const result = serializeMaintenanceRequest(withoutNested, ROLES.VENDOR);

@@ -33,7 +33,11 @@ const mockDAO = {
 
 const mockPropertyDAO = { findFirst: jest.fn() } as any;
 const mockPropertyUnitDAO = { findFirst: jest.fn() } as any;
-const mockVendorDAO = { findFirst: jest.fn(), getClientVendors: jest.fn(), getVendorByVuid: jest.fn() } as any;
+const mockVendorDAO = {
+  findFirst: jest.fn(),
+  getClientVendors: jest.fn(),
+  getVendorByVuid: jest.fn(),
+} as any;
 const mockUserDAO = { findFirst: jest.fn() } as any;
 const mockLeaseDAO = { findFirst: jest.fn() } as any;
 const mockEmitter = { emit: jest.fn(), on: jest.fn() } as any;
@@ -54,7 +58,9 @@ const _mockAiService = {
   selectBestVendor: jest.fn(),
 } as any;
 const mockPaymentDAO = { findFirst: jest.fn() } as any;
-const _mockServiceAreaService: jest.Mocked<Pick<ServiceAreaService, 'isLocationInVendorServiceArea'>> = {
+const _mockServiceAreaService: jest.Mocked<
+  Pick<ServiceAreaService, 'isLocationInVendorServiceArea'>
+> = {
   isLocationInVendorServiceArea: jest.fn(),
 };
 
@@ -311,7 +317,9 @@ describe('MaintenanceRequestService - createRequest hasPet lease default', () =>
     // 2) property-specific lease check (line ~307)
     const leaseDoc = { _id: new Types.ObjectId(), petPolicy: { allowed: petPolicyAllowed } };
     mockLeaseDAO.findFirst.mockResolvedValue(leaseDoc);
-    mockDAO.insert.mockImplementation((data: any) => Promise.resolve({ ...data, _id: new Types.ObjectId(), mruid: 'MR-NEW' }));
+    mockDAO.insert.mockImplementation((data: any) =>
+      Promise.resolve({ ...data, _id: new Types.ObjectId(), mruid: 'MR-NEW' })
+    );
   }
 
   it('should default hasPet to true when lease petPolicy.allowed is true and hasPet not provided', async () => {
@@ -547,9 +555,9 @@ describe('MaintenanceRequestService - abandonAssignment', () => {
     mockDAO.getByMruid.mockResolvedValue(request);
 
     const ctx = makeCtx('vendor', vendorObjectId.toString());
-    await expect(
-      service.abandonAssignment(ctx as IRequestContext, 'MR001')
-    ).rejects.toThrow(BadRequestError);
+    await expect(service.abandonAssignment(ctx as IRequestContext, 'MR001')).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws BadRequestError when WO is not rejected (pending_review)', async () => {
@@ -560,9 +568,9 @@ describe('MaintenanceRequestService - abandonAssignment', () => {
     mockDAO.getByMruid.mockResolvedValue(request);
 
     const ctx = makeCtx('vendor', vendorObjectId.toString());
-    await expect(
-      service.abandonAssignment(ctx as IRequestContext, 'MR001')
-    ).rejects.toThrow(BadRequestError);
+    await expect(service.abandonAssignment(ctx as IRequestContext, 'MR001')).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws BadRequestError when WO is approved (not rejected)', async () => {
@@ -573,9 +581,9 @@ describe('MaintenanceRequestService - abandonAssignment', () => {
     mockDAO.getByMruid.mockResolvedValue(request);
 
     const ctx = makeCtx('vendor', vendorObjectId.toString());
-    await expect(
-      service.abandonAssignment(ctx as IRequestContext, 'MR001')
-    ).rejects.toThrow(BadRequestError);
+    await expect(service.abandonAssignment(ctx as IRequestContext, 'MR001')).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('throws ForbiddenError when caller is not the assigned vendor', async () => {
@@ -584,9 +592,9 @@ describe('MaintenanceRequestService - abandonAssignment', () => {
 
     const differentVendor = new Types.ObjectId();
     const ctx = makeCtx('vendor', differentVendor.toString());
-    await expect(
-      service.abandonAssignment(ctx as IRequestContext, 'MR001')
-    ).rejects.toThrow(ForbiddenError);
+    await expect(service.abandonAssignment(ctx as IRequestContext, 'MR001')).rejects.toThrow(
+      ForbiddenError
+    );
   });
 
   it('respondToAssignment routes to abandonAssignment when action is "abandon"', async () => {
@@ -686,29 +694,34 @@ describe('MaintenanceRequestService - updateRequest', () => {
     ).rejects.toThrow(ForbiddenError);
   });
 
-  it.each([
-    MaintenanceRequestStatus.ASSIGNED,
-    MaintenanceRequestStatus.IN_PROGRESS,
-  ])('should allow limited edit (hasPet + availability only) when status is %s', async (status) => {
-    const request = makeRequest(status);
-    mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, hasPet: true });
+  it.each([MaintenanceRequestStatus.ASSIGNED, MaintenanceRequestStatus.IN_PROGRESS])(
+    'should allow limited edit (hasPet + availability only) when status is %s',
+    async (status) => {
+      const request = makeRequest(status);
+      mockDAO.getByMruid.mockResolvedValue(request);
+      mockDAO.updateById.mockResolvedValue({ ...request, hasPet: true });
 
-    const ctx = makeCtx('staff');
-    const result = await service.updateRequest(ctx as IRequestContext, 'MR001', {
-      hasPet: true,
-      availabilityInfo: { preferredDate: '2026-06-01', options: [AvailabilityWindow.MORNING] },
-    });
+      const ctx = makeCtx('staff');
+      const result = await service.updateRequest(ctx as IRequestContext, 'MR001', {
+        hasPet: true,
+        availabilityInfo: { preferredDate: '2026-06-01', options: [AvailabilityWindow.MORNING] },
+      });
 
-    expect(result.success).toBe(true);
-    // Only the allowed limited fields should be written — title from updateData is ignored
-    expect(mockDAO.updateById).toHaveBeenCalledWith(
-      expect.any(String),
-      { $set: { hasPet: true, availabilityInfo: { preferredDate: '2026-06-01', options: ['morning'] } } },
-      undefined,
-      undefined
-    );
-  });
+      expect(result.success).toBe(true);
+      // Only the allowed limited fields should be written — title from updateData is ignored
+      expect(mockDAO.updateById).toHaveBeenCalledWith(
+        expect.any(String),
+        {
+          $set: {
+            hasPet: true,
+            availabilityInfo: { preferredDate: '2026-06-01', options: ['morning'] },
+          },
+        },
+        undefined,
+        undefined
+      );
+    }
+  );
 
   it('should only set fields that are explicitly provided', async () => {
     const request = makeRequest(MaintenanceRequestStatus.PENDING);
@@ -741,9 +754,7 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     // and returns the primaryAccountHolderUserId from the matching connectedClient.
     mockVendorDAO.getVendorByVuid.mockResolvedValue({
       vuid: primaryVendorUid,
-      connectedClients: [
-        { cuid: testCuid, primaryAccountHolderUserId: primaryVendorObjectId },
-      ],
+      connectedClients: [{ cuid: testCuid, primaryAccountHolderUserId: primaryVendorObjectId }],
     });
   });
 
@@ -935,8 +946,8 @@ describe('MaintenanceRequestService - updateRequest re-triage', () => {
   beforeEach(() => {
     mockDAO.updateById.mockResolvedValue({ ...baseRequest });
     mockDAO.startSession.mockResolvedValue({});
-    mockDAO.withTransaction.mockImplementation(
-      (_session: unknown, cb: (s: unknown) => unknown) => cb({})
+    mockDAO.withTransaction.mockImplementation((_session: unknown, cb: (s: unknown) => unknown) =>
+      cb({})
     );
     // vendorSuggestionService.runAITriage is already mocked as jest.fn() in the main beforeEach
   });
@@ -1076,7 +1087,10 @@ describe('MaintenanceRequestService - cancelRequest ownership', () => {
   it('allows tenant to cancel their own OPEN request', async () => {
     const request = makeRequest(MaintenanceRequestStatus.OPEN, { tenantId });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, status: MaintenanceRequestStatus.CANCELLED });
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.CANCELLED,
+    });
 
     const ctx = makeCtx('tenant', tenantId.toString());
     await expect(
@@ -1097,7 +1111,10 @@ describe('MaintenanceRequestService - cancelRequest ownership', () => {
   it('allows management role to cancel any request', async () => {
     const request = makeRequest(MaintenanceRequestStatus.OPEN, { tenantId: otherTenantId });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, status: MaintenanceRequestStatus.CANCELLED });
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.CANCELLED,
+    });
 
     const ctx = makeCtx('manager');
     await expect(
@@ -1108,7 +1125,10 @@ describe('MaintenanceRequestService - cancelRequest ownership', () => {
   it('allows assigned vendor to cancel their own ASSIGNED request', async () => {
     const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, { vendorId: vendorObjectId });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, status: MaintenanceRequestStatus.CANCELLED });
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.CANCELLED,
+    });
 
     const ctx = makeCtx('vendor', vendorObjectId.toString());
     await expect(
@@ -1139,7 +1159,9 @@ describe('MaintenanceRequestService - updateStatus ownership', () => {
 
     const ctx = makeCtx('tenant');
     await expect(
-      service.updateStatus(ctx as IRequestContext, 'MR001', { status: MaintenanceRequestStatus.OPEN })
+      service.updateStatus(ctx as IRequestContext, 'MR001', {
+        status: MaintenanceRequestStatus.OPEN,
+      })
     ).rejects.toThrow(ForbiddenError);
   });
 
@@ -1150,18 +1172,25 @@ describe('MaintenanceRequestService - updateStatus ownership', () => {
 
     const ctx = makeCtx('admin');
     await expect(
-      service.updateStatus(ctx as IRequestContext, 'MR001', { status: MaintenanceRequestStatus.OPEN })
+      service.updateStatus(ctx as IRequestContext, 'MR001', {
+        status: MaintenanceRequestStatus.OPEN,
+      })
     ).resolves.toMatchObject({ success: true });
   });
 
   it('allows assigned vendor to update status on their own request', async () => {
     const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, { vendorId: vendorObjectId });
     mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({ ...request, status: MaintenanceRequestStatus.IN_PROGRESS });
+    mockDAO.updateById.mockResolvedValue({
+      ...request,
+      status: MaintenanceRequestStatus.IN_PROGRESS,
+    });
 
     const ctx = makeCtx('vendor', vendorObjectId.toString());
     await expect(
-      service.updateStatus(ctx as IRequestContext, 'MR001', { status: MaintenanceRequestStatus.IN_PROGRESS })
+      service.updateStatus(ctx as IRequestContext, 'MR001', {
+        status: MaintenanceRequestStatus.IN_PROGRESS,
+      })
     ).resolves.toMatchObject({ success: true });
   });
 
@@ -1172,8 +1201,9 @@ describe('MaintenanceRequestService - updateStatus ownership', () => {
 
     const ctx = makeCtx('vendor', vendorObjectId.toString());
     await expect(
-      service.updateStatus(ctx as IRequestContext, 'MR001', { status: MaintenanceRequestStatus.IN_PROGRESS })
+      service.updateStatus(ctx as IRequestContext, 'MR001', {
+        status: MaintenanceRequestStatus.IN_PROGRESS,
+      })
     ).rejects.toThrow(ForbiddenError);
   });
 });
-

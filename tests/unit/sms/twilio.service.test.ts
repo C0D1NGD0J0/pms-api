@@ -97,9 +97,7 @@ describe('TwilioService', () => {
         FEATURES: { SMS_ENABLED: true },
       };
 
-      expect(() => new TwilioService()).toThrow(
-        /required when SMS feature is enabled/
-      );
+      expect(() => new TwilioService()).toThrow(/required when SMS feature is enabled/);
     });
 
     it('should warn but not throw when SMS is disabled and credentials are missing', () => {

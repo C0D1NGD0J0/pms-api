@@ -42,7 +42,11 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       clientDAO: mockClientDAO,
       emitterService: mockEmitterService,
       authCache: {} as any,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       sseService: {} as any,
       userDAO: {} as any,
       paymentGatewayService: {} as any,
@@ -83,7 +87,11 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       await unitBatchCreatedHandler(payload);
 
       expect(mockClientDAO.getClientByCuid).toHaveBeenCalledWith(testCuid);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenCalledWith('propertyUnit', mockClientId, 5);
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenCalledWith(
+        'propertyUnit',
+        mockClientId,
+        5
+      );
     });
 
     it('should handle multiple unit creations cumulatively', async () => {
@@ -94,8 +102,18 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       await unitBatchCreatedHandler(batch2);
 
       expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenCalledTimes(2);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(1, 'propertyUnit', mockClientId, 3);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(2, 'propertyUnit', mockClientId, 7);
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(
+        1,
+        'propertyUnit',
+        mockClientId,
+        3
+      );
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(
+        2,
+        'propertyUnit',
+        mockClientId,
+        7
+      );
     });
 
     it('should not increment counter when zero units created', async () => {
@@ -141,8 +159,18 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       await unitBatchCreatedHandler(batch2);
 
       expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenCalledTimes(2);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(1, 'propertyUnit', mockClientId, 10);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(2, 'propertyUnit', mockClientId, 5);
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(
+        1,
+        'propertyUnit',
+        mockClientId,
+        10
+      );
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(
+        2,
+        'propertyUnit',
+        mockClientId,
+        5
+      );
     });
   });
 
@@ -160,8 +188,18 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
 
       // Counter should be 15, not 10 (prevents gaming)
       expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenCalledTimes(2);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(1, 'propertyUnit', mockClientId, 10);
-      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(2, 'propertyUnit', mockClientId, 5);
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(
+        1,
+        'propertyUnit',
+        mockClientId,
+        10
+      );
+      expect(mockSubscriptionDAO.updateResourceCount).toHaveBeenNthCalledWith(
+        2,
+        'propertyUnit',
+        mockClientId,
+        5
+      );
     });
   });
 
@@ -187,16 +225,20 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         clientDAO: mockClientDAO,
         emitterService: mockEmitterService,
         authCache: {} as any,
-      subscriptionCache: { getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }), cacheEntitlements: jest.fn().mockResolvedValue({ success: true }), invalidate: jest.fn().mockResolvedValue({ success: true }) } as any,
+        subscriptionCache: {
+          getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+          cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+          invalidate: jest.fn().mockResolvedValue({ success: true }),
+        } as any,
         sseService: {} as any,
         userDAO: {} as any,
         paymentGatewayService: {} as any,
         propertyDAO: {} as any,
-      propertyUnitDAO: {} as any,
-      paymentProcessorDAO: {} as any,
-      emailQueue: {} as any,
-      subscriptionWebhookService: {} as any,
-    });
+        propertyUnitDAO: {} as any,
+        paymentProcessorDAO: {} as any,
+        emailQueue: {} as any,
+        subscriptionWebhookService: {} as any,
+      });
     });
 
     it('should allow invitation when seats available', async () => {
@@ -249,7 +291,9 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         clientId: mockClientId.toString(),
       };
 
-      await expect(invitationSentHandler(payload)).rejects.toThrow('subscription.errors.seatLimitReached');
+      await expect(invitationSentHandler(payload)).rejects.toThrow(
+        'subscription.errors.seatLimitReached'
+      );
     });
 
     it('should calculate correct limit with additional seats purchased', async () => {

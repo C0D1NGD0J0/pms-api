@@ -589,8 +589,18 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
         fullname: 'Acme Plumbing',
         cuids: [{ cuid: testCuid, roles: ['vendor'], isConnected: true, linkedVendorUid: null }],
       };
-      const linkedUser1 = { _id: new Types.ObjectId(), uid: 'team1', email: 'team1@example.com', fullname: 'Team One' };
-      const linkedUser2 = { _id: new Types.ObjectId(), uid: 'team2', email: 'team2@example.com', fullname: 'Team Two' };
+      const linkedUser1 = {
+        _id: new Types.ObjectId(),
+        uid: 'team1',
+        email: 'team1@example.com',
+        fullname: 'Team One',
+      };
+      const linkedUser2 = {
+        _id: new Types.ObjectId(),
+        uid: 'team2',
+        email: 'team2@example.com',
+        fullname: 'Team Two',
+      };
 
       mockUserDAO.getUserByUId.mockResolvedValue(vendorUser as any);
       mockUserDAO.updateById.mockResolvedValue(vendorUser as any);
@@ -630,7 +640,12 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
         fullname: 'Acme Plumbing',
         cuids: [{ cuid: testCuid, roles: ['vendor'], isConnected: true, linkedVendorUid: null }],
       };
-      const linkedUser = { _id: new Types.ObjectId(), uid: 'team1', email: 'team1@example.com', fullname: 'Team Member' };
+      const linkedUser = {
+        _id: new Types.ObjectId(),
+        uid: 'team1',
+        email: 'team1@example.com',
+        fullname: 'Team Member',
+      };
 
       mockUserDAO.getUserByUId.mockResolvedValue(vendorUser as any);
       mockUserDAO.updateById.mockResolvedValue(vendorUser as any);

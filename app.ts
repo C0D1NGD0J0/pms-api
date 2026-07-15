@@ -74,7 +74,9 @@ export class App implements IAppSetup {
         credentials: true,
         optionsSuccessStatus: 200,
         methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-        origin: envVariables.FRONTEND.URL || 'http://localhost:3000',
+        origin: (envVariables.FRONTEND.URL || 'http://localhost:3000')
+          .split(',')
+          .map((u: string) => u.trim()),
       })
     );
     app.use(mongoSanitize());

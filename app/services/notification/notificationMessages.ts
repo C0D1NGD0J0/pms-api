@@ -259,7 +259,12 @@ export const NotificationMessages = {
     fundsAvailable: {
       title: 'Funds Ready for Vendor Payout',
       message:
-        'Payment for maintenance request {{mruid}} has settled in your account. You can now pay the vendor.',
+        'Payment for maintenance request {{mruid}} has settled. The vendor will be paid automatically in 5 days if no action is taken.',
+    },
+    autoVendorPaid: {
+      title: 'Vendor Paid Automatically',
+      message:
+        '{{vendorName}} was automatically paid ${{amount}} for maintenance request {{mruid}}. The 5-day review period elapsed without manual action.',
     },
   },
 
@@ -358,6 +363,7 @@ export type NotificationMessageKey =
   | 'maintenance.vendorScheduledVisit'
   | 'maintenance.chargePaid'
   | 'maintenance.fundsAvailable'
+  | 'maintenance.autoVendorPaid'
   | 'lease.pdfGenerationStarted'
   | 'lease.pdfGenerated'
   | 'lease.pdfGenerationFailed'

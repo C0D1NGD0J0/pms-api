@@ -110,6 +110,29 @@ export class InvoiceDAO extends BaseDAO<IInvoiceDocument> {
     }
   }
 
+  async findReadyForAutoPayout(limit = 100): Promise<IInvoiceDocument[]> {
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 5);
+
+      const { items } = await this.list(
+        {
+          vendorPayoutStatus: 'pending',
+          tenantPaymentStatus: TenantPaymentStatus.PAID,
+          fundsAvailable: true,
+          fundsAvailableAt: { $lte: cutoff },
+          status: InvoiceStatus.APPROVED,
+          isDeleted: false,
+        },
+        { limit, sort: { fundsAvailableAt: 1 } }
+      );
+      return items;
+    } catch (error: any) {
+      this.log.error({ error }, 'Error finding invoices ready for auto-payout');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
   async listByVendor(
     vendorId: string | string[],
     cuid: string,

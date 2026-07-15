@@ -1077,6 +1077,30 @@ export async function handleMRCancelled(
   }
 }
 
+export async function handleAutoVendorPaid(
+  ctx: INotificationContext,
+  payload: { amountInCents: number; vendorName: string; mruid: string; cuid: string }
+): Promise<void> {
+  try {
+    const { cuid, mruid, vendorName, amountInCents } = payload;
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      'maintenance.autoVendorPaid',
+      { mruid, vendorName, amount: (amountInCents / 100).toFixed(2) },
+      ALL_STAFF_ROLES,
+      { mruid },
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS
+    );
+  } catch (error) {
+    ctx.log.error('Error sending auto vendor payout notification', { error, payload });
+  }
+}
+
+// ── AI triage handler ───────────────────────────────────────────────────────
+
 export async function handleMaintenanceChargePaid(
   ctx: INotificationContext,
   payload: MaintenanceChargePaidPayload
@@ -1099,8 +1123,6 @@ export async function handleMaintenanceChargePaid(
     ctx.log.error('Error sending maintenance charge paid notification', { error, payload });
   }
 }
-
-// ── AI triage handler ───────────────────────────────────────────────────────
 
 export async function handleMaintenanceFundsAvailable(
   ctx: INotificationContext,

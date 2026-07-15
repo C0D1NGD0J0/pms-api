@@ -332,6 +332,7 @@ export class PaymentController {
       'auto-charge-rent': 'payment.auto-charge-due-rent',
       'auto-charge-maintenance': 'payment.auto-charge-overdue-maintenance',
       'reconcile-processing': 'payment.reconcile-stale-processing',
+      'auto-payout-vendors': 'payment.auto-payout-vendors',
       'expire-guest-passes': 'guestpass.expire-stale-passes',
     };
 

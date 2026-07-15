@@ -29,6 +29,7 @@ export enum EventTypes {
   MAINTENANCE_REQUEST_DECLINED = 'maintenance:request:declined',
   MAINTENANCE_INVOICE_APPROVED = 'maintenance:invoice:approved',
   MAINTENANCE_INVOICE_REJECTED = 'maintenance:invoice:rejected',
+  MAINTENANCE_AUTO_VENDOR_PAID = 'maintenance:auto:vendor:paid',
   MAINTENANCE_REQUEST_CREATED = 'maintenance:request:created',
   MAINTENANCE_REQUEST_UPDATED = 'maintenance:request:updated',
   MAINTENANCE_FUNDS_AVAILABLE = 'maintenance:funds:available',
@@ -179,6 +180,7 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
   [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
   [EventTypes.MAINTENANCE_CHARGE_PAID]: MaintenanceChargePaidPayload;
+  [EventTypes.MAINTENANCE_AUTO_VENDOR_PAID]: MaintenanceAutoVendorPaidPayload;
   [EventTypes.MAINTENANCE_VENDOR_PAID]: MaintenanceVendorPaidPayload;
   [EventTypes.MAINTENANCE_FUNDS_AVAILABLE]: MaintenanceFundsAvailablePayload;
   [EventTypes.INVOICE_GENERATED]: InvoiceGeneratedPayload;
@@ -741,6 +743,13 @@ export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
   propertyId: string;
   status: 'success';
+}
+
+export interface MaintenanceAutoVendorPaidPayload {
+  amountInCents: number;
+  vendorName: string;
+  mruid: string;
+  cuid: string;
 }
 
 export interface UserArchivePayload {

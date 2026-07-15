@@ -14,6 +14,7 @@ import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { computeLeaseMonthlyFees } from '@services/lease/leaseHelpers';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { MaintenanceFundsAvailablePayload, EventTypes } from '@interfaces/events.interface';
 import {
   PaymentProcessorDAO,
@@ -35,6 +36,7 @@ import {
 } from '@interfaces/index';
 
 interface IConstructor {
+  maintenancePaymentService: MaintenancePaymentService;
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
@@ -52,6 +54,7 @@ interface IConstructor {
 
 export class PaymentCronService implements ICronProvider {
   private readonly log: Logger;
+  private readonly maintenancePaymentService: MaintenancePaymentService;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -67,6 +70,7 @@ export class PaymentCronService implements ICronProvider {
   private readonly leaseDAO: LeaseDAO;
 
   constructor({
+    maintenancePaymentService,
     paymentGatewayService,
     paymentProcessorDAO,
     subscriptionPlanConfig,
@@ -82,6 +86,7 @@ export class PaymentCronService implements ICronProvider {
     leaseDAO,
   }: IConstructor) {
     this.log = createLogger('PaymentCronService');
+    this.maintenancePaymentService = maintenancePaymentService;
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
@@ -145,6 +150,16 @@ export class PaymentCronService implements ICronProvider {
         service: 'PaymentCronService',
         description:
           'Check Stripe Connect balance and flip fundsAvailable on settled maintenance invoices (evening run)',
+        timeout: 300000,
+      },
+      {
+        name: 'payment.auto-payout-vendors',
+        schedule: '0 12 * * *',
+        handler: this.autoPayoutVendors.bind(this),
+        enabled: true,
+        service: 'PaymentCronService',
+        description:
+          'Auto-pay vendors whose invoices have had settled funds for 5+ days without PM action',
         timeout: 300000,
       },
     ];
@@ -981,6 +996,65 @@ export class PaymentCronService implements ICronProvider {
     this.log.info(
       { flipped, skipped, total: invoices.length },
       '[Cron] Funds availability check complete'
+    );
+  }
+
+  /**
+   * Daily cron (noon UTC): auto-pay vendors whose approved invoices have had
+   * settled funds for 5+ days without PM action. Calls the existing payVendor()
+   * method which handles all guards, Stripe transfer, and notifications.
+   */
+  private async autoPayoutVendors(): Promise<void> {
+    const invoices = await this.invoiceDAO.findReadyForAutoPayout(100);
+
+    if (invoices.length === 0) {
+      this.log.info('[Cron] No invoices ready for auto vendor payout');
+      return;
+    }
+
+    let paid = 0;
+    let failed = 0;
+
+    for (const invoice of invoices) {
+      const cuid = (invoice as any).cuid;
+      const mruid = (invoice as any).maintenanceRequestUid;
+
+      if (!cuid || !mruid) {
+        this.log.warn(
+          { invuid: invoice.invuid },
+          '[Cron] Invoice missing cuid or mruid — skipping'
+        );
+        failed++;
+        continue;
+      }
+
+      try {
+        await this.maintenancePaymentService.payVendor(cuid, mruid);
+        paid++;
+
+        this.emitterService.emit(EventTypes.MAINTENANCE_AUTO_VENDOR_PAID, {
+          amountInCents: invoice.amountInCents,
+          vendorName: (invoice as any).vendorName || 'Vendor',
+          mruid,
+          cuid,
+        });
+
+        this.log.info(
+          { cuid, mruid, invuid: invoice.invuid, amount: invoice.amountInCents },
+          '[Cron] Auto vendor payout succeeded'
+        );
+      } catch (error: any) {
+        failed++;
+        this.log.error(
+          { cuid, mruid, invuid: invoice.invuid, error: error.message },
+          '[Cron] Auto vendor payout failed — continuing to next'
+        );
+      }
+    }
+
+    this.log.info(
+      { paid, failed, total: invoices.length },
+      '[Cron] Auto vendor payout run complete'
     );
   }
 

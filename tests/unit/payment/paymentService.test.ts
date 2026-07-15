@@ -125,22 +125,6 @@ const makeServiceWithMocks = (
     vendorDAO: {} as any,
   });
 
-  const paymentCronService = new PaymentCronService({
-    paymentGatewayService,
-    paymentProcessorDAO,
-    subscriptionPlanConfig,
-    emitterService,
-    subscriptionDAO,
-    stripeService: stripeService as unknown as StripeService,
-    smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
-    invoiceDAO,
-    queueFactory,
-    profileDAO,
-    paymentDAO,
-    clientDAO,
-    leaseDAO,
-  });
-
   const maintenancePaymentService = new MaintenancePaymentService({
     paymentGatewayService,
     paymentProcessorDAO,
@@ -155,6 +139,23 @@ const makeServiceWithMocks = (
     vendorDAO: {} as any,
     leaseDAO,
     userDAO,
+  });
+
+  const paymentCronService = new PaymentCronService({
+    maintenancePaymentService,
+    paymentGatewayService,
+    paymentProcessorDAO,
+    subscriptionPlanConfig,
+    emitterService,
+    subscriptionDAO,
+    stripeService: stripeService as unknown as StripeService,
+    smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
+    invoiceDAO,
+    queueFactory,
+    profileDAO,
+    paymentDAO,
+    clientDAO,
+    leaseDAO,
   });
 
   const rentPaymentService = new RentPaymentService({
@@ -5776,6 +5777,7 @@ describe('PaymentCronService - checkFundsAvailability', () => {
     } as unknown as jest.Mocked<ClientDAO>;
 
     cronService = new PaymentCronService({
+      maintenancePaymentService: { payVendor: jest.fn().mockResolvedValue({ success: true }) } as any,
       paymentGatewayService: {} as any,
       paymentProcessorDAO: mockPaymentProcessorDAO,
       subscriptionPlanConfig: {} as any,
@@ -5886,6 +5888,7 @@ describe('PaymentCronService - getCronJobs', () => {
     } as unknown as jest.Mocked<ClientDAO>;
 
     cronService = new PaymentCronService({
+      maintenancePaymentService: { payVendor: jest.fn().mockResolvedValue({ success: true }) } as any,
       paymentGatewayService: {} as any,
       paymentProcessorDAO: {} as any,
       subscriptionPlanConfig: {} as any,

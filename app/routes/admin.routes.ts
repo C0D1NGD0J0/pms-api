@@ -5,6 +5,7 @@ import { IUserRole } from '@shared/constants/roles.constants';
 import { AdminController } from '@controllers/AdminController';
 import { PaymentController } from '@controllers/PaymentController';
 import { UtilsValidations, validateRequest } from '@shared/validations';
+import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { isAuthenticated, basicLimiter, requireRole } from '@shared/middlewares';
 
 const router = Router();
@@ -70,6 +71,23 @@ if (process.env.NODE_ENV !== 'production') {
     asyncWrapper((req, res) => {
       const controller = req.container.resolve<PaymentController>('paymentController');
       return controller.triggerCronJob(req, res);
+    })
+  );
+
+  // ── Dev-only: email template preview ────────────────────────────────────────
+  router.get(
+    '/dev/email-templates',
+    asyncWrapper((req, res) => {
+      const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
+      return controller.getTemplateList(req, res);
+    })
+  );
+
+  router.get(
+    '/dev/email-templates/:templateType/preview',
+    asyncWrapper((req, res) => {
+      const controller = req.container.resolve<EmailTemplateController>('emailTemplateController');
+      return controller.previewTemplate(req, res);
     })
   );
 }

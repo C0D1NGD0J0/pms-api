@@ -1032,13 +1032,6 @@ export class PaymentCronService implements ICronProvider {
         await this.maintenancePaymentService.payVendor(cuid, mruid);
         paid++;
 
-        this.emitterService.emit(EventTypes.MAINTENANCE_AUTO_VENDOR_PAID, {
-          amountInCents: invoice.amountInCents,
-          vendorName: (invoice as any).vendorName || 'Vendor',
-          mruid,
-          cuid,
-        });
-
         this.log.info(
           { cuid, mruid, invuid: invoice.invuid, amount: invoice.amountInCents },
           '[Cron] Auto vendor payout succeeded'

@@ -194,6 +194,9 @@ export class PaymentWebhookService {
                   ...(paymentDetails.paymentMethodType && {
                     stripePaymentMethodType: paymentDetails.paymentMethodType,
                   }),
+                  ...(payment.paymentMethod === PaymentMethod.OTHER && {
+                    paymentMethod: PaymentMethod.ONLINE,
+                  }),
                   ...(hostedInvoiceUrl && { 'receipt.url': hostedInvoiceUrl }),
                 },
               }
@@ -553,17 +556,26 @@ export class PaymentWebhookService {
       );
     }
 
+    // For split payments, scope the retry to only the failed split's amount
+    const failedSplit = payment.splitInvoices?.find((si) => si.invoiceId === failedInvoiceId);
+    const retryAmount = failedSplit?.amount ?? payment.baseAmount;
+
     // Recalculate application fee for card rates since the original fee was
     // computed for ACH/ACSS. Card processing costs are higher (2.9% + $0.30 vs
     // flat $0.80), so the platform needs a higher application fee to cover them.
-    let cardApplicationFee = payment.applicationFee ?? 0;
+    // For split retries, only the fees split carries applicationFee; rent split has 0.
+    let cardApplicationFee = failedSplit
+      ? failedSplit.category === 'fees'
+        ? (payment.applicationFee ?? 0)
+        : 0
+      : (payment.applicationFee ?? 0);
     try {
       const subscription = await this.subscriptionDAO.findFirst({ cuid });
       if (subscription?.planName) {
         const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
           subscription.planName
         );
-        const recalculated = Math.round(payment.baseAmount * (cardTxFeePercent / 100));
+        const recalculated = Math.round(retryAmount * (cardTxFeePercent / 100));
         if (recalculated > cardApplicationFee) {
           cardApplicationFee = recalculated;
           this.log.info(
@@ -584,14 +596,21 @@ export class PaymentWebhookService {
       );
     }
 
-    const lineItems = payment.lineItems?.length
-      ? (payment.lineItems as { description: string; amountInCents: number }[])
-      : [
-          {
-            description: payment.description || 'Payment retry',
-            amountInCents: payment.baseAmount,
-          },
-        ];
+    // For split retries, filter lineItems to only the failed split's category
+    let lineItems: { description: string; amountInCents: number }[];
+    if (failedSplit && payment.lineItems?.length) {
+      const allItems = payment.lineItems as { description: string; amountInCents: number }[];
+      lineItems =
+        failedSplit.category === 'rent'
+          ? allItems.filter((li) => li.description.toLowerCase().includes('rent'))
+          : allItems.filter((li) => !li.description.toLowerCase().includes('rent'));
+    } else if (payment.lineItems?.length) {
+      lineItems = payment.lineItems as { description: string; amountInCents: number }[];
+    } else {
+      lineItems = [
+        { description: payment.description || 'Payment retry', amountInCents: retryAmount },
+      ];
+    }
 
     const invoiceResult = await this.paymentGatewayService.createInvoice(
       IPaymentGatewayProvider.STRIPE,
@@ -634,20 +653,21 @@ export class PaymentWebhookService {
 
     const updateOps: any = {
       $set: {
-        gatewayPaymentId: invoiceResult.data.invoiceId,
         status: PaymentRecordStatus.PROCESSING,
         paymentMethod: PaymentMethod.ONLINE,
       },
       $unset: { failure: '' },
     };
 
-    // Update the failed split invoice entry with the new card invoice ID
     if (payment.splitInvoices?.length) {
+      // For split retries, only update the failed split's invoiceId — don't overwrite parent gatewayPaymentId
       const splitIndex = payment.splitInvoices.findIndex((si) => si.invoiceId === failedInvoiceId);
       if (splitIndex >= 0) {
         updateOps.$set[`splitInvoices.${splitIndex}.invoiceId`] = invoiceResult.data.invoiceId;
         updateOps.$set[`splitInvoices.${splitIndex}.status`] = 'pending';
       }
+    } else {
+      updateOps.$set.gatewayPaymentId = invoiceResult.data.invoiceId;
     }
 
     await this.paymentDAO.update({ _id: payment._id, cuid: payment.cuid }, updateOps);
@@ -1328,11 +1348,11 @@ export class PaymentWebhookService {
   ): Promise<void> {
     try {
       const { cuid } = payment;
+      const isAcss =
+        actualPaymentMethodType === 'acss_debit' || actualPaymentMethodType === 'us_bank_account';
       const isCard =
         actualPaymentMethodType === 'card' ||
-        actualPaymentMethodType === 'us_bank_account' ||
         (!actualPaymentMethodType && payment.paymentMethod === PaymentMethod.ONLINE);
-      const isAcss = actualPaymentMethodType === 'acss_debit';
 
       // Determine actual gateway fee
       const gatewayFeeType = isAcss ? 'auto-debit' : undefined;

@@ -1,16 +1,15 @@
 import { Types } from 'mongoose';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { ProfileDAO } from '@dao/profileDAO';
-import { InvoiceDAO } from '@dao/invoiceDAO';
-import { Payment, Client, Profile } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
+import { Payment, Profile, Client } from '@models/index';
+import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
+import type { IStripeInvoiceWebhookData } from '@services/payments/paymentWebhook.service';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
   PaymentMethod,
 } from '@interfaces/payments.interface';
-import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
-import type { IStripeInvoiceWebhookData } from '@services/payments/paymentWebhook.service';
 
 /**
  * Integration tests for the split invoices feature.
@@ -227,7 +226,14 @@ describe('PaymentWebhookService — split invoice handling', () => {
       const payment = await createPayment({
         gatewayPaymentId: 'in_rent_full',
         splitInvoices: [
-          { invoiceId: 'in_rent_full', amount: 350000, category: 'rent', status: 'paid', chargeId: 'ch_rent_full', paidAt: new Date() },
+          {
+            invoiceId: 'in_rent_full',
+            amount: 350000,
+            category: 'rent',
+            status: 'paid',
+            chargeId: 'ch_rent_full',
+            paidAt: new Date(),
+          },
           { invoiceId: 'in_fees_full', amount: 45000, category: 'fees', status: 'pending' },
         ],
       });
@@ -268,7 +274,14 @@ describe('PaymentWebhookService — split invoice handling', () => {
       await createPayment({
         gatewayPaymentId: 'in_rent_receipt',
         splitInvoices: [
-          { invoiceId: 'in_rent_receipt', amount: 300000, category: 'rent', status: 'paid', chargeId: 'ch_r', paidAt: new Date() },
+          {
+            invoiceId: 'in_rent_receipt',
+            amount: 300000,
+            category: 'rent',
+            status: 'paid',
+            chargeId: 'ch_r',
+            paidAt: new Date(),
+          },
           { invoiceId: 'in_fees_receipt', amount: 50000, category: 'fees', status: 'pending' },
         ],
       });
@@ -363,7 +376,10 @@ describe('PaymentWebhookService — split invoice handling', () => {
         status: PaymentRecordStatus.PENDING,
       });
 
-      await Payment.updateOne({ gatewayPaymentId: 'in_no_charge' }, { $unset: { splitInvoices: 1 } });
+      await Payment.updateOne(
+        { gatewayPaymentId: 'in_no_charge' },
+        { $unset: { splitInvoices: 1 } }
+      );
 
       mockStripeService.getInvoicePaymentDetails.mockResolvedValue({
         chargeId: null,
@@ -388,7 +404,14 @@ describe('PaymentWebhookService — split invoice handling', () => {
       const payment = await createPayment({
         gatewayPaymentId: 'in_rent_lookup',
         splitInvoices: [
-          { invoiceId: 'in_rent_lookup', amount: 300000, category: 'rent', status: 'paid', chargeId: 'ch_r', paidAt: new Date() },
+          {
+            invoiceId: 'in_rent_lookup',
+            amount: 300000,
+            category: 'rent',
+            status: 'paid',
+            chargeId: 'ch_r',
+            paidAt: new Date(),
+          },
           { invoiceId: 'in_fees_lookup', amount: 60000, category: 'fees', status: 'pending' },
         ],
       });

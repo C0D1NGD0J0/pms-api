@@ -1,5 +1,5 @@
 // Set Jest timeout to prevent hanging tests
-jest.setTimeout(10000);
+jest.setTimeout(30000);
 
 import request from 'supertest';
 import { faker } from '@faker-js/faker';

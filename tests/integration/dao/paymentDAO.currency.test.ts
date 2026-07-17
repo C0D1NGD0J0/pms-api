@@ -159,8 +159,18 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     it('stores and retrieves splitInvoices with rent and fees entries', async () => {
       const paymentData = makePayment('CAD', 395000, PaymentRecordStatus.PROCESSING);
       const splitInvoices = [
-        { invoiceId: 'in_rent_001', amount: 350000, category: 'rent' as const, status: 'pending' as const },
-        { invoiceId: 'in_fees_001', amount: 45000, category: 'fees' as const, status: 'pending' as const },
+        {
+          invoiceId: 'in_rent_001',
+          amount: 350000,
+          category: 'rent' as const,
+          status: 'pending' as const,
+        },
+        {
+          invoiceId: 'in_fees_001',
+          amount: 45000,
+          category: 'fees' as const,
+          status: 'pending' as const,
+        },
       ];
 
       const created = await Payment.create({ ...paymentData, splitInvoices });
@@ -172,8 +182,18 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
       const rent = found!.splitInvoices!.find((si: any) => si.category === 'rent');
       const fees = found!.splitInvoices!.find((si: any) => si.category === 'fees');
 
-      expect(rent).toMatchObject({ invoiceId: 'in_rent_001', amount: 350000, category: 'rent', status: 'pending' });
-      expect(fees).toMatchObject({ invoiceId: 'in_fees_001', amount: 45000, category: 'fees', status: 'pending' });
+      expect(rent).toMatchObject({
+        invoiceId: 'in_rent_001',
+        amount: 350000,
+        category: 'rent',
+        status: 'pending',
+      });
+      expect(fees).toMatchObject({
+        invoiceId: 'in_fees_001',
+        amount: 45000,
+        category: 'fees',
+        status: 'pending',
+      });
     });
 
     it('defaults splitInvoices to empty array when not provided', async () => {
@@ -189,8 +209,20 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     it('stores chargeId and paidAt on individual split entries', async () => {
       const paidDate = new Date('2026-07-10T14:00:00Z');
       const splitInvoices = [
-        { invoiceId: 'in_rent_002', amount: 300000, category: 'rent' as const, status: 'paid' as const, chargeId: 'ch_rent_002', paidAt: paidDate },
-        { invoiceId: 'in_fees_002', amount: 50000, category: 'fees' as const, status: 'pending' as const },
+        {
+          invoiceId: 'in_rent_002',
+          amount: 300000,
+          category: 'rent' as const,
+          status: 'paid' as const,
+          chargeId: 'ch_rent_002',
+          paidAt: paidDate,
+        },
+        {
+          invoiceId: 'in_fees_002',
+          amount: 50000,
+          category: 'fees' as const,
+          status: 'pending' as const,
+        },
       ];
 
       const paymentData = makePayment('CAD', 350000, PaymentRecordStatus.PROCESSING);
@@ -209,7 +241,12 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     it('rejects invalid category values', async () => {
       const paymentData = makePayment('CAD', 100000, PaymentRecordStatus.PENDING);
       const splitInvoices = [
-        { invoiceId: 'in_bad', amount: 100000, category: 'invalid_category' as any, status: 'pending' as const },
+        {
+          invoiceId: 'in_bad',
+          amount: 100000,
+          category: 'invalid_category' as any,
+          status: 'pending' as const,
+        },
       ];
 
       await expect(Payment.create({ ...paymentData, splitInvoices })).rejects.toThrow();
@@ -218,7 +255,12 @@ describe('PaymentDAO — currency-aware getPaymentStats', () => {
     it('rejects invalid status values on split entries', async () => {
       const paymentData = makePayment('CAD', 100000, PaymentRecordStatus.PENDING);
       const splitInvoices = [
-        { invoiceId: 'in_bad_status', amount: 100000, category: 'rent' as const, status: 'invalid_status' as any },
+        {
+          invoiceId: 'in_bad_status',
+          amount: 100000,
+          category: 'rent' as const,
+          status: 'invalid_status' as any,
+        },
       ];
 
       await expect(Payment.create({ ...paymentData, splitInvoices })).rejects.toThrow();

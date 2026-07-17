@@ -5777,7 +5777,9 @@ describe('PaymentCronService - checkFundsAvailability', () => {
     } as unknown as jest.Mocked<ClientDAO>;
 
     cronService = new PaymentCronService({
-      maintenancePaymentService: { payVendor: jest.fn().mockResolvedValue({ success: true }) } as any,
+      maintenancePaymentService: {
+        payVendor: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       paymentGatewayService: {} as any,
       paymentProcessorDAO: mockPaymentProcessorDAO,
       subscriptionPlanConfig: {} as any,
@@ -5888,7 +5890,9 @@ describe('PaymentCronService - getCronJobs', () => {
     } as unknown as jest.Mocked<ClientDAO>;
 
     cronService = new PaymentCronService({
-      maintenancePaymentService: { payVendor: jest.fn().mockResolvedValue({ success: true }) } as any,
+      maintenancePaymentService: {
+        payVendor: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
       paymentGatewayService: {} as any,
       paymentProcessorDAO: {} as any,
       subscriptionPlanConfig: {} as any,

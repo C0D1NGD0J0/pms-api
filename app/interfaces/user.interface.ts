@@ -29,16 +29,42 @@ export enum IUserRelationshipsEnum {
 
 /**
  * Current User Interface
- * Authenticated user session data with all role-specific info.
- *
- * Role-restricted fields:
- *  - `subscription`     — only present for super-admin
- *  - `paymentProcessor` — only present for super-admin with a connected payment processor
- *  - `vendorInfo`       — only present for vendor role
- *  - `tenantInfo`       — only present for tenant role
- *  - `employeeInfo`     — only present for admin/manager/staff roles
+ * Authenticated user session data built by `profileDAO.generateCurrentUserInfo()`.
+ * Cached in Redis; stripped of internal-only fields before sending to the frontend.
+ * See `app-documentation/currentUser.md` for full field reference.
  */
 export interface ICurrentUser {
+  /**
+   * Subscription details — only populated for PM roles (super-admin, admin, manager, staff).
+   * Contains plan info, raw entitlements, and paymentFlow (billing state).
+   *
+   * Note: `entitlements` here are the raw plan flags. For feature gating, use
+   * `clientEntitlements` instead — it's available to all roles.
+   */
+  subscription?: {
+    plan: {
+      name: PlanName;
+      status: ISubscriptionStatus;
+      billingInterval: 'monthly' | 'annual';
+    };
+    /** Raw plan feature flags — see `clientEntitlements` for the resolved version */
+    entitlements: ISubscriptionEntitlements['entitlements'];
+    /**
+     * Computed billing state (not stored in DB — derived by aggregation pipeline).
+     * Drives the frontend's onboarding/payment redirect logic.
+     * - `requiresPayment: true` + `reason: 'expired'` → endDate has passed
+     * - `requiresPayment: true` + `reason: 'pending_signup'` → no Stripe subscription yet
+     * - `requiresPayment: true` + `reason: 'grace_period'` → pending downgrade
+     */
+    paymentFlow: {
+      requiresPayment: boolean;
+      reason: 'pending_signup' | 'expired' | 'grace_period' | null;
+      gracePeriodEndsAt: Date | null;
+      daysUntilDowngrade: number | null;
+    };
+  };
+
+  /** Active client context — always present */
   client: {
     clientSettings?: any;
     tenantFeatures?: import('@interfaces/client.interface').ITenantFeatureSettings;
@@ -48,25 +74,13 @@ export interface ICurrentUser {
     linkedVendorUid?: string;
     role: IUserRoleType;
     isVerified: boolean;
+    /** True when the user hasn't completed initial setup (consent, profile, etc.) */
     requiresOnboarding?: boolean;
     vendorPayoutMode?: 'express' | 'platform_hold';
     isFormerTenant?: boolean;
   };
-  /** Only populated for super-admin users */
-  subscription?: {
-    plan: {
-      name: PlanName;
-      status: ISubscriptionStatus;
-      billingInterval: 'monthly' | 'annual';
-    };
-    entitlements: ISubscriptionEntitlements['entitlements'];
-    paymentFlow: {
-      requiresPayment: boolean;
-      reason: 'pending_signup' | 'expired' | 'grace_period' | null;
-      gracePeriodEndsAt: Date | null;
-      daysUntilDowngrade: number | null;
-    };
-  };
+
+  /** Vendor-specific info — only populated for vendor role */
   vendorInfo?: {
     vendorId?: string;
     vuid?: string;
@@ -79,7 +93,8 @@ export interface ICurrentUser {
       chargesEnabled: boolean;
     };
   };
-  /** Only populated for super-admin users who have completed payment processor onboarding */
+
+  /** Stripe Connect account status — only populated for super-admin with a payment processor */
   paymentProcessor?: {
     isSetup: boolean;
     chargesEnabled: boolean;
@@ -89,38 +104,54 @@ export interface ICurrentUser {
     accountType: PaymentProcessorAccountType | null;
     onboardedAt: Date | null;
   };
+
+  /** Tenant-specific info — only populated for tenant role */
   tenantInfo?: {
     hasActiveLease?: boolean;
     backgroundCheckStatus?: string;
     activeLease?: Record<string, any> | null;
     employerInfo?: Array<Record<string, any>>;
   };
+
+  /** Employee info — only populated for admin/manager/staff roles */
   employeeInfo?: {
     department?: EmployeeDepartment;
     jobTitle?: string;
     employeeId?: string;
     startDate?: Date;
   };
+
   preferences: {
     lang?: string;
     theme?: ThemePreference;
     timezone?: string;
   };
+
   /**
-   * Feature flags from the client's subscription — available for ALL roles.
-   * Vendors and tenants use this instead of `subscription` (which is PM-only)
-   * to gate client-plan-dependent features (AI scanning, eSign, etc.).
+   * Resolved feature flags from the client's subscription — available to ALL roles.
+   *
+   * This is the primary field for feature gating on the frontend. Tenants and vendors
+   * use this instead of `subscription.entitlements` (which is PM-only and contains
+   * billing details they shouldn't see).
+   *
+   * Populated from `subscription.entitlements` with safe defaults (false) when no
+   * subscription exists.
    */
   clientEntitlements: ISubscriptionEntitlements['entitlements'];
+
+  /** All client connections for this user (for account switching) */
   clients: IClientUserConnections[];
   fullname: string | null;
+  /** Resolved permissions array — stripped from /me response, used internally by middleware */
   permissions: string[];
   gdpr?: IGDPRSettings;
   displayName: string;
   avatarUrl: string;
   isActive: boolean;
   email: string;
+  /** User MongoDB _id */
   sub: string;
+  /** User unique ID (UIDXXXXX format) */
   uid: string;
 }
 

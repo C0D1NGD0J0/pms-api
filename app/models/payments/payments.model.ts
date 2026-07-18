@@ -77,6 +77,17 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     stripePaymentMethodType: {
       type: String,
     },
+    splitInvoices: [
+      {
+        invoiceId: { type: String, required: true },
+        amount: { type: Number, required: true },
+        category: { type: String, enum: ['rent', 'fees'], required: true },
+        status: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+        chargeId: String,
+        paidAt: Date,
+        _id: false,
+      },
+    ],
     refund: {
       refundedAt: { type: Date },
       amount: {

@@ -38,7 +38,9 @@ export class MaintenanceRequestDAO
       ...pagination,
       // Strip heavy fields not needed for list views
       projection:
-        '-description -aiAnalysis -media -workOrderHistory -completionNotes ' +
+        '-description -aiAnalysis.reasoning -aiAnalysis.suggestedCategory -aiAnalysis.suggestedPriority ' +
+        '-aiAnalysis.suggestedVendorId -aiAnalysis.suggestedVendorName -aiAnalysis.suggestedVendorReasoning ' +
+        '-aiAnalysis.modelUsed -media -workOrderHistory -completionNotes ' +
         '-pendingMaintenanceStatus -permissionToEnter -hasPet -tenantFeedback ' +
         '-availabilityInfo -workOrder.scope -workOrder.lineItems ' +
         '-workOrder.submittedBy -workOrder.reviewedBy -workOrder.notes ' +

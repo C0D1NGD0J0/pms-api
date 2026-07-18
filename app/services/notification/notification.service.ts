@@ -72,6 +72,7 @@ import {
   handleInvoiceSubmitted,
   handleInvoiceApproved,
   handleInvoiceRejected,
+  handleAutoVendorPaid,
   handleMRCompleted,
   handleMRCancelled,
   handleVendorPaid,
@@ -1527,6 +1528,9 @@ export class NotificationService {
     );
     this.emitterService.on(EventTypes.MAINTENANCE_FUNDS_AVAILABLE, (p) =>
       handleMaintenanceFundsAvailable(ctx, p)
+    );
+    this.emitterService.on(EventTypes.MAINTENANCE_AUTO_VENDOR_PAID, (p) =>
+      handleAutoVendorPaid(ctx, p)
     );
     this.emitterService.on(EventTypes.MAINTENANCE_WORK_ORDER_SUBMITTED, (p) =>
       handleWorkOrderSubmitted(ctx, p)

@@ -40,6 +40,14 @@ export interface IPaymentDocument extends Document {
     reason?: string;
     disputedAt?: Date;
   };
+  splitInvoices?: {
+    invoiceId: string;
+    amount: number;
+    category: 'rent' | 'fees';
+    status: 'pending' | 'paid' | 'failed';
+    chargeId?: string;
+    paidAt?: Date;
+  }[];
   receipt?: {
     url?: string;
     filename?: string;
@@ -118,10 +126,10 @@ export interface IPaymentListItem {
   paymentType: PaymentRecordType;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
+  platformRevenue?: number; // Platform's net revenue — only returned for ROOT_ADMIN
   period?: IPaymentPeriod;
-  platformRevenue: number; // Platform's net revenue after Stripe gateway fee
   applicationFee: number; // Platform's application fee in cents
-  processingFee: number;
+  processingFee?: number; // Stripe gateway fee — only returned for ROOT_ADMIN
   baseAmount: number;
   property: string;
   currency: string;

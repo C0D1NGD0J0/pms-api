@@ -602,7 +602,13 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     {
                       $in: [
                         '$activeClientRole',
-                        [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF, 'super-admin'],
+                        [
+                          ROLES.ROOT_ADMIN,
+                          ROLES.ADMIN,
+                          ROLES.MANAGER,
+                          ROLES.STAFF,
+                          ROLES.SUPER_ADMIN,
+                        ],
                       ],
                     },
                   ],
@@ -612,7 +618,9 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                     vars: {
                       sub: '$subscriptionInfo',
                       now: new Date(),
-                      isSuperAdmin: { $eq: ['$activeClientRole', 'super-admin'] },
+                      isSuperAdmin: {
+                        $in: ['$activeClientRole', ['super-admin', ROLES.ROOT_ADMIN]],
+                      },
                     },
                     in: {
                       plan: {

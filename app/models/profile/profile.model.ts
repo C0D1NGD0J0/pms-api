@@ -106,6 +106,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         propertyUpdates: { type: Boolean, default: true },
         emailNotifications: { type: Boolean, default: true },
         inAppNotifications: { type: Boolean, default: true },
+        pushNotifications: { type: Boolean, default: false },
         smsNotifications: { type: Boolean, default: false },
         emailFrequency: {
           type: String,
@@ -123,6 +124,17 @@ const ProfileSchema = new Schema<IProfileDocument>(
         consentedAt: { type: Date, default: null },
         revokedAt: { type: Date, default: null },
       },
+      pushSubscriptions: [
+        {
+          endpoint: { type: String, required: true },
+          keys: {
+            p256dh: { type: String, required: true },
+            auth: { type: String, required: true },
+          },
+          deviceLabel: { type: String, default: '' },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
     },
     puid: { type: String, required: true, index: true },
     vendorInfo: {

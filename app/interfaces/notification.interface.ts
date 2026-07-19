@@ -183,6 +183,7 @@ export interface INotificationSettings {
   emailFrequency: EmailFrequencyType;
   emailNotifications: boolean;
   inAppNotifications: boolean;
+  pushNotifications?: boolean;
   smsNotifications: boolean;
   propertyUpdates: boolean;
   announcements: boolean;

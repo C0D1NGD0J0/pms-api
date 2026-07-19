@@ -144,3 +144,4 @@ uploads/
 .vscode/settings.json
 backups/
 scripts/*
+app-documentation/*

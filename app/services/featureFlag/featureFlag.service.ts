@@ -16,6 +16,8 @@ export class FeatureFlagService {
         return (
           envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_INVOICE_SCANNING_ENABLED
         );
+      case FeatureFlag.PUSH_NOTIFICATIONS:
+        return envVariables.FEATURES.PUSH_NOTIFICATIONS_ENABLED;
       case FeatureFlag.INVOICE_WEBHOOK:
         return envVariables.FEATURES.INVOICE_WEBHOOK_ENABLED;
       case FeatureFlag.ESIGNATURE:

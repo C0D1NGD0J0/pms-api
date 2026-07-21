@@ -39,6 +39,7 @@
     "Validatevuid",
     "virtuals",
     "vpuid",
-    "vuid"
+    "vuid",
+    "webpush"
   ]
 }

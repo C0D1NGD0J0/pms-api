@@ -2,9 +2,9 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import ROLES from '@shared/constants/roles.constants';
 import { BadRequestError } from '@shared/customErrors';
-import { IProfileDocument } from '@interfaces/profile.interface';
 import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 import { generateShortUID, createLogger, escapeRegExp } from '@utils/index';
+import { IPushSubscription, IProfileDocument } from '@interfaces/profile.interface';
 import { type QueryFilter, PipelineStage, ClientSession, Types, Model } from 'mongoose';
 
 import { BaseDAO } from './baseDAO';
@@ -1118,6 +1118,65 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
       );
       return null;
     }
+  }
+
+  async addPushSubscription(
+    userId: string,
+    pushSubscription: IPushSubscription
+  ): Promise<{ success: boolean; message: string; data: IProfileDocument | null } | null> {
+    const result = await this.update(
+      { user: new Types.ObjectId(userId) },
+      {
+        $push: {
+          'settings.pushSubscriptions': {
+            endpoint: pushSubscription.endpoint,
+            keys: pushSubscription.keys,
+            deviceLabel: pushSubscription.deviceLabel || '',
+            createdAt: new Date(),
+          },
+        },
+        $set: {
+          'settings.notifications.pushNotifications': true,
+        },
+      }
+    );
+
+    return {
+      data: result,
+      success: !!result,
+      message: result ? 'Push subscription added successfully' : 'No changes made',
+    };
+  }
+
+  /**
+   * Remove a push subscription by endpoint.
+   * Called when user unsubscribes or when push service returns 410 Gone.
+   */
+  async removePushSubscription(userId: string, endpoint: string): Promise<void> {
+    await this.update(
+      { user: new Types.ObjectId(userId) },
+      {
+        $pull: {
+          'settings.pushSubscriptions': { endpoint },
+        },
+      }
+    );
+  }
+
+  /**
+   * Get all active push subscriptions for a user.
+   * Returns empty array if pushNotifications is disabled or no subscriptions exist.
+   */
+  async getPushSubscriptions(
+    userId: string
+  ): Promise<Array<{ endpoint: string; keys: { p256dh: string; auth: string } }>> {
+    const profile = await this.findFirst(
+      { user: new Types.ObjectId(userId) },
+      { select: 'settings.notifications.pushNotifications settings.pushSubscriptions' }
+    );
+
+    if (!profile?.settings?.notifications?.pushNotifications) return [];
+    return profile.settings.pushSubscriptions || [];
   }
 }
 

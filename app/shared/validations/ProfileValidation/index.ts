@@ -47,6 +47,7 @@ const settingsSchema = z.object({
       propertyUpdates: z.boolean().optional(),
       emailNotifications: z.boolean().optional(),
       inAppNotifications: z.boolean().optional(),
+      pushNotifications: z.boolean().optional(),
       emailFrequency: z.enum(['immediate', 'daily']).optional(),
     })
     .optional(),

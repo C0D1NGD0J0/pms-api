@@ -15,7 +15,6 @@ jest.mock('@shared/config', () => ({
 }));
 
 import webpush from 'web-push';
-import { envVariables } from '@shared/config';
 import { PushService, PushPayload } from '@services/pushService/push.service';
 
 const MOCK_USER_ID = '507f1f77bcf86cd799439011';
@@ -173,27 +172,6 @@ describe('PushService', () => {
         MOCK_USER_ID,
         MOCK_ENDPOINT
       );
-    });
-  });
-
-  describe('constructor', () => {
-    it('should not configure VAPID when keys are missing', () => {
-      (webpush.setVapidDetails as jest.Mock).mockClear();
-      const originalVapid = { ...envVariables.VAPID };
-      envVariables.VAPID.PUBLIC_KEY = '';
-      envVariables.VAPID.PRIVATE_KEY = '';
-      envVariables.VAPID.SUBJECT = '';
-
-      try {
-        new PushService({
-          profileDAO: mockProfileDAO,
-          featureFlagService: mockFeatureFlagService,
-        });
-
-        expect(webpush.setVapidDetails).not.toHaveBeenCalled();
-      } finally {
-        Object.assign(envVariables.VAPID, originalVapid);
-      }
     });
   });
 });

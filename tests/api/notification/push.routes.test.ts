@@ -89,10 +89,7 @@ describe('Push Notification Routes', () => {
     };
 
     it('should return 200 with valid subscription', async () => {
-      const response = await request(app)
-        .post(endpoint)
-        .send(validBody)
-        .expect(httpStatusCodes.OK);
+      const response = await request(app).post(endpoint).send(validBody).expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
       expect(mockNotificationController.subscribeToPushNotifications).toHaveBeenCalled();

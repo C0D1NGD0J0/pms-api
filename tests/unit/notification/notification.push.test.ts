@@ -1,9 +1,6 @@
 import { Types } from 'mongoose';
 import { NotificationService } from '@services/notification/notification.service';
-import {
-  NotificationTypeEnum,
-  RecipientTypeEnum,
-} from '@interfaces/notification.interface';
+import { NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
 
 const mockRecipientId = new Types.ObjectId().toString();
 const mockCuid = 'test-cuid';
@@ -26,8 +23,18 @@ describe('NotificationService — Push Integration', () => {
     jest.clearAllMocks();
 
     service = new NotificationService({
-      notificationDAO: { create: jest.fn(), findFirst: jest.fn(), list: jest.fn(), update: jest.fn(), updateById: jest.fn(), updateMany: jest.fn() } as any,
-      notificationCache: { markAnnouncementsRead: jest.fn(), getReadAnnouncementNuids: jest.fn() } as any,
+      notificationDAO: {
+        create: jest.fn(),
+        findFirst: jest.fn(),
+        list: jest.fn(),
+        update: jest.fn(),
+        updateById: jest.fn(),
+        updateMany: jest.fn(),
+      } as any,
+      notificationCache: {
+        markAnnouncementsRead: jest.fn(),
+        getReadAnnouncementNuids: jest.fn(),
+      } as any,
       emitterService: mockEmitterService,
       profileDAO: { findFirst: jest.fn() } as any,
       clientDAO: { findByCuid: jest.fn() } as any,

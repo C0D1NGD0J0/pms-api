@@ -3,8 +3,6 @@ import { NotificationService } from '@services/notification/notification.service
 import { NotificationTypeEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
 
 const mockRecipientId = new Types.ObjectId().toString();
-const mockCuid = 'test-cuid';
-
 const mockPushService = {
   sendToUser: jest.fn().mockResolvedValue(undefined),
 } as any;

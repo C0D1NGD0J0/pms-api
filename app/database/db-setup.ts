@@ -82,7 +82,10 @@ export class DatabaseService implements IDatabaseService {
         },
       });
 
-      await this.redisService.connect();
+      const redisResult = await this.redisService.connect();
+      if (!redisResult.success) {
+        throw new Error(redisResult.error || 'Redis connection failed');
+      }
 
       mongoose.connection.on('disconnected', () => {
         this.connected = false;

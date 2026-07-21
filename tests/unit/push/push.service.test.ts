@@ -15,8 +15,8 @@ jest.mock('@shared/config', () => ({
 }));
 
 import webpush from 'web-push';
+import { envVariables } from '@shared/config';
 import { PushService, PushPayload } from '@services/pushService/push.service';
-import { FeatureFlag } from '@interfaces/featureFlag.interface';
 
 const MOCK_USER_ID = '507f1f77bcf86cd799439011';
 const MOCK_ENDPOINT = 'https://fcm.googleapis.com/fcm/send/abc123';
@@ -178,26 +178,22 @@ describe('PushService', () => {
 
   describe('constructor', () => {
     it('should not configure VAPID when keys are missing', () => {
-      jest.resetModules();
-      jest.doMock('@shared/config', () => ({
-        envVariables: {
-          VAPID: { PUBLIC_KEY: '', PRIVATE_KEY: '', SUBJECT: '' },
-          SERVER: { ENV: 'test' },
-        },
-      }));
-      jest.doMock('web-push', () => ({
-        setVapidDetails: jest.fn(),
-        sendNotification: jest.fn(),
-      }));
+      (webpush.setVapidDetails as jest.Mock).mockClear();
+      const originalVapid = { ...envVariables.VAPID };
+      envVariables.VAPID.PUBLIC_KEY = '';
+      envVariables.VAPID.PRIVATE_KEY = '';
+      envVariables.VAPID.SUBJECT = '';
 
-      const freshWebpush = require('web-push');
-      const { PushService: FreshPushService } = require('@services/pushService/push.service');
-      new FreshPushService({
-        profileDAO: mockProfileDAO,
-        featureFlagService: mockFeatureFlagService,
-      });
+      try {
+        new PushService({
+          profileDAO: mockProfileDAO,
+          featureFlagService: mockFeatureFlagService,
+        });
 
-      expect(freshWebpush.setVapidDetails).not.toHaveBeenCalled();
+        expect(webpush.setVapidDetails).not.toHaveBeenCalled();
+      } finally {
+        Object.assign(envVariables.VAPID, originalVapid);
+      }
     });
   });
 });

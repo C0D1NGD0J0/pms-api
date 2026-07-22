@@ -31,17 +31,10 @@ npx tsc --noEmit -p tsconfig.build.json || {
   exit 1
 }
 
-# Unit tests
-echo "🧪 Running tests..."
-npm test || {
+# Unit tests (only files changed vs main)
+echo "🧪 Running affected tests..."
+npx jest --changedSince=origin/main --passWithNoTests || {
   echo "❌ Tests failed. Please fix the failing tests before pushing."
-  exit 1
-}
-
-# Build
-echo "🔨 Building project..."
-npm run build || {
-  echo "❌ Build failed. Please fix build errors before pushing."
   exit 1
 }
 

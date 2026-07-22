@@ -72,4 +72,24 @@ router.get(
   })
 );
 
+router.post(
+  '/:cuid/push/subscribe',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.subscribeToPushNotifications(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/push/unsubscribe',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<NotificationController>('notificationController');
+    return controller.unsubscribeToPushNotifications(req, res);
+  })
+);
+
 export default router;

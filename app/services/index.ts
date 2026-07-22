@@ -54,6 +54,7 @@ export { InvoiceAIService, AIService } from './ai';
 export { InvitationService } from './invitation';
 export { PermissionService } from './permission';
 export { GuestPassService } from './guestpass';
+export { PushService } from './pushService';
 export { ProfileService } from './profile';
 export { SMSService } from './smsService';
 export { ClientService } from './client';

@@ -80,6 +80,21 @@ export interface IProfileUpdateData {
 }
 
 /**
+ * Settings Interface
+ */
+export interface ISettings {
+  pushSubscriptions?: IPushSubscription[];
+  phoneVerification?: IPhoneVerification;
+  notifications?: INotificationSettings;
+  gdprSettings?: IGDPRSettings;
+  smsConsent?: ISMSConsent;
+  loginType?: LoginType;
+  theme?: ThemeType;
+  timeZone?: string;
+  lang: string;
+}
+
+/**
  * Active Lease Item Interface
  */
 export interface IActiveLeaseItem {
@@ -113,20 +128,6 @@ export interface IPopulatedUser {
   updatedAt: Date;
   email: string;
   uid: string;
-}
-
-/**
- * Settings Interface
- */
-export interface ISettings {
-  phoneVerification?: IPhoneVerification;
-  notifications?: INotificationSettings;
-  gdprSettings?: IGDPRSettings;
-  smsConsent?: ISMSConsent;
-  loginType?: LoginType;
-  theme?: ThemeType;
-  timeZone?: string;
-  lang: string;
 }
 
 /**
@@ -279,6 +280,16 @@ export interface ICompletionSection {
   percent: number;
   label: string;
   key: string;
+}
+
+export interface IPushSubscription {
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+  deviceLabel?: string;
+  endpoint: string;
+  createdAt?: Date;
 }
 
 /**

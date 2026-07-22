@@ -7,8 +7,14 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { NotificationDAO, GuestPassDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
-import { EventEmitterService, ProfileService, UserService, SSEService } from '@services/index';
 import { ISuccessReturnData, IPaginationQuery, ResourceContext } from '@interfaces/utils.interface';
+import {
+  EventEmitterService,
+  ProfileService,
+  UserService,
+  PushService,
+  SSEService,
+} from '@services/index';
 import {
   CreateNotificationWithRulesSchema,
   UpdateNotificationSchema,
@@ -91,6 +97,7 @@ interface IConstructor {
   profileService: ProfileService;
   guestPassDAO: GuestPassDAO;
   userService: UserService;
+  pushService: PushService;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
   sseService: SSEService;
@@ -106,6 +113,7 @@ export class NotificationService {
   private readonly emitterService: EventEmitterService;
   private readonly userService: UserService;
   private readonly sseService: SSEService;
+  private readonly pushService: PushService;
   private readonly profileService: ProfileService;
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
@@ -126,6 +134,7 @@ export class NotificationService {
     sseService,
     profileService,
     guestPassDAO,
+    pushService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -136,6 +145,7 @@ export class NotificationService {
     this.userService = userService;
     this.emitterService = emitterService;
     this.profileService = profileService;
+    this.pushService = pushService;
     this.notificationDAO = notificationDAO;
     this.notificationCache = notificationCache;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
@@ -299,6 +309,23 @@ export class NotificationService {
       });
 
       await this.publishToSSE(notification);
+
+      if (notification.recipientType === RecipientTypeEnum.INDIVIDUAL && notification.recipient) {
+        await this.pushService
+          .sendToUser(notification.recipient.toString(), {
+            title: notification.title,
+            body: notification.message,
+            url: notification.actionUrl || '/',
+            tag: notification.type,
+          })
+          .catch((err) => {
+            this.log.error('Failed to send push notification', {
+              error: err instanceof Error ? err.message : 'Unknown error',
+              stack: err instanceof Error ? err.stack : undefined,
+              notificationId: notification.nuid,
+            });
+          });
+      }
 
       return {
         success: true,

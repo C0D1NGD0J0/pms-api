@@ -3,23 +3,26 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
-import { NotificationService, SSEService } from '@services/index';
 import { UnauthorizedError, BadRequestError } from '@shared/customErrors';
 import { INotificationFilters } from '@interfaces/notification.interface';
 import { IPaginationQuery, AppRequest } from '@interfaces/utils.interface';
+import { NotificationService, PushService, SSEService } from '@services/index';
 
 interface IConstructor {
   notificationService: NotificationService;
+  pushService: PushService;
   sseService: SSEService;
 }
 
 export class NotificationController {
   private readonly log: Logger;
-  private readonly notificationService: NotificationService;
   private readonly sseService: SSEService;
+  private readonly pushService: PushService;
+  private readonly notificationService: NotificationService;
 
-  constructor({ notificationService, sseService }: IConstructor) {
+  constructor({ notificationService, pushService, sseService }: IConstructor) {
     this.sseService = sseService;
+    this.pushService = pushService;
     this.notificationService = notificationService;
     this.log = createLogger('NotificationController');
   }
@@ -258,6 +261,52 @@ export class NotificationController {
       success: true,
       data: result.data,
       message: result.message || t('notification.success.all_read_archived'),
+    });
+  };
+
+  subscribeToPushNotifications = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const userId = req.context?.currentuser?.sub;
+    const { subscription, deviceLabel } = req.body;
+
+    if (!userId) {
+      throw new UnauthorizedError({ message: 'User not authenticated' });
+    }
+
+    if (req.context.currentuser.client.cuid !== cuid) {
+      throw new BadRequestError({ message: 'Invalid client context' });
+    }
+
+    if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'Invalid push subscription: requires endpoint and keys (p256dh, auth)',
+      });
+    }
+
+    await this.pushService.subscribe(userId, subscription, deviceLabel);
+    return res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Push subscription registered successfully.',
+    });
+  };
+
+  unsubscribeToPushNotifications = async (req: AppRequest, res: Response): Promise<Response> => {
+    const userId = req.context.currentuser!.sub;
+    const { endpoint } = req.body;
+
+    if (!endpoint) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
+        success: false,
+        message: 'Endpoint is required',
+      });
+    }
+
+    await this.pushService.unsubscribe(userId, endpoint);
+
+    return res.status(httpStatusCodes.OK).json({
+      success: true,
+      message: 'Push subscription removed',
     });
   };
 }

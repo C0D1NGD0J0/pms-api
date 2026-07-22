@@ -1,113 +1,44 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import type {
+  AuthCookieConfig,
+  AnthropicConfig,
+  BullBoardConfig,
+  BoldsignConfig,
+  DatabaseConfig,
+  FeaturesConfig,
+  FrontendConfig,
+  GeocoderConfig,
+  ClamavConfig,
+  ServerConfig,
+  StripeConfig,
+  TwilioConfig,
+  EmailConfig,
+  RedisConfig,
+  VapidConfig,
+  AwsConfig,
+  JwtConfig,
+} from './env.types';
+
 class EnvVariables {
-  public EMAIL: {
-    DEV: {
-      PROVIDER: string;
-      PROVIDER_PORT: number;
-      PROVIDER_HOST: string;
-      PROVIDER_USERNAME: string;
-      PROVIDER_PASSWORD: string;
-    };
-    APP_EMAIL_ADDRESS: string;
-    PROD: {
-      PROVIDER: string;
-      PROVIDER_HOST: string;
-      PROVIDER_PORT: number;
-      PROVIDER_USERNAME: string;
-      PROVIDER_PASSWORD: string;
-    };
-  };
-  public JWT: {
-    EXPIREIN: string;
-    SECRET: string;
-    REFRESH: {
-      EXPIRESIN: string;
-      SECRET: string;
-    };
-    EXTENDED_ACCESS_TOKEN_EXPIRY: string;
-    EXTENDED_REFRESH_TOKEN_EXPIRY: string;
-  };
-  public BULL_BOARD: {
-    BASE_PATH: string;
-  };
-  public AWS: {
-    REGION: string;
-    ACCESS_KEY: string;
-    SECRET_KEY: string;
-    BUCKET_NAME: string;
-  };
-  public REDIS: {
-    URL: string;
-    PORT: number;
-    HOST: string;
-    USERNAME?: string;
-    PASSWORD?: string;
-  };
-  public DATABASE: {
-    PROD_URL: string;
-    TEST_URL: string;
-    DEV_URL: string;
-  };
-  public SERVER: {
-    PORT: number;
-    ENV: string;
-    PROCESS_TYPE: 'api' | 'worker';
-    CLAMDSCAN_SOCKET: string;
-  };
-  public CLAMAV: {
-    ENABLED: boolean;
-    HOST: string;
-    PORT: number;
-    SOCKET: string;
-  };
-  public AUTH_COOKIE: {
-    NAME: string;
-  };
-  public FRONTEND: {
-    URL: string;
-  };
-  public GEOCODER: {
-    PROVIDER: string;
-    PROVIDER_KEY: string;
-  };
-  public STRIPE: {
-    SECRET_KEY: string;
-    PUBLIC_KEY: string;
-    REDIRECT_URL: string;
-    WEBHOOK_SECRET: string;
-    CONNECT_WEBHOOK_SECRET: string;
-    ACSS_PER_TXN_LIMIT: number;
-  };
-  public BOLDSIGN: {
-    API_KEY: string;
-    API_URL: string;
-    WEBHOOK_SECRET: string;
-    DEFAULT_SENDER_NAME: string;
-    DEFAULT_SENDER_EMAIL: string;
-  };
-  public ANTHROPIC: {
-    API_KEY: string;
-    MODEL: string;
-    MAX_TOKENS: number;
-  };
-  public TWILIO: {
-    ACCOUNT_SID: string;
-    AUTH_TOKEN: string;
-    VERIFY_SERVICE_SID: string;
-    MESSAGING_SERVICE_SID: string;
-  };
-  public FEATURES: {
-    AI_ENABLED: boolean;
-    AI_COMMUNICATION_DRAFT_ENABLED: boolean;
-    AI_MAINTENANCE_TRIAGE_ENABLED: boolean;
-    AI_INVOICE_SCANNING_ENABLED: boolean;
-    ESIGNATURE_ENABLED: boolean;
-    SMS_ENABLED: boolean;
-    MCP_ENABLED: boolean;
-    INVOICE_WEBHOOK_ENABLED: boolean;
-  };
+  public EMAIL: EmailConfig;
+  public VAPID: VapidConfig;
+  public JWT: JwtConfig;
+  public BULL_BOARD: BullBoardConfig;
+  public AWS: AwsConfig;
+  public REDIS: RedisConfig;
+  public DATABASE: DatabaseConfig;
+  public SERVER: ServerConfig;
+  public CLAMAV: ClamavConfig;
+  public AUTH_COOKIE: AuthCookieConfig;
+  public FRONTEND: FrontendConfig;
+  public GEOCODER: GeocoderConfig;
+  public STRIPE: StripeConfig;
+  public BOLDSIGN: BoldsignConfig;
+  public ANTHROPIC: AnthropicConfig;
+  public TWILIO: TwilioConfig;
+  public FEATURES: FeaturesConfig;
   public APP_NAME: string;
 
   constructor() {
@@ -228,6 +159,11 @@ class EnvVariables {
       VERIFY_SERVICE_SID: process.env.TWILIO_VERIFY_SERVICE_SID || '',
       MESSAGING_SERVICE_SID: process.env.TWILIO_MESSAGING_SERVICE_SID || '',
     };
+    this.VAPID = {
+      PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
+      PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
+      SUBJECT: process.env.VAPID_SUBJECT || 'mailto:support@propertydesk.com',
+    };
     this.FEATURES = {
       AI_ENABLED: process.env.FEATURE_AI_ENABLED !== 'false',
       AI_COMMUNICATION_DRAFT_ENABLED:
@@ -239,6 +175,7 @@ class EnvVariables {
       ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
+      PUSH_NOTIFICATIONS_ENABLED: process.env.FEATURE_PUSH_NOTIFICATIONS_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
     };
     try {

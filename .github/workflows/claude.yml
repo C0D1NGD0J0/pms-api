@@ -35,5 +35,5 @@ jobs:
         uses: anthropics/claude-code-action@e90deca47693f9457b72f2b53c17d7c445a87342 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          claude_args: "--model claude-sonnet-4-20250514 --max-turns 25"
+          claude_args: "--model claude-sonnet-4-6 --max-turns 25"
           show_full_output: "true"

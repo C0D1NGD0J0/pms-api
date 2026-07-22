@@ -150,12 +150,10 @@ describe('Property Unit Routes Integration Tests', () => {
       });
 
       // Define property unit routes (nested under property)
+      // Register specific paths before parameterized /:puid to avoid route conflicts
       const unitsBase = `${baseUrl}/:cuid/client_properties/:pid/units`;
       testApp.post(unitsBase, mockPropertyUnitController.addUnit);
       testApp.get(unitsBase, mockPropertyUnitController.getPropertyUnits);
-      testApp.get(`${unitsBase}/:puid`, mockPropertyUnitController.getPropertyUnit);
-      testApp.patch(`${unitsBase}/:puid`, mockPropertyUnitController.updateUnit);
-      testApp.delete(`${unitsBase}/:puid`, mockPropertyUnitController.archiveUnit);
       testApp.patch(
         `${unitsBase}/update_status/:puid`,
         mockPropertyUnitController.updateUnitStatus
@@ -170,6 +168,9 @@ describe('Property Unit Routes Integration Tests', () => {
       );
       testApp.post(`${unitsBase}/validate_csv`, mockPropertyUnitController.validateUnitsCsv);
       testApp.post(`${unitsBase}/import_csv`, mockPropertyUnitController.importUnitsFromCsv);
+      testApp.get(`${unitsBase}/:puid`, mockPropertyUnitController.getPropertyUnit);
+      testApp.patch(`${unitsBase}/:puid`, mockPropertyUnitController.updateUnit);
+      testApp.delete(`${unitsBase}/:puid`, mockPropertyUnitController.archiveUnit);
     });
   });
 

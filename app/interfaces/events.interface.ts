@@ -1,6 +1,7 @@
 import { Job } from 'bull';
 
 import { UploadResult } from './utils.interface';
+import { InspectionType } from './inspection.interface';
 import { ResourceInfo, MailType } from './utils.interface';
 import {
   LeaseESignatureRequestedPayload,
@@ -56,12 +57,17 @@ export enum EventTypes {
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
   PAYMENT_DISPUTE_LOST = 'payment:dispute:lost',
+  INSPECTION_SCHEDULED = 'inspection:scheduled',
+  INSPECTION_SUBMITTED = 'inspection:submitted',
+  INSPECTION_CANCELLED = 'inspection:cancelled',
   GUEST_PASS_VALIDATED = 'guestPass:validated',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
   UNIT_STATUS_CHANGED = 'unit:status:changed',
+  INSPECTION_APPROVED = 'inspection:approved',
+  INSPECTION_DISPUTED = 'inspection:disputed',
   INVITATION_EXPIRED = 'invitation:expired',
   INVITATION_REVOKED = 'invitation:revoked',
   DELETE_LOCAL_ASSET = 'delete:local:asset',
@@ -97,6 +103,7 @@ export enum EventTypes {
   SYSTEM_ERROR = 'system:error',
   UNIT_CREATED = 'unit:created',
   UNIT_UPDATED = 'unit:updated',
+
   UPLOAD_ASSET = 'upload:asset',
   JOB_STARTED = 'job:started',
   PAYOUT_PAID = 'payout:paid',
@@ -193,6 +200,11 @@ export type EventPayloadMap = {
   [EventTypes.GUEST_PASS_REVOKED]: GuestPassRevokedPayload;
   [EventTypes.GUEST_PASS_ACKNOWLEDGED]: GuestPassAcknowledgedPayload;
   [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
+  [EventTypes.INSPECTION_SCHEDULED]: InspectionScheduledPayload;
+  [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
+  [EventTypes.INSPECTION_APPROVED]: InspectionApprovedPayload;
+  [EventTypes.INSPECTION_DISPUTED]: InspectionDisputedPayload;
+  [EventTypes.INSPECTION_CANCELLED]: InspectionCancelledPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -631,6 +643,15 @@ export interface MaintenanceRequestDeclinedPayload {
   cuid: string;
 }
 
+export interface InspectionScheduledPayload {
+  type: InspectionType;
+  scheduledDate: Date;
+  propertyId: string;
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceVendorPaidPayload {
   amountInCents: number;
   transferId: string;
@@ -707,6 +728,22 @@ export interface MaintenanceChargePaidPayload {
   chargeId?: string;
   pytuid: string;
   mruid: string;
+  cuid: string;
+}
+
+export interface InspectionSubmittedPayload {
+  type: InspectionType;
+  inspectorId: string;
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
+export interface InspectionDisputedPayload {
+  disputeNotes: string;
+  inspectorId: string;
+  tenantId: string;
+  iuid: string;
   cuid: string;
 }
 
@@ -825,7 +862,6 @@ export interface MaintenanceAITriageCompletedPayload {
   mruid: string;
   cuid: string;
 }
-
 // Generic email event payloads
 export interface EmailSentPayload {
   jobData: Record<string, any>;
@@ -843,6 +879,18 @@ export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
 }
+
+export interface InspectionApprovedPayload {
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
+export interface InspectionCancelledPayload {
+  iuid: string;
+  cuid: string;
+}
+
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;
 
 export type DeleteLocalAssetPayload = AssetIdentifiersPayload;

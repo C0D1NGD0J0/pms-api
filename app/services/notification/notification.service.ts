@@ -1469,6 +1469,7 @@ export class NotificationService {
         [NotificationTypeEnum.ERROR]: 'system', // Map ERROR to system notifications
         [NotificationTypeEnum.INFO]: 'system', // Map INFO to system notifications
         [NotificationTypeEnum.GUESTPASS]: 'system', // Map GUESTPASS to system notifications
+        [NotificationTypeEnum.INSPECTION]: 'system', // Map INSPECTION to system notifications
       };
 
       const preferenceField = typeToPreferenceMap[notificationType];

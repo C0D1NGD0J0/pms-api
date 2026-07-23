@@ -50,6 +50,24 @@ export enum MailType {
   INVITATION = 'INVITATION',
 }
 
+export enum PermissionResource {
+  SUBSCRIPTION = 'subscription',
+  NOTIFICATION = 'notification',
+  MAINTENANCE = 'maintenance',
+  INSPECTION = 'inspection',
+  GUEST_PASS = 'guest-pass',
+  INVITATION = 'invitation',
+  PROPERTY = 'property',
+  BILLING = 'billing',
+  PAYMENT = 'payment',
+  CLIENT = 'client',
+  TENANT = 'tenant',
+  VENDOR = 'vendor',
+  REPORT = 'report',
+  LEASE = 'lease',
+  USER = 'user',
+}
+
 export enum PermissionAction {
   MANAGE_VENDORS = 'manage_vendors',
   ASSIGN_ROLES = 'assign_roles',
@@ -67,23 +85,6 @@ export enum PermissionAction {
   LIST = 'list',
   READ = 'read',
   SEND = 'send',
-}
-
-export enum PermissionResource {
-  SUBSCRIPTION = 'subscription',
-  NOTIFICATION = 'notification',
-  MAINTENANCE = 'maintenance',
-  GUEST_PASS = 'guest-pass',
-  INVITATION = 'invitation',
-  PROPERTY = 'property',
-  BILLING = 'billing',
-  PAYMENT = 'payment',
-  CLIENT = 'client',
-  TENANT = 'tenant',
-  VENDOR = 'vendor',
-  REPORT = 'report',
-  LEASE = 'lease',
-  USER = 'user',
 }
 
 export enum CURRENCIES {

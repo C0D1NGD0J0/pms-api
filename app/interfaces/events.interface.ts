@@ -1,6 +1,7 @@
 import { Job } from 'bull';
 
 import { UploadResult } from './utils.interface';
+import { InspectionType } from './inspection.interface';
 import { ResourceInfo, MailType } from './utils.interface';
 import {
   LeaseESignatureRequestedPayload,
@@ -642,6 +643,15 @@ export interface MaintenanceRequestDeclinedPayload {
   cuid: string;
 }
 
+export interface InspectionScheduledPayload {
+  type: InspectionType;
+  scheduledDate: Date;
+  propertyId: string;
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceVendorPaidPayload {
   amountInCents: number;
   transferId: string;
@@ -687,15 +697,6 @@ export interface PayoutPaidPayload {
   cuid: string;
 }
 
-export interface InspectionScheduledPayload {
-  scheduledDate: Date;
-  propertyId: string;
-  tenantId: string;
-  iuid: string;
-  cuid: string;
-  type: string;
-}
-
 export interface InvoiceOverduePayload {
   invoiceId: string;
   tenantId?: string;
@@ -727,6 +728,14 @@ export interface MaintenanceChargePaidPayload {
   chargeId?: string;
   pytuid: string;
   mruid: string;
+  cuid: string;
+}
+
+export interface InspectionSubmittedPayload {
+  type: InspectionType;
+  inspectorId: string;
+  tenantId: string;
+  iuid: string;
   cuid: string;
 }
 
@@ -766,14 +775,6 @@ export type GuestPassExpiredPayload = {
   expiredAt: Date;
   count: number;
 };
-
-export interface InspectionSubmittedPayload {
-  inspectorId: string;
-  tenantId: string;
-  iuid: string;
-  cuid: string;
-  type: string;
-}
 
 export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
@@ -884,8 +885,6 @@ export interface InspectionApprovedPayload {
   iuid: string;
   cuid: string;
 }
-
-// ─── Inspection Event Payloads ───────────────────────────────────────────────
 
 export interface InspectionCancelledPayload {
   iuid: string;

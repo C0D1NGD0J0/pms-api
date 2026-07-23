@@ -27,7 +27,6 @@ const mediaSubSchema = new Schema(
         message: (props: any) => `${props.value} is not a valid URL!`,
       },
       required: true,
-      default: '',
     },
     key: { type: String },
     status: {

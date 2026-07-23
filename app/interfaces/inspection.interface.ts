@@ -62,7 +62,7 @@ export interface IInspection {
 
 export interface IInspectionMedia {
   status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
-  uploadedBy: Types.ObjectId;
+  uploadedBy?: Types.ObjectId;
   description?: string;
   filename?: string;
   uploadedAt: Date;

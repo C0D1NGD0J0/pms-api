@@ -20,6 +20,8 @@ export class FeatureFlagService {
         return envVariables.FEATURES.PUSH_NOTIFICATIONS_ENABLED;
       case FeatureFlag.INVOICE_WEBHOOK:
         return envVariables.FEATURES.INVOICE_WEBHOOK_ENABLED;
+      case FeatureFlag.INSPECTION:
+        return envVariables.FEATURES.INSPECTION_ENABLED;
       case FeatureFlag.ESIGNATURE:
         return envVariables.FEATURES.ESIGNATURE_ENABLED;
       case FeatureFlag.SMS:

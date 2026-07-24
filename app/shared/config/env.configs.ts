@@ -176,6 +176,7 @@ class EnvVariables {
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
       PUSH_NOTIFICATIONS_ENABLED: process.env.FEATURE_PUSH_NOTIFICATIONS_ENABLED !== 'false',
+      INSPECTION_ENABLED: process.env.FEATURE_INSPECTION_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
     };
     try {

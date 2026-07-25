@@ -9,6 +9,7 @@ import { PermissionResource, PermissionAction, PermissionScope } from '@interfac
 const BASE_ENTITLEMENTS = {
   eSignature: false,
   maintenanceRequestService: false,
+  inspectionService: false,
   guestPassService: false,
   reportingAnalytics: false,
   leaseTemplates: false,

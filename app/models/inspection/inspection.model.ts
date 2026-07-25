@@ -148,7 +148,6 @@ const inspectionSchema = new Schema<IInspectionDocument>(
     },
     leaseId: { type: Schema.Types.ObjectId, ref: 'Lease', required: true, index: true },
     propertyId: { type: Schema.Types.ObjectId, ref: 'Property', required: true, index: true },
-    propertyUnitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
     inspectorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     tenantId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     scheduledDate: { type: Date, required: true },

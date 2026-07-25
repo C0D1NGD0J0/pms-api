@@ -42,6 +42,7 @@ export interface ISubscriptionPlansConfig {
   features: {
     eSignature: boolean;
     maintenanceRequestService: boolean;
+    inspectionService: boolean;
     guestPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
@@ -186,6 +187,7 @@ export interface ISubscriptionEntitlements {
   entitlements: {
     eSignature: boolean;
     maintenanceRequestService: boolean;
+    inspectionService: boolean;
     guestPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;

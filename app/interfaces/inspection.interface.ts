@@ -36,7 +36,6 @@ export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, Inspection
 
 export interface IInspection {
   overallCondition?: ConditionRating;
-  propertyUnitId?: Types.ObjectId;
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
   propertyId: Types.ObjectId;
@@ -73,7 +72,6 @@ export interface IInspectionMedia {
 export interface ICreateInspection {
   rooms?: Partial<IInspectionRoom>[];
   scheduledDate: string | Date;
-  propertyUnitId?: string;
   overallNotes?: string;
   type: InspectionType;
   inspectorId?: string;

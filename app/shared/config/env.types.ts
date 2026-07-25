@@ -4,6 +4,7 @@ export interface FeaturesConfig {
   AI_INVOICE_SCANNING_ENABLED: boolean;
   PUSH_NOTIFICATIONS_ENABLED: boolean;
   INVOICE_WEBHOOK_ENABLED: boolean;
+  INSPECTION_ENABLED: boolean;
   ESIGNATURE_ENABLED: boolean;
   SMS_ENABLED: boolean;
   MCP_ENABLED: boolean;

@@ -1,4 +1,4 @@
-import { type QueryFilter, Model } from 'mongoose';
+import { type QueryFilter, Model, Types } from 'mongoose';
 import { IListInspectionsQuery, IInspectionDocument } from '@interfaces/inspection.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -14,7 +14,7 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
 
   async listByClient(cuid: string, query?: IListInspectionsQuery) {
     const filter: QueryFilter<IInspectionDocument> = { cuid, deletedAt: null };
-    if (query?.propertyId) filter.propertyId = query.propertyId;
+    if (query?.propertyId) filter.propertyId = new Types.ObjectId(query.propertyId);
     if (query?.type) filter.type = query.type;
     if (query?.status) filter.status = query.status;
 

@@ -171,5 +171,4 @@ inspectionSchema.index({ cuid: 1, leaseId: 1 });
 inspectionSchema.index({ cuid: 1, tenantId: 1 });
 
 const InspectionModel = model<IInspectionDocument>('Inspection', inspectionSchema);
-InspectionModel.syncIndexes();
 export default InspectionModel;

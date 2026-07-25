@@ -24,8 +24,8 @@ export const InspectionValidations = {
   createBody: z.object({
     type: z.enum(Object.values(InspectionType) as [string, ...string[]]),
     leaseId: z.string().min(1),
-    inspectorId: z.string().optional(),
-    scheduledDate: z.string().min(1),
+    inspectorId: z.string().optional(), // defaults to current user in service layer
+    scheduledDate: z.string().datetime(),
     overallNotes: z.string().max(2000).optional(),
     rooms: z.array(inspectionRoomSchema).optional(),
   }),

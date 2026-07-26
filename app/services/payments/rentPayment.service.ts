@@ -159,6 +159,11 @@ export class RentPaymentService {
         throw new BadRequestError({ message: 'Cannot create payment for inactive lease' });
       }
 
+      const effectiveEndDate = lease.duration.terminationDate || lease.duration.endDate;
+      if (effectiveEndDate && data.dueDate && new Date(data.dueDate) > new Date(effectiveEndDate)) {
+        throw new BadRequestError({ message: 'Cannot create payment after lease end date' });
+      }
+
       const acceptedPaymentMethod = lease.fees?.acceptedPaymentMethod;
       const isAutoDebit = acceptedPaymentMethod === 'auto-debit';
 
@@ -186,7 +191,7 @@ export class RentPaymentService {
           if (isRetryable) {
             // Free the index slot so the new insert can succeed.
             // CANCELLED: PM explicitly cancelled. FAILED: Stripe rejected the charge.
-            // Both are dead-end states — a replacement record is the correct next step.
+            // Both are dead-end states — a replacement record is the next step.
             await this.paymentDAO.updateById(existingForPeriod._id.toString(), {
               deletedAt: dayjs().toDate(),
             });

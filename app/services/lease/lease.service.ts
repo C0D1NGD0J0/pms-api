@@ -10,10 +10,12 @@ import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
+import { UserCache } from '@caching/user.cache';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { MediaUploadService, UserService, SMSService } from '@services/index';
@@ -112,6 +114,7 @@ interface IConstructor {
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
+  userCache: UserCache;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -142,6 +145,7 @@ export class LeaseService {
   private readonly leasePdfService: LeasePdfService;
   private readonly smsService: SMSService;
   private readonly paymentDAO: PaymentDAO;
+  private readonly userCache: UserCache;
 
   constructor({
     boldSignService,
@@ -164,6 +168,7 @@ export class LeaseService {
     queueFactory,
     smsService,
     paymentDAO,
+    userCache,
     userDAO,
     userService,
   }: IConstructor) {
@@ -191,6 +196,7 @@ export class LeaseService {
     this.leaseSignatureService = leaseSignatureService;
     this.smsService = smsService;
     this.paymentDAO = paymentDAO;
+    this.userCache = userCache;
     this.setupEventListeners();
   }
 
@@ -1010,6 +1016,16 @@ export class LeaseService {
       });
     }
 
+    // Cancel any pending/overdue payments with due dates after the termination date
+    await this.paymentDAO.updateMany(
+      {
+        lease: terminatedLease._id,
+        status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
+        dueDate: { $gt: terminationDate },
+      },
+      { status: PaymentRecordStatus.CANCELLED }
+    );
+
     await this.leaseCache.invalidateLease(cuid, luid);
     await this.leaseCache.invalidateLeaseLists(cuid);
 
@@ -1044,6 +1060,9 @@ export class LeaseService {
       if (tenantProfile && tenantProfile.user) {
         const tenantUser =
           typeof tenantProfile.user === 'object' ? (tenantProfile.user as any) : null;
+        if (tenantUser?.uid) {
+          await this.userCache.invalidateUserDetail(cuid, tenantUser.uid);
+        }
         if (tenantUser && tenantUser.email) {
           const property = lease.property as any;
           const tenantName =

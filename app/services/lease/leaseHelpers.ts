@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
@@ -5,8 +6,6 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
-// Pro-ration logic lives in the canonical financial utility.
-// Re-exported here so existing call sites need no changes.
 export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
 export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
@@ -45,8 +44,6 @@ import {
   calcDaysElapsed,
   MoneyUtils,
 } from '@utils/index';
-
-// SECTION 1: FIELD VALIDATION
 
 export const validateImmutableFields = (updateData: Partial<ILeaseFormData>): void => {
   const updateFields = Object.keys(updateData);
@@ -266,8 +263,6 @@ export const validateLeaseTermination = (
   return { warnings };
 };
 
-// SECTION 2: PERMISSION & RESOURCE VALIDATION
-
 export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
   // Check lease status
   if (![LeaseStatus.READY_FOR_SIGNATURE].includes(lease.status)) {
@@ -336,8 +331,6 @@ export const validateUserRole = (
     throw new ForbiddenError({ message: `You are not authorized to ${operation}.` });
   }
 };
-
-// SECTION 3: UPDATE HANDLERS
 
 /**
  * Handle update for DRAFT lease
@@ -653,8 +646,6 @@ export const storePendingChanges = async (
   return updated;
 };
 
-// SECTION 4: TRANSFORMERS
-
 /**
  * Filter lease data based on user role
  */
@@ -801,8 +792,6 @@ export const shouldShowPendingChanges = (
   return false;
 };
 
-// SECTION 5: DATA FETCHERS
-
 /**
  * Fetch property manager with populated user and validate email exists
  */
@@ -893,8 +882,6 @@ export const fetchLeaseByLuid = async (
   return lease;
 };
 
-// SECTION 6: CALCULATIONS & HELPERS
-
 /**
  * Calculate financial summary for a lease
  */
@@ -956,7 +943,12 @@ export const calculateFinancialSummary = (
         .filter((p) => p.status === PaymentRecordStatus.PAID && p.paidAt)
         .sort((a, b) => new Date(b.paidAt!).getTime() - new Date(a.paidAt!).getTime())[0]?.paidAt ||
       null,
-    nextPaymentDate: calculateNextPaymentDate(lease.fees.rentDueDay, startDate),
+    nextPaymentDate: calculateNextPaymentDate(
+      lease.fees.rentDueDay,
+      startDate,
+      lease.duration.endDate ? new Date(lease.duration.endDate) : undefined,
+      lease.duration.terminationDate ? new Date(lease.duration.terminationDate) : undefined
+    ),
     // First-payment breakdown (pro-rated base rent at move-in — pet fee and management fee separate)
     proRatedFirstMonthAmount: proRated.amount,
     proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRated.amount, currency),
@@ -979,27 +971,35 @@ export const calculateFinancialSummary = (
 };
 
 /**
- * Calculate next payment date based on rent due day and lease start date.
+ * Calculate next payment date based on rent due day and lease boundaries.
  *
  * - If the lease hasn't started yet (startDate >= today): first payment is due on move-in day.
  * - Otherwise: next occurrence of rentDueDay from today.
+ * - Returns null if the next due date falls after the lease end (or termination) date.
  */
-export const calculateNextPaymentDate = (rentDueDay: number, startDate: Date): Date => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export const calculateNextPaymentDate = (
+  rentDueDay: number,
+  startDate: Date,
+  endDate?: Date,
+  terminationDate?: Date
+): Date | null => {
+  const today = dayjs().startOf('day');
+  const start = dayjs(startDate).startOf('day');
+  const effectiveEnd = terminationDate
+    ? dayjs(terminationDate).endOf('day')
+    : endDate
+      ? dayjs(endDate).endOf('day')
+      : null;
 
-  const start = new Date(startDate);
-  start.setHours(0, 0, 0, 0);
-
-  if (start >= today) {
-    return new Date(startDate);
+  if (!start.isBefore(today)) {
+    return effectiveEnd && start.isAfter(effectiveEnd) ? null : startDate;
   }
 
-  const nextPayment = new Date(today.getFullYear(), today.getMonth(), rentDueDay);
-  if (nextPayment <= today) {
-    nextPayment.setMonth(nextPayment.getMonth() + 1);
-  }
-  return nextPayment;
+  const candidate = dayjs().date(rentDueDay).startOf('day');
+  const nextPayment = candidate.isAfter(today) ? candidate : candidate.add(1, 'month');
+
+  if (effectiveEnd && nextPayment.isAfter(effectiveEnd)) return null;
+  return nextPayment.toDate();
 };
 
 export type { LeaseMonthlyFees } from '@utils/financial.utils';
@@ -1255,8 +1255,6 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     renewalFormData: includeFormData ? renewalFormData : undefined,
   };
 }
-
-// SECTION 7: PDF & SIGNATURE HELPERS
 
 /**
  * Returns the active lease agreement PDF document item, if one exists.

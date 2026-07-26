@@ -74,7 +74,6 @@
       "payment": ["read:any", "list:any"],
       "report": ["read:any", "list:any"],
       "guest_pass": ["read:any", "list:any"],
-      "inspection": ["read:any", "list:any", "update:assigned", "create:any"],
       "departments": {
         "accounting": {
           "payment": ["read:any", "list:any", "create:any", "update:any"],

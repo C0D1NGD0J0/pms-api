@@ -8,6 +8,7 @@ export enum InspectionStatus {
   SUBMITTED = 'submitted',
   CANCELLED = 'cancelled',
   APPROVED = 'approved',
+  REJECTED = 'rejected',
   DISPUTED = 'disputed',
 }
 
@@ -28,7 +29,12 @@ export enum InspectionType {
 export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, InspectionStatus[]> = {
   [InspectionStatus.SCHEDULED]: [InspectionStatus.IN_PROGRESS, InspectionStatus.CANCELLED],
   [InspectionStatus.IN_PROGRESS]: [InspectionStatus.SUBMITTED, InspectionStatus.CANCELLED],
-  [InspectionStatus.SUBMITTED]: [InspectionStatus.APPROVED, InspectionStatus.DISPUTED],
+  [InspectionStatus.SUBMITTED]: [
+    InspectionStatus.APPROVED,
+    InspectionStatus.REJECTED,
+    InspectionStatus.DISPUTED,
+  ],
+  [InspectionStatus.REJECTED]: [InspectionStatus.IN_PROGRESS],
   [InspectionStatus.DISPUTED]: [InspectionStatus.APPROVED],
   [InspectionStatus.APPROVED]: [],
   [InspectionStatus.CANCELLED]: [],
@@ -44,6 +50,7 @@ export interface IInspection {
   status: InspectionStatus;
   tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
+  rejectionReason?: string;
   leaseId: Types.ObjectId;
   disputeNotes?: string;
   overallNotes?: string;

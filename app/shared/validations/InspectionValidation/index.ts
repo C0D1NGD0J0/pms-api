@@ -40,6 +40,10 @@ export const InspectionValidations = {
     disputeNotes: z.string().min(10, 'Dispute notes must be at least 10 characters').max(2000),
   }),
 
+  rejectBody: z.object({
+    reason: z.string().min(10, 'Rejection reason must be at least 10 characters').max(2000),
+  }),
+
   listQuery: z.object({
     propertyId: z.string().optional(),
     type: z.enum(Object.values(InspectionType) as [string, ...string[]]).optional(),

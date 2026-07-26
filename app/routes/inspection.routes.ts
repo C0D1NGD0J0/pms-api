@@ -150,6 +150,24 @@ router.patch(
 );
 
 router.patch(
+  '/:cuid/:iuid/reject',
+  requireNotSuspended,
+  requirePermission(PermissionResource.INSPECTION, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  subscriptionEntitlements,
+  requireFeature('inspectionService'),
+  requireFeatureFlag(FeatureFlag.INSPECTION),
+  validateRequest({
+    params: InspectionValidations.iuidParam,
+    body: InspectionValidations.rejectBody,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<InspectionController>('inspectionController');
+    return controller.rejectInspection(req, res);
+  })
+);
+
+router.patch(
   '/:cuid/:iuid/acknowledge',
   requireNotSuspended,
   requirePermissionWithContext(

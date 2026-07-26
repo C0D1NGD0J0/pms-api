@@ -156,6 +156,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
     approvedAt: { type: Date },
     tenantAcknowledgedAt: { type: Date },
     disputeNotes: { type: String, trim: true, maxlength: 2000 },
+    rejectionReason: { type: String, trim: true, maxlength: 2000 },
     overallCondition: { type: String, enum: Object.values(ConditionRating) },
     overallNotes: { type: String, trim: true, maxlength: 2000 },
     rooms: [inspectionRoomSchema],

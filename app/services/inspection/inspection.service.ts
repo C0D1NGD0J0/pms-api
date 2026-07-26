@@ -168,7 +168,17 @@ export class InspectionService implements ICronProvider {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
 
-    if (![InspectionStatus.IN_PROGRESS, InspectionStatus.SCHEDULED].includes(inspection.status)) {
+    const editableStatuses = [InspectionStatus.SCHEDULED, InspectionStatus.IN_PROGRESS];
+
+    // Move-in inspections can be revised after rejection
+    if (
+      inspection.status === InspectionStatus.REJECTED &&
+      inspection.type !== InspectionType.MOVE_OUT
+    ) {
+      editableStatuses.push(InspectionStatus.REJECTED);
+    }
+
+    if (!editableStatuses.includes(inspection.status)) {
       throw new BadRequestError({
         message: `Cannot update inspection in status: ${inspection.status}`,
       });
@@ -184,8 +194,13 @@ export class InspectionService implements ICronProvider {
     }
 
     const updates: Record<string, any> = { ...data };
-    if (inspection.status === InspectionStatus.SCHEDULED) {
+    // Auto-advance to IN_PROGRESS on first update or when revising after rejection
+    if (
+      inspection.status === InspectionStatus.SCHEDULED ||
+      inspection.status === InspectionStatus.REJECTED
+    ) {
       updates.status = InspectionStatus.IN_PROGRESS;
+      updates.rejectionReason = null;
     }
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
@@ -315,6 +330,40 @@ export class InspectionService implements ICronProvider {
     });
 
     return { success: true, message: 'Inspection disputed', data: updated! };
+  }
+
+  async rejectInspection(cuid: string, iuid: string, reason: string): IPromiseReturnedData {
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    if (!inspection) {
+      throw new NotFoundError({ message: 'Inspection not found' });
+    }
+
+    this._validateTransition(inspection.status, InspectionStatus.REJECTED);
+
+    // Move-out: final rejection, no resubmission allowed
+    // Move-in/routine: tenant can revise and resubmit
+    const isFinal = inspection.type === InspectionType.MOVE_OUT;
+
+    const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
+      $set: {
+        status: InspectionStatus.REJECTED,
+        rejectionReason: reason,
+      },
+    });
+
+    this.emitterService.emit(EventTypes.INSPECTION_REJECTED, {
+      iuid: inspection.iuid,
+      cuid,
+      tenantId: inspection.tenantId.toString(),
+      reason,
+      isFinal,
+    });
+
+    const message = isFinal
+      ? 'Inspection rejected (final)'
+      : 'Inspection rejected — tenant can revise and resubmit';
+
+    return { success: true, message, data: updated! };
   }
 
   async cancelInspection(cuid: string, iuid: string): IPromiseReturnedData {

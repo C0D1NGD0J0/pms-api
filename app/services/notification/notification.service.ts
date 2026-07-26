@@ -1605,6 +1605,95 @@ export class NotificationService {
     );
     this.emitterService.on(EventTypes.GUEST_PASS_REVOKED, (p) => handleGuestPassRevoked(ctx, p));
     this.emitterService.on(EventTypes.GUEST_PASS_EXPIRED, (p) => handleGuestPassExpired(ctx, p));
+
+    this.emitterService.on(EventTypes.INSPECTION_SCHEDULED, async (payload) => {
+      try {
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: 'Inspection Scheduled',
+          message: `A ${payload.type.replace('_', '-')} inspection has been scheduled for ${new Date(payload.scheduledDate).toLocaleDateString()}`,
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.tenantId,
+          priority: NotificationPriorityEnum.MEDIUM,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection scheduled notification', { error, payload });
+      }
+    });
+
+    this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, async (payload) => {
+      try {
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: 'Inspection Submitted',
+          message: `A ${payload.type.replace('_', '-')} inspection has been submitted for review`,
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.inspectorId,
+          priority: NotificationPriorityEnum.MEDIUM,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection submitted notification', { error, payload });
+      }
+    });
+
+    this.emitterService.on(EventTypes.INSPECTION_APPROVED, async (payload) => {
+      try {
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: 'Inspection Approved',
+          message: 'Your inspection has been reviewed and approved',
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.tenantId,
+          priority: NotificationPriorityEnum.MEDIUM,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection approved notification', { error, payload });
+      }
+    });
+
+    this.emitterService.on(EventTypes.INSPECTION_DISPUTED, async (payload) => {
+      try {
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: 'Inspection Disputed',
+          message: `Tenant has disputed the inspection: ${payload.disputeNotes.substring(0, 100)}`,
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.inspectorId,
+          priority: NotificationPriorityEnum.HIGH,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection disputed notification', { error, payload });
+      }
+    });
+
+    this.emitterService.on(EventTypes.INSPECTION_REJECTED, async (payload) => {
+      try {
+        const message = payload.isFinal
+          ? `Your inspection has been rejected: ${payload.reason.substring(0, 100)}`
+          : `Your inspection needs revision: ${payload.reason.substring(0, 100)}`;
+
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: payload.isFinal ? 'Inspection Rejected' : 'Inspection Needs Revision',
+          message,
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.tenantId,
+          priority: NotificationPriorityEnum.HIGH,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection rejected notification', { error, payload });
+      }
+    });
   }
 
   private buildContext(): INotificationContext {

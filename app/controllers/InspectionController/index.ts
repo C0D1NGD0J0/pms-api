@@ -102,6 +102,12 @@ export class InspectionController {
     return res.status(200).json(result);
   }
 
+  async rejectInspection(req: AppRequest, res: Response) {
+    const { cuid, iuid } = req.params;
+    const result = await this.inspectionService.rejectInspection(cuid, iuid, req.body.reason);
+    return res.status(200).json(result);
+  }
+
   async disputeInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
     const userId = req.context.currentuser!.sub;

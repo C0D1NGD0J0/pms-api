@@ -8,6 +8,7 @@ export enum InspectionStatus {
   SUBMITTED = 'submitted',
   CANCELLED = 'cancelled',
   APPROVED = 'approved',
+  REJECTED = 'rejected',
   DISPUTED = 'disputed',
 }
 
@@ -28,13 +29,21 @@ export enum InspectionType {
 export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, InspectionStatus[]> = {
   [InspectionStatus.SCHEDULED]: [InspectionStatus.IN_PROGRESS, InspectionStatus.CANCELLED],
   [InspectionStatus.IN_PROGRESS]: [InspectionStatus.SUBMITTED, InspectionStatus.CANCELLED],
-  [InspectionStatus.SUBMITTED]: [InspectionStatus.APPROVED, InspectionStatus.DISPUTED],
+  [InspectionStatus.SUBMITTED]: [
+    InspectionStatus.APPROVED,
+    InspectionStatus.REJECTED,
+    InspectionStatus.DISPUTED,
+  ],
+  [InspectionStatus.REJECTED]: [InspectionStatus.IN_PROGRESS],
   [InspectionStatus.DISPUTED]: [InspectionStatus.APPROVED],
   [InspectionStatus.APPROVED]: [],
   [InspectionStatus.CANCELLED]: [],
 };
 
 export interface IInspection {
+  rejectionReason?: { text: string; html?: string };
+  disputeNotes?: { text: string; html?: string };
+  overallNotes?: { text: string; html?: string };
   overallCondition?: ConditionRating;
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
@@ -45,8 +54,6 @@ export interface IInspection {
   tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
   leaseId: Types.ObjectId;
-  disputeNotes?: string;
-  overallNotes?: string;
   type: InspectionType;
   completedDate?: Date;
   scheduledDate: Date;
@@ -70,32 +77,32 @@ export interface IInspectionMedia {
 }
 
 export interface ICreateInspection {
+  overallNotes?: { text: string; html?: string };
   rooms?: Partial<IInspectionRoom>[];
   scheduledDate: string | Date;
-  overallNotes?: string;
   type: InspectionType;
   inspectorId?: string;
   leaseId: string;
 }
 
 export interface IInspectionRoom {
+  notes?: { text: string; html?: string };
   condition: ConditionRating;
   media: IInspectionMedia[];
   items: IInspectionItem[];
-  notes?: string;
   name: string;
+}
+
+export interface IUpdateInspection {
+  overallNotes?: { text: string; html?: string };
+  overallCondition?: ConditionRating;
+  rooms?: IInspectionRoom[];
 }
 
 export interface IListInspectionsQuery extends IPaginationQuery {
   status?: InspectionStatus;
   type?: InspectionType;
   propertyId?: string;
-}
-
-export interface IUpdateInspection {
-  overallCondition?: ConditionRating;
-  rooms?: IInspectionRoom[];
-  overallNotes?: string;
 }
 
 export type IInspectionListReturnData = IPromiseReturnedData<{
@@ -109,9 +116,9 @@ export interface IInspectionItem {
   name: string;
 }
 
-export interface IInspectionDocument extends IInspection, Document {}
-
-export type IInspectionReturnData = IPromiseReturnedData<IInspection>;
 export interface IDisputeInspection {
-  disputeNotes: string;
+  disputeNotes: { text: string; html?: string };
 }
+
+export interface IInspectionDocument extends IInspection, Document {}
+export type IInspectionReturnData = IPromiseReturnedData<IInspection>;

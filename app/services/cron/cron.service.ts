@@ -5,6 +5,7 @@ import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import {
   SubscriptionService,
   NotificationService,
+  InspectionService,
   GuestPassService,
   MetricsService,
   PaymentService,
@@ -16,6 +17,7 @@ import {
 interface IConstructor {
   notificationService?: NotificationService;
   subscriptionService: SubscriptionService;
+  inspectionService: InspectionService;
   guestPassService: GuestPassService;
   metricsService: MetricsService;
   paymentService: PaymentService;
@@ -41,6 +43,7 @@ export class CronService {
     leaseService,
     guestPassService,
     subscriptionService,
+    inspectionService,
     paymentService,
     smsService,
     metricsService,
@@ -54,6 +57,7 @@ export class CronService {
       subscriptionService,
       paymentService,
       guestPassService,
+      inspectionService,
       smsService,
       metricsService,
     ].filter(Boolean);

@@ -40,6 +40,7 @@ export {
 } from './subscription';
 export { InvitationCsvProcessor, PropertyCsvProcessor } from './csv';
 export { InvoiceTemplateRenderer, InvoiceService } from './invoice';
+export { InspectionService } from './inspection/inspection.service';
 export { ExpenseService } from './expense/expense.service';
 export { MetricsService } from './metrics/metrics.service';
 export { PaymentGatewayService } from './paymentGateway';

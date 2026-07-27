@@ -118,6 +118,7 @@ export interface ILeaseFinancialSummary {
   proRatedLastMonthDays: number;
   isLastMonthFullMonth: boolean;
   lastPaymentDate: Date | null;
+  nextPaymentDate: Date | null;
   proRatedDaysInMonth: number;
   securityDepositRaw: number; // Raw amount in cents
   firstPaymentAmount: number;
@@ -131,7 +132,6 @@ export interface ILeaseFinancialSummary {
   firstPaymentDate: Date;
   rentAmountRaw: number; // Raw amount in cents
   totalExpected: number;
-  nextPaymentDate: Date;
   lateFeeDays?: number;
   proRatedDays: number;
   rentAmount: string; // Formatted currency string

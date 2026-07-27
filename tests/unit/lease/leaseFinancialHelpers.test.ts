@@ -392,18 +392,20 @@ describe('calculateNextPaymentDate', () => {
   it('returns startDate when lease has not started yet (future start)', () => {
     const futureStart = daysFromNow(10);
     const result = calculateNextPaymentDate(1, futureStart);
+    expect(result).not.toBeNull();
     // Should be the same day as startDate
-    result.setHours(0, 0, 0, 0);
+    result!.setHours(0, 0, 0, 0);
     futureStart.setHours(0, 0, 0, 0);
-    expect(result.getTime()).toBe(futureStart.getTime());
+    expect(result!.getTime()).toBe(futureStart.getTime());
   });
 
   it('returns startDate when start date is today', () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const result = calculateNextPaymentDate(1, today);
-    result.setHours(0, 0, 0, 0);
-    expect(result.getTime()).toBe(today.getTime());
+    expect(result).not.toBeNull();
+    result!.setHours(0, 0, 0, 0);
+    expect(result!.getTime()).toBe(today.getTime());
   });
 
   it('returns next occurrence of rentDueDay when lease is active and due day is in the future this month', () => {
@@ -419,8 +421,9 @@ describe('calculateNextPaymentDate', () => {
     }
 
     const result = calculateNextPaymentDate(futureDay, pastStart);
-    expect(result.getDate()).toBe(futureDay);
-    expect(result.getMonth()).toBe(today.getMonth());
+    expect(result).not.toBeNull();
+    expect(result!.getDate()).toBe(futureDay);
+    expect(result!.getMonth()).toBe(today.getMonth());
   });
 
   it('returns next month occurrence when rentDueDay has already passed this month', () => {
@@ -433,13 +436,45 @@ describe('calculateNextPaymentDate', () => {
     if (today.getDate() === 1) {
       // Edge case: if today IS the 1st, use day 28 instead
       const result = calculateNextPaymentDate(28, pastStart);
-      expect(result.getDate()).toBe(28);
+      expect(result).not.toBeNull();
+      expect(result!.getDate()).toBe(28);
       return;
     }
 
     const result = calculateNextPaymentDate(rentDueDay, pastStart);
+    expect(result).not.toBeNull();
     const expectedMonth = (today.getMonth() + 1) % 12;
-    expect(result.getDate()).toBe(rentDueDay);
-    expect(result.getMonth()).toBe(expectedMonth);
+    expect(result!.getDate()).toBe(rentDueDay);
+    expect(result!.getMonth()).toBe(expectedMonth);
+  });
+
+  it('returns null when next due date is after lease endDate', () => {
+    const pastStart = daysFromNow(-60);
+    const pastEnd = daysFromNow(-5);
+    const result = calculateNextPaymentDate(1, pastStart, pastEnd);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when next due date is after terminationDate', () => {
+    const pastStart = daysFromNow(-60);
+    const futureEnd = daysFromNow(60);
+    const pastTermination = daysFromNow(-3);
+    const result = calculateNextPaymentDate(1, pastStart, futureEnd, pastTermination);
+    expect(result).toBeNull();
+  });
+
+  it('terminationDate takes precedence over endDate', () => {
+    const pastStart = daysFromNow(-60);
+    const futureEnd = daysFromNow(60);
+    const pastTermination = daysFromNow(-1);
+    const result = calculateNextPaymentDate(15, pastStart, futureEnd, pastTermination);
+    expect(result).toBeNull();
+  });
+
+  it('returns date when due date is before endDate', () => {
+    const pastStart = daysFromNow(-30);
+    const futureEnd = daysFromNow(60);
+    const result = calculateNextPaymentDate(15, pastStart, futureEnd);
+    expect(result).not.toBeNull();
   });
 });

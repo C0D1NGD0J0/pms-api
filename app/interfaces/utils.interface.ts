@@ -116,6 +116,7 @@ export enum ResourceContext {
   USER_PROFILE = 'user-profile',
   MAINTENANCE = 'maintenance',
   GUEST_PASS = 'guest-pass',
+  INSPECTION = 'inspection',
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',

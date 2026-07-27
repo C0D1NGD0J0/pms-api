@@ -61,6 +61,8 @@ export enum EventTypes {
   INSPECTION_SUBMITTED = 'inspection:submitted',
   INSPECTION_CANCELLED = 'inspection:cancelled',
   GUEST_PASS_VALIDATED = 'guestPass:validated',
+  INSPECTION_REMINDER = 'inspection:reminder',
+  INSPECTION_REJECTED = 'inspection:rejected',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
   DELETE_ASSET_FAILED = 'delete:asset:failed',
@@ -201,10 +203,12 @@ export type EventPayloadMap = {
   [EventTypes.GUEST_PASS_ACKNOWLEDGED]: GuestPassAcknowledgedPayload;
   [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
   [EventTypes.INSPECTION_SCHEDULED]: InspectionScheduledPayload;
+  [EventTypes.INSPECTION_REMINDER]: InspectionScheduledPayload;
   [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
   [EventTypes.INSPECTION_APPROVED]: InspectionApprovedPayload;
   [EventTypes.INSPECTION_DISPUTED]: InspectionDisputedPayload;
   [EventTypes.INSPECTION_CANCELLED]: InspectionCancelledPayload;
+  [EventTypes.INSPECTION_REJECTED]: InspectionRejectedPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -782,6 +786,14 @@ export interface PropertyUpdatedPayload {
   status: 'success';
 }
 
+export interface InspectionRejectedPayload {
+  tenantId: string;
+  isFinal: boolean;
+  reason: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceAutoVendorPaidPayload {
   amountInCents: number;
   vendorName: string;
@@ -856,12 +868,12 @@ export interface PdfGenerationFailedPayload {
   resourceId: string;
   error: string;
 }
-
 export interface MaintenanceAITriageCompletedPayload {
   tenantId: string;
   mruid: string;
   cuid: string;
 }
+
 // Generic email event payloads
 export interface EmailSentPayload {
   jobData: Record<string, any>;
@@ -875,6 +887,12 @@ export interface DeleteAssetFailedPayload {
   reason: string;
 }
 
+export interface InspectionCancelledPayload {
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
@@ -882,11 +900,6 @@ export interface DeleteAssetCompletedPayload {
 
 export interface InspectionApprovedPayload {
   tenantId: string;
-  iuid: string;
-  cuid: string;
-}
-
-export interface InspectionCancelledPayload {
   iuid: string;
   cuid: string;
 }

@@ -313,6 +313,11 @@ export class PaymentCronService implements ICronProvider {
     for (const lease of leases) {
       try {
         const leaseStart = dayjs(lease.duration.startDate).startOf('day');
+        const leaseEnd = (
+          lease.duration.terminationDate
+            ? dayjs(lease.duration.terminationDate)
+            : dayjs(lease.duration.endDate)
+        ).endOf('day');
         const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
         const nextMonthDue = today.add(1, 'month').date(lease.fees.rentDueDay).startOf('day');
 
@@ -320,14 +325,16 @@ export class PaymentCronService implements ICronProvider {
         if (
           !thisMonthDue.isBefore(today) &&
           !thisMonthDue.isBefore(leaseStart) &&
-          !thisMonthDue.isAfter(sevenDaysLater)
+          !thisMonthDue.isAfter(sevenDaysLater) &&
+          !thisMonthDue.isAfter(leaseEnd)
         ) {
           candidates.push(thisMonthDue);
         }
         if (
           !nextMonthDue.isBefore(today) &&
           !nextMonthDue.isBefore(leaseStart) &&
-          !nextMonthDue.isAfter(sevenDaysLater)
+          !nextMonthDue.isAfter(sevenDaysLater) &&
+          !nextMonthDue.isAfter(leaseEnd)
         ) {
           candidates.push(nextMonthDue);
         }
@@ -428,8 +435,18 @@ export class PaymentCronService implements ICronProvider {
       try {
         const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
         const leaseStart = dayjs(lease.duration.startDate).startOf('day');
+        const leaseEnd = (
+          lease.duration.terminationDate
+            ? dayjs(lease.duration.terminationDate)
+            : dayjs(lease.duration.endDate)
+        ).endOf('day');
 
-        if (thisMonthDue.isAfter(tomorrow) || thisMonthDue.isBefore(leaseStart)) continue;
+        if (
+          thisMonthDue.isAfter(tomorrow) ||
+          thisMonthDue.isBefore(leaseStart) ||
+          thisMonthDue.isAfter(leaseEnd)
+        )
+          continue;
 
         const period = { month: thisMonthDue.month() + 1, year: thisMonthDue.year() };
         const existing = await this.paymentDAO.findByPeriod(

@@ -35,6 +35,14 @@
       "vendor": ["create:any", "read:any", "update:any", "list:any"],
       "lease": ["create:any", "list:any", "read:any", "update:any"],
       "guest_pass": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
+      "inspection": [
+        "create:any",
+        "read:any",
+        "update:any",
+        "delete:any",
+        "list:any",
+        "manage:any"
+      ],
       "maintenance": [
         "create:mine",
         "delete:mine",
@@ -79,6 +87,7 @@
           "maintenance": ["create:assigned", "read:assigned", "update:assigned", "list:assigned"],
           "property": ["read:assigned"],
           "user": ["read:mine", "update:mine"],
+          "inspection": ["read:any", "list:any"],
           "client": ["read:mine"]
         },
         "operations": {
@@ -88,6 +97,7 @@
           "tenant": ["read:any", "list:any"],
           "payment": ["read:any", "list:any"],
           "user": ["read:any", "list:any"],
+          "inspection": ["read:any", "list:any"],
           "report": ["read:any"],
           "client": ["read:mine"]
         },
@@ -105,6 +115,14 @@
           "tenant": ["read:any", "update:any", "list:any"],
           "payment": ["read:any", "list:any", "create:any"],
           "user": ["read:any", "update:any", "list:any"],
+          "inspection": [
+            "create:any",
+            "read:any",
+            "update:any",
+            "delete:any",
+            "list:any",
+            "manage:any"
+          ],
           "report": ["read:any", "create:any", "list:any"],
           "client": ["read:mine", "settings:mine"]
         },
@@ -124,6 +142,7 @@
       "lease": ["read:mine", "list:mine", "update:mine"],
       "payment": ["read:mine", "create:mine", "list:mine"],
       "guest_pass": ["create:mine", "read:mine", "delete:mine", "list:mine"],
+      "inspection": ["read:mine", "update:mine", "list:mine"],
       "report": ["read:mine"]
     },
     "vendor": {
@@ -215,6 +234,11 @@
       "actions": ["create", "read", "update", "delete", "list"],
       "scopes": ["any", "mine", "assigned"],
       "description": "Guest pass and access request operations"
+    },
+    "inspection": {
+      "actions": ["create", "read", "update", "delete", "list", "manage"],
+      "scopes": ["any", "mine"],
+      "description": "Property inspection operations"
     }
   },
   "scopes": {

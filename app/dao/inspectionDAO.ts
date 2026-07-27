@@ -9,7 +9,21 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
   }
 
   async getByIuid(iuid: string, cuid: string): Promise<IInspectionDocument | null> {
-    return this.findFirst({ iuid, cuid, deletedAt: null });
+    return this.findFirst(
+      { iuid, cuid, deletedAt: null },
+      {
+        populate: [
+          { path: 'propertyId', select: 'address pid title' },
+          {
+            path: 'leaseId',
+            select: 'propertyUnitId',
+            populate: { path: 'propertyUnitId', select: 'unitNumber' },
+          },
+          { path: 'inspectorId', select: 'firstName lastName email' },
+          { path: 'tenantId', select: 'firstName lastName email' },
+        ],
+      }
+    );
   }
 
   async listByClient(cuid: string, query?: IListInspectionsQuery) {

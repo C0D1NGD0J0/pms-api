@@ -33,7 +33,12 @@ export const InspectionValidations = {
     inspectorId: z.string().optional(),
     scheduledDate: z.string().datetime(),
     overallNotes: richTextSchema(2000).optional(),
+    refundDeposit: z.boolean().optional(),
     rooms: z.array(inspectionRoomSchema).optional(),
+  }),
+
+  approveBody: z.object({
+    refundAmount: z.number().min(0).optional(),
   }),
 
   updateBody: z

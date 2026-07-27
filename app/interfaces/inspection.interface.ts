@@ -41,6 +41,7 @@ export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, Inspection
 };
 
 export interface IInspection {
+  refundInfo?: { amount: number; isRefunded: boolean };
   rejectionReason?: { text: string; html?: string };
   disputeNotes?: { text: string; html?: string };
   overallNotes?: { text: string; html?: string };
@@ -66,6 +67,16 @@ export interface IInspection {
   cuid: string;
 }
 
+export interface ICreateInspection {
+  overallNotes?: { text: string; html?: string };
+  rooms?: Partial<IInspectionRoom>[];
+  scheduledDate: string | Date;
+  refundDeposit?: boolean;
+  type: InspectionType;
+  inspectorId?: string;
+  leaseId: string;
+}
+
 export interface IInspectionMedia {
   status: 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
   uploadedBy?: Types.ObjectId;
@@ -74,15 +85,6 @@ export interface IInspectionMedia {
   uploadedAt: Date;
   key?: string;
   url: string;
-}
-
-export interface ICreateInspection {
-  overallNotes?: { text: string; html?: string };
-  rooms?: Partial<IInspectionRoom>[];
-  scheduledDate: string | Date;
-  type: InspectionType;
-  inspectorId?: string;
-  leaseId: string;
 }
 
 export interface IInspectionRoom {

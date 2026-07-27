@@ -166,6 +166,16 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },
     },
+    refundInfo: {
+      type: new Schema(
+        {
+          amount: { type: Number, min: 0 },
+          isRefunded: { type: Boolean, default: false },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     overallCondition: { type: String, enum: Object.values(ConditionRating) },
     overallNotes: {
       text: { type: String, trim: true, maxlength: 2000 },

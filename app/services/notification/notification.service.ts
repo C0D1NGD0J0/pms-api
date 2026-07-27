@@ -1623,6 +1623,23 @@ export class NotificationService {
       }
     });
 
+    this.emitterService.on(EventTypes.INSPECTION_REMINDER, async (payload) => {
+      try {
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: 'Inspection Reminder',
+          message: `Reminder: your ${payload.type.replace('_', '-')} inspection is scheduled for ${new Date(payload.scheduledDate).toLocaleDateString()}`,
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.tenantId,
+          priority: NotificationPriorityEnum.MEDIUM,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection reminder notification', { error, payload });
+      }
+    });
+
     this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, async (payload) => {
       try {
         await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
@@ -1692,6 +1709,23 @@ export class NotificationService {
         });
       } catch (error) {
         this.log.error('Error sending inspection rejected notification', { error, payload });
+      }
+    });
+
+    this.emitterService.on(EventTypes.INSPECTION_CANCELLED, async (payload) => {
+      try {
+        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+          title: 'Inspection Cancelled',
+          message: 'A scheduled inspection has been cancelled',
+          type: NotificationTypeEnum.INSPECTION,
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient: payload.tenantId,
+          priority: NotificationPriorityEnum.LOW,
+          actionUrl: `/inspections/${payload.iuid}`,
+          cuid: payload.cuid,
+        });
+      } catch (error) {
+        this.log.error('Error sending inspection cancelled notification', { error, payload });
       }
     });
   }

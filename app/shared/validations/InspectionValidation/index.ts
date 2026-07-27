@@ -7,6 +7,12 @@ import {
 
 const conditionEnum = z.enum(Object.values(ConditionRating) as [string, ...string[]]);
 
+const richTextSchema = (maxLen: number) =>
+  z.object({
+    text: z.string().min(1).max(maxLen),
+    html: z.string().optional(),
+  });
+
 const inspectionItemSchema = z.object({
   name: z.string().min(1).max(100),
   condition: conditionEnum.optional(),
@@ -16,7 +22,7 @@ const inspectionItemSchema = z.object({
 const inspectionRoomSchema = z.object({
   name: z.string().min(1).max(100),
   condition: conditionEnum.optional(),
-  notes: z.string().max(1000).optional(),
+  notes: richTextSchema(1000).optional(),
   items: z.array(inspectionItemSchema).optional(),
 });
 
@@ -24,24 +30,32 @@ export const InspectionValidations = {
   createBody: z.object({
     type: z.enum(Object.values(InspectionType) as [string, ...string[]]),
     leaseId: z.string().min(1),
-    inspectorId: z.string().optional(), // defaults to current user in service layer
+    inspectorId: z.string().optional(),
     scheduledDate: z.string().datetime(),
-    overallNotes: z.string().max(2000).optional(),
+    overallNotes: richTextSchema(2000).optional(),
     rooms: z.array(inspectionRoomSchema).optional(),
   }),
 
-  updateBody: z.object({
-    overallCondition: conditionEnum.optional(),
-    overallNotes: z.string().max(2000).optional(),
-    rooms: z.array(inspectionRoomSchema).optional(),
-  }),
+  updateBody: z
+    .object({
+      overallCondition: conditionEnum.optional(),
+      overallNotes: richTextSchema(2000).optional(),
+      rooms: z.array(inspectionRoomSchema).optional(),
+    })
+    .refine((data) => Object.values(data).some((v) => v !== undefined), {
+      message: 'At least one field must be provided',
+    }),
 
   disputeBody: z.object({
-    disputeNotes: z.string().min(10, 'Dispute notes must be at least 10 characters').max(2000),
+    disputeNotes: richTextSchema(2000).refine((data) => data.text.length >= 10, {
+      message: 'Dispute notes must be at least 10 characters',
+    }),
   }),
 
   rejectBody: z.object({
-    reason: z.string().min(10, 'Rejection reason must be at least 10 characters').max(2000),
+    reason: richTextSchema(2000).refine((data) => data.text.length >= 10, {
+      message: 'Rejection reason must be at least 10 characters',
+    }),
   }),
 
   listQuery: z.object({

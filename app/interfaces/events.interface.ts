@@ -61,6 +61,7 @@ export enum EventTypes {
   INSPECTION_SUBMITTED = 'inspection:submitted',
   INSPECTION_CANCELLED = 'inspection:cancelled',
   GUEST_PASS_VALIDATED = 'guestPass:validated',
+  INSPECTION_REMINDER = 'inspection:reminder',
   INSPECTION_REJECTED = 'inspection:rejected',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
@@ -202,6 +203,7 @@ export type EventPayloadMap = {
   [EventTypes.GUEST_PASS_ACKNOWLEDGED]: GuestPassAcknowledgedPayload;
   [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
   [EventTypes.INSPECTION_SCHEDULED]: InspectionScheduledPayload;
+  [EventTypes.INSPECTION_REMINDER]: InspectionScheduledPayload;
   [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
   [EventTypes.INSPECTION_APPROVED]: InspectionApprovedPayload;
   [EventTypes.INSPECTION_DISPUTED]: InspectionDisputedPayload;
@@ -885,6 +887,12 @@ export interface DeleteAssetFailedPayload {
   reason: string;
 }
 
+export interface InspectionCancelledPayload {
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
@@ -892,11 +900,6 @@ export interface DeleteAssetCompletedPayload {
 
 export interface InspectionApprovedPayload {
   tenantId: string;
-  iuid: string;
-  cuid: string;
-}
-
-export interface InspectionCancelledPayload {
   iuid: string;
   cuid: string;
 }

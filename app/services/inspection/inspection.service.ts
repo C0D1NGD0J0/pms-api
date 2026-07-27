@@ -89,6 +89,14 @@ export class InspectionService implements ICronProvider {
     }
 
     const inspectorId = data.inspectorId ?? userId;
+
+    if (data.inspectorId) {
+      const inspector = await this.userDAO.findFirst({ _id: data.inspectorId, deletedAt: null });
+      if (!inspector) {
+        throw new NotFoundError({ message: 'Inspector not found' });
+      }
+    }
+
     const rooms = data.rooms && data.rooms.length > 0 ? data.rooms : DEFAULT_INSPECTION_ROOMS;
 
     const inspection = await this.inspectionDAO.insert({
@@ -326,13 +334,17 @@ export class InspectionService implements ICronProvider {
       cuid,
       inspectorId: inspection.inspectorId.toString(),
       tenantId: inspection.tenantId.toString(),
-      disputeNotes: data.disputeNotes,
+      disputeNotes: data.disputeNotes.text,
     });
 
     return { success: true, message: 'Inspection disputed', data: updated! };
   }
 
-  async rejectInspection(cuid: string, iuid: string, reason: string): IPromiseReturnedData {
+  async rejectInspection(
+    cuid: string,
+    iuid: string,
+    reason: { text: string; html?: string }
+  ): IPromiseReturnedData {
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
@@ -355,7 +367,7 @@ export class InspectionService implements ICronProvider {
       iuid: inspection.iuid,
       cuid,
       tenantId: inspection.tenantId.toString(),
-      reason,
+      reason: reason.text,
       isFinal,
     });
 
@@ -376,6 +388,12 @@ export class InspectionService implements ICronProvider {
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
       $set: { status: InspectionStatus.CANCELLED },
+    });
+
+    this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
+      iuid: inspection.iuid,
+      cuid,
+      tenantId: inspection.tenantId.toString(),
     });
 
     return { success: true, message: 'Inspection cancelled', data: updated! };
@@ -410,7 +428,7 @@ export class InspectionService implements ICronProvider {
     );
 
     for (const inspection of upcoming.items) {
-      this.emitterService.emit(EventTypes.INSPECTION_SCHEDULED, {
+      this.emitterService.emit(EventTypes.INSPECTION_REMINDER, {
         iuid: inspection.iuid,
         cuid: inspection.cuid,
         propertyId: inspection.propertyId.toString(),
@@ -426,7 +444,8 @@ export class InspectionService implements ICronProvider {
   // ─── Private ─────────────────────────────────────────────────────────────────
 
   private _validateTransition(current: InspectionStatus, next: InspectionStatus): void {
-    if (!ALLOWED_INSPECTION_TRANSITIONS[current].includes(next)) {
+    const allowed = ALLOWED_INSPECTION_TRANSITIONS[current];
+    if (!allowed || !allowed.includes(next)) {
       throw new BadRequestError({ message: `Cannot transition from ${current} to ${next}` });
     }
   }

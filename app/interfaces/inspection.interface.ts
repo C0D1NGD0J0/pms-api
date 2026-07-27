@@ -41,6 +41,9 @@ export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, Inspection
 };
 
 export interface IInspection {
+  rejectionReason?: { text: string; html?: string };
+  disputeNotes?: { text: string; html?: string };
+  overallNotes?: { text: string; html?: string };
   overallCondition?: ConditionRating;
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
@@ -50,10 +53,7 @@ export interface IInspection {
   status: InspectionStatus;
   tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
-  rejectionReason?: string;
   leaseId: Types.ObjectId;
-  disputeNotes?: string;
-  overallNotes?: string;
   type: InspectionType;
   completedDate?: Date;
   scheduledDate: Date;
@@ -77,32 +77,32 @@ export interface IInspectionMedia {
 }
 
 export interface ICreateInspection {
+  overallNotes?: { text: string; html?: string };
   rooms?: Partial<IInspectionRoom>[];
   scheduledDate: string | Date;
-  overallNotes?: string;
   type: InspectionType;
   inspectorId?: string;
   leaseId: string;
 }
 
 export interface IInspectionRoom {
+  notes?: { text: string; html?: string };
   condition: ConditionRating;
   media: IInspectionMedia[];
   items: IInspectionItem[];
-  notes?: string;
   name: string;
+}
+
+export interface IUpdateInspection {
+  overallNotes?: { text: string; html?: string };
+  overallCondition?: ConditionRating;
+  rooms?: IInspectionRoom[];
 }
 
 export interface IListInspectionsQuery extends IPaginationQuery {
   status?: InspectionStatus;
   type?: InspectionType;
   propertyId?: string;
-}
-
-export interface IUpdateInspection {
-  overallCondition?: ConditionRating;
-  rooms?: IInspectionRoom[];
-  overallNotes?: string;
 }
 
 export type IInspectionListReturnData = IPromiseReturnedData<{
@@ -116,9 +116,9 @@ export interface IInspectionItem {
   name: string;
 }
 
-export interface IInspectionDocument extends IInspection, Document {}
-
-export type IInspectionReturnData = IPromiseReturnedData<IInspection>;
 export interface IDisputeInspection {
-  disputeNotes: string;
+  disputeNotes: { text: string; html?: string };
 }
+
+export interface IInspectionDocument extends IInspection, Document {}
+export type IInspectionReturnData = IPromiseReturnedData<IInspection>;

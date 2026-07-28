@@ -91,7 +91,11 @@ export class InspectionController {
 
   async approveInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const result = await this.inspectionService.approveInspection(cuid, iuid);
+    const result = await this.inspectionService.approveInspection(
+      cuid,
+      iuid,
+      req.body?.refundAmount
+    );
     return res.status(200).json(result);
   }
 

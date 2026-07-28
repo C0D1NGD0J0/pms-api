@@ -727,6 +727,14 @@ export interface MaintenanceRequestAcceptedPayload {
   cuid: string;
 }
 
+export interface InspectionApprovedPayload {
+  depositAmount?: number;
+  refundAmount?: number;
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceChargePaidPayload {
   amountInCents: number;
   chargeId?: string;
@@ -862,12 +870,12 @@ export interface EventPayload<T = unknown> {
   eventType: EventTypes;
   payload: T;
 }
-
 export interface PdfGenerationFailedPayload {
   jobId: string | number;
   resourceId: string;
   error: string;
 }
+
 export interface MaintenanceAITriageCompletedPayload {
   tenantId: string;
   mruid: string;
@@ -896,12 +904,6 @@ export interface InspectionCancelledPayload {
 export interface DeleteAssetCompletedPayload {
   deletedKeys: string[];
   failedKeys?: string[];
-}
-
-export interface InspectionApprovedPayload {
-  tenantId: string;
-  iuid: string;
-  cuid: string;
 }
 
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;

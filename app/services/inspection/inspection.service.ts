@@ -99,6 +99,12 @@ export class InspectionService implements ICronProvider {
 
     const rooms = data.rooms && data.rooms.length > 0 ? data.rooms : DEFAULT_INSPECTION_ROOMS;
 
+    // Populate refundInfo from lease security deposit for move-out inspections
+    const refundInfo =
+      data.refundDeposit && data.type === InspectionType.MOVE_OUT && lease.fees?.securityDeposit
+        ? { amount: lease.fees.securityDeposit, isRefunded: false }
+        : undefined;
+
     const inspection = await this.inspectionDAO.insert({
       cuid,
       type: data.type,
@@ -109,6 +115,7 @@ export class InspectionService implements ICronProvider {
       tenantId: lease.tenantId,
       scheduledDate: new Date(data.scheduledDate),
       overallNotes: data.overallNotes,
+      ...(refundInfo && { refundInfo }),
       rooms,
       media: [],
       createdBy: userId,
@@ -258,7 +265,7 @@ export class InspectionService implements ICronProvider {
     return { success: true, message: 'Inspection submitted', data: updated! };
   }
 
-  async approveInspection(cuid: string, iuid: string): IPromiseReturnedData {
+  async approveInspection(cuid: string, iuid: string, refundAmount?: number): IPromiseReturnedData {
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
@@ -270,17 +277,46 @@ export class InspectionService implements ICronProvider {
       });
     }
 
+    const updateFields: Record<string, any> = {
+      status: InspectionStatus.APPROVED,
+      approvedAt: new Date(),
+    };
+
+    // Process security deposit refund if applicable (move-out only)
+    if (refundAmount !== undefined && !inspection.refundInfo) {
+      throw new BadRequestError({
+        message: 'This inspection does not have a security deposit to refund',
+      });
+    }
+
+    if (
+      inspection.refundInfo &&
+      inspection.type === InspectionType.MOVE_OUT &&
+      refundAmount !== undefined
+    ) {
+      if (refundAmount < 0) {
+        throw new BadRequestError({ message: 'Refund amount cannot be negative' });
+      }
+      if (refundAmount > inspection.refundInfo.amount) {
+        throw new BadRequestError({ message: 'Refund amount cannot exceed deposit amount' });
+      }
+      updateFields['refundInfo.amount'] = refundAmount;
+      updateFields['refundInfo.isRefunded'] = refundAmount > 0;
+    }
+
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
-      $set: {
-        status: InspectionStatus.APPROVED,
-        approvedAt: new Date(),
-      },
+      $set: updateFields,
     });
 
     this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
       iuid: inspection.iuid,
       cuid,
       tenantId: inspection.tenantId.toString(),
+      ...(inspection.refundInfo &&
+        refundAmount !== undefined && {
+          refundAmount,
+          depositAmount: inspection.refundInfo.amount,
+        }),
     });
 
     return { success: true, message: 'Inspection approved', data: updated! };

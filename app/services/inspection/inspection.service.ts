@@ -283,7 +283,17 @@ export class InspectionService implements ICronProvider {
     };
 
     // Process security deposit refund if applicable (move-out only)
-    if (inspection.refundInfo && refundAmount !== undefined) {
+    if (refundAmount !== undefined && !inspection.refundInfo) {
+      throw new BadRequestError({
+        message: 'This inspection does not have a security deposit to refund',
+      });
+    }
+
+    if (
+      inspection.refundInfo &&
+      inspection.type === InspectionType.MOVE_OUT &&
+      refundAmount !== undefined
+    ) {
       if (refundAmount < 0) {
         throw new BadRequestError({ message: 'Refund amount cannot be negative' });
       }
@@ -291,7 +301,7 @@ export class InspectionService implements ICronProvider {
         throw new BadRequestError({ message: 'Refund amount cannot exceed deposit amount' });
       }
       updateFields['refundInfo.amount'] = refundAmount;
-      updateFields['refundInfo.isRefunded'] = true;
+      updateFields['refundInfo.isRefunded'] = refundAmount > 0;
     }
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
@@ -302,6 +312,11 @@ export class InspectionService implements ICronProvider {
       iuid: inspection.iuid,
       cuid,
       tenantId: inspection.tenantId.toString(),
+      ...(inspection.refundInfo &&
+        refundAmount !== undefined && {
+          refundAmount,
+          depositAmount: inspection.refundInfo.amount,
+        }),
     });
 
     return { success: true, message: 'Inspection approved', data: updated! };

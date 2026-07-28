@@ -38,6 +38,7 @@ export {
   subscriptionPlanConfig,
   SubscriptionService,
 } from './subscription';
+export { InspectionReportService } from './inspection/inspectionReport.service';
 export { InvitationCsvProcessor, PropertyCsvProcessor } from './csv';
 export { InvoiceTemplateRenderer, InvoiceService } from './invoice';
 export { InspectionService } from './inspection/inspection.service';

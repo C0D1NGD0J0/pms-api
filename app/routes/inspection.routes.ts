@@ -162,7 +162,10 @@ router.patch(
   subscriptionEntitlements,
   requireFeature('inspectionService'),
   requireFeatureFlag(FeatureFlag.INSPECTION),
-  validateRequest({ params: InspectionValidations.iuidParam }),
+  validateRequest({
+    params: InspectionValidations.iuidParam,
+    body: InspectionValidations.approveBody,
+  }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<InspectionController>('inspectionController');
     return controller.approveInspection(req, res);

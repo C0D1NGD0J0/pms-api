@@ -41,6 +41,7 @@ export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, Inspection
 };
 
 export interface IInspection {
+  refundInfo?: { amount: number; isRefunded: boolean };
   rejectionReason?: { text: string; html?: string };
   disputeNotes?: { text: string; html?: string };
   overallNotes?: { text: string; html?: string };
@@ -65,6 +66,16 @@ export interface IInspection {
   updatedAt: Date;
   iuid: string;
   cuid: string;
+}
+
+export interface ICreateInspection {
+  overallNotes?: { text: string; html?: string };
+  rooms?: Partial<IInspectionRoom>[];
+  scheduledDate: string | Date;
+  refundDeposit?: boolean;
+  type: InspectionType;
+  inspectorId?: string;
+  leaseId: string;
 }
 
 export interface IInspectionMedia {

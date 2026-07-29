@@ -191,7 +191,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       status: {
         type: String,
         enum: ['pending', 'active', 'inactive', 'failed'],
-        default: 'active',
+        default: 'pending',
       },
       generatedAt: { type: Date },
       error: { type: String, default: null },

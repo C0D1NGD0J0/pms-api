@@ -3,8 +3,8 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventEmitterService } from '@services/eventEmitter';
-import { IUserRole } from '@shared/constants/roles.constants';
 import { InspectionStatus } from '@interfaces/inspection.interface';
+import { RoleHelpers, IUserRole } from '@shared/constants/roles.constants';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { PdfGeneratorService } from '@services/pdfGenerator/pdfGenerator.service';
 import { UploadCompletedPayload, EventTypes } from '@interfaces/events.interface';
@@ -12,13 +12,6 @@ import { IPromiseReturnedData, ResourceContext } from '@interfaces/utils.interfa
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 
 import { buildInspectionReportHtml, InspectionReportData } from './inspectionReportTemplate';
-
-const REPORT_GENERATION_ROLES: string[] = [
-  IUserRole.MANAGER,
-  IUserRole.ADMIN,
-  IUserRole.SUPER_ADMIN,
-  IUserRole.ROOT_ADMIN,
-];
 
 interface IConstructor {
   pdfGeneratorService: PdfGeneratorService;
@@ -106,12 +99,7 @@ export class InspectionReportService {
     }
 
     // Only managers/admins and management-dept staff can trigger (re)generation
-    const normalizedRole = userRole.toLowerCase();
-    const canGenerate =
-      REPORT_GENERATION_ROLES.includes(normalizedRole) ||
-      (normalizedRole === 'staff' && userDepartment === 'management');
-
-    if (!canGenerate) {
+    if (!canGenerateReports(userRole, userDepartment)) {
       throw new ForbiddenError({
         message: hasCachedReport
           ? 'Only managers can regenerate inspection reports.'
@@ -201,11 +189,20 @@ export class InspectionReportService {
         uploadedBy: inspection.createdBy?.toString() || 'system',
         resourceContext: ResourceContext.INSPECTION,
       })
-      .catch((bufferError) => {
+      .catch(async (bufferError) => {
         this.log.error(
           { error: bufferError, iuid, filename },
           'Failed to queue inspection PDF buffer for upload'
         );
+        await this.inspectionDAO
+          .updateById(inspection._id.toString(), {
+            $set: {
+              'reportDocument.status': 'failed',
+              'reportDocument.error':
+                bufferError instanceof Error ? bufferError.message : 'Failed to queue upload',
+            },
+          })
+          .catch((dbErr) => this.log.error({ dbErr }, 'Failed to mark report as failed'));
       });
 
     return {
@@ -267,4 +264,14 @@ export class InspectionReportService {
       }
     }
   }
+}
+
+/** Checks if a role can generate inspection reports (management roles + root-admin) */
+function canGenerateReports(role: string, department?: string): boolean {
+  const normalized = role.toLowerCase();
+  return (
+    RoleHelpers.isManagementRole(normalized) ||
+    normalized === IUserRole.ROOT_ADMIN ||
+    (normalized === 'staff' && department === 'management')
+  );
 }

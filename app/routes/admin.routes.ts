@@ -92,4 +92,14 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
+router.get(
+  '/ai-usage/:cuid',
+  basicLimiter(),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<AdminController>('adminController');
+    return controller.getAIUsage(req, res);
+  })
+);
+
 export default router;

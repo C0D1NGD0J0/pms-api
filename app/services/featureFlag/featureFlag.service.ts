@@ -8,6 +8,10 @@ export class FeatureFlagService {
         return (
           envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_COMMUNICATION_DRAFT_ENABLED
         );
+      case FeatureFlag.AI_INSPECTION_ANALYSIS:
+        return (
+          envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_INSPECTION_ANALYSIS_ENABLED
+        );
       case FeatureFlag.AI_MAINTENANCE_TRIAGE:
         return (
           envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_MAINTENANCE_TRIAGE_ENABLED

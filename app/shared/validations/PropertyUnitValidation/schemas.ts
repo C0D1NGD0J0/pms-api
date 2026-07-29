@@ -6,10 +6,10 @@ const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;
 };
+import { PropertyUnitInspectionStatusEnum } from '@interfaces/inspection.interface';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
-  InspectionStatusEnum,
   DocumentStatusEnum,
   DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';
@@ -91,7 +91,7 @@ const UnitStatusZodEnum = z.enum(Object.values(PropertyUnitStatusEnum) as [strin
 const DocumentTypeZodEnum = z.enum(Object.values(DocumentTypeEnum) as [string, ...string[]]);
 const DocumentStatusZodEnum = z.enum(Object.values(DocumentStatusEnum) as [string, ...string[]]);
 const InspectionStatusZodEnum = z.enum(
-  Object.values(InspectionStatusEnum) as [string, ...string[]]
+  Object.values(PropertyUnitInspectionStatusEnum) as [string, ...string[]]
 );
 
 const SpecificationsSchema = z.object({

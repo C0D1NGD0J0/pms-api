@@ -2,11 +2,11 @@ import { Schema, model } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
 import { calcRentAdjustment } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
+import { PropertyUnitInspectionStatusEnum } from '@interfaces/inspection.interface';
 import {
   PropertyUnitStatusEnum as UnitStatusEnum,
   IPropertyUnitDocument as IUnitDocument,
   PropertyUnitTypeEnum as UnitTypeEnum,
-  InspectionStatusEnum,
   DocumentStatusEnum,
   DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';
@@ -157,7 +157,7 @@ const UnitSchema = new Schema<IUnitDocument>(
         },
         status: {
           type: String,
-          enum: Object.values(InspectionStatusEnum),
+          enum: Object.values(PropertyUnitInspectionStatusEnum),
           required: true,
         },
         notes: { type: String },

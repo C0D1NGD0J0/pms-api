@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/node';
 import { createLogger } from '@utils/helpers';
 import { PidManager } from '@utils/pid-manager';
 import { initQueues } from '@di/registerResources';
+import { closeSharedDLQ } from '@queues/base.queue';
 import { EventListenerSetup } from '@di/eventListenerSetup';
 
 class WorkerProcess {
@@ -69,6 +70,7 @@ class WorkerProcess {
     try {
       const { queueFactory, emitterService } = container.cradle;
       await queueFactory.shutdownAll();
+      await closeSharedDLQ();
       emitterService.destroy();
     } catch (err) {
       this.log.error({ err }, '❌ Shutdown error — queue/emitter cleanup failed');

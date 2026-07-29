@@ -18,6 +18,8 @@ import {
   ICreateInspection,
   IUpdateInspection,
   InspectionStatus,
+  IInspectionRoom,
+  ConditionRating,
   InspectionType,
 } from '@interfaces/inspection.interface';
 
@@ -246,12 +248,20 @@ export class InspectionService implements ICronProvider {
       }
     }
 
+    const submitFields: Record<string, any> = {
+      status: InspectionStatus.SUBMITTED,
+      submittedAt: new Date(),
+      completedDate: new Date(),
+      conditionScore: this._computeConditionScore(inspection.rooms),
+    };
+
+    // Auto-compute overallCondition if not manually set
+    if (!inspection.overallCondition || inspection.overallCondition === ConditionRating.NA) {
+      submitFields.overallCondition = this._computeOverallCondition(inspection.rooms);
+    }
+
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
-      $set: {
-        status: InspectionStatus.SUBMITTED,
-        submittedAt: new Date(),
-        completedDate: new Date(),
-      },
+      $set: submitFields,
     });
 
     this.emitterService.emit(EventTypes.INSPECTION_SUBMITTED, {
@@ -484,5 +494,57 @@ export class InspectionService implements ICronProvider {
     if (!allowed || !allowed.includes(next)) {
       throw new BadRequestError({ message: `Cannot transition from ${current} to ${next}` });
     }
+  }
+
+  private _computeOverallCondition(rooms: IInspectionRoom[]): ConditionRating {
+    const scoreMap: Record<string, number> = {
+      excellent: 4,
+      good: 3,
+      fair: 2,
+      poor: 1,
+    };
+    let total = 0;
+    let count = 0;
+
+    for (const room of rooms) {
+      for (const item of room.items) {
+        const score = scoreMap[item.condition];
+        if (score !== undefined) {
+          total += score;
+          count++;
+        }
+      }
+    }
+
+    if (count === 0) return ConditionRating.NA;
+    const avg = total / count;
+    if (avg >= 3.5) return ConditionRating.EXCELLENT;
+    if (avg >= 2.5) return ConditionRating.GOOD;
+    if (avg >= 1.5) return ConditionRating.FAIR;
+    return ConditionRating.POOR;
+  }
+
+  private _computeConditionScore(rooms: IInspectionRoom[]): number {
+    const scoreMap: Record<string, number> = {
+      excellent: 4,
+      good: 3,
+      fair: 2,
+      poor: 1,
+    };
+    let total = 0;
+    let count = 0;
+
+    for (const room of rooms) {
+      for (const item of room.items) {
+        const score = scoreMap[item.condition];
+        if (score !== undefined) {
+          total += score;
+          count++;
+        }
+      }
+    }
+
+    if (count === 0) return 0;
+    return Math.round((total / count / 4) * 100);
   }
 }

@@ -12,6 +12,7 @@ import {
   requireNotSuspended,
   requireFeatureFlag,
   requirePermission,
+  roleBasedContext,
   isAuthenticated,
   requireFeature,
   basicLimiter,
@@ -19,14 +20,6 @@ import {
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
-
-const roleBasedContext = (req: AppRequest) => {
-  const role = req.context?.currentuser?.client?.role;
-  if (role === 'tenant') {
-    return { ownerId: req.context?.currentuser?.sub ?? '' };
-  }
-  return {};
-};
 
 const router = Router();
 router.use(isAuthenticated, basicLimiter());
@@ -60,7 +53,38 @@ router
     })
   );
 
-// ── Report generation ────────────────────────────────────────────────────────
+router.get(
+  '/:cuid/:iuid/ai-analysis',
+  requirePermissionWithContext(
+    PermissionResource.INSPECTION,
+    PermissionAction.READ,
+    roleBasedContext
+  ),
+  subscriptionEntitlements,
+  requireFeature('aiInspectionAnalysis'),
+  requireFeatureFlag(FeatureFlag.AI_INSPECTION_ANALYSIS),
+  validateRequest({ params: InspectionValidations.iuidParam }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<InspectionController>('inspectionController');
+    return controller.getAIAnalysis(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/:iuid/ai-analysis',
+  requireNotSuspended,
+  requirePermission(PermissionResource.INSPECTION, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  subscriptionEntitlements,
+  requireFeature('aiInspectionAnalysis'),
+  requireFeatureFlag(FeatureFlag.AI_INSPECTION_ANALYSIS),
+  validateRequest({ params: InspectionValidations.iuidParam }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<InspectionController>('inspectionController');
+    return controller.triggerAIAnalysis(req, res);
+  })
+);
+
 router.get(
   '/:cuid/:iuid/report',
   requirePermissionWithContext(
@@ -80,7 +104,6 @@ router.get(
   })
 );
 
-// ── Single resource routes ────────────────────────────────────────────────────
 router
   .route('/:cuid/:iuid')
   .get(
@@ -131,7 +154,6 @@ router
     })
   );
 
-// ── Action routes ─────────────────────────────────────────────────────────────
 router.patch(
   '/:cuid/:iuid/submit',
   requireNotSuspended,

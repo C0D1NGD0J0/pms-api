@@ -11,6 +11,7 @@ import {
   requireActiveTenant,
   requireFeatureFlag,
   requirePermission,
+  roleBasedContext,
   isAuthenticated,
   requireFeature,
   basicLimiter,
@@ -18,16 +19,6 @@ import {
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
-
-// Context extractor for routes vendors/tenants access via MINE scope.
-// Admins/managers resolve to ANY scope (no ownerId → defaults to ANY).
-const roleBasedContext = (req: AppRequest) => {
-  const role = req.context?.currentuser?.client?.role;
-  if (role === 'vendor' || role === 'tenant') {
-    return { ownerId: req.context?.currentuser?.sub ?? '' };
-  }
-  return {};
-};
 
 const router = Router();
 

@@ -94,7 +94,8 @@
         "aiTriage": false,
         "maintenanceRequestService": false,
         "inspectionService": false,
-        "aiInvoiceScanning": false
+        "aiInvoiceScanning": false,
+        "aiInspectionAnalysis": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
@@ -157,7 +158,8 @@
         "guestPassService": true,
         "reportingAnalytics": false,
         "maintenanceRequestService": true,
-        "inspectionService": true
+        "inspectionService": true,
+        "aiInspectionAnalysis": true
       },
       "featureList": [
         "AI feature",
@@ -219,7 +221,8 @@
         "aiTriage": true,
         "smsService": true,
         "aiInvoiceScanning": true,
-        "inspectionService": true
+        "inspectionService": true,
+        "aiInspectionAnalysis": true
       },
       "featureList": [
         "Priority support",

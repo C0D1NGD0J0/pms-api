@@ -52,6 +52,7 @@ export enum EventTypes {
   GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
+  INSPECTION_AI_ANALYZED = 'inspection:ai:analyzed',
   PAD_MANDATE_CONFIRMED = 'pad:mandate:confirmed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
@@ -206,6 +207,7 @@ export type EventPayloadMap = {
   [EventTypes.INSPECTION_REMINDER]: InspectionScheduledPayload;
   [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
   [EventTypes.INSPECTION_APPROVED]: InspectionApprovedPayload;
+  [EventTypes.INSPECTION_AI_ANALYZED]: InspectionAIAnalyzedPayload;
   [EventTypes.INSPECTION_DISPUTED]: InspectionDisputedPayload;
   [EventTypes.INSPECTION_CANCELLED]: InspectionCancelledPayload;
   [EventTypes.INSPECTION_REJECTED]: InspectionRejectedPayload;
@@ -833,6 +835,13 @@ export interface PadMandateConfirmedPayload {
   pmAccountId: string;
   mandateId: string;
   tenantId: string;
+  cuid: string;
+}
+
+export interface InspectionAIAnalyzedPayload {
+  riskFlagCount: number;
+  costUSD: number;
+  iuid: string;
   cuid: string;
 }
 

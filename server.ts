@@ -10,6 +10,7 @@ import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
+import { closeSharedDLQ } from '@queues/index';
 import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { runSchemaSync } from '@database/schema-sync';
@@ -304,6 +305,7 @@ class Server {
         }
       }
 
+      await closeSharedDLQ();
       container.dispose();
       this.log.info(`Shutdown ${queueCount} queues`);
       this.log.info('DI container disposed');

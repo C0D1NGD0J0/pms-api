@@ -1,5 +1,6 @@
 import { Document, Types } from 'mongoose';
 
+import { AIInspectionAnalysis } from './inspectionAI.interface';
 import { IPromiseReturnedData, IPaginationQuery, IPaginateResult } from './utils.interface';
 
 export enum InspectionStatus {
@@ -10,6 +11,16 @@ export enum InspectionStatus {
   APPROVED = 'approved',
   REJECTED = 'rejected',
   DISPUTED = 'disputed',
+}
+
+/**
+ * Inspection Status Enum
+ */
+export enum PropertyUnitInspectionStatusEnum {
+  NEEDS_REPAIR = 'needs_repair',
+  SCHEDULED = 'scheduled',
+  FAILED = 'failed',
+  PASSED = 'passed',
 }
 
 export enum ConditionRating {
@@ -47,6 +58,7 @@ export interface IInspection {
   overallNotes?: { text: string; html?: string };
   reportDocument?: IInspectionReportDocument;
   overallCondition?: ConditionRating;
+  aiAnalysis?: AIInspectionAnalysis;
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
   propertyId: Types.ObjectId;
@@ -55,6 +67,7 @@ export interface IInspection {
   status: InspectionStatus;
   tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
+  conditionScore?: number;
   leaseId: Types.ObjectId;
   type: InspectionType;
   completedDate?: Date;

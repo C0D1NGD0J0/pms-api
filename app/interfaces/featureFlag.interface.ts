@@ -1,9 +1,10 @@
 export enum FeatureFlag {
   AI_COMMUNICATION_DRAFT = 'AI_COMMUNICATION_DRAFT',
+  AI_INSPECTION_ANALYSIS = 'AI_INSPECTION_ANALYSIS',
   AI_MAINTENANCE_TRIAGE = 'AI_MAINTENANCE_TRIAGE',
   AI_INVOICE_SCANNING = 'AI_INVOICE_SCANNING',
   PUSH_NOTIFICATIONS = 'PUSH_NOTIFICATIONS',
-  // Disabled by default until HMAC webhook signature verification is implemented (Phase 2).
+  // Disabled by default until HMAC webhook signature verification is implemented (e.g. jobberman etc).
   // Set FEATURE_INVOICE_WEBHOOK_ENABLED=true only in environments with network-level protection.
   INVOICE_WEBHOOK = 'INVOICE_WEBHOOK',
   INSPECTION = 'INSPECTION',

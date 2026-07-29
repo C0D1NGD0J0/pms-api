@@ -30,16 +30,6 @@ export enum PropertyUnitTypeEnum {
 }
 
 /**
- * Inspection Status Enum
- */
-export enum InspectionStatusEnum {
-  NEEDS_REPAIR = 'needs_repair',
-  SCHEDULED = 'scheduled',
-  FAILED = 'failed',
-  PASSED = 'passed',
-}
-
-/**
  * Document Type Enum
  */
 export enum DocumentTypeEnum {
@@ -176,23 +166,6 @@ export type PropertyUnitDocument = {
 };
 
 /**
- * Unit Authorization Interface
- * Same structure as property authorization
- */
-export interface IUnitAuthorization {
-  documentUrl?: string; // S3 link to unit-specific management agreement
-  isActive: boolean; // Simple on/off switch
-  expiresAt?: Date; // When authorization expires (optional)
-  notes?: string; // Internal notes
-}
-
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
-
-/**
  * Property Unit Inspection Type
  */
 export type PropertyUnitInspection = {
@@ -202,10 +175,27 @@ export type PropertyUnitInspection = {
     company?: string;
   };
   attachments?: PropertyUnitInspectionAttachment[];
-  status: InspectionStatus;
+  status: PropertyUnitInspectionStatus;
   inspectionDate: Date;
   notes?: string;
 };
+
+/**
+ * ============================================================================
+ * ENUMS
+ * ============================================================================
+ */
+
+/**
+ * Unit Authorization Interface
+ * Same structure as property authorization
+ */
+export interface IUnitAuthorization {
+  documentUrl?: string; // S3 link to unit-specific management agreement
+  isActive: boolean; // Simple on/off switch
+  expiresAt?: Date; // When authorization expires (optional)
+  notes?: string; // Internal notes
+}
 
 /**
  * Unit Type Management Rules Interface
@@ -366,6 +356,11 @@ export interface IUnitOwner {
 export type PropertyUnitStatus = 'available' | 'occupied' | 'reserved' | 'maintenance' | 'inactive';
 
 /**
+ * Inspection Status Types
+ */
+export type PropertyUnitInspectionStatus = 'passed' | 'failed' | 'needs_repair' | 'scheduled';
+
+/**
  * Approval Action Types
  */
 export type ApprovalAction = 'created' | 'approved' | 'rejected' | 'updated' | 'overridden';
@@ -374,11 +369,6 @@ export type ApprovalAction = 'created' | 'approved' | 'rejected' | 'updated' | '
  * Property Unit Type Classifications
  */
 export type PropertyUnitType = 'residential' | 'commercial' | 'storage' | 'other';
-
-/**
- * Inspection Status Types
- */
-export type InspectionStatus = 'passed' | 'failed' | 'needs_repair' | 'scheduled';
 
 /**
  * Property Unit Document Type Classifications

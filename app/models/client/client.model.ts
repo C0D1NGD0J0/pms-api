@@ -127,6 +127,10 @@ const ClientSchema = new Schema<IClientDocument>(
           message: 'Please enter a valid website URL',
         },
       },
+      logo: {
+        type: String,
+        trim: true,
+      },
       companyPhone: {
         type: String,
         trim: true,

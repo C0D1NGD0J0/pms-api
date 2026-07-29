@@ -2,18 +2,22 @@ import { Response } from 'express';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
+import { InspectionReportService } from '@services/inspection/inspectionReport.service';
 
 interface IConstructor {
+  inspectionReportService: InspectionReportService;
   mediaUploadService: MediaUploadService;
   inspectionService: InspectionService;
 }
 
 export class InspectionController {
   private readonly inspectionService: InspectionService;
+  private readonly inspectionReportService: InspectionReportService;
   private readonly mediaUploadService: MediaUploadService;
 
-  constructor({ inspectionService, mediaUploadService }: IConstructor) {
+  constructor({ inspectionService, inspectionReportService, mediaUploadService }: IConstructor) {
     this.inspectionService = inspectionService;
+    this.inspectionReportService = inspectionReportService;
     this.mediaUploadService = mediaUploadService;
   }
 
@@ -128,6 +132,23 @@ export class InspectionController {
   async deleteInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
     const result = await this.inspectionService.softDeleteInspection(cuid, iuid);
+    return res.status(200).json(result);
+  }
+
+  async generateReport(req: AppRequest, res: Response) {
+    const { cuid, iuid } = req.params;
+    const includePhotos = req.query.includePhotos !== 'false';
+    const forceRegenerate = req.query.forceRegenerate === 'true';
+    const userRole = req.context.currentuser!.client.role;
+    const userDepartment = req.context.currentuser!.employeeInfo?.department;
+    const result = await this.inspectionReportService.generateReport(
+      cuid,
+      iuid,
+      includePhotos,
+      forceRegenerate,
+      userRole,
+      userDepartment
+    );
     return res.status(200).json(result);
   }
 }

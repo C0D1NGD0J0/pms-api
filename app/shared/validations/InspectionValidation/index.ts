@@ -75,4 +75,9 @@ export const InspectionValidations = {
     cuid: z.string().min(1),
     iuid: z.string().min(1),
   }),
+
+  reportQuery: z.object({
+    includePhotos: z.enum(['true', 'false']).optional().default('true'),
+    forceRegenerate: z.enum(['true', 'false']).optional().default('false'),
+  }),
 };

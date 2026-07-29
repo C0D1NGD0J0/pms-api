@@ -94,6 +94,7 @@ export interface ICompanyProfile {
   companyEmail?: string;
   tradingName?: string;
   website?: string;
+  logo?: string;
 }
 
 /**

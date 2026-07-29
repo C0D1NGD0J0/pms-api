@@ -60,6 +60,26 @@ router
     })
   );
 
+// ── Report generation ────────────────────────────────────────────────────────
+router.get(
+  '/:cuid/:iuid/report',
+  requirePermissionWithContext(
+    PermissionResource.INSPECTION,
+    PermissionAction.READ,
+    roleBasedContext
+  ),
+  subscriptionEntitlements,
+  requireFeature('inspectionService'),
+  validateRequest({
+    params: InspectionValidations.iuidParam,
+    query: InspectionValidations.reportQuery,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<InspectionController>('inspectionController');
+    return controller.generateReport(req, res);
+  })
+);
+
 // ── Single resource routes ────────────────────────────────────────────────────
 router
   .route('/:cuid/:iuid')

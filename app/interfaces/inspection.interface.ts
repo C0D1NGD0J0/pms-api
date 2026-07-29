@@ -45,6 +45,7 @@ export interface IInspection {
   rejectionReason?: { text: string; html?: string };
   disputeNotes?: { text: string; html?: string };
   overallNotes?: { text: string; html?: string };
+  reportDocument?: IInspectionReportDocument;
   overallCondition?: ConditionRating;
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
@@ -85,6 +86,25 @@ export interface IInspectionMedia {
   uploadedAt: Date;
   key?: string;
   url: string;
+}
+
+export interface ICreateInspection {
+  overallNotes?: { text: string; html?: string };
+  rooms?: Partial<IInspectionRoom>[];
+  scheduledDate: string | Date;
+  type: InspectionType;
+  inspectorId?: string;
+  leaseId: string;
+}
+
+export interface IInspectionReportDocument {
+  status: 'pending' | 'active' | 'inactive' | 'failed';
+  generatedAt: Date;
+  filename: string;
+  error?: string;
+  size?: number;
+  url: string;
+  key: string;
 }
 
 export interface IInspectionRoom {

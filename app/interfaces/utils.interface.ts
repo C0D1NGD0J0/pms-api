@@ -227,7 +227,8 @@ export interface ResourceInfo {
     | 'lease'
     | 'maintenance'
     | 'payment-invoice'
-    | 'guest-pass'; //name of the resource
+    | 'guest-pass'
+    | 'inspection'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   fieldName: string; //name of the field

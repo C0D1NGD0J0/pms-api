@@ -39,9 +39,11 @@ export {
   SubscriptionService,
 } from './subscription';
 export { InspectionReportService } from './inspection/inspectionReport.service';
+export { InspectionAIService } from './inspection/inspectionAI.service';
 export { InvitationCsvProcessor, PropertyCsvProcessor } from './csv';
 export { InvoiceTemplateRenderer, InvoiceService } from './invoice';
 export { InspectionService } from './inspection/inspection.service';
+export { InvoiceAIService, AICostService, AIService } from './ai';
 export { ExpenseService } from './expense/expense.service';
 export { MetricsService } from './metrics/metrics.service';
 export { PaymentGatewayService } from './paymentGateway';
@@ -52,7 +54,6 @@ export { PdfGeneratorService } from './pdfGenerator';
 export { NotificationService } from './notification';
 export { FeatureFlagService } from './featureFlag';
 export { MediaUploadService } from './mediaUpload';
-export { InvoiceAIService, AIService } from './ai';
 export { InvitationService } from './invitation';
 export { PermissionService } from './permission';
 export { GuestPassService } from './guestpass';

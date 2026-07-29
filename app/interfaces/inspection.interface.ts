@@ -98,7 +98,7 @@ export interface ICreateInspection {
 }
 
 export interface IInspectionReportDocument {
-  status: 'active' | 'inactive' | 'failed';
+  status: 'pending' | 'active' | 'inactive' | 'failed';
   generatedAt: Date;
   filename: string;
   error?: string;

@@ -3,6 +3,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventEmitterService } from '@services/eventEmitter';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { InspectionStatus } from '@interfaces/inspection.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { PdfGeneratorService } from '@services/pdfGenerator/pdfGenerator.service';
@@ -12,7 +13,12 @@ import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customEr
 
 import { buildInspectionReportHtml, InspectionReportData } from './inspectionReportTemplate';
 
-const MANAGEMENT_ROLES = ['manager', 'admin', 'super-admin', 'root-admin'];
+const REPORT_GENERATION_ROLES: string[] = [
+  IUserRole.MANAGER,
+  IUserRole.ADMIN,
+  IUserRole.SUPER_ADMIN,
+  IUserRole.ROOT_ADMIN,
+];
 
 interface IConstructor {
   pdfGeneratorService: PdfGeneratorService;
@@ -86,9 +92,7 @@ export class InspectionReportService {
 
     // Return cached report if available (unless forced regeneration)
     const hasCachedReport =
-      inspection.reportDocument?.status === 'active' &&
-      inspection.reportDocument.url &&
-      inspection.reportDocument.url !== 'pending';
+      inspection.reportDocument?.status === 'active' && !!inspection.reportDocument.url;
 
     if (hasCachedReport && !forceRegenerate) {
       return {
@@ -102,9 +106,10 @@ export class InspectionReportService {
     }
 
     // Only managers/admins and management-dept staff can trigger (re)generation
+    const normalizedRole = userRole.toLowerCase();
     const canGenerate =
-      MANAGEMENT_ROLES.includes(userRole) ||
-      (userRole === 'staff' && userDepartment === 'management');
+      REPORT_GENERATION_ROLES.includes(normalizedRole) ||
+      (normalizedRole === 'staff' && userDepartment === 'management');
 
     if (!canGenerate) {
       throw new ForbiddenError({
@@ -119,10 +124,12 @@ export class InspectionReportService {
       throw new NotFoundError({ message: 'Client not found' });
     }
 
-    const inspector = inspection.inspectorId as any;
-    const tenant = inspection.tenantId as any;
-    const property = inspection.propertyId as any;
-    const lease = inspection.leaseId as any;
+    const inspector = inspection.inspectorId as
+      | { firstName?: string; lastName?: string }
+      | undefined;
+    const tenant = inspection.tenantId as { firstName?: string; lastName?: string } | undefined;
+    const property = inspection.propertyId as { name?: string; pid?: string } | undefined;
+    const lease = inspection.leaseId as { propertyUnitId?: { unitNumber?: string } } | undefined;
     const unit = lease?.propertyUnitId;
 
     const inspectorName =
@@ -165,20 +172,24 @@ export class InspectionReportService {
     });
 
     if (!pdfResult.success || !pdfResult.buffer) {
-      throw new Error(pdfResult.error || 'PDF generation failed');
+      throw new BadRequestError({
+        message: pdfResult.error || 'PDF generation failed',
+      });
     }
 
-    const filename = `inspection_report_${iuid}.pdf`;
+    const filename = forceRegenerate
+      ? `inspection_report_${iuid}_${Date.now()}.pdf`
+      : `inspection_report_${iuid}.pdf`;
 
     // Mark as pending while uploading
     await this.inspectionDAO.updateById(inspection._id.toString(), {
       $set: {
         reportDocument: {
-          url: 'pending',
+          url: '',
           key: '',
           filename,
           size: pdfResult.metadata?.fileSize,
-          status: 'active',
+          status: 'pending',
           generatedAt: new Date(),
         },
       },
@@ -201,7 +212,7 @@ export class InspectionReportService {
       success: true,
       message: 'Report generation started. The PDF will be available shortly.',
       data: {
-        url: 'pending',
+        url: '',
         filename,
         fileSize: pdfResult.metadata?.fileSize,
       },

@@ -8,12 +8,16 @@ import {
 } from '@interfaces/inspection.interface';
 
 export interface InspectionReportData {
+  /** Refund data for move-out inspections. All monetary amounts are in cents. */
   refund?: {
+    /** Original security deposit amount in cents */
     originalDeposit: number;
+    /** Total deductions in cents */
     deductions: number;
+    /** Final refund amount in cents */
     refundAmount: number;
     currency: string;
-    items: { description: string; amount: number }[];
+    items: { description: string; /** Amount in cents */ amount: number }[];
   };
   company: {
     name: string;
@@ -39,9 +43,9 @@ export function buildInspectionReportHtml(data: InspectionReportData): string {
 
   const companyHeader = `
     <div class="report-header-right">
-      ${company.logo ? `<img src="${escapeHtml(company.logo)}" alt="" style="max-height: 40px; margin-bottom: 4px;" />` : ''}
+      ${company.logo && isHttpsUrl(company.logo) ? `<img src="${escapeHtml(company.logo)}" alt="" style="max-height: 40px; margin-bottom: 4px;" />` : ''}
       <div class="company-name">${escapeHtml(company.name)}</div>
-      ${company.email || company.phone ? `<p style="font-size: 11px; color: #666;">${[company.email, company.phone].filter(Boolean).join(' &bull; ')}</p>` : ''}
+      ${company.email || company.phone ? `<p style="font-size: 11px; color: #666;">${([company.email, company.phone].filter(Boolean) as string[]).map(escapeHtml).join(' &bull; ')}</p>` : ''}
       ${company.website ? `<p style="font-size: 10px; color: #999;">${escapeHtml(company.website)}</p>` : ''}
     </div>`;
 
@@ -397,6 +401,16 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Formats a cent-based amount as currency (e.g., 15000 → $150.00) */
 function formatCurrency(amount: number, currency = 'USD'): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount / 100);
+}
+
+function isHttpsUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }

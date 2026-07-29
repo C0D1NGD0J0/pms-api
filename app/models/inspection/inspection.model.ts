@@ -190,7 +190,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       size: { type: Number, min: 0 },
       status: {
         type: String,
-        enum: ['active', 'inactive', 'failed'],
+        enum: ['pending', 'active', 'inactive', 'failed'],
         default: 'active',
       },
       generatedAt: { type: Date },

@@ -280,6 +280,12 @@ const BaseLeaseSchemaObject = z.object({
   legalTerms: LegalTermsSchema.optional(),
   internalNotes: z.array(InternalNoteSchema).optional(),
   leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
+  autoScheduleInspection: z
+    .object({
+      moveIn: z.boolean(),
+      moveOut: z.boolean(),
+    })
+    .optional(),
 });
 
 export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })

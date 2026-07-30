@@ -61,6 +61,7 @@ export interface ILease {
     failedAt: Date;
     failureReason: 'not_approved' | 'auto_send_disabled';
   };
+  autoScheduleInspection?: { moveIn: boolean; moveOut: boolean };
   pendingChanges?: IPendingLeaseChanges | null;
   generateFirstPaymentOnActivation?: boolean;
   previousLeaseId?: Types.ObjectId | string;

@@ -247,6 +247,10 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     includeManagementFee: { type: Boolean, default: false },
     includeParkingInfo: { type: Boolean, default: false },
     generateFirstPaymentOnActivation: { type: Boolean, default: false },
+    autoScheduleInspection: {
+      moveIn: { type: Boolean, default: true },
+      moveOut: { type: Boolean, default: false },
+    },
     petPolicy: {
       allowed: {
         type: Boolean,

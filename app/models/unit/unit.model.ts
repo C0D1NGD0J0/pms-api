@@ -2,11 +2,11 @@ import { Schema, model } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
 import { calcRentAdjustment } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
-import { PropertyUnitInspectionStatusEnum } from '@interfaces/inspection.interface';
 import {
   PropertyUnitStatusEnum as UnitStatusEnum,
   IPropertyUnitDocument as IUnitDocument,
   PropertyUnitTypeEnum as UnitTypeEnum,
+  PropertyUnitInspectionStatusEnum,
   DocumentStatusEnum,
   DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';

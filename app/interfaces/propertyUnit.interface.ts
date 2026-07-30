@@ -19,6 +19,13 @@ export enum PropertyUnitStatusEnum {
   RESERVED = 'reserved',
 }
 
+export enum PropertyUnitInspectionStatusEnum {
+  NEEDS_REPAIR = 'needs_repair',
+  SCHEDULED = 'scheduled',
+  FAILED = 'failed',
+  PASSED = 'passed',
+}
+
 /**
  * Property Unit Type Enum
  */
@@ -166,6 +173,12 @@ export type PropertyUnitDocument = {
 };
 
 /**
+ * ============================================================================
+ * ENUMS
+ * ============================================================================
+ */
+
+/**
  * Property Unit Inspection Type
  */
 export type PropertyUnitInspection = {
@@ -179,12 +192,6 @@ export type PropertyUnitInspection = {
   inspectionDate: Date;
   notes?: string;
 };
-
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
 
 /**
  * Unit Authorization Interface
@@ -238,6 +245,12 @@ export type PropertyUnitPhoto = {
 };
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Property Unit Pending Changes Interface
  */
 export interface IPropertyUnitPendingChanges {
@@ -246,12 +259,6 @@ export interface IPropertyUnitPendingChanges {
   [key: string]: any;
   updatedAt: Date;
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Property Unit Note Interface

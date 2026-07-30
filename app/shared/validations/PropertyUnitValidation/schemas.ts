@@ -6,8 +6,8 @@ const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;
 };
-import { PropertyUnitInspectionStatusEnum } from '@interfaces/inspection.interface';
 import {
+  PropertyUnitInspectionStatusEnum,
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
   DocumentStatusEnum,

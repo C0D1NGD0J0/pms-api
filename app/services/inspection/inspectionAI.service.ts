@@ -1,7 +1,7 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
-import { EventTypes } from '@interfaces/events.interface';
+import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { AICostService } from '@services/ai/aiCost.service';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
@@ -9,6 +9,7 @@ import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { AIInspectionAnalysis } from '@interfaces/inspectionAI.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
+import { InspectionSubmittedPayload, EventTypes } from '@interfaces/events.interface';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import {
   AnthropicContentBlock,
@@ -21,6 +22,18 @@ import {
   buildComparisonPrompt,
 } from './inspectionAI.prompts';
 
+export type AIAnalysisResult =
+  | { ok: true; analysis: AIInspectionAnalysis }
+  | {
+      ok: false;
+      reason:
+        | 'feature_disabled'
+        | 'plan_not_eligible'
+        | 'budget_exceeded'
+        | 'inspection_not_found'
+        | 'analysis_error';
+    };
+
 const INPUT_COST_PER_MTOK = 3;
 const OUTPUT_COST_PER_MTOK = 15;
 
@@ -29,6 +42,7 @@ interface IConstructor {
   featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
   anthropicService: AnthropicService;
+  subscriptionDAO: SubscriptionDAO;
   aiCostService: AICostService;
   inspectionDAO: InspectionDAO;
 }
@@ -36,6 +50,7 @@ interface IConstructor {
 export class InspectionAIService {
   private readonly log: Logger;
   private readonly inspectionDAO: InspectionDAO;
+  private readonly subscriptionDAO: SubscriptionDAO;
   private readonly anthropicService: AnthropicService;
   private readonly emitterService: EventEmitterService;
   private readonly featureFlagService: FeatureFlagService;
@@ -44,6 +59,7 @@ export class InspectionAIService {
 
   constructor({
     inspectionDAO,
+    subscriptionDAO,
     anthropicService,
     emitterService,
     featureFlagService,
@@ -52,37 +68,65 @@ export class InspectionAIService {
   }: IConstructor) {
     this.log = createLogger('InspectionAIService');
     this.inspectionDAO = inspectionDAO;
+    this.subscriptionDAO = subscriptionDAO;
     this.anthropicService = anthropicService;
     this.emitterService = emitterService;
     this.featureFlagService = featureFlagService;
     this.costService = aiCostService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners(): void {
+    this.emitterService.on(
+      EventTypes.INSPECTION_SUBMITTED,
+      this.handleInspectionSubmitted.bind(this)
+    );
+  }
+
+  private async handleInspectionSubmitted(payload: InspectionSubmittedPayload): Promise<void> {
+    try {
+      const subscription = await this.subscriptionDAO.findFirst({ cuid: payload.cuid });
+      const planName: PlanName = (subscription?.planName as PlanName) || 'essential';
+      const result = await this.analyzeInspection(payload.cuid, payload.iuid, planName);
+      if (!result.ok) {
+        this.log.info(
+          { iuid: payload.iuid, cuid: payload.cuid, reason: result.reason },
+          'Auto-triggered AI analysis skipped'
+        );
+      }
+    } catch (error) {
+      this.log.error(
+        { error, iuid: payload.iuid, cuid: payload.cuid },
+        'Auto-triggered AI analysis failed — non-blocking'
+      );
+    }
   }
 
   async analyzeInspection(
     cuid: string,
     iuid: string,
     planName: PlanName
-  ): Promise<AIInspectionAnalysis | null> {
+  ): Promise<AIAnalysisResult> {
     if (!this.featureFlagService.isEnabled(FeatureFlag.AI_INSPECTION_ANALYSIS)) {
-      return null;
+      return { ok: false, reason: 'feature_disabled' };
     }
 
     if (!this.subscriptionPlanConfig.hasFeature(planName, 'aiInspectionAnalysis')) {
       this.log.info({ planName }, 'AI inspection analysis not available on plan — skipping');
-      return null;
+      return { ok: false, reason: 'plan_not_eligible' };
     }
 
-    const { allowed, reason } = this.costService.canAnalyze(cuid);
+    const { allowed, reason } = await this.costService.canAnalyze(cuid);
     if (!allowed) {
       this.log.warn({ cuid, iuid, reason }, 'AI analysis skipped — budget exceeded');
-      return null;
+      return { ok: false, reason: 'budget_exceeded' };
     }
 
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
     if (!inspection) {
       this.log.error({ cuid, iuid }, 'Inspection not found for AI analysis');
-      return null;
+      return { ok: false, reason: 'inspection_not_found' };
     }
 
     try {
@@ -102,8 +146,8 @@ export class InspectionAIService {
         }
       }
 
-      // For move-out: compare against move-in inspection
-      if (inspection.type === InspectionType.MOVE_OUT) {
+      // For move-out: compare against move-in inspection on the same lease
+      if (inspection.type === InspectionType.MOVE_OUT && inspection.leaseId) {
         const moveInInspection = await this.inspectionDAO.findFirst({
           cuid,
           leaseId: inspection.leaseId,
@@ -174,10 +218,10 @@ export class InspectionAIService {
         'AI inspection analysis completed'
       );
 
-      return analysis;
+      return { ok: true, analysis };
     } catch (error) {
       this.log.error({ error, iuid, cuid }, 'AI inspection analysis failed');
-      return null;
+      return { ok: false, reason: 'analysis_error' };
     }
   }
 }

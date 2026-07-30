@@ -801,3 +801,11 @@ export function preventTenantConflict(
     throw new ForbiddenError({ message });
   }
 }
+
+/**
+ * Extract the string ID from a field that may be a populated document or an ObjectId.
+ */
+export function toId(field: any): string {
+  if (field && typeof field === 'object' && field._id) return field._id.toString();
+  return field?.toString() ?? '';
+}

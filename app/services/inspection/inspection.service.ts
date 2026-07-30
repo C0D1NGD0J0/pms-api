@@ -2,8 +2,8 @@ import Logger from 'bunyan';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { EmailQueue } from '@queues/index';
-import { createLogger } from '@utils/index';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -633,12 +633,4 @@ export class InspectionService implements ICronProvider {
     if (avg === null) return 0;
     return Math.round((avg / 4) * 100);
   }
-}
-
-/**
- * Extract the string ID from a field that may be a populated document or an ObjectId.
- */
-function toId(field: any): string {
-  if (field && typeof field === 'object' && field._id) return field._id.toString();
-  return field?.toString() ?? '';
 }

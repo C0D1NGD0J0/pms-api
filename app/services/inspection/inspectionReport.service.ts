@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { ClientDAO } from '@dao/clientDAO';
-import { createLogger } from '@utils/index';
+import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InspectionStatus } from '@interfaces/inspection.interface';
@@ -280,9 +280,4 @@ function canGenerateReports(role: string, department?: string): boolean {
     normalized === IUserRole.ROOT_ADMIN ||
     (normalized === 'staff' && department === 'management')
   );
-}
-
-function toId(field: any): string {
-  if (field && typeof field === 'object' && field._id) return field._id.toString();
-  return field?.toString() ?? '';
 }

@@ -97,6 +97,7 @@ router.post(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({
     params: InspectionValidations.iuidParam,
     body: InspectionValidations.addNoteBody,

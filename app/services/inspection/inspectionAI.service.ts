@@ -130,8 +130,9 @@ export class InspectionAIService {
     }
 
     try {
+      const promptType = inspection.status === InspectionStatus.DISPUTED ? 'dispute' : 'submission';
       const contentBlocks: AnthropicContentBlock[] = [
-        { type: 'text', text: buildAnalysisUserPrompt(inspection, 'submission') },
+        { type: 'text', text: buildAnalysisUserPrompt(inspection, promptType) },
       ];
 
       // Attach room photos for vision analysis
@@ -178,13 +179,23 @@ export class InspectionAIService {
         .trim();
       const parsed = JSON.parse(rawJson);
 
+      // Validate expected shape — guard against model response drift
+      if (typeof parsed !== 'object' || parsed === null) {
+        this.log.warn({ iuid, cuid }, 'AI response is not a valid object');
+        return { ok: false, reason: 'analysis_error' };
+      }
+
       const costUSD =
         (result.inputTokens / 1_000_000) * INPUT_COST_PER_MTOK +
         (result.outputTokens / 1_000_000) * OUTPUT_COST_PER_MTOK;
 
+      const validFlags = (Array.isArray(parsed.riskFlags) ? parsed.riskFlags : []).filter(
+        (f: any) => f && typeof f.type === 'string' && typeof f.description === 'string'
+      );
+
       const analysis: AIInspectionAnalysis = {
-        overallSummary: parsed.overallSummary || '',
-        riskFlags: Array.isArray(parsed.riskFlags) ? parsed.riskFlags : [],
+        overallSummary: typeof parsed.overallSummary === 'string' ? parsed.overallSummary : '',
+        riskFlags: validFlags,
         costInfo: {
           inputTokens: result.inputTokens,
           outputTokens: result.outputTokens,
@@ -194,6 +205,7 @@ export class InspectionAIService {
         model: result.model,
       };
 
+      // fire-and-forget — cost recording is non-blocking (has internal try/catch)
       this.costService.recordCost(
         cuid,
         'inspectionAnalysis',

@@ -85,8 +85,32 @@ router.post(
   })
 );
 
-router.get(
+// ── Notes ────────────────────────────────────────────────────────────────────
+router.post(
+  '/:cuid/:iuid/notes',
+  requireNotSuspended,
+  requirePermissionWithContext(
+    PermissionResource.INSPECTION,
+    PermissionAction.UPDATE,
+    roleBasedContext
+  ),
+  requireVerifiedClient,
+  subscriptionEntitlements,
+  requireFeature('inspectionService'),
+  validateRequest({
+    params: InspectionValidations.iuidParam,
+    body: InspectionValidations.addNoteBody,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<InspectionController>('inspectionController');
+    return controller.addNote(req, res);
+  })
+);
+
+// ── Report generation ────────────────────────────────────────────────────────
+router.post(
   '/:cuid/:iuid/report',
+  requireNotSuspended,
   requirePermissionWithContext(
     PermissionResource.INSPECTION,
     PermissionAction.READ,
@@ -129,7 +153,7 @@ router
     subscriptionEntitlements,
     requireFeature('inspectionService'),
     requireFeatureFlag(FeatureFlag.INSPECTION),
-    diskUpload(['media[*].file']),
+    diskUpload(['media[*][file]']),
     scanFile,
     validateRequest({
       params: InspectionValidations.iuidParam,
@@ -167,7 +191,7 @@ router.patch(
   subscriptionEntitlements,
   requireFeature('inspectionService'),
   requireFeatureFlag(FeatureFlag.INSPECTION),
-  diskUpload(['media[*].file']),
+  diskUpload(['media[*][file]']),
   scanFile,
   validateRequest({ params: InspectionValidations.iuidParam }),
   asyncWrapper(async (req: AppRequest, res) => {

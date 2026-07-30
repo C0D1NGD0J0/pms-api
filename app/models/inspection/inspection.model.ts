@@ -182,6 +182,16 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },
     },
+    notes: [
+      {
+        note: { type: String, required: true, maxlength: 2000 },
+        html: { type: String, maxlength: 2000 },
+        author: { type: String, required: true },
+        authorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        timestamp: { type: Date, default: Date.now, required: true },
+        _id: false,
+      },
+    ],
     rooms: [inspectionRoomSchema],
     media: [mediaSubSchema],
     aiAnalysis: {

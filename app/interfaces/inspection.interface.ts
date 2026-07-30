@@ -13,16 +13,6 @@ export enum InspectionStatus {
   DISPUTED = 'disputed',
 }
 
-/**
- * Inspection Status Enum
- */
-export enum PropertyUnitInspectionStatusEnum {
-  NEEDS_REPAIR = 'needs_repair',
-  SCHEDULED = 'scheduled',
-  FAILED = 'failed',
-  PASSED = 'passed',
-}
-
 export enum ConditionRating {
   EXCELLENT = 'excellent',
   GOOD = 'good',
@@ -62,6 +52,7 @@ export interface IInspection {
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
   propertyId: Types.ObjectId;
+  notes?: IInspectionNote[];
   media: IInspectionMedia[];
   createdBy: Types.ObjectId;
   status: InspectionStatus;
@@ -138,6 +129,14 @@ export interface IListInspectionsQuery extends IPaginationQuery {
   status?: InspectionStatus;
   type?: InspectionType;
   propertyId?: string;
+}
+
+export interface IInspectionNote {
+  authorId: Types.ObjectId | string;
+  timestamp: Date;
+  author: string;
+  html?: string;
+  note: string;
 }
 
 export type IInspectionListReturnData = IPromiseReturnedData<{

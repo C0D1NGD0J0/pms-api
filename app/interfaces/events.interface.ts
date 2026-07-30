@@ -703,6 +703,15 @@ export interface PayoutPaidPayload {
   cuid: string;
 }
 
+export interface InspectionRejectedPayload {
+  inspectorId: string;
+  tenantId: string;
+  isFinal: boolean;
+  reason: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface InvoiceOverduePayload {
   invoiceId: string;
   tenantId?: string;
@@ -794,14 +803,6 @@ export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';
   propertyId: string;
   status: 'success';
-}
-
-export interface InspectionRejectedPayload {
-  tenantId: string;
-  isFinal: boolean;
-  reason: string;
-  iuid: string;
-  cuid: string;
 }
 
 export interface MaintenanceAutoVendorPaidPayload {

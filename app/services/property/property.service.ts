@@ -21,16 +21,6 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
-  PropertyUnitDAO,
-  SubscriptionDAO,
-  PropertyDAO,
-  ProfileDAO,
-  PaymentDAO,
-  ClientDAO,
-  LeaseDAO,
-  UserDAO,
-} from '@dao/index';
-import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
@@ -38,6 +28,18 @@ import {
   ResourceContext,
   IPaginateResult,
 } from '@interfaces/utils.interface';
+import {
+  MaintenanceRequestDAO,
+  PropertyUnitDAO,
+  SubscriptionDAO,
+  InspectionDAO,
+  PropertyDAO,
+  ProfileDAO,
+  PaymentDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   PropertyApprovalStatusEnum,
   IAssignableUsersFilter,
@@ -79,6 +81,7 @@ import {
 
 interface IConstructor {
   propertyApprovalService: PropertyApprovalService;
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   propertyCsvProcessor: PropertyCsvProcessor;
   propertyStatsService: PropertyStatsService;
   notificationService: NotificationService;
@@ -87,6 +90,7 @@ interface IConstructor {
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
   subscriptionDAO: SubscriptionDAO;
+  inspectionDAO: InspectionDAO;
   propertyCache: PropertyCache;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -113,6 +117,8 @@ export class PropertyService {
   private readonly propertyStatsService: PropertyStatsService;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly inspectionDAO: InspectionDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly notificationService: NotificationService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentDAO: PaymentDAO;
@@ -132,6 +138,8 @@ export class PropertyService {
     propertyStatsService,
     userDAO,
     leaseDAO,
+    inspectionDAO,
+    maintenanceRequestDAO,
     notificationService,
     subscriptionDAO,
     paymentDAO,
@@ -151,6 +159,8 @@ export class PropertyService {
     this.propertyStatsService = propertyStatsService;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.inspectionDAO = inspectionDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.notificationService = notificationService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentDAO = paymentDAO;
@@ -221,6 +231,11 @@ export class PropertyService {
         }
       );
 
+      // Invalidate property detail cache (includes lease/payment/etc data)
+      if (property?.pid && property?.cuid) {
+        await this.propertyCache.invalidatePropertyDetail(property.cuid, property.pid);
+      }
+
       return {
         success: true,
         data: property,
@@ -274,6 +289,11 @@ export class PropertyService {
           updatedAt: new Date(),
         }
       );
+
+      // Invalidate property detail cache (includes lease/payment/etc data)
+      if (property?.pid && property?.cuid) {
+        await this.propertyCache.invalidatePropertyDetail(property.cuid, property.pid);
+      }
 
       return {
         success: true,
@@ -982,46 +1002,126 @@ export class PropertyService {
       property
     );
 
-    // Conditionally fetch payment history
+    // Fetch include data with Redis caching (user-independent, safe to cache)
+    const includeParams = include || [];
     let paymentHistory: any[] | undefined;
-    if (include?.includes('payments') || include?.includes('all')) {
-      const leasesResult = await this.leaseDAO.list(
-        {
-          'property.id': new Types.ObjectId(property._id.toString()),
-          cuid,
-          deletedAt: null,
-        },
-        { projection: '_id' },
-        true
-      );
+    let maintenanceHistory: any[] | undefined;
+    let leaseHistory: any[] | undefined;
+    let inspectionHistory: any[] | undefined;
 
-      const leaseIds = leasesResult.items.map((l: any) => l._id.toString());
-      if (leaseIds.length > 0) {
-        const paymentsResult = await this.paymentDAO.list(
+    // Check cache for include data
+    const cachedDetail =
+      includeParams.length > 0
+        ? await this.propertyCache.getPropertyDetail(cuid, pid, includeParams)
+        : null;
+
+    if (cachedDetail?.success && cachedDetail.data) {
+      const cached =
+        typeof cachedDetail.data === 'string' ? JSON.parse(cachedDetail.data) : cachedDetail.data;
+      paymentHistory = cached.paymentHistory;
+      maintenanceHistory = cached.maintenanceHistory;
+      leaseHistory = cached.leaseHistory;
+      inspectionHistory = cached.inspectionHistory;
+    } else {
+      // Cache miss — fetch from DB
+      if (includeParams.includes('payments') || includeParams.includes('all')) {
+        const leasesResult = await this.leaseDAO.list(
           {
+            'property.id': new Types.ObjectId(property._id.toString()),
             cuid,
-            lease: { $in: leaseIds },
+            deletedAt: null,
+          },
+          { projection: '_id' },
+          true
+        );
+
+        const leaseIds = leasesResult.items.map((l: any) => l._id.toString());
+        if (leaseIds.length > 0) {
+          const paymentsResult = await this.paymentDAO.list(
+            {
+              cuid,
+              lease: { $in: leaseIds },
+              deletedAt: null,
+            },
+            {
+              sort: { dueDate: -1 },
+              limit: 50,
+              populate: [
+                { path: 'tenant', select: 'personalInfo.firstName personalInfo.lastName' },
+                { path: 'lease', select: 'leaseNumber property' },
+              ],
+            },
+            true
+          );
+          paymentHistory = paymentsResult.items;
+        }
+      }
+
+      if (includeParams.includes('maintenance') || includeParams.includes('all')) {
+        const mrResult = await this.maintenanceRequestDAO.list(
+          {
+            propertyId: property._id,
+            cuid,
             deletedAt: null,
           },
           {
-            sort: { dueDate: -1 },
-            limit: 50,
+            sort: { createdAt: -1 },
+            limit: 20,
             populate: [
-              { path: 'tenant', select: 'personalInfo.firstName personalInfo.lastName' },
-              { path: 'lease', select: 'leaseNumber property' },
+              { path: 'propertyId', select: 'pid name address' },
+              { path: 'assignedVendor', select: 'businessName' },
             ],
           },
           true
         );
-        paymentHistory = paymentsResult.items;
+        maintenanceHistory = mrResult.items;
       }
-    }
 
-    // Conditionally fetch maintenance history (placeholder for future implementation)
-    let maintenanceHistory: any[] | undefined;
-    if (include?.includes('maintenance') || include?.includes('all')) {
-      // When maintenance is implemented, fetch it here
-      maintenanceHistory = [];
+      if (includeParams.includes('leases') || includeParams.includes('all')) {
+        const leasesResult = await this.leaseDAO.list(
+          {
+            'property.id': new Types.ObjectId(property._id.toString()),
+            cuid,
+            deletedAt: null,
+          },
+          {
+            sort: { 'duration.endDate': -1 },
+            limit: 20,
+            projection:
+              'luid leaseNumber status type duration fees.rentAmount fees.currency tenantId',
+            populate: [
+              {
+                path: 'tenantId',
+                select: 'email uid',
+                populate: {
+                  path: 'profile',
+                  select: 'personalInfo.firstName personalInfo.lastName',
+                },
+              },
+            ],
+          },
+          true
+        );
+        leaseHistory = leasesResult.items;
+      }
+
+      if (includeParams.includes('inspections') || includeParams.includes('all')) {
+        const inspResult = await this.inspectionDAO.listByClient(cuid, {
+          propertyId: property._id.toString(),
+          limit: 20,
+        });
+        inspectionHistory = inspResult.items;
+      }
+
+      // Cache the include data for next request
+      if (includeParams.length > 0) {
+        await this.propertyCache.cachePropertyDetail(cuid, pid, includeParams, {
+          paymentHistory,
+          maintenanceHistory,
+          leaseHistory,
+          inspectionHistory,
+        });
+      }
     }
 
     const hasLeaseHistory = await this.leaseDAO.hasNonDraftLeaseForProperty(
@@ -1057,6 +1157,8 @@ export class PropertyService {
         ...(!hideFinancials && paymentHistory !== undefined && { paymentHistory }),
         ...(canViewMaintenance(department) &&
           maintenanceHistory !== undefined && { maintenanceHistory }),
+        ...(!hideFinancials && leaseHistory !== undefined && { leaseHistory }),
+        ...(inspectionHistory !== undefined && { inspectionHistory }),
       },
     };
   }
@@ -1309,6 +1411,7 @@ export class PropertyService {
       }
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
+      await this.propertyCache.invalidatePropertyDetail(ctx.cuid, result.pid);
       await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 

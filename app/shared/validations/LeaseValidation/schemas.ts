@@ -417,6 +417,7 @@ export const FilterLeasesSchema = z.object({
     .object({
       status: z.string().optional(),
       cuid: z.string().optional(),
+      propertyId: z.string().optional(),
       search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
       unitPuid: z.string().optional(),
     })

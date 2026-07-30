@@ -8,8 +8,9 @@ import { BaseCache } from './base.cache';
 
 export class PropertyCache extends BaseCache {
   private readonly KEY_PREFIXES = {
-    CLIENT_PROPERTY: 'cp:',
-    CLIENT_PROPERTIES: 'cps:',
+    CLIENT_PROPERTY: 'cp',
+    CLIENT_PROPERTIES: 'cps',
+    PROPERTY_DETAIL: 'cpd',
   };
 
   private readonly PROPERTY_CACHE_TTL: number;
@@ -326,6 +327,72 @@ export class PropertyCache extends BaseCache {
         success: false,
         error: (error as Error).message,
       };
+    }
+  }
+
+  /**
+   * Cache the full getClientProperty detail response keyed by include params.
+   */
+  async cachePropertyDetail(
+    cuid: string,
+    pid: string,
+    includes: string[],
+    data: any
+  ): Promise<ISuccessReturnData> {
+    try {
+      if (!cuid || !pid) {
+        return { success: false, data: null, error: 'Client ID and PID are required' };
+      }
+
+      const includeHash = this.hashData(includes.sort());
+      const key = `${this.KEY_PREFIXES.PROPERTY_DETAIL}:${cuid}:${pid}:${includeHash}`;
+      return await this.setItem(key, JSON.stringify(data), this.PROPERTY_CACHE_TTL);
+    } catch (error) {
+      this.log.error('Failed to cache property detail:', error);
+      return { success: false, data: null, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Get cached property detail response for a given include combination.
+   */
+  async getPropertyDetail(
+    cuid: string,
+    pid: string,
+    includes: string[]
+  ): Promise<ISuccessReturnData<any | null>> {
+    try {
+      if (!cuid || !pid) {
+        return { success: false, data: null, error: 'Client ID and PID are required' };
+      }
+
+      const includeHash = this.hashData(includes.sort());
+      const key = `${this.KEY_PREFIXES.PROPERTY_DETAIL}:${cuid}:${pid}:${includeHash}`;
+      return await this.getItem(key);
+    } catch (error) {
+      this.log.error('Failed to get property detail from cache:', error);
+      return { success: false, data: null, error: (error as Error).message };
+    }
+  }
+
+  /**
+   * Invalidate all cached property detail variants for a specific property.
+   */
+  async invalidatePropertyDetail(cuid: string, pid: string): Promise<ISuccessReturnData> {
+    try {
+      if (!cuid || !pid) {
+        return { success: false, data: null, error: 'Client ID and PID are required' };
+      }
+
+      const pattern = `${this.KEY_PREFIXES.PROPERTY_DETAIL}:${cuid}:${pid}:*`;
+      const keys = await this.client.keys(pattern);
+      if (keys.length > 0) {
+        await this.deleteItems(keys);
+      }
+      return { success: true, data: { deletedCount: keys.length } };
+    } catch (error) {
+      this.log.error('Failed to invalidate property detail:', error);
+      return { success: false, data: null, error: (error as Error).message };
     }
   }
 

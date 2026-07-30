@@ -1,26 +1,25 @@
-import { Types } from 'mongoose';
-import { faker } from '@faker-js/faker';
-import { ROLES } from '@shared/constants/roles.constants';
-import { InspectionDAO } from '@dao/inspectionDAO';
-import { PropertyDAO } from '@dao/propertyDAO';
-import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { LeaseDAO } from '@dao/leaseDAO';
 import { UserDAO } from '@dao/userDAO';
-import { InspectionService } from '@services/inspection/inspection.service';
+import { faker } from '@faker-js/faker';
+import { LeaseDAO } from '@dao/leaseDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
+import { InspectionDAO } from '@dao/inspectionDAO';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { ROLES } from '@shared/constants/roles.constants';
 import { mockEventEmitter } from '@tests/setup/externalMocks';
+import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import { InspectionService } from '@services/inspection/inspection.service';
+import { PropertyUnit, Inspection, Property, Lease, User } from '@models/index';
 import {
-  ConditionRating,
   InspectionStatus,
+  ConditionRating,
   InspectionType,
 } from '@interfaces/inspection.interface';
-import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
-import { PropertyUnit, Inspection, Property, Lease, User } from '@models/index';
 import {
   createTestPropertyUnit,
   createTestProperty,
+  clearTestDatabase,
   createTestClient,
   createTestUser,
-  clearTestDatabase,
 } from '@tests/helpers';
 
 // Mock only external services
@@ -126,7 +125,10 @@ describe('InspectionService Integration Tests', () => {
     conditions.map((c, i) => ({
       name: `Room ${i + 1}`,
       condition: ConditionRating.NA,
-      items: [{ name: 'Walls', condition: c }, { name: 'Floor', condition: c }],
+      items: [
+        { name: 'Walls', condition: c },
+        { name: 'Floor', condition: c },
+      ],
       media: [],
     }));
 
@@ -134,7 +136,7 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Move-in happy path', () => {
     it('should complete: schedule → update rooms → submit → approve', async () => {
-      const { cuid, admin, tenant, lease } = await setupScenario();
+      const { cuid, admin, lease } = await setupScenario();
       const adminId = admin._id.toString();
 
       // 1. Schedule
@@ -155,9 +157,9 @@ describe('InspectionService Integration Tests', () => {
 
       // 2. Update rooms (transitions to in_progress)
       const rooms = makeRooms([ConditionRating.EXCELLENT, ConditionRating.GOOD]);
-      const updateResult = await inspectionService.updateInspection(
-        cuid, adminId, 'admin', iuid, { rooms }
-      );
+      const updateResult = await inspectionService.updateInspection(cuid, adminId, 'admin', iuid, {
+        rooms,
+      });
       expect(updateResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -229,7 +231,7 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Rejection + revision (move-in)', () => {
     it('should allow: submit → reject → update (clears rejection, back to in_progress) → resubmit', async () => {
-      const { cuid, admin, tenant, lease } = await setupScenario();
+      const { cuid, admin, lease } = await setupScenario();
       const adminId = admin._id.toString();
 
       // Schedule + update to in_progress + submit

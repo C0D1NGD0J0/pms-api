@@ -3,8 +3,8 @@ jest.setTimeout(10000);
 import request from 'supertest';
 import { faker } from '@faker-js/faker';
 import { httpStatusCodes } from '@utils/index';
-import { Application, Request, Response } from 'express';
-import { createApiTestHelper, createMockCurrentUser } from '@tests/helpers';
+import { Application, Response, Request } from 'express';
+import { createMockCurrentUser, createApiTestHelper } from '@tests/helpers';
 
 // ─── Mock Inspection Controller ─────────────────────────────────────────────
 
@@ -21,9 +21,7 @@ const mockInspectionController = {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: {
-        inspections: [
-          { iuid: 'insp-abc123', status: 'scheduled', type: 'move_in' },
-        ],
+        inspections: [{ iuid: 'insp-abc123', status: 'scheduled', type: 'move_in' }],
         pagination: { total: 1, page: 1, pages: 1, limit: 10 },
       },
     });
@@ -150,10 +148,7 @@ describe('Inspection Routes', () => {
       testApp.get(`${baseUrl}/:cuid`, mockInspectionController.listInspections);
 
       // AI Analysis (must come before /:cuid/:iuid to avoid parameter collision)
-      testApp.get(
-        `${baseUrl}/:cuid/:iuid/ai-analysis`,
-        mockInspectionController.getAIAnalysis
-      );
+      testApp.get(`${baseUrl}/:cuid/:iuid/ai-analysis`, mockInspectionController.getAIAnalysis);
       testApp.post(
         `${baseUrl}/:cuid/:iuid/ai-analysis`,
         mockInspectionController.triggerAIAnalysis
@@ -263,9 +258,7 @@ describe('Inspection Routes', () => {
     });
 
     it('should pass cuid and iuid params to the controller', async () => {
-      await request(app)
-        .get(`${baseUrl}/${mockCuid}/${mockIuid}`)
-        .expect(httpStatusCodes.OK);
+      await request(app).get(`${baseUrl}/${mockCuid}/${mockIuid}`).expect(httpStatusCodes.OK);
 
       const calledReq = (mockInspectionController.getInspection as jest.Mock).mock.calls[0][0];
       expect(calledReq.params.cuid).toBe(mockCuid);

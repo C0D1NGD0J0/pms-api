@@ -2,9 +2,8 @@ import { Types } from 'mongoose';
 import { jest } from '@jest/globals';
 import { InspectionService } from '@services/inspection/inspection.service';
 import {
-  ALLOWED_INSPECTION_TRANSITIONS,
-  ConditionRating,
   InspectionStatus,
+  ConditionRating,
   InspectionType,
 } from '@interfaces/inspection.interface';
 
@@ -42,12 +41,9 @@ const mockEmailQueue = {
   addToEmailQueue: jest.fn() as any,
 } as any;
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 const CUID = 'test-client-cuid';
 const USER_ID = new Types.ObjectId().toString();
 const TENANT_ID = new Types.ObjectId().toString();
-const OTHER_TENANT_ID = new Types.ObjectId().toString();
 const IUID = 'insp-abc123';
 
 const makeInspection = (overrides: Record<string, any> = {}) => ({
@@ -88,8 +84,6 @@ beforeEach(() => {
     emailQueue: mockEmailQueue,
   });
 });
-
-// ─── State Machine Tests ────────────────────────────────────────────────────
 
 describe('InspectionService', () => {
   describe('State Machine Transitions', () => {
@@ -244,13 +238,13 @@ describe('InspectionService', () => {
       expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, TENANT_ID);
     });
 
-    it('should return not-found when tenant queries another tenant\'s inspection (query-level filter)', async () => {
+    it("should return not-found when tenant queries another tenant's inspection (query-level filter)", async () => {
       // DAO returns null because tenantId filter doesn't match
       mockInspectionDAO.getByIuid.mockResolvedValue(null);
 
-      await expect(
-        service.getInspection(CUID, TENANT_ID, 'tenant', IUID)
-      ).rejects.toThrow(/not found/i);
+      await expect(service.getInspection(CUID, TENANT_ID, 'tenant', IUID)).rejects.toThrow(
+        /not found/i
+      );
 
       expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, TENANT_ID);
     });
@@ -328,7 +322,11 @@ describe('InspectionService', () => {
     it('should compute correct proportional score for mixed ratings', async () => {
       // excellent=4, good=3, poor=1 → avg = 8/3 ≈ 2.67 → score = (2.67/4)*100 ≈ 67
       // avg 2.67 → >= 2.5 → GOOD
-      const rooms = makeRooms([ConditionRating.EXCELLENT, ConditionRating.GOOD, ConditionRating.POOR]);
+      const rooms = makeRooms([
+        ConditionRating.EXCELLENT,
+        ConditionRating.GOOD,
+        ConditionRating.POOR,
+      ]);
       const inspection = makeInspection({
         status: InspectionStatus.IN_PROGRESS,
         rooms,
@@ -400,7 +398,10 @@ describe('InspectionService', () => {
         refundInfo: { amount: 1000, isRefunded: false },
       });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
-      mockInspectionDAO.updateById.mockResolvedValue({ ...inspection, status: InspectionStatus.APPROVED });
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.APPROVED,
+      });
 
       await service.approveInspection(CUID, IUID, 0);
 
@@ -416,7 +417,10 @@ describe('InspectionService', () => {
         refundInfo: { amount: 1000, isRefunded: false },
       });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
-      mockInspectionDAO.updateById.mockResolvedValue({ ...inspection, status: InspectionStatus.APPROVED });
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.APPROVED,
+      });
 
       await service.approveInspection(CUID, IUID, 750);
 
@@ -442,7 +446,10 @@ describe('InspectionService', () => {
     it('should reject scheduling a duplicate inspection of the same type for the same lease', async () => {
       const lease = makeActiveLease();
       mockLeaseDAO.findFirst.mockResolvedValue(lease);
-      mockInspectionDAO.findFirst.mockResolvedValue({ iuid: 'existing-insp', status: InspectionStatus.SCHEDULED });
+      mockInspectionDAO.findFirst.mockResolvedValue({
+        iuid: 'existing-insp',
+        status: InspectionStatus.SCHEDULED,
+      });
 
       await expect(
         service.scheduleInspection(CUID, USER_ID, {
@@ -459,7 +466,9 @@ describe('InspectionService', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(lease);
       mockInspectionDAO.findFirst.mockResolvedValue(null); // no non-cancelled match
       mockPropertyDAO.findFirst.mockResolvedValue(property);
-      mockInspectionDAO.insert.mockImplementation((data: any) => Promise.resolve({ ...data, iuid: IUID }));
+      mockInspectionDAO.insert.mockImplementation((data: any) =>
+        Promise.resolve({ ...data, iuid: IUID })
+      );
 
       const result = await service.scheduleInspection(CUID, USER_ID, {
         type: InspectionType.MOVE_IN,
@@ -476,7 +485,9 @@ describe('InspectionService', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(lease);
       mockPropertyDAO.findFirst.mockResolvedValue(property);
       mockInspectionDAO.findFirst.mockResolvedValue(null); // no duplicate
-      mockInspectionDAO.insert.mockImplementation((data: any) => Promise.resolve({ ...data, iuid: IUID }));
+      mockInspectionDAO.insert.mockImplementation((data: any) =>
+        Promise.resolve({ ...data, iuid: IUID })
+      );
 
       await service.scheduleInspection(CUID, USER_ID, {
         type: InspectionType.MOVE_IN,

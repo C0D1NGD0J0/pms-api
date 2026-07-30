@@ -76,6 +76,11 @@ export const InspectionValidations = {
     iuid: z.string().min(1),
   }),
 
+  addNoteBody: z.object({
+    note: z.string().min(1).max(2000),
+    html: z.string().max(2000).optional(),
+  }),
+
   reportQuery: z.object({
     includePhotos: z.enum(['true', 'false']).optional().default('true'),
     forceRegenerate: z.enum(['true', 'false']).optional().default('false'),

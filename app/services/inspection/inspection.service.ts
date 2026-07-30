@@ -2,13 +2,14 @@ import Logger from 'bunyan';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { EmailQueue } from '@queues/index';
-import { createLogger } from '@utils/index';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { LeaseTerminatedPayload } from '@interfaces/lease.interface';
 import { DEFAULT_INSPECTION_ROOMS } from '@models/inspection/inspection.model';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
@@ -18,6 +19,8 @@ import {
   ICreateInspection,
   IUpdateInspection,
   InspectionStatus,
+  IInspectionRoom,
+  ConditionRating,
   InspectionType,
 } from '@interfaces/inspection.interface';
 
@@ -54,6 +57,12 @@ export class InspectionService implements ICronProvider {
     this.emitterService = emitterService;
     this.emailQueue = emailQueue;
     this.log = createLogger('InspectionService');
+
+    this.setupEventListeners();
+  }
+
+  private setupEventListeners(): void {
+    this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
   }
 
   getCronJobs(): ICronJob[] {
@@ -81,6 +90,19 @@ export class InspectionService implements ICronProvider {
     }
     if (lease.status !== 'active') {
       throw new BadRequestError({ message: 'Inspections can only be created for active leases' });
+    }
+
+    // Prevent duplicate inspections of the same type for the same lease
+    const existing = await this.inspectionDAO.findFirst({
+      leaseId: lease._id,
+      type: data.type,
+      status: { $nin: [InspectionStatus.CANCELLED] },
+      deletedAt: null,
+    } as any);
+    if (existing) {
+      throw new BadRequestError({
+        message: `A ${data.type.replace('_', '-')} inspection already exists for this lease`,
+      });
     }
 
     const property = await this.propertyDAO.findFirst({ _id: lease.property.id, cuid });
@@ -159,12 +181,14 @@ export class InspectionService implements ICronProvider {
     userRole: string,
     iuid: string
   ): IPromiseReturnedData {
-    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    const tenantFilter = userRole === 'tenant' ? userId : undefined;
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, tenantFilter);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
 
-    if (userRole === 'tenant' && inspection.tenantId.toString() !== userId) {
+    // Secondary guard — belt and suspenders
+    if (userRole === 'tenant' && toId(inspection.tenantId) !== userId) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
 
@@ -178,7 +202,8 @@ export class InspectionService implements ICronProvider {
     iuid: string,
     data: IUpdateInspection
   ): IPromiseReturnedData {
-    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    const tenantFilter = userRole === 'tenant' ? userId : undefined;
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, tenantFilter);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
@@ -200,7 +225,7 @@ export class InspectionService implements ICronProvider {
     }
 
     if (userRole === 'tenant') {
-      if (inspection.tenantId.toString() !== userId) {
+      if (toId(inspection.tenantId) !== userId) {
         throw new ForbiddenError({ message: 'Access denied' });
       }
       if (inspection.type !== InspectionType.MOVE_IN) {
@@ -230,7 +255,8 @@ export class InspectionService implements ICronProvider {
     userRole: string,
     iuid: string
   ): IPromiseReturnedData {
-    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    const tenantFilter = userRole === 'tenant' ? userId : undefined;
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, tenantFilter);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
@@ -238,7 +264,7 @@ export class InspectionService implements ICronProvider {
     this._validateTransition(inspection.status, InspectionStatus.SUBMITTED);
 
     if (userRole === 'tenant') {
-      if (inspection.tenantId.toString() !== userId) {
+      if (toId(inspection.tenantId) !== userId) {
         throw new ForbiddenError({ message: 'Access denied' });
       }
       if (inspection.type !== InspectionType.MOVE_IN) {
@@ -246,19 +272,27 @@ export class InspectionService implements ICronProvider {
       }
     }
 
+    const submitFields: Record<string, any> = {
+      status: InspectionStatus.SUBMITTED,
+      submittedAt: new Date(),
+      completedDate: new Date(),
+      conditionScore: this._computeConditionScore(inspection.rooms),
+    };
+
+    // Auto-compute overallCondition if not manually set
+    if (!inspection.overallCondition || inspection.overallCondition === ConditionRating.NA) {
+      submitFields.overallCondition = this._computeOverallCondition(inspection.rooms);
+    }
+
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
-      $set: {
-        status: InspectionStatus.SUBMITTED,
-        submittedAt: new Date(),
-        completedDate: new Date(),
-      },
+      $set: submitFields,
     });
 
     this.emitterService.emit(EventTypes.INSPECTION_SUBMITTED, {
       iuid: inspection.iuid,
       cuid,
-      inspectorId: inspection.inspectorId.toString(),
-      tenantId: inspection.tenantId.toString(),
+      inspectorId: toId(inspection.inspectorId),
+      tenantId: toId(inspection.tenantId),
       type: inspection.type,
     });
 
@@ -311,7 +345,7 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
       iuid: inspection.iuid,
       cuid,
-      tenantId: inspection.tenantId.toString(),
+      tenantId: toId(inspection.tenantId),
       ...(inspection.refundInfo &&
         refundAmount !== undefined && {
           refundAmount,
@@ -323,12 +357,12 @@ export class InspectionService implements ICronProvider {
   }
 
   async acknowledgeInspection(cuid: string, userId: string, iuid: string): IPromiseReturnedData {
-    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, userId);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
 
-    if (inspection.tenantId.toString() !== userId) {
+    if (toId(inspection.tenantId) !== userId) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
     if (inspection.status !== InspectionStatus.SUBMITTED) {
@@ -348,12 +382,12 @@ export class InspectionService implements ICronProvider {
     iuid: string,
     data: IDisputeInspection
   ): IPromiseReturnedData {
-    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, userId);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
 
-    if (inspection.tenantId.toString() !== userId) {
+    if (toId(inspection.tenantId) !== userId) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
     this._validateTransition(inspection.status, InspectionStatus.DISPUTED);
@@ -368,8 +402,8 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_DISPUTED, {
       iuid: inspection.iuid,
       cuid,
-      inspectorId: inspection.inspectorId.toString(),
-      tenantId: inspection.tenantId.toString(),
+      inspectorId: toId(inspection.inspectorId),
+      tenantId: toId(inspection.tenantId),
       disputeNotes: data.disputeNotes.text,
     });
 
@@ -402,14 +436,15 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_REJECTED, {
       iuid: inspection.iuid,
       cuid,
-      tenantId: inspection.tenantId.toString(),
+      inspectorId: toId(inspection.inspectorId),
+      tenantId: toId(inspection.tenantId),
       reason: reason.text,
       isFinal,
     });
 
     const message = isFinal
       ? 'Inspection rejected (final)'
-      : 'Inspection rejected — tenant can revise and resubmit';
+      : 'Inspection rejected — can be revised and resubmitted';
 
     return { success: true, message, data: updated! };
   }
@@ -429,10 +464,44 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
       iuid: inspection.iuid,
       cuid,
-      tenantId: inspection.tenantId.toString(),
+      tenantId: toId(inspection.tenantId),
     });
 
     return { success: true, message: 'Inspection cancelled', data: updated! };
+  }
+
+  async addNote(
+    cuid: string,
+    userId: string,
+    userRole: string,
+    iuid: string,
+    data: { note: string; html?: string }
+  ): IPromiseReturnedData {
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    if (!inspection) {
+      throw new NotFoundError({ message: 'Inspection not found' });
+    }
+
+    if (userRole === 'tenant' && toId(inspection.tenantId) !== userId) {
+      throw new ForbiddenError({ message: 'Access denied' });
+    }
+
+    const user = await this.userDAO.findById(userId);
+    const authorName = user?.fullname || user?.email || 'Unknown';
+
+    const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
+      $push: {
+        notes: {
+          note: data.note,
+          html: data.html,
+          author: authorName,
+          authorId: userId,
+          timestamp: new Date(),
+        },
+      },
+    });
+
+    return { success: true, message: 'Note added', data: updated! };
   }
 
   async softDeleteInspection(
@@ -468,13 +537,54 @@ export class InspectionService implements ICronProvider {
         iuid: inspection.iuid,
         cuid: inspection.cuid,
         propertyId: inspection.propertyId.toString(),
-        tenantId: inspection.tenantId.toString(),
+        tenantId: toId(inspection.tenantId),
         type: inspection.type,
         scheduledDate: inspection.scheduledDate,
       });
     }
 
     this.log.info(`Sent ${upcoming.items.length} inspection reminders`);
+  }
+
+  // ─── Event Handlers ──────────────────────────────────────────────────────────
+
+  private async handleLeaseTerminated(payload: LeaseTerminatedPayload): Promise<void> {
+    try {
+      const terminalStatuses = [InspectionStatus.APPROVED, InspectionStatus.CANCELLED];
+
+      const openInspections = await this.inspectionDAO.list(
+        {
+          leaseId: payload.leaseId,
+          cuid: payload.cuid,
+          status: { $nin: terminalStatuses },
+          deletedAt: null,
+        } as any,
+        { limit: 50 }
+      );
+
+      for (const inspection of openInspections.items) {
+        await this.inspectionDAO.updateById(inspection._id.toString(), {
+          $set: { status: InspectionStatus.CANCELLED },
+        });
+
+        this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
+          iuid: inspection.iuid,
+          cuid: payload.cuid,
+          tenantId: toId(inspection.tenantId),
+        });
+      }
+
+      if (openInspections.items.length > 0) {
+        this.log.info(
+          `Cancelled ${openInspections.items.length} inspection(s) for terminated lease ${payload.luid}`
+        );
+      }
+    } catch (error) {
+      this.log.error(
+        { error, leaseId: payload.leaseId, cuid: payload.cuid },
+        'Failed to cancel inspections for terminated lease'
+      );
+    }
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────────
@@ -484,5 +594,43 @@ export class InspectionService implements ICronProvider {
     if (!allowed || !allowed.includes(next)) {
       throw new BadRequestError({ message: `Cannot transition from ${current} to ${next}` });
     }
+  }
+
+  private _averageConditionScore(rooms: IInspectionRoom[]): number | null {
+    const scoreMap: Record<string, number> = {
+      excellent: 4,
+      good: 3,
+      fair: 2,
+      poor: 1,
+    };
+    let total = 0;
+    let count = 0;
+
+    for (const room of rooms) {
+      for (const item of room.items) {
+        const score = scoreMap[item.condition];
+        if (score !== undefined) {
+          total += score;
+          count++;
+        }
+      }
+    }
+
+    return count === 0 ? null : total / count;
+  }
+
+  private _computeOverallCondition(rooms: IInspectionRoom[]): ConditionRating {
+    const avg = this._averageConditionScore(rooms);
+    if (avg === null) return ConditionRating.NA;
+    if (avg >= 3.5) return ConditionRating.EXCELLENT;
+    if (avg >= 2.5) return ConditionRating.GOOD;
+    if (avg >= 1.5) return ConditionRating.FAIR;
+    return ConditionRating.POOR;
+  }
+
+  private _computeConditionScore(rooms: IInspectionRoom[]): number {
+    const avg = this._averageConditionScore(rooms);
+    if (avg === null) return 0;
+    return Math.round((avg / 4) * 100);
   }
 }

@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { ClientDAO } from '@dao/clientDAO';
-import { createLogger } from '@utils/index';
+import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InspectionStatus } from '@interfaces/inspection.interface';
@@ -51,6 +51,7 @@ export class InspectionReportService {
     includePhotos: boolean,
     forceRegenerate: boolean,
     userRole: string,
+    userId: string,
     userDepartment?: string
   ): Promise<IPromiseReturnedData<{ url: string; filename: string; fileSize?: number }>> {
     const inspection = await this.inspectionDAO.findFirst(
@@ -60,8 +61,8 @@ export class InspectionReportService {
           { path: 'propertyId', select: 'name pid address' },
           {
             path: 'leaseId',
-            select: 'propertyUnitId fees',
-            populate: { path: 'propertyUnitId', select: 'unitNumber' },
+            select: 'property.unitId fees',
+            populate: { path: 'propertyUnitInfo', select: 'unitNumber' },
           },
           { path: 'inspectorId', select: 'firstName lastName' },
           { path: 'tenantId', select: 'firstName lastName' },
@@ -71,6 +72,10 @@ export class InspectionReportService {
 
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
+    }
+
+    if (userRole === 'tenant' && toId(inspection.tenantId) !== userId) {
+      throw new ForbiddenError({ message: 'Access denied' });
     }
 
     if (
@@ -188,6 +193,7 @@ export class InspectionReportService {
         primaryResourceId: inspection._id.toString(),
         uploadedBy: inspection.createdBy?.toString() || 'system',
         resourceContext: ResourceContext.INSPECTION,
+        fieldName: 'reportDocument',
       })
       .catch(async (bufferError) => {
         this.log.error(

@@ -6,7 +6,7 @@ import {
   PropertyUnitStatusEnum as UnitStatusEnum,
   IPropertyUnitDocument as IUnitDocument,
   PropertyUnitTypeEnum as UnitTypeEnum,
-  InspectionStatusEnum,
+  PropertyUnitInspectionStatusEnum,
   DocumentStatusEnum,
   DocumentTypeEnum,
 } from '@interfaces/propertyUnit.interface';
@@ -157,7 +157,7 @@ const UnitSchema = new Schema<IUnitDocument>(
         },
         status: {
           type: String,
-          enum: Object.values(InspectionStatusEnum),
+          enum: Object.values(PropertyUnitInspectionStatusEnum),
           required: true,
         },
         notes: { type: String },

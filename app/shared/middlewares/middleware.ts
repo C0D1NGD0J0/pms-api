@@ -891,6 +891,19 @@ export const requireUserPermission = (action: PermissionAction | string) => {
 };
 
 /**
+ * Context extractor for routes that external roles (tenant, vendor) access via MINE scope.
+ * Returns { ownerId } for tenants/vendors so the permission check resolves to MINE scope.
+ * Admins/managers/staff return {} → defaults to ANY scope.
+ */
+export const roleBasedContext = (req: AppRequest) => {
+  const role = req.context?.currentuser?.client?.role;
+  if (role === 'vendor' || role === 'tenant') {
+    return { ownerId: req.context?.currentuser?.sub ?? '' };
+  }
+  return {};
+};
+
+/**
  * Guard for tenant-role users: blocks write actions for former (disconnected) tenants
  * and optionally gates a specific PM-controlled feature toggle.
  * Fails open when tenantFeatures is absent to protect existing sessions.

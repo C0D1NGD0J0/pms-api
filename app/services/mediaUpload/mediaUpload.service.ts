@@ -348,7 +348,7 @@ export class MediaUploadService {
       return {
         resourceName: 'inspection',
         resourceId: context.primaryResourceId,
-        fieldName: fieldName.split('.')[0] || 'reportDocument',
+        fieldName: fieldName === 'reportDocument' ? 'reportDocument' : 'media',
       };
     }
 

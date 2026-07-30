@@ -177,12 +177,27 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       default: undefined,
     },
     overallCondition: { type: String, enum: Object.values(ConditionRating) },
+    conditionScore: { type: Number, min: 0, max: 100 },
     overallNotes: {
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },
     },
+    notes: [
+      {
+        note: { type: String, required: true, maxlength: 2000 },
+        html: { type: String, maxlength: 2000 },
+        author: { type: String, required: true },
+        authorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        timestamp: { type: Date, default: Date.now, required: true },
+        _id: false,
+      },
+    ],
     rooms: [inspectionRoomSchema],
     media: [mediaSubSchema],
+    aiAnalysis: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
     reportDocument: {
       url: { type: String },
       key: { type: String },

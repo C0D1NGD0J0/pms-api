@@ -19,6 +19,13 @@ export enum PropertyUnitStatusEnum {
   RESERVED = 'reserved',
 }
 
+export enum PropertyUnitInspectionStatusEnum {
+  NEEDS_REPAIR = 'needs_repair',
+  SCHEDULED = 'scheduled',
+  FAILED = 'failed',
+  PASSED = 'passed',
+}
+
 /**
  * Property Unit Type Enum
  */
@@ -27,16 +34,6 @@ export enum PropertyUnitTypeEnum {
   COMMERCIAL = 'commercial',
   STORAGE = 'storage',
   OTHER = 'other',
-}
-
-/**
- * Inspection Status Enum
- */
-export enum InspectionStatusEnum {
-  NEEDS_REPAIR = 'needs_repair',
-  SCHEDULED = 'scheduled',
-  FAILED = 'failed',
-  PASSED = 'passed',
 }
 
 /**
@@ -176,17 +173,6 @@ export type PropertyUnitDocument = {
 };
 
 /**
- * Unit Authorization Interface
- * Same structure as property authorization
- */
-export interface IUnitAuthorization {
-  documentUrl?: string; // S3 link to unit-specific management agreement
-  isActive: boolean; // Simple on/off switch
-  expiresAt?: Date; // When authorization expires (optional)
-  notes?: string; // Internal notes
-}
-
-/**
  * ============================================================================
  * ENUMS
  * ============================================================================
@@ -202,10 +188,21 @@ export type PropertyUnitInspection = {
     company?: string;
   };
   attachments?: PropertyUnitInspectionAttachment[];
-  status: InspectionStatus;
+  status: PropertyUnitInspectionStatus;
   inspectionDate: Date;
   notes?: string;
 };
+
+/**
+ * Unit Authorization Interface
+ * Same structure as property authorization
+ */
+export interface IUnitAuthorization {
+  documentUrl?: string; // S3 link to unit-specific management agreement
+  isActive: boolean; // Simple on/off switch
+  expiresAt?: Date; // When authorization expires (optional)
+  notes?: string; // Internal notes
+}
 
 /**
  * Unit Type Management Rules Interface
@@ -248,6 +245,12 @@ export type PropertyUnitPhoto = {
 };
 
 /**
+ * ============================================================================
+ * CORE INTERFACES (Single Source of Truth)
+ * ============================================================================
+ */
+
+/**
  * Property Unit Pending Changes Interface
  */
 export interface IPropertyUnitPendingChanges {
@@ -256,12 +259,6 @@ export interface IPropertyUnitPendingChanges {
   [key: string]: any;
   updatedAt: Date;
 }
-
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
 
 /**
  * Property Unit Note Interface
@@ -366,6 +363,11 @@ export interface IUnitOwner {
 export type PropertyUnitStatus = 'available' | 'occupied' | 'reserved' | 'maintenance' | 'inactive';
 
 /**
+ * Inspection Status Types
+ */
+export type PropertyUnitInspectionStatus = 'passed' | 'failed' | 'needs_repair' | 'scheduled';
+
+/**
  * Approval Action Types
  */
 export type ApprovalAction = 'created' | 'approved' | 'rejected' | 'updated' | 'overridden';
@@ -374,11 +376,6 @@ export type ApprovalAction = 'created' | 'approved' | 'rejected' | 'updated' | '
  * Property Unit Type Classifications
  */
 export type PropertyUnitType = 'residential' | 'commercial' | 'storage' | 'other';
-
-/**
- * Inspection Status Types
- */
-export type InspectionStatus = 'passed' | 'failed' | 'needs_repair' | 'scheduled';
 
 /**
  * Property Unit Document Type Classifications

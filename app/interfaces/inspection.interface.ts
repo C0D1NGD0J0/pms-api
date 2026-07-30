@@ -1,5 +1,6 @@
 import { Document, Types } from 'mongoose';
 
+import { AIInspectionAnalysis } from './inspectionAI.interface';
 import { IPromiseReturnedData, IPaginationQuery, IPaginateResult } from './utils.interface';
 
 export enum InspectionStatus {
@@ -47,14 +48,17 @@ export interface IInspection {
   overallNotes?: { text: string; html?: string };
   reportDocument?: IInspectionReportDocument;
   overallCondition?: ConditionRating;
+  aiAnalysis?: AIInspectionAnalysis;
   inspectorId: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
   propertyId: Types.ObjectId;
+  notes?: IInspectionNote[];
   media: IInspectionMedia[];
   createdBy: Types.ObjectId;
   status: InspectionStatus;
   tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
+  conditionScore?: number;
   leaseId: Types.ObjectId;
   type: InspectionType;
   completedDate?: Date;
@@ -125,6 +129,14 @@ export interface IListInspectionsQuery extends IPaginationQuery {
   status?: InspectionStatus;
   type?: InspectionType;
   propertyId?: string;
+}
+
+export interface IInspectionNote {
+  authorId: Types.ObjectId | string;
+  timestamp: Date;
+  author: string;
+  html?: string;
+  note: string;
 }
 
 export type IInspectionListReturnData = IPromiseReturnedData<{

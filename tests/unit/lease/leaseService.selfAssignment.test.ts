@@ -434,7 +434,14 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.update.mockResolvedValue(mockLease as any);
 
       const updateData = {
-        internalNotes: [{ authorId: 'staff-1', timestamp: new Date(), author: 'Staff User', note: 'Updated by staff' }],
+        internalNotes: [
+          {
+            authorId: 'staff-1',
+            timestamp: new Date(),
+            author: 'Staff User',
+            note: 'Updated by staff',
+          },
+        ],
       } as unknown as Partial<ILeaseFormData>;
 
       // This should succeed because lease tenant !== current user and field is allowed

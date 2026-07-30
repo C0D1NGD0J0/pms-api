@@ -3717,7 +3717,7 @@ describe('PaymentService - queueWeeklyRentInvoices', () => {
       securityDeposit: 0,
     },
     includeManagementFee: false,
-    duration: { startDate: new Date('2020-01-01') },
+    duration: { startDate: new Date('2020-01-01'), endDate: new Date('2030-12-31') },
   });
 
   const makeCashLease = () => ({
@@ -3727,7 +3727,7 @@ describe('PaymentService - queueWeeklyRentInvoices', () => {
     tenantId: new Types.ObjectId(),
     fees: { acceptedPaymentMethod: 'cash', rentDueDay, rentAmount: 350000, securityDeposit: 0 },
     includeManagementFee: false,
-    duration: { startDate: new Date('2020-01-01') },
+    duration: { startDate: new Date('2020-01-01'), endDate: new Date('2030-12-31') },
   });
 
   beforeEach(() => {

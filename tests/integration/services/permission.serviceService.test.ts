@@ -17,6 +17,7 @@ const BASE_ENTITLEMENTS = {
   smsService: false,
   aiTriage: false,
   aiInvoiceScanning: false,
+  aiInspectionAnalysis: false,
 };
 
 describe('PermissionService Integration Tests', () => {

@@ -74,7 +74,7 @@ export class AdminController {
 
   async getAIUsage(req: AppRequest, res: Response) {
     const { cuid } = req.params;
-    const usage = this.aiCostService.getUsage(cuid);
+    const usage = await this.aiCostService.getUsage(cuid);
     return res.status(200).json({ success: true, data: usage });
   }
 

@@ -3,27 +3,33 @@ import { IListInspectionsQuery, IInspectionDocument } from '@interfaces/inspecti
 
 import { BaseDAO } from './baseDAO';
 
+const LEASE_POPULATE = {
+  path: 'leaseId',
+  select: 'property.unitId',
+  populate: { path: 'propertyUnitInfo', select: 'unitNumber' },
+};
+
 export class InspectionDAO extends BaseDAO<IInspectionDocument> {
   constructor({ inspectionModel }: { inspectionModel: Model<IInspectionDocument> }) {
     super(inspectionModel);
   }
 
-  async getByIuid(iuid: string, cuid: string): Promise<IInspectionDocument | null> {
-    return this.findFirst(
-      { iuid, cuid, deletedAt: null },
-      {
-        populate: [
-          { path: 'propertyId', select: 'address pid title' },
-          {
-            path: 'leaseId',
-            select: 'propertyUnitId',
-            populate: { path: 'propertyUnitId', select: 'unitNumber' },
-          },
-          { path: 'inspectorId', select: 'firstName lastName email' },
-          { path: 'tenantId', select: 'firstName lastName email' },
-        ],
-      }
-    );
+  async getByIuid(
+    iuid: string,
+    cuid: string,
+    tenantId?: string
+  ): Promise<IInspectionDocument | null> {
+    const filter: Record<string, any> = { iuid, cuid, deletedAt: null };
+    if (tenantId) filter.tenantId = tenantId;
+
+    return this.findFirst(filter, {
+      populate: [
+        { path: 'propertyId', select: 'address pid title' },
+        LEASE_POPULATE,
+        { path: 'inspectorId', select: 'firstName lastName email' },
+        { path: 'tenantId', select: 'firstName lastName email' },
+      ],
+    });
   }
 
   async listByClient(cuid: string, query?: IListInspectionsQuery) {
@@ -36,11 +42,7 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
       ...query,
       populate: [
         { path: 'propertyId', select: 'address pid title' },
-        {
-          path: 'leaseId',
-          select: 'propertyUnitId',
-          populate: { path: 'propertyUnitId', select: 'unitNumber' },
-        },
+        LEASE_POPULATE,
         { path: 'inspectorId', select: 'firstName lastName email' },
         { path: 'tenantId', select: 'firstName lastName email' },
       ],
@@ -56,11 +58,7 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
       ...query,
       populate: [
         { path: 'propertyId', select: 'address pid title' },
-        {
-          path: 'leaseId',
-          select: 'propertyUnitId',
-          populate: { path: 'propertyUnitId', select: 'unitNumber' },
-        },
+        LEASE_POPULATE,
         { path: 'inspectorId', select: 'firstName lastName email' },
       ],
     });

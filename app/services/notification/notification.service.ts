@@ -1659,9 +1659,17 @@ export class NotificationService {
 
     this.emitterService.on(EventTypes.INSPECTION_APPROVED, async (payload) => {
       try {
+        let message = 'Your inspection has been reviewed and approved';
+        if (payload.refundAmount !== undefined && payload.depositAmount !== undefined) {
+          message =
+            payload.refundAmount > 0
+              ? `Your inspection has been approved. A refund of $${payload.refundAmount.toLocaleString()} out of your $${payload.depositAmount.toLocaleString()} security deposit will be processed`
+              : 'Your inspection has been approved. No security deposit refund will be issued';
+        }
+
         await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
           title: 'Inspection Approved',
-          message: 'Your inspection has been reviewed and approved',
+          message,
           type: NotificationTypeEnum.INSPECTION,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           recipient: payload.tenantId,
@@ -1693,20 +1701,25 @@ export class NotificationService {
 
     this.emitterService.on(EventTypes.INSPECTION_REJECTED, async (payload) => {
       try {
+        const title = payload.isFinal ? 'Inspection Rejected' : 'Inspection Needs Revision';
         const message = payload.isFinal
-          ? `Your inspection has been rejected: ${payload.reason.substring(0, 100)}`
-          : `Your inspection needs revision: ${payload.reason.substring(0, 100)}`;
+          ? `Inspection has been rejected: ${payload.reason.substring(0, 100)}`
+          : `Inspection needs revision: ${payload.reason.substring(0, 100)}`;
 
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: payload.isFinal ? 'Inspection Rejected' : 'Inspection Needs Revision',
-          message,
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.tenantId,
-          priority: NotificationPriorityEnum.HIGH,
-          actionUrl: `/inspections/${payload.iuid}`,
-          cuid: payload.cuid,
-        });
+        // Notify both tenant and inspector
+        const recipients = [payload.tenantId, payload.inspectorId].filter(Boolean);
+        for (const recipient of recipients) {
+          await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
+            title,
+            message,
+            type: NotificationTypeEnum.INSPECTION,
+            recipientType: RecipientTypeEnum.INDIVIDUAL,
+            recipient,
+            priority: NotificationPriorityEnum.HIGH,
+            actionUrl: `/inspections/${payload.iuid}`,
+            cuid: payload.cuid,
+          });
+        }
       } catch (error) {
         this.log.error('Error sending inspection rejected notification', { error, payload });
       }

@@ -618,10 +618,14 @@ export class InspectionService implements ICronProvider {
       });
       if (existing) return;
 
+      const moveInDate = lease.duration.moveInDate || lease.duration.startDate;
+      const today = new Date();
+      const scheduledDate = moveInDate < today ? today : moveInDate;
+
       await this.scheduleInspection(payload.cuid, payload.propertyManagerId, {
         type: InspectionType.MOVE_IN,
         leaseId: payload.luid,
-        scheduledDate: lease.duration.moveInDate || lease.duration.startDate,
+        scheduledDate,
       });
 
       this.log.info(
@@ -641,37 +645,52 @@ export class InspectionService implements ICronProvider {
     const sevenDayStart = sevenDaysOut.startOf('day').toDate();
     const sevenDayEnd = sevenDaysOut.endOf('day').toDate();
 
-    const autoScheduleLeases = await this.leaseDAO.list(
-      {
-        status: LeaseStatus.ACTIVE,
-        'duration.endDate': { $gte: sevenDayStart, $lte: sevenDayEnd },
-        'autoScheduleInspection.moveOut': true,
-        deletedAt: null,
-      } as any,
-      { limit: 100 }
-    );
+    const BATCH_SIZE = 100;
+    let autoScheduledCount = 0;
+    let autoSchedulePage = 1;
+    let hasMoreAutoSchedule = true;
 
-    for (const lease of autoScheduleLeases.items) {
-      try {
-        const existing = await this.inspectionDAO.findFirst({
-          leaseId: lease._id,
-          type: InspectionType.MOVE_OUT,
-          cuid: lease.cuid,
+    while (hasMoreAutoSchedule) {
+      const autoScheduleLeases = await this.leaseDAO.list(
+        {
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': { $gte: sevenDayStart, $lte: sevenDayEnd },
+          'autoScheduleInspection.moveOut': true,
           deletedAt: null,
-        });
-        if (existing) continue;
+        } as any,
+        { limit: BATCH_SIZE, skip: (autoSchedulePage - 1) * BATCH_SIZE }
+      );
 
-        const inspectionDate = dayjs(lease.duration.endDate).subtract(1, 'day').toDate();
-        await this.scheduleInspection(lease.cuid, toId(lease.createdBy), {
-          type: InspectionType.MOVE_OUT,
-          leaseId: lease.luid,
-          scheduledDate: inspectionDate,
-          refundDeposit: true,
-        });
-        this.log.info({ luid: lease.luid }, 'Auto-scheduled move-out inspection');
-      } catch (error) {
-        this.log.error({ error, luid: lease.luid }, 'Failed to auto-schedule move-out inspection');
+      for (const lease of autoScheduleLeases.items) {
+        try {
+          const existing = await this.inspectionDAO.findFirst({
+            leaseId: lease._id,
+            type: InspectionType.MOVE_OUT,
+            cuid: lease.cuid,
+            deletedAt: null,
+          });
+          if (existing) continue;
+
+          const managerId = toId(lease.property?.managedBy) || toId(lease.createdBy);
+          const inspectionDate = dayjs(lease.duration.endDate).subtract(1, 'day').toDate();
+          await this.scheduleInspection(lease.cuid, managerId, {
+            type: InspectionType.MOVE_OUT,
+            leaseId: lease.luid,
+            scheduledDate: inspectionDate,
+            refundDeposit: true,
+          });
+          autoScheduledCount++;
+          this.log.info({ luid: lease.luid }, 'Auto-scheduled move-out inspection');
+        } catch (error) {
+          this.log.error(
+            { error, luid: lease.luid },
+            'Failed to auto-schedule move-out inspection'
+          );
+        }
       }
+
+      hasMoreAutoSchedule = autoScheduleLeases.items.length === BATCH_SIZE;
+      autoSchedulePage++;
     }
 
     // 14 days out — send reminder if move-out auto-schedule is off
@@ -679,32 +698,42 @@ export class InspectionService implements ICronProvider {
     const fourteenDayStart = fourteenDaysOut.startOf('day').toDate();
     const fourteenDayEnd = fourteenDaysOut.endOf('day').toDate();
 
-    const reminderLeases = await this.leaseDAO.list(
-      {
-        status: LeaseStatus.ACTIVE,
-        'duration.endDate': { $gte: fourteenDayStart, $lte: fourteenDayEnd },
-        $or: [
-          { 'autoScheduleInspection.moveOut': false },
-          { 'autoScheduleInspection.moveOut': { $exists: false } },
-        ],
-        deletedAt: null,
-      } as any,
-      { limit: 100 }
-    );
+    let reminderCount = 0;
+    let reminderPage = 1;
+    let hasMoreReminders = true;
 
-    for (const lease of reminderLeases.items) {
-      this.emitterService.emit(EventTypes.INSPECTION_REMINDER, {
-        iuid: '',
-        cuid: lease.cuid,
-        propertyId: toId(lease.property?.id),
-        tenantId: toId(lease.tenantId),
-        type: InspectionType.MOVE_OUT,
-        scheduledDate: lease.duration.endDate,
-      });
+    while (hasMoreReminders) {
+      const reminderLeases = await this.leaseDAO.list(
+        {
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': { $gte: fourteenDayStart, $lte: fourteenDayEnd },
+          $or: [
+            { 'autoScheduleInspection.moveOut': false },
+            { 'autoScheduleInspection.moveOut': { $exists: false } },
+          ],
+          deletedAt: null,
+        } as any,
+        { limit: BATCH_SIZE, skip: (reminderPage - 1) * BATCH_SIZE }
+      );
+
+      for (const lease of reminderLeases.items) {
+        this.emitterService.emit(EventTypes.INSPECTION_REMINDER, {
+          cuid: lease.cuid,
+          luid: lease.luid,
+          propertyId: toId(lease.property?.id),
+          tenantId: toId(lease.tenantId),
+          type: InspectionType.MOVE_OUT,
+          scheduledDate: lease.duration.endDate,
+        });
+        reminderCount++;
+      }
+
+      hasMoreReminders = reminderLeases.items.length === BATCH_SIZE;
+      reminderPage++;
     }
 
     this.log.info(
-      `Move-out check: ${autoScheduleLeases.items.length} auto-scheduled, ${reminderLeases.items.length} reminders sent`
+      `Move-out check: ${autoScheduledCount} auto-scheduled, ${reminderCount} reminders sent`
     );
   }
 

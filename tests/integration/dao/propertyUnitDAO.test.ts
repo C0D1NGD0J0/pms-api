@@ -6,7 +6,7 @@ import { CURRENCIES } from '@interfaces/utils.interface';
 import {
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
-  InspectionStatusEnum,
+  PropertyUnitInspectionStatusEnum,
 } from '@interfaces/propertyUnit.interface';
 
 describe('PropertyUnitDAO Integration Tests', () => {
@@ -465,7 +465,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
       const unit = await PropertyUnit.findOne({ unitNumber: '101' });
       const inspectionData = {
         inspectionDate: new Date(),
-        status: InspectionStatusEnum.PASSED,
+        status: PropertyUnitInspectionStatusEnum.PASSED,
         inspector: { name: 'John Doe', contact: '555-0100' },
         notes: 'Unit in good condition',
       };
@@ -477,14 +477,14 @@ describe('PropertyUnitDAO Integration Tests', () => {
       );
 
       expect(result?.inspections).toHaveLength(1);
-      expect(result?.inspections?.[0].status).toBe(InspectionStatusEnum.PASSED);
+      expect(result?.inspections?.[0].status).toBe(PropertyUnitInspectionStatusEnum.PASSED);
       expect(result?.lastInspectionDate).toBeDefined();
     });
 
     it('should use current date if inspection date not provided', async () => {
       const unit = await PropertyUnit.findOne({ unitNumber: '101' });
       const inspectionData = {
-        status: InspectionStatusEnum.SCHEDULED,
+        status: PropertyUnitInspectionStatusEnum.SCHEDULED,
         inspector: { name: 'Jane Smith', contact: '555-0200' },
       };
 
@@ -511,7 +511,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
     it('should use system user if inspector not provided', async () => {
       const unit = await PropertyUnit.findOne({ unitNumber: '101' });
       const inspectionData = {
-        status: InspectionStatusEnum.NEEDS_REPAIR,
+        status: PropertyUnitInspectionStatusEnum.NEEDS_REPAIR,
         notes: 'Minor repairs needed',
       };
 
@@ -528,7 +528,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
       await expect(
         propertyUnitDAO.addInspection(
           '',
-          { status: InspectionStatusEnum.PASSED },
+          { status: PropertyUnitInspectionStatusEnum.PASSED },
           testUserId.toString()
         )
       ).rejects.toThrow();
@@ -546,7 +546,7 @@ describe('PropertyUnitDAO Integration Tests', () => {
       await expect(
         propertyUnitDAO.addInspection(
           unit!._id.toString(),
-          { status: InspectionStatusEnum.PASSED },
+          { status: PropertyUnitInspectionStatusEnum.PASSED },
           ''
         )
       ).rejects.toThrow();

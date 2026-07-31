@@ -204,7 +204,7 @@ export type EventPayloadMap = {
   [EventTypes.GUEST_PASS_ACKNOWLEDGED]: GuestPassAcknowledgedPayload;
   [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
   [EventTypes.INSPECTION_SCHEDULED]: InspectionScheduledPayload;
-  [EventTypes.INSPECTION_REMINDER]: InspectionScheduledPayload;
+  [EventTypes.INSPECTION_REMINDER]: InspectionReminderPayload;
   [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
   [EventTypes.INSPECTION_APPROVED]: InspectionApprovedPayload;
   [EventTypes.INSPECTION_AI_ANALYZED]: InspectionAIAnalyzedPayload;
@@ -581,6 +581,16 @@ export interface PayoutFailedPayload {
   payoutId: string;
   currency: string;
   reason?: string;
+  cuid: string;
+}
+
+export interface InspectionReminderPayload {
+  type: InspectionType;
+  scheduledDate: Date;
+  propertyId: string;
+  tenantId: string;
+  iuid?: string;
+  luid?: string;
   cuid: string;
 }
 

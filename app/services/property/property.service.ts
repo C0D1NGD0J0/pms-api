@@ -1158,7 +1158,8 @@ export class PropertyService {
         ...(canViewMaintenance(department) &&
           maintenanceHistory !== undefined && { maintenanceHistory }),
         ...(!hideFinancials && leaseHistory !== undefined && { leaseHistory }),
-        ...(inspectionHistory !== undefined && { inspectionHistory }),
+        ...(canViewMaintenance(department) &&
+          inspectionHistory !== undefined && { inspectionHistory }),
       },
     };
   }

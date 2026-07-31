@@ -270,7 +270,7 @@ export class PropertyCache extends BaseCache {
       }
 
       const listPattern = `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:*`;
-      const listKeys = await this.client.keys(listPattern);
+      const listKeys = await this.scanKeys(listPattern);
 
       const allKeys = [...listKeys];
       if (allKeys.length > 0) {
@@ -311,7 +311,7 @@ export class PropertyCache extends BaseCache {
         ? `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:${listKey}:*`
         : `${this.KEY_PREFIXES.CLIENT_PROPERTIES}:${cuid}:*`;
 
-      const keys = await this.client.keys(pattern);
+      const keys = await this.scanKeys(pattern);
       if (keys.length > 0) {
         await this.deleteItems(keys);
       }
@@ -385,7 +385,7 @@ export class PropertyCache extends BaseCache {
       }
 
       const pattern = `${this.KEY_PREFIXES.PROPERTY_DETAIL}:${cuid}:${pid}:*`;
-      const keys = await this.client.keys(pattern);
+      const keys = await this.scanKeys(pattern);
       if (keys.length > 0) {
         await this.deleteItems(keys);
       }
@@ -394,6 +394,18 @@ export class PropertyCache extends BaseCache {
       this.log.error('Failed to invalidate property detail:', error);
       return { success: false, data: null, error: (error as Error).message };
     }
+  }
+
+  /**
+   * Non-blocking key scan using SCAN cursor iteration instead of KEYS.
+   * KEYS is O(N) and blocks the Redis event loop; SCAN iterates in batches.
+   */
+  private async scanKeys(pattern: string): Promise<string[]> {
+    const keys: string[] = [];
+    for await (const key of this.client.scanIterator({ MATCH: pattern, COUNT: 100 })) {
+      keys.push(key);
+    }
+    return keys;
   }
 
   private generateListKeyFromPagination(pagination: IPaginationQuery): string {

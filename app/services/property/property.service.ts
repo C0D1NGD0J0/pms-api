@@ -76,6 +76,7 @@ import {
   validateOccupancyStatusChange,
   filterPropertyByDepartment,
   isFinancialRestricted,
+  canViewInspections,
   canViewMaintenance,
 } from './propertyHelpers';
 
@@ -172,6 +173,7 @@ export class PropertyService {
   private readonly onUnitBatchChanged = this.handleUnitBatchChanged.bind(this);
   private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
   private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
+  private readonly onInspectionChanged = this.handleInspectionChanged.bind(this);
 
   private setupEventListeners(): void {
     this.emitterService.on(EventTypes.UNIT_CREATED, this.onUnitChanged);
@@ -182,6 +184,12 @@ export class PropertyService {
     this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
+    this.emitterService.on(EventTypes.INSPECTION_SCHEDULED, this.onInspectionChanged);
+    this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, this.onInspectionChanged);
+    this.emitterService.on(EventTypes.INSPECTION_APPROVED, this.onInspectionChanged);
+    this.emitterService.on(EventTypes.INSPECTION_REJECTED, this.onInspectionChanged);
+    this.emitterService.on(EventTypes.INSPECTION_DISPUTED, this.onInspectionChanged);
+    this.emitterService.on(EventTypes.INSPECTION_CANCELLED, this.onInspectionChanged);
 
     this.log.info(t('property.logging.eventListenersInitialized'));
   }
@@ -306,6 +314,23 @@ export class PropertyService {
         payload,
       });
       return { success: false, message: 'Error handling lease termination', data: null };
+    }
+  }
+
+  /**
+   * Invalidate property detail cache when an inspection changes state.
+   * Inspection payloads carry cuid but not always propertyId/pid, so we
+   * invalidate all detail variants for the client. With a 5-min TTL this
+   * is a lightweight operation.
+   */
+  private async handleInspectionChanged(payload: { cuid: string }): Promise<void> {
+    try {
+      if (!payload.cuid) return;
+      await this.propertyCache.invalidateAllPropertyDetails(payload.cuid);
+    } catch (error) {
+      this.log.error('Error invalidating property detail cache on inspection change', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
     }
   }
 
@@ -1158,7 +1183,7 @@ export class PropertyService {
         ...(canViewMaintenance(department) &&
           maintenanceHistory !== undefined && { maintenanceHistory }),
         ...(!hideFinancials && leaseHistory !== undefined && { leaseHistory }),
-        ...(canViewMaintenance(department) &&
+        ...(canViewInspections(department) &&
           inspectionHistory !== undefined && { inspectionHistory }),
       },
     };
@@ -2419,6 +2444,12 @@ export class PropertyService {
     this.emitterService.off(EventTypes.UNIT_BATCH_CREATED, this.onUnitBatchChanged);
     this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
     this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
+    this.emitterService.off(EventTypes.INSPECTION_SCHEDULED, this.onInspectionChanged);
+    this.emitterService.off(EventTypes.INSPECTION_SUBMITTED, this.onInspectionChanged);
+    this.emitterService.off(EventTypes.INSPECTION_APPROVED, this.onInspectionChanged);
+    this.emitterService.off(EventTypes.INSPECTION_REJECTED, this.onInspectionChanged);
+    this.emitterService.off(EventTypes.INSPECTION_DISPUTED, this.onInspectionChanged);
+    this.emitterService.off(EventTypes.INSPECTION_CANCELLED, this.onInspectionChanged);
 
     this.log.info(t('property.logging.eventListenersRemoved'));
   }

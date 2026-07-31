@@ -397,6 +397,28 @@ export class PropertyCache extends BaseCache {
   }
 
   /**
+   * Invalidate all cached property detail variants for an entire client.
+   * Used when an event (e.g. inspection state change) doesn't carry a specific pid.
+   */
+  async invalidateAllPropertyDetails(cuid: string): Promise<ISuccessReturnData> {
+    try {
+      if (!cuid) {
+        return { success: false, data: null, error: 'Client ID is required' };
+      }
+
+      const pattern = `${this.KEY_PREFIXES.PROPERTY_DETAIL}:${cuid}:*`;
+      const keys = await this.scanKeys(pattern);
+      if (keys.length > 0) {
+        await this.deleteItems(keys);
+      }
+      return { success: true, data: { deletedCount: keys.length } };
+    } catch (error) {
+      this.log.error('Failed to invalidate all property details:', error);
+      return { success: false, data: null, error: (error as Error).message };
+    }
+  }
+
+  /**
    * Non-blocking key scan using SCAN cursor iteration instead of KEYS.
    * KEYS is O(N) and blocks the Redis event loop; SCAN iterates in batches.
    */

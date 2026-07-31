@@ -658,7 +658,11 @@ export class InspectionService implements ICronProvider {
           'autoScheduleInspection.moveOut': true,
           deletedAt: null,
         } as any,
-        { limit: BATCH_SIZE, skip: (autoSchedulePage - 1) * BATCH_SIZE }
+        {
+          limit: BATCH_SIZE,
+          skip: (autoSchedulePage - 1) * BATCH_SIZE,
+          populate: { path: 'property.id', select: 'managedBy' },
+        }
       );
 
       for (const lease of autoScheduleLeases.items) {
@@ -671,7 +675,8 @@ export class InspectionService implements ICronProvider {
           });
           if (existing) continue;
 
-          const managerId = toId(lease.property?.managedBy) || toId(lease.createdBy);
+          const populatedProperty = lease.property?.id as any;
+          const managerId = toId(populatedProperty?.managedBy) || toId(lease.createdBy);
           const inspectionDate = dayjs(lease.duration.endDate).subtract(1, 'day').toDate();
           await this.scheduleInspection(lease.cuid, managerId, {
             type: InspectionType.MOVE_OUT,

@@ -407,6 +407,7 @@ export class ClientService {
           onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? true,
           maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? true,
           smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? false,
+          inspections: client.settings.tenantFeatures?.inspections ?? true,
           guestPass: client.settings.tenantFeatures?.guestPass ?? false,
         },
       },
@@ -426,21 +427,6 @@ export class ClientService {
         legalEntityName: client.companyProfile.legalEntityName,
         tradingName: client.companyProfile.tradingName,
         website: client.companyProfile.website,
-      };
-    }
-
-    // Return seat info for all authenticated users when subscription exists
-    if (subscription) {
-      const config = subscriptionPlanConfig.getConfig(subscription.planName);
-      responseData.currentSeats = subscription.currentSeats;
-      responseData.seatInfo = {
-        includedSeats: config.seatPricing.includedSeats,
-        additionalSeats: subscription.additionalSeatsCount,
-        totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
-        maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
-        availableForPurchase:
-          config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
-        additionalSeatCost: subscription.additionalSeatsCost,
       };
     }
 
@@ -1287,6 +1273,7 @@ export class ClientService {
       'maintenanceRequests',
       'onlinePayments',
       'smsNotifications',
+      'inspections',
       'guestPass',
     ];
 

@@ -204,6 +204,7 @@ const ClientSchema = new Schema<IClientDocument>(
         onlinePayments: { type: Boolean, default: true },
         maintenanceRequests: { type: Boolean, default: true },
         smsNotifications: { type: Boolean, default: true },
+        inspections: { type: Boolean, default: true },
         guestPass: { type: Boolean, default: false },
       },
       timeZone: {

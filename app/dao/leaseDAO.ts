@@ -1059,6 +1059,159 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     }
   }
 
+  async submitVacateRequest(
+    cuid: string,
+    leaseId: string,
+    data: {
+      requestedMoveOutDate: Date;
+      reason: string;
+    }
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(`Submitting vacate request for lease ${leaseId}`);
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+          $or: [
+            { 'vacateRequest.status': { $exists: false } },
+            { 'vacateRequest.status': null },
+            { 'vacateRequest.status': 'rejected' },
+          ],
+        },
+        {
+          $set: {
+            'vacateRequest.status': 'pending',
+            'vacateRequest.requestedMoveOutDate': data.requestedMoveOutDate,
+            'vacateRequest.reason': data.reason,
+            'vacateRequest.submittedAt': new Date(),
+            'vacateRequest.decision': undefined,
+          },
+        },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error submitting vacate request:', error);
+      throw error;
+    }
+  }
+
+  async decideVacateRequest(
+    cuid: string,
+    leaseId: string,
+    decision: {
+      approved: boolean;
+      decidedBy: string;
+      adjustedMoveOutDate?: Date;
+      rejectionReason?: string;
+    }
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(
+        `${decision.approved ? 'Approving' : 'Rejecting'} vacate request for lease ${leaseId}`
+      );
+
+      const updateData: Record<string, any> = {
+        'vacateRequest.status': decision.approved ? 'approved' : 'rejected',
+        'vacateRequest.decision.decidedBy': new Types.ObjectId(decision.decidedBy),
+        'vacateRequest.decision.decidedAt': new Date(),
+      };
+
+      if (decision.adjustedMoveOutDate) {
+        updateData['vacateRequest.decision.adjustedMoveOutDate'] = decision.adjustedMoveOutDate;
+      }
+
+      if (decision.rejectionReason) {
+        updateData['vacateRequest.decision.rejectionReason'] = decision.rejectionReason;
+      }
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          'vacateRequest.status': 'pending',
+          deletedAt: null,
+        },
+        { $set: updateData },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error deciding vacate request:', error);
+      throw error;
+    }
+  }
+
+  async getPendingVacateRequests(cuid: string): Promise<ILeaseDocument[]> {
+    try {
+      this.log.info(`Getting pending vacate requests for client ${cuid}`);
+
+      const result = await this.list(
+        {
+          cuid,
+          'vacateRequest.status': 'pending',
+          deletedAt: null,
+        },
+        {
+          sort: { 'vacateRequest.submittedAt': -1 },
+          populate: [
+            {
+              path: 'tenantId',
+              select: 'uid email',
+              populate: {
+                path: 'profile',
+                select: 'personalInfo.firstName personalInfo.lastName',
+              },
+            },
+            { path: 'property.id', select: 'pid name address.fullAddress' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
+          ],
+        }
+      );
+
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting pending vacate requests:', error);
+      throw error;
+    }
+  }
+
+  async getActiveOffboardings(cuid: string): Promise<ILeaseDocument[]> {
+    try {
+      this.log.info(`Getting active offboardings for client ${cuid}`);
+
+      const result = await this.list(
+        {
+          cuid,
+          status: LeaseStatus.TERMINATED,
+          deletedAt: null,
+        },
+        {
+          sort: { 'duration.terminationDate': -1 },
+          populate: [
+            {
+              path: 'tenantId',
+              select: 'uid email',
+              populate: {
+                path: 'profile',
+                select: 'personalInfo.firstName personalInfo.lastName',
+              },
+            },
+            { path: 'property.id', select: 'pid name address.fullAddress' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
+          ],
+        }
+      );
+
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting active offboardings:', error);
+      throw error;
+    }
+  }
+
   async hasNonDraftLeaseForUnit(unitObjectId: string, cuid: string): Promise<boolean> {
     try {
       const count = await this.countDocuments({

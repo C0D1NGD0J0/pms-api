@@ -190,7 +190,14 @@ export const SIGNATURE_INVALIDATING_LEASE_FIELDS = ['fees', 'duration', 'petPoli
 export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
   draft: ['*'], // All fields editable in draft
   pending_signature: ['internalNotes'],
-  active: ['internalNotes', 'renewalOptions'],
+  active: [
+    'internalNotes',
+    'renewalOptions',
+    'petPolicy',
+    'utilitiesIncluded',
+    'documents',
+    'additionalTerms',
+  ],
   expired: ['internalNotes'], // Admin/Manager only
   terminated: ['internalNotes'], // Admin/Manager only
   cancelled: ['internalNotes'], // Admin/Manager only

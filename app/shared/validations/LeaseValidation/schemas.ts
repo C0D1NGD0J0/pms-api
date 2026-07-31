@@ -280,6 +280,12 @@ const BaseLeaseSchemaObject = z.object({
   legalTerms: LegalTermsSchema.optional(),
   internalNotes: z.array(InternalNoteSchema).optional(),
   leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
+  autoScheduleInspection: z
+    .object({
+      moveIn: z.boolean(),
+      moveOut: z.boolean(),
+    })
+    .optional(),
 });
 
 export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
@@ -411,6 +417,7 @@ export const FilterLeasesSchema = z.object({
     .object({
       status: z.string().optional(),
       cuid: z.string().optional(),
+      propertyId: z.string().optional(),
       search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
       unitPuid: z.string().optional(),
     })

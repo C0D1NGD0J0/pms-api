@@ -1625,14 +1625,20 @@ export class NotificationService {
 
     this.emitterService.on(EventTypes.INSPECTION_REMINDER, async (payload) => {
       try {
+        const actionUrl = payload.iuid
+          ? `/inspections/${payload.cuid}/${payload.iuid}`
+          : payload.luid
+            ? `/leases/${payload.cuid}/${payload.luid}`
+            : `/inspections/${payload.cuid}`;
+
         await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Inspection Reminder',
-          message: `Reminder: your ${payload.type.replace('_', '-')} inspection is scheduled for ${new Date(payload.scheduledDate).toLocaleDateString()}`,
+          title: 'Move-Out Inspection Reminder',
+          message: `Reminder: a ${payload.type.replace('_', '-')} inspection should be scheduled before ${new Date(payload.scheduledDate).toLocaleDateString()}`,
           type: NotificationTypeEnum.INSPECTION,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           recipient: payload.tenantId,
           priority: NotificationPriorityEnum.MEDIUM,
-          actionUrl: `/inspections/${payload.iuid}`,
+          actionUrl,
           cuid: payload.cuid,
         });
       } catch (error) {

@@ -407,6 +407,7 @@ export class ClientService {
           onlinePayments: client.settings.tenantFeatures?.onlinePayments ?? true,
           maintenanceRequests: client.settings.tenantFeatures?.maintenanceRequests ?? true,
           smsNotifications: client.settings.tenantFeatures?.smsNotifications ?? false,
+          inspections: client.settings.tenantFeatures?.inspections ?? true,
           guestPass: client.settings.tenantFeatures?.guestPass ?? false,
         },
       },
@@ -429,21 +430,6 @@ export class ClientService {
       };
     }
 
-    // Return seat info for all authenticated users when subscription exists
-    if (subscription) {
-      const config = subscriptionPlanConfig.getConfig(subscription.planName);
-      responseData.currentSeats = subscription.currentSeats;
-      responseData.seatInfo = {
-        includedSeats: config.seatPricing.includedSeats,
-        additionalSeats: subscription.additionalSeatsCount,
-        totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
-        maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
-        availableForPurchase:
-          config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
-        additionalSeatCost: subscription.additionalSeatsCost,
-      };
-    }
-
     const isSuperAdmin = currentuser.client?.role === 'super-admin';
     if (isSuperAdmin && subscription) {
       const unitCount = await this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null });
@@ -457,7 +443,7 @@ export class ClientService {
         planName: subscription.planName,
         status: subscription.status,
         billingInterval: subscription.billingInterval,
-        amount: subscription.totalMonthlyPrice,
+        totalMonthlyPrice: subscription.totalMonthlyPrice,
         nextBillingDate: subscription.endDate,
         canceledAt: subscription.canceledAt || null,
         pendingDowngradeAt: subscription.pendingDowngradeAt || null,
@@ -1287,6 +1273,7 @@ export class ClientService {
       'maintenanceRequests',
       'onlinePayments',
       'smsNotifications',
+      'inspections',
       'guestPass',
     ];
 

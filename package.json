@@ -13,6 +13,7 @@
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "lint:fix": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}' --fix",
     "lint": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}'",
+    "fix": "npm run prettier:write && npm run lint:fix",
     "prepare": "husky",
     "dev": "npm run killdev && concurrently \"npm run dev:api\" \"npm run dev:worker\"",
     "killdev": "pkill -f 'nodemon.*pms-api' 2>/dev/null; pkill -f 'ts-node/register server\\.ts' 2>/dev/null; pkill -f 'ts-node/register worker_process\\.ts' 2>/dev/null; rm -f .pids/api.pid .pids/worker.pid; true",

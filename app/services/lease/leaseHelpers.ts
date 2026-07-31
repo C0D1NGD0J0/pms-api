@@ -438,6 +438,13 @@ export const handleActiveUpdate = async (
   profileDAO: ProfileDAO,
   leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {
+  // Enforce field-level restrictions for active leases.
+  // Approval roles (super-admin, admin) bypass the allowlist so they can
+  // make emergency corrections; all other roles are restricted.
+  if (!isApprovalRole) {
+    validateAllowedFields(updateData, LeaseStatus.ACTIVE);
+  }
+
   const hasHighImpact = hasHighImpactChanges(updateData);
   let updatedLease: ILeaseDocument;
   let requiresApproval = false;

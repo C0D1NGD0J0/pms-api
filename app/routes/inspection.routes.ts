@@ -10,6 +10,7 @@ import {
   subscriptionEntitlements,
   requireVerifiedClient,
   requireNotSuspended,
+  requireActiveTenant,
   requireFeatureFlag,
   requirePermission,
   roleBasedContext,
@@ -46,6 +47,7 @@ router
       PermissionAction.LIST,
       roleBasedContext
     ),
+    requireActiveTenant('inspections'),
     validateRequest({ params: UtilsValidations.cuid, query: InspectionValidations.listQuery }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<InspectionController>('inspectionController');
@@ -137,6 +139,7 @@ router
       PermissionAction.READ,
       roleBasedContext
     ),
+    requireActiveTenant('inspections'),
     validateRequest({ params: InspectionValidations.iuidParam }),
     asyncWrapper(async (req: AppRequest, res) => {
       const controller = req.container.resolve<InspectionController>('inspectionController');
@@ -245,7 +248,7 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
-
+  requireActiveTenant('inspections'),
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
@@ -265,7 +268,7 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
-
+  requireActiveTenant('inspections'),
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),

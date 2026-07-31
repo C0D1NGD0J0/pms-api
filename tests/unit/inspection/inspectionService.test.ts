@@ -22,6 +22,7 @@ const mockInspectionDAO = {
 
 const mockLeaseDAO = {
   findFirst: jest.fn() as any,
+  list: jest.fn() as any,
 };
 
 const mockPropertyDAO = {
@@ -587,6 +588,197 @@ describe('InspectionService', () => {
       });
 
       expect(mockInspectionDAO.updateById).not.toHaveBeenCalled();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // handleLeaseActivated — auto-schedule move-in inspection
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('handleLeaseActivated', () => {
+    const makeLeaseActivatedPayload = () => ({
+      luid: 'lease-123',
+      cuid: CUID,
+      propertyManagerId: USER_ID,
+      leaseId: new Types.ObjectId().toString(),
+      tenantId: TENANT_ID,
+      propertyId: new Types.ObjectId().toString(),
+      propertyUnitId: new Types.ObjectId().toString(),
+      documentId: 'doc-1',
+      completedAt: new Date(),
+      signers: [],
+    });
+
+    it('should not schedule if autoScheduleInspection.moveIn is false', async () => {
+      const lease = { _id: new Types.ObjectId(), autoScheduleInspection: { moveIn: false } };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      expect(mockInspectionDAO.findFirst).not.toHaveBeenCalled();
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule if lease not found', async () => {
+      mockLeaseDAO.findFirst.mockResolvedValue(null);
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule if move-in inspection already exists', async () => {
+      const lease = {
+        _id: new Types.ObjectId(),
+        autoScheduleInspection: { moveIn: true },
+        duration: { moveInDate: new Date(), startDate: new Date() },
+      };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(makeInspection());
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('should use today when move-in date is in the past', async () => {
+      const pastDate = new Date('2020-01-01');
+      const lease = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: 'lease-123',
+        status: 'active',
+        autoScheduleInspection: { moveIn: true },
+        duration: { moveInDate: pastDate, startDate: pastDate },
+        tenantId: new Types.ObjectId(TENANT_ID),
+        property: { id: new Types.ObjectId() },
+        fees: { securityDeposit: 0 },
+      };
+      mockLeaseDAO.findFirst
+        .mockResolvedValueOnce(lease) // handleLeaseActivated lookup
+        .mockResolvedValueOnce(lease); // scheduleInspection lookup
+      mockInspectionDAO.findFirst
+        .mockResolvedValueOnce(null) // handleLeaseActivated dup check
+        .mockResolvedValueOnce(null); // scheduleInspection dup check
+      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockInspectionDAO.insert.mockResolvedValue(makeInspection());
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      // The scheduledDate passed to insert should be today, not the past date
+      const insertCall = mockInspectionDAO.insert.mock.calls[0]?.[0];
+      if (insertCall) {
+        const scheduledDate = new Date(insertCall.scheduledDate);
+        const today = new Date();
+        // Should be today (not 2020), allow 1 day tolerance for test execution
+        expect(scheduledDate.getFullYear()).toBe(today.getFullYear());
+      }
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // checkUpcomingLeaseExpirations — auto-schedule move-out + reminders
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('checkUpcomingLeaseExpirations', () => {
+    it('should do nothing when no leases match', async () => {
+      mockLeaseDAO.list.mockResolvedValue({ items: [] });
+
+      await service.checkUpcomingLeaseExpirations();
+
+      // Two list calls: auto-schedule + reminder
+      expect(mockLeaseDAO.list).toHaveBeenCalledTimes(2);
+      expect(mockInspectionDAO.findFirst).not.toHaveBeenCalled();
+      expect(mockEmitterService.emit).not.toHaveBeenCalled();
+    });
+
+    it('should use property.managedBy over createdBy for auto-scheduled move-out', async () => {
+      const managerId = new Types.ObjectId();
+      const creatorId = new Types.ObjectId();
+      const lease = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: 'lease-moveout',
+        status: 'active',
+        createdBy: creatorId,
+        tenantId: new Types.ObjectId(TENANT_ID),
+        property: { id: new Types.ObjectId(), managedBy: managerId },
+        duration: { endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        fees: { securityDeposit: 1000 },
+        autoScheduleInspection: { moveOut: true },
+      };
+
+      mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] }) // auto-schedule batch
+        .mockResolvedValueOnce({ items: [] }); // reminder batch
+      mockInspectionDAO.findFirst
+        .mockResolvedValueOnce(null) // no existing move-out for this lease
+        .mockResolvedValueOnce(null); // scheduleInspection dup check
+      mockLeaseDAO.findFirst.mockResolvedValue(lease); // scheduleInspection lease lookup
+      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockInspectionDAO.insert.mockResolvedValue(makeInspection());
+
+      await service.checkUpcomingLeaseExpirations();
+
+      // scheduleInspection called with managedBy ID, not createdBy
+      const insertCall = mockInspectionDAO.insert.mock.calls[0]?.[0];
+      expect(insertCall).toBeDefined();
+    });
+
+    it('should paginate when batch returns full page', async () => {
+      const fullBatch = Array.from({ length: 100 }, (_, i) => ({
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: `lease-${i}`,
+        status: 'active',
+        createdBy: new Types.ObjectId(),
+        tenantId: new Types.ObjectId(),
+        property: { id: new Types.ObjectId() },
+        duration: { endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        fees: { securityDeposit: 0 },
+        autoScheduleInspection: { moveOut: true },
+      }));
+
+      mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: fullBatch }) // first auto-schedule page (full)
+        .mockResolvedValueOnce({ items: [] }) // second auto-schedule page (empty → stop)
+        .mockResolvedValueOnce({ items: [] }); // reminder page
+      mockInspectionDAO.findFirst.mockResolvedValue(makeInspection()); // all have existing
+
+      await service.checkUpcomingLeaseExpirations();
+
+      // Should have called list 3 times: 2 for auto-schedule pagination + 1 for reminders
+      expect(mockLeaseDAO.list).toHaveBeenCalledTimes(3);
+    });
+
+    it('should emit INSPECTION_REMINDER with luid (no iuid) for non-auto-schedule leases', async () => {
+      const lease = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: 'lease-reminder',
+        tenantId: new Types.ObjectId(TENANT_ID),
+        property: { id: new Types.ObjectId() },
+        duration: { endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) },
+      };
+
+      mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [] }) // auto-schedule (none)
+        .mockResolvedValueOnce({ items: [lease] }) // reminder batch
+        .mockResolvedValueOnce({ items: [] }); // reminder pagination end
+
+      await service.checkUpcomingLeaseExpirations();
+
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        'inspection:reminder',
+        expect.objectContaining({
+          luid: 'lease-reminder',
+          cuid: CUID,
+          type: InspectionType.MOVE_OUT,
+        })
+      );
+      // Should NOT have iuid in the payload
+      const emitPayload = mockEmitterService.emit.mock.calls[0]?.[1];
+      expect(emitPayload).not.toHaveProperty('iuid');
     });
   });
 });

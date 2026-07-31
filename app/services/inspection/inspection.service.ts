@@ -608,7 +608,17 @@ export class InspectionService implements ICronProvider {
   private async handleLeaseActivated(payload: LeaseESignatureCompletedPayload): Promise<void> {
     try {
       const lease = await this.leaseDAO.findFirst({ luid: payload.luid, cuid: payload.cuid });
-      if (!lease || !lease.autoScheduleInspection?.moveIn) return;
+      if (!lease) {
+        this.log.warn(
+          { luid: payload.luid, cuid: payload.cuid },
+          'Lease not found for auto-schedule move-in inspection'
+        );
+        return;
+      }
+      if (!lease.autoScheduleInspection?.moveIn) {
+        this.log.info({ luid: payload.luid }, 'Auto-schedule move-in disabled, skipping');
+        return;
+      }
 
       const existing = await this.inspectionDAO.findFirst({
         leaseId: lease._id,
@@ -616,7 +626,13 @@ export class InspectionService implements ICronProvider {
         cuid: payload.cuid,
         deletedAt: null,
       });
-      if (existing) return;
+      if (existing) {
+        this.log.info(
+          { luid: payload.luid },
+          'Move-in inspection already exists, skipping auto-schedule'
+        );
+        return;
+      }
 
       const moveInDate = lease.duration.moveInDate || lease.duration.startDate;
       const today = new Date();

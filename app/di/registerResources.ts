@@ -13,9 +13,11 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { GuestPassController } from '@controllers/GuestPassController';
+import { OffboardingController } from '@controllers/OffboardingController';
 import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
+import { OffboardingService } from '@services/offboarding/offboarding.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
@@ -201,6 +203,7 @@ const ControllerResources = {
   notificationController: asClass(NotificationController).scoped(),
   subscriptionController: asClass(SubscriptionController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
+  offboardingController: asClass(OffboardingController).scoped(),
 };
 
 const ModelResources = {
@@ -290,6 +293,7 @@ const ServiceResources = {
   maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),
   maintenanceInvoiceService: asClass(MaintenanceInvoiceService).singleton(),
   subscriptionWebhookService: asClass(SubscriptionWebhookService).singleton(),
+  offboardingService: asClass(OffboardingService).singleton(),
 };
 
 const DAOResources = {

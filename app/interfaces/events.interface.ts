@@ -42,6 +42,7 @@ export enum EventTypes {
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
+  VACATE_REQUEST_SUBMITTED = 'vacate:request:submitted',
   MAINTENANCE_CHARGE_PAID = 'maintenance:charge:paid',
   PAYMENT_REQUEST_CREATED = 'payment:request:created',
   PAYMENT_DISPUTE_CREATED = 'payment:dispute:created',
@@ -49,6 +50,8 @@ export enum EventTypes {
   LEASE_RENEWAL_REQUESTED = 'lease:renewal:requested',
   IDENTITY_REQUIRES_INPUT = 'identity:requires:input',
   MAINTENANCE_VENDOR_PAID = 'maintenance:vendor:paid',
+  VACATE_REQUEST_APPROVED = 'vacate:request:approved',
+  VACATE_REQUEST_REJECTED = 'vacate:request:rejected',
   GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
   PROPERTY_UPDATE_FAILED = 'update:property:failed',
   DELETE_ASSET_COMPLETED = 'delete:asset:completed',
@@ -120,6 +123,9 @@ export type EventPayloadMap = {
   [EventTypes.LEASE_ESIGNATURE_FAILED]: LeaseESignatureFailedPayload;
   [EventTypes.LEASE_ESIGNATURE_COMPLETED]: LeaseESignatureCompletedPayload;
   [EventTypes.LEASE_ESIGNATURE_DECLINED]: LeaseESignatureDeclinedPayload;
+  [EventTypes.VACATE_REQUEST_SUBMITTED]: VacateRequestEventPayload;
+  [EventTypes.VACATE_REQUEST_APPROVED]: VacateRequestDecisionPayload;
+  [EventTypes.VACATE_REQUEST_REJECTED]: VacateRequestDecisionPayload;
   [EventTypes.LEASE_TERMINATED]: LeaseTerminatedPayload;
   [EventTypes.LEASE_EXPIRED]: LeaseExpiredPayload;
   [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
@@ -399,6 +405,17 @@ export interface MaintenanceRequestCompletedPayload {
   cuid: string;
 }
 
+export interface VacateRequestDecisionPayload {
+  adjustedMoveOutDate?: Date;
+  rejectionReason?: string;
+  decidedBy: string;
+  approved: boolean;
+  tenantId: string;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
 export interface MaintenanceFeedbackSubmittedPayload {
   feedbackStatus: 'confirmed' | 'disputed';
   requestId: string;
@@ -536,7 +553,6 @@ export interface MaintenanceRequestCancelledPayload {
   mruid: string;
   cuid: string;
 }
-
 export interface InvoiceGeneratedPayload {
   generationTime?: number;
   jobId: string | number;
@@ -546,6 +562,7 @@ export interface InvoiceGeneratedPayload {
   s3Key: string;
   cuid: string;
 }
+
 export interface PaymentFailedPayload {
   hostedInvoiceUrl?: string;
   failureReason?: string;
@@ -690,6 +707,15 @@ export interface LeaseExpiredPayload {
   tenantId: string;
   leaseId: string;
   expiredAt: Date;
+  luid: string;
+  cuid: string;
+}
+
+export interface VacateRequestEventPayload {
+  requestedMoveOutDate: Date;
+  tenantId: string;
+  leaseId: string;
+  reason: string;
   luid: string;
   cuid: string;
 }
@@ -877,7 +903,6 @@ export interface UserDisconnectedPayload {
 export type GuestPassValidatedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
   validatedBy: string;
 };
-
 export interface EventMetadata {
   requestId?: string;
   timestamp: number;
@@ -890,6 +915,7 @@ export interface EventPayload<T = unknown> {
   eventType: EventTypes;
   payload: T;
 }
+
 export interface PdfGenerationFailedPayload {
   jobId: string | number;
   resourceId: string;

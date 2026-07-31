@@ -443,7 +443,7 @@ export class ClientService {
         planName: subscription.planName,
         status: subscription.status,
         billingInterval: subscription.billingInterval,
-        amount: subscription.totalMonthlyPrice,
+        totalMonthlyPrice: subscription.totalMonthlyPrice,
         nextBillingDate: subscription.endDate,
         canceledAt: subscription.canceledAt || null,
         pendingDowngradeAt: subscription.pendingDowngradeAt || null,

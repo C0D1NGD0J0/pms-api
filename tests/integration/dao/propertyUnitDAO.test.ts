@@ -4,9 +4,9 @@ import { clearTestDatabase } from '@tests/helpers';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import {
+  PropertyUnitInspectionStatusEnum,
   PropertyUnitStatusEnum,
   PropertyUnitTypeEnum,
-  PropertyUnitInspectionStatusEnum,
 } from '@interfaces/propertyUnit.interface';
 
 describe('PropertyUnitDAO Integration Tests', () => {

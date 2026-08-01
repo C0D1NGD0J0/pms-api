@@ -738,7 +738,10 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.findFirst({ email }, { populate: 'profile' });
+    const user = await this.userDAO.findFirst(
+      { email },
+      { populate: 'profile', select: '+activationToken' }
+    );
 
     if (!user) {
       throw new NotFoundError({ message: t('auth.success.activationLinkSent', { email }) });
@@ -769,7 +772,10 @@ export class AuthService {
     }
 
     await this.userDAO.createPasswordResetToken(email);
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, {
+      populate: 'profile',
+      select: '+passwordResetToken',
+    });
     if (!user) {
       throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
     }

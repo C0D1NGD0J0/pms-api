@@ -9,6 +9,7 @@ const UserSchema = new Schema<IUserDocument>(
       required: [true, 'Password is required.'],
       minlength: 6,
       trim: true,
+      select: false,
     },
     email: {
       type: String,
@@ -33,14 +34,14 @@ const UserSchema = new Schema<IUserDocument>(
         _id: false,
       },
     ],
-    activationToken: { type: String, default: '' },
+    activationToken: { type: String, default: '', select: false },
     isActive: { type: Boolean, default: false },
-    passwordResetToken: { type: String, default: '' },
+    passwordResetToken: { type: String, default: '', select: false },
     activecuid: { type: String, required: true, index: true },
     uid: { type: String, required: true, index: true },
     deletedAt: { type: Date, default: null, select: false },
-    activationTokenExpiresAt: { type: Date, default: null },
-    passwordResetTokenExpiresAt: { type: Number, default: null },
+    activationTokenExpiresAt: { type: Date, default: null, select: false },
+    passwordResetTokenExpiresAt: { type: Number, default: null, select: false },
     consent: {
       acceptedOn: { type: Date, default: null },
       acceptedBy: { type: String, default: '' },
@@ -49,7 +50,17 @@ const UserSchema = new Schema<IUserDocument>(
   },
   {
     timestamps: true,
-    toJSON: { virtuals: true },
+    toJSON: {
+      virtuals: true,
+      transform: (_doc: any, ret: any) => {
+        delete ret.password;
+        delete ret.activationToken;
+        delete ret.passwordResetToken;
+        delete ret.activationTokenExpiresAt;
+        delete ret.passwordResetTokenExpiresAt;
+        return ret;
+      },
+    },
     toObject: { virtuals: true },
   }
 );

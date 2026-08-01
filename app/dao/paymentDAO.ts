@@ -25,6 +25,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       tenantId?: string;
       leaseId?: string;
       dueDate?: any;
+      pendingReview?: boolean; // When true, return only staff-initiated entries awaiting PM confirmation
     },
     opts?: IFindOptions
   ): ListResultWithPagination<IPaymentDocument[]> {
@@ -47,6 +48,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       if (filters?.tenantId) query.tenant = filters.tenantId;
       if (filters?.leaseId) query.lease = filters.leaseId;
       if (filters?.dueDate) query.dueDate = filters.dueDate;
+      if (filters?.pendingReview === true) query.managerReviewRequired = true;
 
       const populateOpts = {
         ...opts,
@@ -140,6 +142,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
+  /** @internal Cross-tenant cron method — returns all overdue payments without cuid scope. NEVER surface in API response handlers. */
   async findOverduePayments(): ListResultWithPagination<IPaymentDocument[]> {
     try {
       return await this.list({

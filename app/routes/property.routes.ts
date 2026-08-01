@@ -278,7 +278,7 @@ router.delete(
   requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
   idempotency,
   validateRequest({
-    query: PropertyValidations.validatePropertyAndClientIds,
+    params: PropertyValidations.validatePropertyAndClientIds,
   }),
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');

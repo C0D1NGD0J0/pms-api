@@ -557,9 +557,12 @@ export class InvitationService {
     };
   }
 
-  async getInvitationByIuid(iuid: string): Promise<ISuccessReturnData<IInvitationDocument | null>> {
+  async getInvitationByIuid(
+    iuid: string,
+    clientId: string
+  ): Promise<ISuccessReturnData<IInvitationDocument | null>> {
     try {
-      const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
+      const invitation = await this.invitationDAO.findByIuid(iuid, clientId);
       return {
         success: true,
         data: invitation,
@@ -623,9 +626,10 @@ export class InvitationService {
   async revokeInvitation(
     iuid: string,
     revokerUserId: string,
+    clientId: string,
     reason?: string
   ): Promise<ISuccessReturnData<IInvitationDocument>> {
-    const invitation = await this.invitationDAO.findByIuidUnsecured(iuid);
+    const invitation = await this.invitationDAO.findByIuid(iuid, clientId);
     if (!invitation) {
       throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }
@@ -693,14 +697,15 @@ export class InvitationService {
 
   async resendInvitation(
     data: IResendInvitationData,
-    resenderUserId: string
+    resenderUserId: string,
+    clientId: string
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
       const validatedData = InvitationValidations.resendInvitation.parse(
         data
       ) as IResendInvitationData;
 
-      let invitation = await this.invitationDAO.findByIuidUnsecured(data.iuid);
+      let invitation = await this.invitationDAO.findByIuid(data.iuid, clientId);
       if (!invitation) {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
@@ -1189,7 +1194,8 @@ export class InvitationService {
             {
               iuid: invitation.iuid,
             },
-            processorUserId
+            processorUserId,
+            cuid
           );
           processed++;
         } catch (error: any) {

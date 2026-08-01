@@ -389,6 +389,7 @@ router.get(
   '/:cuid/dsar/:uid/export',
   basicLimiter(),
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.DELETE),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
   }),
@@ -402,6 +403,7 @@ router.delete(
   '/:cuid/dsar/:uid/anonymise',
   basicLimiter(),
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.DELETE),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
   }),

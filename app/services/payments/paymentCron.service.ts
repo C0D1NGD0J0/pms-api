@@ -615,7 +615,9 @@ export class PaymentCronService implements ICronProvider {
               'Your payment is overdue. Please make payment as soon as possible.',
               SMSMessageType.SYSTEM
             )
-            .catch(() => {});
+            .catch((err: any) => {
+              this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+            });
         }
       }
 

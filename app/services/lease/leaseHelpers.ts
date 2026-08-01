@@ -907,9 +907,10 @@ export const calculateFinancialSummary = (
     managementFee > 0 ? proRateAmount(managementFee, startDate).amount : 0;
 
   // First payment = pro-rated base rent + pro-rated management fee (if opted in)
-  //               + pet monthly fee (flat, first month) + pet deposit + security deposit
-  const firstPaymentCents =
-    proRated.amount + proRatedManagementFee + petMonthlyFee + petDeposit + securityDeposit;
+  //               + pet monthly fee (flat, first month)
+  // Deposits (security + pet) are invoiced separately for independent refund handling
+  const firstPaymentCents = proRated.amount + proRatedManagementFee + petMonthlyFee;
+  const depositTotal = securityDeposit + petDeposit;
 
   const endDate = new Date(lease.duration.endDate);
   const lastMonthProRated = proRateLastMonth(baseRent, endDate);
@@ -965,6 +966,9 @@ export const calculateFinancialSummary = (
     isFirstMonthFullMonth: proRated.isFullMonth,
     firstPaymentAmount: firstPaymentCents,
     firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentCents, currency),
+    depositAmount: depositTotal,
+    depositAmountFormatted:
+      depositTotal > 0 ? MoneyUtils.formatCurrency(depositTotal, currency) : undefined,
     firstPaymentDate: startDate,
     firstPaymentMonth: startMonth,
     // Last-month breakdown (pro-rated base rent based on lease end date)

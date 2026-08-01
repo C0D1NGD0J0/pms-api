@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
 
 import { AddressDetails } from './property.interface';
+import { IPaymentListItem } from './payments.interface';
 
 /**
  * ============================================================================
@@ -465,18 +466,6 @@ export interface ILeasePreviewResponse extends ILeasePreviewRequest {
   landlordName: string;
 }
 
-export interface ILeaseDetailResponse {
-  financialSummary: ILeaseFinancialSummary;
-  permissions: ILeaseUserPermissions;
-  documents?: ILeaseDocumentItem[];
-  activity?: ILeaseActivityEvent[];
-  property: ILeasePropertyInfo;
-  timeline?: ILeaseTimeline;
-  tenant: ILeaseTenantInfo;
-  lease: ILeaseDocument;
-  payments?: any[]; // TODO: Define payment interface when payments service is ready
-}
-
 /**
  * Rent Roll Item Interface
  * Individual entry in rent roll report
@@ -577,6 +566,18 @@ export interface LeaseESignatureCompletedPayload {
   leaseId: string;
   luid: string;
   cuid: string;
+}
+
+export interface ILeaseDetailResponse {
+  financialSummary: ILeaseFinancialSummary;
+  permissions: ILeaseUserPermissions;
+  documents?: ILeaseDocumentItem[];
+  activity?: ILeaseActivityEvent[];
+  payments?: IPaymentListItem[];
+  property: ILeasePropertyInfo;
+  timeline?: ILeaseTimeline;
+  tenant: ILeaseTenantInfo;
+  lease: ILeaseDocument;
 }
 
 /**

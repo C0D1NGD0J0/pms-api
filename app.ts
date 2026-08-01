@@ -143,7 +143,7 @@ export class App implements IAppSetup {
         };
         res.status(200).json(healthCheck);
       } catch (error) {
-        console.error('❌ Health check error:', error);
+        this.log.error({ error }, 'Health check error');
         res.status(500).json({
           uptime: process.uptime(),
           message: 'Health check failed',

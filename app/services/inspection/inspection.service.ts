@@ -363,6 +363,7 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
       iuid: inspection.iuid,
       cuid,
+      leaseId: toId(inspection.leaseId),
       tenantId: toId(inspection.tenantId),
       ...(inspection.refundInfo &&
         refundAmount !== undefined && {

@@ -685,6 +685,15 @@ export interface InspectionScheduledPayload {
   cuid: string;
 }
 
+export interface InspectionApprovedPayload {
+  depositAmount?: number;
+  refundAmount?: number;
+  tenantId: string;
+  leaseId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceVendorPaidPayload {
   amountInCents: number;
   transferId: string;
@@ -771,14 +780,6 @@ export interface MaintenanceRequestAcceptedPayload {
   tenantId?: string;
   vendorId: string;
   mruid: string;
-  cuid: string;
-}
-
-export interface InspectionApprovedPayload {
-  depositAmount?: number;
-  refundAmount?: number;
-  tenantId: string;
-  iuid: string;
   cuid: string;
 }
 

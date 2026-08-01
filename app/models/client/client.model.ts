@@ -241,6 +241,10 @@ const ClientSchema = new Schema<IClientDocument>(
         default: 'USD',
         enum: Object.values(CURRENCIES),
       },
+      requireDepositRefundApproval: {
+        type: Boolean,
+        default: false,
+      },
     },
     suspension: {
       isActive: { type: Boolean, default: false, index: true, select: false },

@@ -1088,7 +1088,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             'vacateRequest.requestedMoveOutDate': data.requestedMoveOutDate,
             'vacateRequest.reason': data.reason,
             'vacateRequest.submittedAt': new Date(),
-            'vacateRequest.decision': undefined,
+          },
+          $unset: {
+            'vacateRequest.decision': '',
           },
         },
         { returnDocument: 'after' as const }

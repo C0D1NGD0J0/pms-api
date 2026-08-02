@@ -159,14 +159,15 @@ export class OffboardingService {
     }
 
     const requestedDate = new Date(data.requestedMoveOutDate);
+    const noticeDays = lease.noticePeriodDays ?? 30;
     const minDate = new Date();
-    minDate.setDate(minDate.getDate() + 30);
+    minDate.setDate(minDate.getDate() + noticeDays);
 
     if (requestedDate < minDate) {
       throw new ValidationRequestError({
         message: t('common.errors.validationFailed'),
         errorInfo: {
-          requestedMoveOutDate: ['Move-out date must be at least 30 days from today'],
+          requestedMoveOutDate: [`Move-out date must be at least ${noticeDays} days from today`],
         },
       });
     }
@@ -246,26 +247,28 @@ export class OffboardingService {
         });
       }
 
-      if (decision.approved) {
-        // Trigger lease termination within the same transaction — starts the full offboarding chain
-        const moveOutDate = decision.adjustedMoveOutDate
-          ? new Date(decision.adjustedMoveOutDate)
-          : lease.vacateRequest!.requestedMoveOutDate;
-
-        await this.leaseService.terminateLease(
-          cuid,
-          luid,
-          {
-            terminationDate: new Date(),
-            terminationReason: `Tenant vacate request: ${lease.vacateRequest!.reason}`,
-            moveOutDate,
-          },
-          ctx
-        );
-      }
-
       return decidedLease;
     });
+
+    // Lease termination runs AFTER the transaction commits — terminateLease does its own
+    // DAO writes, payment cancellation, cache invalidation, and event emission which
+    // should not be rolled back if the vacate decision was already committed.
+    if (decision.approved) {
+      const moveOutDate = decision.adjustedMoveOutDate
+        ? new Date(decision.adjustedMoveOutDate)
+        : lease.vacateRequest!.requestedMoveOutDate;
+
+      await this.leaseService.terminateLease(
+        cuid,
+        luid,
+        {
+          terminationDate: new Date(),
+          terminationReason: `Tenant vacate request: ${lease.vacateRequest!.reason}`,
+          moveOutDate,
+        },
+        ctx
+      );
+    }
 
     // Emit events after transaction commits successfully
     if (decision.approved) {

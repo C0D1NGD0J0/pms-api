@@ -393,7 +393,9 @@ router
 // Vacate Request & Offboarding Routes
 // ============================================================================
 
-// Tenant submits a vacate request on their active lease
+// Tenant submits a vacate request on their active lease.
+// Uses READ permission because tenants don't have UPDATE on leases —
+// service-level ownership check (tenantRef === currentUser.sub) is the real guard.
 router.post(
   '/:cuid/:luid/vacate-request',
   basicLimiter(),

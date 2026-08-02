@@ -1090,6 +1090,9 @@ export class RentPaymentService {
     return lineItems;
   }
 
+  // TODO: Security and pet deposits are combined into a single SECURITY_DEPOSIT payment record.
+  // If partial refund is needed (e.g., non-refundable pet deposit), consider splitting into
+  // separate payment records per deposit type.
   private async createDepositInvoice(opts: {
     tenantCustomerId: string;
     connectedAccountId: string;

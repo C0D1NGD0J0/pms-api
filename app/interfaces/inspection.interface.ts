@@ -72,6 +72,19 @@ export interface IInspection {
   cuid: string;
 }
 
+export interface IInspectionStats {
+  byType: Record<string, number>;
+  avgCompletionDays: number;
+  inProgress: number;
+  scheduled: number;
+  submitted: number;
+  cancelled: number;
+  approved: number;
+  rejected: number;
+  disputed: number;
+  total: number;
+}
+
 export interface ICreateInspection {
   overallNotes?: { text: string; html?: string };
   rooms?: Partial<IInspectionRoom>[];
@@ -90,15 +103,6 @@ export interface IInspectionMedia {
   uploadedAt: Date;
   key?: string;
   url: string;
-}
-
-export interface ICreateInspection {
-  overallNotes?: { text: string; html?: string };
-  rooms?: Partial<IInspectionRoom>[];
-  scheduledDate: string | Date;
-  type: InspectionType;
-  inspectorId?: string;
-  leaseId: string;
 }
 
 export interface IInspectionReportDocument {

@@ -12,19 +12,7 @@ import {
   Types,
 } from 'mongoose';
 
-/**
- * The IBaseDAO interface defines common data access methods for interacting with a MongoDB collection.
- *
- * @param T - The type of the documents in the collection.
- */
 export interface IBaseDAO<T extends Document> {
-  /**
-   * List documents in the collection that match the filter.
-   *
-   * @param filter - Query used to filter the documents.
-   * @param opts - Optional settings for the query.
-   * @returns A promise that resolves to an array of found documents.
-   */
   list(
     filter: QueryFilter<T>,
     opts?: {
@@ -35,13 +23,6 @@ export interface IBaseDAO<T extends Document> {
     session?: ClientSession
   ): ListResultWithPagination<T[]>;
 
-  /**
-   * Find the first document that matches the filter.
-   *
-   * @param filter - Query used to find the document.
-   * @param opts - Optional settings for the query.
-   * @returns A promise that resolves to the found document or null if no document is found.
-   */
   findFirst(
     filter: QueryFilter<T>,
     opts?: IFindOptions,
@@ -55,106 +36,30 @@ export interface IBaseDAO<T extends Document> {
     session?: ClientSession
   ): Promise<UpdateWriteOpResult>;
 
-  /**
-   * Execute operations within a transaction using the provided session.
-   *
-   * @param session - The MongoDB session to use for the transaction.
-   * @param operations - Async function containing operations to execute in the transaction.
-   * @returns A promise that resolves to the result of the operations.
-   */
   withTransaction<T>(
     session: ClientSession,
     operations: (session?: ClientSession) => Promise<T>
   ): Promise<T>;
 
-  /**
-   * Upsert (update or insert) a document in the collection based on the provided filter.
-   *
-   * @param data - The data to update or insert.
-   * @param filter - Query used to find the document.
-   * @param opts - Optional settings for the upsert operation.
-   * @returns A promise that resolves to the updated or inserted document.
-   */
   upsert(data: UpdateQuery<T>, filter: QueryFilter<T>, opts?: any): Promise<ModifyResult<T> | null>;
 
-  /**
-   * Update a document in the collection based on its unique identifier.
-   *
-   * @param filter - Query used to find the document.
-   * @param data - The data to update in the document.
-   * @returns A promise that resolves to the updated document or null if no document is found.
-   */
   update(filter: QueryFilter<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
 
-  /**
-   * Find a document by its unique identifier.
-   *
-   * @param id - The unique identifier of the document.
-   * @returns A promise that resolves to the found document or null if no document is found.
-   */
   findById(id: string | Types.ObjectId, session?: ClientSession): Promise<T | null>;
 
-  /**
-   * Count the number of documents in the collection that match the filter.
-   *
-   * @param filter - Query used to filter the documents.
-   * @returns A promise that resolves to the count of documents that match the filter.
-   */
   countDocuments(filter: QueryFilter<T>, session?: ClientSession): Promise<number>;
 
-  /**
-   * Perform an aggregation operation on the collection.
-   *
-   * @param pipeline - An array of aggregation stages to be executed.
-   * @param opts - Optional settings for the aggregation operation.
-   * @returns A promise that resolves to an array of documents produced by the aggregation.
-   */
   aggregate(pipeline: PipelineStage[], opts?: AggregateOptions): Promise<T[]>;
 
-  /**
-   * Update a document in the collection based on its unique identifier.
-   *
-   * @param id - Query used to find the document.
-   * @param data - The data to update in the document.
-   * @returns A promise that resolves to the updated document or null if no document is found.
-   */
   updateById(id: string, data: UpdateQuery<T>): Promise<T | null>;
 
-  /**
-   * Delete a document from the collection by its unique identifier.
-   *
-   * @param id - The unique identifier of the document to delete.
-   * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
-   */
   deleteAll(ids: (string | Types.ObjectId)[]): Promise<boolean>;
 
-  /**
-   * Delete a document from the collection.
-   *
-   * @param query - Additional query criteria to match the document.
-   * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
-   */
   deleteItem(query: Record<string, string>): Promise<boolean>;
 
-  /**
-   * Start a new MongoDB session for transaction operations.
-   *
-   * @returns A promise that resolves to a new MongoDB session.
-   */
   startSession(): Promise<ClientSession>;
-  /**
-   * Insert a new document into the collection.
-   *
-   * @param data - The data for the new document.
-   * @returns A promise that resolves to the inserted document.
-   */
   insert(data: Partial<T>): Promise<T>;
 
-  /**
-   * Create a new instance of the document type with the provided data
-   * without saving to the database.
-   * @param data
-   */
   createInstance(data: Partial<T>): T;
 }
 

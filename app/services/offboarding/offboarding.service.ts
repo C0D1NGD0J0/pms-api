@@ -159,7 +159,7 @@ export class OffboardingService {
     }
 
     const requestedDate = new Date(data.requestedMoveOutDate);
-    const noticeDays = lease.noticePeriodDays ?? 30;
+    const noticeDays = lease.renewalOptions?.noticePeriodDays ?? 30;
     const minDate = new Date();
     minDate.setDate(minDate.getDate() + noticeDays);
 

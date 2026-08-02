@@ -442,11 +442,11 @@ export class VendorService {
               businessType: vendor.businessType || 'General Contractor',
               serviceType: vendor.businessType || 'General Contractor',
               contactPerson: vendor.contactPerson?.name || fullName || undefined,
-              rating: 0, // TODO: Calculate from reviews when available
-              reviewCount: 0, // TODO: Get from reviews when available
-              completedJobs: 0, // TODO: Get from completed work orders when available
-              averageResponseTime: '24h', // TODO: Calculate from historical data
-              averageServiceCost: 0, // TODO: Calculate from completed jobs
+              rating: 0, // Placeholder: no vendor review system yet
+              reviewCount: 0, // Placeholder: no vendor review system yet
+              completedJobs: 0, // Placeholder: requires work-order completion tracking
+              averageResponseTime: '24h', // Placeholder: requires historical data aggregation
+              averageServiceCost: 0, // Placeholder: requires completed job cost aggregation
               isLinkedAccount: !!userClientConnection?.linkedVendorUid,
               linkedVendorUid: userClientConnection?.linkedVendorUid || '',
               isPrimaryVendor: !userClientConnection?.linkedVendorUid,

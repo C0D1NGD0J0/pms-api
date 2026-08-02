@@ -476,6 +476,40 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         _id: false,
       },
     ],
+    vacateRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+      },
+      requestedMoveOutDate: {
+        type: Date,
+      },
+      reason: {
+        type: String,
+        trim: true,
+        maxlength: 1000,
+      },
+      submittedAt: {
+        type: Date,
+      },
+      decision: {
+        decidedBy: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+        },
+        decidedAt: {
+          type: Date,
+        },
+        adjustedMoveOutDate: {
+          type: Date,
+        },
+        rejectionReason: {
+          type: String,
+          trim: true,
+          maxlength: 1000,
+        },
+      },
+    },
     terminationReason: {
       type: String,
       trim: true,

@@ -1,6 +1,7 @@
 import { Document, Types } from 'mongoose';
 
 import { AddressDetails } from './property.interface';
+import { IPaymentListItem } from './payments.interface';
 
 /**
  * ============================================================================
@@ -81,6 +82,7 @@ export interface ILease {
   requiresNotarization?: boolean;
   signatures?: ILeaseSignature[];
   metadata?: Record<string, any>; // Store enriched data for lease generation
+  vacateRequest?: IVacateRequest;
   eSignature?: ILeaseESignature;
   includeParkingInfo?: boolean;
   terminationReason?: string;
@@ -464,18 +466,6 @@ export interface ILeasePreviewResponse extends ILeasePreviewRequest {
   landlordName: string;
 }
 
-export interface ILeaseDetailResponse {
-  financialSummary: ILeaseFinancialSummary;
-  permissions: ILeaseUserPermissions;
-  documents?: ILeaseDocumentItem[];
-  activity?: ILeaseActivityEvent[];
-  property: ILeasePropertyInfo;
-  timeline?: ILeaseTimeline;
-  tenant: ILeaseTenantInfo;
-  lease: ILeaseDocument;
-  payments?: any[]; // TODO: Define payment interface when payments service is ready
-}
-
 /**
  * Rent Roll Item Interface
  * Individual entry in rent roll report
@@ -578,6 +568,18 @@ export interface LeaseESignatureCompletedPayload {
   cuid: string;
 }
 
+export interface ILeaseDetailResponse {
+  financialSummary: ILeaseFinancialSummary;
+  permissions: ILeaseUserPermissions;
+  documents?: ILeaseDocumentItem[];
+  activity?: ILeaseActivityEvent[];
+  payments?: IPaymentListItem[];
+  property: ILeasePropertyInfo;
+  timeline?: ILeaseTimeline;
+  tenant: ILeaseTenantInfo;
+  lease: ILeaseDocument;
+}
+
 /**
  * Lease User Permissions Interface
  * User-specific permissions for lease operations
@@ -657,6 +659,19 @@ export interface ILeaseFees {
 }
 
 /**
+ * Offboarding Status (derived at query time — not persisted)
+ */
+export interface IOffboardingStatus {
+  depositRefundStatus: 'refunded' | 'pending' | 'not_applicable';
+  inspectionStatus: string | null;
+  inspectionScheduledDate?: Date;
+  paymentsCancelled: boolean;
+  leaseTerminated: boolean;
+  terminationDate?: Date;
+  depositAmount?: number;
+}
+
+/**
  * E-Signature Interface
  * Tracks electronic signature provider details
  */
@@ -672,6 +687,29 @@ export interface ILeaseESignature {
   sentAt?: Date;
 }
 
+/**
+ * Vacate Request Interface
+ * Embedded subdocument on the Lease model — tenant requests to vacate early
+ */
+export interface IVacateRequest {
+  decision?: {
+    decidedBy: Types.ObjectId;
+    decidedAt: Date;
+    adjustedMoveOutDate?: Date;
+    rejectionReason?: string;
+  };
+  status: VacateRequestStatus;
+  requestedMoveOutDate: Date;
+  submittedAt: Date;
+  reason: string;
+}
+
+/**
+ * ============================================================================
+ * RENEWAL METADATA INTERFACE
+ * ============================================================================
+ */
+
 export interface LeaseTerminatedPayload {
   terminationReason: string;
   propertyUnitId?: string;
@@ -684,6 +722,12 @@ export interface LeaseTerminatedPayload {
   luid: string;
   cuid: string;
 }
+
+/**
+ * ============================================================================
+ * DOCUMENT INTERFACES (Mongoose Extensions)
+ * ============================================================================
+ */
 
 /**
  * Lease Timeline Interface
@@ -704,7 +748,7 @@ export interface ILeaseTimeline {
 
 /**
  * ============================================================================
- * RENEWAL METADATA INTERFACE
+ * POPULATED/ENRICHED INTERFACES
  * ============================================================================
  */
 
@@ -722,12 +766,6 @@ export interface ILeaseApprovalEntry {
 }
 
 /**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
  * E-Signature Request Data Interface
  * Used when sending lease for signature
  */
@@ -742,12 +780,6 @@ export interface IESignatureRequestData {
   testMode?: boolean;
   message?: string;
 }
-
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
 
 export interface LeaseESignatureFailedPayload {
   jobId: string | number;
@@ -804,6 +836,12 @@ export interface ILeaseTenantInfo {
 }
 
 /**
+ * ============================================================================
+ * RESPONSE INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Pending Changes Preview Interface
  * Preview of pending changes awaiting approval
  */
@@ -828,7 +866,7 @@ export interface LeaseESignatureDeclinedPayload {
 
 /**
  * ============================================================================
- * RESPONSE INTERFACES
+ * ACTIVITY & EVENT INTERFACES
  * ============================================================================
  */
 
@@ -843,6 +881,12 @@ export interface ILastModifiedBy {
   date: Date;
 }
 
+/**
+ * ============================================================================
+ * E-SIGNATURE PAYLOAD INTERFACES
+ * ============================================================================
+ */
+
 export interface LeaseESignatureRequestedPayload {
   jobId: string | number;
   leaseId: string;
@@ -850,12 +894,6 @@ export interface LeaseESignatureRequestedPayload {
   luid: string;
   cuid: string;
 }
-
-/**
- * ============================================================================
- * ACTIVITY & EVENT INTERFACES
- * ============================================================================
- */
 
 /**
  * Lease Template Types
@@ -867,12 +905,6 @@ export type LeaseTemplateType =
   | 'commercial-office'
   | 'commercial-retail'
   | 'short-term-rental';
-
-/**
- * ============================================================================
- * E-SIGNATURE PAYLOAD INTERFACES
- * ============================================================================
- */
 
 /**
  * Lease Termination Data Interface
@@ -935,6 +967,12 @@ export interface IInternalNote {
 }
 
 /**
+ * ============================================================================
+ * ACTION DATA INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Duration Interface
  * All date-related information
  */
@@ -959,8 +997,17 @@ export interface IPetPolicy {
 }
 
 /**
+ * Vacate Request Decision (PM approves/rejects)
+ */
+export interface IVacateRequestDecision {
+  adjustedMoveOutDate?: Date | string;
+  rejectionReason?: string;
+  approved: boolean;
+}
+
+/**
  * ============================================================================
- * ACTION DATA INTERFACES
+ * QUERY & FILTER INTERFACES
  * ============================================================================
  */
 
@@ -986,6 +1033,12 @@ export interface ILeaseActivationData {
 }
 
 /**
+ * ============================================================================
+ * REPORTING INTERFACES
+ * ============================================================================
+ */
+
+/**
  * Co-Tenant Interface
  * Additional tenants on the lease
  */
@@ -995,12 +1048,6 @@ export interface ICoTenant {
   phone: string;
   name: string;
 }
-
-/**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
 
 /**
  * Legal Terms Interface
@@ -1019,7 +1066,7 @@ export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager
 
 /**
  * ============================================================================
- * REPORTING INTERFACES
+ * VACATE REQUEST & OFFBOARDING INTERFACES
  * ============================================================================
  */
 
@@ -1033,6 +1080,11 @@ export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
  * Payment Method Types
  */
 export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
+
+/**
+ * Vacate Request Status
+ */
+export type VacateRequestStatus = 'pending' | 'approved' | 'rejected';
 
 /**
  * Late Fee Types

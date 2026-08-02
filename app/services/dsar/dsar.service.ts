@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
+import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
@@ -30,6 +31,7 @@ export interface DSARExport {
 interface IConstructor {
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  clientDAO: ClientDAO;
   userCache: UserCache;
   authCache: AuthCache;
   s3Service: S3Service;
@@ -41,6 +43,7 @@ export class DSARService {
   private readonly log: Logger;
   private readonly propertyDAO: PropertyDAO;
   private readonly profileDAO: ProfileDAO;
+  private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly userCache: UserCache;
@@ -50,6 +53,7 @@ export class DSARService {
   constructor({
     propertyDAO,
     profileDAO,
+    clientDAO,
     userDAO,
     leaseDAO,
     userCache,
@@ -59,6 +63,7 @@ export class DSARService {
     this.log = createLogger('DSARService');
     this.propertyDAO = propertyDAO;
     this.profileDAO = profileDAO;
+    this.clientDAO = clientDAO;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.userCache = userCache;
@@ -125,6 +130,12 @@ export class DSARService {
     const connection = user.cuids?.find((c: any) => c.cuid === cuid);
     if (!connection) {
       throw new Error(`User ${uid} is not associated with client ${cuid}`);
+    }
+
+    // Guard: cannot anonymise the account owner — this would make the client unrecoverable
+    const client = await this.clientDAO.findFirst({ cuid });
+    if (client && client.accountAdmin?.toString() === user._id.toString()) {
+      throw new Error('Cannot anonymise the account owner. Transfer account ownership first.');
     }
 
     const userId = user._id.toString();

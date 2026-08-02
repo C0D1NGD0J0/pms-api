@@ -220,6 +220,7 @@ export class PaymentService implements ICronProvider {
       leaseId?: string;
       luid?: string;
       maintenanceRequestUid?: string;
+      pendingReview?: boolean;
       page?: number;
       limit?: number;
       sortDirection?: 'asc' | 'desc';
@@ -281,6 +282,10 @@ export class PaymentService implements ICronProvider {
 
       if (filters?.maintenanceRequestUid) {
         query.maintenanceRequestUid = filters.maintenanceRequestUid;
+      }
+
+      if (filters?.pendingReview === true) {
+        query.managerReviewRequired = true;
       }
 
       const role = context?.currentuser?.client?.role;
@@ -1017,6 +1022,8 @@ export class PaymentService implements ICronProvider {
         description: data.description,
         recordedBy: new Types.ObjectId(userId),
         isManualEntry: true,
+        // Staff-initiated entries require PM/admin confirmation before considered verified
+        managerReviewRequired: paymentSource === 'staff_initiated',
         ...(paymentSource ? { paymentSource } : {}),
         ...(data.receipt
           ? { receipt: { ...data.receipt, uploadedBy: new Types.ObjectId(userId) } }
@@ -1217,6 +1224,127 @@ export class PaymentService implements ICronProvider {
       return { success: true, data: updated as IPaymentDocument };
     } catch (error: any) {
       this.log.error({ error: error.message, cuid, pytuid }, 'Error refunding payment');
+      throw error;
+    }
+  }
+
+  /**
+   * Releases a security deposit that is staged as PENDING_REFUND (requires PM/admin action
+   * when requireDepositRefundApproval is enabled on the client).
+   * Executes the Stripe refund against the deposit's original charge.
+   */
+  async releaseDepositRefund(
+    cuid: string,
+    pytuid: string,
+    releasedBy: string,
+    data?: IRefundPaymentData
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (payment.paymentType !== PaymentRecordType.SECURITY_DEPOSIT) {
+        throw new BadRequestError({
+          message: 'Only security deposit payments can be released via this route',
+        });
+      }
+
+      if (payment.status !== PaymentRecordStatus.PENDING_REFUND) {
+        throw new BadRequestError({
+          message: `Cannot release deposit with status: ${payment.status}. Only PENDING_REFUND deposits can be released.`,
+        });
+      }
+
+      const refundAmount = payment.refund?.amount ?? payment.baseAmount;
+
+      if (data?.isManualRelease || !payment.gatewayChargeId) {
+        // PM recorded the refund as processed outside the app, or no Stripe charge exists — DB update only
+        const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.REFUNDED,
+            'refund.refundedAt': dayjs().toDate(),
+            'refund.reason': data?.reason || 'Security deposit refund released by PM (offline)',
+          },
+        });
+        this.log.info({ pytuid, cuid, releasedBy }, 'Offline deposit refund released');
+        return { success: true, data: updated as IPaymentDocument };
+      }
+
+      const refundResult = await this.paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          chargeId: payment.gatewayChargeId,
+          amountInCents: refundAmount,
+          reason: data?.reason || 'Security deposit refund released by PM',
+        }
+      );
+
+      if (!refundResult.success) {
+        throw new BadRequestError({
+          message: refundResult.message || 'Stripe deposit refund failed',
+        });
+      }
+
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+        $set: {
+          status: PaymentRecordStatus.REFUNDED,
+          'refund.refundedAt': dayjs().toDate(),
+          'refund.reason': data?.reason || 'Security deposit refund released by PM',
+          'refund.gatewayRefundId': refundResult.data?.refundId,
+        },
+      });
+
+      this.log.info(
+        { pytuid, cuid, releasedBy, refundAmount },
+        'Security deposit refund released via Stripe'
+      );
+
+      return { success: true, data: updated as IPaymentDocument };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error releasing deposit refund');
+      throw error;
+    }
+  }
+
+  /**
+   * PM/admin confirms a staff-initiated manual payment entry.
+   * Clears the managerReviewRequired flag and records who reviewed it.
+   */
+  async reviewManualPayment(
+    cuid: string,
+    pytuid: string,
+    reviewerId: string,
+    data?: { notes?: string }
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (!payment.managerReviewRequired) {
+        throw new BadRequestError({ message: 'This payment does not require manager review' });
+      }
+
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+        $set: {
+          managerReviewRequired: false,
+          'managerReview.reviewedBy': new Types.ObjectId(reviewerId),
+          'managerReview.reviewedAt': dayjs().toDate(),
+          ...(data?.notes ? { 'managerReview.notes': data.notes } : {}),
+        },
+      });
+
+      this.log.info({ pytuid, cuid, reviewerId }, 'Manual payment reviewed and confirmed');
+      return {
+        success: true,
+        data: updated as IPaymentDocument,
+        message: 'Payment review confirmed',
+      };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error reviewing manual payment');
       throw error;
     }
   }

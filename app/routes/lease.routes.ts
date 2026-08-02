@@ -4,6 +4,7 @@ import { asyncWrapper } from '@utils/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseController } from '@controllers/LeaseController';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { OffboardingController } from '@controllers/OffboardingController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
@@ -65,6 +66,34 @@ router.get(
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<LeaseController>('leaseController');
     return controller.getLeaseTemplates(req, res);
+  })
+);
+
+// PM lists all pending vacate requests for their client
+router.get(
+  '/:cuid/vacate-requests',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getPendingVacateRequests(req, res);
+  })
+);
+
+// PM lists terminated leases with incomplete offboarding
+router.get(
+  '/:cuid/active-offboardings',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getActiveOffboardings(req, res);
   })
 );
 
@@ -359,6 +388,55 @@ router
       return controller.renewLease(req, res);
     })
   );
+
+// ============================================================================
+// Vacate Request & Offboarding Routes
+// ============================================================================
+
+// Tenant submits a vacate request on their active lease
+router.post(
+  '/:cuid/:luid/vacate-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.vacateRequest,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.submitVacateRequest(req, res);
+  })
+);
+
+// PM approves or rejects a vacate request
+router.patch(
+  '/:cuid/:luid/vacate-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.vacateRequestDecision,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.decideVacateRequest(req, res);
+  })
+);
+
+// Get derived offboarding progress for a specific lease
+router.get(
+  '/:cuid/:luid/offboarding-status',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getOffboardingStatus(req, res);
+  })
+);
 
 // Lease Approval Routes
 router.post(

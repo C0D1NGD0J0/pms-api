@@ -319,7 +319,7 @@ export const LEASE_CONSTANTS = {
     { days: 14, name: '14_day_notice' },
     { days: 7, name: '7_day_notice' },
   ],
-  GRACE_PERIOD_DAYS: 7,
+  GRACE_PERIOD_DAYS: 3,
   DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY: 30,
   DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
   MINIMUM_ACTIVE_DURATION_DAYS: 30,

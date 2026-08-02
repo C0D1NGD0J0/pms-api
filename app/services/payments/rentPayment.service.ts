@@ -105,6 +105,100 @@ export class RentPaymentService {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
     );
+    this.emitterService.on(EventTypes.INSPECTION_APPROVED, this.handleDepositRefund.bind(this));
+  }
+
+  private async handleDepositRefund(payload: {
+    refundAmount?: number;
+    leaseId: string;
+    cuid: string;
+  }): Promise<void> {
+    if (!payload.refundAmount || payload.refundAmount <= 0) return;
+
+    try {
+      const depositPayment = await this.paymentDAO.findFirst({
+        lease: new Types.ObjectId(payload.leaseId),
+        cuid: payload.cuid,
+        paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+        status: PaymentRecordStatus.PAID,
+        deletedAt: null,
+      });
+
+      if (!depositPayment) {
+        this.log.info({ leaseId: payload.leaseId }, 'No paid deposit found — skipping refund');
+        return;
+      }
+
+      // Check client setting: if requireDepositRefundApproval is enabled, stage the
+      // refund as PENDING_REFUND instead of hitting Stripe immediately. A PM/admin
+      // must then call releaseDepositRefund to execute the actual Stripe refund.
+      const client = await this.clientDAO.findFirst({ cuid: payload.cuid, deletedAt: null });
+      if (client?.settings?.requireDepositRefundApproval) {
+        await this.paymentDAO.updateById(depositPayment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.PENDING_REFUND,
+            'refund.amount': payload.refundAmount,
+            'refund.reason': 'Move-out inspection deposit refund — awaiting PM approval',
+          },
+        });
+        this.log.info(
+          { leaseId: payload.leaseId, refundAmount: payload.refundAmount },
+          'Deposit refund staged as PENDING_REFUND — requireDepositRefundApproval is enabled'
+        );
+        return;
+      }
+
+      if (!depositPayment.gatewayChargeId) {
+        this.log.info(
+          { leaseId: payload.leaseId },
+          'No Stripe charge on deposit — marking as refunded (offline)'
+        );
+        await this.paymentDAO.updateById(depositPayment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.REFUNDED,
+            'refund.amount': payload.refundAmount,
+            'refund.refundedAt': new Date(),
+            'refund.reason': 'Move-out inspection deposit refund (offline)',
+          },
+        });
+        return;
+      }
+
+      const refundResult = await this.paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          chargeId: depositPayment.gatewayChargeId,
+          amountInCents: payload.refundAmount,
+          reason: 'Move-out inspection — security deposit refund',
+        }
+      );
+
+      if (refundResult.success) {
+        await this.paymentDAO.updateById(depositPayment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.REFUNDED,
+            'refund.amount': payload.refundAmount,
+            'refund.refundedAt': new Date(),
+            'refund.reason': 'Move-out inspection deposit refund',
+            'refund.gatewayRefundId': refundResult.data?.refundId,
+          },
+        });
+        this.log.info(
+          { leaseId: payload.leaseId, refundAmount: payload.refundAmount },
+          'Security deposit refund processed via Stripe'
+        );
+      } else {
+        this.log.error(
+          { leaseId: payload.leaseId, error: refundResult.message },
+          'Stripe deposit refund failed'
+        );
+      }
+    } catch (error) {
+      this.log.error(
+        { error, leaseId: payload.leaseId },
+        'Failed to process deposit refund — non-blocking'
+      );
+    }
   }
 
   private async getProfileOrThrow(userId: string | Types.ObjectId, msg?: string): Promise<any> {
@@ -539,6 +633,23 @@ export class RentPaymentService {
         cuid,
       });
 
+      // Create a separate deposit invoice (own chargeId for independent refund)
+      if (isFirstPayment && (leaseFees.deposits.security > 0 || leaseFees.deposits.pet > 0)) {
+        try {
+          await this.createDepositInvoice({
+            ...invoiceOpts,
+            leaseId: lease._id.toString(),
+            tenantId: data.tenantId,
+            deposits: leaseFees.deposits,
+          });
+        } catch (depositError) {
+          this.log.error(
+            { error: depositError, cuid, leaseId: lease._id },
+            'Failed to create deposit invoice — rent payment succeeded'
+          );
+        }
+      }
+
       if (data.notifyByEmail) {
         await this.queuePaymentRequestEmail({
           cuid,
@@ -968,21 +1079,8 @@ export class RentPaymentService {
       });
     }
 
-    // Security deposit — collected once with the first payment
-    if (options?.isFirstPayment && fees.deposits.security > 0) {
-      lineItems.push({
-        description: 'Security Deposit',
-        amountInCents: fees.deposits.security,
-      });
-    }
-
-    // Pet deposit — collected once with the first payment
-    if (options?.isFirstPayment && fees.deposits.pet > 0) {
-      lineItems.push({
-        description: 'Pet Deposit',
-        amountInCents: fees.deposits.pet,
-      });
-    }
+    // Security deposit and pet deposit are handled as a separate invoice
+    // (see createDepositInvoice) to enable independent refund via Stripe.
 
     // Validate we have at least one line item
     if (lineItems.length === 0) {
@@ -990,6 +1088,75 @@ export class RentPaymentService {
     }
 
     return lineItems;
+  }
+
+  private async createDepositInvoice(opts: {
+    tenantCustomerId: string;
+    connectedAccountId: string;
+    currency: string;
+    dueDate: string | Date;
+    cuid: string;
+    leaseId: string;
+    tenantId: string;
+    paymentMethodId?: string;
+    leaseUid?: string;
+    deposits: { security: number; pet: number; total: number };
+  }): Promise<void> {
+    const depositLineItems: { description: string; amountInCents: number }[] = [];
+
+    if (opts.deposits.security > 0) {
+      depositLineItems.push({
+        description: 'Security Deposit',
+        amountInCents: opts.deposits.security,
+      });
+    }
+
+    if (opts.deposits.pet > 0) {
+      depositLineItems.push({
+        description: 'Pet Deposit',
+        amountInCents: opts.deposits.pet,
+      });
+    }
+
+    if (depositLineItems.length === 0) return;
+
+    const { invoiceId, hostedInvoiceUrl } = await this.createAndFinalizeInvoice({
+      tenantCustomerId: opts.tenantCustomerId,
+      connectedAccountId: opts.connectedAccountId,
+      applicationFee: 0,
+      currency: opts.currency,
+      description: 'Security & Pet Deposit',
+      dueDate: dayjs(opts.dueDate).toDate(),
+      lineItems: depositLineItems,
+      cuid: opts.cuid,
+      paymentMethodId: opts.paymentMethodId,
+      leaseUid: opts.leaseUid,
+    });
+
+    await this.paymentDAO.insert({
+      cuid: opts.cuid,
+      paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+      paymentMethod: PaymentMethod.ONLINE,
+      lease: new Types.ObjectId(opts.leaseId),
+      tenant: new Types.ObjectId(opts.tenantId),
+      baseAmount: opts.deposits.total,
+      processingFee: 0,
+      applicationFee: 0,
+      platformRevenue: 0,
+      gatewayPaymentId: invoiceId,
+      currency: opts.currency,
+      status: PaymentRecordStatus.PENDING,
+      dueDate: dayjs(opts.dueDate).toDate(),
+      description: 'Security & Pet Deposit',
+      isManualEntry: false,
+      lineItems: depositLineItems,
+      ...(hostedInvoiceUrl && { receipt: { url: hostedInvoiceUrl } }),
+    });
+
+    this.log.info(
+      { cuid: opts.cuid, leaseId: opts.leaseId, amount: opts.deposits.total },
+      'Security deposit invoice created'
+    );
   }
 
   async createAndFinalizeInvoice(opts: {

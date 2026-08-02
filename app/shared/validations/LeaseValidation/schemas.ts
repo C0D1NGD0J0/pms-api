@@ -573,6 +573,41 @@ export const LeasePreviewSchema = z.object({
   requiresNotarization: z.boolean().optional(),
 });
 
+// Vacate Request Schema (tenant submits)
+export const VacateRequestSchema = z.object({
+  requestedMoveOutDate: calendarDate('Requested move-out date must be a valid date'),
+  reason: z
+    .string()
+    .trim()
+    .min(10, 'Reason must be at least 10 characters')
+    .max(1000, 'Reason must be at most 1000 characters'),
+});
+
+// Vacate Request Decision Schema (PM approves/rejects)
+export const VacateRequestDecisionSchema = z
+  .object({
+    approved: z.boolean(),
+    adjustedMoveOutDate: calendarDate('Adjusted move-out date must be a valid date').optional(),
+    rejectionReason: z
+      .string()
+      .trim()
+      .min(10, 'Rejection reason must be at least 10 characters')
+      .max(1000, 'Rejection reason must be at most 1000 characters')
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.approved && !data.rejectionReason) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Rejection reason is required when rejecting a vacate request',
+      path: ['rejectionReason'],
+    }
+  );
+
 export const GetLeaseByIdQuerySchema = z.object({
   include: z
     .union([

@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
+import { ForbiddenError } from '@shared/customErrors';
 import ROLES from '@shared/constants/roles.constants';
 import { CronService } from '@services/cron/cron.service';
 import { MediaUploadService } from '@services/mediaUpload';
@@ -37,6 +38,7 @@ export class PaymentController {
       leaseId: req.query.leaseId as string,
       luid: req.query.luid as string,
       maintenanceRequestUid: req.query.maintenanceRequestUid as string,
+      pendingReview: req.query.pendingReview === 'true',
       page: req.query.page ? Number(req.query.page) : 1,
       limit: req.query.limit ? Number(req.query.limit) : 10,
       sortDirection: req.query.sortDirection as 'asc' | 'desc' | undefined,
@@ -379,6 +381,43 @@ export class PaymentController {
     const result = await this.paymentService.getVendorEarnings(cuid, vendorUid, {
       page: req.query.page ? Number(req.query.page) : 1,
       limit: req.query.limit ? Number(req.query.limit) : 50,
+    });
+    return res.status(200).json(result);
+  }
+
+  /**
+   * PM/admin releases a staged deposit refund (PENDING_REFUND → REFUNDED via Stripe).
+   * Only applicable when requireDepositRefundApproval is enabled on the client.
+   */
+  async releaseDepositRefund(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const releasedBy = req.context?.currentuser?.sub;
+    if (!releasedBy) {
+      throw new ForbiddenError({ message: 'Authenticated user identity is required' });
+    }
+    const { reason, isManualRelease } = req.body as { reason?: string; isManualRelease?: boolean };
+
+    const result = await this.paymentService.releaseDepositRefund(cuid, pytuid, releasedBy, {
+      reason,
+      isManualRelease,
+    });
+    return res.status(200).json(result);
+  }
+
+  /**
+   * PM/admin confirms a staff-initiated manual payment entry, clearing the
+   * managerReviewRequired flag and recording the reviewer identity.
+   */
+  async reviewPayment(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const reviewerId = req.context?.currentuser?.sub;
+    if (!reviewerId) {
+      throw new ForbiddenError({ message: 'Authenticated user identity is required' });
+    }
+    const { notes } = req.body as { notes?: string };
+
+    const result = await this.paymentService.reviewManualPayment(cuid, pytuid, reviewerId, {
+      notes,
     });
     return res.status(200).json(result);
   }

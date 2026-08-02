@@ -2020,10 +2020,8 @@ export class UserService {
    * - User disconnection from client
    * - Cache invalidation
    *
-   * TODO: When lease/task/maintenance features are added:
-   * - Reassign active leases
-   * - Reassign or complete active tasks
-   * - Reassign active maintenance requests
+   * Note: Does not currently reassign active leases or maintenance requests.
+   * The offboarding flow handles lease termination separately.
    *
    * @param cuid - Client unique identifier
    * @param uid - User unique identifier
@@ -2417,10 +2415,8 @@ export class UserService {
    * - Disconnect tenant from client
    * - Cache invalidation
    *
-   * TODO: When lease/maintenance features are added:
-   * - Check for active leases (prevent deactivation if active)
-   * - Check for pending maintenance requests
-   * - Check for pending service requests
+   * Note: Already checks for active leases and prevents deactivation if found.
+   * Does not currently check for pending maintenance/service requests.
    *
    * @param cuid - Client unique identifier
    * @param uid - User unique identifier (tenant)
@@ -2488,7 +2484,6 @@ export class UserService {
         actions: [],
       };
 
-      // TODO: Check for active leases when lease feature is implemented
       const activeLeases = await this.leaseDAO.getActiveLeaseByTenant(cuid, uid);
       if (activeLeases?.status === 'active') {
         throw new BadRequestError({

@@ -40,6 +40,7 @@ export {
 } from './subscription';
 export { InspectionReportService } from './inspection/inspectionReport.service';
 export { InspectionAIService } from './inspection/inspectionAI.service';
+export { OffboardingService } from './offboarding/offboarding.service';
 export { InvitationCsvProcessor, PropertyCsvProcessor } from './csv';
 export { InvoiceTemplateRenderer, InvoiceService } from './invoice';
 export { InspectionService } from './inspection/inspection.service';

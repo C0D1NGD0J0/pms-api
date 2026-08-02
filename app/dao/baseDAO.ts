@@ -178,7 +178,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   }
 
   /**
-   * Delete multiple documents from the collection by their unique identifiers.
+   * @internal Hard-deletes multiple documents. Only for cron/system cleanup (e.g., aged-out notifications).
+   * NEVER call from API response handlers — use soft-delete (deletedAt) instead.
    *
    * @param ids - An array of unique identifiers (strings or ObjectId instances) of the documents to delete.
    * @returns A promise that resolves to true if all documents were successfully deleted, or false if not.
@@ -255,7 +256,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   }
 
   /**
-   * Delete a document from the collection.
+   * @internal Hard-deletes a single document. Only for internal system cleanup.
+   * NEVER call from API response handlers — use soft-delete (deletedAt) instead.
    * @param query - An object containing key-value pairs to filter the document to delete.
    * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
    */

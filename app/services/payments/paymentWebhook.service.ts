@@ -292,7 +292,9 @@ export class PaymentWebhookService {
             `Payment of $${(payment.baseAmount / 100).toFixed(2)} received successfully.`,
             SMSMessageType.SYSTEM
           )
-          .catch(() => {});
+          .catch((err: any) => {
+            this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+          });
       }
 
       await this.markMaintenanceChargePaid(
@@ -470,7 +472,9 @@ export class PaymentWebhookService {
             'Your payment could not be processed. Please check your payment method.',
             SMSMessageType.SYSTEM
           )
-          .catch(() => {});
+          .catch((err: any) => {
+            this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+          });
       }
 
       return { success: true, data: undefined, message: 'Payment marked as failed' };

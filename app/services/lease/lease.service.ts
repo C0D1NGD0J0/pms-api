@@ -97,6 +97,7 @@ import {
 interface IConstructor {
   leaseSignatureService: LeaseSignatureService;
   leaseDocumentService: LeaseDocumentService;
+  leaseTemplateService: LeaseTemplateService;
   leaseRenewalService: LeaseRenewalService;
   notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
@@ -159,6 +160,7 @@ export class LeaseService {
     leasePdfService,
     leaseRenewalService,
     leaseSignatureService,
+    leaseTemplateService,
     mailerService,
     mediaUploadService,
     notificationService,
@@ -189,7 +191,7 @@ export class LeaseService {
     this.invitationService = invitationService;
     this.mediaUploadService = mediaUploadService;
     this.notificationService = notificationService;
-    this.leaseTemplateService = new LeaseTemplateService();
+    this.leaseTemplateService = leaseTemplateService;
     this.leaseDocumentService = leaseDocumentService;
     this.leasePdfService = leasePdfService;
     this.leaseRenewalService = leaseRenewalService;
@@ -846,7 +848,9 @@ export class LeaseService {
                 `Your lease ${lease.leaseNumber} has been updated by your property manager.`,
                 SMSMessageType.LEASE_REMINDER
               )
-              .catch(() => {});
+              .catch((err: any) => {
+                this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+              });
           }
           break;
         case LeaseStatus.DRAFT:
@@ -1241,7 +1245,9 @@ export class LeaseService {
         `Your lease ${activatedLease.leaseNumber || activatedLease.luid} is now active.`,
         SMSMessageType.LEASE_REMINDER
       )
-      .catch(() => {});
+      .catch((err: any) => {
+        this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+      });
 
     return {
       success: true,
@@ -2336,10 +2342,136 @@ export class LeaseService {
         }
       }
 
+      // Grace period notifications: notify leases that are past end date but within grace window
+      await this.processGracePeriodNotifications();
+
       this.log.info('Completed processExpiringLeases cron job');
     } catch (error) {
       this.log.error('Error in processExpiringLeases cron job:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Send one-time notification to tenant and PM when a lease enters the grace period
+   * (active lease past its end date, within GRACE_PERIOD_DAYS window)
+   */
+  private async processGracePeriodNotifications(): Promise<void> {
+    const gracePeriodThreshold = 'grace_period_notice';
+
+    try {
+      const today = dayjs().startOf('day').toDate();
+      const gracePeriodStart = dayjs()
+        .subtract(LEASE_CONSTANTS.GRACE_PERIOD_DAYS, 'days')
+        .startOf('day')
+        .toDate();
+
+      // Find ACTIVE leases where endDate is between (today - GRACE_PERIOD_DAYS) and today
+      const leases = await this.leaseDAO.list(
+        {
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': {
+            $gte: gracePeriodStart,
+            $lt: today,
+          },
+          deletedAt: null,
+        },
+        {
+          populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'],
+        }
+      );
+
+      this.log.info(`Found ${leases.items.length} leases in grace period`);
+
+      for (const lease of leases.items) {
+        try {
+          const alreadySent = await this.notificationService.hasLeaseExpiryNoticeBeenSent(
+            lease._id,
+            gracePeriodThreshold,
+            NotificationTypeEnum.LEASE
+          );
+
+          if (alreadySent) {
+            this.log.info(`Skipping lease ${lease.luid} - grace period notice already sent`);
+            continue;
+          }
+
+          const endDate = dayjs(lease.duration.endDate);
+          const daysPastEnd = dayjs().diff(endDate, 'day');
+          const daysRemaining = Math.max(0, LEASE_CONSTANTS.GRACE_PERIOD_DAYS - daysPastEnd);
+
+          // Notify tenant
+          await this.notificationService.createNotification(
+            lease.cuid,
+            NotificationTypeEnum.LEASE,
+            {
+              type: NotificationTypeEnum.LEASE,
+              recipientType: RecipientTypeEnum.INDIVIDUAL,
+              recipient: lease.tenantId.toString(),
+              priority: NotificationPriorityEnum.HIGH,
+              title: 'Lease Ended — Grace Period Active',
+              message: `Your lease at ${lease.property.address} ended on ${endDate.format('MMM DD, YYYY')}. You have ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining in your grace period before the lease is officially closed.`,
+              metadata: {
+                leaseId: lease._id,
+                leaseExpiryThreshold: gracePeriodThreshold,
+                gracePeriodDaysRemaining: daysRemaining,
+                endDate: lease.duration.endDate,
+              },
+              actionUrl: `${envVariables.FRONTEND.URL}/leases/${lease.cuid}/${lease.luid}`,
+              cuid: lease.cuid,
+            }
+          );
+
+          // Notify property manager
+          const propertyInfo = (lease as any).propertyInfo;
+          const propertyUnitInfo = (lease as any).propertyUnitInfo;
+          let managedById = propertyUnitInfo?.managedBy || propertyInfo?.managedBy;
+
+          if (!managedById) {
+            const client = await this.clientDAO.findFirst(
+              { cuid: lease.cuid },
+              { populate: ['accountAdmin'] }
+            );
+            managedById = client?.accountAdmin;
+          }
+
+          if (managedById) {
+            const propertyManagerId =
+              typeof managedById === 'object'
+                ? managedById._id?.toString() || managedById.toString()
+                : managedById.toString();
+
+            await this.notificationService.createNotification(
+              lease.cuid,
+              NotificationTypeEnum.LEASE,
+              {
+                type: NotificationTypeEnum.LEASE,
+                recipientType: RecipientTypeEnum.INDIVIDUAL,
+                recipient: propertyManagerId,
+                priority: NotificationPriorityEnum.MEDIUM,
+                title: 'Lease in Grace Period',
+                message: `Tenant ${lease.tenantInfo?.fullname} lease (${lease.leaseNumber}) ended on ${endDate.format('MMM DD, YYYY')} and has ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining in the grace period.`,
+                metadata: {
+                  leaseId: lease._id,
+                  leaseExpiryThreshold: gracePeriodThreshold,
+                  gracePeriodDaysRemaining: daysRemaining,
+                  tenantName: lease.tenantInfo?.fullname,
+                },
+                actionUrl: `${envVariables.FRONTEND.URL}/leases/${lease.cuid}/${lease.luid}/`,
+                cuid: lease.cuid,
+              }
+            );
+          }
+
+          this.log.info(
+            `Sent grace period notice for lease ${lease.luid} (${daysRemaining} days remaining)`
+          );
+        } catch (error) {
+          this.log.error(`Failed to send grace period notice for lease ${lease.luid}:`, error);
+        }
+      }
+    } catch (error) {
+      this.log.error('Error processing grace period notifications:', error);
     }
   }
 

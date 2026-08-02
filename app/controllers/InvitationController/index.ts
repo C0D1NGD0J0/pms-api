@@ -138,7 +138,12 @@ export class InvitationController {
       });
     }
 
-    const result = await this.invitationService.revokeInvitation(iuid, currentuser.sub, reason);
+    const result = await this.invitationService.revokeInvitation(
+      iuid,
+      currentuser.sub,
+      currentuser.client.cuid,
+      reason
+    );
 
     res.status(httpStatusCodes.OK).json({
       success: result.success,
@@ -166,7 +171,8 @@ export class InvitationController {
 
     const result = await this.invitationService.resendInvitation(
       { iuid, customMessage },
-      currentuser.sub
+      currentuser.sub,
+      currentuser.client.cuid
     );
 
     res.status(httpStatusCodes.OK).json({
@@ -244,8 +250,11 @@ export class InvitationController {
       });
     }
 
-    // Get the invitation by iuid
-    const invitation = await this.invitationService.getInvitationByIuid(iuid);
+    // Get the invitation by iuid, scoped to the current client
+    const invitation = await this.invitationService.getInvitationByIuid(
+      iuid,
+      currentuser.client.cuid
+    );
     if (!invitation) {
       return res.status(httpStatusCodes.NOT_FOUND).json({
         success: false,

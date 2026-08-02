@@ -3308,21 +3308,17 @@ describe('PaymentService - buildLineItemsFromFees', () => {
     expect(items[1].description).toContain('5%');
   });
 
-  it('should include security and pet deposits on first payment', () => {
+  it('should NOT include deposits in line items (deposits invoiced separately)', () => {
     const fees = {
       ...baseFees,
       deposits: { security: 150000, pet: 25000, total: 175000 },
     };
     const items = callBuild(fees, { isFirstPayment: true });
-    expect(items).toHaveLength(3);
-    expect(items.find((i: any) => i.description === 'Security Deposit')).toEqual({
-      description: 'Security Deposit',
-      amountInCents: 150000,
-    });
-    expect(items.find((i: any) => i.description === 'Pet Deposit')).toEqual({
-      description: 'Pet Deposit',
-      amountInCents: 25000,
-    });
+    // Deposits are now invoiced as a separate payment record, not included in rent line items
+    expect(items).toHaveLength(1);
+    expect(items[0].description).toBe('Monthly Rent');
+    expect(items.find((i: any) => i.description === 'Security Deposit')).toBeUndefined();
+    expect(items.find((i: any) => i.description === 'Pet Deposit')).toBeUndefined();
   });
 
   it('should NOT include deposits when isFirstPayment is false', () => {

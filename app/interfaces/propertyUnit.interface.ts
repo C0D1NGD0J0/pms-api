@@ -2,15 +2,6 @@ import { Document, Types } from 'mongoose';
 
 import { CURRENCIES } from './utils.interface';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Property Unit Status Enum
- */
 export enum PropertyUnitStatusEnum {
   MAINTENANCE = 'maintenance',
   AVAILABLE = 'available',
@@ -26,9 +17,6 @@ export enum PropertyUnitInspectionStatusEnum {
   PASSED = 'passed',
 }
 
-/**
- * Property Unit Type Enum
- */
 export enum PropertyUnitTypeEnum {
   RESIDENTIAL = 'residential',
   COMMERCIAL = 'commercial',
@@ -36,26 +24,17 @@ export enum PropertyUnitTypeEnum {
   OTHER = 'other',
 }
 
-/**
- * Document Type Enum
- */
 export enum DocumentTypeEnum {
   INSPECTION = 'inspection',
   LEASE = 'lease',
   OTHER = 'other',
 }
 
-/**
- * Document Status Enum
- */
 export enum DocumentStatusEnum {
   INACTIVE = 'inactive',
   ACTIVE = 'active',
 }
 
-/**
- * Property Unit Document Interface (extends Mongoose Document)
- */
 export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   // Instance methods
   calculateRentAdjustment: (percentage: number) => {
@@ -87,9 +66,6 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
   id: string;
 }
 
-/**
- * Core Property Unit Interface
- */
 export interface IPropertyUnit {
   approvalDetails?: IPropertyUnitApprovalDetail[];
   pendingChanges?: IPropertyUnitPendingChanges;
@@ -119,9 +95,6 @@ export interface IPropertyUnit {
   puid: string;
 }
 
-/**
- * Property Unit Filter Query Type
- */
 export type PropertyUnitFilterQuery = {
   filters: {
     propertyId?: string | Types.ObjectId;
@@ -157,9 +130,6 @@ export type PropertyUnitFilterQuery = {
   };
 };
 
-/**
- * Property Unit Document Type
- */
 export type PropertyUnitDocument = {
   uploadedBy?: Types.ObjectId;
   documentType: PropertyUnitDocumentType;
@@ -172,15 +142,6 @@ export type PropertyUnitDocument = {
   url: string;
 };
 
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
-
-/**
- * Property Unit Inspection Type
- */
 export type PropertyUnitInspection = {
   inspector: {
     name: string;
@@ -193,10 +154,6 @@ export type PropertyUnitInspection = {
   notes?: string;
 };
 
-/**
- * Unit Authorization Interface
- * Same structure as property authorization
- */
 export interface IUnitAuthorization {
   documentUrl?: string; // S3 link to unit-specific management agreement
   isActive: boolean; // Simple on/off switch
@@ -204,9 +161,6 @@ export interface IUnitAuthorization {
   notes?: string; // Internal notes
 }
 
-/**
- * Unit Type Management Rules Interface
- */
 export interface UnitTypeRule {
   visibleFields: {
     amenities: string[];
@@ -218,9 +172,6 @@ export interface UnitTypeRule {
   requiredFields?: string[];
 }
 
-/**
- * Property Unit Amenities Interface
- */
 export interface IPropertyUnitAmenities {
   airConditioning: boolean;
   washerDryer: boolean;
@@ -231,9 +182,6 @@ export interface IPropertyUnitAmenities {
   storage: boolean;
 }
 
-/**
- * Property Unit Photo Type
- */
 export type PropertyUnitPhoto = {
   uploadedBy?: Types.ObjectId;
   isPrimary: boolean;
@@ -244,15 +192,6 @@ export type PropertyUnitPhoto = {
   url: string;
 };
 
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Property Unit Pending Changes Interface
- */
 export interface IPropertyUnitPendingChanges {
   updatedBy: Types.ObjectId;
   displayName: string;
@@ -260,9 +199,6 @@ export interface IPropertyUnitPendingChanges {
   updatedAt: Date;
 }
 
-/**
- * Property Unit Note Interface
- */
 export interface IPropertyUnitNote {
   createdBy: Types.ObjectId;
   content: string;
@@ -271,9 +207,6 @@ export interface IPropertyUnitNote {
   title: string;
 }
 
-/**
- * Property Unit Utilities Interface
- */
 export interface IPropertyUnitUtilities {
   centralAC: boolean;
   heating: boolean;
@@ -282,9 +215,6 @@ export interface IPropertyUnitUtilities {
   gas: boolean;
 }
 
-/**
- * Property Unit Specifications Interface
- */
 export interface IPropertyUnitSpecifications {
   maxOccupants?: number;
   bathrooms?: number;
@@ -292,9 +222,6 @@ export interface IPropertyUnitSpecifications {
   bedrooms?: number;
 }
 
-/**
- * Property Unit Approval Detail Interface
- */
 export interface IPropertyUnitApprovalDetail {
   action: ApprovalAction;
   actor: Types.ObjectId;
@@ -302,9 +229,6 @@ export interface IPropertyUnitApprovalDetail {
   notes?: string;
 }
 
-/**
- * Unit Feature Configuration
- */
 export type UnitFeature = {
   category: 'basic' | 'premium' | 'luxury';
   description?: string;
@@ -327,9 +251,6 @@ export type UnitType =
   | 'commercial'
   | 'other';
 
-/**
- * Property Unit Inspection Attachment Type
- */
 export type PropertyUnitInspectionAttachment = {
   filename: string;
   uploadedAt: Date;
@@ -337,19 +258,12 @@ export type PropertyUnitInspectionAttachment = {
   url: string;
 };
 
-/**
- * Property Unit Fees Interface
- */
 export interface IPropertyUnitFees {
   securityDeposit?: number;
   currency: CURRENCIES;
   rentAmount: number;
 }
 
-/**
- * Unit Owner Interface
- * Simpler than property owner, just contact info
- */
 export interface IUnitOwner {
   email?: string;
   phone?: string;
@@ -357,76 +271,31 @@ export interface IUnitOwner {
   name?: string;
 }
 
-/**
- * Property Unit Status Types
- */
 export type PropertyUnitStatus = 'available' | 'occupied' | 'reserved' | 'maintenance' | 'inactive';
 
-/**
- * Inspection Status Types
- */
 export type PropertyUnitInspectionStatus = 'passed' | 'failed' | 'needs_repair' | 'scheduled';
 
-/**
- * Approval Action Types
- */
 export type ApprovalAction = 'created' | 'approved' | 'rejected' | 'updated' | 'overridden';
 
-/**
- * Property Unit Type Classifications
- */
 export type PropertyUnitType = 'residential' | 'commercial' | 'storage' | 'other';
 
-/**
- * Property Unit Document Type Classifications
- */
 export type PropertyUnitDocumentType = 'lease' | 'inspection' | 'other';
 
-/**
- * Property Unit Media Interface
- */
 export interface IPropertyUnitMedia {
   photos: PropertyUnitPhoto[];
 }
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
 
 /**
  * @deprecated Use PropertyUnitDocumentType instead
  */
 export type PropertyUnitDocumentTypeAlias = PropertyUnitDocumentType;
 
-/**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
- * Unit Type Rules Collection
- */
 export type UnitTypeRules = {
   [unitType: string]: UnitTypeRule;
 };
 
-/**
- * ============================================================================
- * CONFIGURATION INTERFACES
- * ============================================================================
- */
-
-/**
- * Approval Status Types
- */
 export type ApprovalStatus = 'approved' | 'pending' | 'rejected';
 
-/**
- * Property Unit Document Status Types
- */
 export type PropertyUnitDocumentStatus = 'active' | 'inactive';
 
 /**
@@ -435,13 +304,6 @@ export type PropertyUnitDocumentStatus = 'active' | 'inactive';
 export type DocumentStatus = PropertyUnitDocumentStatus;
 
 /**
- * ============================================================================
- * LEGACY TYPES (Backward Compatibility)
- * ============================================================================
- */
-
-/**
- * Legacy alias for backward compatibility
  * @deprecated Use PropertyUnitStatus instead
  */
 export type UnitStatus = PropertyUnitStatus;

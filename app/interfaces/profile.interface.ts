@@ -4,21 +4,15 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 import { INotificationSettings } from './notification.interface';
 import { IPhoneVerification, ISMSConsent } from './sms.interface';
 
-/**
- * Employee Department Enum
- */
 export enum EmployeeDepartment {
-  MAINTENANCE = 'maintenance', // Maintenance and repairs
-  OPERATIONS = 'operations', // Day-to-day property operations
-  ACCOUNTING = 'accounting', // Financial operations and rent collection
-  MANAGEMENT = 'management', // Executive and general management
-  SECURITY = 'security', // Security and access control
-  OTHER = 'other', // Any other department not listed
+  MAINTENANCE = 'maintenance',
+  OPERATIONS = 'operations',
+  ACCOUNTING = 'accounting',
+  MANAGEMENT = 'management',
+  SECURITY = 'security',
+  OTHER = 'other',
 }
 
-/**
- * Profile Background Check Status Enum
- */
 export enum ProfileBackgroundCheckStatus {
   NOT_REQUIRED = 'not_required',
   APPROVED = 'approved',
@@ -26,9 +20,6 @@ export enum ProfileBackgroundCheckStatus {
   FAILED = 'failed',
 }
 
-/**
- * Data Retention Policy Enum
- */
 export enum DataRetentionPolicy {
   STANDARD = 'standard',
   EXTENDED = 'extended',
@@ -53,10 +44,6 @@ export interface ITenantInfo {
   pets?: IPet[];
 }
 
-/**
- * Profile Update Data Interface
- * Used when updating profile data
- */
 export interface IProfileUpdateData {
   policies?: {
     tos?: { accepted?: boolean };
@@ -79,9 +66,6 @@ export interface IProfileUpdateData {
   vendorInfo?: Partial<IVendorInfo>;
 }
 
-/**
- * Settings Interface
- */
 export interface ISettings {
   pushSubscriptions?: IPushSubscription[];
   phoneVerification?: IPhoneVerification;
@@ -94,9 +78,6 @@ export interface ISettings {
   lang: string;
 }
 
-/**
- * Active Lease Item Interface
- */
 export interface IActiveLeaseItem {
   leaseId: string | Types.ObjectId;
   propertyAddress?: string;
@@ -111,9 +92,6 @@ export interface IActiveLeaseItem {
   cuid: string;
 }
 
-/**
- * Populated User Interface
- */
 export interface IPopulatedUser {
   cuids?: Array<{
     role: IUserRoleType;

@@ -4,15 +4,6 @@ import { IClientInfo } from './client.interface';
 import { IUserRole } from '../shared/constants/roles.constants';
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Property Approval Status Enum
- */
 export enum PropertyApprovalStatusEnum {
   APPROVED = 'approved',
   REJECTED = 'rejected',
@@ -20,19 +11,12 @@ export enum PropertyApprovalStatusEnum {
   DRAFT = 'draft',
 }
 
-/**
- * Ownership Type Enum
- */
 export enum OwnershipType {
   EXTERNAL_OWNER = 'external_owner',
   COMPANY_OWNED = 'company_owned',
   SELF_OWNED = 'self_owned',
 }
 
-/**
- * Main Property Interface
- * Core property data structure
- */
 export interface IProperty {
   fees: {
     currency: CURRENCIES;
@@ -71,9 +55,6 @@ export interface IProperty {
   name: string;
 }
 
-/**
- * Property Filter Query Interface
- */
 export interface IPropertyFilterQuery {
   filters: {
     approvalStatus?: PropertyApprovalStatus;
@@ -109,9 +90,6 @@ export interface IPropertyFilterQuery {
   pagination: IPaginationQuery;
 }
 
-/**
- * Property Type Rule Interface
- */
 export interface PropertyTypeRule {
   validationRules?: {
     allowBathrooms?: boolean;
@@ -137,10 +115,6 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
-/**
- * Property Document Interface
- * Extends IProperty with Mongoose Document properties and methods
- */
 export interface IPropertyDocument extends IProperty, Document {
   getAuthorizationStatus(): {
     isAuthorized: boolean;
@@ -158,16 +132,6 @@ export interface IPropertyDocument extends IProperty, Document {
   id: string;
 }
 
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
-
-/**
- * Property Authorization Interface
- * Simple authorization tracking for external properties
- */
 export interface IPropertyAuthorization {
   authorizedBy?: Types.ObjectId; // User who authorized
   documentUrl?: string; // S3 link to management agreement
@@ -177,10 +141,6 @@ export interface IPropertyAuthorization {
   notes?: string; // Internal notes
 }
 
-/**
- * Property with Unit Info Interface
- * Using intersection type for property with unit statistics
- */
 export type IPropertyWithUnitInfo = {
   unitInfo?: UnitInfo;
   hasLeaseHistory?: boolean;
@@ -194,15 +154,6 @@ export type IPropertyWithUnitInfo = {
   maintenanceHistory?: any[];
 } & Partial<{ property: IPropertyDocument }>;
 
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Financial Details Interface
- */
 export interface FinancialDetails {
   lastAssessmentDate?: Date;
   maintenanceCost?: number;
@@ -216,9 +167,6 @@ export interface FinancialDetails {
   purchaseDate?: Date;
 }
 
-/**
- * Media Document Item Interface
- */
 export interface MediaDocumentItem {
   documentType?: PropertyDocumentType;
   status: MediaDocumentStatus;
@@ -247,9 +195,6 @@ export interface IPropertyOwner {
   name?: string;
 }
 
-/**
- * Assignable User Interface (for property assignment)
- */
 export interface IAssignableUser {
   employeeInfo?: {
     department?: string;
@@ -263,9 +208,6 @@ export interface IAssignableUser {
   id: string;
 }
 
-/**
- * Property Specifications Interface
- */
 export interface PropertySpecifications {
   parkingSpaces?: number;
   garageSpaces?: number;
@@ -279,10 +221,6 @@ export interface PropertySpecifications {
   floors?: number;
 }
 
-/**
- * Property Approval Entry Interface
- * Individual property approval tracking
- */
 export interface PropertyApprovalEntry {
   action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted';
   rejectionReason?: string; // Only for rejected actions
@@ -292,9 +230,6 @@ export interface PropertyApprovalEntry {
   metadata?: any;
 }
 
-/**
- * Unit Info Interface
- */
 export interface UnitInfo {
   suggestedNextUnitNumber?: string;
   availableSpaces?: number;
@@ -306,9 +241,6 @@ export interface UnitInfo {
   totalUnits: number;
 }
 
-/**
- * Community Amenities Interface
- */
 export interface CommunityAmenities {
   laundryFacility: boolean;
   securitySystem: boolean;
@@ -320,9 +252,6 @@ export interface CommunityAmenities {
   parking: boolean;
 }
 
-/**
- * Property Image Item Interface
- */
 export interface PropertyImageItem {
   status: MediaDocumentStatus;
   uploadedBy: Types.ObjectId;
@@ -334,9 +263,6 @@ export interface PropertyImageItem {
   url: string;
 }
 
-/**
- * Assignable Users Filter Interface
- */
 export interface IAssignableUsersFilter {
   role?: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER | 'all';
   department?: string;
@@ -346,9 +272,6 @@ export interface IAssignableUsersFilter {
   page?: number;
 }
 
-/**
- * CSV Job Data Interface
- */
 export interface CsvJobData {
   bulkCreateOptions?: {
     passwordLength?: number;
@@ -360,9 +283,6 @@ export interface CsvJobData {
   userId: string;
 }
 
-/**
- * Address Details Interface
- */
 export interface AddressDetails {
   streetNumber?: string;
   fullAddress?: string;
@@ -374,9 +294,6 @@ export interface AddressDetails {
   city?: string;
 }
 
-/**
- * Interior Amenities Interface
- */
 export interface InteriorAmenities {
   airConditioning: boolean;
   storageSpace: boolean;
@@ -387,9 +304,6 @@ export interface InteriorAmenities {
   fridge: boolean;
 }
 
-/**
- * Property Owner Interface
- */
 export interface IOwnershipHistoryEntry {
   recordedBy?: Types.ObjectId;
   owner: IPropertyOwner;
@@ -399,10 +313,6 @@ export interface IOwnershipHistoryEntry {
   recordedAt?: Date;
 }
 
-/**
- * Property Note Interface
- * Individual note entry for property
- */
 export interface IPropertyNote {
   author: {
     uid: string;
@@ -415,25 +325,12 @@ export interface IPropertyNote {
   text: string;
 }
 
-/**
- * Pending Changes Interface
- * Using Omit to exclude specific fields from changes
- */
 export type IPendingChanges = {
   updatedAt: Date;
   updatedBy: Types.ObjectId;
   displayName: string;
 } & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
 
-/**
- * ============================================================================
- * MAIN PROPERTY INTERFACE
- * ============================================================================
- */
-
-/**
- * Property Utilities Interface
- */
 export interface PropertyUtilities {
   electricity: boolean;
   internet: boolean;
@@ -443,15 +340,6 @@ export interface PropertyUtilities {
   gas: boolean;
 }
 
-/**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
- * Unit Statistics Interface
- */
 export interface UnitStats {
   maintenance: number;
   available: number;
@@ -461,15 +349,6 @@ export interface UnitStats {
   vacant: number;
 }
 
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * Document Type Classifications
- */
 export type PropertyDocumentType =
   | 'deed'
   | 'tax'
@@ -480,15 +359,6 @@ export type PropertyDocumentType =
   | 'unknown'
   | 'legal';
 
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
-/**
- * Property Type Classifications
- */
 export type PropertyType =
   | 'apartment'
   | 'house'
@@ -497,78 +367,26 @@ export type PropertyType =
   | 'commercial'
   | 'industrial';
 
-/**
- * Media Document Status Types
- */
 export type MediaDocumentStatus = 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
 
-/**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
- * Property Status Types
- */
 export type PropertyStatus = 'available' | 'maintenance' | 'construction' | 'inactive';
 
-/**
- * Property Approval Status Types
- */
 export type PropertyApprovalStatus = 'pending' | 'approved' | 'rejected' | 'draft';
 
-/**
- * ============================================================================
- * USER & ASSIGNMENT INTERFACES
- * ============================================================================
- */
-
-/**
- * Computed Location Interface
- */
 export interface ComputedLocation {
   coordinates: number[];
   type?: 'Point';
 }
 
-/**
- * ============================================================================
- * PROPERTY TYPE RULES & VALIDATION
- * ============================================================================
- */
-
-/**
- * New Property Type (for creation)
- * Using Omit to exclude pid
- */
 export type NewProperty = {
   fullAddress: string;
 } & Omit<IProperty, 'pid'>;
 
-/**
- * Occupancy Status Types
- */
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
 
-/**
- * ============================================================================
- * CSV & BULK OPERATIONS
- * ============================================================================
- */
-
-/**
- * Property Type Rules Collection
- * Using Record with string to allow dynamic access
- */
 export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 
-/**
- * ============================================================================
- * TYPE ALIASES (Backward Compatibility)
- * ============================================================================
- * These are being kept to avoid breaking existing code
- */
+// Type aliases kept for backward compatibility
 export type IPropertyDocumentItem = MediaDocumentItem;
 export type ICommunityAmenities = CommunityAmenities;
 export type ISpecifications = PropertySpecifications;

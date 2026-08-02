@@ -3,12 +3,6 @@ import { IUserRoleType } from '@shared/constants/roles.constants';
 
 import { IContactInfoType, IBaseUserProfile, IUserDocument, IAccountType } from './user.interface';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
-
 export interface IClient {
   identityVerification?: {
     sessionId?: string;
@@ -31,10 +25,6 @@ export interface IClient {
   displayName: string;
 }
 
-/**
- * Client Settings Interface
- * User preferences and configuration
- */
 export interface IClientSettings {
   notificationPreferences: NotificationPreferences;
   vendorPayoutMode?: 'express' | 'platform_hold';
@@ -45,10 +35,6 @@ export interface IClientSettings {
   lang: string;
 }
 
-/**
- * Client Document Interface (extends Mongoose Document)
- * Extends IClient with MongoDB document properties
- */
 export interface IClientDocument extends Document, IClient {
   verificationDeadline?: Date | null; // virtual: createdAt + 3 days, null when isVerified
   isVerified: boolean;
@@ -60,16 +46,6 @@ export interface IClientDocument extends Document, IClient {
   id: string;
 }
 
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Client User Connections Interface
- * Represents the connection between a user and a client
- */
 export interface IClientUserConnections {
   requiresOnboarding?: boolean;
   primaryRole: IUserRoleType;
@@ -82,10 +58,6 @@ export interface IClientUserConnections {
   cuid: string;
 }
 
-/**
- * Company Profile Interface
- * Business entity information for corporate clients
- */
 export interface ICompanyProfile {
   contactInfo?: IContactInfoType;
   registrationNumber?: string;
@@ -98,9 +70,6 @@ export interface ICompanyProfile {
   logo?: string;
 }
 
-/**
- * Tenant portal feature flags
- */
 export interface ITenantFeatureSettings {
   maintenanceRequests: boolean;
   tenantPortalActive: boolean;
@@ -110,10 +79,6 @@ export interface ITenantFeatureSettings {
   guestPass: boolean;
 }
 
-/**
- * Populated Account Admin Type
- * Essential user information for client admin
- */
 export type PopulatedAccountAdmin = Pick<
   IBaseUserProfile,
   'email' | 'firstName' | 'lastName' | 'avatar'
@@ -121,25 +86,9 @@ export type PopulatedAccountAdmin = Pick<
   _id: Types.ObjectId;
 };
 
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
-/**
- * Populated Client Document Type
- * Client document with fully populated account admin
- */
 export type IPopulatedClientDocument = {
   accountAdmin: IUserDocument | Types.ObjectId;
 } & Omit<IClientDocument, 'accountAdmin'>;
-
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
 
 export interface IClientSuspension {
   by?: Types.ObjectId;
@@ -148,10 +97,6 @@ export interface IClientSuspension {
   at?: Date;
 }
 
-/**
- * Simplified client info for passing around client context
- * Minimal client data for request context
- */
 export type IClientInfo = {
   clientDisplayName: string;
   id?: string;

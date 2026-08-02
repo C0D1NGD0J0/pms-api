@@ -2,11 +2,13 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { createLogger } from '@utils/index';
+import { PaymentDAO } from '@dao/paymentDAO';
 import { LeaseService } from '@services/lease';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InspectionType } from '@interfaces/inspection.interface';
+import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { IPromiseReturnedData, IRequestContext } from '@interfaces/utils.interface';
@@ -19,6 +21,7 @@ import {
 export class OffboardingService {
   private readonly log: Logger;
   private readonly leaseDAO: LeaseDAO;
+  private readonly paymentDAO: PaymentDAO;
   private readonly leaseService: LeaseService;
   private readonly inspectionDAO: InspectionDAO;
   private readonly inspectionService: InspectionService;
@@ -26,12 +29,14 @@ export class OffboardingService {
 
   constructor({
     leaseDAO,
+    paymentDAO,
     leaseService,
     inspectionDAO,
     inspectionService,
     emitterService,
   }: {
     leaseDAO: LeaseDAO;
+    paymentDAO: PaymentDAO;
     leaseService: LeaseService;
     inspectionDAO: InspectionDAO;
     inspectionService: InspectionService;
@@ -39,6 +44,7 @@ export class OffboardingService {
   }) {
     this.log = createLogger('OffboardingService');
     this.leaseDAO = leaseDAO;
+    this.paymentDAO = paymentDAO;
     this.leaseService = leaseService;
     this.inspectionDAO = inspectionDAO;
     this.inspectionService = inspectionService;
@@ -331,12 +337,16 @@ export class OffboardingService {
   /**
    * Get active offboardings (terminated leases with incomplete offboarding steps).
    */
-  async getActiveOffboardings(cuid: string): IPromiseReturnedData<ILeaseDocument[]> {
-    const leases = await this.leaseDAO.getActiveOffboardings(cuid);
+  async getActiveOffboardings(
+    cuid: string,
+    page = 1,
+    limit = 20
+  ): IPromiseReturnedData<{ items: ILeaseDocument[]; total: number }> {
+    const result = await this.leaseDAO.getActiveOffboardings(cuid, page, limit);
 
     return {
       success: true,
-      data: leases,
+      data: result,
       message: t('common.success.retrieved', { resource: 'Offboardings' }),
     };
   }
@@ -363,10 +373,23 @@ export class OffboardingService {
       depositRefundStatus = inspection?.refundInfo?.isRefunded ? 'refunded' : 'pending';
     }
 
+    // Check if any open payments remain — paymentsCancelled is only true when no pending/overdue/processing charges exist
+    const openPaymentCount = await this.paymentDAO.countDocuments({
+      lease: lease._id,
+      status: {
+        $in: [
+          PaymentRecordStatus.PENDING,
+          PaymentRecordStatus.OVERDUE,
+          PaymentRecordStatus.PROCESSING,
+        ],
+      },
+      deletedAt: null,
+    });
+
     const status: IOffboardingStatus = {
       leaseTerminated: lease.status === 'terminated',
       terminationDate: lease.duration.terminationDate,
-      paymentsCancelled: lease.status === 'terminated',
+      paymentsCancelled: lease.status === 'terminated' && openPaymentCount === 0,
       inspectionStatus: inspection?.status || null,
       inspectionScheduledDate: inspection?.scheduledDate,
       depositRefundStatus,

@@ -61,6 +61,12 @@ export interface ILeaseDAO {
     pagination: IPaginationQuery
   ): ListResultWithPagination<ILeaseListItem[]>;
 
+  getActiveOffboardings(
+    cuid: string,
+    page?: number,
+    limit?: number
+  ): Promise<{ items: ILeaseDocument[]; total: number }>;
+
   updateLeaseDocuments(
     leaseId: string,
     uploadResults: UploadResult[],

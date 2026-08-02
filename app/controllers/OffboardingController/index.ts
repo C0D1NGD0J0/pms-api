@@ -44,7 +44,9 @@ export class OffboardingController {
 
   getActiveOffboardings = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const result = await this.offboardingService.getActiveOffboardings(cuid);
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const result = await this.offboardingService.getActiveOffboardings(cuid, page, limit);
     res.status(httpStatusCodes.OK).json(result);
   };
 

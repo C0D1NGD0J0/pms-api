@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { computeLeaseMonthlyFees } from '@utils/financial.utils';
@@ -1188,16 +1189,17 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     try {
       this.log.info(`Getting active offboardings for client ${cuid}`);
 
-      // Only return recently terminated leases (last 90 days) that still have
-      // incomplete offboarding — vacate request approved but move-out not yet finalised.
-      const ninetyDaysAgo = new Date();
-      ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+      // Only return recently terminated leases that still have incomplete offboarding.
+      // Offboardings older than this window are excluded — if a deposit refund is
+      // still pending after this period, it should surface via a separate alert.
+      const OFFBOARDING_LOOKBACK_DAYS = 90;
+      const lookbackDate = dayjs().subtract(OFFBOARDING_LOOKBACK_DAYS, 'day').toDate();
 
       const result = await this.list(
         {
           cuid,
           status: LeaseStatus.TERMINATED,
-          'duration.terminationDate': { $gte: ninetyDaysAgo },
+          'duration.terminationDate': { $gte: lookbackDate },
           deletedAt: null,
         },
         {

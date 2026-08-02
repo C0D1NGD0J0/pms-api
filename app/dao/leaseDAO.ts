@@ -1219,7 +1219,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         }
       );
 
-      return { items: result.items, total: result.pagination.total };
+      return { items: result.items, total: result.pagination?.total ?? 0 };
     } catch (error: any) {
       this.log.error('Error getting active offboardings:', error);
       throw error;

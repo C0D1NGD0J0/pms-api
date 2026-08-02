@@ -102,38 +102,14 @@ export type IClientInfo = {
   id?: string;
 } & Pick<IClientDocument, 'cuid'>;
 
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
-
-/**
- * Notification Preferences Type
- * Defines all notification channel preferences
- */
 export type NotificationPreferences = {
   email: boolean;
   sms: boolean;
   inApp: boolean;
 };
 
-/**
- * Type for active account info (used in auth responses)
- * Essential info for user session management
- */
 export type IActiveAccountInfo = Pick<IClientUserConnections, 'cuid' | 'clientDisplayName'>;
 
-/**
- * ============================================================================
- * REPORTING INTERFACES
- * ============================================================================
- */
-
-/**
- * Client Statistics Interface
- * Aggregated metrics for client dashboard
- */
 export interface IClientStats {
   totalProperties: number;
   totalUsers: number;

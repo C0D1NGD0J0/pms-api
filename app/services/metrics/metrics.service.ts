@@ -331,6 +331,7 @@ export class MetricsService implements ICronProvider {
         approved: inspections.approved,
         rejected: inspections.rejected,
         disputed: inspections.disputed,
+        total: inspections.total,
       },
       generatedAt: new Date(),
     };

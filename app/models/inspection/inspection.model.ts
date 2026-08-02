@@ -218,6 +218,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
 );
 
 inspectionSchema.index({ cuid: 1, propertyId: 1, status: 1 });
+inspectionSchema.index({ cuid: 1, deletedAt: 1 });
 inspectionSchema.index({ cuid: 1, leaseId: 1 });
 inspectionSchema.index({ cuid: 1, tenantId: 1 });
 

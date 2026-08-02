@@ -52,6 +52,7 @@ export interface IDashboardStats {
     approved: number;
     rejected: number;
     disputed: number;
+    total: number;
   };
   leases: {
     /** Sum of all active lease rent amounts across currencies — the monthly rent roll */

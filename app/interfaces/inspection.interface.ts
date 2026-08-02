@@ -105,15 +105,6 @@ export interface IInspectionMedia {
   url: string;
 }
 
-export interface ICreateInspection {
-  overallNotes?: { text: string; html?: string };
-  rooms?: Partial<IInspectionRoom>[];
-  scheduledDate: string | Date;
-  type: InspectionType;
-  inspectorId?: string;
-  leaseId: string;
-}
-
 export interface IInspectionReportDocument {
   status: 'pending' | 'active' | 'inactive' | 'failed';
   generatedAt: Date;

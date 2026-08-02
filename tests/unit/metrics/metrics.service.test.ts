@@ -193,6 +193,9 @@ describe('MetricsService', () => {
       expect(stats.inspections.inProgress).toBe(mockInspectionStats.inProgress);
       expect(stats.inspections.submitted).toBe(mockInspectionStats.submitted);
       expect(stats.inspections.approved).toBe(mockInspectionStats.approved);
+      expect(stats.inspections.rejected).toBe(mockInspectionStats.rejected);
+      expect(stats.inspections.cancelled).toBe(mockInspectionStats.cancelled);
+      expect(stats.inspections.total).toBe(mockInspectionStats.total);
       expect(stats.inspections.avgCompletionDays).toBe(mockInspectionStats.avgCompletionDays);
       expect(stats.inspections.byType).toEqual(mockInspectionStats.byType);
 

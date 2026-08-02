@@ -61,6 +61,7 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
         $facet: {
           byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
           byType: [{ $group: { _id: '$type', count: { $sum: 1 } } }],
+          // Measures scheduledDate → approvedAt (full lifecycle duration, not just active work time)
           avgCompletion: [
             {
               $match: {
@@ -79,7 +80,13 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
       },
     ]);
 
-    const raw = (results[0] || {}) as any;
+    interface IFacetResult {
+      avgCompletion: { _id: null; avgMs: number }[];
+      byStatus: { _id: string; count: number }[];
+      byType: { _id: string; count: number }[];
+    }
+
+    const raw = (results[0] ?? {}) as Partial<IFacetResult>;
     const toMap = (arr: { _id: string; count: number }[]) =>
       Object.fromEntries((arr || []).map((i) => [i._id, i.count]));
 

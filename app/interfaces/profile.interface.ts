@@ -108,9 +108,6 @@ export interface IPopulatedUser {
   uid: string;
 }
 
-/**
- * Lease History Item Interface
- */
 export interface ILeaseHistoryItem {
   status: LeaseHistoryStatus;
   leaseNumber?: string;
@@ -123,10 +120,6 @@ export interface ILeaseHistoryItem {
   id?: string;
 }
 
-/**
- * Profile Document Interface
- * Extends IProfile with MongoDB document properties and methods
- */
 export interface IProfileDocument extends Document, IProfile {
   getGravatarUrl: () => string;
   _id: Types.ObjectId;
@@ -138,9 +131,6 @@ export interface IProfileDocument extends Document, IProfile {
   id: string;
 }
 
-/**
- * Employee Info Interface
- */
 export interface IEmployeeInfo {
   emergencyContact?: IEmergencyContact;
   department?: EmployeeDepartment;
@@ -151,18 +141,12 @@ export interface IEmployeeInfo {
   startDate?: Date;
 }
 
-/**
- * Vendor Info Interface
- */
 export interface IVendorInfo {
   vendorId?: Types.ObjectId; // Reference to the vendor collection
   isLinkedAccount: boolean;
   linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
 }
 
-/**
- * Main Profile Interface
- */
 export interface IProfile {
   employeeInfo?: IEmployeeInfo;
   personalInfo: IPersonalInfo;
@@ -174,7 +158,6 @@ export interface IProfile {
 }
 
 /**
- * Tenant Information Interface
  * - employerInfo, activeLeases, backgroundChecks are client-specific (filtered by cuid)
  * - rentalReferences, pets, emergencyContact are shared across all clients
  * - Historical/relationship data (leaseHistory, paymentHistory, etc.) specific to tenant management
@@ -190,9 +173,6 @@ export interface IPadMandateDetails {
   amount: number;
 }
 
-/**
- * Personal Info Interface
- */
 export interface IPersonalInfo {
   phoneNumber?: string;
   displayName: string;
@@ -205,9 +185,6 @@ export interface IPersonalInfo {
   dob?: Date;
 }
 
-/**
- * Background Check Item Interface
- */
 export interface IBackgroundCheckItem {
   status: ProfileBackgroundCheckStatus;
   checkedDate: Date;
@@ -216,9 +193,6 @@ export interface IBackgroundCheckItem {
   cuid: string; // Track which client performed the background check
 }
 
-/**
- * Employer Info Item Interface
- */
 export interface IEmployerInfoItem {
   companyAddress: string;
   monthlyIncome: number;
@@ -229,10 +203,6 @@ export interface IEmployerInfoItem {
   cuid: string;
 }
 
-/**
- * Profile Edit Data Interface
- * Used when fetching profile data for editing/display
- */
 export interface IProfileEditData {
   personalInfo: IProfileEditPersonalInfo;
   settings: IProfileEditSettings;
@@ -241,9 +211,6 @@ export interface IProfileEditData {
   policies?: IPolicies;
 }
 
-/**
- * GDPR Settings Interface
- */
 export interface IGDPRSettings {
   dataRetentionPolicy: DataRetentionPolicy;
   dataProcessingConsent: boolean;
@@ -270,9 +237,6 @@ export interface IPushSubscription {
   createdAt?: Date;
 }
 
-/**
- * Payment History Item Interface
- */
 export interface IPaymentHistoryItem {
   status: PaymentStatus;
   type: PaymentType;
@@ -281,9 +245,6 @@ export interface IPaymentHistoryItem {
   date: Date;
 }
 
-/**
- * Profile Edit Personal Info Interface
- */
 export interface IProfileEditPersonalInfo extends IPersonalInfo {
   isActive: boolean;
   email: string;
@@ -296,18 +257,12 @@ export interface IProfileCompletion {
   percent: number;
 }
 
-/**
- * Policies Interface
- */
 export interface IPolicies {
   marketing: IPolicyAcceptance;
   privacy?: IPolicyAcceptance;
   tos: IPolicyAcceptance;
 }
 
-/**
- * Emergency Contact Interface
- */
 export interface IEmergencyContact {
   relationship: string;
   phone: string;
@@ -315,18 +270,12 @@ export interface IEmergencyContact {
   name: string;
 }
 
-/**
- * Rental Reference Interface
- */
 export interface IRentalReference {
   propertyAddress: string;
   landlordName: string;
   [key: string]: any;
 }
 
-/**
- * Pet Interface
- */
 export interface IPet {
   isServiceAnimal: boolean;
   [key: string]: any;
@@ -334,26 +283,15 @@ export interface IPet {
   type: string;
 }
 
-/**
- * Profile with Populated User Interface
- * Used when you need both profile and user data together
- */
 export interface IProfileWithUser extends Omit<IProfileDocument, 'user'> {
   user: IPopulatedUser;
 }
 
-/**
- * Profile Edit Settings Interface
- */
 export interface IProfileEditSettings extends ISettings {
   timeZone: string;
   lang: string;
 }
 
-/**
- * Profile User Type
- * Extended user type including primary_account_holder
- */
 export type ProfileUserType = 'employee' | 'vendor' | 'tenant' | 'primary_account_holder';
 
 export interface ICompletionField {
@@ -362,74 +300,40 @@ export interface ICompletionField {
   key: string;
 }
 
-/**
- * Policy Acceptance Interface
- */
 export interface IPolicyAcceptance {
   acceptedOn: Date | null;
   accepted: boolean;
 }
 
-/**
- * Maintenance Request Status Type
- */
 export type MaintenanceRequestStatus = 'pending' | 'in_progress' | 'completed';
 
-/**
- * Avatar Interface
- */
 export interface IAvatar {
   filename: string;
   key: string;
   url: string;
 }
 
-/**
- * Maintenance Request Priority Type
- */
 export type MaintenanceRequestPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 /**
- * Client Vendor Info Interface
  * @deprecated Use IVendorInfo instead
  */
 export interface ClientVendorInfo {
   linkedVendorUid?: Types.ObjectId;
 }
 
-/**
- * Note Type
- */
 export type NoteType = 'general' | 'payment' | 'maintenance' | 'lease';
 
-/**
- * Lease History Status Type
- */
 export type LeaseHistoryStatus = 'completed' | 'active' | 'terminated';
 
-/**
- * Payment Status Type
- */
 export type PaymentStatus = 'paid' | 'late' | 'pending';
 
-/**
- * Email Frequency Type
- */
 export type EmailFrequencyType = 'immediate' | 'daily';
 
-/**
- * Payment Type
- */
 export type PaymentType = 'rent' | 'fee' | 'deposit';
 
-/**
- * Login Type
- */
 export type LoginType = 'otp' | 'password';
 
-/**
- * Theme Type
- */
 export type ThemeType = 'light' | 'dark';
 
 /**
@@ -457,9 +361,7 @@ export type VendorInfo = IVendorInfo;
  */
 export type Profile = IProfile;
 
-/**
- * Type guard to check if profile has populated user
- */
+/** Type guard to check if profile has populated user */
 export function isProfileWithPopulatedUser(
   profile: IProfileDocument | null
 ): profile is { user: IPopulatedUser } & IProfileDocument {

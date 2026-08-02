@@ -237,9 +237,8 @@ export interface ILeaseDocument extends Document, ILease {
 }
 
 /**
- * Renewal Metadata Interface
- * Pre-calculated renewal information for active/draft_renewal leases
- * Only included in lease response when status is 'active' or 'draft_renewal'
+ * Pre-calculated renewal information for active/draft_renewal leases.
+ * Only included in lease response when status is 'active' or 'draft_renewal'.
  */
 export interface IRenewalMetadata {
   renewalFormData?: {
@@ -581,10 +580,7 @@ export interface ILeaseESignature {
   sentAt?: Date;
 }
 
-/**
- * Vacate Request Interface
- * Embedded subdocument on the Lease model — tenant requests to vacate early
- */
+/** Embedded subdocument on the Lease model -- tenant requests to vacate early */
 export interface IVacateRequest {
   decision?: {
     decidedBy: Types.ObjectId;

@@ -11,7 +11,7 @@ function makeInspection(overrides: Record<string, any> = {}) {
     cuid: BASE_CUID,
     propertyId: new Types.ObjectId(),
     tenantId: new Types.ObjectId(),
-    inspectorId: new Types.ObjectId(),
+    inspectorUid: new Types.ObjectId().toString(),
     createdBy: new Types.ObjectId(),
     leaseId: new Types.ObjectId(),
     type: InspectionType.MOVE_IN,

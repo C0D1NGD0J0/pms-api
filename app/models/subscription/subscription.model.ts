@@ -69,6 +69,8 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       prioritySupport: { type: Boolean, default: false },
       aiTriage: { type: Boolean, required: true, default: false },
       aiInvoiceScanning: { type: Boolean, required: true, default: false },
+      inspectionService: { type: Boolean, default: false },
+      aiInspectionAnalysis: { type: Boolean, default: false },
     },
     billing: {
       customerId: {

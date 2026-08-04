@@ -1094,7 +1094,15 @@ export class PropertyService {
             limit: 20,
             populate: [
               { path: 'propertyId', select: 'pid name address' },
-              { path: 'assignedVendor', select: 'businessName' },
+              {
+                path: 'vendorId',
+                select: 'uid email',
+                populate: {
+                  path: 'profile',
+                  select: 'personalInfo.firstName personalInfo.lastName',
+                },
+              },
+              { path: 'invoiceId', select: 'amountInCents status' },
             ],
           },
           true

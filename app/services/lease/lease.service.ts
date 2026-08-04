@@ -2807,6 +2807,79 @@ export class LeaseService {
             }
           );
 
+          // Edge Case A: Hold expiry if tenant has pending renewal request
+          if (lease.renewalRequest?.status === 'pending') {
+            const holdUntil = lease.renewalRequest.holdUntil;
+
+            if (!holdUntil || holdUntil > today) {
+              // First encounter or still within hold window — skip and notify
+              if (!holdUntil) {
+                const holdDate = dayjs(today).add(48, 'hours').toDate();
+                await this.leaseDAO.setRenewalHold(lease._id.toString(), holdDate);
+
+                await this.notificationService.notifyLeaseLifecycleEvent({
+                  eventType: 'renewal_hold_urgent',
+                  lease: {
+                    luid: lease.luid,
+                    leaseNumber: lease.leaseNumber,
+                    cuid: lease.cuid,
+                    tenantId: lease.tenantId.toString(),
+                    propertyAddress:
+                      (typeof lease.property?.address === 'string'
+                        ? lease.property?.address
+                        : lease.property?.address?.fullAddress) || 'Property',
+                    endDate: lease.duration.endDate,
+                  },
+                  recipients: {
+                    propertyManager: lease.propertyInfo?.managedBy?.toString(),
+                    createdBy: lease.createdBy?.toString(),
+                    tenant: lease.tenantId.toString(),
+                  },
+                  metadata: {
+                    renewalRequestTermMonths: lease.renewalRequest.requestedTermMonths,
+                    holdExpiresAt: holdDate,
+                    actionRequired: true,
+                  },
+                });
+              }
+
+              this.log.info(`Lease ${lease.luid} has pending renewal request — holding expiry`, {
+                holdUntil: holdUntil || 'just set',
+              });
+              continue;
+            }
+
+            // Hold expired — auto-reject and proceed with normal expiry
+            this.log.info(
+              `Lease ${lease.luid} renewal hold expired — auto-rejecting and marking expired`
+            );
+            await this.leaseDAO.autoRejectRenewalRequest(lease._id.toString());
+
+            await this.notificationService.notifyLeaseLifecycleEvent({
+              eventType: 'renewal_auto_rejected',
+              lease: {
+                luid: lease.luid,
+                leaseNumber: lease.leaseNumber,
+                cuid: lease.cuid,
+                tenantId: lease.tenantId.toString(),
+                propertyAddress:
+                  (typeof lease.property?.address === 'string'
+                    ? lease.property?.address
+                    : lease.property?.address?.fullAddress) || 'Property',
+                endDate: lease.duration.endDate,
+              },
+              recipients: {
+                propertyManager: lease.propertyInfo?.managedBy?.toString(),
+                createdBy: lease.createdBy?.toString(),
+                tenant: lease.tenantId.toString(),
+              },
+              metadata: {
+                reason: 'Not reviewed before lease expiry deadline',
+              },
+            });
+            // Fall through to normal case handling below
+          }
+
           // CASE 1: Renewal is fully active
           if (renewal && renewal.status === 'active') {
             this.log.info(
@@ -2911,6 +2984,16 @@ export class LeaseService {
             });
 
             expiredCount++;
+
+            // Emit LEASE_EXPIRED to trigger offboarding chain
+            this.emitterService.emit(EventTypes.LEASE_EXPIRED, {
+              leaseId: lease._id.toString(),
+              luid: lease.luid,
+              cuid: lease.cuid,
+              tenantId: lease.tenantId.toString(),
+              expiredAt: today,
+              reason: 'expired',
+            });
           }
           // CASE 3: No renewal exists
           else {
@@ -2967,6 +3050,16 @@ export class LeaseService {
             });
 
             expiredCount++;
+
+            // Emit LEASE_EXPIRED to trigger offboarding chain
+            this.emitterService.emit(EventTypes.LEASE_EXPIRED, {
+              leaseId: lease._id.toString(),
+              luid: lease.luid,
+              cuid: lease.cuid,
+              tenantId: lease.tenantId.toString(),
+              expiredAt: today,
+              reason: 'expired',
+            });
           }
         } catch (error: any) {
           errorCount++;

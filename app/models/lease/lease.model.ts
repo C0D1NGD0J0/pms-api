@@ -510,6 +510,21 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
       },
     },
+    renewalRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+      },
+      requestedTermMonths: { type: Number },
+      message: { type: String, trim: true },
+      submittedAt: { type: Date },
+      holdUntil: { type: Date },
+      decision: {
+        decidedBy: { type: Schema.Types.Mixed },
+        decidedAt: { type: Date },
+        rejectionReason: { type: String, trim: true },
+      },
+    },
     terminationReason: {
       type: String,
       trim: true,

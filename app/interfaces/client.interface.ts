@@ -35,18 +35,9 @@ export interface IClientSettings {
   lang: string;
 }
 
-export interface IClientDocument extends Document, IClient {
-  verificationDeadline?: Date | null; // virtual: createdAt + 3 days, null when isVerified
-  isVerified: boolean;
-  _id: Types.ObjectId;
-  deletedAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
-  cuid: string;
-  id: string;
-}
-
 export interface IClientUserConnections {
+  deactivateAfter?: 'inspection';
+  pendingDeactivation?: boolean;
   requiresOnboarding?: boolean;
   primaryRole: IUserRoleType;
   clientDisplayName: string;
@@ -56,6 +47,17 @@ export interface IClientUserConnections {
   leaseExpiredAt?: Date;
   isConnected: boolean;
   cuid: string;
+}
+
+export interface IClientDocument extends Document, IClient {
+  verificationDeadline?: Date | null; // virtual: createdAt + 3 days, null when isVerified
+  isVerified: boolean;
+  _id: Types.ObjectId;
+  deletedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  cuid: string;
+  id: string;
 }
 
 export interface ICompanyProfile {

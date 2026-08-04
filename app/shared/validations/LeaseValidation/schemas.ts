@@ -637,3 +637,33 @@ export const RejectLeaseSchema = z.object({
     .min(10, 'Rejection reason must be at least 10 characters')
     .max(1000, 'Rejection reason must be at most 1000 characters'),
 });
+
+// Renewal Request Schema (tenant submits)
+export const RenewalRequestSchema = z.object({
+  requestedTermMonths: z.number().int().min(1).max(60),
+  message: z.string().trim().max(1000).optional(),
+});
+
+// Renewal Request Decision Schema (PM approves/rejects)
+export const RenewalRequestDecisionSchema = z
+  .object({
+    approved: z.boolean(),
+    rejectionReason: z
+      .string()
+      .trim()
+      .min(10, 'Rejection reason must be at least 10 characters')
+      .max(1000, 'Rejection reason must be at most 1000 characters')
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.approved && (!data.rejectionReason || data.rejectionReason.length < 10)) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Rejection reason is required when rejecting',
+      path: ['rejectionReason'],
+    }
+  );

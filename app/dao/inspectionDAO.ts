@@ -14,6 +14,12 @@ const LEASE_POPULATE = {
   populate: { path: 'propertyUnitInfo', select: 'unitNumber' },
 };
 
+const TENANT_POPULATE = {
+  path: 'tenantId',
+  select: 'uid email',
+  populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+};
+
 export class InspectionDAO extends BaseDAO<IInspectionDocument> {
   constructor({ inspectionModel }: { inspectionModel: Model<IInspectionDocument> }) {
     super(inspectionModel);
@@ -29,10 +35,9 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
 
     return this.findFirst(filter, {
       populate: [
-        { path: 'propertyId', select: 'address pid title' },
+        { path: 'propertyId', select: 'address pid name' },
         LEASE_POPULATE,
-        { path: 'inspectorId', select: 'firstName lastName email' },
-        { path: 'tenantId', select: 'firstName lastName email' },
+        TENANT_POPULATE,
       ],
     });
   }
@@ -43,13 +48,18 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
     if (query?.type) filter.type = query.type;
     if (query?.status) filter.status = query.status;
 
+    const page = Math.max(1, query?.page || 1);
+    const limit = Math.max(1, Math.min(query?.limit || 10, 100));
+    const skip = (page - 1) * limit;
+
     return this.list(filter, {
-      ...query,
+      skip,
+      limit,
+      sort: query?.sort,
       populate: [
-        { path: 'propertyId', select: 'address pid title' },
+        { path: 'propertyId', select: 'address pid name' },
         LEASE_POPULATE,
-        { path: 'inspectorId', select: 'firstName lastName email' },
-        { path: 'tenantId', select: 'firstName lastName email' },
+        TENANT_POPULATE,
       ],
     });
   }
@@ -113,12 +123,18 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
     if (query?.type) filter.type = query.type;
     if (query?.status) filter.status = query.status;
 
+    const page = Math.max(1, query?.page || 1);
+    const limit = Math.max(1, Math.min(query?.limit || 10, 100));
+    const skip = (page - 1) * limit;
+
     return this.list(filter, {
-      ...query,
+      skip,
+      limit,
+      sort: query?.sort,
       populate: [
-        { path: 'propertyId', select: 'address pid title' },
+        { path: 'propertyId', select: 'address pid name' },
         LEASE_POPULATE,
-        { path: 'inspectorId', select: 'firstName lastName email' },
+        TENANT_POPULATE,
       ],
     });
   }

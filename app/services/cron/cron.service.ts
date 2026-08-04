@@ -11,6 +11,7 @@ import {
   PaymentService,
   QueueFactory,
   LeaseService,
+  UserService,
   SMSService,
 } from '@services/index';
 
@@ -23,6 +24,7 @@ interface IConstructor {
   paymentService: PaymentService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
+  userService: UserService;
   smsService: SMSService;
 }
 
@@ -45,6 +47,7 @@ export class CronService {
     subscriptionService,
     inspectionService,
     paymentService,
+    userService,
     smsService,
     metricsService,
   }: IConstructor) {
@@ -58,6 +61,7 @@ export class CronService {
       paymentService,
       guestPassService,
       inspectionService,
+      userService,
       smsService,
       metricsService,
     ].filter(Boolean);

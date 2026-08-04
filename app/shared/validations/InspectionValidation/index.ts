@@ -27,15 +27,26 @@ const inspectionRoomSchema = z.object({
 });
 
 export const InspectionValidations = {
-  createBody: z.object({
-    type: z.enum(Object.values(InspectionType) as [string, ...string[]]),
-    leaseId: z.string().min(1),
-    inspectorId: z.string().optional(),
-    scheduledDate: z.string().datetime(),
-    overallNotes: richTextSchema(2000).optional(),
-    refundDeposit: z.boolean().optional(),
-    rooms: z.array(inspectionRoomSchema).optional(),
-  }),
+  createBody: z
+    .object({
+      type: z.enum(Object.values(InspectionType) as [string, ...string[]]),
+      leaseId: z.string().min(1).optional(),
+      propertyId: z.string().optional(),
+      propertyUnitId: z.string().optional(),
+      inspectorId: z.string().optional(),
+      scheduledDate: z.string().datetime(),
+      overallNotes: richTextSchema(2000).optional(),
+      refundDeposit: z.boolean().optional(),
+      rooms: z.array(inspectionRoomSchema).optional(),
+    })
+    .refine((data) => data.leaseId || data.propertyId, {
+      message: 'Either leaseId or propertyId must be provided',
+      path: ['leaseId'],
+    })
+    .refine((data) => data.type === InspectionType.ROUTINE || data.leaseId, {
+      message: 'leaseId is required for non-routine inspections',
+      path: ['leaseId'],
+    }),
 
   approveBody: z.object({
     refundAmount: z.number().min(0).optional(),

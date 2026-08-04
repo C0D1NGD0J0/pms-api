@@ -4,14 +4,21 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { EmailQueue } from '@queues/index';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { LEASE_CONSTANTS, createLogger, toId } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { DEFAULT_INSPECTION_ROOMS } from '@models/inspection/inspection.model';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import {
+  ValidationRequestError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   LeaseESignatureCompletedPayload,
   LeaseTerminatedPayload,
@@ -31,6 +38,7 @@ import {
 
 interface IConstructor {
   emitterService: EventEmitterService;
+  propertyUnitDAO: PropertyUnitDAO;
   inspectionDAO: InspectionDAO;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
@@ -40,6 +48,7 @@ interface IConstructor {
 
 export class InspectionService implements ICronProvider {
   private readonly inspectionDAO: InspectionDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly userDAO: UserDAO;
@@ -49,6 +58,7 @@ export class InspectionService implements ICronProvider {
 
   constructor({
     inspectionDAO,
+    propertyUnitDAO,
     leaseDAO,
     propertyDAO,
     userDAO,
@@ -56,6 +66,7 @@ export class InspectionService implements ICronProvider {
     emailQueue,
   }: IConstructor) {
     this.inspectionDAO = inspectionDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.leaseDAO = leaseDAO;
     this.propertyDAO = propertyDAO;
     this.userDAO = userDAO;
@@ -94,6 +105,15 @@ export class InspectionService implements ICronProvider {
         description: 'Auto-schedule move-out inspections or send reminders for expiring leases',
         timeout: 180_000,
       },
+      {
+        name: 'inspection:auto-close-unresponsive',
+        schedule: '0 3 * * *',
+        handler: this.autoCloseUnresponsiveInspections.bind(this),
+        service: 'InspectionService',
+        enabled: true,
+        description: 'Auto-approve move-out inspections with no tenant response after 7 days',
+        timeout: 120_000,
+      },
     ];
   }
 
@@ -102,75 +122,239 @@ export class InspectionService implements ICronProvider {
     userId: string,
     data: ICreateInspection
   ): IPromiseReturnedData {
-    const lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
-    if (!lease) {
-      throw new NotFoundError({ message: 'Lease not found' });
-    }
-    if (lease.status !== 'active') {
-      throw new BadRequestError({ message: 'Inspections can only be created for active leases' });
-    }
+    if (data.leaseId) {
+      // ── PATH A: Lease-based inspection (existing logic) ──────────────────────
+      const lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
+      if (!lease) {
+        throw new NotFoundError({ message: 'Lease not found' });
+      }
+      if (lease.status !== 'active') {
+        throw new BadRequestError({
+          message: 'Inspections can only be created for active leases',
+        });
+      }
 
-    // Prevent duplicate inspections of the same type for the same lease
-    const existing = await this.inspectionDAO.findFirst({
-      leaseId: lease._id,
-      type: data.type,
-      status: { $nin: [InspectionStatus.CANCELLED] },
-      deletedAt: null,
-    } as any);
-    if (existing) {
-      throw new BadRequestError({
-        message: `A ${data.type.replace('_', '-')} inspection already exists for this lease`,
+      // Prevent duplicate inspections of the same type for the same lease
+      const existing = await this.inspectionDAO.findFirst({
+        leaseId: lease._id,
+        type: data.type,
+        status: { $nin: [InspectionStatus.CANCELLED] },
+        deletedAt: null,
+      } as any);
+      if (existing) {
+        throw new BadRequestError({
+          message: `A ${data.type.replace('_', '-')} inspection already exists for this lease`,
+        });
+      }
+
+      // Validate inspection type against lease state
+      if (lease.duration?.endDate) {
+        const daysUntilExpiry = dayjs(lease.duration.endDate).diff(dayjs(), 'day', true);
+
+        if (data.type === InspectionType.MOVE_OUT) {
+          const gracePeriodDays = LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+          if (daysUntilExpiry > 30) {
+            throw new ValidationRequestError({
+              message: 'Move-out inspections can only be scheduled within 30 days of lease expiry',
+              errorInfo: {
+                type: ['Move-out inspections require lease to be near expiry or in grace period'],
+              },
+            });
+          }
+          if (daysUntilExpiry < 0 && Math.abs(daysUntilExpiry) > gracePeriodDays) {
+            throw new ValidationRequestError({
+              message: 'Move-out inspections cannot be scheduled after the grace period has ended',
+              errorInfo: { type: ['Lease grace period has expired'] },
+            });
+          }
+        }
+
+        if (data.type === InspectionType.MOVE_IN) {
+          if (daysUntilExpiry <= 30) {
+            throw new ValidationRequestError({
+              message: 'Move-in inspections cannot be scheduled for leases near expiry',
+              errorInfo: {
+                type: ['Move-in inspections require lease to have more than 30 days remaining'],
+              },
+            });
+          }
+        }
+      }
+
+      const property = await this.propertyDAO.findFirst({ _id: lease.property.id, cuid });
+      if (!property) {
+        throw new NotFoundError({ message: 'Property not found' });
+      }
+
+      let inspectorUid = data.inspectorId;
+
+      if (data.inspectorId) {
+        const inspector = await this.userDAO.findFirst({
+          uid: data.inspectorId,
+          deletedAt: null,
+        });
+        if (!inspector) {
+          throw new NotFoundError({ message: 'Inspector not found' });
+        }
+      } else {
+        // Default to the current user — resolve _id to uid
+        const currentUser = await this.userDAO.findFirst({ _id: userId, deletedAt: null });
+        inspectorUid = currentUser?.uid ?? userId;
+      }
+
+      const rooms = data.rooms && data.rooms.length > 0 ? data.rooms : DEFAULT_INSPECTION_ROOMS;
+
+      // Populate refundInfo from lease security deposit for move-out inspections
+      const refundInfo =
+        data.refundDeposit && data.type === InspectionType.MOVE_OUT && lease.fees?.securityDeposit
+          ? { amount: lease.fees.securityDeposit, isRefunded: false }
+          : undefined;
+
+      const inspection = await this.inspectionDAO.insert({
+        cuid,
+        type: data.type,
+        status: InspectionStatus.SCHEDULED,
+        leaseId: lease._id,
+        propertyId: property._id,
+        inspectorUid: inspectorUid,
+        tenantId: lease.tenantId,
+        scheduledDate: new Date(data.scheduledDate),
+        overallNotes: data.overallNotes,
+        ...(refundInfo && { refundInfo }),
+        rooms,
+        media: [],
+        createdBy: userId,
+      } as any);
+
+      this.emitterService.emit(EventTypes.INSPECTION_SCHEDULED, {
+        iuid: inspection.iuid,
+        cuid,
+        propertyId: property._id.toString(),
+        tenantId: lease.tenantId.toString(),
+        type: inspection.type,
+        scheduledDate: inspection.scheduledDate,
+      });
+
+      return { success: true, message: 'Inspection scheduled', data: inspection };
+    } else if (data.propertyId) {
+      // ── PATH B: Property-based inspection (routine only) ─────────────────────
+      if (data.type !== InspectionType.ROUTINE) {
+        throw new ValidationRequestError({
+          message: 'Only routine inspections can be scheduled without a lease',
+          errorInfo: { type: ['Move-in and move-out inspections require a lease'] },
+        });
+      }
+
+      const property = await this.propertyDAO.findFirst({
+        pid: data.propertyId,
+        cuid,
+        deletedAt: null,
+      });
+      if (!property) throw new NotFoundError({ message: 'Property not found' });
+
+      let unitDoc = null;
+      let previousStatus: string | undefined;
+
+      if (data.propertyUnitId) {
+        unitDoc = await this.propertyUnitDAO.findFirst({
+          puid: data.propertyUnitId,
+          propertyId: property._id,
+          deletedAt: null,
+        });
+        if (!unitDoc) throw new NotFoundError({ message: 'Unit not found' });
+
+        // Check no duplicate active routine on this unit
+        const existing = await this.inspectionDAO.findFirst({
+          propertyUnitId: unitDoc._id,
+          type: InspectionType.ROUTINE,
+          cuid,
+          status: { $nin: [InspectionStatus.APPROVED, InspectionStatus.CANCELLED] },
+          deletedAt: null,
+        } as any);
+        if (existing) {
+          throw new ValidationRequestError({
+            message: 'A routine inspection is already active for this unit',
+          });
+        }
+
+        previousStatus = unitDoc.status;
+        await this.propertyUnitDAO.updateById(unitDoc._id.toString(), {
+          status: PropertyUnitStatusEnum.MAINTENANCE,
+        });
+      } else {
+        // Check no duplicate active routine on this property
+        const existing = await this.inspectionDAO.findFirst({
+          propertyId: property._id,
+          propertyUnitId: null,
+          type: InspectionType.ROUTINE,
+          cuid,
+          status: { $nin: [InspectionStatus.APPROVED, InspectionStatus.CANCELLED] },
+          deletedAt: null,
+        } as any);
+        if (existing) {
+          throw new ValidationRequestError({
+            message: 'A routine inspection is already active for this property',
+          });
+        }
+
+        previousStatus = property.operationalStatus;
+        await this.propertyDAO.updateById(property._id.toString(), {
+          operationalStatus: 'maintenance',
+        });
+      }
+
+      let inspectorUid = data.inspectorId;
+      if (!inspectorUid) {
+        const currentUser = await this.userDAO.findFirst({ _id: userId, deletedAt: null });
+        inspectorUid = currentUser?.uid ?? userId;
+      }
+
+      const rooms = data.rooms?.length ? data.rooms : DEFAULT_INSPECTION_ROOMS;
+
+      let inspection;
+      try {
+        inspection = await this.inspectionDAO.insert({
+          cuid,
+          type: data.type,
+          status: InspectionStatus.SCHEDULED,
+          propertyId: property._id,
+          ...(unitDoc && { propertyUnitId: unitDoc._id }),
+          inspectorUid,
+          scheduledDate: new Date(data.scheduledDate),
+          overallNotes: data.overallNotes,
+          rooms,
+          media: [],
+          createdBy: userId,
+          previousOperationalStatus: previousStatus,
+        } as any);
+      } catch (error) {
+        // Revert status if inspection insert fails
+        if (unitDoc && previousStatus) {
+          await this.propertyUnitDAO.updateById(unitDoc._id.toString(), {
+            status: previousStatus,
+          });
+        } else if (previousStatus) {
+          await this.propertyDAO.updateById(property._id.toString(), {
+            operationalStatus: previousStatus,
+          });
+        }
+        throw error;
+      }
+
+      this.emitterService.emit(EventTypes.INSPECTION_SCHEDULED, {
+        iuid: inspection.iuid,
+        cuid,
+        propertyId: property._id.toString(),
+        type: inspection.type,
+        scheduledDate: inspection.scheduledDate,
+      });
+
+      return { success: true, message: 'Inspection scheduled', data: inspection };
+    } else {
+      throw new ValidationRequestError({
+        message: 'Either leaseId or propertyId is required',
       });
     }
-
-    const property = await this.propertyDAO.findFirst({ _id: lease.property.id, cuid });
-    if (!property) {
-      throw new NotFoundError({ message: 'Property not found' });
-    }
-
-    const inspectorId = data.inspectorId ?? userId;
-
-    if (data.inspectorId) {
-      const inspector = await this.userDAO.findFirst({ _id: data.inspectorId, deletedAt: null });
-      if (!inspector) {
-        throw new NotFoundError({ message: 'Inspector not found' });
-      }
-    }
-
-    const rooms = data.rooms && data.rooms.length > 0 ? data.rooms : DEFAULT_INSPECTION_ROOMS;
-
-    // Populate refundInfo from lease security deposit for move-out inspections
-    const refundInfo =
-      data.refundDeposit && data.type === InspectionType.MOVE_OUT && lease.fees?.securityDeposit
-        ? { amount: lease.fees.securityDeposit, isRefunded: false }
-        : undefined;
-
-    const inspection = await this.inspectionDAO.insert({
-      cuid,
-      type: data.type,
-      status: InspectionStatus.SCHEDULED,
-      leaseId: lease._id,
-      propertyId: property._id,
-      inspectorId,
-      tenantId: lease.tenantId,
-      scheduledDate: new Date(data.scheduledDate),
-      overallNotes: data.overallNotes,
-      ...(refundInfo && { refundInfo }),
-      rooms,
-      media: [],
-      createdBy: userId,
-    } as any);
-
-    this.emitterService.emit(EventTypes.INSPECTION_SCHEDULED, {
-      iuid: inspection.iuid,
-      cuid,
-      propertyId: property._id.toString(),
-      tenantId: lease.tenantId.toString(),
-      type: inspection.type,
-      scheduledDate: inspection.scheduledDate,
-    });
-
-    return { success: true, message: 'Inspection scheduled', data: inspection };
   }
 
   async listInspections(
@@ -184,10 +368,59 @@ export class InspectionService implements ICronProvider {
         ? await this.inspectionDAO.listForTenant(userId, cuid, query)
         : await this.inspectionDAO.listByClient(cuid, query);
 
+    // Manual lookup for inspector info (inspectorUid is a string uid, not an ObjectId ref)
+    const inspectorUids = [...new Set(result.items.map((i) => i.inspectorUid).filter(Boolean))];
+    const inspectorMap = new Map<string, { firstName: string; lastName: string; email: string }>();
+
+    if (inspectorUids.length > 0) {
+      // Try uid first, fall back to _id for legacy data stored before uid resolution fix
+      const inspectors = await this.userDAO.list(
+        {
+          $or: [{ uid: { $in: inspectorUids } }, { _id: { $in: inspectorUids } }],
+          deletedAt: null,
+        } as any,
+        {
+          projection: 'uid email',
+          populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+        }
+      );
+      for (const inspector of inspectors.items as any[]) {
+        const info = inspector.profile?.personalInfo;
+        const entry = {
+          firstName: info?.firstName ?? '',
+          lastName: info?.lastName ?? '',
+          email: inspector.email,
+        };
+        inspectorMap.set(inspector.uid, entry);
+        inspectorMap.set(inspector._id.toString(), entry);
+      }
+    }
+
+    const items = result.items.map((item) => {
+      const doc = item.toObject ? item.toObject() : item;
+      const inspector = doc.inspectorUid ? inspectorMap.get(doc.inspectorUid) : undefined;
+      const tenant = doc.tenantId as any;
+      const property = doc.propertyId as any;
+      const lease = doc.leaseId as any;
+
+      return {
+        iuid: doc.iuid,
+        type: doc.type,
+        status: doc.status,
+        scheduledDate: doc.scheduledDate,
+        propertyName: property?.name ?? null,
+        unitNumber: lease?.propertyUnitInfo?.unitNumber ?? null,
+        tenantName: tenant?.profile?.personalInfo
+          ? `${tenant.profile.personalInfo.firstName} ${tenant.profile.personalInfo.lastName}`
+          : null,
+        inspectorName: inspector ? `${inspector.firstName} ${inspector.lastName}`.trim() : null,
+      };
+    });
+
     return {
       success: true,
       data: {
-        inspections: result.items,
+        items,
         pagination: result.pagination,
       },
     };
@@ -210,7 +443,30 @@ export class InspectionService implements ICronProvider {
       throw new ForbiddenError({ message: 'Access denied' });
     }
 
-    return { success: true, data: inspection };
+    const doc = inspection.toObject ? inspection.toObject() : inspection;
+    if (doc.inspectorUid) {
+      // Try uid first, fall back to _id for legacy data
+      let inspector = (await this.userDAO.findFirst(
+        { uid: doc.inspectorUid, deletedAt: null },
+        { populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' } }
+      )) as any;
+      if (!inspector) {
+        inspector = (await this.userDAO.findFirst(
+          { _id: doc.inspectorUid, deletedAt: null },
+          { populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' } }
+        )) as any;
+      }
+      const info = inspector?.profile?.personalInfo;
+      (doc as any).inspectorInfo = inspector
+        ? {
+            firstName: info?.firstName ?? '',
+            lastName: info?.lastName ?? '',
+            email: inspector.email,
+          }
+        : null;
+    }
+
+    return { success: true, data: doc };
   }
 
   async updateInspection(
@@ -309,7 +565,7 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_SUBMITTED, {
       iuid: inspection.iuid,
       cuid,
-      inspectorId: toId(inspection.inspectorId),
+      inspectorUid: inspection.inspectorUid!,
       tenantId: toId(inspection.tenantId),
       type: inspection.type,
     });
@@ -359,6 +615,28 @@ export class InspectionService implements ICronProvider {
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
       $set: updateFields,
     });
+
+    // Revert property/unit operational status if set during scheduling
+    // Only revert if still 'maintenance' — if PM manually changed it, respect their override
+    if (inspection.previousOperationalStatus) {
+      if (inspection.propertyUnitId) {
+        const currentUnit = await this.propertyUnitDAO.findFirst({
+          _id: inspection.propertyUnitId,
+        });
+        if (currentUnit?.status === PropertyUnitStatusEnum.MAINTENANCE) {
+          await this.propertyUnitDAO.updateById(inspection.propertyUnitId.toString(), {
+            status: inspection.previousOperationalStatus,
+          });
+        }
+      } else if (inspection.propertyId) {
+        const currentProperty = await this.propertyDAO.findFirst({ _id: inspection.propertyId });
+        if (currentProperty?.operationalStatus === 'maintenance') {
+          await this.propertyDAO.updateById(inspection.propertyId.toString(), {
+            operationalStatus: inspection.previousOperationalStatus,
+          });
+        }
+      }
+    }
 
     this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
       iuid: inspection.iuid,
@@ -421,7 +699,7 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_DISPUTED, {
       iuid: inspection.iuid,
       cuid,
-      inspectorId: toId(inspection.inspectorId),
+      inspectorUid: inspection.inspectorUid!,
       tenantId: toId(inspection.tenantId),
       disputeNotes: data.disputeNotes.text,
     });
@@ -455,7 +733,7 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_REJECTED, {
       iuid: inspection.iuid,
       cuid,
-      inspectorId: toId(inspection.inspectorId),
+      inspectorUid: inspection.inspectorUid!,
       tenantId: toId(inspection.tenantId),
       reason: reason.text,
       isFinal,
@@ -479,6 +757,28 @@ export class InspectionService implements ICronProvider {
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
       $set: { status: InspectionStatus.CANCELLED },
     });
+
+    // Revert property/unit operational status if set during scheduling
+    // Only revert if still 'maintenance' — if PM manually changed it, respect their override
+    if (inspection.previousOperationalStatus) {
+      if (inspection.propertyUnitId) {
+        const currentUnit = await this.propertyUnitDAO.findFirst({
+          _id: inspection.propertyUnitId,
+        });
+        if (currentUnit?.status === PropertyUnitStatusEnum.MAINTENANCE) {
+          await this.propertyUnitDAO.updateById(inspection.propertyUnitId.toString(), {
+            status: inspection.previousOperationalStatus,
+          });
+        }
+      } else if (inspection.propertyId) {
+        const currentProperty = await this.propertyDAO.findFirst({ _id: inspection.propertyId });
+        if (currentProperty?.operationalStatus === 'maintenance') {
+          await this.propertyDAO.updateById(inspection.propertyId.toString(), {
+            operationalStatus: inspection.previousOperationalStatus,
+          });
+        }
+      }
+    }
 
     this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
       iuid: inspection.iuid,
@@ -757,6 +1057,114 @@ export class InspectionService implements ICronProvider {
     this.log.info(
       `Move-out check: ${autoScheduledCount} auto-scheduled, ${reminderCount} reminders sent`
     );
+  }
+
+  // ─── Cron: Auto-Close Unresponsive Move-Out Inspections ──────────────────────
+
+  private async autoCloseUnresponsiveInspections(): Promise<void> {
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const staleInspections = await this.inspectionDAO.list(
+        {
+          type: InspectionType.MOVE_OUT,
+          status: InspectionStatus.SUBMITTED,
+          submittedAt: { $lte: sevenDaysAgo },
+          deletedAt: null,
+        } as any,
+        { limit: 200 }
+      );
+
+      if (staleInspections.items.length === 0) {
+        this.log.info('No unresponsive move-out inspections to auto-close');
+        return;
+      }
+
+      this.log.info(
+        `Auto-closing ${staleInspections.items.length} unresponsive move-out inspection(s)`
+      );
+
+      let processed = 0;
+
+      for (const inspection of staleInspections.items) {
+        try {
+          const updateFields: Record<string, any> = {
+            status: InspectionStatus.APPROVED,
+            approvedAt: new Date(),
+          };
+
+          // Deposit is forfeited when tenant does not respond
+          if (inspection.refundInfo) {
+            updateFields['refundInfo.isRefunded'] = false;
+          }
+
+          await this.inspectionDAO.updateById(inspection._id.toString(), {
+            $set: updateFields,
+            $push: {
+              notes: {
+                note: 'Auto-closed: tenant did not respond within 7 days of submission. Security deposit forfeited.',
+                author: 'System',
+                authorId: inspection.inspectorUid,
+                timestamp: new Date(),
+              },
+            },
+          });
+
+          // Revert property/unit operational status if set during scheduling
+          // Only revert if still 'maintenance' — if PM manually changed it, respect their override
+          if (inspection.previousOperationalStatus) {
+            if (inspection.propertyUnitId) {
+              const currentUnit = await this.propertyUnitDAO.findFirst({
+                _id: inspection.propertyUnitId,
+              });
+              if (currentUnit?.status === PropertyUnitStatusEnum.MAINTENANCE) {
+                await this.propertyUnitDAO.updateById(inspection.propertyUnitId.toString(), {
+                  status: inspection.previousOperationalStatus,
+                });
+              }
+            } else if (inspection.propertyId) {
+              const currentProperty = await this.propertyDAO.findFirst({
+                _id: inspection.propertyId,
+              });
+              if (currentProperty?.operationalStatus === 'maintenance') {
+                await this.propertyDAO.updateById(inspection.propertyId.toString(), {
+                  operationalStatus: inspection.previousOperationalStatus,
+                });
+              }
+            }
+          }
+
+          this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
+            iuid: inspection.iuid,
+            cuid: inspection.cuid,
+            leaseId: toId(inspection.leaseId),
+            tenantId: toId(inspection.tenantId),
+            ...(inspection.refundInfo && {
+              refundAmount: 0,
+              depositAmount: inspection.refundInfo.amount,
+            }),
+          });
+
+          processed++;
+          this.log.info(
+            { iuid: inspection.iuid, leaseId: toId(inspection.leaseId) },
+            'Auto-closed unresponsive move-out inspection'
+          );
+        } catch (error: any) {
+          this.log.error(
+            { iuid: inspection.iuid, error: error.message },
+            'Failed to auto-close inspection'
+          );
+        }
+      }
+
+      this.log.info(
+        `Auto-close completed: ${processed}/${staleInspections.items.length} processed`
+      );
+    } catch (error) {
+      this.log.error({ error }, 'Error in autoCloseUnresponsiveInspections cron');
+    }
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────────

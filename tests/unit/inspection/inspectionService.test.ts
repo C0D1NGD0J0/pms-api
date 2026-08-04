@@ -27,6 +27,12 @@ const mockLeaseDAO = {
 
 const mockPropertyDAO = {
   findFirst: jest.fn() as any,
+  updateById: jest.fn() as any,
+};
+
+const mockPropertyUnitDAO = {
+  findFirst: jest.fn() as any,
+  updateById: jest.fn() as any,
 };
 
 const mockUserDAO = {
@@ -78,6 +84,7 @@ beforeEach(() => {
 
   service = new InspectionService({
     inspectionDAO: mockInspectionDAO as any,
+    propertyUnitDAO: mockPropertyUnitDAO as any,
     leaseDAO: mockLeaseDAO as any,
     propertyDAO: mockPropertyDAO as any,
     userDAO: mockUserDAO as any,

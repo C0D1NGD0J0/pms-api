@@ -916,6 +916,8 @@ export class NotificationService {
     eventType:
       | 'renewal_created'
       | 'renewal_approved'
+      | 'renewal_hold_urgent'
+      | 'renewal_auto_rejected'
       | 'expiring'
       | 'expired'
       | 'completed'
@@ -929,7 +931,7 @@ export class NotificationService {
       endDate: Date;
       startDate?: Date;
     };
-    recipients: { tenant?: boolean; propertyManager?: string; createdBy?: string };
+    recipients: { tenant?: boolean | string; propertyManager?: string; createdBy?: string };
     metadata?: Record<string, any>;
     customMessage?: { title?: string; message?: string };
   }): Promise<void> {
@@ -1653,7 +1655,7 @@ export class NotificationService {
           message: `A ${payload.type.replace('_', '-')} inspection has been submitted for review`,
           type: NotificationTypeEnum.INSPECTION,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.inspectorId,
+          recipient: payload.inspectorUid,
           priority: NotificationPriorityEnum.MEDIUM,
           actionUrl: `/inspections/${payload.iuid}`,
           cuid: payload.cuid,
@@ -1695,7 +1697,7 @@ export class NotificationService {
           message: `Tenant has disputed the inspection: ${payload.disputeNotes.substring(0, 100)}`,
           type: NotificationTypeEnum.INSPECTION,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.inspectorId,
+          recipient: payload.inspectorUid,
           priority: NotificationPriorityEnum.HIGH,
           actionUrl: `/inspections/${payload.iuid}`,
           cuid: payload.cuid,
@@ -1713,7 +1715,7 @@ export class NotificationService {
           : `Inspection needs revision: ${payload.reason.substring(0, 100)}`;
 
         // Notify both tenant and inspector
-        const recipients = [payload.tenantId, payload.inspectorId].filter(Boolean);
+        const recipients = [payload.tenantId, payload.inspectorUid].filter(Boolean);
         for (const recipient of recipients) {
           await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
             title,

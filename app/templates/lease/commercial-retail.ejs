@@ -637,6 +637,11 @@
           </div>
           <% }); %>
         </div>
+        <p style="margin-top: 15px; font-size: 10pt; font-style: italic; color: #555555; padding: 10px; background: #fff9e6; border: 1px solid #d4af37;">
+          All co-tenants listed in this Agreement shall be jointly and severally liable for all obligations
+          arising under this Agreement, including but not limited to the payment of rent and the repair of
+          damages. Any notice given to one co-tenant shall be deemed notice to all co-tenants.
+        </p>
       </div>
       <% } %>
 
@@ -763,6 +768,7 @@
           of termination at least <strong><%= renewalOptions.noticePeriodDays %> days</strong> prior to the
           expiration date, this Agreement shall automatically renew for an additional term of
           <strong><%= renewalOptions.renewalTermMonths %> months</strong> under the same terms and conditions.
+          Any changes to the rental amount upon renewal shall be communicated in writing.
         </p>
       </div>
       <% } %>
@@ -827,7 +833,7 @@
 
       <div class="subsection-header">2.3 Rental Payment Obligations</div>
       <p class="legal-paragraph">
-        The Tenant covenants and agrees to pay to the Landlord, without demand, offset, or deduction, the sum of
+        The Tenant covenants and agrees to pay to the Landlord, without demand, offset, or deduction, except as may be expressly permitted by applicable law, the sum of
         <strong><%= rentAmount %></strong> per calendar month as rent for the Premises. Payment shall
         be made in advance on the <strong><%= rentDueDayOrdinal %></strong> day of each month during the
         term of this Agreement. All payments shall be made to the Landlord at the address specified above or at
@@ -861,7 +867,7 @@
         Upon execution of this Agreement, the Tenant has deposited with the Landlord the sum of
         <strong><%= securityDeposit %></strong> as security for the faithful performance and observance
         by the Tenant of the terms, provisions, and conditions of this Agreement. Said deposit shall be returned
-        to the Tenant, without interest, within the time period required by applicable law following termination
+        to the Tenant, together with any interest required by applicable law, within the time period required by applicable law following termination
         of the tenancy, less any lawful deductions for damages beyond normal wear and tear, unpaid rent, or other
         charges due under this Agreement.
       </p>
@@ -928,6 +934,70 @@
         Upon termination, the Tenant shall surrender the Premises to the Landlord in the same condition as received,
         ordinary wear and tear excepted, and shall remove all personal property belonging to the Tenant.
       </p>
+
+      <div class="subsection-header">2.11 Quiet Enjoyment</div>
+      <p class="legal-paragraph">
+        The Landlord covenants that the Tenant, upon paying the rent and performing the covenants herein, shall
+        peacefully and quietly hold, occupy, and enjoy the Premises during the term of this Agreement without
+        hindrance or interruption by the Landlord or any person claiming through the Landlord.
+      </p>
+
+      <div class="subsection-header">2.12 Default and Remedies</div>
+      <p class="legal-paragraph">
+        A default under this Agreement shall include, but not be limited to: (a) failure to pay rent within the
+        applicable grace period; (b) violation of any material term or condition of this Agreement; (c) abandonment
+        of the Premises; (d) Tenant's insolvency or filing for bankruptcy; (e) assignment or subletting without
+        the Landlord's consent. In the event of default, the non-defaulting Party shall provide written notice
+        specifying the nature of the default. The defaulting Party shall have a reasonable period, not less than
+        that required by applicable law, to cure the default before the non-defaulting Party may exercise any
+        remedies available under this Agreement or applicable law, including termination. The defaulting Party
+        shall be responsible for all reasonable costs incurred by the non-defaulting Party in enforcing this
+        Agreement, including reasonable attorney's fees, to the extent permitted by applicable law.
+      </p>
+
+      <div class="subsection-header">2.13 Holdover</div>
+      <p class="legal-paragraph">
+        If the Tenant remains in possession of the Premises after the expiration or termination of this Agreement
+        without the Landlord's written consent, the Tenant shall be deemed a holdover tenant on a month-to-month
+        basis, subject to all terms of this Agreement except that the monthly rent shall be increased to two
+        hundred percent (200%) of the last monthly rent, or such other amount as may be permitted by applicable
+        law. The Tenant shall also be liable for all damages sustained by the Landlord as a result of such
+        holdover. Either Party may terminate such holdover tenancy upon 30 days' written notice.
+      </p>
+
+      <div class="subsection-header">2.14 Insurance</div>
+      <p class="legal-paragraph">
+        The Tenant shall, at its own expense, maintain throughout the term of this Agreement: (a) commercial
+        general liability insurance with limits of not less than $1,000,000 per occurrence and $2,000,000 in the
+        aggregate; (b) property insurance covering the Tenant's personal property and improvements; and
+        (c) workers' compensation insurance as required by applicable law. The Tenant shall name the Landlord as
+        an additional insured on all liability policies and shall provide certificates of insurance upon request.
+        Failure to maintain required insurance shall constitute a material breach of this Agreement.
+      </p>
+
+      <div class="subsection-header">2.15 Indemnification</div>
+      <p class="legal-paragraph">
+        The Tenant shall indemnify, defend, and hold harmless the Landlord from and against all claims, damages,
+        losses, costs, and expenses (including reasonable attorney's fees) arising from the Tenant's use or
+        occupancy of the Premises, except to the extent caused by the Landlord's negligence or willful misconduct.
+      </p>
+
+      <div class="subsection-header">2.16 ADA Compliance</div>
+      <p class="legal-paragraph">
+        The Tenant shall comply with the Americans with Disabilities Act (ADA) and all applicable accessibility
+        laws with respect to the Tenant's use and occupancy of the Premises. The Landlord shall be responsible for
+        ensuring that common areas and building systems comply with applicable accessibility requirements.
+      </p>
+
+      <div class="subsection-header">2.17 Percentage Rent</div>
+      <p class="legal-paragraph">
+        If applicable, in addition to base rent, the Tenant may be required to pay the Landlord a percentage rent
+        based on the Tenant's gross sales as separately agreed upon in writing by the Parties. If percentage rent
+        applies, the Tenant shall provide monthly sales reports to the Landlord within fifteen (15) days of each
+        calendar month's end and shall maintain accurate records of all gross sales, which shall be available for
+        inspection by the Landlord upon reasonable notice. The specific percentage, breakpoint, and reporting
+        requirements shall be set forth in a separate addendum to this Agreement.
+      </p>
       <% } %>
     </div>
 
@@ -987,6 +1057,24 @@
         heirs, executors, administrators, successors, and assigns, subject to the provisions herein regarding
         assignment.
       </p>
+
+      <div class="subsection-header">3.7 Force Majeure</div>
+      <p class="legal-paragraph">
+        Neither Party shall be liable for any failure or delay in performing its obligations under this Agreement
+        if such failure or delay results from circumstances beyond the reasonable control of that Party, including
+        but not limited to: acts of God, natural disasters, pandemics, epidemics, government orders or regulations,
+        civil unrest, fire, flood, or utility failures. The affected Party shall promptly notify the other Party
+        and shall use reasonable efforts to mitigate the effects of the force majeure event.
+      </p>
+
+      <div class="subsection-header">3.8 Dispute Resolution</div>
+      <p class="legal-paragraph">
+        In the event of any dispute arising under this Agreement, the Parties agree to first attempt resolution
+        through good-faith negotiation. If the dispute cannot be resolved through negotiation within thirty (30)
+        days, either Party may pursue mediation before a mutually agreed-upon mediator. The costs of mediation
+        shall be shared equally by the Parties. Nothing in this section shall prevent either Party from seeking
+        emergency or injunctive relief from a court of competent jurisdiction.
+      </p>
     </div>
 
     <!-- SECTION DIVIDER -->
@@ -997,7 +1085,7 @@
     <!-- SIGNATURES -->
     <div class="signature-section">
       <div class="signature-intro">
-        <strong>IN WITNESS WHEREOF,</strong> the Parties have executed this Residential Lease Agreement
+        <strong>IN WITNESS WHEREOF,</strong> the Parties have executed this Commercial Retail Lease Agreement
         as of the day and year first above written.
       </div>
 
@@ -1099,6 +1187,11 @@
       <p>This instrument constitutes the entire agreement between the parties and supersedes all prior understandings.</p>
       <p style="font-style: italic; margin-top: 10px;">
         Each party acknowledges receipt of a fully executed copy of this Agreement.
+      </p>
+      <p style="font-size: 9pt; margin-top: 15px; padding-top: 10px; border-top: 1px solid #dee2e6; color: #666666;">
+        This property is offered in compliance with all applicable federal, state, and local fair housing laws.
+        The Landlord does not discriminate on the basis of race, color, religion, sex, national origin, familial
+        status, disability, or any other characteristic protected by law.
       </p>
     </div>
   </div>

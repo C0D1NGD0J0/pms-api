@@ -426,6 +426,39 @@ router.patch(
   })
 );
 
+// Tenant submits a renewal request on their active lease.
+router.post(
+  '/:cuid/:luid/renewal-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  requireActiveTenant(),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.renewalRequest,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.submitRenewalRequest(req, res);
+  })
+);
+
+// PM approves or rejects a renewal request
+router.patch(
+  '/:cuid/:luid/renewal-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER]),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.renewalRequestDecision,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.decideRenewalRequest(req, res);
+  })
+);
+
 // Get derived offboarding progress for a specific lease
 router.get(
   '/:cuid/:luid/offboarding-status',

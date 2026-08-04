@@ -789,6 +789,12 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                 $ifNull: ['$subscriptionInfo.entitlements.aiInvoiceScanning', false],
               },
               smsService: { $ifNull: ['$subscriptionInfo.entitlements.smsService', false] },
+              inspectionService: {
+                $ifNull: ['$subscriptionInfo.entitlements.inspectionService', false],
+              },
+              aiInspectionAnalysis: {
+                $ifNull: ['$subscriptionInfo.entitlements.aiInspectionAnalysis', false],
+              },
             },
 
             // Payment processor status — only exposed for SUPER_ADMIN

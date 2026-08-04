@@ -117,7 +117,7 @@ export class InspectionReportService {
       throw new NotFoundError({ message: 'Client not found' });
     }
 
-    const inspector = inspection.inspectorId as
+    const inspector = inspection.inspectorUid as
       | { firstName?: string; lastName?: string }
       | undefined;
     const tenant = inspection.tenantId as { firstName?: string; lastName?: string } | undefined;

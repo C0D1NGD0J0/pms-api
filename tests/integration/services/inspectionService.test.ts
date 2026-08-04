@@ -47,6 +47,7 @@ describe('InspectionService Integration Tests', () => {
 
     inspectionService = new InspectionService({
       inspectionDAO,
+      propertyUnitDAO,
       leaseDAO,
       propertyDAO,
       userDAO,

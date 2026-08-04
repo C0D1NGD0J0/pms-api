@@ -932,6 +932,34 @@ export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings
       );
     }
 
+    // Restrict tenants with pending deactivation to read-only + inspection actions
+    if (activeConnection?.pendingDeactivation) {
+      const method = req.method.toUpperCase();
+      const path = req.path.toLowerCase();
+
+      // Allow all GET requests (read-only access)
+      if (method === 'GET') {
+        return next();
+      }
+
+      // Allow inspection acknowledge and dispute actions only
+      const isInspectionAction =
+        path.includes('/inspections/') &&
+        (path.endsWith('/acknowledge') || path.endsWith('/dispute'));
+
+      if (isInspectionAction) {
+        return next();
+      }
+
+      // Block all other write operations
+      return next(
+        new ForbiddenError({
+          message:
+            'Your lease has expired. You can only view your account and respond to inspections.',
+        })
+      );
+    }
+
     // Optionally gate a PM-controlled feature toggle
     if (tenantFeature) {
       const tenantFeatures = currentUser.client?.tenantFeatures;

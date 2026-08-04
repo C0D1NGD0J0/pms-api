@@ -667,21 +667,21 @@ export interface PaymentDisputeReversalFailedPayload {
   cuid: string;
 }
 
+export interface InspectionScheduledPayload {
+  type: InspectionType;
+  scheduledDate: Date;
+  propertyId: string;
+  tenantId?: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceRequestDeclinedPayload {
   requestId: string;
   tenantId?: string;
   vendorId: string;
   reason?: string;
   mruid: string;
-  cuid: string;
-}
-
-export interface InspectionScheduledPayload {
-  type: InspectionType;
-  scheduledDate: Date;
-  propertyId: string;
-  tenantId: string;
-  iuid: string;
   cuid: string;
 }
 
@@ -749,7 +749,7 @@ export interface PayoutPaidPayload {
 }
 
 export interface InspectionRejectedPayload {
-  inspectorId: string;
+  inspectorUid: string;
   tenantId: string;
   isFinal: boolean;
   reason: string;
@@ -783,6 +783,14 @@ export interface MaintenanceRequestAcceptedPayload {
   cuid: string;
 }
 
+export interface InspectionSubmittedPayload {
+  type: InspectionType;
+  inspectorUid: string;
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceChargePaidPayload {
   amountInCents: number;
   chargeId?: string;
@@ -791,17 +799,9 @@ export interface MaintenanceChargePaidPayload {
   cuid: string;
 }
 
-export interface InspectionSubmittedPayload {
-  type: InspectionType;
-  inspectorId: string;
-  tenantId: string;
-  iuid: string;
-  cuid: string;
-}
-
 export interface InspectionDisputedPayload {
   disputeNotes: string;
-  inspectorId: string;
+  inspectorUid: string;
   tenantId: string;
   iuid: string;
   cuid: string;

@@ -9,6 +9,7 @@ import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { PaymentRecordType } from '@interfaces/payments.interface';
 import { EventEmitterService, VendorService } from '@services/index';
+import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
@@ -73,7 +74,7 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-export class UserService {
+export class UserService implements ICronProvider {
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly clientDAO: ClientDAO;
@@ -123,6 +124,20 @@ export class UserService {
     this.queueFactory = queueFactory;
 
     this.setupEventListeners();
+  }
+
+  getCronJobs(): ICronJob[] {
+    return [
+      {
+        name: 'user:auto-deactivate-stale-tenants',
+        schedule: '0 2 * * *',
+        handler: this.autoDeactivateStaleTenants.bind(this),
+        service: 'UserService',
+        enabled: true,
+        description: 'Force-deactivate tenants in pendingDeactivation state for 30+ days',
+        timeout: 120_000,
+      },
+    ];
   }
 
   private async fetchAndValidateUser(
@@ -2591,7 +2606,8 @@ export class UserService {
           $set: {
             'cuids.$.isFormerTenant': true,
             'cuids.$.leaseExpiredAt': expiredAt,
-            'cuids.$.isConnected': false,
+            'cuids.$.pendingDeactivation': true,
+            'cuids.$.deactivateAfter': 'inspection',
           },
         }
       );
@@ -2599,9 +2615,59 @@ export class UserService {
       const user = await this.userDAO.getUserById(tenantId);
       if (user) await this.userCache.invalidateUserDetail(cuid, user.uid);
 
-      this.log.info({ tenantId, cuid }, 'Tenant auto-deactivated: no active lease remaining');
+      this.log.info(
+        { tenantId, cuid },
+        'Tenant marked for deferred deactivation (pending inspection)'
+      );
     } catch (error) {
       this.log.error({ error, tenantId, cuid }, 'Error handling lease expired event');
+    }
+  }
+
+  /**
+   * Safety-net cron: auto-deactivate tenants stuck in pendingDeactivation for 30+ days
+   * (e.g. if PM never closes the move-out inspection).
+   */
+  private async autoDeactivateStaleTenants(): Promise<void> {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const staleTenants = await this.userDAO.listUsers({
+        'cuids.pendingDeactivation': true,
+        'cuids.leaseExpiredAt': { $lt: thirtyDaysAgo },
+      });
+
+      for (const user of staleTenants.items || []) {
+        for (const conn of user.cuids || []) {
+          if (
+            conn.pendingDeactivation &&
+            conn.leaseExpiredAt &&
+            conn.leaseExpiredAt < thirtyDaysAgo
+          ) {
+            await this.userDAO.update(
+              { _id: user._id, 'cuids.cuid': conn.cuid },
+              {
+                $set: {
+                  'cuids.$.isConnected': false,
+                  'cuids.$.pendingDeactivation': false,
+                },
+              }
+            );
+
+            this.log.info('Auto-deactivated stale tenant (30-day safety net)', {
+              userId: user._id.toString(),
+              cuid: conn.cuid,
+            });
+
+            if (user.uid) {
+              await this.userCache?.invalidateUserDetail(conn.cuid, user.uid);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.log.error('Error in autoDeactivateStaleTenants cron', { error });
     }
   }
 }

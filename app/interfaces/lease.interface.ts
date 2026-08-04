@@ -587,7 +587,7 @@ export interface IRenewalRequest {
     rejectionReason?: string;
   };
   status: 'pending' | 'approved' | 'rejected';
-  requestedTermMonths: number;
+  requestedTermMonths?: number;
   submittedAt: Date;
   message?: string;
   holdUntil?: Date;

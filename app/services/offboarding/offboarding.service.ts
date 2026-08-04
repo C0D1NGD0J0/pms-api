@@ -793,13 +793,14 @@ export class OffboardingService {
       });
     }
 
+    // Compute renewal dates upfront (needed for overlap check and draft creation)
+    const endDate = dayjs(lease.duration.endDate);
+    const renewalTermMonths = lease.renewalRequest.requestedTermMonths || 12;
+    const proposedStartDate = endDate.add(1, 'day').toDate();
+    const proposedEndDate = dayjs(proposedStartDate).add(renewalTermMonths, 'month').toDate();
+
     if (decision.approved) {
       // Re-check overlap guard before approval (a new lease may have been created since submission)
-      const endDate = dayjs(lease.duration.endDate);
-      const renewalTermMonths = lease.renewalRequest.requestedTermMonths || 12;
-      const proposedStartDate = endDate.add(1, 'day').toDate();
-      const proposedEndDate = dayjs(proposedStartDate).add(renewalTermMonths, 'month').toDate();
-
       const propertyId = lease.property.id.toString();
       const unitId = lease.property.unitId?.toString();
 
@@ -817,23 +818,9 @@ export class OffboardingService {
           message: 'A new lease is already scheduled for this property.',
         });
       }
-
-      // Create draft renewal lease
-      await this.leaseRenewalService.createDraftLeaseRenewal(
-        cuid,
-        luid,
-        {
-          duration: {
-            startDate: proposedStartDate,
-            endDate: proposedEndDate,
-            moveInDate: proposedStartDate,
-          },
-        } as any,
-        ctx
-      );
     }
 
-    // Record the decision on the original lease
+    // Record the decision first (safe to retry if draft creation fails later)
     const updatedLease = await this.leaseDAO.decideRenewalRequest(cuid, lease._id.toString(), {
       approved: decision.approved,
       decidedBy: currentUser.sub,
@@ -847,6 +834,19 @@ export class OffboardingService {
     }
 
     if (decision.approved) {
+      // Create draft renewal lease after decision is recorded
+      await this.leaseRenewalService.createDraftLeaseRenewal(
+        cuid,
+        luid,
+        {
+          duration: {
+            startDate: proposedStartDate,
+            endDate: proposedEndDate,
+            moveInDate: proposedStartDate,
+          },
+        } as any,
+        ctx
+      );
       this.log.info('Renewal request approved — draft renewal lease created', { luid, cuid });
     } else {
       this.log.info('Renewal request rejected', {

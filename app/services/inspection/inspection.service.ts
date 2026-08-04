@@ -311,20 +311,35 @@ export class InspectionService implements ICronProvider {
 
       const rooms = data.rooms?.length ? data.rooms : DEFAULT_INSPECTION_ROOMS;
 
-      const inspection = await this.inspectionDAO.insert({
-        cuid,
-        type: data.type,
-        status: InspectionStatus.SCHEDULED,
-        propertyId: property._id,
-        ...(unitDoc && { propertyUnitId: unitDoc._id }),
-        inspectorUid,
-        scheduledDate: new Date(data.scheduledDate),
-        overallNotes: data.overallNotes,
-        rooms,
-        media: [],
-        createdBy: userId,
-        previousOperationalStatus: previousStatus,
-      } as any);
+      let inspection;
+      try {
+        inspection = await this.inspectionDAO.insert({
+          cuid,
+          type: data.type,
+          status: InspectionStatus.SCHEDULED,
+          propertyId: property._id,
+          ...(unitDoc && { propertyUnitId: unitDoc._id }),
+          inspectorUid,
+          scheduledDate: new Date(data.scheduledDate),
+          overallNotes: data.overallNotes,
+          rooms,
+          media: [],
+          createdBy: userId,
+          previousOperationalStatus: previousStatus,
+        } as any);
+      } catch (error) {
+        // Revert status if inspection insert fails
+        if (unitDoc && previousStatus) {
+          await this.propertyUnitDAO.updateById(unitDoc._id.toString(), {
+            status: previousStatus,
+          });
+        } else if (previousStatus) {
+          await this.propertyDAO.updateById(property._id.toString(), {
+            operationalStatus: previousStatus,
+          });
+        }
+        throw error;
+      }
 
       this.emitterService.emit(EventTypes.INSPECTION_SCHEDULED, {
         iuid: inspection.iuid,

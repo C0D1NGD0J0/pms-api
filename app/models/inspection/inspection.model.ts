@@ -154,7 +154,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
     propertyUnitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit', index: true },
     previousOperationalStatus: { type: String },
     inspectorUid: { type: String, required: true, minlength: 9, maxlength: 38, index: true },
-    tenantId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    tenantId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     scheduledDate: { type: Date, required: true },
     completedDate: { type: Date },
     submittedAt: { type: Date },

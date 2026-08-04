@@ -520,7 +520,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       submittedAt: { type: Date },
       holdUntil: { type: Date },
       decision: {
-        decidedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+        decidedBy: { type: Schema.Types.Mixed },
         decidedAt: { type: Date },
         rejectionReason: { type: String, trim: true },
       },

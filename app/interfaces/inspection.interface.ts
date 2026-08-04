@@ -56,8 +56,8 @@ export interface IInspection {
   notes?: IInspectionNote[];
   media: IInspectionMedia[];
   createdBy: Types.ObjectId;
+  tenantId?: Types.ObjectId;
   status: InspectionStatus;
-  tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
   leaseId?: Types.ObjectId;
   conditionScore?: number;

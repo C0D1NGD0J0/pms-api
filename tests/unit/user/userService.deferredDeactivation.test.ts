@@ -3,16 +3,13 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
-import { UserService } from '@services/user/user.service';
 import { EventEmitterService } from '@services/eventEmitter';
-import { InspectionType } from '@interfaces/inspection.interface';
 
 describe('UserService - Deferred Deactivation', () => {
-  let userService: UserService;
   let mockUserDAO: jest.Mocked<UserDAO>;
   let mockLeaseDAO: jest.Mocked<LeaseDAO>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
-  let registeredListeners: Record<string, Function>;
+  let registeredListeners: Record<string, (...args: any[]) => any>;
 
   const testCuid = 'TESTCLIENT123';
   const mockTenantId = new Types.ObjectId();
@@ -39,7 +36,7 @@ describe('UserService - Deferred Deactivation', () => {
 
     mockEmitterService = {
       emit: jest.fn(),
-      on: jest.fn().mockImplementation((event: string, handler: Function) => {
+      on: jest.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
         registeredListeners[event] = handler;
         return mockEmitterService;
       }),

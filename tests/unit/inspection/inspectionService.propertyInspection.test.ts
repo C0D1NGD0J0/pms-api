@@ -1,12 +1,8 @@
 import { Types } from 'mongoose';
 import { jest } from '@jest/globals';
 import { InspectionService } from '@services/inspection/inspection.service';
-import {
-  InspectionStatus,
-  ConditionRating,
-  InspectionType,
-} from '@interfaces/inspection.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
 
 // ─── Mock DAOs & External Services ──────────────────────────────────────────
 

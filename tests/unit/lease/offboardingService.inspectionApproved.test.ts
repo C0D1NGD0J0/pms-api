@@ -5,7 +5,6 @@ import { PaymentDAO } from '@dao/paymentDAO';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
-import { IRequestContext } from '@interfaces/utils.interface';
 import { InspectionType } from '@interfaces/inspection.interface';
 
 jest.mock('@shared/middlewares', () => ({
@@ -21,7 +20,7 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
   let mockPaymentDAO: jest.Mocked<PaymentDAO>;
   let mockInspectionDAO: jest.Mocked<InspectionDAO>;
   let mockEmitterService: { emit: jest.Mock; on: jest.Mock; off: jest.Mock };
-  let registeredListeners: Record<string, Function>;
+  let registeredListeners: Record<string, (...args: any[]) => any>;
 
   const mockTenantId = new Types.ObjectId();
   const mockLeaseId = new Types.ObjectId();
@@ -59,7 +58,7 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
 
     mockEmitterService = {
       emit: jest.fn(),
-      on: jest.fn().mockImplementation((event: string, handler: Function) => {
+      on: jest.fn().mockImplementation((event: string, handler: (...args: any[]) => any) => {
         registeredListeners[event] = handler;
         return mockEmitterService;
       }),

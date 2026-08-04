@@ -1,14 +1,8 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
-import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
-import { ClientDAO } from '@dao/clientDAO';
-import { ProfileDAO } from '@dao/profileDAO';
-import { PropertyDAO } from '@dao/propertyDAO';
-import { InvitationDAO } from '@dao/invitationDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
-import { IRequestContext } from '@interfaces/utils.interface';
 
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,

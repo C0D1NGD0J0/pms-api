@@ -3,9 +3,11 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
+import { UserService } from '@services/user/user.service';
 import { EventEmitterService } from '@services/eventEmitter';
 
 describe('UserService - Deferred Deactivation', () => {
+  let _userService: UserService;
   let mockUserDAO: jest.Mocked<UserDAO>;
   let mockLeaseDAO: jest.Mocked<LeaseDAO>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
@@ -43,7 +45,7 @@ describe('UserService - Deferred Deactivation', () => {
       off: jest.fn(),
     } as any;
 
-    userService = new UserService({
+    _userService = new UserService({
       userDAO: mockUserDAO,
       leaseDAO: mockLeaseDAO,
       clientDAO: {} as any,

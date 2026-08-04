@@ -144,6 +144,8 @@ export async function notifyLeaseLifecycleEvent(
     eventType:
       | 'renewal_created'
       | 'renewal_approved'
+      | 'renewal_hold_urgent'
+      | 'renewal_auto_rejected'
       | 'expiring'
       | 'expired'
       | 'completed'
@@ -158,7 +160,7 @@ export async function notifyLeaseLifecycleEvent(
       startDate?: Date;
     };
     recipients: {
-      tenant?: boolean;
+      tenant?: boolean | string;
       propertyManager?: string;
       createdBy?: string;
     };

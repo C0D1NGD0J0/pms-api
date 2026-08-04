@@ -55,4 +55,26 @@ export class OffboardingController {
     const result = await this.offboardingService.getOffboardingStatus(cuid, luid);
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  submitRenewalRequest = async (req: AppRequest, res: Response) => {
+    const { cuid, luid } = req.params;
+    const result = await this.offboardingService.submitRenewalRequest(
+      cuid,
+      luid,
+      req.body,
+      req.context
+    );
+    res.status(httpStatusCodes.CREATED).json(result);
+  };
+
+  decideRenewalRequest = async (req: AppRequest, res: Response) => {
+    const { cuid, luid } = req.params;
+    const result = await this.offboardingService.decideRenewalRequest(
+      cuid,
+      luid,
+      req.body,
+      req.context
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

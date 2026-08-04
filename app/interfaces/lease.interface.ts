@@ -55,6 +55,7 @@ export interface ILease {
   utilitiesIncluded?: UtilityType[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
+  renewalRequest?: IRenewalRequest;
   templateType: LeaseTemplateType;
   internalNotes?: IInternalNote[];
   includeManagementFee?: boolean;
@@ -349,6 +350,33 @@ export interface ILeaseStats {
   totalLeases: number;
 }
 
+export interface ILeaseListItem {
+  property: {
+    pid: string;
+    name: string;
+    address: string;
+    managedByUid?: string | null;
+  };
+  tenant: {
+    id: string;
+    uid: string;
+    email: string;
+    fullName: string;
+  };
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  gracePeriodDays: number;
+  petsAllowed: boolean;
+  leaseNumber: string;
+  status: LeaseStatus;
+  unitNumber?: string;
+  rentAmount: number;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
 export interface ILeaseActivityEvent {
   type:
     | 'created'
@@ -438,23 +466,6 @@ export interface ILeaseSignature {
   ipAddress?: string;
   role: SignerRole;
   signedAt?: Date;
-}
-
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  gracePeriodDays: number;
-  petsAllowed: boolean;
-  leaseNumber: string;
-  status: LeaseStatus;
-  unitNumber?: string;
-  rentAmount: number;
-  tenantName: string;
-  tenantUid: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
 }
 
 export interface IRentRollReport {
@@ -566,6 +577,20 @@ export interface IOffboardingStatus {
   leaseTerminated: boolean;
   terminationDate?: Date;
   depositAmount?: number;
+}
+
+/** Embedded subdocument on the Lease model -- tenant requests lease renewal */
+export interface IRenewalRequest {
+  decision?: {
+    decidedBy: Types.ObjectId;
+    decidedAt: Date;
+    rejectionReason?: string;
+  };
+  status: 'pending' | 'approved' | 'rejected';
+  requestedTermMonths: number;
+  submittedAt: Date;
+  message?: string;
+  holdUntil?: Date;
 }
 
 export interface ILeaseESignature {

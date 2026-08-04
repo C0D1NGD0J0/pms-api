@@ -32,6 +32,16 @@ export interface ILeaseDAO {
     }
   ): Promise<ILeaseDocument | null>;
 
+  decideRenewalRequest(
+    cuid: string,
+    leaseId: string,
+    decision: {
+      approved: boolean;
+      decidedBy: string;
+      rejectionReason?: string;
+    }
+  ): Promise<ILeaseDocument | null>;
+
   checkOverlappingLeases(
     cuid: string,
     propertyId: string,
@@ -40,6 +50,15 @@ export interface ILeaseDAO {
     endDate: Date,
     excludeLeaseId?: string
   ): Promise<ILeaseDocument[]>;
+
+  submitRenewalRequest(
+    cuid: string,
+    leaseId: string,
+    data: {
+      requestedTermMonths: number;
+      message?: string;
+    }
+  ): Promise<ILeaseDocument | null>;
 
   getTenantInfo(lease: ILeaseDocument): Promise<{
     type: 'invitation' | 'user';
@@ -94,6 +113,8 @@ export interface ILeaseDAO {
 
   getActiveLeaseByUnit(cuid: string, unitId: string): Promise<ILeaseDocument | null>;
 
+  setRenewalHold(leaseId: string, holdUntil: Date): Promise<ILeaseDocument | null>;
+
   getExpiringLeases(cuid: string, daysAhead: number): Promise<ILeaseDocument[]>;
 
   /** Used for field-locking: true if at least one non-draft lease exists for this unit */
@@ -102,6 +123,8 @@ export interface ILeaseDAO {
   getRentRollData(cuid: string, propertyId?: string): Promise<IRentRollItem[]>;
 
   getLeasesPendingTenantAcceptance(cuid: string): Promise<ILeaseDocument[]>;
+
+  autoRejectRenewalRequest(leaseId: string): Promise<ILeaseDocument | null>;
 
   deleteLease(cuid: string, leaseId: string): Promise<boolean>;
 }

@@ -1293,6 +1293,27 @@ export class ClientService {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
+    // Bust cached sessions for all tenants so the updated tenantFeatures take effect immediately
+    const tenants = await this.userDAO.getUsersByClientIdAndRole(cuid, 'tenant' as any);
+    const tenantUsers = tenants?.items ?? [];
+    await Promise.allSettled(
+      tenantUsers.map(async (tenant: any) => {
+        const userId = tenant._id.toString();
+        await this.authCache.invalidateCurrentUser(userId, cuid);
+        await this.sseService.sendToUser(
+          userId,
+          cuid,
+          {
+            action: 'REFETCH_CURRENT_USER',
+            eventType: 'tenant_features_updated',
+            message: 'Your available features have been updated.',
+            timestamp: new Date().toISOString(),
+          },
+          'settings_update'
+        );
+      })
+    );
+
     return { success: true, data: updated };
   }
 

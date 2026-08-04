@@ -31,6 +31,8 @@ const UserSchema = new Schema<IUserDocument>(
         primaryRole: { type: String, default: null },
         isFormerTenant: { type: Boolean, default: false },
         leaseExpiredAt: { type: Date, default: null },
+        pendingDeactivation: { type: Boolean, default: false },
+        deactivateAfter: { type: String, enum: ['inspection'] },
         _id: false,
       },
     ],

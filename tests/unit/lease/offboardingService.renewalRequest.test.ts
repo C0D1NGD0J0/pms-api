@@ -133,7 +133,10 @@ describe('OffboardingService - Renewal Requests', () => {
       inspectionService: mockInspectionService as any,
       leaseRenewalService: mockLeaseRenewalService as any,
       emitterService: mockEmitterService as any,
-      maintenanceRequestDAO: { list: jest.fn().mockResolvedValue({ items: [] }), updateMany: jest.fn() } as any,
+      maintenanceRequestDAO: {
+        list: jest.fn().mockResolvedValue({ items: [] }),
+        updateMany: jest.fn(),
+      } as any,
       maintenancePaymentService: { chargeForMaintenance: jest.fn() } as any,
     });
   });

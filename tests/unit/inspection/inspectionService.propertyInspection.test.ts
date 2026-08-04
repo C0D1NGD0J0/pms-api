@@ -135,10 +135,9 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
       expect(insertData.previousOperationalStatus).toBe('active');
 
       // Property status set to maintenance
-      expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(
-        PROPERTY_ID.toString(),
-        { operationalStatus: 'maintenance' }
-      );
+      expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(PROPERTY_ID.toString(), {
+        operationalStatus: 'maintenance',
+      });
     });
 
     it('schedules routine inspection for specific unit', async () => {
@@ -162,10 +161,9 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
       expect(result.success).toBe(true);
 
       // Unit status set to maintenance
-      expect(mockPropertyUnitDAO.updateById).toHaveBeenCalledWith(
-        UNIT_ID.toString(),
-        { status: PropertyUnitStatusEnum.MAINTENANCE }
-      );
+      expect(mockPropertyUnitDAO.updateById).toHaveBeenCalledWith(UNIT_ID.toString(), {
+        status: PropertyUnitStatusEnum.MAINTENANCE,
+      });
 
       // Property status NOT changed (only unit)
       expect(mockPropertyDAO.updateById).not.toHaveBeenCalled();
@@ -246,10 +244,9 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
 
       await service.approveInspection(CUID, IUID);
 
-      expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(
-        PROPERTY_ID.toString(),
-        { operationalStatus: 'active' }
-      );
+      expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(PROPERTY_ID.toString(), {
+        operationalStatus: 'active',
+      });
     });
 
     it('skips revert when PM manually changed status', async () => {
@@ -266,9 +263,7 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
       });
 
       // PM changed status to 'inactive' — should NOT revert
-      mockPropertyDAO.findFirst.mockResolvedValue(
-        makeProperty({ operationalStatus: 'inactive' })
-      );
+      mockPropertyDAO.findFirst.mockResolvedValue(makeProperty({ operationalStatus: 'inactive' }));
 
       await service.approveInspection(CUID, IUID);
 

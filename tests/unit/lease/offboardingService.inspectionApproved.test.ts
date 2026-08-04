@@ -77,7 +77,10 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
       leaseRenewalService: { createDraftLeaseRenewal: jest.fn() } as any,
       emitterService: mockEmitterService as any,
       userCache: mockUserCache as any,
-      maintenanceRequestDAO: { list: jest.fn().mockResolvedValue({ items: [] }), updateMany: jest.fn() } as any,
+      maintenanceRequestDAO: {
+        list: jest.fn().mockResolvedValue({ items: [] }),
+        updateMany: jest.fn(),
+      } as any,
       maintenancePaymentService: { chargeForMaintenance: jest.fn() } as any,
     });
   });

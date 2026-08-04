@@ -48,8 +48,9 @@ export interface IInspection {
   overallNotes?: { text: string; html?: string };
   reportDocument?: IInspectionReportDocument;
   overallCondition?: ConditionRating;
+  previousOperationalStatus?: string;
   aiAnalysis?: AIInspectionAnalysis;
-  inspectorId: Types.ObjectId;
+  propertyUnitId?: Types.ObjectId;
   tenantAcknowledgedAt?: Date;
   propertyId: Types.ObjectId;
   notes?: IInspectionNote[];
@@ -58,8 +59,9 @@ export interface IInspection {
   status: InspectionStatus;
   tenantId: Types.ObjectId;
   rooms: IInspectionRoom[];
+  leaseId?: Types.ObjectId;
   conditionScore?: number;
-  leaseId: Types.ObjectId;
+  inspectorUid: string;
   type: InspectionType;
   completedDate?: Date;
   scheduledDate: Date;
@@ -70,6 +72,18 @@ export interface IInspection {
   updatedAt: Date;
   iuid: string;
   cuid: string;
+}
+
+export interface ICreateInspection {
+  overallNotes?: { text: string; html?: string };
+  rooms?: Partial<IInspectionRoom>[];
+  scheduledDate: string | Date;
+  refundDeposit?: boolean;
+  propertyUnitId?: string;
+  inspectorId?: string;
+  type: InspectionType;
+  propertyId?: string;
+  leaseId?: string;
 }
 
 export interface IInspectionStats {
@@ -83,16 +97,6 @@ export interface IInspectionStats {
   rejected: number;
   disputed: number;
   total: number;
-}
-
-export interface ICreateInspection {
-  overallNotes?: { text: string; html?: string };
-  rooms?: Partial<IInspectionRoom>[];
-  scheduledDate: string | Date;
-  refundDeposit?: boolean;
-  type: InspectionType;
-  inspectorId?: string;
-  leaseId: string;
 }
 
 export interface IInspectionMedia {

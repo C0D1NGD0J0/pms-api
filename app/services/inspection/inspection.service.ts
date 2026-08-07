@@ -123,7 +123,6 @@ export class InspectionService implements ICronProvider {
     data: ICreateInspection
   ): IPromiseReturnedData {
     if (data.leaseId) {
-      // ── PATH A: Lease-based inspection (existing logic) ──────────────────────
       const lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
       if (!lease) {
         throw new NotFoundError({ message: 'Lease not found' });
@@ -140,7 +139,7 @@ export class InspectionService implements ICronProvider {
         type: data.type,
         status: { $nin: [InspectionStatus.CANCELLED] },
         deletedAt: null,
-      } as any);
+      });
       if (existing) {
         throw new BadRequestError({
           message: `A ${data.type.replace('_', '-')} inspection already exists for this lease`,
@@ -152,7 +151,7 @@ export class InspectionService implements ICronProvider {
         const daysUntilExpiry = dayjs(lease.duration.endDate).diff(dayjs(), 'day', true);
 
         if (data.type === InspectionType.MOVE_OUT) {
-          const gracePeriodDays = LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+          const leaseGracePeriodDays = LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
           if (daysUntilExpiry > 30) {
             throw new ValidationRequestError({
               message: 'Move-out inspections can only be scheduled within 30 days of lease expiry',
@@ -161,7 +160,7 @@ export class InspectionService implements ICronProvider {
               },
             });
           }
-          if (daysUntilExpiry < 0 && Math.abs(daysUntilExpiry) > gracePeriodDays) {
+          if (daysUntilExpiry < 0 && Math.abs(daysUntilExpiry) > leaseGracePeriodDays) {
             throw new ValidationRequestError({
               message: 'Move-out inspections cannot be scheduled after the grace period has ended',
               errorInfo: { type: ['Lease grace period has expired'] },
@@ -368,23 +367,21 @@ export class InspectionService implements ICronProvider {
         ? await this.inspectionDAO.listForTenant(userId, cuid, query)
         : await this.inspectionDAO.listByClient(cuid, query);
 
-    // Manual lookup for inspector info (inspectorUid is a string uid, not an ObjectId ref)
     const inspectorUids = [...new Set(result.items.map((i) => i.inspectorUid).filter(Boolean))];
     const inspectorMap = new Map<string, { firstName: string; lastName: string; email: string }>();
 
     if (inspectorUids.length > 0) {
-      // Try uid first, fall back to _id for legacy data stored before uid resolution fix
       const inspectors = await this.userDAO.list(
         {
-          $or: [{ uid: { $in: inspectorUids } }, { _id: { $in: inspectorUids } }],
+          uid: inspectorUids,
           deletedAt: null,
-        } as any,
+        },
         {
           projection: 'uid email',
           populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
         }
       );
-      for (const inspector of inspectors.items as any[]) {
+      for (const inspector of inspectors.items) {
         const info = inspector.profile?.personalInfo;
         const entry = {
           firstName: info?.firstName ?? '',
@@ -399,9 +396,9 @@ export class InspectionService implements ICronProvider {
     const items = result.items.map((item) => {
       const doc = item.toObject ? item.toObject() : item;
       const inspector = doc.inspectorUid ? inspectorMap.get(doc.inspectorUid) : undefined;
-      const tenant = doc.tenantId as any;
-      const property = doc.propertyId as any;
-      const lease = doc.leaseId as any;
+      const tenant = doc.tenantId;
+      const property = doc.propertyId;
+      const lease = doc.leaseId;
 
       return {
         iuid: doc.iuid,

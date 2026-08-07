@@ -231,7 +231,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           unitPuid,
           rentAmount: totalMonthlyRent,
           currency: leaseObj.fees?.currency ?? 'USD',
-          gracePeriodDays: leaseObj.fees?.lateFeeDays ?? 5,
+          lateFeesGracePeriod: leaseObj.fees?.lateFeeDays ?? 5,
           rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
           acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,

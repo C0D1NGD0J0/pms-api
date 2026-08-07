@@ -153,7 +153,7 @@ export class LeaseTemplateService {
                   previewData.lateFee.type === 'fixed'
                     ? MoneyUtils.formatCurrency(previewData.lateFee.amount, previewData.currency)
                     : `${previewData.lateFee.percentage}%`,
-                gracePeriodDays: previewData.lateFee.gracePeriodDays || 5,
+                gracePeriodDays: previewData.lateFee.lateFeesGracePeriod || 5,
               }
             : null,
         managementFee: previewData.managementFee || null,

@@ -892,9 +892,9 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
   const totalDeposits = securityDeposit + petDeposit;
 
   let lateFee = 0;
-  const gracePeriod = this.fees?.lateFeeDays || 5;
+  const lateFeeGracePeriod = this.fees?.lateFeeDays || 5;
 
-  if (daysLate >= gracePeriod) {
+  if (daysLate >= lateFeeGracePeriod) {
     if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
       lateFee = calcLateFee(rentAmount, 'percentage', this.fees.lateFeePercentage);
     } else {
@@ -918,7 +918,7 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
       fee: lateFee,
       type: this.fees?.lateFeeType || 'fixed',
       percentage: this.fees?.lateFeePercentage,
-      gracePeriod,
+      gracePeriod: lateFeeGracePeriod,
     },
     currency: this.fees?.currency || 'USD',
   };

@@ -301,7 +301,7 @@ export class LeasePdfService {
         amount: lease.fees.lateFeeAmount || 0,
         type: lease.fees.lateFeeType || 'fixed',
         percentage: lease.fees.lateFeePercentage || 0,
-        gracePeriodDays: lease.fees.lateFeeDays || 5,
+        lateFeesGracePeriod: lease.fees.lateFeeDays || 5,
       },
 
       petPolicy: lease.petPolicy,

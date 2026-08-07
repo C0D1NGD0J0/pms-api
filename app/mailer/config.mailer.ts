@@ -206,11 +206,26 @@ export class MailService {
           'accountDisconnected'
         );
         break;
+      case MailType.INSPECTION_SCHEDULED:
+        template = await this.buildTemplate('inspection-scheduled', emailData, 'inspection');
+        break;
+      case MailType.INSPECTION_SUBMITTED:
+        template = await this.buildTemplate('inspection-submitted', emailData, 'inspection');
+        break;
+      case MailType.INSPECTION_CANCELLED:
+        template = await this.buildTemplate('inspection-cancelled', emailData, 'inspection');
+        break;
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
       case MailType.LEASE_ADMIN_UPDATED:
         template = await this.buildTemplate('lease-admin-updated', emailData, 'lease');
+        break;
+      case MailType.INSPECTION_APPROVED:
+        template = await this.buildTemplate('inspection-approved', emailData, 'inspection');
+        break;
+      case MailType.INSPECTION_REJECTED:
+        template = await this.buildTemplate('inspection-rejected', emailData, 'inspection');
         break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
@@ -374,6 +389,11 @@ export class MailService {
       [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
       [MailType.GUEST_PASS_CODE]: 'Your Visitor Access Code',
+      [MailType.INSPECTION_SCHEDULED]: 'Inspection Scheduled',
+      [MailType.INSPECTION_SUBMITTED]: 'Inspection Report Submitted',
+      [MailType.INSPECTION_APPROVED]: 'Inspection Approved',
+      [MailType.INSPECTION_REJECTED]: 'Inspection Report — Action Required',
+      [MailType.INSPECTION_CANCELLED]: 'Inspection Cancelled',
     };
 
     return subjectMap[mailType] || subjectMap.default;

@@ -154,29 +154,29 @@ export async function handleInspectionSubmitted(
   ctx: INotificationContext,
   payload: InspectionSubmittedPayload
 ): Promise<void> {
-  const { cuid, iuid, tenantId, type } = payload;
+  const { cuid, iuid, inspectorUid, type } = payload;
 
   try {
-    // Notify the tenant that the report is ready for review
+    // Notify the inspector/manager that the report is ready for review
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
       type: NotificationTypeEnum.INSPECTION,
       title: 'Inspection Report Submitted',
       message: `A ${formatType(type)} inspection report has been submitted for review`,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
-      recipient: tenantId,
+      recipient: inspectorUid,
       priority: NotificationPriorityEnum.MEDIUM,
       actionUrl: `/inspections/${cuid}/${iuid}`,
     });
 
-    const tenant = await lookupUser(ctx, tenantId);
-    if (tenant) {
+    const inspector = await lookupUser(ctx, inspectorUid);
+    if (inspector) {
       ctx.emailQueue.addToEmailQueue('inspectionSubmittedJob', {
-        to: tenant.email,
+        to: inspector.email,
         emailType: MailType.INSPECTION_SUBMITTED,
         subject: '',
         data: {
-          currentuser: tenant,
+          currentuser: inspector,
           inspectionType: formatType(type),
           iuid,
         },
@@ -192,6 +192,7 @@ export async function handleInspectionCancelled(
   payload: InspectionCancelledPayload
 ): Promise<void> {
   const { cuid, iuid, tenantId } = payload;
+  if (!tenantId) return; // property-only inspections have no tenant to notify
 
   try {
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
@@ -281,7 +282,8 @@ async function lookupUser(ctx: INotificationContext, userId: string) {
       lastName: user?.profile?.personalInfo?.lastName || '',
       email: user.email,
     };
-  } catch {
+  } catch (err) {
+    ctx.log.warn({ err, userId }, 'lookupUser: failed to fetch user for email notification');
     return null;
   }
 }

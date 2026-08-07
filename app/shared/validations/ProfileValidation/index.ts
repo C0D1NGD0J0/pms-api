@@ -50,26 +50,6 @@ const settingsSchema = z.object({
       pushNotifications: z.boolean().optional(),
       emailFrequency: z.enum(['immediate', 'daily']).optional(),
     })
-    .refine((data) => data.maintenance !== false, {
-      message: 'Maintenance notifications cannot be disabled',
-      path: ['maintenance'],
-    })
-    .refine((data) => data.payments !== false, {
-      message: 'Payment notifications cannot be disabled',
-      path: ['payments'],
-    })
-    .refine(
-      (data) => {
-        if (data.emailNotifications === false && data.inAppNotifications === false) {
-          return false;
-        }
-        return true;
-      },
-      {
-        message: 'At least one notification channel (email or in-app) must be enabled',
-        path: ['inAppNotifications'],
-      }
-    )
     .optional(),
   gdprSettings: z
     .object({

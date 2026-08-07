@@ -52,7 +52,7 @@ export class CronWorker {
         { jobName, service },
         'CronWorker: no handler registered yet — skipping (will retry on next schedule)'
       );
-      return { success: true, skipped: true, reason: 'handler_not_ready' };
+      return { success: false, skipped: true, reason: 'handler_not_ready' };
     }
 
     try {

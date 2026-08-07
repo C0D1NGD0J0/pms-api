@@ -363,10 +363,10 @@ export interface ILeaseListItem {
     email: string;
     fullName: string;
   };
+  lateFeesGracePeriod: number;
   sentForSignature: boolean;
   tenantActivated: boolean;
   propertyAddress: string;
-  gracePeriodDays: number;
   petsAllowed: boolean;
   leaseNumber: string;
   status: LeaseStatus;

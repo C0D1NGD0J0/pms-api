@@ -1374,7 +1374,7 @@ export class LeaseService {
         amount: lease.fees.lateFeeAmount || 0,
         type: lease.fees.lateFeeType || 'fixed',
         percentage: lease.fees.lateFeePercentage || 0,
-        gracePeriodDays: lease.fees.lateFeeDays || 5,
+        lateFeesGracePeriod: lease.fees.lateFeeDays || 5,
       },
 
       petPolicy: lease.petPolicy,
@@ -2889,14 +2889,6 @@ export class LeaseService {
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'completed',
               completedAt: today,
-              $push: {
-                lastModifiedBy: {
-                  action: 'completed',
-                  userId: 'system',
-                  name: 'System - Renewal Active',
-                  date: today,
-                },
-              },
             });
 
             await this.notificationService.notifyLeaseLifecycleEvent({
@@ -2933,14 +2925,6 @@ export class LeaseService {
 
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'expired',
-              $push: {
-                lastModifiedBy: {
-                  action: 'expired',
-                  userId: 'system',
-                  name: 'System - Renewal Not Completed',
-                  date: today,
-                },
-              },
             });
 
             // Release property unit
@@ -3001,14 +2985,6 @@ export class LeaseService {
 
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'expired',
-              $push: {
-                lastModifiedBy: {
-                  action: 'expired',
-                  userId: 'system',
-                  name: 'System - No Renewal',
-                  date: today,
-                },
-              },
             });
 
             // Release property unit

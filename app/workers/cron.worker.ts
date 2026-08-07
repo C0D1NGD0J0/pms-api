@@ -48,7 +48,11 @@ export class CronWorker {
     const handler = this.cronService.getJobHandler(jobName);
     if (!handler) {
       this.activeJobs.delete(jobName);
-      throw new Error(`No handler found for cron job: ${jobName}`);
+      this.log.warn(
+        { jobName, service },
+        'CronWorker: no handler registered yet — skipping (will retry on next schedule)'
+      );
+      return { success: true, skipped: true, reason: 'handler_not_ready' };
     }
 
     try {

@@ -50,6 +50,26 @@ const settingsSchema = z.object({
       pushNotifications: z.boolean().optional(),
       emailFrequency: z.enum(['immediate', 'daily']).optional(),
     })
+    .refine((data) => data.maintenance !== false, {
+      message: 'Maintenance notifications cannot be disabled',
+      path: ['maintenance'],
+    })
+    .refine((data) => data.payments !== false, {
+      message: 'Payment notifications cannot be disabled',
+      path: ['payments'],
+    })
+    .refine(
+      (data) => {
+        if (data.emailNotifications === false && data.inAppNotifications === false) {
+          return false;
+        }
+        return true;
+      },
+      {
+        message: 'At least one notification channel (email or in-app) must be enabled',
+        path: ['inAppNotifications'],
+      }
+    )
     .optional(),
   gdprSettings: z
     .object({
@@ -250,18 +270,40 @@ const policiesSchema = z.object({
     .optional(),
 });
 
-const notificationPreferencesSchema = z.object({
-  messages: z.boolean().optional(),
-  comments: z.boolean().optional(),
-  announcements: z.boolean().optional(),
-  maintenance: z.boolean().optional(),
-  payments: z.boolean().optional(),
-  system: z.boolean().optional(),
-  propertyUpdates: z.boolean().optional(),
-  emailNotifications: z.boolean().optional(),
-  inAppNotifications: z.boolean().optional(),
-  emailFrequency: z.enum(['immediate', 'daily']).optional(),
-});
+const notificationPreferencesSchema = z
+  .object({
+    messages: z.boolean().optional(),
+    comments: z.boolean().optional(),
+    announcements: z.boolean().optional(),
+    maintenance: z.boolean().optional(),
+    payments: z.boolean().optional(),
+    system: z.boolean().optional(),
+    propertyUpdates: z.boolean().optional(),
+    emailNotifications: z.boolean().optional(),
+    inAppNotifications: z.boolean().optional(),
+    emailFrequency: z.enum(['immediate', 'daily']).optional(),
+  })
+  .refine((data) => data.maintenance !== false, {
+    message: 'Maintenance notifications cannot be disabled',
+    path: ['maintenance'],
+  })
+  .refine((data) => data.payments !== false, {
+    message: 'Payment notifications cannot be disabled',
+    path: ['payments'],
+  })
+  .refine(
+    (data) => {
+      // If both channels are explicitly set, at least one must be true
+      if (data.emailNotifications === false && data.inAppNotifications === false) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'At least one notification channel (email or in-app) must be enabled',
+      path: ['inAppNotifications'],
+    }
+  );
 
 export const ProfileValidations = {
   updateUserInfo: userInfoSchema,

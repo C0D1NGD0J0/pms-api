@@ -39,6 +39,15 @@ import {
   handleGuestPassExpired,
 } from './notification.guestpass.handlers';
 import {
+  handleInspectionScheduled,
+  handleInspectionSubmitted,
+  handleInspectionCancelled,
+  handleInspectionReminder,
+  handleInspectionApproved,
+  handleInspectionDisputed,
+  handleInspectionRejected,
+} from './notification.inspection.handlers';
+import {
   notifyLeaseESignatureFailed as notifyLeaseESignatureFailedFn,
   notifyLeaseESignatureSent as notifyLeaseESignatureSentFn,
   notifyLeaseLifecycleEvent as notifyLeaseLifecycleEventFn,
@@ -787,8 +796,6 @@ export class NotificationService {
     }
   }
 
-  // ── Property notifications (logic in notification.property.ts) ─────────────
-
   async notifyPropertyUpdate(
     resourceInfo: { resourceName: ResourceContext; resourceUid: string; resourceId: string },
     propertyName: string,
@@ -885,8 +892,6 @@ export class NotificationService {
       context
     );
   }
-
-  // ── Lease notifications (logic in notification.lease.public.ts) ─────────────
 
   async notifyLeaseESignatureSent(params: {
     leaseNumber: string;
@@ -1471,7 +1476,7 @@ export class NotificationService {
         [NotificationTypeEnum.ERROR]: 'system', // Map ERROR to system notifications
         [NotificationTypeEnum.INFO]: 'system', // Map INFO to system notifications
         [NotificationTypeEnum.GUESTPASS]: 'system', // Map GUESTPASS to system notifications
-        [NotificationTypeEnum.INSPECTION]: 'system', // Map INSPECTION to system notifications
+        [NotificationTypeEnum.INSPECTION]: 'maintenance', // Inspections follow maintenance preference
       };
 
       const preferenceField = typeToPreferenceMap[notificationType];
@@ -1608,147 +1613,19 @@ export class NotificationService {
     this.emitterService.on(EventTypes.GUEST_PASS_REVOKED, (p) => handleGuestPassRevoked(ctx, p));
     this.emitterService.on(EventTypes.GUEST_PASS_EXPIRED, (p) => handleGuestPassExpired(ctx, p));
 
-    this.emitterService.on(EventTypes.INSPECTION_SCHEDULED, async (payload) => {
-      try {
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Inspection Scheduled',
-          message: `A ${payload.type.replace('_', '-')} inspection has been scheduled for ${new Date(payload.scheduledDate).toLocaleDateString()}`,
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.tenantId,
-          priority: NotificationPriorityEnum.MEDIUM,
-          actionUrl: `/inspections/${payload.iuid}`,
-          cuid: payload.cuid,
-        });
-      } catch (error) {
-        this.log.error('Error sending inspection scheduled notification', { error, payload });
-      }
-    });
-
-    this.emitterService.on(EventTypes.INSPECTION_REMINDER, async (payload) => {
-      try {
-        const actionUrl = payload.iuid
-          ? `/inspections/${payload.cuid}/${payload.iuid}`
-          : payload.luid
-            ? `/leases/${payload.cuid}/${payload.luid}`
-            : `/inspections/${payload.cuid}`;
-
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Move-Out Inspection Reminder',
-          message: `Reminder: a ${payload.type.replace('_', '-')} inspection should be scheduled before ${new Date(payload.scheduledDate).toLocaleDateString()}`,
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.tenantId,
-          priority: NotificationPriorityEnum.MEDIUM,
-          actionUrl,
-          cuid: payload.cuid,
-        });
-      } catch (error) {
-        this.log.error('Error sending inspection reminder notification', { error, payload });
-      }
-    });
-
-    this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, async (payload) => {
-      try {
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Inspection Submitted',
-          message: `A ${payload.type.replace('_', '-')} inspection has been submitted for review`,
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.inspectorUid,
-          priority: NotificationPriorityEnum.MEDIUM,
-          actionUrl: `/inspections/${payload.iuid}`,
-          cuid: payload.cuid,
-        });
-      } catch (error) {
-        this.log.error('Error sending inspection submitted notification', { error, payload });
-      }
-    });
-
-    this.emitterService.on(EventTypes.INSPECTION_APPROVED, async (payload) => {
-      try {
-        let message = 'Your inspection has been reviewed and approved';
-        if (payload.refundAmount !== undefined && payload.depositAmount !== undefined) {
-          message =
-            payload.refundAmount > 0
-              ? `Your inspection has been approved. A refund of $${payload.refundAmount.toLocaleString()} out of your $${payload.depositAmount.toLocaleString()} security deposit will be processed`
-              : 'Your inspection has been approved. No security deposit refund will be issued';
-        }
-
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Inspection Approved',
-          message,
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.tenantId,
-          priority: NotificationPriorityEnum.MEDIUM,
-          actionUrl: `/inspections/${payload.iuid}`,
-          cuid: payload.cuid,
-        });
-      } catch (error) {
-        this.log.error('Error sending inspection approved notification', { error, payload });
-      }
-    });
-
-    this.emitterService.on(EventTypes.INSPECTION_DISPUTED, async (payload) => {
-      try {
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Inspection Disputed',
-          message: `Tenant has disputed the inspection: ${payload.disputeNotes.substring(0, 100)}`,
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.inspectorUid,
-          priority: NotificationPriorityEnum.HIGH,
-          actionUrl: `/inspections/${payload.iuid}`,
-          cuid: payload.cuid,
-        });
-      } catch (error) {
-        this.log.error('Error sending inspection disputed notification', { error, payload });
-      }
-    });
-
-    this.emitterService.on(EventTypes.INSPECTION_REJECTED, async (payload) => {
-      try {
-        const title = payload.isFinal ? 'Inspection Rejected' : 'Inspection Needs Revision';
-        const message = payload.isFinal
-          ? `Inspection has been rejected: ${payload.reason.substring(0, 100)}`
-          : `Inspection needs revision: ${payload.reason.substring(0, 100)}`;
-
-        // Notify both tenant and inspector
-        const recipients = [payload.tenantId, payload.inspectorUid].filter(Boolean);
-        for (const recipient of recipients) {
-          await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-            title,
-            message,
-            type: NotificationTypeEnum.INSPECTION,
-            recipientType: RecipientTypeEnum.INDIVIDUAL,
-            recipient,
-            priority: NotificationPriorityEnum.HIGH,
-            actionUrl: `/inspections/${payload.iuid}`,
-            cuid: payload.cuid,
-          });
-        }
-      } catch (error) {
-        this.log.error('Error sending inspection rejected notification', { error, payload });
-      }
-    });
-
-    this.emitterService.on(EventTypes.INSPECTION_CANCELLED, async (payload) => {
-      try {
-        await this.createNotification(payload.cuid, NotificationTypeEnum.INSPECTION, {
-          title: 'Inspection Cancelled',
-          message: 'A scheduled inspection has been cancelled',
-          type: NotificationTypeEnum.INSPECTION,
-          recipientType: RecipientTypeEnum.INDIVIDUAL,
-          recipient: payload.tenantId,
-          priority: NotificationPriorityEnum.LOW,
-          actionUrl: `/inspections/${payload.iuid}`,
-          cuid: payload.cuid,
-        });
-      } catch (error) {
-        this.log.error('Error sending inspection cancelled notification', { error, payload });
-      }
-    });
+    this.emitterService.on(EventTypes.INSPECTION_SCHEDULED, (p) =>
+      handleInspectionScheduled(ctx, p)
+    );
+    this.emitterService.on(EventTypes.INSPECTION_REMINDER, (p) => handleInspectionReminder(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, (p) =>
+      handleInspectionSubmitted(ctx, p)
+    );
+    this.emitterService.on(EventTypes.INSPECTION_APPROVED, (p) => handleInspectionApproved(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_DISPUTED, (p) => handleInspectionDisputed(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_REJECTED, (p) => handleInspectionRejected(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_CANCELLED, (p) =>
+      handleInspectionCancelled(ctx, p)
+    );
   }
 
   private buildContext(): INotificationContext {

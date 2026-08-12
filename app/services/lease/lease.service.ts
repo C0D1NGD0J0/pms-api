@@ -12,6 +12,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { IUserBasicInfo } from '@dao/interfaces';
+import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -2892,9 +2893,20 @@ export class LeaseService {
               `Lease ${lease.luid} has active renewal ${renewal.luid} - marking completed`
             );
 
+            const systemBotId = await getSystemBotUserId();
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'completed',
               completedAt: today,
+              ...(systemBotId && {
+                $push: {
+                  lastModifiedBy: {
+                    action: 'completed',
+                    userId: systemBotId,
+                    name: 'System - Renewal Active',
+                    date: today,
+                  },
+                },
+              }),
             });
 
             await this.notificationService.notifyLeaseLifecycleEvent({
@@ -2929,8 +2941,19 @@ export class LeaseService {
               `Lease ${lease.luid} expired with renewal ${renewal.luid} in ${renewal.status} - marking expired`
             );
 
+            const systemBotId2 = await getSystemBotUserId();
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'expired',
+              ...(systemBotId2 && {
+                $push: {
+                  lastModifiedBy: {
+                    action: 'expired',
+                    userId: systemBotId2,
+                    name: 'System - Renewal Not Completed',
+                    date: today,
+                  },
+                },
+              }),
             });
 
             // Release property unit
@@ -2989,8 +3012,19 @@ export class LeaseService {
           else {
             this.log.info(`Lease ${lease.luid} expired with no renewal - marking expired`);
 
+            const systemBotId3 = await getSystemBotUserId();
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'expired',
+              ...(systemBotId3 && {
+                $push: {
+                  lastModifiedBy: {
+                    action: 'expired',
+                    userId: systemBotId3,
+                    name: 'System - No Renewal',
+                    date: today,
+                  },
+                },
+              }),
             });
 
             // Release property unit

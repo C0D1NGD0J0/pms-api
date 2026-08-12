@@ -10,10 +10,15 @@ import { EventTypes } from '@interfaces/events.interface';
 import { InspectionType } from '@interfaces/inspection.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 
+const SYSTEM_BOT_ID = new Types.ObjectId();
+
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
 }));
 jest.mock('@di/index', () => ({ container: {} }));
+jest.mock('@utils/systemBot', () => ({
+  getSystemBotUserId: jest.fn().mockResolvedValue(SYSTEM_BOT_ID),
+}));
 
 import { OffboardingService } from '@services/offboarding/offboarding.service';
 

@@ -10,6 +10,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { LeaseService } from '@services/lease';
 import { UserCache } from '@caching/user.cache';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -186,9 +187,20 @@ export class OffboardingService {
         });
 
         // 1. Mark lease as completed
+        const systemBotId = await getSystemBotUserId();
         await this.leaseDAO.updateById(lease._id.toString(), {
           status: 'completed',
           completedAt: new Date(),
+          ...(systemBotId && {
+            $push: {
+              lastModifiedBy: {
+                action: 'completed',
+                userId: systemBotId,
+                name: 'System - Inspection Approved',
+                date: new Date(),
+              },
+            },
+          }),
         });
 
         // 2. Release property unit / mark property vacant

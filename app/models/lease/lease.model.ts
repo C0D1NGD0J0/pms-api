@@ -586,7 +586,16 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
         action: {
           type: String,
-          enum: ['created', 'updated', 'activated', 'terminated', 'cancelled', 'renewed'],
+          enum: [
+            'created',
+            'updated',
+            'activated',
+            'terminated',
+            'cancelled',
+            'renewed',
+            'completed',
+            'expired',
+          ],
           required: true,
         },
         _id: false,

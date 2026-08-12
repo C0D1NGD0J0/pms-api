@@ -8,6 +8,9 @@ jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
 }));
 jest.mock('@di/index', () => ({ container: {} }));
+jest.mock('@utils/systemBot', () => ({
+  getSystemBotUserId: jest.fn().mockResolvedValue(new Types.ObjectId()),
+}));
 
 import { LeaseService } from '@services/lease/lease.service';
 

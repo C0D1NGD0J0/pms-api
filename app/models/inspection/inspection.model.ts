@@ -172,6 +172,8 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       type: new Schema(
         {
           amount: { type: Number, min: 0, required: true },
+          proposedRefund: { type: Number, min: 0 },
+          currency: { type: String, default: 'USD' },
           isRefunded: { type: Boolean, default: false },
         },
         { _id: false }

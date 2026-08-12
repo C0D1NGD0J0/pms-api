@@ -157,7 +157,7 @@ router
     subscriptionEntitlements,
     requireFeature('inspectionService'),
     requireFeatureFlag(FeatureFlag.INSPECTION),
-    diskUpload(['media[*][file]']),
+    diskUpload(['rooms[*][media][*][file]']),
     scanFile,
     validateRequest({
       params: InspectionValidations.iuidParam,
@@ -201,6 +201,23 @@ router.patch(
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<InspectionController>('inspectionController');
     return controller.submitInspection(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/:iuid/review',
+  requireNotSuspended,
+  requirePermission(PermissionResource.INSPECTION, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  subscriptionEntitlements,
+  requireFeature('inspectionService'),
+  requireFeatureFlag(FeatureFlag.INSPECTION),
+  validateRequest({
+    params: InspectionValidations.iuidParam,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<InspectionController>('inspectionController');
+    return controller.reviewInspection(req, res);
   })
 );
 

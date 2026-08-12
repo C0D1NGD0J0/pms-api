@@ -4,6 +4,7 @@ import { AIInspectionAnalysis } from './inspectionAI.interface';
 import { IPromiseReturnedData, IPaginationQuery, IPaginateResult } from './utils.interface';
 
 export enum InspectionStatus {
+  PENDING_REVIEW = 'pending_review',
   IN_PROGRESS = 'in_progress',
   SCHEDULED = 'scheduled',
   SUBMITTED = 'submitted',
@@ -31,18 +32,19 @@ export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, Inspection
   [InspectionStatus.SCHEDULED]: [InspectionStatus.IN_PROGRESS, InspectionStatus.CANCELLED],
   [InspectionStatus.IN_PROGRESS]: [InspectionStatus.SUBMITTED, InspectionStatus.CANCELLED],
   [InspectionStatus.SUBMITTED]: [
-    InspectionStatus.APPROVED,
+    InspectionStatus.PENDING_REVIEW,
     InspectionStatus.REJECTED,
-    InspectionStatus.DISPUTED,
+    InspectionStatus.CANCELLED,
   ],
+  [InspectionStatus.PENDING_REVIEW]: [InspectionStatus.APPROVED, InspectionStatus.DISPUTED],
   [InspectionStatus.REJECTED]: [InspectionStatus.IN_PROGRESS],
-  [InspectionStatus.DISPUTED]: [InspectionStatus.APPROVED],
+  [InspectionStatus.DISPUTED]: [InspectionStatus.PENDING_REVIEW],
   [InspectionStatus.APPROVED]: [],
   [InspectionStatus.CANCELLED]: [],
 };
 
 export interface IInspection {
-  refundInfo?: { amount: number; isRefunded: boolean };
+  refundInfo?: { amount: number; proposedRefund?: number; currency: string; isRefunded: boolean };
   rejectionReason?: { text: string; html?: string };
   disputeNotes?: { text: string; html?: string };
   overallNotes?: { text: string; html?: string };
@@ -109,6 +111,13 @@ export interface IInspectionMedia {
   url: string;
 }
 
+export interface IUpdateInspection {
+  mediaToRemove?: { roomIndex: number; mediaIndex: number }[];
+  overallNotes?: { text: string; html?: string };
+  overallCondition?: ConditionRating;
+  rooms?: IInspectionRoom[];
+}
+
 export interface IInspectionReportDocument {
   status: 'pending' | 'active' | 'inactive' | 'failed';
   generatedAt: Date;
@@ -125,12 +134,6 @@ export interface IInspectionRoom {
   media: IInspectionMedia[];
   items: IInspectionItem[];
   name: string;
-}
-
-export interface IUpdateInspection {
-  overallNotes?: { text: string; html?: string };
-  overallCondition?: ConditionRating;
-  rooms?: IInspectionRoom[];
 }
 
 export interface IListInspectionsQuery extends IPaginationQuery {

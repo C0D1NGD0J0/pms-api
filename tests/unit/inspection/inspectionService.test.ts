@@ -116,6 +116,26 @@ describe('InspectionService', () => {
       );
     });
 
+    it('should auto-advance scheduled → in_progress → submitted', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.SCHEDULED });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.SUBMITTED,
+      });
+
+      const result = await service.submitInspection(CUID, USER_ID, 'admin', IUID);
+
+      expect(result.success).toBe(true);
+      // First call: scheduled → in_progress, second call: in_progress → submitted
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledTimes(2);
+      expect(mockInspectionDAO.updateById).toHaveBeenNthCalledWith(
+        1,
+        inspection._id.toString(),
+        { $set: { status: InspectionStatus.IN_PROGRESS } }
+      );
+    });
+
     it('should allow in_progress → submitted', async () => {
       const inspection = makeInspection({ status: InspectionStatus.IN_PROGRESS });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);

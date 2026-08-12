@@ -114,6 +114,15 @@ export class InspectionService implements ICronProvider {
         description: 'Auto-approve move-out inspections with no tenant response after 7 days',
         timeout: 120_000,
       },
+      {
+        name: 'inspection:auto-cancel-expired-scheduled',
+        schedule: '0 4 * * *',
+        handler: this.autoCancelExpiredScheduledInspections.bind(this),
+        service: 'InspectionService',
+        enabled: true,
+        description: 'Auto-cancel scheduled inspections that are 7+ days past their scheduled date',
+        timeout: 120_000,
+      },
     ];
   }
 
@@ -206,8 +215,27 @@ export class InspectionService implements ICronProvider {
       // Populate refundInfo from lease security deposit for move-out inspections
       const refundInfo =
         data.refundDeposit && data.type === InspectionType.MOVE_OUT && lease.fees?.securityDeposit
-          ? { amount: lease.fees.securityDeposit, isRefunded: false }
+          ? {
+              amount: lease.fees.securityDeposit,
+              currency: lease.fees?.currency || 'USD',
+              isRefunded: false,
+            }
           : undefined;
+
+      // Convert scheduling notes into the shared notes thread
+      const creatorUser = await this.userDAO.findById(userId);
+      const authorName = creatorUser?.fullname || creatorUser?.email || 'Unknown';
+      const initialNotes = data.overallNotes?.text?.trim()
+        ? [
+            {
+              note: data.overallNotes.text,
+              html: data.overallNotes.html,
+              author: authorName,
+              authorId: userId,
+              timestamp: new Date(),
+            },
+          ]
+        : [];
 
       const inspection = await this.inspectionDAO.insert({
         cuid,
@@ -218,7 +246,7 @@ export class InspectionService implements ICronProvider {
         inspectorUid: inspectorUid,
         tenantId: lease.tenantId,
         scheduledDate: new Date(data.scheduledDate),
-        overallNotes: data.overallNotes,
+        notes: initialNotes,
         ...(refundInfo && { refundInfo }),
         rooms,
         media: [],
@@ -310,6 +338,21 @@ export class InspectionService implements ICronProvider {
 
       const rooms = data.rooms?.length ? data.rooms : DEFAULT_INSPECTION_ROOMS;
 
+      // Convert scheduling notes into the shared notes thread
+      const creatorUser = await this.userDAO.findById(userId);
+      const authorName = creatorUser?.fullname || creatorUser?.email || 'Unknown';
+      const initialNotes = data.overallNotes?.text?.trim()
+        ? [
+            {
+              note: data.overallNotes.text,
+              html: data.overallNotes.html,
+              author: authorName,
+              authorId: userId,
+              timestamp: new Date(),
+            },
+          ]
+        : [];
+
       let inspection;
       try {
         inspection = await this.inspectionDAO.insert({
@@ -320,7 +363,7 @@ export class InspectionService implements ICronProvider {
           ...(unitDoc && { propertyUnitId: unitDoc._id }),
           inspectorUid,
           scheduledDate: new Date(data.scheduledDate),
-          overallNotes: data.overallNotes,
+          notes: initialNotes,
           rooms,
           media: [],
           createdBy: userId,
@@ -463,6 +506,11 @@ export class InspectionService implements ICronProvider {
         : null;
     }
 
+    // Tenants should only see the PM's final assessment (overallNotes), not the raw AI analysis
+    if (userRole === 'tenant') {
+      delete (doc as any).aiAnalysis;
+    }
+
     return { success: true, data: doc };
   }
 
@@ -499,12 +547,31 @@ export class InspectionService implements ICronProvider {
       if (toId(inspection.tenantId) !== userId) {
         throw new ForbiddenError({ message: 'Access denied' });
       }
-      if (inspection.type !== InspectionType.MOVE_IN) {
-        throw new ForbiddenError({ message: 'Tenants can only update move-in inspections' });
+    }
+
+    const { mediaToRemove, ...rest } = data;
+    const updates: Record<string, any> = { ...rest };
+
+    // Handle room media removal — collect S3 keys, then splice from rooms
+    const s3KeysToDelete: string[] = [];
+    if (mediaToRemove?.length && updates.rooms) {
+      // Process in reverse order so splice indices stay valid
+      const sorted = [...mediaToRemove].sort((a, b) =>
+        a.roomIndex !== b.roomIndex ? b.roomIndex - a.roomIndex : b.mediaIndex - a.mediaIndex
+      );
+      for (const { roomIndex, mediaIndex } of sorted) {
+        const room = updates.rooms[roomIndex];
+        if (!room?.media?.[mediaIndex]) continue;
+        const item = room.media[mediaIndex];
+        if (item.key) s3KeysToDelete.push(item.key);
+        room.media.splice(mediaIndex, 1);
       }
     }
 
-    const updates: Record<string, any> = { ...data };
+    if (s3KeysToDelete.length > 0) {
+      this.emitterService.emit(EventTypes.DELETE_REMOTE_ASSET, s3KeysToDelete);
+    }
+
     // Auto-advance to IN_PROGRESS on first update or when revising after rejection
     if (
       inspection.status === InspectionStatus.SCHEDULED ||
@@ -532,14 +599,21 @@ export class InspectionService implements ICronProvider {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
 
+    // Auto-advance scheduled → in_progress so submit is valid
+    // (tenant may fill out the entire inspection without saving a draft first)
+    if (inspection.status === InspectionStatus.SCHEDULED) {
+      this._validateTransition(inspection.status, InspectionStatus.IN_PROGRESS);
+      inspection.status = InspectionStatus.IN_PROGRESS;
+      await this.inspectionDAO.updateById(inspection._id.toString(), {
+        $set: { status: InspectionStatus.IN_PROGRESS },
+      });
+    }
+
     this._validateTransition(inspection.status, InspectionStatus.SUBMITTED);
 
     if (userRole === 'tenant') {
       if (toId(inspection.tenantId) !== userId) {
         throw new ForbiddenError({ message: 'Access denied' });
-      }
-      if (inspection.type !== InspectionType.MOVE_IN) {
-        throw new ForbiddenError({ message: 'Tenants can only submit move-in inspections' });
       }
     }
 
@@ -570,17 +644,67 @@ export class InspectionService implements ICronProvider {
     return { success: true, message: 'Inspection submitted', data: updated! };
   }
 
+  async reviewInspection(
+    cuid: string,
+    iuid: string,
+    data: {
+      overallCondition?: ConditionRating;
+      overallNotes?: { text: string; html?: string };
+      refundAmount?: number;
+    }
+  ): IPromiseReturnedData {
+    const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
+    if (!inspection) {
+      throw new NotFoundError({ message: 'Inspection not found' });
+    }
+
+    this._validateTransition(inspection.status, InspectionStatus.PENDING_REVIEW);
+
+    const updates: Record<string, any> = {
+      status: InspectionStatus.PENDING_REVIEW,
+    };
+
+    if (data.overallCondition) {
+      updates.overallCondition = data.overallCondition;
+    }
+    if (data.overallNotes) {
+      updates.overallNotes = data.overallNotes;
+    }
+    if (
+      data.refundAmount !== undefined &&
+      inspection.refundInfo &&
+      inspection.type === InspectionType.MOVE_OUT
+    ) {
+      if (data.refundAmount < 0 || data.refundAmount > inspection.refundInfo.amount) {
+        throw new BadRequestError({
+          message: `Refund amount must be between 0 and ${inspection.refundInfo.amount}`,
+        });
+      }
+      updates['refundInfo.proposedRefund'] = data.refundAmount;
+    }
+
+    const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
+      $set: updates,
+    });
+
+    this.emitterService.emit(EventTypes.INSPECTION_REVIEWED, {
+      iuid: inspection.iuid,
+      cuid,
+      inspectorUid: inspection.inspectorUid!,
+      tenantId: toId(inspection.tenantId),
+      type: inspection.type,
+    });
+
+    return { success: true, message: 'Inspection review completed', data: updated! };
+  }
+
   async approveInspection(cuid: string, iuid: string, refundAmount?: number): IPromiseReturnedData {
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
 
-    if (![InspectionStatus.SUBMITTED, InspectionStatus.DISPUTED].includes(inspection.status)) {
-      throw new BadRequestError({
-        message: 'Only submitted or disputed inspections can be approved',
-      });
-    }
+    this._validateTransition(inspection.status, InspectionStatus.APPROVED);
 
     const updateFields: Record<string, any> = {
       status: InspectionStatus.APPROVED,
@@ -605,7 +729,7 @@ export class InspectionService implements ICronProvider {
       if (refundAmount > inspection.refundInfo.amount) {
         throw new BadRequestError({ message: 'Refund amount cannot exceed deposit amount' });
       }
-      updateFields['refundInfo.amount'] = refundAmount;
+      updateFields['refundInfo.proposedRefund'] = refundAmount;
       updateFields['refundInfo.isRefunded'] = refundAmount > 0;
     }
 
@@ -640,10 +764,12 @@ export class InspectionService implements ICronProvider {
       cuid,
       leaseId: toId(inspection.leaseId),
       tenantId: toId(inspection.tenantId),
+      inspectorUid: inspection.inspectorUid,
       ...(inspection.refundInfo &&
         refundAmount !== undefined && {
           refundAmount,
           depositAmount: inspection.refundInfo.amount,
+          currency: inspection.refundInfo.currency,
         }),
     });
 
@@ -659,15 +785,60 @@ export class InspectionService implements ICronProvider {
     if (toId(inspection.tenantId) !== userId) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
-    if (inspection.status !== InspectionStatus.SUBMITTED) {
-      throw new BadRequestError({ message: 'Inspection must be submitted before acknowledging' });
+
+    this._validateTransition(inspection.status, InspectionStatus.APPROVED);
+
+    const updateFields: Record<string, any> = {
+      status: InspectionStatus.APPROVED,
+      approvedAt: new Date(),
+      tenantAcknowledgedAt: new Date(),
+    };
+
+    // Process refund on acknowledgement (move-out only)
+    if (inspection.refundInfo && inspection.type === InspectionType.MOVE_OUT) {
+      const refundValue = inspection.refundInfo.proposedRefund ?? inspection.refundInfo.amount;
+      updateFields['refundInfo.isRefunded'] = refundValue > 0;
     }
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
-      $set: { tenantAcknowledgedAt: new Date() },
+      $set: updateFields,
     });
 
-    return { success: true, message: 'Inspection acknowledged', data: updated! };
+    // Revert property/unit operational status
+    if (inspection.previousOperationalStatus) {
+      if (inspection.propertyUnitId) {
+        const currentUnit = await this.propertyUnitDAO.findFirst({
+          _id: inspection.propertyUnitId,
+        });
+        if (currentUnit?.status === PropertyUnitStatusEnum.MAINTENANCE) {
+          await this.propertyUnitDAO.updateById(inspection.propertyUnitId.toString(), {
+            status: inspection.previousOperationalStatus,
+          });
+        }
+      } else if (inspection.propertyId) {
+        const currentProperty = await this.propertyDAO.findFirst({ _id: inspection.propertyId });
+        if (currentProperty?.operationalStatus === 'maintenance') {
+          await this.propertyDAO.updateById(inspection.propertyId.toString(), {
+            operationalStatus: inspection.previousOperationalStatus,
+          });
+        }
+      }
+    }
+
+    this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
+      iuid: inspection.iuid,
+      cuid,
+      leaseId: toId(inspection.leaseId),
+      tenantId: toId(inspection.tenantId),
+      inspectorUid: inspection.inspectorUid,
+      ...(inspection.refundInfo && {
+        refundAmount: inspection.refundInfo.proposedRefund ?? inspection.refundInfo.amount,
+        depositAmount: inspection.refundInfo.amount,
+        currency: inspection.refundInfo.currency,
+      }),
+    });
+
+    return { success: true, message: 'Inspection acknowledged and approved', data: updated! };
   }
 
   async disputeInspection(
@@ -780,7 +951,8 @@ export class InspectionService implements ICronProvider {
     this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
       iuid: inspection.iuid,
       cuid,
-      tenantId: toId(inspection.tenantId),
+      tenantId: inspection.tenantId ? toId(inspection.tenantId) : undefined,
+      type: inspection.type,
     });
 
     return { success: true, message: 'Inspection cancelled', data: updated! };
@@ -886,7 +1058,8 @@ export class InspectionService implements ICronProvider {
         this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
           iuid: inspection.iuid,
           cuid: payload.cuid,
-          tenantId: toId(inspection.tenantId),
+          tenantId: inspection.tenantId ? toId(inspection.tenantId) : undefined,
+          type: inspection.type,
         });
       }
 
@@ -1066,8 +1239,8 @@ export class InspectionService implements ICronProvider {
       const staleInspections = await this.inspectionDAO.list(
         {
           type: InspectionType.MOVE_OUT,
-          status: InspectionStatus.SUBMITTED,
-          submittedAt: { $lte: sevenDaysAgo },
+          status: InspectionStatus.PENDING_REVIEW,
+          updatedAt: { $lte: sevenDaysAgo },
           deletedAt: null,
         } as any,
         { limit: 200 }
@@ -1137,9 +1310,11 @@ export class InspectionService implements ICronProvider {
             cuid: inspection.cuid,
             leaseId: toId(inspection.leaseId),
             tenantId: toId(inspection.tenantId),
+            inspectorUid: inspection.inspectorUid,
             ...(inspection.refundInfo && {
               refundAmount: 0,
               depositAmount: inspection.refundInfo.amount,
+              currency: inspection.refundInfo.currency,
             }),
           });
 
@@ -1162,6 +1337,163 @@ export class InspectionService implements ICronProvider {
     } catch (error) {
       this.log.error({ error }, 'Error in autoCloseUnresponsiveInspections cron');
     }
+  }
+
+  // ─── Cron: Auto-Cancel Expired Scheduled Inspections ─────────────────────────
+
+  private async autoCancelExpiredScheduledInspections(): Promise<void> {
+    try {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const expiredInspections = await this.inspectionDAO.list(
+        {
+          status: InspectionStatus.SCHEDULED,
+          scheduledDate: { $lte: sevenDaysAgo },
+          deletedAt: null,
+        } as any,
+        { limit: 200 }
+      );
+
+      if (expiredInspections.items.length === 0) {
+        this.log.info('No expired scheduled inspections to auto-cancel');
+        return;
+      }
+
+      this.log.info(
+        `Auto-cancelling ${expiredInspections.items.length} expired scheduled inspection(s)`
+      );
+
+      let processed = 0;
+
+      for (const inspection of expiredInspections.items) {
+        try {
+          await this.inspectionDAO.updateById(inspection._id.toString(), {
+            $set: {
+              status: InspectionStatus.CANCELLED,
+              ...(inspection.previousOperationalStatus && {
+                previousOperationalStatus: undefined,
+              }),
+            },
+            $push: {
+              notes: {
+                note: 'Auto-cancelled: inspection was not started within 7 days of the scheduled date.',
+                author: 'System',
+                authorId: inspection.createdBy,
+                timestamp: new Date(),
+              },
+            },
+          });
+
+          // Revert property/unit status if it was set to maintenance
+          if (inspection.previousOperationalStatus) {
+            if (inspection.propertyUnitId) {
+              const currentUnit = await this.propertyUnitDAO.findById(
+                toId(inspection.propertyUnitId)
+              );
+              if (currentUnit?.status === PropertyUnitStatusEnum.MAINTENANCE) {
+                await this.propertyUnitDAO.updateById(toId(inspection.propertyUnitId), {
+                  status: inspection.previousOperationalStatus,
+                });
+              }
+            } else {
+              await this.propertyDAO.updateById(toId(inspection.propertyId), {
+                operationalStatus: inspection.previousOperationalStatus,
+              });
+            }
+          }
+
+          this.emitterService.emit(EventTypes.INSPECTION_CANCELLED, {
+            iuid: inspection.iuid,
+            cuid: inspection.cuid,
+            tenantId: inspection.tenantId ? toId(inspection.tenantId) : undefined,
+            type: inspection.type,
+          });
+
+          processed++;
+          this.log.info(
+            { iuid: inspection.iuid, cuid: inspection.cuid },
+            'Auto-cancelled expired scheduled inspection'
+          );
+        } catch (error: any) {
+          this.log.error(
+            { iuid: inspection.iuid, error: error.message },
+            'Failed to auto-cancel expired inspection'
+          );
+        }
+      }
+
+      this.log.info(
+        `Auto-cancel completed: ${processed}/${expiredInspections.items.length} processed`
+      );
+    } catch (error) {
+      this.log.error({ error }, 'Error in autoCancelExpiredScheduledInspections cron');
+    }
+  }
+
+  // ─── Report document persistence (called by upload worker after S3 upload) ────
+
+  async updateReportDocument(
+    inspectionId: string,
+    pdfResult: { url: string; key?: string; size?: number }
+  ): Promise<string | null> {
+    await this.inspectionDAO.updateById(inspectionId, {
+      $set: {
+        'reportDocument.url': pdfResult.url,
+        'reportDocument.key': pdfResult.key,
+        'reportDocument.size': pdfResult.size,
+        'reportDocument.status': 'active',
+        'reportDocument.generatedAt': new Date(),
+      },
+    });
+
+    const inspection = await this.inspectionDAO.findFirst({ _id: inspectionId });
+    return inspection?.cuid ?? null;
+  }
+
+  // ─── Media persistence (called by upload worker after S3 upload) ─────────────
+
+  async persistUploadedMedia(
+    iuid: string,
+    results: { url: string; key?: string; filename: string; actorId?: string }[],
+    actorId: string,
+    roomIndex?: number
+  ): Promise<string | null> {
+    if (!results?.length) return null;
+
+    const mediaItems = results.map((r) => ({
+      url: r.url,
+      key: r.key,
+      filename: r.filename,
+      uploadedBy: actorId,
+      uploadedAt: new Date(),
+      status: 'active' as const,
+    }));
+
+    let updated;
+    if (roomIndex !== undefined) {
+      // Room-targeted: push to rooms[N].media
+      updated = await this.inspectionDAO.update(
+        { iuid },
+        { $push: { [`rooms.${roomIndex}.media`]: { $each: mediaItems } } }
+      );
+      this.log.info(
+        { iuid, roomIndex, count: mediaItems.length },
+        '[InspectionService] room media persisted after S3 upload'
+      );
+    } else {
+      // Legacy: push to top-level media
+      updated = await this.inspectionDAO.update(
+        { iuid },
+        { $push: { media: { $each: mediaItems } } }
+      );
+      this.log.info(
+        { iuid, count: mediaItems.length },
+        '[InspectionService] media persisted after S3 upload'
+      );
+    }
+
+    return (updated as any)?.cuid ?? null;
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────────
@@ -1199,9 +1531,21 @@ export class InspectionService implements ICronProvider {
   private _computeOverallCondition(rooms: IInspectionRoom[]): ConditionRating {
     const avg = this._averageConditionScore(rooms);
     if (avg === null) return ConditionRating.NA;
-    if (avg >= 3.5) return ConditionRating.EXCELLENT;
-    if (avg >= 2.5) return ConditionRating.GOOD;
-    if (avg >= 1.5) return ConditionRating.FAIR;
+
+    // Find lowest item score across all rooms — cap overall one tier above worst
+    const scoreMap: Record<string, number> = { excellent: 4, good: 3, fair: 2, poor: 1 };
+    let minScore = 4;
+    for (const room of rooms) {
+      for (const item of room.items) {
+        const s = scoreMap[item.condition];
+        if (s !== undefined && s < minScore) minScore = s;
+      }
+    }
+    const effectiveAvg = Math.min(avg, minScore + 1);
+
+    if (effectiveAvg >= 3.5) return ConditionRating.EXCELLENT;
+    if (effectiveAvg >= 2.5) return ConditionRating.GOOD;
+    if (effectiveAvg >= 1.5) return ConditionRating.FAIR;
     return ConditionRating.POOR;
   }
 

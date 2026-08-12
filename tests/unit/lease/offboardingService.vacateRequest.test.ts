@@ -562,7 +562,7 @@ describe('OffboardingService - Vacate Requests', () => {
   });
 
   describe('closeOpenServiceRequests (via LEASE_TERMINATED event)', () => {
-    let terminatedEventHandler: Function;
+    let terminatedEventHandler: (...args: any[]) => any;
 
     beforeEach(() => {
       // Capture the event handler registered for LEASE_TERMINATED

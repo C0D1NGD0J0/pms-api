@@ -13,7 +13,7 @@ const CUID_TORONTO = 'CLIENT_TORONTO';
 const CUID_VANCOUVER = 'CLIENT_VANCOUVER';
 const CUID_UTC = 'CLIENT_UTC';
 
-const makePayment = (overrides: Record<string, any> = {}) => ({
+const _makePayment = (overrides: Record<string, any> = {}) => ({
   _id: new Types.ObjectId(),
   pytuid: `PYT${Math.random().toString(36).slice(2, 6)}`,
   cuid: CUID_TORONTO,
@@ -186,10 +186,7 @@ describe('PaymentCronService — timezone-scoped jobs', () => {
       clientDAO.getDistinctTimezones.mockReturnValue(Promise.resolve(['UTC']));
 
       const jobs = await service.getCronJobs();
-      // UTC-only jobs like weekly-rent-invoices don't pass timezone
-      const weeklyJob = jobs.find((j) => j.name === 'payment.weekly-rent-invoices');
-
-      // weekly-rent-invoices calls a different method, so test mark-overdue with UTC timezone
+      // test mark-overdue with UTC timezone
       const markOverdueUtc = jobs.find((j) => j.name === 'payment.mark-overdue.UTC');
       clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_UTC]));
 

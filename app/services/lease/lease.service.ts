@@ -619,6 +619,9 @@ export class LeaseService {
       const response: any = {
         lease: {
           ...filteredLease,
+          daysUntilExpiry: lease.daysUntilExpiry,
+          isExpiringSoon: lease.isExpiringSoon,
+          isInGracePeriod: lease.isInGracePeriod,
           createdBy,
           tenant: {
             id: lease.tenantId,
@@ -2399,6 +2402,7 @@ export class LeaseService {
           const endDate = dayjs(lease.duration.endDate);
           const daysPastEnd = dayjs().diff(endDate, 'day');
           const daysRemaining = Math.max(0, LEASE_CONSTANTS.GRACE_PERIOD_DAYS - daysPastEnd);
+          const gracePeriodEndDate = endDate.add(LEASE_CONSTANTS.GRACE_PERIOD_DAYS, 'day');
 
           // Notify tenant
           await this.notificationService.createNotification(
@@ -2410,11 +2414,12 @@ export class LeaseService {
               recipient: lease.tenantId.toString(),
               priority: NotificationPriorityEnum.HIGH,
               title: 'Lease Ended — Grace Period Active',
-              message: `Your lease at ${lease.property.address} ended on ${endDate.format('MMM DD, YYYY')}. You have ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining in your grace period before the lease is officially closed.`,
+              message: `Your lease at ${lease.property.address} ended on ${endDate.format('MMM DD, YYYY')}. You have ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining in your grace period (until ${gracePeriodEndDate.format('MMM DD, YYYY')}) before the lease is officially closed.`,
               metadata: {
-                leaseId: lease._id,
+                luid: lease.luid,
                 leaseExpiryThreshold: gracePeriodThreshold,
                 gracePeriodDaysRemaining: daysRemaining,
+                gracePeriodEndDate: gracePeriodEndDate.toISOString(),
                 endDate: lease.duration.endDate,
               },
               actionUrl: `${envVariables.FRONTEND.URL}/leases/${lease.cuid}/${lease.luid}`,
@@ -2450,11 +2455,12 @@ export class LeaseService {
                 recipient: propertyManagerId,
                 priority: NotificationPriorityEnum.MEDIUM,
                 title: 'Lease in Grace Period',
-                message: `Tenant ${lease.tenantInfo?.fullname} lease (${lease.leaseNumber}) ended on ${endDate.format('MMM DD, YYYY')} and has ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining in the grace period.`,
+                message: `Tenant ${lease.tenantInfo?.fullname} lease (${lease.leaseNumber}) ended on ${endDate.format('MMM DD, YYYY')} and has ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining in the grace period (until ${gracePeriodEndDate.format('MMM DD, YYYY')}).`,
                 metadata: {
-                  leaseId: lease._id,
+                  luid: lease.luid,
                   leaseExpiryThreshold: gracePeriodThreshold,
                   gracePeriodDaysRemaining: daysRemaining,
+                  gracePeriodEndDate: gracePeriodEndDate.toISOString(),
                   tenantName: lease.tenantInfo?.fullname,
                 },
                 actionUrl: `${envVariables.FRONTEND.URL}/leases/${lease.cuid}/${lease.luid}/`,

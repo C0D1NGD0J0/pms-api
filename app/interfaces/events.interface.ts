@@ -72,6 +72,7 @@ export enum EventTypes {
   DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
   UNIT_STATUS_CHANGED = 'unit:status:changed',
+  INSPECTION_REVIEWED = 'inspection:reviewed',
   INSPECTION_APPROVED = 'inspection:approved',
   INSPECTION_DISPUTED = 'inspection:disputed',
   INVITATION_EXPIRED = 'invitation:expired',
@@ -212,6 +213,7 @@ export type EventPayloadMap = {
   [EventTypes.INSPECTION_SCHEDULED]: InspectionScheduledPayload;
   [EventTypes.INSPECTION_REMINDER]: InspectionReminderPayload;
   [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
+  [EventTypes.INSPECTION_REVIEWED]: InspectionReviewedPayload;
   [EventTypes.INSPECTION_APPROVED]: InspectionApprovedPayload;
   [EventTypes.INSPECTION_AI_ANALYZED]: InspectionAIAnalyzedPayload;
   [EventTypes.INSPECTION_DISPUTED]: InspectionDisputedPayload;
@@ -426,6 +428,17 @@ export interface MaintenanceFeedbackSubmittedPayload {
   cuid: string;
 }
 
+export interface InspectionApprovedPayload {
+  depositAmount?: number;
+  refundAmount?: number;
+  inspectorUid?: string;
+  currency?: string;
+  tenantId: string;
+  leaseId: string;
+  iuid: string;
+  cuid: string;
+}
+
 export interface SystemErrorPayload {
   error: {
     message: string;
@@ -543,7 +556,6 @@ export interface MaintenanceRequestAssignedPayload {
   mruid: string;
   cuid: string;
 }
-
 export interface MaintenanceRequestCancelledPayload {
   technicianId?: string;
   requestId: string;
@@ -553,6 +565,7 @@ export interface MaintenanceRequestCancelledPayload {
   mruid: string;
   cuid: string;
 }
+
 export interface InvoiceGeneratedPayload {
   generationTime?: number;
   jobId: string | number;
@@ -685,15 +698,6 @@ export interface MaintenanceRequestDeclinedPayload {
   cuid: string;
 }
 
-export interface InspectionApprovedPayload {
-  depositAmount?: number;
-  refundAmount?: number;
-  tenantId: string;
-  leaseId: string;
-  iuid: string;
-  cuid: string;
-}
-
 export interface MaintenanceVendorPaidPayload {
   amountInCents: number;
   transferId: string;
@@ -784,6 +788,14 @@ export interface MaintenanceRequestAcceptedPayload {
 }
 
 export interface InspectionSubmittedPayload {
+  type: InspectionType;
+  inspectorUid: string;
+  tenantId: string;
+  iuid: string;
+  cuid: string;
+}
+
+export interface InspectionReviewedPayload {
   type: InspectionType;
   inspectorUid: string;
   tenantId: string;
@@ -883,6 +895,13 @@ export interface InspectionAIAnalyzedPayload {
   cuid: string;
 }
 
+export interface InspectionCancelledPayload {
+  type: InspectionType;
+  tenantId?: string;
+  iuid: string;
+  cuid: string;
+}
+
 export type GuestPassAcknowledgedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
   acknowledgedBy: string;
 };
@@ -900,10 +919,10 @@ export interface UserDisconnectedPayload {
   cuid: string;
   uid: string;
 }
-
 export type GuestPassValidatedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
   validatedBy: string;
 };
+
 export interface EventMetadata {
   requestId?: string;
   timestamp: number;
@@ -940,12 +959,6 @@ export interface DeleteAssetFailedPayload {
   failedKeys: string[];
   userId?: string;
   reason: string;
-}
-
-export interface InspectionCancelledPayload {
-  tenantId: string;
-  iuid: string;
-  cuid: string;
 }
 
 export interface DeleteAssetCompletedPayload {

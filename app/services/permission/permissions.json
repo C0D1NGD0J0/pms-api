@@ -115,14 +115,7 @@
           "tenant": ["read:any", "update:any", "list:any"],
           "payment": ["read:any", "list:any", "create:any"],
           "user": ["read:any", "update:any", "list:any"],
-          "inspection": [
-            "create:any",
-            "read:any",
-            "update:any",
-            "delete:any",
-            "list:any",
-            "manage:any"
-          ],
+          "inspection": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "report": ["read:any", "create:any", "list:any"],
           "client": ["read:mine", "settings:mine"]
         },

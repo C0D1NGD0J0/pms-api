@@ -228,6 +228,7 @@ export interface ILeaseDocument extends Document, ILease {
   durationMonths: number | null;
   tenantInfo?: ILeaseTenantInfo;
   totalMonthlyFees: number;
+  isInGracePeriod: boolean;
   isExpiringSoon: boolean;
   _id: Types.ObjectId;
   isActive: boolean;
@@ -554,6 +555,20 @@ export interface ILeaseDocumentItem {
   key: string;
 }
 
+export interface ILeaseTimeline {
+  isInGracePeriod: boolean;
+  isExpiringSoon: boolean;
+  daysRemaining: number;
+  daysElapsed: number;
+  moveInDate?: Date;
+  isActive: boolean;
+  progress: number; // 0-100 percentage
+  startDate: Date;
+  created: Date;
+  signed?: Date;
+  endDate: Date;
+}
+
 export interface ILeaseFees {
   acceptedPaymentMethod?: PaymentMethodType;
   lateFeePercentage?: number;
@@ -630,19 +645,6 @@ export interface LeaseTerminatedPayload {
   leaseId: string;
   luid: string;
   cuid: string;
-}
-
-export interface ILeaseTimeline {
-  isExpiringSoon: boolean;
-  daysRemaining: number;
-  daysElapsed: number;
-  moveInDate?: Date;
-  isActive: boolean;
-  progress: number; // 0-100 percentage
-  startDate: Date;
-  created: Date;
-  signed?: Date;
-  endDate: Date;
 }
 
 export interface ILeaseApprovalEntry {

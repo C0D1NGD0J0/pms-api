@@ -204,6 +204,23 @@ export interface RateLimitOptions {
   max?: number; // max requests per window
 }
 
+export interface ResourceInfo {
+  resourceName:
+    | 'property'
+    | 'profile'
+    | 'client'
+    | 'lease'
+    | 'maintenance'
+    | 'payment-invoice'
+    | 'guest-pass'
+    | 'inspection'; //name of the resource
+  resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
+  resourceId: string; //id of the resource
+  roomIndex?: number; // room index for inspection room-targeted media
+  fieldName: string; //name of the field
+  actorId: string; //user who uploaded the file
+}
+
 export interface IAWSFileUploadResponse {
   serverSideEncryption: string | null;
   contentDisposition: string | null;
@@ -222,22 +239,6 @@ export interface IAWSFileUploadResponse {
   acl?: string;
   etag: string;
   key: string;
-}
-
-export interface ResourceInfo {
-  resourceName:
-    | 'property'
-    | 'profile'
-    | 'client'
-    | 'lease'
-    | 'maintenance'
-    | 'payment-invoice'
-    | 'guest-pass'
-    | 'inspection'; //name of the resource
-  resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
-  resourceId: string; //id of the resource
-  fieldName: string; //name of the field
-  actorId: string; //user who uploaded the file
 }
 
 export interface UploadResult {

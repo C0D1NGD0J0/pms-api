@@ -8,8 +8,8 @@ import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
-import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
+import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,

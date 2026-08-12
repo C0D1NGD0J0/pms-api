@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
-import { UploadWorker } from '@workers/upload.worker';
 import { EventTypes } from '@interfaces/index';
+import { UploadWorker } from '@workers/upload.worker';
 
 // ─── Mock Dependencies ─────────────────────────────────────────────────────
 

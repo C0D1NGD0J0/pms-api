@@ -1,5 +1,5 @@
-import { Types } from 'mongoose';
 import dayjs from 'dayjs';
+import { Types } from 'mongoose';
 
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
@@ -32,7 +32,9 @@ const makePayment = (overrides: Record<string, any> = {}) => ({
 const makeMocks = () => {
   const paymentDAO = {
     list: jest.fn().mockReturnValue(Promise.resolve({ items: [], pagination: null })),
-    findOverduePayments: jest.fn().mockReturnValue(Promise.resolve({ items: [], pagination: null })),
+    findOverduePayments: jest
+      .fn()
+      .mockReturnValue(Promise.resolve({ items: [], pagination: null })),
     updateById: jest.fn().mockReturnValue(Promise.resolve({})),
   } as any;
 
@@ -145,9 +147,7 @@ describe('PaymentCronService — timezone-scoped jobs', () => {
   describe('autoChargeDueRentPayments', () => {
     it('should scope rent auto-charge to timezone clients', async () => {
       const { service, clientDAO, paymentDAO } = makeMocks();
-      clientDAO.getCuidsByTimezone.mockReturnValue(
-        Promise.resolve([CUID_TORONTO, CUID_VANCOUVER])
-      );
+      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_TORONTO, CUID_VANCOUVER]));
 
       const jobs = await service.getCronJobs();
       const autoCharge = jobs.find(
@@ -169,9 +169,7 @@ describe('PaymentCronService — timezone-scoped jobs', () => {
       clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_UTC]));
 
       const jobs = await service.getCronJobs();
-      const autoCharge = jobs.find(
-        (j) => j.name === 'payment.auto-charge-overdue-maintenance.UTC'
-      );
+      const autoCharge = jobs.find((j) => j.name === 'payment.auto-charge-overdue-maintenance.UTC');
 
       await autoCharge!.handler();
 

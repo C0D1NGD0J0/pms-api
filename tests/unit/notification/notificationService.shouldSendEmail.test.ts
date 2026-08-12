@@ -1,5 +1,5 @@
-import { NotificationService } from '@services/notification/notification.service';
 import { NotificationTypeEnum } from '@interfaces/notification.interface';
+import { NotificationService } from '@services/notification/notification.service';
 
 const mockProfileService = {
   getUserNotificationPreferences: jest.fn(),

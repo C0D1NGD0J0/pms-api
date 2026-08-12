@@ -129,11 +129,9 @@ describe('InspectionService', () => {
       expect(result.success).toBe(true);
       // First call: scheduled → in_progress, second call: in_progress → submitted
       expect(mockInspectionDAO.updateById).toHaveBeenCalledTimes(2);
-      expect(mockInspectionDAO.updateById).toHaveBeenNthCalledWith(
-        1,
-        inspection._id.toString(),
-        { $set: { status: InspectionStatus.IN_PROGRESS } }
-      );
+      expect(mockInspectionDAO.updateById).toHaveBeenNthCalledWith(1, inspection._id.toString(), {
+        $set: { status: InspectionStatus.IN_PROGRESS },
+      });
     });
 
     it('should allow in_progress → submitted', async () => {

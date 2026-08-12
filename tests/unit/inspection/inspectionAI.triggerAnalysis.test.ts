@@ -1,10 +1,14 @@
 import { Types } from 'mongoose';
 import { jest } from '@jest/globals';
-import { InspectionAIService } from '@services/inspection/inspectionAI.service';
-import { InspectionStatus, InspectionType, ConditionRating } from '@interfaces/inspection.interface';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import type { PlanName } from '@interfaces/subscription.interface';
 import type { InspectionSubmittedPayload } from '@interfaces/events.interface';
+import { InspectionAIService } from '@services/inspection/inspectionAI.service';
+import {
+  InspectionStatus,
+  ConditionRating,
+  InspectionType,
+} from '@interfaces/inspection.interface';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -398,9 +402,7 @@ describe('InspectionAIService', () => {
     };
 
     it('should auto-trigger analyzeInspection with the subscription plan', async () => {
-      mockSubscriptionDAO.findFirst.mockReturnValue(
-        Promise.resolve({ planName: 'growth' })
-      );
+      mockSubscriptionDAO.findFirst.mockReturnValue(Promise.resolve({ planName: 'growth' }));
       mockFeatureFlagService.isEnabled.mockReturnValue(true);
       mockSubscriptionPlanConfig.hasFeature.mockReturnValue(true);
       mockAiCostService.canAnalyze.mockReturnValue(Promise.resolve({ allowed: true }));
@@ -441,9 +443,7 @@ describe('InspectionAIService', () => {
     });
 
     it('should skip gracefully when analysis returns ok: false', async () => {
-      mockSubscriptionDAO.findFirst.mockReturnValue(
-        Promise.resolve({ planName: 'essential' })
-      );
+      mockSubscriptionDAO.findFirst.mockReturnValue(Promise.resolve({ planName: 'essential' }));
       mockFeatureFlagService.isEnabled.mockReturnValue(false);
 
       const listener = mockEmitterService.on.mock.calls.find(

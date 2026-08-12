@@ -429,10 +429,9 @@ describe('InspectionService Cron Jobs', () => {
       await autoCancelHandler();
 
       expect(mockPropertyUnitDAO.findById).toHaveBeenCalled();
-      expect(mockPropertyUnitDAO.updateById).toHaveBeenCalledWith(
-        expect.any(String),
-        { status: 'available' }
-      );
+      expect(mockPropertyUnitDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
+        status: 'available',
+      });
     });
 
     it('should not revert unit status if it is no longer MAINTENANCE', async () => {
@@ -460,10 +459,9 @@ describe('InspectionService Cron Jobs', () => {
 
       await autoCancelHandler();
 
-      expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(
-        expect.any(String),
-        { operationalStatus: 'available' }
-      );
+      expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
+        operationalStatus: 'available',
+      });
     });
 
     it('should not revert any status when previousOperationalStatus is absent', async () => {
@@ -494,10 +492,7 @@ describe('InspectionService Cron Jobs', () => {
     });
 
     it('should process multiple expired inspections in a single run', async () => {
-      const inspections = [
-        makeExpiredScheduledInspection(),
-        makeExpiredScheduledInspection(),
-      ];
+      const inspections = [makeExpiredScheduledInspection(), makeExpiredScheduledInspection()];
       mockInspectionDAO.list.mockResolvedValue({ items: inspections, total: 2 });
 
       await autoCancelHandler();

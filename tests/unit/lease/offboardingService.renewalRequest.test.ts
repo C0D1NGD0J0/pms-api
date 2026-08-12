@@ -127,6 +127,8 @@ describe('OffboardingService - Renewal Requests', () => {
     offboardingService = new OffboardingService({
       userDAO: mockUserDAO,
       leaseDAO: mockLeaseDAO,
+      propertyDAO: { updateById: jest.fn() } as any,
+      propertyUnitDAO: { updateById: jest.fn() } as any,
       paymentDAO: mockPaymentDAO,
       leaseService: mockLeaseService as any,
       inspectionDAO: mockInspectionDAO,

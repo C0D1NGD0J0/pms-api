@@ -6,9 +6,11 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
 import { LeaseService } from '@services/lease';
 import { UserCache } from '@caching/user.cache';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
@@ -17,6 +19,7 @@ import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { InspectionService } from '@services/inspection/inspection.service';
+import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { IPromiseReturnedData, IRequestContext } from '@interfaces/utils.interface';
 import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
@@ -32,6 +35,8 @@ export class OffboardingService {
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly paymentDAO: PaymentDAO;
   private readonly leaseService: LeaseService;
   private readonly userCache?: UserCache;
@@ -45,6 +50,8 @@ export class OffboardingService {
   constructor({
     userDAO,
     leaseDAO,
+    propertyDAO,
+    propertyUnitDAO,
     paymentDAO,
     userCache,
     leaseService,
@@ -57,6 +64,8 @@ export class OffboardingService {
   }: {
     userDAO: UserDAO;
     leaseDAO: LeaseDAO;
+    propertyDAO: PropertyDAO;
+    propertyUnitDAO: PropertyUnitDAO;
     paymentDAO: PaymentDAO;
     userCache?: UserCache;
     leaseService: LeaseService;
@@ -70,6 +79,8 @@ export class OffboardingService {
     this.log = createLogger('OffboardingService');
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.paymentDAO = paymentDAO;
     this.userCache = userCache;
     this.leaseService = leaseService;
@@ -147,7 +158,7 @@ export class OffboardingService {
 
     this.emitterService.on(EventTypes.INSPECTION_APPROVED, async (payload) => {
       try {
-        // Check if this is a move-out inspection tied to an expired lease
+        // Check if this is a move-out inspection tied to an expired/terminated lease
         const inspection = await this.inspectionDAO.findFirst({
           iuid: payload.iuid,
           type: InspectionType.MOVE_OUT,
@@ -164,46 +175,77 @@ export class OffboardingService {
 
         if (!lease) return;
 
-        // Complete deferred deactivation
         const tenantId = lease.tenantId.toString();
         const cuid = lease.cuid;
 
-        // Check if tenant has pendingDeactivation
-        const user = await this.userDAO.findFirst({
-          _id: new Types.ObjectId(tenantId),
-          'cuids.cuid': cuid,
-          'cuids.pendingDeactivation': true,
-        });
-
-        if (!user) return;
-
-        this.log.info('Move-out inspection approved — completing deferred deactivation', {
+        this.log.info('Move-out inspection approved — finalizing offboarding', {
           tenantId,
           cuid,
+          luid: lease.luid,
           iuid: payload.iuid,
         });
 
-        await this.userDAO.update(
-          { _id: new Types.ObjectId(tenantId), 'cuids.cuid': cuid },
-          {
-            $set: {
-              'cuids.$.isConnected': false,
-              'cuids.$.pendingDeactivation': false,
+        // 1. Mark lease as completed
+        await this.leaseDAO.updateById(lease._id.toString(), {
+          status: 'completed',
+          completedAt: new Date(),
+          $push: {
+            lastModifiedBy: {
+              action: 'completed',
+              userId: 'system',
+              name: 'System - Inspection Approved',
+              date: new Date(),
             },
-          }
-        );
+          },
+        });
 
-        // Invalidate cache
-        if (user.uid) {
-          await this.userCache?.invalidateUserDetail(cuid, user.uid);
+        // 2. Release property unit / mark property vacant
+        if (lease.property?.unitId) {
+          await this.propertyUnitDAO.updateById(lease.property.unitId.toString(), {
+            status: PropertyUnitStatusEnum.AVAILABLE,
+            currentTenant: null,
+            currentLease: null,
+          });
+        } else if (lease.property?.id) {
+          await this.propertyDAO.updateById(lease.property.id.toString(), {
+            occupancyStatus: 'vacant',
+          });
         }
 
-        this.log.info('Tenant deactivation completed after inspection approval', {
-          tenantId,
-          cuid,
+        // 3. Deactivate tenant — set read-only + isFormerTenant
+        const user = await this.userDAO.findFirst({
+          _id: new Types.ObjectId(tenantId),
+          'cuids.cuid': cuid,
         });
+
+        if (user) {
+          await this.userDAO.update(
+            { _id: new Types.ObjectId(tenantId), 'cuids.cuid': cuid },
+            {
+              $set: {
+                'cuids.$.isConnected': false,
+                'cuids.$.pendingDeactivation': false,
+                'cuids.$.isFormerTenant': true,
+              },
+            }
+          );
+
+          // Invalidate cache so tenant immediately enters read-only mode
+          if (user.uid) {
+            await this.userCache?.invalidateUserDetail(cuid, user.uid);
+          }
+        }
+
+        this.log.info(
+          'Offboarding finalized — lease completed, unit released, tenant deactivated',
+          {
+            tenantId,
+            cuid,
+            luid: lease.luid,
+          }
+        );
       } catch (error) {
-        this.log.error('Error completing deferred deactivation on inspection approval', {
+        this.log.error('Error finalizing offboarding on inspection approval', {
           error,
           payload,
         });

@@ -37,6 +37,8 @@ const mockPropertyUnitDAO = {
 
 const mockUserDAO = {
   findFirst: jest.fn() as any,
+  findById: jest.fn() as any,
+  list: jest.fn() as any,
 };
 
 const mockEmitterService = {
@@ -81,6 +83,10 @@ let service: InspectionService;
 
 beforeEach(() => {
   jest.clearAllMocks();
+
+  // Default: findById returns a minimal user for scheduling notes
+  mockUserDAO.findById.mockResolvedValue({ fullname: 'Test User', email: 'test@test.com' });
+  mockUserDAO.list.mockResolvedValue({ items: [] });
 
   service = new InspectionService({
     inspectionDAO: mockInspectionDAO as any,
@@ -153,8 +159,8 @@ describe('InspectionService', () => {
       );
     });
 
-    it('should allow submitted → approved', async () => {
-      const inspection = makeInspection({ status: InspectionStatus.SUBMITTED });
+    it('should allow pending_review → approved', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.PENDING_REVIEW });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
       mockInspectionDAO.updateById.mockResolvedValue({
         ...inspection,
@@ -284,21 +290,18 @@ describe('InspectionService', () => {
       expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, undefined);
     });
 
-    it('should deny a tenant from updating a move-out inspection', async () => {
-      const inspection = makeInspection({
-        tenantId: new Types.ObjectId(TENANT_ID),
-        type: InspectionType.MOVE_OUT,
-        status: InspectionStatus.IN_PROGRESS,
-      });
-      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+    it('should deny a tenant from updating another tenants inspection', async () => {
+      const otherTenantId = new Types.ObjectId().toString();
+      // getByIuid returns null when tenant filter doesn't match (query-level filter)
+      mockInspectionDAO.getByIuid.mockResolvedValue(null);
 
       await expect(
-        service.updateInspection(CUID, TENANT_ID, 'tenant', IUID, {
+        service.updateInspection(CUID, otherTenantId, 'tenant', IUID, {
           overallNotes: { text: 'Trying' },
         })
-      ).rejects.toThrow(/Tenants can only update move-in inspections/);
+      ).rejects.toThrow(/Inspection not found/);
 
-      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, TENANT_ID);
+      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, otherTenantId);
     });
 
     it('should allow tenant to update their own move-in inspection', async () => {
@@ -347,7 +350,7 @@ describe('InspectionService', () => {
 
     it('should compute correct proportional score for mixed ratings', async () => {
       // excellent=4, good=3, poor=1 → avg = 8/3 ≈ 2.67 → score = (2.67/4)*100 ≈ 67
-      // avg 2.67 → >= 2.5 → GOOD
+      // avg 2.67, but min score is 1 (poor) so effectiveAvg = min(2.67, 1+1) = 2 → FAIR
       const rooms = makeRooms([
         ConditionRating.EXCELLENT,
         ConditionRating.GOOD,
@@ -366,7 +369,7 @@ describe('InspectionService', () => {
 
       const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
       expect(setFields.conditionScore).toBe(67); // Math.round((8/3/4)*100)
-      expect(setFields.overallCondition).toBe(ConditionRating.GOOD);
+      expect(setFields.overallCondition).toBe(ConditionRating.FAIR);
     });
 
     it('should compute score 0 and overallCondition NA for all NA items', async () => {
@@ -393,7 +396,7 @@ describe('InspectionService', () => {
   describe('Refund Validation', () => {
     it('should throw 400 when refundAmount provided but no refundInfo on inspection', async () => {
       const inspection = makeInspection({
-        status: InspectionStatus.SUBMITTED,
+        status: InspectionStatus.PENDING_REVIEW,
         type: InspectionType.MOVE_OUT,
         refundInfo: undefined,
       });
@@ -406,7 +409,7 @@ describe('InspectionService', () => {
 
     it('should throw 400 when refundAmount exceeds deposit', async () => {
       const inspection = makeInspection({
-        status: InspectionStatus.SUBMITTED,
+        status: InspectionStatus.PENDING_REVIEW,
         type: InspectionType.MOVE_OUT,
         refundInfo: { amount: 1000, isRefunded: false },
       });
@@ -419,7 +422,7 @@ describe('InspectionService', () => {
 
     it('should set isRefunded = false when refundAmount is 0', async () => {
       const inspection = makeInspection({
-        status: InspectionStatus.SUBMITTED,
+        status: InspectionStatus.PENDING_REVIEW,
         type: InspectionType.MOVE_OUT,
         refundInfo: { amount: 1000, isRefunded: false },
       });
@@ -433,12 +436,12 @@ describe('InspectionService', () => {
 
       const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
       expect(setFields['refundInfo.isRefunded']).toBe(false);
-      expect(setFields['refundInfo.amount']).toBe(0);
+      expect(setFields['refundInfo.proposedRefund']).toBe(0);
     });
 
     it('should set isRefunded = true when refundAmount > 0', async () => {
       const inspection = makeInspection({
-        status: InspectionStatus.SUBMITTED,
+        status: InspectionStatus.PENDING_REVIEW,
         type: InspectionType.MOVE_OUT,
         refundInfo: { amount: 1000, isRefunded: false },
       });
@@ -452,7 +455,7 @@ describe('InspectionService', () => {
 
       const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
       expect(setFields['refundInfo.isRefunded']).toBe(true);
-      expect(setFields['refundInfo.amount']).toBe(750);
+      expect(setFields['refundInfo.proposedRefund']).toBe(750);
     });
   });
 
@@ -740,6 +743,7 @@ describe('InspectionService', () => {
         .mockResolvedValueOnce(null) // no existing move-out for this lease
         .mockResolvedValueOnce(null); // scheduleInspection dup check
       mockLeaseDAO.findFirst.mockResolvedValue(lease); // scheduleInspection lease lookup
+      mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
       mockUserDAO.findFirst.mockResolvedValue(null);
       mockInspectionDAO.insert.mockResolvedValue(makeInspection());
 

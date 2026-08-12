@@ -38,7 +38,7 @@ export const ALLOWED_INSPECTION_TRANSITIONS: Record<InspectionStatus, Inspection
   ],
   [InspectionStatus.PENDING_REVIEW]: [InspectionStatus.APPROVED, InspectionStatus.DISPUTED],
   [InspectionStatus.REJECTED]: [InspectionStatus.IN_PROGRESS],
-  [InspectionStatus.DISPUTED]: [InspectionStatus.PENDING_REVIEW],
+  [InspectionStatus.DISPUTED]: [InspectionStatus.PENDING_REVIEW, InspectionStatus.APPROVED],
   [InspectionStatus.APPROVED]: [],
   [InspectionStatus.CANCELLED]: [],
 };
@@ -63,6 +63,7 @@ export interface IInspection {
   rooms: IInspectionRoom[];
   leaseId?: Types.ObjectId;
   conditionScore?: number;
+  disputeCount?: number;
   inspectorUid: string;
   type: InspectionType;
   completedDate?: Date;

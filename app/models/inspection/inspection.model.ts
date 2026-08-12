@@ -164,6 +164,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },
     },
+    disputeCount: { type: Number, default: 0 },
     rejectionReason: {
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },

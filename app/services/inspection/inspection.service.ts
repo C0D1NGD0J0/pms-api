@@ -855,6 +855,14 @@ export class InspectionService implements ICronProvider {
     if (toId(inspection.tenantId) !== userId) {
       throw new ForbiddenError({ message: 'Access denied' });
     }
+
+    const MAX_DISPUTES = 2;
+    if ((inspection.disputeCount ?? 0) >= MAX_DISPUTES) {
+      throw new BadRequestError({
+        message: `Maximum number of disputes (${MAX_DISPUTES}) reached. The property manager can now finalize the inspection.`,
+      });
+    }
+
     this._validateTransition(inspection.status, InspectionStatus.DISPUTED);
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
@@ -862,6 +870,7 @@ export class InspectionService implements ICronProvider {
         status: InspectionStatus.DISPUTED,
         disputeNotes: data.disputeNotes,
       },
+      $inc: { disputeCount: 1 },
     });
 
     this.emitterService.emit(EventTypes.INSPECTION_DISPUTED, {

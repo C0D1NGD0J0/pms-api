@@ -9,8 +9,6 @@ jest.mock('@di/index', () => ({ container: {} }));
 import { PaymentCronService } from '@services/payments/paymentCron.service';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 const CUID_TORONTO = 'CLIENT_TORONTO';
 const CUID_VANCOUVER = 'CLIENT_VANCOUVER';
 const CUID_UTC = 'CLIENT_UTC';

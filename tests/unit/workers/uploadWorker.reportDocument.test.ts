@@ -1,8 +1,5 @@
 import { jest } from '@jest/globals';
-import { EventTypes } from '@interfaces/index';
 import { UploadWorker } from '@workers/upload.worker';
-
-// ─── Mock Dependencies ─────────────────────────────────────────────────────
 
 const mockS3Service = {
   uploadFiles: jest.fn() as any,

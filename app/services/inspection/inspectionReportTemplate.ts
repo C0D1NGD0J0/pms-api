@@ -53,8 +53,9 @@ export function buildInspectionReportHtml(data: InspectionReportData): string {
     .map((room) => buildRoomCard(room, isMoveOut, includePhotos))
     .join('\n');
 
-  const overallNotesHtml = inspection.overallNotes?.text
-    ? `<div class="overall-box"><h3>Overall Notes</h3><p>${escapeHtml(inspection.overallNotes.text)}</p></div>`
+  const summaryText = inspection.aiAnalysis?.overallSummary;
+  const summaryHtml = summaryText
+    ? `<div class="overall-box"><h3>Inspection Summary</h3><p>${escapeHtml(summaryText)}</p></div>`
     : '';
 
   const refundHtml = isMoveOut ? buildRefundSection(data.refund) : '';
@@ -199,7 +200,7 @@ export function buildInspectionReportHtml(data: InspectionReportData): string {
 
   ${roomCards}
 
-  ${overallNotesHtml}
+  ${summaryHtml}
 
   ${refundHtml}
 

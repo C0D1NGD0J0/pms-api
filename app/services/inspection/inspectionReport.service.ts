@@ -1,7 +1,9 @@
 import Logger from 'bunyan';
+import { UserDAO } from '@dao/userDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InspectionStatus } from '@interfaces/inspection.interface';
 import { RoleHelpers, IUserRole } from '@shared/constants/roles.constants';
@@ -18,13 +20,17 @@ interface IConstructor {
   mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   inspectionDAO: InspectionDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
+  userDAO: UserDAO;
 }
 
 export class InspectionReportService {
   private readonly log: Logger;
   private readonly inspectionDAO: InspectionDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly userDAO: UserDAO;
+  private readonly sseService: SSEService;
   private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly mediaUploadService: MediaUploadService;
   private readonly emitterService: EventEmitterService;
@@ -32,12 +38,16 @@ export class InspectionReportService {
   constructor({
     inspectionDAO,
     clientDAO,
+    userDAO,
+    sseService,
     pdfGeneratorService,
     mediaUploadService,
     emitterService,
   }: IConstructor) {
     this.inspectionDAO = inspectionDAO;
     this.clientDAO = clientDAO;
+    this.userDAO = userDAO;
+    this.sseService = sseService;
     this.pdfGeneratorService = pdfGeneratorService;
     this.mediaUploadService = mediaUploadService;
     this.emitterService = emitterService;
@@ -64,8 +74,11 @@ export class InspectionReportService {
             select: 'property.unitId fees',
             populate: { path: 'propertyUnitInfo', select: 'unitNumber' },
           },
-          { path: 'inspectorId', select: 'firstName lastName' },
-          { path: 'tenantId', select: 'firstName lastName' },
+          {
+            path: 'tenantId',
+            select: 'uid email',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
         ],
       }
     );
@@ -117,20 +130,28 @@ export class InspectionReportService {
       throw new NotFoundError({ message: 'Client not found' });
     }
 
-    const inspector = inspection.inspectorUid as
-      | { firstName?: string; lastName?: string }
-      | undefined;
-    const tenant = inspection.tenantId as { firstName?: string; lastName?: string } | undefined;
+    // inspectorUid is a string UID — resolve via manual lookup
+    let inspectorName = 'Inspector';
+    if (inspection.inspectorUid) {
+      const inspectorUser = (await this.userDAO.findFirst(
+        { uid: inspection.inspectorUid, deletedAt: null },
+        { populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' } }
+      )) as any;
+      if (inspectorUser) {
+        const info = inspectorUser.profile?.personalInfo;
+        if (info?.firstName) inspectorName = `${info.firstName} ${info.lastName ?? ''}`.trim();
+      }
+    }
+
+    const tenant = inspection.tenantId as any;
+    const tenantInfo = tenant?.profile?.personalInfo;
+    const tenantName = tenantInfo?.firstName
+      ? `${tenantInfo.firstName} ${tenantInfo.lastName ?? ''}`.trim()
+      : 'Tenant';
+
     const property = inspection.propertyId as { name?: string; pid?: string } | undefined;
     const lease = inspection.leaseId as { propertyUnitId?: { unitNumber?: string } } | undefined;
     const unit = lease?.propertyUnitId;
-
-    const inspectorName =
-      inspector?.firstName && inspector?.lastName
-        ? `${inspector.firstName} ${inspector.lastName}`
-        : 'Inspector';
-    const tenantName =
-      tenant?.firstName && tenant?.lastName ? `${tenant.firstName} ${tenant.lastName}` : 'Tenant';
     const propertyName = property?.name || property?.pid || 'Property';
     const unitNumber = unit?.unitNumber || 'N/A';
 
@@ -254,6 +275,20 @@ export class InspectionReportService {
       });
 
       this.log.info({ resourceId, url: pdfResult.url }, 'Inspection report document updated');
+
+      // Notify the PM that the report is ready for download
+      const inspection = await this.inspectionDAO.findFirst({ _id: resourceId });
+      if (inspection?.cuid) {
+        try {
+          await this.sseService.broadcastToClient(
+            inspection.cuid,
+            { resource: 'inspection', action: 'report-ready', iuid: inspection.iuid },
+            'resource-event'
+          );
+        } catch {
+          // Non-critical — PM can still refresh manually
+        }
+      }
     } catch (error) {
       this.log.error({ error, resourceId }, 'Error processing inspection upload completed event');
 

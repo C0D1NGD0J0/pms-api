@@ -170,7 +170,7 @@ export class InspectionAIService {
       const result = await this.anthropicService.createVisionMessage(
         buildAnalysisSystemPrompt(),
         contentBlocks,
-        { temperature: 0.2 }
+        { temperature: 0.2, maxTokens: 2048 }
       );
 
       const rawJson = result.content

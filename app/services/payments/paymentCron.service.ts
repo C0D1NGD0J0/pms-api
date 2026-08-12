@@ -110,7 +110,9 @@ export class PaymentCronService implements ICronProvider {
   private async buildCuidFilter(timezone?: string): Promise<Record<string, any>> {
     if (!timezone) return {};
     const cuids = await this.clientDAO.getCuidsByTimezone(timezone);
-    if (cuids.length === 0) return { cuid: { $in: [] } }; // match nothing
+    // $in: [] is intentional — MongoDB matches nothing, so no payments are processed
+    // when no clients exist for this timezone. This is a safe no-op.
+    if (cuids.length === 0) return { cuid: { $in: [] } };
     return { cuid: { $in: cuids } };
   }
 

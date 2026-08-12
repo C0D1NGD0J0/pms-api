@@ -145,13 +145,6 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
       expect.objectContaining({
         status: 'completed',
         completedAt: expect.any(Date),
-        $push: {
-          lastModifiedBy: expect.objectContaining({
-            action: 'completed',
-            userId: 'system',
-            name: 'System - Inspection Approved',
-          }),
-        },
       })
     );
   });

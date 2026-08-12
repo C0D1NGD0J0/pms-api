@@ -86,6 +86,15 @@ export const InspectionValidations = {
       message: 'Please provide at least one field to update',
     }),
 
+  reviewBody: z.object({
+    overallCondition: conditionEnum.optional(),
+    overallNotes: richTextSchema(2000, 'Overall notes').optional(),
+    refundAmount: z
+      .number({ invalid_type_error: 'Refund amount must be a number' })
+      .min(0, 'Refund amount cannot be negative')
+      .optional(),
+  }),
+
   disputeBody: z.object({
     disputeNotes: richTextSchema(2000, 'Dispute notes').refine((data) => data.text.length >= 10, {
       message: 'Dispute notes must be at least 10 characters — please describe the issue',

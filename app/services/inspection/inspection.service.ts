@@ -47,6 +47,7 @@ interface IConstructor {
 }
 
 export class InspectionService implements ICronProvider {
+  private static readonly MAX_DISPUTES = 2;
   private readonly inspectionDAO: InspectionDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly leaseDAO: LeaseDAO;
@@ -856,10 +857,9 @@ export class InspectionService implements ICronProvider {
       throw new ForbiddenError({ message: 'Access denied' });
     }
 
-    const MAX_DISPUTES = 2;
-    if ((inspection.disputeCount ?? 0) >= MAX_DISPUTES) {
+    if ((inspection.disputeCount ?? 0) >= InspectionService.MAX_DISPUTES) {
       throw new BadRequestError({
-        message: `Maximum number of disputes (${MAX_DISPUTES}) reached. The property manager can now finalize the inspection.`,
+        message: `Maximum number of disputes (${InspectionService.MAX_DISPUTES}) reached. The property manager can now finalize the inspection.`,
       });
     }
 
@@ -1405,7 +1405,7 @@ export class InspectionService implements ICronProvider {
                   status: inspection.previousOperationalStatus,
                 });
               }
-            } else {
+            } else if (inspection.propertyId) {
               await this.propertyDAO.updateById(toId(inspection.propertyId), {
                 operationalStatus: inspection.previousOperationalStatus,
               });
@@ -1550,6 +1550,8 @@ export class InspectionService implements ICronProvider {
         if (s !== undefined && s < minScore) minScore = s;
       }
     }
+    // Cap overall rating one tier above the worst item — a single "poor" item
+    // prevents a "good" overall rating regardless of how high the average is.
     const effectiveAvg = Math.min(avg, minScore + 1);
 
     if (effectiveAvg >= 3.5) return ConditionRating.EXCELLENT;

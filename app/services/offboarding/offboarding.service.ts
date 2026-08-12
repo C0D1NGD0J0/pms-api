@@ -189,14 +189,6 @@ export class OffboardingService {
         await this.leaseDAO.updateById(lease._id.toString(), {
           status: 'completed',
           completedAt: new Date(),
-          $push: {
-            lastModifiedBy: {
-              action: 'completed',
-              userId: 'system',
-              name: 'System - Inspection Approved',
-              date: new Date(),
-            },
-          },
         });
 
         // 2. Release property unit / mark property vacant

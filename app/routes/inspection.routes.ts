@@ -214,6 +214,7 @@ router.patch(
   requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({
     params: InspectionValidations.iuidParam,
+    body: InspectionValidations.reviewBody,
   }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<InspectionController>('inspectionController');

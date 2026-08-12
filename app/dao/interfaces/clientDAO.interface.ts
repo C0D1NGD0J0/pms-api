@@ -51,5 +51,9 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
 
   createClient(clientData: Partial<IClientDocument>): Promise<IClientDocument>;
 
+  getCuidsByTimezone(timezone: string): Promise<string[]>;
+
   doesClientExist(cuid: string): Promise<boolean>;
+
+  getDistinctTimezones(): Promise<string[]>;
 }

@@ -90,6 +90,7 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     ],
     refund: {
       refundedAt: { type: Date },
+      refundedBy: { type: String, trim: true },
       amount: {
         type: Number,
         min: [0, 'Refund amount cannot be negative'],

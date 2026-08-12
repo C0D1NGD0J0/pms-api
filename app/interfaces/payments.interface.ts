@@ -54,6 +54,13 @@ export interface IPaymentDocument extends Document {
     reviewedAt?: Date;
     notes?: string;
   };
+  refund?: {
+    refundedAt?: Date;
+    refundedBy?: string;
+    amount?: number;
+    reason?: string;
+    gatewayRefundId?: string;
+  };
   receipt?: {
     url?: string;
     filename?: string;
@@ -66,12 +73,6 @@ export interface IPaymentDocument extends Document {
     reason?: string;
     lastFailedAt?: Date;
     pmNotifiedAt?: Date;
-  };
-  refund?: {
-    refundedAt?: Date;
-    amount?: number;
-    reason?: string;
-    gatewayRefundId?: string;
   };
   invoiceDocument?: {
     url: string;

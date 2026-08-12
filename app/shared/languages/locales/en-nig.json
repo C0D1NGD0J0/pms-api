@@ -340,7 +340,8 @@
   },
   "tenant": {
     "success": {
-      "detailsRetrieved": "Tenant details don retrieve successfully"
+      "detailsRetrieved": "Tenant details don retrieve successfully",
+      "profileUpdated": "Tenant profile don update successfully"
     },
     "errors": {
       "notFound": "We no fit find dis tenant"

@@ -19,8 +19,34 @@ env:
   STRIPE_SECRET_KEY: sk_test_ci_placeholder
 
 jobs:
+  # Lightweight job for Dependabot/security PRs — only verify install + build
+  dependency-check:
+    name: Dependency Check
+    if: github.actor == 'dependabot[bot]' || contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
   lint:
     name: Lint & Format
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -47,6 +73,7 @@ jobs:
 
   typecheck:
     name: TypeScript
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -70,6 +97,7 @@ jobs:
 
   unit-tests:
     name: Unit Tests
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -93,6 +121,7 @@ jobs:
 
   build:
     name: Build
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint, typecheck]

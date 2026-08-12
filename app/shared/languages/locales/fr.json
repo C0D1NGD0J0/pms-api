@@ -473,7 +473,8 @@
   },
   "tenant": {
     "success": {
-      "detailsRetrieved": "Détails du locataire récupérés avec succès"
+      "detailsRetrieved": "Détails du locataire récupérés avec succès",
+      "profileUpdated": "Profil du locataire mis à jour avec succès"
     },
     "errors": {
       "notFound": "Locataire introuvable"

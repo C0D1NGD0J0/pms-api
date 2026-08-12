@@ -9,6 +9,7 @@ import type {
   InspectionScheduledPayload,
   InspectionSubmittedPayload,
   InspectionCancelledPayload,
+  InspectionReviewedPayload,
   InspectionApprovedPayload,
   InspectionDisputedPayload,
   InspectionRejectedPayload,
@@ -19,21 +20,51 @@ import { INotificationContext } from './notification.types';
 
 const formatType = (type: string) => type.replace(/_/g, '-');
 const formatDate = (d: Date | string) => new Date(d).toLocaleDateString();
+const formatMoney = (cents: number, currency = 'USD') =>
+  (cents / 100).toLocaleString(undefined, { style: 'currency', currency });
 
 export async function handleInspectionApproved(
   ctx: INotificationContext,
   payload: InspectionApprovedPayload
 ): Promise<void> {
-  const { cuid, iuid, tenantId, refundAmount, depositAmount } = payload;
+  const {
+    cuid,
+    iuid,
+    tenantId,
+    inspectorUid,
+    refundAmount,
+    depositAmount,
+    currency = 'USD',
+  } = payload;
 
   try {
+    // Notify the inspector/PM so their view refreshes
+    if (inspectorUid) {
+      const inspectorId = await resolveToObjectId(ctx, inspectorUid);
+      await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
+        cuid,
+        type: NotificationTypeEnum.INSPECTION,
+        title: 'Inspection Approved',
+        message: 'An inspection has been approved and finalized',
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: inspectorId,
+        priority: NotificationPriorityEnum.MEDIUM,
+        actionUrl: `/inspections/${cuid}/${iuid}`,
+      });
+    }
+
     let message = 'Your inspection has been reviewed and approved';
     if (refundAmount !== undefined && depositAmount !== undefined) {
       message =
         refundAmount > 0
-          ? `Your inspection has been approved. A refund of $${refundAmount.toLocaleString()} out of your $${depositAmount.toLocaleString()} security deposit will be processed`
+          ? `Your inspection has been approved. A refund of ${formatMoney(refundAmount, currency)} out of your ${formatMoney(depositAmount, currency)} security deposit will be processed`
           : 'Your inspection has been approved. No security deposit refund will be issued';
     }
+
+    const tenant = await lookupUser(ctx, tenantId);
+    const actionUrl = tenant?.uid
+      ? tenantActionUrl(cuid, tenant.uid, iuid)
+      : `/inspections/${cuid}/${iuid}`;
 
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
@@ -43,11 +74,10 @@ export async function handleInspectionApproved(
       recipientType: RecipientTypeEnum.INDIVIDUAL,
       recipient: tenantId,
       priority: NotificationPriorityEnum.MEDIUM,
-      actionUrl: `/inspections/${cuid}/${iuid}`,
+      actionUrl,
     });
 
-    const tenant = await lookupUser(ctx, tenantId);
-    if (tenant) {
+    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionApprovedJob', {
         to: tenant.email,
         emailType: MailType.INSPECTION_APPROVED,
@@ -56,6 +86,7 @@ export async function handleInspectionApproved(
           currentuser: tenant,
           refundAmount,
           depositAmount,
+          currency,
           hasRefund: refundAmount !== undefined && depositAmount !== undefined,
           iuid,
         },
@@ -78,23 +109,41 @@ export async function handleInspectionRejected(
       ? `Inspection has been rejected: ${reason.substring(0, 100)}`
       : `Inspection needs revision: ${reason.substring(0, 100)}`;
 
-    const recipients = [tenantId, inspectorUid].filter(Boolean);
-    for (const recipient of recipients) {
+    const tenant = await lookupUser(ctx, tenantId);
+    const tenantUrl = tenant?.uid
+      ? tenantActionUrl(cuid, tenant.uid, iuid)
+      : `/inspections/${cuid}/${iuid}`;
+    const pmUrl = `/inspections/${cuid}/${iuid}`;
+
+    // Notify tenant
+    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
+      cuid,
+      type: NotificationTypeEnum.INSPECTION,
+      title,
+      message,
+      recipientType: RecipientTypeEnum.INDIVIDUAL,
+      recipient: tenantId,
+      priority: NotificationPriorityEnum.HIGH,
+      actionUrl: tenantUrl,
+    });
+
+    // Notify inspector
+    const inspectorId = await resolveToObjectId(ctx, inspectorUid);
+    if (inspectorId) {
       await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
         cuid,
         type: NotificationTypeEnum.INSPECTION,
         title,
         message,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
-        recipient,
+        recipient: inspectorId,
         priority: NotificationPriorityEnum.HIGH,
-        actionUrl: `/inspections/${cuid}/${iuid}`,
+        actionUrl: pmUrl,
       });
     }
 
     // Email the tenant about rejection
-    const tenant = await lookupUser(ctx, tenantId);
-    if (tenant) {
+    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionRejectedJob', {
         to: tenant.email,
         emailType: MailType.INSPECTION_REJECTED,
@@ -120,6 +169,11 @@ export async function handleInspectionScheduled(
   if (!tenantId) return; // property-only inspections have no tenant to notify
 
   try {
+    const tenant = await lookupUser(ctx, tenantId);
+    const actionUrl = tenant?.uid
+      ? tenantActionUrl(cuid, tenant.uid, iuid)
+      : `/inspections/${cuid}/${iuid}`;
+
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
       type: NotificationTypeEnum.INSPECTION,
@@ -128,11 +182,10 @@ export async function handleInspectionScheduled(
       recipientType: RecipientTypeEnum.INDIVIDUAL,
       recipient: tenantId,
       priority: NotificationPriorityEnum.MEDIUM,
-      actionUrl: `/inspections/${cuid}/${iuid}`,
+      actionUrl,
     });
 
-    const tenant = await lookupUser(ctx, tenantId);
-    if (tenant) {
+    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionScheduledJob', {
         to: tenant.email,
         emailType: MailType.INSPECTION_SCHEDULED,
@@ -157,6 +210,8 @@ export async function handleInspectionSubmitted(
   const { cuid, iuid, inspectorUid, type } = payload;
 
   try {
+    const inspectorId = await resolveToObjectId(ctx, inspectorUid);
+
     // Notify the inspector/manager that the report is ready for review
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
@@ -164,13 +219,16 @@ export async function handleInspectionSubmitted(
       title: 'Inspection Report Submitted',
       message: `A ${formatType(type)} inspection report has been submitted for review`,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
-      recipient: inspectorUid,
+      recipient: inspectorId,
       priority: NotificationPriorityEnum.MEDIUM,
       actionUrl: `/inspections/${cuid}/${iuid}`,
     });
 
     const inspector = await lookupUser(ctx, inspectorUid);
-    if (inspector) {
+    if (
+      inspector &&
+      (await ctx.shouldSendEmail(inspector._id, cuid, NotificationTypeEnum.INSPECTION))
+    ) {
       ctx.emailQueue.addToEmailQueue('inspectionSubmittedJob', {
         to: inspector.email,
         emailType: MailType.INSPECTION_SUBMITTED,
@@ -195,6 +253,11 @@ export async function handleInspectionCancelled(
   if (!tenantId) return; // property-only inspections have no tenant to notify
 
   try {
+    const tenant = await lookupUser(ctx, tenantId);
+    const actionUrl = tenant?.uid
+      ? tenantActionUrl(cuid, tenant.uid, iuid)
+      : `/inspections/${cuid}/${iuid}`;
+
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
       type: NotificationTypeEnum.INSPECTION,
@@ -203,11 +266,10 @@ export async function handleInspectionCancelled(
       recipientType: RecipientTypeEnum.INDIVIDUAL,
       recipient: tenantId,
       priority: NotificationPriorityEnum.LOW,
-      actionUrl: `/inspections/${cuid}/${iuid}`,
+      actionUrl,
     });
 
-    const tenant = await lookupUser(ctx, tenantId);
-    if (tenant) {
+    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionCancelledJob', {
         to: tenant.email,
         emailType: MailType.INSPECTION_CANCELLED,
@@ -227,11 +289,17 @@ export async function handleInspectionReminder(
   const { cuid, iuid, luid, tenantId, type, scheduledDate } = payload;
 
   try {
-    const actionUrl = iuid
-      ? `/inspections/${cuid}/${iuid}`
-      : luid
-        ? `/leases/${cuid}/${luid}`
-        : `/inspections/${cuid}`;
+    const tenant = await lookupUser(ctx, tenantId);
+    let actionUrl: string;
+    if (iuid && tenant?.uid) {
+      actionUrl = tenantActionUrl(cuid, tenant.uid, iuid);
+    } else if (luid && tenant?.uid) {
+      actionUrl = `/tenants/${cuid}/${tenant.uid}/lease/${luid}`;
+    } else if (tenant?.uid) {
+      actionUrl = `/tenants/${cuid}/${tenant.uid}/inspections`;
+    } else {
+      actionUrl = `/inspections/${cuid}`;
+    }
 
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
@@ -248,6 +316,34 @@ export async function handleInspectionReminder(
   }
 }
 
+export async function handleInspectionReviewed(
+  ctx: INotificationContext,
+  payload: InspectionReviewedPayload
+): Promise<void> {
+  const { cuid, iuid, tenantId, type } = payload;
+  if (!tenantId) return;
+
+  try {
+    const tenant = await lookupUser(ctx, tenantId);
+    const actionUrl = tenant?.uid
+      ? tenantActionUrl(cuid, tenant.uid, iuid)
+      : `/inspections/${cuid}/${iuid}`;
+
+    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
+      cuid,
+      type: NotificationTypeEnum.INSPECTION,
+      title: 'Inspection Review Complete',
+      message: `Your property manager has reviewed your ${formatType(type)} inspection. Please review the findings and submit your response.`,
+      recipientType: RecipientTypeEnum.INDIVIDUAL,
+      recipient: tenantId,
+      priority: NotificationPriorityEnum.HIGH,
+      actionUrl,
+    });
+  } catch (err) {
+    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection reviewed notification');
+  }
+}
+
 export async function handleInspectionDisputed(
   ctx: INotificationContext,
   payload: InspectionDisputedPayload
@@ -255,13 +351,15 @@ export async function handleInspectionDisputed(
   const { cuid, iuid, inspectorUid, disputeNotes } = payload;
 
   try {
+    const inspectorId = await resolveToObjectId(ctx, inspectorUid);
+
     await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
       cuid,
       type: NotificationTypeEnum.INSPECTION,
       title: 'Inspection Disputed',
       message: `Tenant has disputed the inspection: ${disputeNotes.substring(0, 100)}`,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
-      recipient: inspectorUid,
+      recipient: inspectorId,
       priority: NotificationPriorityEnum.HIGH,
       actionUrl: `/inspections/${cuid}/${iuid}`,
     });
@@ -272,12 +370,19 @@ export async function handleInspectionDisputed(
 
 async function lookupUser(ctx: INotificationContext, userId: string) {
   try {
-    const user = await ctx.userDAO.findFirst(
-      { _id: new Types.ObjectId(userId), deletedAt: null },
-      { populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' } }
-    );
+    const isObjectId =
+      Types.ObjectId.isValid(userId) && String(new Types.ObjectId(userId)) === userId;
+    const filter = isObjectId
+      ? { _id: new Types.ObjectId(userId), deletedAt: null }
+      : { uid: userId, deletedAt: null };
+
+    const user = await ctx.userDAO.findFirst(filter, {
+      populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+    });
     if (!user?.email) return null;
     return {
+      _id: user._id.toString(),
+      uid: user.uid,
       firstName: user?.profile?.personalInfo?.firstName || user.email,
       lastName: user?.profile?.personalInfo?.lastName || '',
       email: user.email,
@@ -286,4 +391,20 @@ async function lookupUser(ctx: INotificationContext, userId: string) {
     ctx.log.warn({ err, userId }, 'lookupUser: failed to fetch user for email notification');
     return null;
   }
+}
+
+/**
+ * Resolves a uid string to a MongoDB _id string.
+ * If the input is already a valid ObjectId, returns it as-is.
+ */
+async function resolveToObjectId(ctx: INotificationContext, uidOrId: string): Promise<string> {
+  if (Types.ObjectId.isValid(uidOrId) && String(new Types.ObjectId(uidOrId)) === uidOrId) {
+    return uidOrId;
+  }
+  const user = await ctx.userDAO.findFirst({ uid: uidOrId, deletedAt: null });
+  return user?._id?.toString() ?? uidOrId;
+}
+
+function tenantActionUrl(cuid: string, uid: string, iuid: string): string {
+  return `/tenants/${cuid}/${uid}/inspections/${iuid}`;
 }

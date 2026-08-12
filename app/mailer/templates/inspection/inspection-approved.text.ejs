@@ -3,7 +3,7 @@ Inspection Approved
 
 Hi <%= currentuser.firstName %>,
 
-<% if (hasRefund && refundAmount > 0) { %>Your inspection has been approved. A refund of $<%= refundAmount.toLocaleString() %> out of your $<%= depositAmount.toLocaleString() %> security deposit will be processed.
+<% if (hasRefund && refundAmount > 0) { %>Your inspection has been approved. A refund of <%= (refundAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %> out of your <%= (depositAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %> security deposit will be processed.
 <% } else if (hasRefund) { %>Your inspection has been approved. No security deposit refund will be issued.
 <% } else { %>Your inspection has been approved. No further action is required.
 <% } %>
@@ -12,6 +12,6 @@ DETAILS
 -------
 Reference #: <%= iuid %>
 Status:      Approved
-<% if (hasRefund) { %>Deposit Refund: $<%= (refundAmount || 0).toLocaleString() %>
+<% if (hasRefund) { %>Deposit Refund: <%= ((refundAmount || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %>
 <% } %>
 

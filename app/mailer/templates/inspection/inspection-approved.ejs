@@ -6,8 +6,8 @@
       <% if (hasRefund && refundAmount > 0) { %>
       <p>
         Your inspection has been reviewed and approved. A refund of
-        <strong>$<%= refundAmount.toLocaleString() %></strong> out of your
-        <strong>$<%= depositAmount.toLocaleString() %></strong> security deposit will be processed.
+        <strong><%= (refundAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> out of your
+        <strong><%= (depositAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> security deposit will be processed.
       </p>
       <% } else if (hasRefund) { %>
       <p>
@@ -37,7 +37,7 @@
           <% if (hasRefund) { %>
           <tr>
             <td class="detail-label">Deposit Refund</td>
-            <td class="detail-value">$<%= (refundAmount || 0).toLocaleString() %></td>
+            <td class="detail-value"><%= ((refundAmount || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></td>
           </tr>
           <% } %>
         </table>

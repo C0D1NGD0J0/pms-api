@@ -8,6 +8,7 @@ export enum LeaseStatus {
   PENDING_SIGNATURE = 'pending_signature',
   DRAFT_RENEWAL = 'draft_renewal',
   TERMINATED = 'terminated',
+  COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   RENEWED = 'renewed',
   EXPIRED = 'expired',

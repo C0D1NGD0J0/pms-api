@@ -119,7 +119,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
       renewalRequest: { status: 'pending', requestedTermMonths: 12 },
     });
 
-    mockLeaseDAO.list.mockResolvedValue({ items: [lease] } as any);
+    mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
 
     await leaseService.markExpiredLeases();
 
@@ -145,7 +147,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
       renewalRequest: { status: 'pending', requestedTermMonths: 12, holdUntil: futureHold },
     });
 
-    mockLeaseDAO.list.mockResolvedValue({ items: [lease] } as any);
+    mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
 
     await leaseService.markExpiredLeases();
 
@@ -169,7 +173,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     });
 
     // No renewal lease exists
-    mockLeaseDAO.list.mockResolvedValue({ items: [lease] } as any);
+    mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
     mockLeaseDAO.findFirst.mockResolvedValue(null);
     mockLeaseDAO.updateById.mockResolvedValue(lease as any);
 
@@ -202,7 +208,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     const renewalId = new Types.ObjectId();
     const lease = makeExpiredLease();
 
-    mockLeaseDAO.list.mockResolvedValue({ items: [lease] } as any);
+    mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
     // Renewal exists but is still in draft_renewal status
     mockLeaseDAO.findFirst.mockResolvedValue({
       _id: renewalId,
@@ -233,7 +241,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     const renewalId = new Types.ObjectId();
     const lease = makeExpiredLease();
 
-    mockLeaseDAO.list.mockResolvedValue({ items: [lease] } as any);
+    mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
     // Renewal is fully active
     mockLeaseDAO.findFirst.mockResolvedValue({
       _id: renewalId,
@@ -260,7 +270,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
   it('should emit LEASE_EXPIRED for Case 3 (no renewal exists)', async () => {
     const lease = makeExpiredLease();
 
-    mockLeaseDAO.list.mockResolvedValue({ items: [lease] } as any);
+    mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
     // No renewal exists
     mockLeaseDAO.findFirst.mockResolvedValue(null);
     mockLeaseDAO.updateById.mockResolvedValue(lease as any);
@@ -283,5 +295,66 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
         reason: 'expired',
       })
     );
+  });
+
+  it('should skip grace period and expire immediately when an upcoming lease exists on the same unit', async () => {
+    // Lease ended 1 day ago (within 3-day grace period — normally would NOT be expired yet)
+    const recentEndDate = dayjs(today).subtract(1, 'day').toDate();
+    const recentLease = makeExpiredLease({
+      _id: new Types.ObjectId(),
+      luid: 'LEASE_RECENT',
+      duration: {
+        startDate: dayjs(recentEndDate).subtract(12, 'months').toDate(),
+        endDate: recentEndDate,
+      },
+    });
+
+    // Upcoming lease on the same unit starting in 3 days
+    const upcomingLease = {
+      _id: new Types.ObjectId(),
+      cuid: testCuid,
+      property: { id: mockPropertyId, unitId: mockUnitId },
+      duration: { startDate: dayjs(recentEndDate).add(3, 'days').toDate() },
+    };
+
+    mockLeaseDAO.list
+      .mockResolvedValueOnce({ items: [] } as any)              // 3-day-past batch (empty)
+      .mockResolvedValueOnce({ items: [recentLease] } as any)   // recently-past batch
+      .mockResolvedValueOnce({ items: [upcomingLease] } as any); // findLeasesWithUpcomingConflicts batch query
+
+    // No renewal exists
+    mockLeaseDAO.findFirst.mockResolvedValue(null);
+    mockLeaseDAO.updateById.mockResolvedValue(recentLease as any);
+
+    await leaseService.markExpiredLeases();
+
+    // Should expire the lease even though it's within the 3-day grace period
+    expect(mockLeaseDAO.updateById).toHaveBeenCalledWith(
+      recentLease._id.toString(),
+      expect.objectContaining({ status: 'expired' })
+    );
+  });
+
+  it('should NOT expire a recently-past lease when no upcoming lease exists (grace period applies)', async () => {
+    // Lease ended 1 day ago (within 3-day grace period)
+    const recentEndDate = dayjs(today).subtract(1, 'day').toDate();
+    const recentLease = makeExpiredLease({
+      _id: new Types.ObjectId(),
+      luid: 'LEASE_GRACE',
+      duration: {
+        startDate: dayjs(recentEndDate).subtract(12, 'months').toDate(),
+        endDate: recentEndDate,
+      },
+    });
+
+    mockLeaseDAO.list
+      .mockResolvedValueOnce({ items: [] } as any)             // 3-day-past batch (empty)
+      .mockResolvedValueOnce({ items: [recentLease] } as any)  // recently-past batch
+      .mockResolvedValueOnce({ items: [] } as any);             // no upcoming conflicts
+
+    await leaseService.markExpiredLeases();
+
+    // Should NOT expire — grace period still applies
+    expect(mockLeaseDAO.updateById).not.toHaveBeenCalled();
   });
 });

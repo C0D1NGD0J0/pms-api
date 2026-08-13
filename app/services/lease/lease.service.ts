@@ -10,6 +10,7 @@ import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
+import { AuthCache } from '@caching/auth.cache';
 import { UserCache } from '@caching/user.cache';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { getSystemBotUserId } from '@utils/systemBot';
@@ -116,6 +117,7 @@ interface IConstructor {
   leaseCache: LeaseCache;
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
+  authCache?: AuthCache;
   userCache: UserCache;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
@@ -148,6 +150,7 @@ export class LeaseService {
   private readonly smsService: SMSService;
   private readonly paymentDAO: PaymentDAO;
   private readonly userCache: UserCache;
+  private readonly authCache?: AuthCache;
 
   constructor({
     boldSignService,
@@ -172,6 +175,7 @@ export class LeaseService {
     smsService,
     paymentDAO,
     userCache,
+    authCache,
     userDAO,
     userService,
   }: IConstructor) {
@@ -200,6 +204,7 @@ export class LeaseService {
     this.smsService = smsService;
     this.paymentDAO = paymentDAO;
     this.userCache = userCache;
+    this.authCache = authCache;
     this.setupEventListeners();
   }
 
@@ -1036,6 +1041,7 @@ export class LeaseService {
 
     await this.leaseCache.invalidateLease(cuid, luid);
     await this.leaseCache.invalidateLeaseLists(cuid);
+    await this.authCache?.invalidateCurrentUser(lease.tenantId.toString(), cuid);
 
     this.emitterService.emit(EventTypes.LEASE_TERMINATED, {
       leaseId: terminatedLease._id.toString(),
@@ -2687,7 +2693,7 @@ export class LeaseService {
       ...this.leaseRenewalService.getCronJobs(this.sendLeaseForSignature.bind(this)),
       {
         name: 'process-expiring-leases',
-        schedule: '0 9 * * *', // Daily at 9 AM UTC
+        schedule: '30 2 * * *', // Daily at 2:30 AM UTC — notifications arrive in morning
         handler: this.processExpiringLeases.bind(this),
         enabled: true,
         service: 'LeaseService',
@@ -2769,6 +2775,163 @@ export class LeaseService {
     );
   }
 
+  /**
+   * Checks if an upcoming lease exists on the same property/unit within a given window.
+   * Scoped by cuid for tenant isolation. Returns only existence (no full document).
+   */
+  async hasUpcomingLease(
+    cuid: string,
+    propertyId: string | Types.ObjectId,
+    unitId: string | Types.ObjectId | null | undefined,
+    afterDate: Date,
+    opts?: { excludeLeaseId?: string | Types.ObjectId; windowDays?: number }
+  ): Promise<boolean> {
+    const windowDays = opts?.windowDays ?? 7;
+    const query: Record<string, any> = {
+      cuid,
+      ...(unitId ? { 'property.unitId': unitId } : { 'property.id': propertyId }),
+      'duration.startDate': {
+        $gte: afterDate,
+        $lte: dayjs(afterDate).add(windowDays, 'days').toDate(),
+      },
+      status: { $nin: [LeaseStatus.CANCELLED, LeaseStatus.EXPIRED, LeaseStatus.COMPLETED] },
+      deletedAt: null,
+    };
+    if (opts?.excludeLeaseId) {
+      query._id = { $ne: opts.excludeLeaseId };
+    }
+    const match = await this.leaseDAO.findFirst(query, { select: '_id' });
+    return !!match;
+  }
+
+  /**
+   * Given a list of expiring leases, returns the Set of lease _id strings
+   * that have an upcoming lease on the same unit/property within 7 days.
+   * Single batch query — no N+1.
+   */
+  private async findLeasesWithUpcomingConflicts(leases: ILeaseDocument[]): Promise<Set<string>> {
+    if (leases.length === 0) return new Set();
+
+    const orConditions = leases.map((lease) => ({
+      cuid: lease.cuid,
+      ...(lease.property?.unitId
+        ? { 'property.unitId': lease.property.unitId }
+        : { 'property.id': lease.property.id }),
+      'duration.startDate': {
+        $gte: lease.duration.endDate,
+        $lte: dayjs(lease.duration.endDate).add(7, 'days').toDate(),
+      },
+    }));
+
+    const { items: upcomingLeases } = await this.leaseDAO.list(
+      {
+        $or: orConditions,
+        _id: { $nin: leases.map((l) => l._id) },
+        status: { $nin: [LeaseStatus.CANCELLED, LeaseStatus.EXPIRED, LeaseStatus.COMPLETED] },
+        deletedAt: null,
+      },
+      { projection: 'property.unitId property.id cuid' }
+    );
+
+    const conflictIds = new Set<string>();
+    for (const upcoming of upcomingLeases) {
+      for (const expiring of leases) {
+        const sameUnit =
+          expiring.property?.unitId &&
+          upcoming.property?.unitId?.toString() === expiring.property.unitId.toString();
+        const sameProperty =
+          !expiring.property?.unitId &&
+          upcoming.property?.id?.toString() === expiring.property?.id?.toString();
+        if (upcoming.cuid === expiring.cuid && (sameUnit || sameProperty)) {
+          conflictIds.add(expiring._id.toString());
+        }
+      }
+    }
+    return conflictIds;
+  }
+
+  /**
+   * Invalidates all caches affected by a lease status change:
+   * - Lease detail + list caches (so API returns fresh data)
+   * - Tenant's auth cache (so currentUser.tenantInfo.activeLease reflects new status)
+   * - Tenant's user detail cache
+   */
+  private async invalidateLeaseStatusCaches(lease: any): Promise<void> {
+    try {
+      await this.leaseCache.invalidateLease(lease.cuid, lease.luid);
+      await this.leaseCache.invalidateLeaseLists(lease.cuid);
+
+      const tenantId = lease.tenantId?.toString();
+      if (tenantId) {
+        await this.authCache?.invalidateCurrentUser(tenantId, lease.cuid);
+
+        const tenantUser = await this.userDAO.findFirst({ _id: tenantId });
+        if (tenantUser?.uid) {
+          await this.userCache.invalidateUserDetail(lease.cuid, tenantUser.uid);
+        }
+      }
+    } catch (error: any) {
+      this.log.warn(
+        { error: error.message, luid: lease.luid },
+        'Failed to invalidate lease caches'
+      );
+    }
+  }
+
+  private async sendLeaseExpiredEmail(lease: any): Promise<void> {
+    try {
+      const tenantProfile = await this.profileDAO.findFirst(
+        { user: lease.tenantId },
+        { populate: 'user' }
+      );
+      if (!tenantProfile?.user) {
+        this.log.warn('Tenant profile not found for expiry email', { luid: lease.luid });
+        return;
+      }
+
+      const tenantUser =
+        typeof tenantProfile.user === 'object' ? (tenantProfile.user as any) : null;
+      if (!tenantUser?.email) {
+        this.log.warn('Tenant email not found for expiry email', { luid: lease.luid });
+        return;
+      }
+
+      const tenantName =
+        `${tenantProfile.personalInfo?.firstName || ''} ${tenantProfile.personalInfo?.lastName || ''}`.trim() ||
+        'Tenant';
+      const property = lease.property as any;
+      const propertyAddress =
+        (typeof property?.address === 'string'
+          ? property?.address
+          : property?.address?.fullAddress) || 'N/A';
+
+      await this.mailerService.sendMail(
+        {
+          to: tenantUser.email,
+          subject: 'Your Lease Has Expired',
+          data: {
+            tenantName,
+            leaseNumber: lease.leaseNumber,
+            propertyAddress,
+            unitNumber: property?.unitId?.unitNumber || null,
+            endDate: lease.duration.endDate.toISOString(),
+            leaseUrl: '',
+            propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
+            propertyManagerPhone: property?.id?.contactPhone || 'N/A',
+          },
+        },
+        MailType.LEASE_EXPIRED
+      );
+
+      this.log.info(`Lease expiry email sent to tenant ${tenantUser.email}`, { luid: lease.luid });
+    } catch (error: any) {
+      this.log.warn(
+        { error: error.message, luid: lease.luid },
+        'Failed to send lease expiry email'
+      );
+    }
+  }
+
   async markExpiredLeases(): Promise<void> {
     this.log.info('Starting expired lease marking');
 
@@ -2779,7 +2942,7 @@ export class LeaseService {
         .subtract(LEASE_CONSTANTS.GRACE_PERIOD_DAYS, 'days')
         .toDate();
 
-      // Find active leases MORE THAN 7 days past their end date
+      // Find active leases past the grace period (3+ days past end date)
       const expiredLeases = await this.leaseDAO.list(
         {
           status: LeaseStatus.ACTIVE,
@@ -2791,7 +2954,36 @@ export class LeaseService {
         }
       );
 
-      this.log.info(`Found ${expiredLeases.items.length} leases 7+ days past end date`);
+      // Smart grace period: also find leases within the grace window (0-3 days past)
+      // that have an upcoming lease on the same unit — these skip the grace period
+      const recentlyPastLeases = await this.leaseDAO.list(
+        {
+          status: LeaseStatus.ACTIVE,
+          'duration.endDate': { $lt: today, $gte: gracePeriodDate },
+          deletedAt: null,
+        },
+        {
+          populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'],
+        }
+      );
+
+      if (recentlyPastLeases.items.length > 0) {
+        const conflictIds = await this.findLeasesWithUpcomingConflicts(
+          recentlyPastLeases.items as ILeaseDocument[]
+        );
+        for (const lease of recentlyPastLeases.items) {
+          if (conflictIds.has(lease._id.toString())) {
+            this.log.info(
+              `Lease ${lease.luid} has upcoming lease on same unit — skipping grace period`
+            );
+            (expiredLeases.items as any[]).push(lease);
+          }
+        }
+      }
+
+      this.log.info(
+        `Found ${expiredLeases.items.length} leases to process (including grace skips)`
+      );
 
       let completedCount = 0;
       let expiredCount = 0;
@@ -2923,6 +3115,7 @@ export class LeaseService {
                 endDate: lease.duration.endDate,
               },
               recipients: {
+                tenant: true,
                 propertyManager: lease.propertyInfo?.managedBy?.toString(),
                 createdBy: lease.createdBy?.toString(),
               },
@@ -2933,6 +3126,7 @@ export class LeaseService {
               },
             });
 
+            await this.invalidateLeaseStatusCaches(lease);
             completedCount++;
           }
           // CASE 2: Renewal exists but NOT active
@@ -2985,6 +3179,7 @@ export class LeaseService {
                 endDate: lease.duration.endDate,
               },
               recipients: {
+                tenant: true,
                 propertyManager: lease.propertyInfo?.managedBy?.toString(),
                 createdBy: lease.createdBy?.toString(),
               },
@@ -2995,6 +3190,9 @@ export class LeaseService {
                 actionRequired: true,
               },
             });
+
+            await this.sendLeaseExpiredEmail(lease);
+            await this.invalidateLeaseStatusCaches(lease);
 
             expiredCount++;
 
@@ -3056,6 +3254,7 @@ export class LeaseService {
                 endDate: lease.duration.endDate,
               },
               recipients: {
+                tenant: true,
                 propertyManager: lease.propertyInfo?.managedBy?.toString(),
                 createdBy: lease.createdBy?.toString(),
               },
@@ -3064,6 +3263,9 @@ export class LeaseService {
                 noRenewal: true,
               },
             });
+
+            await this.sendLeaseExpiredEmail(lease);
+            await this.invalidateLeaseStatusCaches(lease);
 
             expiredCount++;
 

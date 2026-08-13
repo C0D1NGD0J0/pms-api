@@ -623,7 +623,6 @@ export class LeaseRenewalService {
 
             createdCount++;
 
-            // Send lifecycle notification (only to admins/managers, not tenant)
             await this.notificationService.notifyLeaseLifecycleEvent({
               eventType: 'renewal_created',
               lease: {
@@ -639,6 +638,7 @@ export class LeaseRenewalService {
                 startDate: renewalResult.data.duration.startDate,
               },
               recipients: {
+                tenant: true,
                 propertyManager: lease.propertyInfo?.managedBy?.toString(),
                 createdBy: lease.createdBy?.toString(),
               },
@@ -1026,7 +1026,6 @@ export class LeaseRenewalService {
 
       const originalLease = await this.leaseDAO.findById(renewal.previousLeaseId?.toString());
 
-      // Notify admins/managers that renewal has been approved (not tenant yet)
       await this.notificationService.notifyLeaseLifecycleEvent({
         eventType: 'renewal_approved',
         lease: {
@@ -1042,6 +1041,7 @@ export class LeaseRenewalService {
           startDate: renewal.duration.startDate,
         },
         recipients: {
+          tenant: true,
           propertyManager: renewal.propertyInfo?.managedBy?.toString(),
           createdBy: originalLease?.createdBy?.toString(),
         },
@@ -1095,7 +1095,7 @@ export class LeaseRenewalService {
     return [
       {
         name: 'process-auto-renewals',
-        schedule: '0 0 * * *', // Daily at midnight UTC
+        schedule: '30 1 * * *', // Daily at 1:30 AM UTC
         handler: this.processAutoRenewals.bind(this),
         enabled: true,
         service: 'LeaseRenewalService',
@@ -1105,7 +1105,7 @@ export class LeaseRenewalService {
       },
       {
         name: 'auto-send-renewals-for-signature',
-        schedule: '0 9 * * *', // Daily at 9 AM UTC
+        schedule: '0 2 * * *', // Daily at 2:00 AM UTC — emails arrive in morning
         handler: () => this.autoSendRenewalsForSignature(sendLeaseForSignatureFn),
         enabled: true,
         service: 'LeaseRenewalService',

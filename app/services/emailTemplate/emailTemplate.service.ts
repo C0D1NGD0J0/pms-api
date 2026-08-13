@@ -152,6 +152,13 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
     description: 'Notify tenant of lease termination',
     category: 'Lease',
   },
+  LEASE_EXPIRED: {
+    subdir: 'lease',
+    filename: 'lease-expired',
+    displayName: 'Lease Expired',
+    description: 'Notify tenant of lease expiration with next steps',
+    category: 'Lease',
+  },
   LEASE_PAYMENT_REMINDER: {
     subdir: 'lease',
     filename: 'payment-reminder',

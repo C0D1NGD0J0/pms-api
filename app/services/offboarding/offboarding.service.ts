@@ -230,8 +230,12 @@ export class OffboardingService {
 
         if (!lease) return;
 
-        // For active leases, only proceed if within the grace period window
-        // (end date has passed or is within GRACE_PERIOD_DAYS of passing)
+        // For active leases, only proceed if within the grace period window.
+        // This allows the PM to finalize offboarding up to GRACE_PERIOD_DAYS (3)
+        // before the end date — e.g., PM approves move-out inspection at T-2 and
+        // the lease completes immediately instead of waiting for the expiry cron.
+        // The scheduling guard already limits move-out inspections to within 30 days
+        // of expiry, so approval at this stage is an explicit signal to complete.
         if (lease.status === LeaseStatus.ACTIVE) {
           const endDate = dayjs(lease.duration.endDate);
           const graceCutoff = endDate.subtract(LEASE_CONSTANTS.GRACE_PERIOD_DAYS, 'days');

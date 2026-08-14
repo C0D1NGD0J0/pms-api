@@ -2905,6 +2905,11 @@ export class LeaseService {
           ? property?.address
           : property?.address?.fullAddress) || 'N/A';
 
+      const leaseUrl = tenantUser.uid
+        ? `${envVariables.FRONTEND.URL}/tenants/${lease.cuid}/${tenantUser.uid}/leases/${lease.luid}`
+        : '';
+      const pmPhone = lease.propertyInfo?.contactPhone || 'N/A';
+
       await this.mailerService.sendMail(
         {
           to: tenantUser.email,
@@ -2915,9 +2920,9 @@ export class LeaseService {
             propertyAddress,
             unitNumber: property?.unitId?.unitNumber || null,
             endDate: lease.duration.endDate.toISOString(),
-            leaseUrl: '',
+            leaseUrl,
             propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
-            propertyManagerPhone: property?.id?.contactPhone || 'N/A',
+            propertyManagerPhone: pmPhone,
           },
         },
         MailType.LEASE_EXPIRED
@@ -2988,6 +2993,8 @@ export class LeaseService {
       let completedCount = 0;
       let expiredCount = 0;
       let errorCount = 0;
+
+      const systemBotId = await getSystemBotUserId();
 
       for (const lease of expiredLeases.items) {
         try {
@@ -3085,7 +3092,6 @@ export class LeaseService {
               `Lease ${lease.luid} has active renewal ${renewal.luid} - marking completed`
             );
 
-            const systemBotId = await getSystemBotUserId();
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'completed',
               completedAt: today,
@@ -3135,14 +3141,13 @@ export class LeaseService {
               `Lease ${lease.luid} expired with renewal ${renewal.luid} in ${renewal.status} - marking expired`
             );
 
-            const systemBotId2 = await getSystemBotUserId();
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'expired',
-              ...(systemBotId2 && {
+              ...(systemBotId && {
                 $push: {
                   lastModifiedBy: {
                     action: 'expired',
-                    userId: systemBotId2,
+                    userId: systemBotId,
                     name: 'System - Renewal Not Completed',
                     date: today,
                   },
@@ -3210,14 +3215,13 @@ export class LeaseService {
           else {
             this.log.info(`Lease ${lease.luid} expired with no renewal - marking expired`);
 
-            const systemBotId3 = await getSystemBotUserId();
             await this.leaseDAO.updateById(lease._id.toString(), {
               status: 'expired',
-              ...(systemBotId3 && {
+              ...(systemBotId && {
                 $push: {
                   lastModifiedBy: {
                     action: 'expired',
-                    userId: systemBotId3,
+                    userId: systemBotId,
                     name: 'System - No Renewal',
                     date: today,
                   },

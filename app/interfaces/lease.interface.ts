@@ -222,12 +222,14 @@ export interface ILeaseDocument extends Document, ILease {
   // Instance methods
   softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
   hasOverlap(startDate: Date, endDate: Date): boolean;
+  expiryGracePeriodDaysRemaining: number;
   propertyInfo?: ILeasePropertyInfo;
   propertyUnitInfo?: ILeaseUnitInfo;
   // Virtual properties (computed)
   daysUntilExpiry: number | null;
   durationMonths: number | null;
   tenantInfo?: ILeaseTenantInfo;
+  expiryGracePeriodDays: number;
   totalMonthlyFees: number;
   isInGracePeriod: boolean;
   isExpiringSoon: boolean;

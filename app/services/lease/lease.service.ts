@@ -628,6 +628,8 @@ export class LeaseService {
           daysUntilExpiry: lease.daysUntilExpiry,
           isExpiringSoon: lease.isExpiringSoon,
           isInGracePeriod: lease.isInGracePeriod,
+          expiryGracePeriodDays: lease.expiryGracePeriodDays,
+          expiryGracePeriodDaysRemaining: lease.expiryGracePeriodDaysRemaining,
           createdBy,
           tenant: {
             id: lease.tenantId,

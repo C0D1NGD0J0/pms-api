@@ -714,6 +714,17 @@ LeaseSchema.virtual('isInGracePeriod').get(function (this: ILeaseDocument) {
   return Math.abs(daysUntilExpiry) <= LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
 });
 
+LeaseSchema.virtual('expiryGracePeriodDays').get(function () {
+  return LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+});
+
+LeaseSchema.virtual('expiryGracePeriodDaysRemaining').get(function (this: ILeaseDocument) {
+  if (!this.isInGracePeriod) return 0;
+  const daysUntilExpiry = this.daysUntilExpiry;
+  if (daysUntilExpiry == null) return 0;
+  return Math.max(0, LEASE_CONSTANTS.GRACE_PERIOD_DAYS - Math.abs(daysUntilExpiry));
+});
+
 LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {
   return this.status === LeaseStatus.ACTIVE;
 });

@@ -375,7 +375,9 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
     // Lease is active but past end date
     const pastEndDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000); // 2 days ago
     mockLeaseDAO.findFirst.mockReturnValue(
-      Promise.resolve(makeLease({ status: LeaseStatus.ACTIVE, duration: { endDate: pastEndDate } }) as any)
+      Promise.resolve(
+        makeLease({ status: LeaseStatus.ACTIVE, duration: { endDate: pastEndDate } }) as any
+      )
     );
     mockUserDAO.findFirst.mockReturnValue(Promise.resolve(makeUser() as any));
 
@@ -404,7 +406,9 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
     // Lease is active and end date is in the future
     const futureEndDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
     mockLeaseDAO.findFirst.mockReturnValue(
-      Promise.resolve(makeLease({ status: LeaseStatus.ACTIVE, duration: { endDate: futureEndDate } }) as any)
+      Promise.resolve(
+        makeLease({ status: LeaseStatus.ACTIVE, duration: { endDate: futureEndDate } }) as any
+      )
     );
 
     await handler({ iuid: testIuid, cuid: testCuid });
@@ -458,7 +462,9 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
     // Lease is active but end date is only 2 days away (within 3-day grace window)
     const nearEndDate = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
     mockLeaseDAO.findFirst.mockReturnValue(
-      Promise.resolve(makeLease({ status: LeaseStatus.ACTIVE, duration: { endDate: nearEndDate } }) as any)
+      Promise.resolve(
+        makeLease({ status: LeaseStatus.ACTIVE, duration: { endDate: nearEndDate } }) as any
+      )
     );
     mockUserDAO.findFirst.mockReturnValue(Promise.resolve(makeUser() as any));
 
@@ -573,14 +579,16 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
     const handler = registeredListeners[EventTypes.LEASE_EXPIRED];
 
     mockLeaseDAO.findFirst
-      .mockReturnValueOnce(Promise.resolve({
-        _id: new Types.ObjectId(),
-        status: 'expired',
-        luid: 'LEASE123',
-        cuid: testCuid,
-        tenantId: new Types.ObjectId(),
-        property: { id: new Types.ObjectId() },
-      } as any))
+      .mockReturnValueOnce(
+        Promise.resolve({
+          _id: new Types.ObjectId(),
+          status: 'expired',
+          luid: 'LEASE123',
+          cuid: testCuid,
+          tenantId: new Types.ObjectId(),
+          property: { id: new Types.ObjectId() },
+        } as any)
+      )
       .mockReturnValueOnce(Promise.resolve(null)); // no existing inspection
 
     await handler({ luid: 'LEASE123', cuid: testCuid, reason: 'expired' });

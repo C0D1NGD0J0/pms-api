@@ -1,10 +1,9 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
-import { LeaseDAO } from '@dao/leaseDAO';
 import { UserDAO } from '@dao/userDAO';
+import { LeaseDAO } from '@dao/leaseDAO';
 import { ProfileDAO } from '@dao/profileDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
-import { EventTypes } from '@interfaces/events.interface';
 
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
@@ -22,8 +21,16 @@ describe('LeaseService — Expiry Flow', () => {
   let mockUserDAO: jest.Mocked<UserDAO>;
   let mockProfileDAO: jest.Mocked<ProfileDAO>;
   let mockEmitterService: { emit: jest.Mock; on: jest.Mock; off: jest.Mock };
-  let mockNotificationService: { notifyLeaseLifecycleEvent: jest.Mock; notifySystemError: jest.Mock };
-  let mockLeaseCache: { invalidateLease: jest.Mock; invalidateLeaseLists: jest.Mock; getClientLeases: jest.Mock; saveClientLeases: jest.Mock };
+  let mockNotificationService: {
+    notifyLeaseLifecycleEvent: jest.Mock;
+    notifySystemError: jest.Mock;
+  };
+  let mockLeaseCache: {
+    invalidateLease: jest.Mock;
+    invalidateLeaseLists: jest.Mock;
+    getClientLeases: jest.Mock;
+    saveClientLeases: jest.Mock;
+  };
   let mockAuthCache: { invalidateCurrentUser: jest.Mock };
   let mockUserCache: { invalidateUserDetail: jest.Mock };
   let mockMailerService: { sendMail: jest.Mock };
@@ -145,16 +152,18 @@ describe('LeaseService — Expiry Flow', () => {
 
       mockLeaseDAO.list
         .mockReturnValueOnce(Promise.resolve({ items: [lease] } as any)) // 3-day-past batch
-        .mockReturnValueOnce(Promise.resolve({ items: [] } as any));     // recently-past batch
+        .mockReturnValueOnce(Promise.resolve({ items: [] } as any)); // recently-past batch
 
       mockLeaseDAO.findFirst.mockReturnValue(Promise.resolve(null) as any); // no renewal
       mockLeaseDAO.updateById.mockReturnValue(Promise.resolve(lease) as any);
 
       // Profile lookup returns tenant with populated user
-      mockProfileDAO.findFirst.mockReturnValue(Promise.resolve({
-        user: { _id: mockTenantId, email: 'tenant@test.com', uid: 'TENANT01' },
-        personalInfo: { firstName: 'Sarah', lastName: 'Williams' },
-      } as any));
+      mockProfileDAO.findFirst.mockReturnValue(
+        Promise.resolve({
+          user: { _id: mockTenantId, email: 'tenant@test.com', uid: 'TENANT01' },
+          personalInfo: { firstName: 'Sarah', lastName: 'Williams' },
+        } as any)
+      );
 
       await leaseService.markExpiredLeases();
 
@@ -197,10 +206,12 @@ describe('LeaseService — Expiry Flow', () => {
 
       mockLeaseDAO.findFirst.mockReturnValue(Promise.resolve(null) as any);
       mockLeaseDAO.updateById.mockReturnValue(Promise.resolve(lease) as any);
-      mockProfileDAO.findFirst.mockReturnValue(Promise.resolve({
-        user: { _id: mockTenantId, email: null },
-        personalInfo: {},
-      } as any));
+      mockProfileDAO.findFirst.mockReturnValue(
+        Promise.resolve({
+          user: { _id: mockTenantId, email: null },
+          personalInfo: {},
+        } as any)
+      );
 
       await expect(leaseService.markExpiredLeases()).resolves.not.toThrow();
       expect(mockMailerService.sendMail).not.toHaveBeenCalled();

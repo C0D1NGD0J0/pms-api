@@ -120,8 +120,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     });
 
     mockLeaseDAO.list
-        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
-        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
+      .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // recently-past batch (smart grace)
 
     await leaseService.markExpiredLeases();
 
@@ -148,8 +148,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     });
 
     mockLeaseDAO.list
-        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
-        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
+      .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // recently-past batch (smart grace)
 
     await leaseService.markExpiredLeases();
 
@@ -174,8 +174,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
 
     // No renewal lease exists
     mockLeaseDAO.list
-        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
-        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
+      .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // recently-past batch (smart grace)
     mockLeaseDAO.findFirst.mockResolvedValue(null);
     mockLeaseDAO.updateById.mockResolvedValue(lease as any);
 
@@ -209,8 +209,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     const lease = makeExpiredLease();
 
     mockLeaseDAO.list
-        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
-        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
+      .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // recently-past batch (smart grace)
     // Renewal exists but is still in draft_renewal status
     mockLeaseDAO.findFirst.mockResolvedValue({
       _id: renewalId,
@@ -242,8 +242,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     const lease = makeExpiredLease();
 
     mockLeaseDAO.list
-        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
-        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
+      .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // recently-past batch (smart grace)
     // Renewal is fully active
     mockLeaseDAO.findFirst.mockResolvedValue({
       _id: renewalId,
@@ -271,8 +271,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     const lease = makeExpiredLease();
 
     mockLeaseDAO.list
-        .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
-        .mockResolvedValueOnce({ items: [] } as any);     // recently-past batch (smart grace)
+      .mockResolvedValueOnce({ items: [lease] } as any) // 3-day-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // recently-past batch (smart grace)
     // No renewal exists
     mockLeaseDAO.findFirst.mockResolvedValue(null);
     mockLeaseDAO.updateById.mockResolvedValue(lease as any);
@@ -318,8 +318,8 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     };
 
     mockLeaseDAO.list
-      .mockResolvedValueOnce({ items: [] } as any)              // 3-day-past batch (empty)
-      .mockResolvedValueOnce({ items: [recentLease] } as any)   // recently-past batch
+      .mockResolvedValueOnce({ items: [] } as any) // 3-day-past batch (empty)
+      .mockResolvedValueOnce({ items: [recentLease] } as any) // recently-past batch
       .mockResolvedValueOnce({ items: [upcomingLease] } as any); // findLeasesWithUpcomingConflicts batch query
 
     // No renewal exists
@@ -348,9 +348,9 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     });
 
     mockLeaseDAO.list
-      .mockResolvedValueOnce({ items: [] } as any)             // 3-day-past batch (empty)
-      .mockResolvedValueOnce({ items: [recentLease] } as any)  // recently-past batch
-      .mockResolvedValueOnce({ items: [] } as any);             // no upcoming conflicts
+      .mockResolvedValueOnce({ items: [] } as any) // 3-day-past batch (empty)
+      .mockResolvedValueOnce({ items: [recentLease] } as any) // recently-past batch
+      .mockResolvedValueOnce({ items: [] } as any); // no upcoming conflicts
 
     await leaseService.markExpiredLeases();
 

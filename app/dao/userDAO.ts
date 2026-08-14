@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import crypto from 'crypto';
 import Logger from 'bunyan';
 import { Lease } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
@@ -413,7 +414,17 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         { select: '+password +passwordResetToken +passwordResetTokenExpiresAt' }
       );
 
-      if (!user) {
+      if (!user || !user.passwordResetToken) {
+        return null;
+      }
+
+      // Constant-time comparison to prevent timing attacks on token verification
+      const storedToken = Buffer.from(user.passwordResetToken, 'utf-8');
+      const providedToken = Buffer.from(token, 'utf-8');
+      if (
+        storedToken.length !== providedToken.length ||
+        !crypto.timingSafeEqual(storedToken, providedToken)
+      ) {
         return null;
       }
 

@@ -1,4 +1,6 @@
+import dayjs from 'dayjs';
 import { Schema, model } from 'mongoose';
+import { LEASE_CONSTANTS } from '@utils/constants';
 import { calcLateFee } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
@@ -584,7 +586,16 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
         action: {
           type: String,
-          enum: ['created', 'updated', 'activated', 'terminated', 'cancelled', 'renewed'],
+          enum: [
+            'created',
+            'updated',
+            'activated',
+            'terminated',
+            'cancelled',
+            'renewed',
+            'completed',
+            'expired',
+          ],
           required: true,
         },
         _id: false,
@@ -670,11 +681,7 @@ LeaseSchema.index({ cuid: 1, approvalStatus: 1 });
  */
 LeaseSchema.virtual('daysUntilExpiry').get(function (this: ILeaseDocument) {
   if (!this.duration?.endDate) return null;
-  const today = new Date();
-  const endDate = new Date(this.duration.endDate);
-  const diffTime = endDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
+  return dayjs(this.duration.endDate).startOf('day').diff(dayjs().startOf('day'), 'day');
 });
 
 /**
@@ -695,6 +702,27 @@ LeaseSchema.virtual('durationMonths').get(function (this: ILeaseDocument) {
 LeaseSchema.virtual('isExpiringSoon').get(function (this: ILeaseDocument) {
   const daysUntilExpiry = this.daysUntilExpiry;
   return daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 60;
+});
+
+/**
+ * True when the lease has ended but is still within the grace period window.
+ * Only applies to ACTIVE leases whose endDate has passed.
+ */
+LeaseSchema.virtual('isInGracePeriod').get(function (this: ILeaseDocument) {
+  const daysUntilExpiry = this.daysUntilExpiry;
+  if (daysUntilExpiry == null || daysUntilExpiry > 0) return false;
+  return Math.abs(daysUntilExpiry) <= LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+});
+
+LeaseSchema.virtual('expiryGracePeriodDays').get(function () {
+  return LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+});
+
+LeaseSchema.virtual('expiryGracePeriodDaysRemaining').get(function (this: ILeaseDocument) {
+  if (!this.isInGracePeriod) return 0;
+  const daysUntilExpiry = this.daysUntilExpiry;
+  if (daysUntilExpiry == null) return 0;
+  return Math.max(0, LEASE_CONSTANTS.GRACE_PERIOD_DAYS - Math.abs(daysUntilExpiry));
 });
 
 LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {

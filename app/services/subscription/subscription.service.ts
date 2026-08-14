@@ -1671,7 +1671,7 @@ export class SubscriptionService {
     return [
       {
         name: 'mark-expired-subscriptions',
-        schedule: '0 2 * * *', // Daily at 2 AM UTC
+        schedule: '15 1 * * *', // Daily at 1:15 AM UTC
         handler: this.processExpiredSubscriptions.bind(this),
         enabled: true,
         service: 'SubscriptionService',

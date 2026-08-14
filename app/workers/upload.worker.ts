@@ -5,10 +5,12 @@ import { EventEmitterService } from '@services/index';
 import { SSEService } from '@services/sse/sse.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { UploadJobData, EventTypes } from '@interfaces/index';
+import { InspectionService } from '@services/inspection/inspection.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 
 interface IConstructor {
   maintenanceRequestService: MaintenanceRequestService;
+  inspectionService: InspectionService;
   emitterService: EventEmitterService;
   sseService: SSEService;
   s3Service: S3Service;
@@ -18,16 +20,24 @@ export class UploadWorker {
   private readonly awsS3Service: S3Service;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestService: MaintenanceRequestService;
+  private readonly inspectionService: InspectionService;
   private readonly sseService: SSEService;
   private diskStorage: DiskStorage;
   private log: Logger;
 
-  constructor({ s3Service, emitterService, maintenanceRequestService, sseService }: IConstructor) {
+  constructor({
+    s3Service,
+    emitterService,
+    maintenanceRequestService,
+    inspectionService,
+    sseService,
+  }: IConstructor) {
     this.log = createLogger('FileUploadWorker');
     this.awsS3Service = s3Service;
     this.sseService = sseService;
     this.emitterService = emitterService;
     this.maintenanceRequestService = maintenanceRequestService;
+    this.inspectionService = inspectionService;
   }
 
   uploadAsset = async (job: Job): Promise<void> => {
@@ -98,6 +108,75 @@ export class UploadWorker {
               cuid,
               {
                 resource: 'maintenance',
+                action: 'media-updated',
+                resourceUId: resource.resourceId,
+                count: result.length,
+              },
+              'resource-event'
+            );
+          } catch (err) {
+            this.log.warn({ err }, '[UploadWorker] SSE notify failed (non-fatal)');
+          }
+        }
+      }
+
+      // Inspection report document — update DB and notify PM
+      if (
+        resource.resourceName === 'inspection' &&
+        resource.fieldName === 'reportDocument' &&
+        result.length > 0
+      ) {
+        const pdfResult = result.find((r) => r.key && r.url);
+        if (pdfResult) {
+          this.log.info(
+            { resourceId: resource.resourceId },
+            '[UploadWorker] updating inspection report document'
+          );
+          const cuid = await this.inspectionService.updateReportDocument(
+            resource.resourceId,
+            pdfResult
+          );
+          if (cuid) {
+            try {
+              await this.sseService.broadcastToClient(
+                cuid,
+                { resource: 'inspection', action: 'report-ready' },
+                'resource-event'
+              );
+            } catch (err) {
+              this.log.warn({ err }, '[UploadWorker] SSE notify failed (non-fatal)');
+            }
+          }
+        }
+      }
+
+      // Inspection room media — persist to DB and notify user
+      if (
+        resource.resourceName === 'inspection' &&
+        resource.fieldName !== 'reportDocument' &&
+        result.length > 0
+      ) {
+        this.log.info(
+          { iuid: resource.resourceId, fileCount: result.length, roomIndex: resource.roomIndex },
+          '[UploadWorker] persisting inspection media to DB'
+        );
+        const cuid = await this.inspectionService.persistUploadedMedia(
+          resource.resourceId,
+          result,
+          resource.actorId,
+          resource.roomIndex
+        );
+        this.log.info(
+          { iuid: resource.resourceId },
+          '[UploadWorker] inspection media persisted successfully'
+        );
+        if (cuid) {
+          try {
+            await this.sseService.sendToUser(
+              resource.actorId,
+              cuid,
+              {
+                resource: 'inspection',
                 action: 'media-updated',
                 resourceUId: resource.resourceId,
                 count: result.length,

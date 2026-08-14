@@ -110,6 +110,12 @@ export class DiskStorage {
       fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'heic', 'mp4', 'mov', 'webm'],
     },
     {
+      name: 'rooms[*][media][*][file]', // Inspection room-targeted media
+      maxCount: 9, // max photos per room
+      maxSize: 150 * 1024 * 1024,
+      fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'heic', 'mp4', 'mov', 'webm'],
+    },
+    {
       name: 'invoice', // AI invoice scanning — single image or PDF
       maxCount: 1,
       maxSize: 10 * 1024 * 1024, // 10MB
@@ -252,7 +258,19 @@ export class DiskStorage {
       );
 
       if (matchingConfig) {
-        if (pattern.includes('[*]')) {
+        const wildcardCount = (pattern.match(/\[\*\]/g) || []).length;
+        if (wildcardCount > 1) {
+          // Multi-wildcard expansion (e.g. rooms[*][media][*][file])
+          // First [*] = parent index (rooms, capped at 10), second [*] = item index (maxCount)
+          const MAX_PARENT_SLOTS = 10;
+          for (let p = 0; p < MAX_PARENT_SLOTS; p++) {
+            for (let c = 0; c < matchingConfig.maxCount; c++) {
+              // Replace first [*], then second [*]
+              const name = pattern.replace('[*]', `[${p}]`).replace('[*]', `[${c}]`);
+              fields.push({ name, maxCount: 1 });
+            }
+          }
+        } else if (pattern.includes('[*]')) {
           // Expand wildcard pattern into multiple specific field entries
           for (let i = 0; i < matchingConfig.maxCount; i++) {
             const specificFieldName = pattern.replace('[*]', `[${i}]`);

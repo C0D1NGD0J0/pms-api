@@ -102,11 +102,25 @@ export class PaymentCronService implements ICronProvider {
     this.leaseDAO = leaseDAO;
   }
 
+  /**
+   * Build a cuid filter for timezone-scoped cron jobs.
+   * Returns { cuid: { $in: [...] } } when a timezone is provided,
+   * or an empty object for UTC-only (global) jobs.
+   */
+  private async buildCuidFilter(timezone?: string): Promise<Record<string, any>> {
+    if (!timezone) return {};
+    const cuids = await this.clientDAO.getCuidsByTimezone(timezone);
+    // $in: [] is intentional — MongoDB matches nothing, so no payments are processed
+    // when no clients exist for this timezone. This is a safe no-op.
+    if (cuids.length === 0) return { cuid: { $in: [] } };
+    return { cuid: { $in: cuids } };
+  }
+
   async getCronJobs(): Promise<ICronJob[]> {
     const utcJobs: ICronJob[] = [
       {
         name: 'payment.weekly-rent-invoices',
-        schedule: '0 0 * * 0',
+        schedule: '0 2 * * 0', // Sunday 2:00 AM UTC
         handler: this.queueWeeklyRentInvoices.bind(this),
         enabled: true,
         service: 'PaymentCronService',
@@ -115,7 +129,7 @@ export class PaymentCronService implements ICronProvider {
       },
       {
         name: 'payment.daily-rent-safety-net',
-        schedule: '0 9 * * *',
+        schedule: '0 5 * * *', // 5:00 AM UTC — catches misses before business hours
         handler: this.queueDailySafetyNetInvoices.bind(this),
         enabled: true,
         service: 'PaymentCronService',
@@ -125,7 +139,7 @@ export class PaymentCronService implements ICronProvider {
       },
       {
         name: 'payment.reconcile-stale-processing',
-        schedule: '0 2 * * *',
+        schedule: '0 3 * * *', // 3:00 AM UTC — overnight batch
         handler: this.reconcileStaleProcessingPayments.bind(this),
         enabled: true,
         service: 'PaymentCronService',
@@ -184,7 +198,7 @@ export class PaymentCronService implements ICronProvider {
         name: `payment.auto-charge-overdue-maintenance.${tz}`,
         schedule: '0 10 * * *',
         timezone: tz,
-        handler: () => this.autoChargeOverdueMaintenancePayments(),
+        handler: () => this.autoChargeOverdueMaintenancePayments(tz),
         enabled: true,
         service: 'PaymentCronService',
         description: `Auto-charge tenant CC for overdue maintenance invoices [${tz}]`,
@@ -194,7 +208,7 @@ export class PaymentCronService implements ICronProvider {
         name: `payment.auto-charge-due-rent.${tz}`,
         schedule: '0 6 * * *',
         timezone: tz,
-        handler: () => this.autoChargeDueRentPayments(),
+        handler: () => this.autoChargeDueRentPayments(tz),
         enabled: true,
         service: 'PaymentCronService',
         description: `Auto-charge tenants for rent due today or overdue [${tz}]`,
@@ -204,7 +218,7 @@ export class PaymentCronService implements ICronProvider {
         name: `payment.mark-overdue.${tz}`,
         schedule: '0 1 * * *',
         timezone: tz,
-        handler: () => this.markOverduePayments(),
+        handler: () => this.markOverduePayments(tz),
         enabled: true,
         service: 'PaymentCronService',
         description: `Flip PENDING → OVERDUE for payments where dueDate has passed [${tz}]`,
@@ -537,9 +551,10 @@ export class PaymentCronService implements ICronProvider {
    * Daily cron (1 AM): flip PENDING → OVERDUE for all payment types where dueDate has passed.
    * For rent payments past the lease's grace period, adds a late fee line item if not already present.
    */
-  private async markOverduePayments(): Promise<void> {
+  private async markOverduePayments(timezone?: string): Promise<void> {
     try {
-      const { items: pastDuePayments } = await this.paymentDAO.findOverduePayments();
+      const cuidFilter = await this.buildCuidFilter(timezone);
+      const { items: pastDuePayments } = await this.paymentDAO.findOverduePayments(cuidFilter);
 
       if (pastDuePayments.length === 0) {
         this.log.info('[Cron] No payments to mark overdue');
@@ -633,8 +648,9 @@ export class PaymentCronService implements ICronProvider {
   /**
    * Daily cron (10 AM): auto-charges tenant for non-rent charges past their grace period.
    */
-  private async autoChargeOverdueMaintenancePayments(): Promise<void> {
+  private async autoChargeOverdueMaintenancePayments(timezone?: string): Promise<void> {
     const now = dayjs().toDate();
+    const cuidFilter = await this.buildCuidFilter(timezone);
 
     const { items: overduePayments } = await this.paymentDAO.list(
       {
@@ -645,6 +661,7 @@ export class PaymentCronService implements ICronProvider {
         dueDate: { $lt: now },
         'dispute.status': { $nin: ['open', 'needs_response'] },
         deletedAt: null,
+        ...cuidFilter,
       },
       { limit: 500 }
     );
@@ -692,8 +709,9 @@ export class PaymentCronService implements ICronProvider {
   /**
    * Daily cron (6 AM): triggers Stripe collection for rent payments whose due date has arrived.
    */
-  private async autoChargeDueRentPayments(): Promise<void> {
+  private async autoChargeDueRentPayments(timezone?: string): Promise<void> {
     const now = dayjs().toDate();
+    const cuidFilter = await this.buildCuidFilter(timezone);
 
     const { items: duePayments } = await this.paymentDAO.list(
       {
@@ -705,6 +723,7 @@ export class PaymentCronService implements ICronProvider {
         dueDate: { $lte: now },
         'dispute.status': { $nin: ['open', 'needs_response'] },
         deletedAt: null,
+        ...cuidFilter,
       },
       { limit: 500 }
     );

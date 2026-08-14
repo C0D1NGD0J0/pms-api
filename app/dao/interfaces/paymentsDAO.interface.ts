@@ -58,7 +58,9 @@ export interface IPaymentDAO {
     opts?: IFindOptions
   ): ListResultWithPagination<IPaymentDocument[]>;
 
-  findByPid(pid: string, cuid: string, opts?: IFindOptions): Promise<IPaymentDocument | null>;
+  findOverduePayments(
+    extraFilter?: Record<string, any>
+  ): ListResultWithPagination<IPaymentDocument[]>;
 
-  findOverduePayments(): ListResultWithPagination<IPaymentDocument[]>;
+  findByPid(pid: string, cuid: string, opts?: IFindOptions): Promise<IPaymentDocument | null>;
 }

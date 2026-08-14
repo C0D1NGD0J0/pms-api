@@ -34,6 +34,8 @@ const mockPropertyUnitDAO = {
 
 const mockUserDAO = {
   findFirst: jest.fn() as any,
+  findById: jest.fn() as any,
+  list: jest.fn() as any,
 };
 
 const mockEmitterService = {
@@ -89,6 +91,9 @@ let service: InspectionService;
 
 beforeEach(() => {
   jest.clearAllMocks();
+
+  mockUserDAO.findById.mockResolvedValue({ fullname: 'Test User', email: 'test@test.com' });
+  mockUserDAO.list.mockResolvedValue({ items: [] });
 
   service = new InspectionService({
     inspectionDAO: mockInspectionDAO as any,
@@ -222,7 +227,7 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
   describe('Status revert on completion', () => {
     it('reverts property to previous status on approval when still maintenance', async () => {
       const inspection = makeInspection({
-        status: InspectionStatus.SUBMITTED,
+        status: InspectionStatus.PENDING_REVIEW,
         previousOperationalStatus: 'active',
         propertyId: PROPERTY_ID,
         propertyUnitId: undefined,
@@ -247,7 +252,7 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
 
     it('skips revert when PM manually changed status', async () => {
       const inspection = makeInspection({
-        status: InspectionStatus.SUBMITTED,
+        status: InspectionStatus.PENDING_REVIEW,
         previousOperationalStatus: 'active',
         propertyId: PROPERTY_ID,
         propertyUnitId: undefined,

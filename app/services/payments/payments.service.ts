@@ -108,6 +108,9 @@ interface IStripeDisputeWebhookData {
 }
 
 interface IStripeChargeWebhookData {
+  refunds?: {
+    data?: Array<{ id: string }>;
+  };
   amount_refunded?: number;
 }
 
@@ -319,7 +322,7 @@ export class PaymentService implements ICronProvider {
             },
           ],
           projection:
-            'pytuid paymentMethod paymentType baseAmount processingFee applicationFee platformRevenue status dueDate paidAt period failure receipt lineItems currency maintenanceRequestUid',
+            'pytuid paymentMethod paymentType baseAmount processingFee applicationFee platformRevenue status dueDate paidAt period failure receipt lineItems currency maintenanceRequestUid refund managerReviewRequired',
           skip,
           limit,
         },
@@ -374,6 +377,13 @@ export class PaymentService implements ICronProvider {
           failure: payment.failure || undefined,
           receipt: payment.receipt || undefined,
           maintenanceRequestUid: (payment as any).maintenanceRequestUid || undefined,
+          managerReviewRequired: (payment as any).managerReviewRequired || false,
+          ...(payment.status === PaymentRecordStatus.REFUNDED && payment.refund
+            ? {
+                refundAmount: payment.refund.amount,
+                refundedAt: payment.refund.refundedAt,
+              }
+            : {}),
         };
       });
 
@@ -1202,21 +1212,33 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: 'Payment processor not configured for this account' });
       }
 
-      await this.paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
-        chargeId: payment.gatewayChargeId,
-        amountInCents: data.amount,
-        reason: data.reason,
-      });
+      const refundResult = await this.paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          chargeId: payment.gatewayChargeId,
+          amountInCents: data.amount,
+          reason: data.reason,
+        }
+      );
+
+      if (!refundResult.success) {
+        throw new BadRequestError({
+          message: refundResult.message || 'Stripe refund failed',
+        });
+      }
 
       const updated = await this.paymentDAO.updateById(payment._id.toString(), {
         status: PaymentRecordStatus.REFUNDED,
         'refund.refundedAt': dayjs().toDate(),
+        'refund.refundedBy': requestingUserSub,
         'refund.amount': data.amount || payment.baseAmount,
         'refund.reason': data.reason,
+        'refund.gatewayRefundId': refundResult.data?.refundId,
       });
 
       this.log.info('Payment refund initiated', {
         pytuid: payment.pytuid,
+        refundedBy: requestingUserSub,
         refundAmount: data.amount || payment.baseAmount,
         isPartial: !!data.amount && data.amount < payment.baseAmount,
       });
@@ -1265,6 +1287,7 @@ export class PaymentService implements ICronProvider {
           $set: {
             status: PaymentRecordStatus.REFUNDED,
             'refund.refundedAt': dayjs().toDate(),
+            'refund.refundedBy': releasedBy,
             'refund.reason': data?.reason || 'Security deposit refund released by PM (offline)',
           },
         });
@@ -1291,6 +1314,7 @@ export class PaymentService implements ICronProvider {
         $set: {
           status: PaymentRecordStatus.REFUNDED,
           'refund.refundedAt': dayjs().toDate(),
+          'refund.refundedBy': releasedBy,
           'refund.reason': data?.reason || 'Security deposit refund released by PM',
           'refund.gatewayRefundId': refundResult.data?.refundId,
         },

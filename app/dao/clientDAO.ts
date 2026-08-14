@@ -321,6 +321,19 @@ export class ClientDAO extends BaseDAO<IClientDocument> implements IClientDAO {
     return (results as any[]).map((c) => c.cuid).filter(Boolean);
   }
 
+  async getCuidsByTimezone(timezone: string): Promise<string[]> {
+    try {
+      const results = await this.aggregate([
+        { $match: { 'settings.timeZone': timezone, isArchived: { $ne: true }, deletedAt: null } },
+        { $project: { cuid: 1 } },
+      ]);
+      return (results as unknown as Array<{ cuid: string }>).map((r) => r.cuid).filter(Boolean);
+    } catch (error) {
+      this.logger.error(error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
   async getDistinctTimezones(): Promise<string[]> {
     try {
       const results = await this.aggregate([

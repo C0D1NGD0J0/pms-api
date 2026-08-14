@@ -147,6 +147,16 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       propertyManagerEmail: 'manager@mapleridge.com',
       propertyManagerPhone: '(416) 555-0123',
     },
+    LEASE_EXPIRED: {
+      tenantName: 'Sarah Johnson',
+      propertyAddress: '38 Bourdillon Rd, Ikoyi, Lagos 106104, Lagos, Nigeria',
+      leaseNumber: 'L2026-XYNU6',
+      unitNumber: '101',
+      endDate: '2026-08-10T00:00:00.000Z',
+      leaseUrl: 'http://localhost:3000/leases/L2026-XYNU6',
+      propertyManagerEmail: 'manager@propertydesk.com',
+      propertyManagerPhone: '(416) 555-0123',
+    },
     LEASE_PAYMENT_REMINDER: {
       tenantName: 'John Smith',
       propertyAddress: '456 Oak Avenue, Toronto, ON M5V 2T6',

@@ -39,20 +39,21 @@ import {
   handleGuestPassExpired,
 } from './notification.guestpass.handlers';
 import {
-  handleInspectionScheduled,
-  handleInspectionSubmitted,
-  handleInspectionCancelled,
-  handleInspectionReminder,
-  handleInspectionApproved,
-  handleInspectionDisputed,
-  handleInspectionRejected,
-} from './notification.inspection.handlers';
-import {
   notifyLeaseESignatureFailed as notifyLeaseESignatureFailedFn,
   notifyLeaseESignatureSent as notifyLeaseESignatureSentFn,
   notifyLeaseLifecycleEvent as notifyLeaseLifecycleEventFn,
   notifySystemError as notifySystemErrorFn,
 } from './notification.lease.public';
+import {
+  handleInspectionScheduled,
+  handleInspectionSubmitted,
+  handleInspectionCancelled,
+  handleInspectionReviewed,
+  handleInspectionReminder,
+  handleInspectionApproved,
+  handleInspectionDisputed,
+  handleInspectionRejected,
+} from './notification.inspection.handlers';
 import {
   handlePropertyUpdateNotifications as handlePropertyUpdateNotificationsFn,
   notifyPendingChangesOverridden as notifyPendingChangesOverriddenFn,
@@ -1620,12 +1621,34 @@ export class NotificationService {
     this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, (p) =>
       handleInspectionSubmitted(ctx, p)
     );
+    this.emitterService.on(EventTypes.INSPECTION_REVIEWED, (p) => handleInspectionReviewed(ctx, p));
     this.emitterService.on(EventTypes.INSPECTION_APPROVED, (p) => handleInspectionApproved(ctx, p));
     this.emitterService.on(EventTypes.INSPECTION_DISPUTED, (p) => handleInspectionDisputed(ctx, p));
     this.emitterService.on(EventTypes.INSPECTION_REJECTED, (p) => handleInspectionRejected(ctx, p));
     this.emitterService.on(EventTypes.INSPECTION_CANCELLED, (p) =>
       handleInspectionCancelled(ctx, p)
     );
+  }
+
+  private static CRITICAL_EMAIL_TYPES = new Set([
+    NotificationTypeEnum.PAYMENT,
+    NotificationTypeEnum.SYSTEM,
+    NotificationTypeEnum.LEASE,
+  ]);
+
+  async shouldSendEmail(
+    userId: string,
+    cuid: string,
+    type: NotificationTypeEnum
+  ): Promise<boolean> {
+    if (NotificationService.CRITICAL_EMAIL_TYPES.has(type)) return true;
+    try {
+      const prefs = await this.profileService.getUserNotificationPreferences(userId, cuid);
+      if (!prefs.success || !prefs.data) return true;
+      return prefs.data.emailNotifications !== false;
+    } catch {
+      return true;
+    }
   }
 
   private buildContext(): INotificationContext {
@@ -1635,6 +1658,7 @@ export class NotificationService {
       findApprovers: (...args) => this.findApprovers(...args),
       getUserDisplayName: (...args) => this.getUserDisplayName(...args),
       isSelfNotification: (...args) => this.isSelfNotification(...args),
+      shouldSendEmail: (...args) => this.shouldSendEmail(...args),
       emailQueue: this.emailQueue,
       userDAO: this.userDAO,
       clientDAO: this.clientDAO,

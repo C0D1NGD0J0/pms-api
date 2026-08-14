@@ -4,20 +4,27 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
-import { createLogger } from '@utils/index';
+import { LeaseCache } from '@caching/index';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
 import { LeaseService } from '@services/lease';
 import { UserCache } from '@caching/user.cache';
+import { AuthCache } from '@caching/auth.cache';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { getSystemBotUserId } from '@utils/systemBot';
+import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
+import { LEASE_CONSTANTS, createLogger } from '@utils/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
-import { InspectionType } from '@interfaces/inspection.interface';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { InspectionService } from '@services/inspection/inspection.service';
+import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
+import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
 import { IPromiseReturnedData, IRequestContext } from '@interfaces/utils.interface';
 import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
@@ -32,21 +39,30 @@ export class OffboardingService {
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly paymentDAO: PaymentDAO;
   private readonly leaseService: LeaseService;
   private readonly userCache?: UserCache;
+  private readonly leaseCache?: LeaseCache;
+  private readonly authCache?: AuthCache;
   private readonly inspectionDAO: InspectionDAO;
   private readonly inspectionService: InspectionService;
   private readonly leaseRenewalService: LeaseRenewalService;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly maintenancePaymentService: MaintenancePaymentService;
+  private readonly sseService: SSEService;
 
   constructor({
     userDAO,
     leaseDAO,
+    propertyDAO,
+    propertyUnitDAO,
     paymentDAO,
     userCache,
+    leaseCache,
+    authCache,
     leaseService,
     inspectionDAO,
     inspectionService,
@@ -54,11 +70,16 @@ export class OffboardingService {
     emitterService,
     maintenanceRequestDAO,
     maintenancePaymentService,
+    sseService,
   }: {
     userDAO: UserDAO;
     leaseDAO: LeaseDAO;
+    propertyDAO: PropertyDAO;
+    propertyUnitDAO: PropertyUnitDAO;
     paymentDAO: PaymentDAO;
     userCache?: UserCache;
+    leaseCache?: LeaseCache;
+    authCache?: AuthCache;
     leaseService: LeaseService;
     inspectionDAO: InspectionDAO;
     inspectionService: InspectionService;
@@ -66,12 +87,17 @@ export class OffboardingService {
     emitterService: EventEmitterService;
     maintenanceRequestDAO: MaintenanceRequestDAO;
     maintenancePaymentService: MaintenancePaymentService;
+    sseService: SSEService;
   }) {
     this.log = createLogger('OffboardingService');
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
+    this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.paymentDAO = paymentDAO;
     this.userCache = userCache;
+    this.leaseCache = leaseCache;
+    this.authCache = authCache;
     this.leaseService = leaseService;
     this.inspectionDAO = inspectionDAO;
     this.inspectionService = inspectionService;
@@ -79,6 +105,7 @@ export class OffboardingService {
     this.emitterService = emitterService;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.maintenancePaymentService = maintenancePaymentService;
+    this.sseService = sseService;
 
     this.setupEventListeners();
   }
@@ -121,19 +148,58 @@ export class OffboardingService {
 
     this.emitterService.on(EventTypes.LEASE_EXPIRED, async (payload) => {
       if (payload.reason === 'expired') {
+        // Guard: if the lease was already completed (PM did inspection early), skip
+        const existingLease = await this.leaseDAO.findFirst({
+          luid: payload.luid,
+          cuid: payload.cuid,
+        });
+        if (existingLease?.status === LeaseStatus.COMPLETED) {
+          this.log.info('Lease already completed — skipping offboarding', {
+            luid: payload.luid,
+            cuid: payload.cuid,
+          });
+          return;
+        }
+
         this.log.info('Lease expired naturally — offboarding chain started', {
           leaseId: payload.leaseId,
           luid: payload.luid,
           cuid: payload.cuid,
         });
 
-        await this.autoScheduleMoveOutInspection(payload.cuid, payload.luid, 'system', new Date());
+        // Check if a move-out inspection was already approved (PM completed it before expiry)
+        const approvedInspection = existingLease
+          ? await this.inspectionDAO.findFirst({
+              leaseId: existingLease._id,
+              type: InspectionType.MOVE_OUT,
+              status: InspectionStatus.APPROVED,
+              deletedAt: null,
+            })
+          : null;
+
+        if (approvedInspection) {
+          this.log.info('Move-out inspection already approved — triggering completion directly', {
+            luid: payload.luid,
+            iuid: approvedInspection.iuid,
+          });
+          // Re-emit INSPECTION_APPROVED to trigger the completion flow
+          this.emitterService.emit(EventTypes.INSPECTION_APPROVED, {
+            iuid: approvedInspection.iuid,
+            cuid: payload.cuid,
+            leaseId: existingLease!._id.toString(),
+            tenantId: existingLease!.tenantId.toString(),
+          });
+        } else {
+          await this.autoScheduleMoveOutInspection(
+            payload.cuid,
+            payload.luid,
+            'system',
+            new Date()
+          );
+        }
 
         // Also close open service requests
-        const expiredLease = await this.leaseDAO.findFirst({
-          luid: payload.luid,
-          cuid: payload.cuid,
-        });
+        const expiredLease = existingLease;
         if (expiredLease) {
           await this.closeOpenServiceRequests(
             payload.cuid,
@@ -147,7 +213,7 @@ export class OffboardingService {
 
     this.emitterService.on(EventTypes.INSPECTION_APPROVED, async (payload) => {
       try {
-        // Check if this is a move-out inspection tied to an expired lease
+        // Check if this is a move-out inspection tied to an expired/terminated lease
         const inspection = await this.inspectionDAO.findFirst({
           iuid: payload.iuid,
           type: InspectionType.MOVE_OUT,
@@ -158,52 +224,116 @@ export class OffboardingService {
 
         const lease = await this.leaseDAO.findFirst({
           _id: inspection.leaseId,
-          status: { $in: [LeaseStatus.EXPIRED, LeaseStatus.TERMINATED] },
+          status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.EXPIRED, LeaseStatus.TERMINATED] },
           deletedAt: null,
         });
 
         if (!lease) return;
 
-        // Complete deferred deactivation
+        // For active leases, only proceed if within the grace period window.
+        // This allows the PM to finalize offboarding up to GRACE_PERIOD_DAYS (3)
+        // before the end date — e.g., PM approves move-out inspection at T-2 and
+        // the lease completes immediately instead of waiting for the expiry cron.
+        // The scheduling guard already limits move-out inspections to within 30 days
+        // of expiry, so approval at this stage is an explicit signal to complete.
+        if (lease.status === LeaseStatus.ACTIVE) {
+          const endDate = dayjs(lease.duration.endDate);
+          const graceCutoff = endDate.subtract(LEASE_CONSTANTS.GRACE_PERIOD_DAYS, 'days');
+          const isWithinGraceWindow = dayjs().isAfter(graceCutoff);
+          if (!isWithinGraceWindow) return;
+        }
+
         const tenantId = lease.tenantId.toString();
         const cuid = lease.cuid;
 
-        // Check if tenant has pendingDeactivation
-        const user = await this.userDAO.findFirst({
-          _id: new Types.ObjectId(tenantId),
-          'cuids.cuid': cuid,
-          'cuids.pendingDeactivation': true,
-        });
-
-        if (!user) return;
-
-        this.log.info('Move-out inspection approved — completing deferred deactivation', {
+        this.log.info('Move-out inspection approved — finalizing offboarding', {
           tenantId,
           cuid,
+          luid: lease.luid,
           iuid: payload.iuid,
         });
 
-        await this.userDAO.update(
-          { _id: new Types.ObjectId(tenantId), 'cuids.cuid': cuid },
-          {
-            $set: {
-              'cuids.$.isConnected': false,
-              'cuids.$.pendingDeactivation': false,
+        // 1. Mark lease as completed
+        const systemBotId = await getSystemBotUserId();
+        await this.leaseDAO.updateById(lease._id.toString(), {
+          status: 'completed',
+          completedAt: new Date(),
+          ...(systemBotId && {
+            $push: {
+              lastModifiedBy: {
+                action: 'completed',
+                userId: systemBotId,
+                name: 'System - Inspection Approved',
+                date: new Date(),
+              },
             },
-          }
-        );
+          }),
+        });
 
-        // Invalidate cache
-        if (user.uid) {
-          await this.userCache?.invalidateUserDetail(cuid, user.uid);
+        // Invalidate lease + auth caches so tenant sees updated status immediately
+        await this.leaseCache?.invalidateLease(cuid, lease.luid);
+        await this.leaseCache?.invalidateLeaseLists(cuid);
+        await this.authCache?.invalidateCurrentUser(tenantId, cuid);
+
+        // 2. Release property unit / mark property vacant
+        if (lease.property?.unitId) {
+          await this.propertyUnitDAO.updateById(lease.property.unitId.toString(), {
+            status: PropertyUnitStatusEnum.AVAILABLE,
+            currentTenant: null,
+            currentLease: null,
+          });
+        } else if (lease.property?.id) {
+          await this.propertyDAO.updateById(lease.property.id.toString(), {
+            occupancyStatus: 'vacant',
+          });
         }
 
-        this.log.info('Tenant deactivation completed after inspection approval', {
-          tenantId,
-          cuid,
+        // 3. Deactivate tenant — set read-only + isFormerTenant
+        const user = await this.userDAO.findFirst({
+          _id: new Types.ObjectId(tenantId),
+          'cuids.cuid': cuid,
         });
+
+        if (user) {
+          await this.userDAO.update(
+            { _id: new Types.ObjectId(tenantId), 'cuids.cuid': cuid },
+            {
+              $set: {
+                'cuids.$.isConnected': false,
+                'cuids.$.pendingDeactivation': false,
+                'cuids.$.isFormerTenant': true,
+              },
+            }
+          );
+
+          // Invalidate cache so tenant immediately enters read-only mode
+          if (user.uid) {
+            await this.userCache?.invalidateUserDetail(cuid, user.uid);
+          }
+        }
+
+        // Notify tenant via SSE so the dashboard refreshes immediately
+        try {
+          await this.sseService.sendToUser(
+            tenantId,
+            cuid,
+            { resource: 'lease', action: 'lease-expired', resourceUId: lease.luid },
+            'resource-event'
+          );
+        } catch (sseErr) {
+          this.log.warn({ sseErr }, '[OffboardingService] SSE notify failed (non-fatal)');
+        }
+
+        this.log.info(
+          'Offboarding finalized — lease completed, unit released, tenant deactivated',
+          {
+            tenantId,
+            cuid,
+            luid: lease.luid,
+          }
+        );
       } catch (error) {
-        this.log.error('Error completing deferred deactivation on inspection approval', {
+        this.log.error('Error finalizing offboarding on inspection approval', {
           error,
           payload,
         });

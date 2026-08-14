@@ -8,6 +8,7 @@ export enum LeaseStatus {
   PENDING_SIGNATURE = 'pending_signature',
   DRAFT_RENEWAL = 'draft_renewal',
   TERMINATED = 'terminated',
+  COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   RENEWED = 'renewed',
   EXPIRED = 'expired',
@@ -221,13 +222,16 @@ export interface ILeaseDocument extends Document, ILease {
   // Instance methods
   softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
   hasOverlap(startDate: Date, endDate: Date): boolean;
+  expiryGracePeriodDaysRemaining: number;
   propertyInfo?: ILeasePropertyInfo;
   propertyUnitInfo?: ILeaseUnitInfo;
   // Virtual properties (computed)
   daysUntilExpiry: number | null;
   durationMonths: number | null;
   tenantInfo?: ILeaseTenantInfo;
+  expiryGracePeriodDays: number;
   totalMonthlyFees: number;
+  isInGracePeriod: boolean;
   isExpiringSoon: boolean;
   _id: Types.ObjectId;
   isActive: boolean;
@@ -554,6 +558,20 @@ export interface ILeaseDocumentItem {
   key: string;
 }
 
+export interface ILeaseTimeline {
+  isInGracePeriod: boolean;
+  isExpiringSoon: boolean;
+  daysRemaining: number;
+  daysElapsed: number;
+  moveInDate?: Date;
+  isActive: boolean;
+  progress: number; // 0-100 percentage
+  startDate: Date;
+  created: Date;
+  signed?: Date;
+  endDate: Date;
+}
+
 export interface ILeaseFees {
   acceptedPaymentMethod?: PaymentMethodType;
   lateFeePercentage?: number;
@@ -630,19 +648,6 @@ export interface LeaseTerminatedPayload {
   leaseId: string;
   luid: string;
   cuid: string;
-}
-
-export interface ILeaseTimeline {
-  isExpiringSoon: boolean;
-  daysRemaining: number;
-  daysElapsed: number;
-  moveInDate?: Date;
-  isActive: boolean;
-  progress: number; // 0-100 percentage
-  startDate: Date;
-  created: Date;
-  signed?: Date;
-  endDate: Date;
 }
 
 export interface ILeaseApprovalEntry {

@@ -231,7 +231,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           unitPuid,
           rentAmount: totalMonthlyRent,
           currency: leaseObj.fees?.currency ?? 'USD',
-          lateFeesGracePeriod: leaseObj.fees?.lateFeeDays ?? 5,
+          lateFeesGracePeriod: leaseObj.fees?.lateFeeDays ?? 3,
           rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
           acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,
@@ -246,6 +246,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             email: tenant?.email,
             fullName: tenantName,
           },
+          daysUntilExpiry: leaseObj.daysUntilExpiry ?? null,
+          isExpiringSoon: leaseObj.isExpiringSoon ?? false,
+          isInGracePeriod: leaseObj.isInGracePeriod ?? false,
           petsAllowed: leaseObj.petPolicy?.allowed ?? false,
           property: {
             pid: leaseObj.property?.id?.pid,

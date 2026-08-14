@@ -162,6 +162,7 @@ export function setAuthCookies(
     throw new Error('One or both tokens are required.');
   }
 
+  const isDev = envVariables.SERVER.ENV === 'development';
   let opts: Record<string, any>;
   let bearerJwt: string;
 
@@ -169,8 +170,8 @@ export function setAuthCookies(
     opts = {
       path: '/api/v1/auth/refresh_token', // Only accessible on the refresh endpoint
       httpOnly: true,
-      sameSite: 'lax' as const,
-      secure: envVariables.SERVER.ENV !== 'development',
+      sameSite: isDev ? ('lax' as const) : ('none' as const),
+      secure: !isDev,
     };
     bearerJwt = `Bearer ${data.refreshToken}`;
     if (data.rememberMe) {
@@ -185,8 +186,8 @@ export function setAuthCookies(
     opts = {
       path: '/',
       httpOnly: true,
-      sameSite: 'lax' as const,
-      secure: envVariables.SERVER.ENV !== 'development',
+      sameSite: isDev ? ('lax' as const) : ('none' as const),
+      secure: !isDev,
     };
     bearerJwt = `Bearer ${data.accessToken}`;
     if (data.rememberMe) {

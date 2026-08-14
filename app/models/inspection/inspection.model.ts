@@ -164,6 +164,7 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },
     },
+    disputeCount: { type: Number, default: 0 },
     rejectionReason: {
       text: { type: String, trim: true, maxlength: 2000 },
       html: { type: String, trim: true },
@@ -172,6 +173,8 @@ const inspectionSchema = new Schema<IInspectionDocument>(
       type: new Schema(
         {
           amount: { type: Number, min: 0, required: true },
+          proposedRefund: { type: Number, min: 0 },
+          currency: { type: String, default: 'USD' },
           isRefunded: { type: Boolean, default: false },
         },
         { _id: false }

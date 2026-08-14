@@ -92,6 +92,9 @@ interface IStripeDisputeWebhookData {
 }
 
 interface IStripeChargeWebhookData {
+  refunds?: {
+    data?: Array<{ id: string }>;
+  };
   amount_refunded?: number;
 }
 
@@ -767,6 +770,7 @@ export class PaymentWebhookService {
       }
 
       const refundAmountInCents = chargeData.amount_refunded || 0;
+      const gatewayRefundId = chargeData.refunds?.data?.[0]?.id;
 
       await this.paymentDAO.update(
         { _id: payment._id, cuid: payment.cuid },
@@ -774,7 +778,9 @@ export class PaymentWebhookService {
           $set: {
             status: PaymentRecordStatus.REFUNDED,
             'refund.refundedAt': dayjs().toDate(),
+            'refund.refundedBy': 'system:stripe-webhook',
             'refund.amount': refundAmountInCents,
+            ...(gatewayRefundId && { 'refund.gatewayRefundId': gatewayRefundId }),
           },
         }
       );

@@ -127,17 +127,22 @@ describe('OffboardingService - Renewal Requests', () => {
     offboardingService = new OffboardingService({
       userDAO: mockUserDAO,
       leaseDAO: mockLeaseDAO,
+      propertyDAO: { updateById: jest.fn() } as any,
+      propertyUnitDAO: { updateById: jest.fn() } as any,
       paymentDAO: mockPaymentDAO,
       leaseService: mockLeaseService as any,
       inspectionDAO: mockInspectionDAO,
       inspectionService: mockInspectionService as any,
       leaseRenewalService: mockLeaseRenewalService as any,
       emitterService: mockEmitterService as any,
+      leaseCache: { invalidateLease: jest.fn(), invalidateLeaseLists: jest.fn() } as any,
+      authCache: { invalidateCurrentUser: jest.fn() } as any,
       maintenanceRequestDAO: {
         list: jest.fn().mockResolvedValue({ items: [] }),
         updateMany: jest.fn(),
       } as any,
       maintenancePaymentService: { chargeForMaintenance: jest.fn() } as any,
+      sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
     });
   });
 

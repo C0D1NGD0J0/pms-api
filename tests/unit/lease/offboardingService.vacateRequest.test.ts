@@ -153,8 +153,11 @@ describe('OffboardingService - Vacate Requests', () => {
       inspectionService: mockInspectionService as any,
       leaseRenewalService: mockLeaseRenewalService as any,
       emitterService: mockEmitterService as any,
+      leaseCache: { invalidateLease: jest.fn(), invalidateLeaseLists: jest.fn() } as any,
+      authCache: { invalidateCurrentUser: jest.fn() } as any,
       maintenanceRequestDAO: mockMaintenanceRequestDAO as any,
       maintenancePaymentService: mockMaintenancePaymentService as any,
+      sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
     });
   });
 

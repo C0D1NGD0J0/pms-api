@@ -120,7 +120,7 @@ export class PaymentCronService implements ICronProvider {
     const utcJobs: ICronJob[] = [
       {
         name: 'payment.weekly-rent-invoices',
-        schedule: '0 0 * * 0',
+        schedule: '0 2 * * 0', // Sunday 2:00 AM UTC
         handler: this.queueWeeklyRentInvoices.bind(this),
         enabled: true,
         service: 'PaymentCronService',
@@ -129,7 +129,7 @@ export class PaymentCronService implements ICronProvider {
       },
       {
         name: 'payment.daily-rent-safety-net',
-        schedule: '0 9 * * *',
+        schedule: '0 5 * * *', // 5:00 AM UTC — catches misses before business hours
         handler: this.queueDailySafetyNetInvoices.bind(this),
         enabled: true,
         service: 'PaymentCronService',
@@ -139,7 +139,7 @@ export class PaymentCronService implements ICronProvider {
       },
       {
         name: 'payment.reconcile-stale-processing',
-        schedule: '0 2 * * *',
+        schedule: '0 3 * * *', // 3:00 AM UTC — overnight batch
         handler: this.reconcileStaleProcessingPayments.bind(this),
         enabled: true,
         service: 'PaymentCronService',

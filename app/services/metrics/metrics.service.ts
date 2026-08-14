@@ -117,7 +117,7 @@ export class MetricsService implements ICronProvider {
     return [
       {
         name: 'metrics:daily-snapshot',
-        schedule: '0 0 * * *',
+        schedule: '0 4 * * *', // 4:00 AM UTC — end of overnight batch, captures all changes
         handler: this.captureAllSnapshots.bind(this),
         service: 'MetricsService',
         enabled: true,

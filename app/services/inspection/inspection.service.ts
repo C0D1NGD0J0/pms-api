@@ -90,7 +90,7 @@ export class InspectionService implements ICronProvider {
     return [
       {
         name: 'inspection:daily-reminders',
-        schedule: '0 9 * * *',
+        schedule: '0 8 * * *', // 8 AM UTC — tenants see reminders first thing in the morning
         handler: this.sendInspectionReminders.bind(this),
         service: 'InspectionService',
         enabled: true,
@@ -99,7 +99,7 @@ export class InspectionService implements ICronProvider {
       },
       {
         name: 'inspection:move-out-auto-schedule',
-        schedule: '0 10 * * *',
+        schedule: '45 2 * * *', // 2:45 AM UTC — overnight batch, after lease expiry cron
         handler: this.checkUpcomingLeaseExpirations.bind(this),
         service: 'InspectionService',
         enabled: true,
@@ -108,7 +108,7 @@ export class InspectionService implements ICronProvider {
       },
       {
         name: 'inspection:auto-close-unresponsive',
-        schedule: '0 3 * * *',
+        schedule: '30 3 * * *', // 3:30 AM UTC — overnight batch
         handler: this.autoCloseUnresponsiveInspections.bind(this),
         service: 'InspectionService',
         enabled: true,
@@ -117,7 +117,7 @@ export class InspectionService implements ICronProvider {
       },
       {
         name: 'inspection:auto-cancel-expired-scheduled',
-        schedule: '0 4 * * *',
+        schedule: '45 3 * * *', // 3:45 AM UTC — overnight batch
         handler: this.autoCancelExpiredScheduledInspections.bind(this),
         service: 'InspectionService',
         enabled: true,

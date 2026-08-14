@@ -326,33 +326,55 @@ export class PaymentController {
 
     const { jobName } = req.params;
 
-    // Maps short dev-friendly alias → full registered job name in CronService
-    const aliasMap: Record<string, string> = {
-      'weekly-invoices': 'payment.weekly-rent-invoices',
-      'daily-safety-net': 'payment.daily-rent-safety-net',
-      'mark-overdue': 'payment.mark-overdue',
-      'auto-charge-rent': 'payment.auto-charge-due-rent',
-      'auto-charge-maintenance': 'payment.auto-charge-overdue-maintenance',
-      'reconcile-processing': 'payment.reconcile-stale-processing',
-      'auto-payout-vendors': 'payment.auto-payout-vendors',
-      'expire-guest-passes': 'guestpass.expire-stale-passes',
+    // Maps alias → [service DI name, method name] — resolves directly from container
+    // so it works in both API and worker processes without relying on CronService registration
+    const jobMap: Record<string, [string, string]> = {
+      // Payment
+      'weekly-invoices': ['paymentService', 'queueWeeklyRentInvoices'],
+      'daily-safety-net': ['paymentService', 'queueDailySafetyNetInvoices'],
+      'reconcile-processing': ['paymentService', 'reconcileStaleProcessingPayments'],
+      'auto-payout-vendors': ['paymentService', 'autoPayoutVendors'],
+      // Lease
+      'mark-expired-leases': ['leaseService', 'markExpiredLeases'],
+      'process-expiring-leases': ['leaseService', 'processExpiringLeases'],
+      // Inspection
+      'inspection-reminders': ['inspectionService', 'sendInspectionReminders'],
+      'inspection-auto-close': ['inspectionService', 'autoCloseUnresponsiveInspections'],
+      'inspection-auto-cancel': ['inspectionService', 'autoCancelExpiredScheduledInspections'],
+      'inspection-auto-schedule': ['inspectionService', 'checkUpcomingLeaseExpirations'],
+      // Subscription
+      'mark-expired-subscriptions': ['subscriptionService', 'processExpiredSubscriptions'],
+      // User
+      'deactivate-stale-tenants': ['userService', 'autoDeactivateStaleTenants'],
+      // Other
+      'expire-guest-passes': ['guestPassService', 'expireStaleGuestPasses'],
+      'metrics-snapshot': ['metricsService', 'captureAllSnapshots'],
     };
 
-    const fullJobName = aliasMap[jobName];
-    if (!fullJobName) {
+    const entry = jobMap[jobName];
+    if (!entry) {
       return res.status(400).json({
-        message: `Unknown job. Allowed: ${Object.keys(aliasMap).join(', ')}`,
+        message: `Unknown job. Allowed: ${Object.keys(jobMap).join(', ')}`,
       });
     }
 
-    const handler = this.cronService.getJobHandler(fullJobName);
-    if (!handler) {
-      return res.status(500).json({ message: `Handler not registered for: ${fullJobName}` });
-    }
+    const [serviceName, methodName] = entry;
 
-    this.log.info({ jobName, fullJobName }, 'Dev: manually triggering cron job');
-    await handler();
-    return res.status(200).json({ success: true, jobName, fullJobName });
+    try {
+      const service = req.container.resolve<any>(serviceName);
+      if (typeof service[methodName] !== 'function') {
+        return res
+          .status(500)
+          .json({ message: `Method ${methodName} not found on ${serviceName}` });
+      }
+
+      this.log.info({ jobName, serviceName, methodName }, 'Dev: manually triggering cron job');
+      await service[methodName]();
+      return res.status(200).json({ success: true, jobName, serviceName, methodName });
+    } catch (error: any) {
+      this.log.error({ error: error.message, jobName }, 'Dev: cron job trigger failed');
+      return res.status(500).json({ success: false, message: error.message });
+    }
   }
 
   async downloadMyReceipt(req: AppRequest, res: Response) {

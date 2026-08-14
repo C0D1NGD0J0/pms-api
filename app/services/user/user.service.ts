@@ -130,7 +130,7 @@ export class UserService implements ICronProvider {
     return [
       {
         name: 'user:auto-deactivate-stale-tenants',
-        schedule: '0 2 * * *',
+        schedule: '15 3 * * *', // 3:15 AM UTC — overnight batch
         handler: this.autoDeactivateStaleTenants.bind(this),
         service: 'UserService',
         enabled: true,

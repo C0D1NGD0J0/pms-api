@@ -111,7 +111,7 @@
     "ttypescript": "1.5.15",
     "twilio": "5.11.2",
     "typescript-transform-paths": "3.5.3",
-    "ua-parser-js": "2.0.3",
+    "ua-parser-js": "2.0.10",
     "uuid": "14.0.0",
     "web-push": "3.6.7",
     "zod": "3.25.76"

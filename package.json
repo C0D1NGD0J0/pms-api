@@ -92,7 +92,7 @@
     "mongodb": "6.14.2",
     "mongoose": "9.7.2",
     "morgan": "1.11.0",
-    "multer": "2.1.1",
+    "multer": "2.2.0",
     "multer-s3": "3.0.1",
     "nanoid": "3.3.18",
     "node-geocoder": "4.4.1",

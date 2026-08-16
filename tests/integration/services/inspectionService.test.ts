@@ -181,11 +181,22 @@ describe('InspectionService Integration Tests', () => {
       expect(dbDoc!.submittedAt).toBeDefined();
 
       // 4. Review (SUBMITTED → PENDING_REVIEW)
-      const reviewResult = await inspectionService.reviewInspection(cuid, iuid, approverId, 'admin', {});
+      const reviewResult = await inspectionService.reviewInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin',
+        {}
+      );
       expect(reviewResult.success).toBe(true);
 
       // 5. Approve (PENDING_REVIEW → APPROVED, by a different admin — self-approval guard)
-      const approveResult = await inspectionService.approveInspection(cuid, iuid, approverId, 'admin');
+      const approveResult = await inspectionService.approveInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin'
+      );
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -236,7 +247,13 @@ describe('InspectionService Integration Tests', () => {
 
       // Approve with partial refund (PENDING_REVIEW → APPROVED, by a different admin — self-approval guard)
       const refundAmount = 800;
-      const approveResult = await inspectionService.approveInspection(cuid, iuid, approverId, 'admin', refundAmount);
+      const approveResult = await inspectionService.approveInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin',
+        refundAmount
+      );
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -266,9 +283,15 @@ describe('InspectionService Integration Tests', () => {
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
       // Reject (by a different admin — self-approval guard)
-      const rejectResult = await inspectionService.rejectInspection(cuid, iuid, approverId, 'admin', {
-        text: 'Photos are blurry, please retake',
-      });
+      const rejectResult = await inspectionService.rejectInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin',
+        {
+          text: 'Photos are blurry, please retake',
+        }
+      );
       expect(rejectResult.success).toBe(true);
       expect(rejectResult.message).toContain('revised and resubmitted');
 
@@ -328,7 +351,12 @@ describe('InspectionService Integration Tests', () => {
       expect(dbDoc!.disputeNotes?.text).toBe('The kitchen damage was pre-existing');
 
       // Approver approves the disputed inspection (different admin — self-approval guard)
-      const approveResult = await inspectionService.approveInspection(cuid, iuid, approverId, 'admin');
+      const approveResult = await inspectionService.approveInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin'
+      );
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });

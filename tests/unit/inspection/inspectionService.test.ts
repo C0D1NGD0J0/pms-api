@@ -403,9 +403,9 @@ describe('InspectionService', () => {
       });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
 
-      await expect(service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 500)).rejects.toThrow(
-        /does not have a security deposit to refund/
-      );
+      await expect(
+        service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 500)
+      ).rejects.toThrow(/does not have a security deposit to refund/);
     });
 
     it('should throw 400 when refundAmount exceeds deposit', async () => {
@@ -416,9 +416,9 @@ describe('InspectionService', () => {
       });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
 
-      await expect(service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 1500)).rejects.toThrow(
-        /Refund amount cannot exceed deposit amount/
-      );
+      await expect(
+        service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 1500)
+      ).rejects.toThrow(/Refund amount cannot exceed deposit amount/);
     });
 
     it('should set isRefunded = false when refundAmount is 0', async () => {

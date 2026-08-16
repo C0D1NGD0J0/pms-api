@@ -41,6 +41,7 @@ export enum EventTypes {
   MAINTENANCE_CHARGE_CREATED = 'maintenance:charge:created',
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
+  ACCOUNT_CLOSURE_INITIATED = 'account:closure:initiated',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
   VACATE_REQUEST_SUBMITTED = 'vacate:request:submitted',
   MAINTENANCE_CHARGE_PAID = 'maintenance:charge:paid',
@@ -109,6 +110,7 @@ export enum EventTypes {
   EMAIL_FAILED = 'email:failed',
   SYSTEM_ERROR = 'system:error',
   UNIT_CREATED = 'unit:created',
+
   UNIT_UPDATED = 'unit:updated',
 
   UPLOAD_ASSET = 'upload:asset',
@@ -219,6 +221,7 @@ export type EventPayloadMap = {
   [EventTypes.INSPECTION_DISPUTED]: InspectionDisputedPayload;
   [EventTypes.INSPECTION_CANCELLED]: InspectionCancelledPayload;
   [EventTypes.INSPECTION_REJECTED]: InspectionRejectedPayload;
+  [EventTypes.ACCOUNT_CLOSURE_INITIATED]: AccountClosureInitiatedPayload;
 };
 
 export interface UserSignupInitiatedPayload {
@@ -945,6 +948,12 @@ export interface PdfGenerationFailedPayload {
 export interface MaintenanceAITriageCompletedPayload {
   tenantId: string;
   mruid: string;
+  cuid: string;
+}
+
+export interface AccountClosureInitiatedPayload {
+  initiatedBy: string;
+  reason?: string;
   cuid: string;
 }
 

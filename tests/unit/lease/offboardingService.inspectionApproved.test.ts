@@ -141,6 +141,9 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
       } as any,
       maintenancePaymentService: { chargeForMaintenance: jest.fn() } as any,
       sseService: mockSseService as any,
+      vendorDAO: { disconnectClient: jest.fn() } as any,
+      clientDAO: { findFirst: jest.fn() } as any,
+      emailQueue: { addToEmailQueue: jest.fn() } as any,
     });
   });
 
@@ -557,6 +560,9 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
       } as any,
       maintenancePaymentService: { chargeForMaintenance: jest.fn() } as any,
       sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
+      vendorDAO: { disconnectClient: jest.fn() } as any,
+      clientDAO: { findFirst: jest.fn() } as any,
+      emailQueue: { addToEmailQueue: jest.fn() } as any,
     });
   });
 

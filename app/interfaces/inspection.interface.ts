@@ -92,6 +92,7 @@ export interface ICreateInspection {
 export interface IInspectionStats {
   byType: Record<string, number>;
   avgCompletionDays: number;
+  pendingReview: number;
   inProgress: number;
   scheduled: number;
   submitted: number;

@@ -113,6 +113,7 @@ export const InspectionValidations = {
     status: z.enum(Object.values(InspectionStatus) as [string, ...string[]]).optional(),
     page: z.coerce.number().int().min(1, 'Page must be at least 1').optional(),
     limit: z.coerce.number().int().min(1).max(100, 'Limit cannot exceed 100').optional(),
+    sort: z.string().optional(),
   }),
 
   iuidParam: z.object({

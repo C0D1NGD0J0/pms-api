@@ -8,6 +8,7 @@ import { IVendor } from '@interfaces/vendor.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { PaymentRecordType } from '@interfaces/payments.interface';
+import { InspectionStatus } from '@interfaces/inspection.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IClientUserConnections } from '@interfaces/client.interface';
@@ -663,13 +664,20 @@ export class UserService implements ICronProvider {
         this.inspectionDAO.countDocuments({
           cuid,
           inspectorUid: user.uid,
-          status: 'approved',
+          status: InspectionStatus.APPROVED,
           deletedAt: null,
         }),
         this.inspectionDAO.countDocuments({
           cuid,
           inspectorUid: user.uid,
-          status: { $in: ['scheduled', 'in_progress', 'submitted', 'pending_review'] },
+          status: {
+            $in: [
+              InspectionStatus.SCHEDULED,
+              InspectionStatus.IN_PROGRESS,
+              InspectionStatus.SUBMITTED,
+              InspectionStatus.PENDING_REVIEW,
+            ],
+          },
           deletedAt: null,
         }),
         this.propertyUnitDAO.countDocuments({

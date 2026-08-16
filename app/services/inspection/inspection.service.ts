@@ -1380,10 +1380,10 @@ export class InspectionService implements ICronProvider {
           await this.inspectionDAO.updateById(inspection._id.toString(), {
             $set: {
               status: InspectionStatus.CANCELLED,
-              ...(inspection.previousOperationalStatus && {
-                previousOperationalStatus: undefined,
-              }),
             },
+            ...(inspection.previousOperationalStatus && {
+              $unset: { previousOperationalStatus: 1 },
+            }),
             $push: {
               notes: {
                 note: 'Auto-cancelled: inspection was not started within 7 days of the scheduled date.',

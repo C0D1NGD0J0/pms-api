@@ -65,6 +65,20 @@ export class VendorController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  getVendorReviews = async (req: AppRequest, res: Response) => {
+    const { cuid, vuid } = req.params;
+    const { page, limit } = req.query;
+
+    const paginationOpts = {
+      page: page ? parseInt(page as string, 10) : 1,
+      limit: limit ? Math.min(parseInt(limit as string, 10), 50) : 10,
+    };
+
+    const result = await this.vendorService.getVendorReviews(cuid, vuid, paginationOpts);
+
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   getVendorStats = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const { status } = req.query;

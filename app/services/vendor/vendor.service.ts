@@ -412,6 +412,16 @@ export class VendorService {
       // Use the optimized DAO method for filtering and pagination
       const result = await this.vendorDAO.getFilteredVendors(cuid, filterOptions, paginationOpts);
 
+      // Collect vendor user IDs to batch-fetch ratings
+      const vendorUserIds = result.items
+        .map((v: IVendorDocument) => {
+          const conn = v.connectedClients.find((cc) => cc.cuid === cuid);
+          return conn?.primaryAccountHolderUserId?.toString();
+        })
+        .filter(Boolean) as string[];
+
+      const ratingsMap = await this.maintenanceRequestDAO.getVendorAvgRatingBatch(vendorUserIds);
+
       // Map vendor documents to FilteredUserTableData format for consistency
       const vendorTableData: FilteredUserTableData[] = await Promise.all(
         result.items.map(async (vendor: IVendorDocument) => {
@@ -427,6 +437,7 @@ export class VendorService {
           const lastName = user?.profile?.personalInfo?.lastName || '';
           const fullName = `${firstName} ${lastName}`.trim();
           const userClientConnection = user?.cuids?.find((c: any) => c.cuid === cuid);
+          const vendorRating = ratingsMap.get(user?._id?.toString() || '') || 0;
 
           return {
             uid: user?.uid || '',
@@ -442,11 +453,11 @@ export class VendorService {
               businessType: vendor.businessType || 'General Contractor',
               serviceType: vendor.businessType || 'General Contractor',
               contactPerson: vendor.contactPerson?.name || fullName || undefined,
-              rating: 0, // Placeholder: no vendor review system yet
-              reviewCount: 0, // Placeholder: no vendor review system yet
-              completedJobs: 0, // Placeholder: requires work-order completion tracking
-              averageResponseTime: '24h', // Placeholder: requires historical data aggregation
-              averageServiceCost: 0, // Placeholder: requires completed job cost aggregation
+              rating: vendorRating > 0 ? parseFloat(vendorRating.toFixed(1)) : 0,
+              reviewCount: 0,
+              completedJobs: 0,
+              averageResponseTime: '24h',
+              averageServiceCost: 0,
               isLinkedAccount: !!userClientConnection?.linkedVendorUid,
               linkedVendorUid: userClientConnection?.linkedVendorUid || '',
               isPrimaryVendor: !userClientConnection?.linkedVendorUid,
@@ -604,6 +615,61 @@ export class VendorService {
     }
   }
 
+  async getVendorReviews(
+    cuid: string,
+    vuid: string,
+    paginationOpts: { page: number; limit: number }
+  ): Promise<ISuccessReturnData> {
+    if (!cuid || !vuid) {
+      throw new BadRequestError({
+        message: t('common.errors.required', { field: 'Client ID and vendor ID' }),
+      });
+    }
+
+    const vendor = await this.vendorDAO.getVendorByVuid(vuid);
+    if (!vendor) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
+    }
+
+    const clientConnection = vendor.connectedClients.find((cc) => cc.cuid === cuid);
+    if (!clientConnection) {
+      throw new NotFoundError({ message: t('vendor.errors.notConnectedToClient') });
+    }
+
+    const vendorUserId = clientConnection.primaryAccountHolderUserId.toString();
+    const result = await this.maintenanceRequestDAO.getVendorReviews(
+      cuid,
+      vendorUserId,
+      paginationOpts
+    );
+
+    const reviews = result.reviews.map((r) => ({
+      title: r.tenantName,
+      subtitle: `${r.category || 'General'} — ${
+        r.completedAt
+          ? new Date(r.completedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+          : 'N/A'
+      }`,
+      rating: r.rating,
+      reviewText: r.comment || '',
+    }));
+
+    return {
+      success: true,
+      data: {
+        reviews,
+        averageRating: result.averageRating > 0 ? parseFloat(result.averageRating.toFixed(1)) : 0,
+        pagination: {
+          page: paginationOpts.page,
+          limit: paginationOpts.limit,
+          total: result.total,
+          totalPages: Math.ceil(result.total / paginationOpts.limit),
+        },
+      },
+      message: t('common.success.retrieved', { resource: 'Vendor reviews' }),
+    };
+  }
+
   async getVendorInfo(
     cuid: string,
     vuid: string
@@ -679,10 +745,13 @@ export class VendorService {
         }
       }
 
-      // Fetch real maintenance stats for this vendor
-      const maintenanceStats = await this.maintenanceRequestDAO.getStats(cuid, {
-        vendorUserId: user._id.toString(),
-      });
+      // Fetch real maintenance stats and rating for this vendor
+      const [maintenanceStats, avgRating] = await Promise.all([
+        this.maintenanceRequestDAO.getStats(cuid, {
+          vendorUserId: user._id.toString(),
+        }),
+        this.maintenanceRequestDAO.getVendorAvgRating(user._id.toString()),
+      ]);
 
       // Build the vendor detail info (nested in vendorInfo property)
       const vendorDetailInfo: IVendorDetailInfo = {
@@ -728,8 +797,11 @@ export class VendorService {
         stats: {
           completedJobs: maintenanceStats.completed,
           activeJobs: maintenanceStats.assigned + maintenanceStats.inProgress,
-          rating: '0',
-          responseTime: '24h',
+          rating: String(avgRating > 0 ? avgRating.toFixed(1) : '0'),
+          responseTime:
+            maintenanceStats.avgResolutionDays > 0
+              ? `${maintenanceStats.avgResolutionDays}d`
+              : 'N/A',
           onTimeRate: '0%',
         },
 

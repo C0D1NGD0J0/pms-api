@@ -376,29 +376,6 @@ export async function handleInspectionReviewed(
   }
 }
 
-export async function handleInspectionAIAnalyzed(
-  ctx: INotificationContext,
-  payload: InspectionAIAnalyzedPayload
-): Promise<void> {
-  const { cuid, iuid, riskFlagCount } = payload;
-
-  try {
-    const riskNote = riskFlagCount > 0 ? ` ${riskFlagCount} risk flag(s) were identified.` : '';
-
-    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
-      cuid,
-      type: NotificationTypeEnum.INSPECTION,
-      title: 'AI Inspection Analysis Complete',
-      message: `AI analysis for inspection ${iuid} is ready.${riskNote}`,
-      recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-      priority: riskFlagCount > 0 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.LOW,
-      actionUrl: `/inspections/${cuid}/${iuid}`,
-    });
-  } catch (err) {
-    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection AI analyzed notification');
-  }
-}
-
 export async function handleInspectionDisputed(
   ctx: INotificationContext,
   payload: InspectionDisputedPayload

@@ -111,7 +111,7 @@ class Server {
       const io = await this.setupSocketIO(this.httpServer);
       io && this.socketConnections(io);
     } catch (error: any) {
-      this.log.error('Error: ', error.message);
+      this.log.error({ err: error.message, stack: error.stack }, `Server startup failed: ${error.message}`);
     }
   }
 

@@ -90,7 +90,6 @@ router.post(
   })
 );
 
-// ── Notes ────────────────────────────────────────────────────────────────────
 router.post(
   '/:cuid/:iuid/notes',
   requireNotSuspended,
@@ -114,7 +113,6 @@ router.post(
   })
 );
 
-// ── Report generation ────────────────────────────────────────────────────────
 router.post(
   '/:cuid/:iuid/report',
   requireNotSuspended,
@@ -123,8 +121,10 @@ router.post(
     PermissionAction.READ,
     roleBasedContext
   ),
+  requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireFeatureFlag(FeatureFlag.INSPECTION),
   requireActiveSubscription,
   validateRequest({
     params: InspectionValidations.iuidParam,

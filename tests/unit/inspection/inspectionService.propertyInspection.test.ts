@@ -49,6 +49,7 @@ const mockEmailQueue = {
 
 const CUID = 'test-client-cuid';
 const USER_ID = new Types.ObjectId().toString();
+const APPROVER_ID = new Types.ObjectId().toString();
 const PROPERTY_ID = new Types.ObjectId();
 const PROPERTY_PID = 'prop-abc123';
 const UNIT_ID = new Types.ObjectId();
@@ -243,7 +244,7 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
         makeProperty({ operationalStatus: 'maintenance' })
       );
 
-      await service.approveInspection(CUID, IUID);
+      await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin');
 
       expect(mockPropertyDAO.updateById).toHaveBeenCalledWith(PROPERTY_ID.toString(), {
         operationalStatus: 'active',
@@ -266,7 +267,7 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
       // PM changed status to 'inactive' — should NOT revert
       mockPropertyDAO.findFirst.mockResolvedValue(makeProperty({ operationalStatus: 'inactive' }));
 
-      await service.approveInspection(CUID, IUID);
+      await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin');
 
       expect(mockPropertyDAO.updateById).not.toHaveBeenCalled();
     });

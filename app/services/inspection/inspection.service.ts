@@ -196,10 +196,10 @@ export class InspectionService implements ICronProvider {
       }
 
       let inspectorUid = data.inspectorId;
-
-      if (data.inspectorId) {
+      if (inspectorUid) {
         const inspector = await this.userDAO.findFirst({
-          uid: data.inspectorId,
+          uid: inspectorUid,
+          'cuids.cuid': cuid,
           deletedAt: null,
         });
         if (!inspector) {
@@ -648,6 +648,8 @@ export class InspectionService implements ICronProvider {
   async reviewInspection(
     cuid: string,
     iuid: string,
+    userId: string,
+    userRole: string,
     data: {
       overallCondition?: ConditionRating;
       overallNotes?: { text: string; html?: string };
@@ -658,6 +660,8 @@ export class InspectionService implements ICronProvider {
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
+
+    this._enforceNoSelfAction(inspection.inspectorUid, userId, userRole, 'review');
 
     this._validateTransition(inspection.status, InspectionStatus.PENDING_REVIEW);
 
@@ -699,11 +703,19 @@ export class InspectionService implements ICronProvider {
     return { success: true, message: 'Inspection review completed', data: updated! };
   }
 
-  async approveInspection(cuid: string, iuid: string, refundAmount?: number): IPromiseReturnedData {
+  async approveInspection(
+    cuid: string,
+    iuid: string,
+    userId: string,
+    userRole: string,
+    refundAmount?: number
+  ): IPromiseReturnedData {
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
+
+    this._enforceNoSelfAction(inspection.inspectorUid, userId, userRole, 'approve');
 
     this._validateTransition(inspection.status, InspectionStatus.APPROVED);
 
@@ -887,12 +899,16 @@ export class InspectionService implements ICronProvider {
   async rejectInspection(
     cuid: string,
     iuid: string,
+    userId: string,
+    userRole: string,
     reason: { text: string; html?: string }
   ): IPromiseReturnedData {
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid);
     if (!inspection) {
       throw new NotFoundError({ message: 'Inspection not found' });
     }
+
+    this._enforceNoSelfAction(inspection.inspectorUid, userId, userRole, 'reject');
 
     this._validateTransition(inspection.status, InspectionStatus.REJECTED);
 
@@ -1506,6 +1522,22 @@ export class InspectionService implements ICronProvider {
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────────
+
+  private static readonly SELF_ACTION_EXEMPT_ROLES = new Set(['super-admin', 'admin']);
+
+  private _enforceNoSelfAction(
+    inspectorUid: string | undefined,
+    userId: string,
+    userRole: string,
+    action: string
+  ): void {
+    if (InspectionService.SELF_ACTION_EXEMPT_ROLES.has(userRole)) return;
+    if (inspectorUid && inspectorUid === userId) {
+      throw new ForbiddenError({
+        message: `Inspector cannot ${action} their own inspection`,
+      });
+    }
+  }
 
   private _validateTransition(current: InspectionStatus, next: InspectionStatus): void {
     const allowed = ALLOWED_INSPECTION_TRANSITIONS[current];

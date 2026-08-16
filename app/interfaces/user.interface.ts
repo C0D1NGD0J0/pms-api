@@ -229,18 +229,12 @@ export interface IClientTenantDetails {
 }
 
 export interface IEmployeeDetailInfo {
-  performance: {
-    avgOccupancyRate: string;
-    avgResponseTime: string;
-    taskCompletionRate: string;
-    tenantSatisfaction: string;
-  };
   stats: {
     propertiesManaged: number;
     tasksCompleted: number;
     unitsManaged: number;
     activeTasks: number;
-  } & IBaseStats;
+  };
   emergencyContact: {
     relationship: string;
     phone: string;

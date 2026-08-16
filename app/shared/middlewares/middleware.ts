@@ -641,6 +641,13 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
  * subscription service outage does not break the application.
  */
 export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
+  // Tenants and vendors are not gated by PM subscription status — they have
+  // their own access controlled by lease/connection status, not the PM's SaaS bill.
+  const role = req.context?.currentuser?.client?.role;
+  if (role === 'tenant' || role === 'vendor') {
+    return next();
+  }
+
   const entitlements = req.context?.entitlements;
   if (!entitlements) {
     return next(

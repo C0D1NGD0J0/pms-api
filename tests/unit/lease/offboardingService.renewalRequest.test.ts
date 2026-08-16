@@ -143,6 +143,9 @@ describe('OffboardingService - Renewal Requests', () => {
       } as any,
       maintenancePaymentService: { chargeForMaintenance: jest.fn() } as any,
       sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
+      vendorDAO: { disconnectClient: jest.fn() } as any,
+      clientDAO: { findFirst: jest.fn() } as any,
+      emailQueue: { addToEmailQueue: jest.fn() } as any,
     });
   });
 

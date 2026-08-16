@@ -113,7 +113,24 @@ export class RentPaymentService {
     leaseId: string;
     cuid: string;
   }): Promise<void> {
-    if (!payload.refundAmount || payload.refundAmount <= 0) return;
+    if (!payload.refundAmount || payload.refundAmount <= 0) {
+      // Warn if a paid deposit exists but no refund was requested — PM may have
+      // accidentally approved with $0 refund
+      const paidDeposit = await this.paymentDAO.findFirst({
+        lease: new Types.ObjectId(payload.leaseId),
+        cuid: payload.cuid,
+        paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+        status: PaymentRecordStatus.PAID,
+        deletedAt: null,
+      });
+      if (paidDeposit) {
+        this.log.warn(
+          { leaseId: payload.leaseId, depositAmount: paidDeposit.baseAmount },
+          'Inspection approved with $0 refund but a paid security deposit exists — no refund will be processed'
+        );
+      }
+      return;
+    }
 
     try {
       const depositPayment = await this.paymentDAO.findFirst({
@@ -138,6 +155,7 @@ export class RentPaymentService {
           $set: {
             status: PaymentRecordStatus.PENDING_REFUND,
             'refund.amount': payload.refundAmount,
+            'refund.refundedBy': 'system:inspection-approved',
             'refund.reason': 'Move-out inspection deposit refund — awaiting PM approval',
           },
         });
@@ -158,6 +176,7 @@ export class RentPaymentService {
             status: PaymentRecordStatus.REFUNDED,
             'refund.amount': payload.refundAmount,
             'refund.refundedAt': new Date(),
+            'refund.refundedBy': 'system:inspection-approved',
             'refund.reason': 'Move-out inspection deposit refund (offline)',
           },
         });
@@ -179,6 +198,7 @@ export class RentPaymentService {
             status: PaymentRecordStatus.REFUNDED,
             'refund.amount': payload.refundAmount,
             'refund.refundedAt': new Date(),
+            'refund.refundedBy': 'system:inspection-approved',
             'refund.reason': 'Move-out inspection deposit refund',
             'refund.gatewayRefundId': refundResult.data?.refundId,
           },

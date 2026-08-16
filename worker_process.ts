@@ -38,7 +38,9 @@ class WorkerProcess {
 
       container.resolve('cronService');
     } catch (error) {
-      this.log.error({ err: error }, '❌ Worker startup failed');
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.log.error({ err: message, stack }, `❌ Worker startup failed: ${message}`);
       process.exit(1);
     }
   }

@@ -616,6 +616,9 @@ export class SubscriptionWebhookService {
         message: 'Your subscription has been canceled',
       });
 
+      // Pause payouts immediately — don't wait for the daily cron
+      await this.syncPayoutSchedule(result.cuid, ISubscriptionStatus.INACTIVE);
+
       return { data: result, success: true };
     } catch (error) {
       this.log.error({ error, data }, 'Error handling subscription cancellation');

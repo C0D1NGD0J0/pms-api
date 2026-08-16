@@ -1280,11 +1280,6 @@ export class MaintenanceRequestService {
       rating: data.rating,
     });
 
-    // If confirmed with rating, update vendor's average rating
-    if (data.status === 'confirmed' && data.rating && request.vendorId) {
-      await this.updateVendorRating(request.vendorId.toString());
-    }
-
     return { success: true, data: updated, message: t('maintenance.success.feedbackSubmitted') };
   }
 
@@ -1307,34 +1302,6 @@ export class MaintenanceRequestService {
         workOrder: 1,
       },
     };
-  }
-
-  private async updateVendorRating(vendorUserId: string): Promise<void> {
-    try {
-      const requests = await this.maintenanceRequestDAO.list({
-        vendorId: new Types.ObjectId(vendorUserId),
-        'tenantFeedback.status': 'confirmed',
-        'tenantFeedback.rating': { $exists: true },
-        deletedAt: null,
-      });
-
-      const items = requests.items || [];
-      if (items.length === 0) return;
-
-      const totalRating = items.reduce(
-        (sum: number, r: any) => sum + (r.tenantFeedback?.rating || 0),
-        0
-      );
-      const avgRating = (totalRating / items.length).toFixed(1);
-
-      // Update vendor profile stats
-      await this.vendorDAO.updateMany(
-        { 'connectedClients.primaryAccountHolderUserId': new Types.ObjectId(vendorUserId) },
-        { $set: { 'stats.rating': avgRating, 'stats.reviewCount': items.length } }
-      );
-    } catch (error) {
-      this.log.error('Failed to update vendor rating:', error);
-    }
   }
 
   async cancelRequest(

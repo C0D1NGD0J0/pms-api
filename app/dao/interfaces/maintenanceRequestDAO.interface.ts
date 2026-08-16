@@ -7,22 +7,43 @@ import {
 } from '@interfaces/maintenanceRequest.interface';
 
 export interface IMaintenanceRequestDAO {
+  getVendorReviews(
+    cuid: string,
+    vendorUserId: string,
+    opts: { page: number; limit: number }
+  ): Promise<{
+    reviews: Array<{
+      tenantName: string;
+      title: string;
+      category: string;
+      rating: number;
+      comment: string;
+      completedAt: Date;
+    }>;
+    total: number;
+    averageRating: number;
+  }>;
+
+  getStats(
+    cuid: string,
+    opts?: {
+      propertyId?: string;
+      tenantUserId?: string;
+      vendorUserId?: string;
+      managedByUserId?: string;
+    }
+  ): Promise<IMaintenanceStats>;
+
   listWithDetails(
     filter: QueryFilter<IMaintenanceRequestDocument>,
     pagination?: IPaginationQuery
   ): ListResultWithPagination<IMaintenanceRequestDocument[]>;
-
-  getStats(
-    cuid: string,
-    opts?: { propertyId?: string; tenantUserId?: string; vendorUserId?: string }
-  ): Promise<IMaintenanceStats>;
 
   getByMruid(mruid: string, cuid: string): Promise<IMaintenanceRequestDocument | null>;
 
   getVendorStatsBatch(vendorIds: string[]): Promise<Map<string, IVendorStats>>;
 
   getVendorAvgRatingBatch(vendorIds: string[]): Promise<Map<string, number>>;
-
   /** Cross-cuid: vendors can work for multiple property managers. */
   getVendorQueue(vendorId: string): Promise<IMaintenanceRequestDocument[]>;
   /** Without cuid scoping — used by webhook handlers where cuid is not available. */

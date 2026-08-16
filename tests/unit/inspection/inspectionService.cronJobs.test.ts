@@ -410,9 +410,7 @@ describe('InspectionService Cron Jobs', () => {
       expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
         inspection._id.toString(),
         expect.objectContaining({
-          $set: expect.objectContaining({
-            previousOperationalStatus: undefined,
-          }),
+          $unset: { previousOperationalStatus: 1 },
         })
       );
     });

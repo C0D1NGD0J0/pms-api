@@ -35,6 +35,8 @@ import {
   MaintenanceRequestDAO,
   PaymentProcessorDAO,
   SubscriptionDAO,
+  PropertyUnitDAO,
+  InspectionDAO,
   PropertyDAO,
   ProfileDAO,
   PaymentDAO,
@@ -63,6 +65,8 @@ interface IConstructor {
   permissionService: PermissionService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
+  inspectionDAO: InspectionDAO;
   vendorService: VendorService;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -86,6 +90,8 @@ export class UserService implements ICronProvider {
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly inspectionDAO: InspectionDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -102,6 +108,8 @@ export class UserService implements ICronProvider {
     maintenanceRequestDAO,
     paymentProcessorDAO,
     subscriptionDAO,
+    propertyUnitDAO,
+    inspectionDAO,
     vendorService,
     emitterService,
     permissionService,
@@ -113,6 +121,8 @@ export class UserService implements ICronProvider {
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.subscriptionDAO = subscriptionDAO;
+    this.inspectionDAO = inspectionDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -360,12 +370,15 @@ export class UserService implements ICronProvider {
           if (roles.includes(ROLES.VENDOR as string) && user._id) {
             const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
             if (vendorEntity) {
+              const vendorRating = await this.maintenanceRequestDAO.getVendorAvgRating(
+                user._id.toString()
+              );
               tableUserData.vendorInfo = {
                 companyName: vendorEntity.companyName || 'Unknown Company',
                 businessType: vendorEntity.businessType || 'General Contractor',
                 serviceType: vendorEntity.businessType || 'General Contractor',
                 contactPerson: vendorEntity.contactPerson?.name || fullName,
-                rating: 0,
+                rating: vendorRating > 0 ? parseFloat(vendorRating.toFixed(1)) : 0,
                 reviewCount: 0,
                 completedJobs: 0,
                 averageServiceCost: 0,
@@ -642,6 +655,30 @@ export class UserService implements ICronProvider {
       }
     }
 
+    // Fetch real task stats: maintenance requests managed by this employee + inspections
+    const userId = user._id.toString();
+    const [maintenanceStats, completedInspections, activeInspections, unitsManagedCount] =
+      await Promise.all([
+        this.maintenanceRequestDAO.getStats(cuid, { managedByUserId: userId }),
+        this.inspectionDAO.countDocuments({
+          cuid,
+          inspectorUid: user.uid,
+          status: 'approved',
+          deletedAt: null,
+        }),
+        this.inspectionDAO.countDocuments({
+          cuid,
+          inspectorUid: user.uid,
+          status: { $in: ['scheduled', 'in_progress', 'submitted', 'pending_review'] },
+          deletedAt: null,
+        }),
+        this.propertyUnitDAO.countDocuments({
+          cuid,
+          managedBy: new Types.ObjectId(userId),
+          deletedAt: null,
+        }),
+      ]);
+
     return {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
@@ -721,25 +758,11 @@ export class UserService implements ICronProvider {
         phone: 'N/A',
       },
 
-      // Performance statistics
       stats: {
         propertiesManaged: userManagedProperties.length,
-        unitsManaged: userManagedProperties.reduce(
-          (sum: number, p: any) => sum + (p.units || 0),
-          0
-        ),
-        tasksCompleted: 0,
-        onTimeRate: 'N/A',
-        rating: 'N/A',
-        activeTasks: 0,
-      },
-
-      // Performance metrics
-      performance: {
-        taskCompletionRate: 'N/A',
-        tenantSatisfaction: 'N/A',
-        avgOccupancyRate: 'N/A',
-        avgResponseTime: 'N/A',
+        unitsManaged: unitsManagedCount,
+        tasksCompleted: maintenanceStats.completed + completedInspections,
+        activeTasks: maintenanceStats.assigned + maintenanceStats.inProgress + activeInspections,
       },
 
       // Employment tags/badges
@@ -785,6 +808,12 @@ export class UserService implements ICronProvider {
     const clientConn = vendorInfo?.connectedClients?.find((c: any) => c.cuid === cuid);
     const payoutAccount = clientConn?.payoutAccount;
 
+    // Fetch real maintenance stats and rating for this vendor
+    const [maintenanceStats, avgRating] = await Promise.all([
+      this.maintenanceRequestDAO.getStats(cuid, { vendorUserId: userid }),
+      this.maintenanceRequestDAO.getVendorAvgRating(userid),
+    ]);
+
     return {
       vuid: vendorInfo?.vuid || '',
       companyName: vendorInfo?.companyName || _personalInfo.displayName || '',
@@ -825,12 +854,12 @@ export class UserService implements ICronProvider {
         phone: vendorInfo?.contactPerson?.phone || _personalInfo.phoneNumber || '',
       },
 
-      // Vendor statistics (placeholder)
       stats: {
-        completedJobs: 0,
-        activeJobs: 0,
-        rating: '0',
-        responseTime: '24h',
+        completedJobs: maintenanceStats.completed,
+        activeJobs: maintenanceStats.assigned + maintenanceStats.inProgress,
+        rating: String(avgRating > 0 ? avgRating.toFixed(1) : '0'),
+        responseTime:
+          maintenanceStats.avgResolutionDays > 0 ? `${maintenanceStats.avgResolutionDays}d` : 'N/A',
         onTimeRate: '0%',
       },
 

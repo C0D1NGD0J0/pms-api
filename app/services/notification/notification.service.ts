@@ -45,6 +45,7 @@ import {
   notifySystemError as notifySystemErrorFn,
 } from './notification.lease.public';
 import {
+  handleInspectionAIAnalyzed,
   handleInspectionScheduled,
   handleInspectionSubmitted,
   handleInspectionCancelled,
@@ -1627,6 +1628,9 @@ export class NotificationService {
     this.emitterService.on(EventTypes.INSPECTION_REJECTED, (p) => handleInspectionRejected(ctx, p));
     this.emitterService.on(EventTypes.INSPECTION_CANCELLED, (p) =>
       handleInspectionCancelled(ctx, p)
+    );
+    this.emitterService.on(EventTypes.INSPECTION_AI_ANALYZED, (p) =>
+      handleInspectionAIAnalyzed(ctx, p)
     );
   }
 

@@ -196,8 +196,14 @@ export class MailService {
       case MailType.PAYMENT_REQUEST_CREATED:
         template = await this.buildTemplate('payment-request', emailData, 'payment');
         break;
+      case MailType.COMPANY_CLOSURE_VENDOR:
+        template = await this.buildTemplate('company-closure-vendor', emailData, 'subscription');
+        break;
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
+        break;
+      case MailType.COMPANY_CLOSURE_STAFF:
+        template = await this.buildTemplate('company-closure-staff', emailData, 'subscription');
         break;
       case MailType.ACCOUNT_DISCONNECTED:
         template = await this.buildTemplate(
@@ -398,6 +404,8 @@ export class MailService {
       [MailType.INSPECTION_APPROVED]: 'Inspection Approved',
       [MailType.INSPECTION_REJECTED]: 'Inspection Report — Action Required',
       [MailType.INSPECTION_CANCELLED]: 'Inspection Cancelled',
+      [MailType.COMPANY_CLOSURE_STAFF]: 'Account Closure Notice',
+      [MailType.COMPANY_CLOSURE_VENDOR]: 'Service Disconnection Notice',
     };
 
     return subjectMap[mailType] || subjectMap.default;

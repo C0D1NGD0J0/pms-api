@@ -68,6 +68,7 @@ describe('InspectionService Integration Tests', () => {
     const cuid = client.cuid;
 
     const admin = await createTestUser(cuid, { roles: [ROLES.ADMIN] });
+    const approver = await createTestUser(cuid, { roles: [ROLES.ADMIN] });
     const tenant = await createTestUser(cuid, { roles: [ROLES.TENANT] });
     const property = await createTestProperty(cuid, client._id);
     const unit = await createTestPropertyUnit(cuid, property._id);
@@ -119,7 +120,7 @@ describe('InspectionService Integration Tests', () => {
       ],
     } as any);
 
-    return { client, cuid, admin, tenant, property, unit, lease: lease as any };
+    return { client, cuid, admin, approver, tenant, property, unit, lease: lease as any };
   };
 
   const makeRooms = (conditions: ConditionRating[]) =>
@@ -137,8 +138,9 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Move-in happy path', () => {
     it('should complete: schedule → update rooms → submit → approve', async () => {
-      const { cuid, admin, lease } = await setupScenario();
+      const { cuid, admin, approver, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
 
       // 1. Schedule
       const scheduleResult = await inspectionService.scheduleInspection(cuid, adminId, {
@@ -179,11 +181,11 @@ describe('InspectionService Integration Tests', () => {
       expect(dbDoc!.submittedAt).toBeDefined();
 
       // 4. Review (SUBMITTED → PENDING_REVIEW)
-      const reviewResult = await inspectionService.reviewInspection(cuid, iuid, {});
+      const reviewResult = await inspectionService.reviewInspection(cuid, iuid, approverId, 'admin', {});
       expect(reviewResult.success).toBe(true);
 
-      // 5. Approve (PENDING_REVIEW → APPROVED)
-      const approveResult = await inspectionService.approveInspection(cuid, iuid);
+      // 5. Approve (PENDING_REVIEW → APPROVED, by a different admin — self-approval guard)
+      const approveResult = await inspectionService.approveInspection(cuid, iuid, approverId, 'admin');
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -194,8 +196,9 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Move-out with refund', () => {
     it('should handle full workflow: schedule with refundDeposit → submit → approve with refundAmount', async () => {
-      const { cuid, admin, lease } = await setupScenario();
+      const { cuid, admin, approver, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
 
       // Move lease end date within 30 days so move-out scheduling is allowed
       await Lease.updateOne(
@@ -229,11 +232,11 @@ describe('InspectionService Integration Tests', () => {
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
       // Review (SUBMITTED → PENDING_REVIEW)
-      await inspectionService.reviewInspection(cuid, iuid, {});
+      await inspectionService.reviewInspection(cuid, iuid, approverId, 'admin', {});
 
-      // Approve with partial refund (PENDING_REVIEW → APPROVED)
+      // Approve with partial refund (PENDING_REVIEW → APPROVED, by a different admin — self-approval guard)
       const refundAmount = 800;
-      const approveResult = await inspectionService.approveInspection(cuid, iuid, refundAmount);
+      const approveResult = await inspectionService.approveInspection(cuid, iuid, approverId, 'admin', refundAmount);
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -245,8 +248,9 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Rejection + revision (move-in)', () => {
     it('should allow: submit → reject → update (clears rejection, back to in_progress) → resubmit', async () => {
-      const { cuid, admin, lease } = await setupScenario();
+      const { cuid, admin, approver, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
 
       // Schedule + update to in_progress + submit
       const scheduleResult = await inspectionService.scheduleInspection(cuid, adminId, {
@@ -261,8 +265,8 @@ describe('InspectionService Integration Tests', () => {
       });
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
-      // Reject
-      const rejectResult = await inspectionService.rejectInspection(cuid, iuid, {
+      // Reject (by a different admin — self-approval guard)
+      const rejectResult = await inspectionService.rejectInspection(cuid, iuid, approverId, 'admin', {
         text: 'Photos are blurry, please retake',
       });
       expect(rejectResult.success).toBe(true);
@@ -292,8 +296,9 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Dispute flow', () => {
     it('should complete: submit → dispute → approve with disputeNotes persisted', async () => {
-      const { cuid, admin, tenant, lease } = await setupScenario();
+      const { cuid, admin, approver, tenant, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
       const tenantId = tenant._id.toString();
 
       // Schedule + update + submit
@@ -310,7 +315,7 @@ describe('InspectionService Integration Tests', () => {
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
       // Review (SUBMITTED → PENDING_REVIEW) — required before dispute
-      await inspectionService.reviewInspection(cuid, iuid, {});
+      await inspectionService.reviewInspection(cuid, iuid, approverId, 'admin', {});
 
       // Tenant disputes (PENDING_REVIEW → DISPUTED)
       const disputeResult = await inspectionService.disputeInspection(cuid, tenantId, iuid, {
@@ -322,8 +327,8 @@ describe('InspectionService Integration Tests', () => {
       expect(dbDoc!.status).toBe(InspectionStatus.DISPUTED);
       expect(dbDoc!.disputeNotes?.text).toBe('The kitchen damage was pre-existing');
 
-      // Admin approves the disputed inspection
-      const approveResult = await inspectionService.approveInspection(cuid, iuid);
+      // Approver approves the disputed inspection (different admin — self-approval guard)
+      const approveResult = await inspectionService.approveInspection(cuid, iuid, approverId, 'admin');
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });

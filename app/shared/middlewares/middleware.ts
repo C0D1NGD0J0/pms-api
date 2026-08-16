@@ -942,7 +942,7 @@ export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings
     // Restrict tenants with pending deactivation to read-only + inspection actions
     if (activeConnection?.pendingDeactivation) {
       const method = req.method.toUpperCase();
-      const path = req.path.toLowerCase();
+      const path = req.originalUrl.toLowerCase();
 
       // Allow all GET requests (read-only access)
       if (method === 'GET') {

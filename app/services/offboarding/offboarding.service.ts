@@ -232,6 +232,7 @@ export class OffboardingService {
         // Check if this is a move-out inspection tied to an expired/terminated lease
         const inspection = await this.inspectionDAO.findFirst({
           iuid: payload.iuid,
+          cuid: payload.cuid,
           type: InspectionType.MOVE_OUT,
           deletedAt: null,
         });
@@ -240,6 +241,7 @@ export class OffboardingService {
 
         const lease = await this.leaseDAO.findFirst({
           _id: inspection.leaseId,
+          cuid: payload.cuid,
           status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.EXPIRED, LeaseStatus.TERMINATED] },
           deletedAt: null,
         });

@@ -52,6 +52,7 @@ const mockEmailQueue = {
 
 const CUID = 'test-client-cuid';
 const USER_ID = new Types.ObjectId().toString();
+const APPROVER_ID = new Types.ObjectId().toString();
 const TENANT_ID = new Types.ObjectId().toString();
 const IUID = 'insp-abc123';
 
@@ -167,7 +168,7 @@ describe('InspectionService', () => {
         status: InspectionStatus.APPROVED,
       });
 
-      const result = await service.approveInspection(CUID, IUID);
+      const result = await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin');
 
       expect(result.success).toBe(true);
       expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
@@ -249,7 +250,7 @@ describe('InspectionService', () => {
         status: InspectionStatus.APPROVED,
       });
 
-      const result = await service.approveInspection(CUID, IUID);
+      const result = await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin');
 
       expect(result.success).toBe(true);
     });
@@ -402,7 +403,7 @@ describe('InspectionService', () => {
       });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
 
-      await expect(service.approveInspection(CUID, IUID, 500)).rejects.toThrow(
+      await expect(service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 500)).rejects.toThrow(
         /does not have a security deposit to refund/
       );
     });
@@ -415,7 +416,7 @@ describe('InspectionService', () => {
       });
       mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
 
-      await expect(service.approveInspection(CUID, IUID, 1500)).rejects.toThrow(
+      await expect(service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 1500)).rejects.toThrow(
         /Refund amount cannot exceed deposit amount/
       );
     });
@@ -432,7 +433,7 @@ describe('InspectionService', () => {
         status: InspectionStatus.APPROVED,
       });
 
-      await service.approveInspection(CUID, IUID, 0);
+      await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 0);
 
       const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
       expect(setFields['refundInfo.isRefunded']).toBe(false);
@@ -451,7 +452,7 @@ describe('InspectionService', () => {
         status: InspectionStatus.APPROVED,
       });
 
-      await service.approveInspection(CUID, IUID, 750);
+      await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 750);
 
       const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
       expect(setFields['refundInfo.isRefunded']).toBe(true);

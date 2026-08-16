@@ -487,7 +487,6 @@ router.post(
   '/:cuid/close-account',
   basicLimiter(),
   requireRole([ROLES.SUPER_ADMIN]),
-  requireNotSuspended,
   validateRequest({
     params: UtilsValidations.cuid,
     body: z.object({ reason: z.string().optional() }),

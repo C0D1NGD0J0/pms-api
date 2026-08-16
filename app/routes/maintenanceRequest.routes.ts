@@ -170,7 +170,6 @@ router.patch(
     roleBasedContext
   ),
   requireActiveTenant('maintenanceRequests'),
-  requireActiveTenant('maintenanceRequests'),
   requireActiveSubscription,
   idempotency,
   diskUpload(['media[*][file]']),

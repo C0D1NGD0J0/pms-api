@@ -317,37 +317,6 @@ export async function handleInspectionReminder(
   }
 }
 
-export async function handleInspectionAIAnalyzed(
-  ctx: INotificationContext,
-  payload: InspectionAIAnalyzedPayload
-): Promise<void> {
-  const { cuid, iuid, riskFlagCount } = payload;
-
-  try {
-    const riskNote =
-      riskFlagCount > 0
-        ? `${riskFlagCount} risk flag${riskFlagCount > 1 ? 's' : ''} detected`
-        : 'No risk flags detected';
-
-    // Notify approvers (PM / account admin) that AI analysis is ready
-    const approvers = await ctx.findApprovers('system', cuid);
-    for (const approverId of approvers) {
-      await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
-        cuid,
-        type: NotificationTypeEnum.INSPECTION,
-        title: 'AI Analysis Complete',
-        message: `AI analysis for inspection is ready. ${riskNote}`,
-        recipientType: RecipientTypeEnum.INDIVIDUAL,
-        recipient: approverId,
-        priority: riskFlagCount > 0 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.LOW,
-        actionUrl: `/inspections/${cuid}/${iuid}`,
-      });
-    }
-  } catch (err) {
-    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection AI analyzed notification');
-  }
-}
-
 export async function handleInspectionReviewed(
   ctx: INotificationContext,
   payload: InspectionReviewedPayload
@@ -373,6 +342,32 @@ export async function handleInspectionReviewed(
     });
   } catch (err) {
     ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection reviewed notification');
+  }
+}
+
+export async function handleInspectionAIAnalyzed(
+  ctx: INotificationContext,
+  payload: InspectionAIAnalyzedPayload
+): Promise<void> {
+  const { cuid, iuid, riskFlagCount } = payload;
+
+  try {
+    const riskNote =
+      riskFlagCount > 0
+        ? ` ${riskFlagCount} risk flag${riskFlagCount > 1 ? 's' : ''} detected.`
+        : '';
+
+    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
+      cuid,
+      type: NotificationTypeEnum.INSPECTION,
+      title: 'AI Analysis Complete',
+      message: `AI analysis for inspection is ready.${riskNote}`,
+      recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+      priority: riskFlagCount > 0 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.LOW,
+      actionUrl: `/inspections/${cuid}/${iuid}`,
+    });
+  } catch (err) {
+    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection AI analyzed notification');
   }
 }
 

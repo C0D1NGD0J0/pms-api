@@ -219,6 +219,7 @@ router.get(
     }
   ),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('vendorManagement'),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),

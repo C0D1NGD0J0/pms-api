@@ -1097,6 +1097,7 @@ export class OffboardingService {
       deletedAt: null,
     });
 
+    let staffDisconnected = 0;
     for (const user of staffUsers.items || []) {
       try {
         if (user._id.toString() === currentUser.sub) continue;
@@ -1105,6 +1106,7 @@ export class OffboardingService {
           { _id: user._id, 'cuids.cuid': cuid },
           { $set: { 'cuids.$.isConnected': false } }
         );
+        staffDisconnected++;
 
         if (user.uid) {
           await this.userCache?.invalidateUserDetail(cuid, user.uid);
@@ -1181,7 +1183,7 @@ export class OffboardingService {
     return {
       success: true,
       data: {
-        message: `Account closed. ${leaseResults.succeeded} leases terminated, ${(staffUsers.items || []).length} staff disconnected, ${(vendors.items || []).length} vendors disconnected.`,
+        message: `Account closed. ${leaseResults.succeeded} leases terminated, ${staffDisconnected} staff disconnected, ${(vendors.items || []).length} vendors disconnected.`,
       },
       message: 'Account has been closed successfully',
     };
@@ -1223,9 +1225,9 @@ export class OffboardingService {
       deletedAt: null,
     });
     const connectedStaff = await this.userDAO.countDocuments({
-      'cuids.cuid': cuid,
-      'cuids.roles': { $in: ROLE_GROUPS.EMPLOYEE_ROLES },
-      'cuids.isConnected': true,
+      cuids: {
+        $elemMatch: { cuid, isConnected: true, roles: { $in: ROLE_GROUPS.EMPLOYEE_ROLES } },
+      },
       deletedAt: null,
     });
 
@@ -1234,8 +1236,7 @@ export class OffboardingService {
       deletedAt: null,
     });
     const connectedVendors = await this.vendorDAO.countDocuments({
-      'connectedClients.cuid': cuid,
-      'connectedClients.isConnected': true,
+      connectedClients: { $elemMatch: { cuid, isConnected: true } },
       deletedAt: null,
     });
 

@@ -8,6 +8,7 @@ import { OffboardingController } from '@controllers/OffboardingController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
+  requireActiveSubscription,
   subscriptionEntitlements,
   requireVerifiedClient,
   requireNotSuspended,
@@ -116,6 +117,7 @@ router
     requireNotSuspended,
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
+    requireActiveSubscription,
     idempotency,
     diskUpload(['document']),
     scanFile,
@@ -176,6 +178,7 @@ router
   .patch(
     basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+    requireActiveSubscription,
     diskUpload(['document']),
     scanFile,
     idempotency,
@@ -207,6 +210,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireVerifiedClient,
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -224,6 +228,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireActiveTenant(),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -288,6 +293,7 @@ router
     requireActiveTenant(),
     requireFeatureFlag(FeatureFlag.ESIGNATURE),
     subscriptionEntitlements,
+    requireActiveSubscription,
     requireFeature('eSignature'),
     idempotency,
     validateRequest({
@@ -378,6 +384,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN]),
     requireVerifiedClient,
+    requireActiveSubscription,
     idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -416,6 +423,7 @@ router.patch(
   '/:cuid/:luid/vacate-request',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.vacateRequestDecision,
@@ -449,6 +457,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER]),
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.renewalRequestDecision,
@@ -473,11 +482,41 @@ router.get(
   })
 );
 
+// Account closure routes (super-admin only)
+router.post(
+  '/:cuid/close-account',
+  basicLimiter(),
+  requireRole([ROLES.SUPER_ADMIN]),
+  requireNotSuspended,
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: z.object({ reason: z.string().optional() }),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.initiateAccountClosure(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/closure-status',
+  basicLimiter(),
+  requireRole([ROLES.SUPER_ADMIN]),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getAccountClosureStatus(req, res);
+  })
+);
+
 // Lease Approval Routes
 router.post(
   '/:cuid/:luid/approve',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.approveLease,
@@ -492,6 +531,7 @@ router.post(
   '/:cuid/:luid/reject',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.rejectLease,

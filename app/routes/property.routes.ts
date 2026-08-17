@@ -216,6 +216,7 @@ router.post(
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   subscriptionEntitlements,
+  requireActiveSubscription,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
     body: PropertyValidations.assignStaff,
@@ -231,6 +232,7 @@ router.post(
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   subscriptionEntitlements,
+  requireActiveSubscription,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,
     body: PropertyValidations.unassignStaff,
@@ -245,6 +247,7 @@ router.patch(
   '/:cuid/client_properties/:pid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  requireActiveSubscription,
   idempotency,
   diskUpload(['documents[*].file', 'images[*].file']),
   scanFile,
@@ -276,6 +279,7 @@ router.delete(
   '/:cuid/delete_properties/:pid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: PropertyValidations.validatePropertyAndClientIds,

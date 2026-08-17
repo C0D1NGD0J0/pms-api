@@ -68,6 +68,7 @@ describe('InspectionService Integration Tests', () => {
     const cuid = client.cuid;
 
     const admin = await createTestUser(cuid, { roles: [ROLES.ADMIN] });
+    const approver = await createTestUser(cuid, { roles: [ROLES.ADMIN] });
     const tenant = await createTestUser(cuid, { roles: [ROLES.TENANT] });
     const property = await createTestProperty(cuid, client._id);
     const unit = await createTestPropertyUnit(cuid, property._id);
@@ -119,7 +120,7 @@ describe('InspectionService Integration Tests', () => {
       ],
     } as any);
 
-    return { client, cuid, admin, tenant, property, unit, lease: lease as any };
+    return { client, cuid, admin, approver, tenant, property, unit, lease: lease as any };
   };
 
   const makeRooms = (conditions: ConditionRating[]) =>
@@ -137,8 +138,9 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Move-in happy path', () => {
     it('should complete: schedule → update rooms → submit → approve', async () => {
-      const { cuid, admin, lease } = await setupScenario();
+      const { cuid, admin, approver, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
 
       // 1. Schedule
       const scheduleResult = await inspectionService.scheduleInspection(cuid, adminId, {
@@ -178,8 +180,23 @@ describe('InspectionService Integration Tests', () => {
       expect(dbDoc!.overallCondition).toBeDefined();
       expect(dbDoc!.submittedAt).toBeDefined();
 
-      // 4. Approve
-      const approveResult = await inspectionService.approveInspection(cuid, iuid);
+      // 4. Review (SUBMITTED → PENDING_REVIEW)
+      const reviewResult = await inspectionService.reviewInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin',
+        {}
+      );
+      expect(reviewResult.success).toBe(true);
+
+      // 5. Approve (PENDING_REVIEW → APPROVED, by a different admin — self-approval guard)
+      const approveResult = await inspectionService.approveInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin'
+      );
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -190,8 +207,15 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Move-out with refund', () => {
     it('should handle full workflow: schedule with refundDeposit → submit → approve with refundAmount', async () => {
-      const { cuid, admin, lease } = await setupScenario();
+      const { cuid, admin, approver, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
+
+      // Move lease end date within 30 days so move-out scheduling is allowed
+      await Lease.updateOne(
+        { _id: lease._id },
+        { $set: { 'duration.endDate': new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) } }
+      );
 
       // Schedule with refundDeposit
       const scheduleResult = await inspectionService.scheduleInspection(cuid, adminId, {
@@ -218,22 +242,32 @@ describe('InspectionService Integration Tests', () => {
       // Submit
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
-      // Approve with partial refund
+      // Review (SUBMITTED → PENDING_REVIEW)
+      await inspectionService.reviewInspection(cuid, iuid, approverId, 'admin', {});
+
+      // Approve with partial refund (PENDING_REVIEW → APPROVED, by a different admin — self-approval guard)
       const refundAmount = 800;
-      const approveResult = await inspectionService.approveInspection(cuid, iuid, refundAmount);
+      const approveResult = await inspectionService.approveInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin',
+        refundAmount
+      );
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
       expect(dbDoc!.status).toBe(InspectionStatus.APPROVED);
-      expect(dbDoc!.refundInfo!.amount).toBe(refundAmount);
+      expect(dbDoc!.refundInfo!.proposedRefund).toBe(refundAmount);
       expect(dbDoc!.refundInfo!.isRefunded).toBe(true);
     });
   });
 
   describe('Rejection + revision (move-in)', () => {
     it('should allow: submit → reject → update (clears rejection, back to in_progress) → resubmit', async () => {
-      const { cuid, admin, lease } = await setupScenario();
+      const { cuid, admin, approver, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
 
       // Schedule + update to in_progress + submit
       const scheduleResult = await inspectionService.scheduleInspection(cuid, adminId, {
@@ -248,12 +282,18 @@ describe('InspectionService Integration Tests', () => {
       });
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
-      // Reject
-      const rejectResult = await inspectionService.rejectInspection(cuid, iuid, {
-        text: 'Photos are blurry, please retake',
-      });
+      // Reject (by a different admin — self-approval guard)
+      const rejectResult = await inspectionService.rejectInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin',
+        {
+          text: 'Photos are blurry, please retake',
+        }
+      );
       expect(rejectResult.success).toBe(true);
-      expect(rejectResult.message).toContain('revise and resubmit');
+      expect(rejectResult.message).toContain('revised and resubmitted');
 
       let dbDoc = await Inspection.findOne({ iuid });
       expect(dbDoc!.status).toBe(InspectionStatus.REJECTED);
@@ -279,8 +319,9 @@ describe('InspectionService Integration Tests', () => {
 
   describe('Dispute flow', () => {
     it('should complete: submit → dispute → approve with disputeNotes persisted', async () => {
-      const { cuid, admin, tenant, lease } = await setupScenario();
+      const { cuid, admin, approver, tenant, lease } = await setupScenario();
       const adminId = admin._id.toString();
+      const approverId = approver._id.toString();
       const tenantId = tenant._id.toString();
 
       // Schedule + update + submit
@@ -296,7 +337,10 @@ describe('InspectionService Integration Tests', () => {
       });
       await inspectionService.submitInspection(cuid, adminId, 'admin', iuid);
 
-      // Tenant disputes
+      // Review (SUBMITTED → PENDING_REVIEW) — required before dispute
+      await inspectionService.reviewInspection(cuid, iuid, approverId, 'admin', {});
+
+      // Tenant disputes (PENDING_REVIEW → DISPUTED)
       const disputeResult = await inspectionService.disputeInspection(cuid, tenantId, iuid, {
         disputeNotes: { text: 'The kitchen damage was pre-existing' },
       });
@@ -306,8 +350,13 @@ describe('InspectionService Integration Tests', () => {
       expect(dbDoc!.status).toBe(InspectionStatus.DISPUTED);
       expect(dbDoc!.disputeNotes?.text).toBe('The kitchen damage was pre-existing');
 
-      // Admin approves the disputed inspection
-      const approveResult = await inspectionService.approveInspection(cuid, iuid);
+      // Approver approves the disputed inspection (different admin — self-approval guard)
+      const approveResult = await inspectionService.approveInspection(
+        cuid,
+        iuid,
+        approverId,
+        'admin'
+      );
       expect(approveResult.success).toBe(true);
 
       dbDoc = await Inspection.findOne({ iuid });
@@ -378,12 +427,18 @@ describe('InspectionService Integration Tests', () => {
       const { cuid, admin, lease } = await setupScenario();
       const adminId = admin._id.toString();
 
-      // Schedule move-in
+      // Schedule move-in first (while end date is far away)
       await inspectionService.scheduleInspection(cuid, adminId, {
         type: InspectionType.MOVE_IN,
         leaseId: lease.luid,
         scheduledDate: new Date(Date.now() + 86400000).toISOString(),
       });
+
+      // Now move lease end date within 30 days so move-out scheduling is allowed
+      await Lease.updateOne(
+        { _id: lease._id },
+        { $set: { 'duration.endDate': new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) } }
+      );
 
       // Schedule move-out — different type, should succeed
       const result = await inspectionService.scheduleInspection(cuid, adminId, {

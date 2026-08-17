@@ -4,30 +4,34 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
+import { ClientDAO } from '@dao/clientDAO';
+import { VendorDAO } from '@dao/vendorDAO';
 import { LeaseCache } from '@caching/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { LeaseService } from '@services/lease';
 import { UserCache } from '@caching/user.cache';
 import { AuthCache } from '@caching/auth.cache';
+import { EmailQueue } from '@queues/email.queue';
 import { InspectionDAO } from '@dao/inspectionDAO';
-import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
 import { LEASE_CONSTANTS, createLogger } from '@utils/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
+import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
+import { buildSystemRequestContext, getSystemBotUserId } from '@utils/systemBot';
 import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
-import { IPromiseReturnedData, IRequestContext } from '@interfaces/utils.interface';
 import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
+import { IPromiseReturnedData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import {
   IVacateRequestDecision,
   IOffboardingStatus,
@@ -53,6 +57,9 @@ export class OffboardingService {
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly maintenancePaymentService: MaintenancePaymentService;
   private readonly sseService: SSEService;
+  private readonly vendorDAO: VendorDAO;
+  private readonly clientDAO: ClientDAO;
+  private readonly emailQueue: EmailQueue;
 
   constructor({
     userDAO,
@@ -71,6 +78,9 @@ export class OffboardingService {
     maintenanceRequestDAO,
     maintenancePaymentService,
     sseService,
+    vendorDAO,
+    clientDAO,
+    emailQueue,
   }: {
     userDAO: UserDAO;
     leaseDAO: LeaseDAO;
@@ -88,6 +98,9 @@ export class OffboardingService {
     maintenanceRequestDAO: MaintenanceRequestDAO;
     maintenancePaymentService: MaintenancePaymentService;
     sseService: SSEService;
+    vendorDAO: VendorDAO;
+    clientDAO: ClientDAO;
+    emailQueue: EmailQueue;
   }) {
     this.log = createLogger('OffboardingService');
     this.userDAO = userDAO;
@@ -106,6 +119,9 @@ export class OffboardingService {
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.maintenancePaymentService = maintenancePaymentService;
     this.sseService = sseService;
+    this.vendorDAO = vendorDAO;
+    this.clientDAO = clientDAO;
+    this.emailQueue = emailQueue;
 
     this.setupEventListeners();
   }
@@ -216,6 +232,7 @@ export class OffboardingService {
         // Check if this is a move-out inspection tied to an expired/terminated lease
         const inspection = await this.inspectionDAO.findFirst({
           iuid: payload.iuid,
+          cuid: payload.cuid,
           type: InspectionType.MOVE_OUT,
           deletedAt: null,
         });
@@ -224,6 +241,7 @@ export class OffboardingService {
 
         const lease = await this.leaseDAO.findFirst({
           _id: inspection.leaseId,
+          cuid: payload.cuid,
           status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.EXPIRED, LeaseStatus.TERMINATED] },
           deletedAt: null,
         });
@@ -990,6 +1008,260 @@ export class OffboardingService {
       success: true,
       data: updatedLease,
       message: t('common.success.updated', { resource: 'Renewal request' }),
+    };
+  }
+
+  /**
+   * PM-initiated account closure. Terminates all active leases (triggering the existing
+   * offboarding chain per lease), disconnects staff and vendors, suspends the client,
+   * and sends closure notification emails.
+   */
+  async initiateAccountClosure(
+    cuid: string,
+    ctx: IRequestContext,
+    reason?: string
+  ): IPromiseReturnedData<{ message: string }> {
+    const currentUser = ctx.currentuser!;
+
+    if (currentUser.client.role !== 'super-admin') {
+      throw new BadRequestError({ message: 'Only the account owner can close the account' });
+    }
+
+    // Idempotency: skip if already closed
+    const client = await this.clientDAO.findFirst(
+      { cuid },
+      { select: '+suspension.isActive +suspension.reason +suspension.at +suspension.by' }
+    );
+    if (!client) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+    if (client.suspension?.isActive && client.suspension.reason?.includes('Account closed')) {
+      return {
+        success: true,
+        data: { message: 'Account is already closed' },
+        message: 'Account is already closed',
+      };
+    }
+
+    const companyName =
+      client.companyProfile?.tradingName ||
+      client.companyProfile?.legalEntityName ||
+      client.displayName ||
+      'Your Company';
+
+    this.log.info({ cuid, initiatedBy: currentUser.sub }, 'Account closure initiated');
+
+    const systemCtx = await buildSystemRequestContext(cuid);
+    if (!systemCtx) {
+      throw new BadRequestError({
+        message: 'System bot not found — cannot process account closure',
+      });
+    }
+
+    // --- 1. Bulk terminate all active leases ---
+    const activeLeases = await this.leaseDAO.list({
+      cuid,
+      status: LeaseStatus.ACTIVE,
+      deletedAt: null,
+    });
+
+    const leaseResults = { succeeded: 0, failed: 0 };
+    for (const lease of activeLeases.items || []) {
+      try {
+        await this.leaseService.terminateLease(
+          cuid,
+          lease.luid,
+          {
+            terminationDate: new Date(),
+            terminationReason: reason || 'Account closure',
+            moveOutDate: new Date(),
+          },
+          systemCtx
+        );
+        leaseResults.succeeded++;
+      } catch (err: any) {
+        this.log.warn(
+          { luid: lease.luid, error: err.message },
+          'Lease termination failed during account closure'
+        );
+        leaseResults.failed++;
+      }
+    }
+    this.log.info({ cuid, ...leaseResults }, 'Account closure — lease termination batch complete');
+
+    // --- 2. Disconnect all staff/admin users ---
+    const staffUsers = await this.userDAO.list({
+      cuids: {
+        $elemMatch: { cuid, isConnected: true, roles: { $in: ROLE_GROUPS.EMPLOYEE_ROLES } },
+      },
+      deletedAt: null,
+    });
+
+    let staffDisconnected = 0;
+    for (const user of staffUsers.items || []) {
+      try {
+        if (user._id.toString() === currentUser.sub) continue;
+
+        await this.userDAO.update(
+          { _id: user._id, 'cuids.cuid': cuid },
+          { $set: { 'cuids.$.isConnected': false } }
+        );
+        staffDisconnected++;
+
+        if (user.uid) {
+          await this.userCache?.invalidateUserDetail(cuid, user.uid);
+        }
+        await this.authCache?.invalidateCurrentUser(user._id.toString(), cuid);
+      } catch (err: any) {
+        this.log.warn(
+          { userId: user._id, error: err.message },
+          'Staff disconnection failed during closure'
+        );
+      }
+    }
+
+    // --- 3. Disconnect all vendors ---
+    const vendors = await this.vendorDAO.getClientVendors(cuid);
+    for (const vendor of vendors.items || []) {
+      try {
+        await this.vendorDAO.disconnectClient(vendor._id.toString(), cuid);
+      } catch (err: any) {
+        this.log.warn(
+          { vendorId: vendor._id, error: err.message },
+          'Vendor disconnection failed during closure'
+        );
+      }
+    }
+
+    // --- 4. Suspend the client ---
+    await this.clientDAO.update(
+      { cuid },
+      {
+        $set: {
+          'suspension.isActive': true,
+          'suspension.reason': reason ? `Account closed: ${reason}` : 'Account closed',
+          'suspension.at': new Date(),
+          'suspension.by': new Types.ObjectId(currentUser.sub),
+        },
+      }
+    );
+
+    // --- 5. Send closure emails ---
+    for (const user of staffUsers.items || []) {
+      if (user.email && user._id.toString() !== currentUser.sub) {
+        this.emailQueue.addToEmailQueue('companyClosure-staff', {
+          to: user.email,
+          emailType: MailType.COMPANY_CLOSURE_STAFF,
+          subject: `${companyName} — Account Closure Notice`,
+          data: { companyName, effectiveDate: new Date().toLocaleDateString() },
+        });
+      }
+    }
+
+    for (const vendor of vendors.items || []) {
+      const connectedClient = (vendor as any).connectedClients?.find((c: any) => c.cuid === cuid);
+      const vendorEmail = connectedClient?.primaryAccountHolderEmail || (vendor as any).email;
+      if (vendorEmail) {
+        this.emailQueue.addToEmailQueue('companyClosure-vendor', {
+          to: vendorEmail,
+          emailType: MailType.COMPANY_CLOSURE_VENDOR,
+          subject: `${companyName} — Service Disconnection Notice`,
+          data: { companyName, effectiveDate: new Date().toLocaleDateString() },
+        });
+      }
+    }
+
+    // --- 6. Emit closure event for audit ---
+    this.emitterService.emit(EventTypes.ACCOUNT_CLOSURE_INITIATED, {
+      cuid,
+      initiatedBy: currentUser.sub,
+      reason,
+    });
+
+    this.log.info({ cuid }, 'Account closure completed');
+
+    return {
+      success: true,
+      data: {
+        message: `Account closed. ${leaseResults.succeeded} leases terminated, ${staffDisconnected} staff disconnected, ${(vendors.items || []).length} vendors disconnected.`,
+      },
+      message: 'Account has been closed successfully',
+    };
+  }
+
+  /**
+   * Returns the current state of an account closure for display on the frontend.
+   */
+  async getAccountClosureStatus(cuid: string): IPromiseReturnedData<{
+    isClosed: boolean;
+    closedAt: Date | null;
+    closureReason: string | null;
+    leases: { total: number; terminated: number; completed: number; active: number };
+    staff: { total: number; disconnected: number };
+    vendors: { total: number; disconnected: number };
+  }> {
+    const client = await this.clientDAO.findFirst(
+      { cuid },
+      { select: '+suspension.isActive +suspension.reason +suspension.at' }
+    );
+    if (!client) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+
+    const isClosed = !!(
+      client.suspension?.isActive && client.suspension.reason?.includes('Account closed')
+    );
+
+    const [activeLeases, terminatedLeases, completedLeases] = await Promise.all([
+      this.leaseDAO.countDocuments({ cuid, status: LeaseStatus.ACTIVE, deletedAt: null }),
+      this.leaseDAO.countDocuments({ cuid, status: LeaseStatus.TERMINATED, deletedAt: null }),
+      this.leaseDAO.countDocuments({ cuid, status: LeaseStatus.COMPLETED, deletedAt: null }),
+    ]);
+    const totalLeases = activeLeases + terminatedLeases + completedLeases;
+
+    const totalStaff = await this.userDAO.countDocuments({
+      'cuids.cuid': cuid,
+      'cuids.roles': { $in: ROLE_GROUPS.EMPLOYEE_ROLES },
+      deletedAt: null,
+    });
+    const connectedStaff = await this.userDAO.countDocuments({
+      cuids: {
+        $elemMatch: { cuid, isConnected: true, roles: { $in: ROLE_GROUPS.EMPLOYEE_ROLES } },
+      },
+      deletedAt: null,
+    });
+
+    const totalVendors = await this.vendorDAO.countDocuments({
+      'connectedClients.cuid': cuid,
+      deletedAt: null,
+    });
+    const connectedVendors = await this.vendorDAO.countDocuments({
+      connectedClients: { $elemMatch: { cuid, isConnected: true } },
+      deletedAt: null,
+    });
+
+    return {
+      success: true,
+      data: {
+        isClosed,
+        closedAt: isClosed ? client.suspension!.at || null : null,
+        closureReason: isClosed ? client.suspension!.reason || null : null,
+        leases: {
+          total: totalLeases,
+          terminated: terminatedLeases,
+          completed: completedLeases,
+          active: activeLeases,
+        },
+        staff: {
+          total: totalStaff,
+          disconnected: totalStaff - connectedStaff,
+        },
+        vendors: {
+          total: totalVendors,
+          disconnected: totalVendors - connectedVendors,
+        },
+      },
+      message: t('common.success.retrieved', { resource: 'Account closure status' }),
     };
   }
 }

@@ -10,6 +10,7 @@ import {
 } from '@shared/validations';
 import {
   requirePermissionWithContext,
+  requireActiveSubscription,
   subscriptionEntitlements,
   requirePrimaryVendor,
   requirePermission,
@@ -191,6 +192,7 @@ router.patch(
       return { resourceId: req.params.vuid };
     }
   ),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
@@ -199,6 +201,33 @@ router.patch(
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
     return vendorController.updateVendorDetails(req, res);
+  })
+);
+
+// Vendor reviews — confirmed tenant feedback with ratings
+router.get(
+  '/:cuid/vendor/:vuid/reviews',
+  basicLimiter(),
+  requirePermissionWithContext(
+    PermissionResource.USER,
+    PermissionAction.READ,
+    (req: AppRequest) => {
+      if (req.context?.currentuser?.client?.role === 'vendor') {
+        return { resourceId: req.params.vuid, ownerId: req.context.currentuser.sub };
+      }
+      return { resourceId: req.params.vuid };
+    }
+  ),
+  subscriptionEntitlements,
+  requireActiveSubscription,
+  requireFeature('vendorManagement'),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid),
+    query: VendorValidations.vendorReviewsQuery,
+  }),
+  asyncWrapper((req, res) => {
+    const vendorController = req.container.resolve<VendorController>('vendorController');
+    return vendorController.getVendorReviews(req, res);
   })
 );
 

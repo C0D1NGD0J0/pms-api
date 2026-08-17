@@ -108,6 +108,7 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
       total,
       scheduled: statusMap[InspectionStatus.SCHEDULED] || 0,
       inProgress: statusMap[InspectionStatus.IN_PROGRESS] || 0,
+      pendingReview: statusMap[InspectionStatus.PENDING_REVIEW] || 0,
       submitted: statusMap[InspectionStatus.SUBMITTED] || 0,
       approved: statusMap[InspectionStatus.APPROVED] || 0,
       rejected: statusMap[InspectionStatus.REJECTED] || 0,

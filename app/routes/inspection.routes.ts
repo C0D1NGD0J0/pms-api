@@ -7,6 +7,7 @@ import { InspectionValidations } from '@shared/validations/InspectionValidation'
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
   requirePermissionWithContext,
+  requireActiveSubscription,
   subscriptionEntitlements,
   requireVerifiedClient,
   requireNotSuspended,
@@ -33,6 +34,7 @@ router
     requireVerifiedClient,
     subscriptionEntitlements,
     requireFeature('inspectionService'),
+    requireActiveSubscription,
     requireFeatureFlag(FeatureFlag.INSPECTION),
     idempotency,
     validateRequest({ params: UtilsValidations.cuid, body: InspectionValidations.createBody }),
@@ -79,6 +81,7 @@ router.post(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('aiInspectionAnalysis'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.AI_INSPECTION_ANALYSIS),
   validateRequest({ params: InspectionValidations.iuidParam }),
   asyncWrapper(async (req: AppRequest, res) => {
@@ -87,7 +90,6 @@ router.post(
   })
 );
 
-// ── Notes ────────────────────────────────────────────────────────────────────
 router.post(
   '/:cuid/:iuid/notes',
   requireNotSuspended,
@@ -99,6 +101,7 @@ router.post(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({
     params: InspectionValidations.iuidParam,
@@ -110,7 +113,6 @@ router.post(
   })
 );
 
-// ── Report generation ────────────────────────────────────────────────────────
 router.post(
   '/:cuid/:iuid/report',
   requireNotSuspended,
@@ -119,8 +121,11 @@ router.post(
     PermissionAction.READ,
     roleBasedContext
   ),
+  requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireFeatureFlag(FeatureFlag.INSPECTION),
+  requireActiveSubscription,
   validateRequest({
     params: InspectionValidations.iuidParam,
     query: InspectionValidations.reportQuery,
@@ -156,6 +161,7 @@ router
     requireVerifiedClient,
     subscriptionEntitlements,
     requireFeature('inspectionService'),
+    requireActiveSubscription,
     requireFeatureFlag(FeatureFlag.INSPECTION),
     diskUpload(['rooms[*][media][*][file]']),
     scanFile,
@@ -174,6 +180,7 @@ router
     requireVerifiedClient,
     subscriptionEntitlements,
     requireFeature('inspectionService'),
+    requireActiveSubscription,
     requireFeatureFlag(FeatureFlag.INSPECTION),
     validateRequest({ params: InspectionValidations.iuidParam }),
     asyncWrapper(async (req: AppRequest, res) => {
@@ -194,6 +201,7 @@ router.patch(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.INSPECTION),
   diskUpload(['media[*][file]']),
   scanFile,
@@ -211,6 +219,7 @@ router.patch(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({
     params: InspectionValidations.iuidParam,
@@ -229,6 +238,7 @@ router.patch(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({
     params: InspectionValidations.iuidParam,
@@ -247,6 +257,7 @@ router.patch(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({
     params: InspectionValidations.iuidParam,
@@ -308,6 +319,7 @@ router.patch(
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('inspectionService'),
+  requireActiveSubscription,
   requireFeatureFlag(FeatureFlag.INSPECTION),
   validateRequest({ params: InspectionValidations.iuidParam }),
   asyncWrapper(async (req: AppRequest, res) => {

@@ -216,6 +216,7 @@ router.patch(
   '/:cuid/:pytuid/review',
   basicLimiter({ max: 20, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
+  requireVerifiedClient,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),

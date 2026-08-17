@@ -158,6 +158,9 @@ describe('OffboardingService - Vacate Requests', () => {
       maintenanceRequestDAO: mockMaintenanceRequestDAO as any,
       maintenancePaymentService: mockMaintenancePaymentService as any,
       sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
+      vendorDAO: { disconnectClient: jest.fn() } as any,
+      clientDAO: { findFirst: jest.fn() } as any,
+      emailQueue: { addToEmailQueue: jest.fn() } as any,
     });
   });
 

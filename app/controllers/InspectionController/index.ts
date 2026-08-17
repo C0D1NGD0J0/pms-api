@@ -105,15 +105,27 @@ export class InspectionController {
 
   async reviewInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const result = await this.inspectionService.reviewInspection(cuid, iuid, req.body);
+    const userId = req.context.currentuser!.uid;
+    const userRole = req.context.currentuser!.client.role;
+    const result = await this.inspectionService.reviewInspection(
+      cuid,
+      iuid,
+      userId,
+      userRole,
+      req.body
+    );
     return res.status(200).json(result);
   }
 
   async approveInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
+    const userId = req.context.currentuser!.uid;
+    const userRole = req.context.currentuser!.client.role;
     const result = await this.inspectionService.approveInspection(
       cuid,
       iuid,
+      userId,
+      userRole,
       req.body?.refundAmount
     );
     return res.status(200).json(result);
@@ -128,7 +140,15 @@ export class InspectionController {
 
   async rejectInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const result = await this.inspectionService.rejectInspection(cuid, iuid, req.body.reason);
+    const userId = req.context.currentuser!.uid;
+    const userRole = req.context.currentuser!.client.role;
+    const result = await this.inspectionService.rejectInspection(
+      cuid,
+      iuid,
+      userId,
+      userRole,
+      req.body.reason
+    );
     return res.status(200).json(result);
   }
 

@@ -6,6 +6,7 @@ import {
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
 import type {
+  InspectionAIAnalyzedPayload,
   InspectionScheduledPayload,
   InspectionSubmittedPayload,
   InspectionCancelledPayload,
@@ -341,6 +342,32 @@ export async function handleInspectionReviewed(
     });
   } catch (err) {
     ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection reviewed notification');
+  }
+}
+
+export async function handleInspectionAIAnalyzed(
+  ctx: INotificationContext,
+  payload: InspectionAIAnalyzedPayload
+): Promise<void> {
+  const { cuid, iuid, riskFlagCount } = payload;
+
+  try {
+    const riskNote =
+      riskFlagCount > 0
+        ? ` ${riskFlagCount} risk flag${riskFlagCount > 1 ? 's' : ''} detected.`
+        : '';
+
+    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
+      cuid,
+      type: NotificationTypeEnum.INSPECTION,
+      title: 'AI Analysis Complete',
+      message: `AI analysis for inspection is ready.${riskNote}`,
+      recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+      priority: riskFlagCount > 0 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.LOW,
+      actionUrl: `/inspections/${cuid}/${iuid}`,
+    });
+  } catch (err) {
+    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection AI analyzed notification');
   }
 }
 

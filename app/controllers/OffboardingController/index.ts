@@ -77,4 +77,20 @@ export class OffboardingController {
     );
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  initiateAccountClosure = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const result = await this.offboardingService.initiateAccountClosure(
+      cuid,
+      req.context,
+      req.body.reason
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getAccountClosureStatus = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const result = await this.offboardingService.getAccountClosureStatus(cuid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
 }

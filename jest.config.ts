@@ -26,7 +26,9 @@ const config: JestConfigWithTsJest = {
   ],
   transform: {
     '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.js$': 'ts-jest',
   },
+  transformIgnorePatterns: ['/node_modules/(?!(uuid|nanoid)/)'],
   testEnvironmentOptions: {
     node: true,
   },

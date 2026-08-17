@@ -17,7 +17,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { DatabaseService, RedisService } from '@database/index';
-import express, { Application, urlencoded, Response, Request, ErrorRequestHandler } from 'express';
+import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
   scopedMiddleware,
@@ -54,8 +54,7 @@ export class App implements IAppSetup {
       initBullBoardAdapter();
     }
     this.routes(this.expApp);
-    // Cast needed: @sentry/node ExpressErrorMiddleware doesn't match @types/express@5 ErrorRequestHandler
-    this.expApp.use(Sentry.expressErrorHandler() as unknown as ErrorRequestHandler);
+    this.expApp.use(Sentry.expressErrorHandler());
     this.expApp.use(errorHandlerMiddleware);
   };
 

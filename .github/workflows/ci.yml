@@ -40,6 +40,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Build
         run: npm run build
@@ -64,6 +66,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Check formatting
         run: npm run prettier:check
@@ -91,6 +95,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Type check
         run: npx tsc --noEmit -p tsconfig.build.json
@@ -113,11 +119,22 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
+      - name: Cache Redis binary
+        id: redis-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/redis-memory-server
+          key: redis-binary-${{ runner.os }}-${{ runner.arch }}-7.2.7
+
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
       - name: Run unit tests
         run: npm test
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
   build:
     name: Build
@@ -140,6 +157,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Build
         run: npm run build

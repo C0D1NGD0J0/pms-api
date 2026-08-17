@@ -26,7 +26,7 @@ const config: JestConfigWithTsJest = {
   ],
   transform: {
     '^.+\\.(ts|tsx)$': 'ts-jest',
-    '^.+\\.js$': 'ts-jest',
+    '^.+\\.m?js$': ['babel-jest', { presets: [['@babel/preset-env', { targets: { node: 'current' } }]] }],
   },
   transformIgnorePatterns: ['/node_modules/(?!(uuid|nanoid)/)'],
   testEnvironmentOptions: {

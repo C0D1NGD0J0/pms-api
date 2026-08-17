@@ -196,8 +196,14 @@ export class MailService {
       case MailType.PAYMENT_REQUEST_CREATED:
         template = await this.buildTemplate('payment-request', emailData, 'payment');
         break;
+      case MailType.COMPANY_CLOSURE_VENDOR:
+        template = await this.buildTemplate('company-closure-vendor', emailData, 'subscription');
+        break;
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
+        break;
+      case MailType.COMPANY_CLOSURE_STAFF:
+        template = await this.buildTemplate('company-closure-staff', emailData, 'subscription');
         break;
       case MailType.ACCOUNT_DISCONNECTED:
         template = await this.buildTemplate(
@@ -206,11 +212,26 @@ export class MailService {
           'accountDisconnected'
         );
         break;
+      case MailType.INSPECTION_SCHEDULED:
+        template = await this.buildTemplate('inspection-scheduled', emailData, 'inspection');
+        break;
+      case MailType.INSPECTION_SUBMITTED:
+        template = await this.buildTemplate('inspection-submitted', emailData, 'inspection');
+        break;
+      case MailType.INSPECTION_CANCELLED:
+        template = await this.buildTemplate('inspection-cancelled', emailData, 'inspection');
+        break;
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
       case MailType.LEASE_ADMIN_UPDATED:
         template = await this.buildTemplate('lease-admin-updated', emailData, 'lease');
+        break;
+      case MailType.INSPECTION_APPROVED:
+        template = await this.buildTemplate('inspection-approved', emailData, 'inspection');
+        break;
+      case MailType.INSPECTION_REJECTED:
+        template = await this.buildTemplate('inspection-rejected', emailData, 'inspection');
         break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
@@ -241,6 +262,9 @@ export class MailService {
         break;
       case MailType.ACCOUNT_UPDATE:
         template = await this.buildTemplate('accountUpdate', emailData);
+        break;
+      case MailType.LEASE_EXPIRED:
+        template = await this.buildTemplate('lease-expired', emailData, 'lease');
         break;
       case MailType.USER_CREATED:
         template = await this.buildTemplate('userCreated', emailData);
@@ -348,6 +372,7 @@ export class MailService {
       [MailType.LEASE_SIGNOFF_REQUEST]: 'Lease Sign-off Request',
       [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
+      [MailType.LEASE_EXPIRED]: 'Your Lease Has Expired',
       [MailType.PAYMENT_REQUEST_CREATED]: 'New Payment Request',
       [MailType.LEASE_PAYMENT_REMINDER]: 'Rent Payment Reminder',
       [MailType.LEASE_ADMIN_UPDATED]: 'Your Lease Has Been Updated',
@@ -374,6 +399,13 @@ export class MailService {
       [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
       [MailType.GUEST_PASS_CODE]: 'Your Visitor Access Code',
+      [MailType.INSPECTION_SCHEDULED]: 'Inspection Scheduled',
+      [MailType.INSPECTION_SUBMITTED]: 'Inspection Report Submitted',
+      [MailType.INSPECTION_APPROVED]: 'Inspection Approved',
+      [MailType.INSPECTION_REJECTED]: 'Inspection Report — Action Required',
+      [MailType.INSPECTION_CANCELLED]: 'Inspection Cancelled',
+      [MailType.COMPANY_CLOSURE_STAFF]: 'Account Closure Notice',
+      [MailType.COMPANY_CLOSURE_VENDOR]: 'Service Disconnection Notice',
     };
 
     return subjectMap[mailType] || subjectMap.default;

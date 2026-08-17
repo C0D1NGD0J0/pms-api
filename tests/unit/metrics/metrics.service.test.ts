@@ -68,8 +68,24 @@ const mockPropertyDAO = {
 const mockUserDAO = {
   getUserStats: jest.fn().mockReturnValue(Promise.resolve(mockUserStats)),
 } as any;
+const mockInspectionStats = {
+  total: 15,
+  scheduled: 3,
+  inProgress: 2,
+  submitted: 1,
+  approved: 7,
+  rejected: 1,
+  disputed: 0,
+  cancelled: 1,
+  avgCompletionDays: 4,
+  byType: { move_in: 5, move_out: 8, routine: 2 },
+};
+
 const mockMaintenanceRequestDAO = {
   getStats: jest.fn().mockReturnValue(Promise.resolve(mockMaintenanceStats)),
+} as any;
+const mockInspectionDAO = {
+  getStats: jest.fn().mockReturnValue(Promise.resolve(mockInspectionStats)),
 } as any;
 const mockClientDAO = {
   getActiveCuids: jest.fn().mockReturnValue(Promise.resolve(['cuid1', 'cuid2'])),
@@ -105,6 +121,7 @@ const mockEmitterService = {
 function makeService(): MetricsService {
   return new MetricsService({
     maintenanceRequestDAO: mockMaintenanceRequestDAO,
+    inspectionDAO: mockInspectionDAO,
     propertyUnitDAO: mockPropertyUnitDAO,
     propertyDAO: mockPropertyDAO,
     emitterService: mockEmitterService,
@@ -138,7 +155,7 @@ describe('MetricsService', () => {
   // ─── getDashboardStats ────────────────────────────────────────────────────
 
   describe('getDashboardStats', () => {
-    it('should run all 5 DAO aggregations in parallel and return IDashboardStats', async () => {
+    it('should run all 6 DAO aggregations in parallel and return IDashboardStats', async () => {
       const stats = await service.getDashboardStats('cuid123');
 
       expect(mockLeaseDAO.getLeaseStats).toHaveBeenCalledWith('cuid123');
@@ -147,6 +164,7 @@ describe('MetricsService', () => {
       expect(mockPropertyDAO.getPropertyCount).toHaveBeenCalledWith('cuid123');
       expect(mockUserDAO.getUserStats).toHaveBeenCalledWith('cuid123');
       expect(mockMaintenanceRequestDAO.getStats).toHaveBeenCalledWith('cuid123');
+      expect(mockInspectionDAO.getStats).toHaveBeenCalledWith('cuid123');
 
       // Leases — base stats plus computed totalMonthlyRent (sum of monthlyRentByCurrency)
       expect(stats.leases).toMatchObject(mockLeaseStats);
@@ -168,6 +186,18 @@ describe('MetricsService', () => {
       expect(stats.maintenance.open).toBe(mockMaintenanceStats.open);
       expect(stats.maintenance.byPriority).toEqual(mockMaintenanceStats.byPriority);
       expect(stats.maintenance.byCategory).toEqual(mockMaintenanceStats.byCategory);
+
+      // Inspections — activeCount = scheduled(3) + inProgress(2) + submitted(1) = 6
+      expect(stats.inspections.activeCount).toBe(6);
+      expect(stats.inspections.scheduled).toBe(mockInspectionStats.scheduled);
+      expect(stats.inspections.inProgress).toBe(mockInspectionStats.inProgress);
+      expect(stats.inspections.submitted).toBe(mockInspectionStats.submitted);
+      expect(stats.inspections.approved).toBe(mockInspectionStats.approved);
+      expect(stats.inspections.rejected).toBe(mockInspectionStats.rejected);
+      expect(stats.inspections.cancelled).toBe(mockInspectionStats.cancelled);
+      expect(stats.inspections.total).toBe(mockInspectionStats.total);
+      expect(stats.inspections.avgCompletionDays).toBe(mockInspectionStats.avgCompletionDays);
+      expect(stats.inspections.byType).toEqual(mockInspectionStats.byType);
 
       expect(stats.generatedAt).toBeInstanceOf(Date);
     });
@@ -355,6 +385,42 @@ describe('MetricsService', () => {
       );
     });
 
+    it('should push delta for INSPECTION_SCHEDULED', async () => {
+      mockEmitterService.emit(EventTypes.INSPECTION_SCHEDULED, {
+        cuid: 'cuid123',
+        type: 'move_in',
+        scheduledDate: new Date(),
+        propertyId: 'prop1',
+        tenantId: 'tenant1',
+        iuid: 'INS-001',
+      });
+      await Promise.resolve();
+
+      expect(mockSSEService.broadcastToClient).toHaveBeenCalledWith(
+        'cuid123',
+        expect.objectContaining({
+          type: 'metrics:delta',
+          inspections: expect.objectContaining({ scheduled: 1 }),
+        }),
+        'metrics:update'
+      );
+    });
+
+    it('should push invalidate for INSPECTION_APPROVED', async () => {
+      mockEmitterService.emit(EventTypes.INSPECTION_APPROVED, {
+        cuid: 'cuid123',
+        tenantId: 'tenant1',
+        iuid: 'INS-001',
+      });
+      await Promise.resolve();
+
+      expect(mockSSEService.broadcastToClient).toHaveBeenCalledWith(
+        'cuid123',
+        expect.objectContaining({ type: 'metrics:invalidate' }),
+        'metrics:update'
+      );
+    });
+
     it('should not push if cuid is missing in payload', async () => {
       mockEmitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
         amount: 500,
@@ -371,23 +437,24 @@ describe('MetricsService', () => {
   describe('destroy', () => {
     it('should remove all event listeners', async () => {
       await service.destroy();
-      expect(mockEmitterService.off).toHaveBeenCalledTimes(8);
+      expect(mockEmitterService.off).toHaveBeenCalledTimes(14);
     });
   });
 
   // ─── captureAllSnapshots (cron handler) ───────────────────────────────────
 
   describe('captureAllSnapshots', () => {
-    it('should iterate active cuids and call 5 snapshot methods per client', async () => {
+    it('should iterate active cuids and call 6 snapshot methods per client', async () => {
       await service.captureAllSnapshots();
 
-      // 2 clients × 5 snapshot methods each
+      // 2 clients × 6 snapshot methods each
       expect(mockLeaseDAO.getLeaseStats).toHaveBeenCalledTimes(2);
       expect(mockPaymentDAO.getPaymentStats).toHaveBeenCalledTimes(2);
       expect(mockPropertyUnitDAO.getPropertyUnitCounts).toHaveBeenCalledTimes(2);
       expect(mockUserDAO.getUserStats).toHaveBeenCalledTimes(2);
       expect(mockMaintenanceRequestDAO.getStats).toHaveBeenCalledTimes(2);
-      expect(mockMetricsDAO.insertSnapshot).toHaveBeenCalledTimes(10);
+      expect(mockInspectionDAO.getStats).toHaveBeenCalledTimes(2);
+      expect(mockMetricsDAO.insertSnapshot).toHaveBeenCalledTimes(12);
     });
 
     it('should continue processing remaining clients if one fails', async () => {

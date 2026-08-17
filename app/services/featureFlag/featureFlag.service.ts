@@ -8,6 +8,10 @@ export class FeatureFlagService {
         return (
           envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_COMMUNICATION_DRAFT_ENABLED
         );
+      case FeatureFlag.AI_INSPECTION_ANALYSIS:
+        return (
+          envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_INSPECTION_ANALYSIS_ENABLED
+        );
       case FeatureFlag.AI_MAINTENANCE_TRIAGE:
         return (
           envVariables.FEATURES.AI_ENABLED && envVariables.FEATURES.AI_MAINTENANCE_TRIAGE_ENABLED
@@ -20,6 +24,8 @@ export class FeatureFlagService {
         return envVariables.FEATURES.PUSH_NOTIFICATIONS_ENABLED;
       case FeatureFlag.INVOICE_WEBHOOK:
         return envVariables.FEATURES.INVOICE_WEBHOOK_ENABLED;
+      case FeatureFlag.INSPECTION:
+        return envVariables.FEATURES.INSPECTION_ENABLED;
       case FeatureFlag.ESIGNATURE:
         return envVariables.FEATURES.ESIGNATURE_ENABLED;
       case FeatureFlag.SMS:

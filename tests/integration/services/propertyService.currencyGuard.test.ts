@@ -117,6 +117,8 @@ describe('PropertyService — currency guard on country update', () => {
       propertyStatsService,
       subscriptionDAO: {} as any,
       paymentDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
+      inspectionDAO: {} as any,
     });
   });
 

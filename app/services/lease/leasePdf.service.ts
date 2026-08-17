@@ -27,6 +27,7 @@ import { buildLandlordInfo } from './leaseHelpers';
 import { LeaseTemplateService } from './leaseTemplateService';
 
 interface IConstructor {
+  leaseTemplateService: LeaseTemplateService;
   notificationService: NotificationService;
   pdfGeneratorService: PdfGeneratorService;
   mediaUploadService: MediaUploadService;
@@ -59,6 +60,7 @@ export class LeasePdfService {
   constructor({
     clientDAO,
     emitterService,
+    leaseTemplateService,
     sseService,
     leaseCache,
     leaseDAO,
@@ -82,7 +84,7 @@ export class LeasePdfService {
     this.mediaUploadService = mediaUploadService;
     this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
-    this.leaseTemplateService = new LeaseTemplateService();
+    this.leaseTemplateService = leaseTemplateService;
     this.setupEventListeners();
   }
 
@@ -299,7 +301,7 @@ export class LeasePdfService {
         amount: lease.fees.lateFeeAmount || 0,
         type: lease.fees.lateFeeType || 'fixed',
         percentage: lease.fees.lateFeePercentage || 0,
-        gracePeriodDays: lease.fees.lateFeeDays || 5,
+        lateFeesGracePeriod: lease.fees.lateFeeDays || 5,
       },
 
       petPolicy: lease.petPolicy,

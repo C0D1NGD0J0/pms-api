@@ -9,6 +9,7 @@ import { PermissionResource, PermissionAction, PermissionScope } from '@interfac
 const BASE_ENTITLEMENTS = {
   eSignature: false,
   maintenanceRequestService: false,
+  inspectionService: false,
   guestPassService: false,
   reportingAnalytics: false,
   leaseTemplates: false,
@@ -16,6 +17,7 @@ const BASE_ENTITLEMENTS = {
   smsService: false,
   aiTriage: false,
   aiInvoiceScanning: false,
+  aiInspectionAnalysis: false,
 };
 
 describe('PermissionService Integration Tests', () => {

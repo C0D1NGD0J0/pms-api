@@ -86,7 +86,17 @@ export const listPaymentsQuery = z.object({
   tenantId: z.string().optional(),
   leaseId: z.string().optional(),
   luid: z.string().optional(),
+  pendingReview: z.string().optional(), // 'true' | 'false' — coerced to boolean in controller
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   sortDirection: z.enum(['asc', 'desc']).optional(),
+});
+
+export const releaseDeposit = z.object({
+  isManualRelease: z.boolean().optional(),
+  reason: z.string().trim().max(500, 'Reason cannot exceed 500 characters').optional(),
+});
+
+export const reviewPayment = z.object({
+  notes: z.string().trim().max(500, 'Notes cannot exceed 500 characters').optional(),
 });

@@ -127,6 +127,10 @@ const ClientSchema = new Schema<IClientDocument>(
           message: 'Please enter a valid website URL',
         },
       },
+      logo: {
+        type: String,
+        trim: true,
+      },
       companyPhone: {
         type: String,
         trim: true,
@@ -200,6 +204,7 @@ const ClientSchema = new Schema<IClientDocument>(
         onlinePayments: { type: Boolean, default: true },
         maintenanceRequests: { type: Boolean, default: true },
         smsNotifications: { type: Boolean, default: true },
+        inspections: { type: Boolean, default: true },
         guestPass: { type: Boolean, default: false },
       },
       timeZone: {
@@ -235,6 +240,10 @@ const ClientSchema = new Schema<IClientDocument>(
         trim: true,
         default: 'USD',
         enum: Object.values(CURRENCIES),
+      },
+      requireDepositRefundApproval: {
+        type: Boolean,
+        default: false,
       },
     },
     suspension: {

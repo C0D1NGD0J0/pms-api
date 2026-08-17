@@ -8,7 +8,9 @@ import { IVendor } from '@interfaces/vendor.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { PaymentRecordType } from '@interfaces/payments.interface';
+import { InspectionStatus } from '@interfaces/inspection.interface';
 import { EventEmitterService, VendorService } from '@services/index';
+import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
@@ -34,6 +36,8 @@ import {
   MaintenanceRequestDAO,
   PaymentProcessorDAO,
   SubscriptionDAO,
+  PropertyUnitDAO,
+  InspectionDAO,
   PropertyDAO,
   ProfileDAO,
   PaymentDAO,
@@ -62,6 +66,8 @@ interface IConstructor {
   permissionService: PermissionService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
+  inspectionDAO: InspectionDAO;
   vendorService: VendorService;
   queueFactory: QueueFactory;
   propertyDAO: PropertyDAO;
@@ -73,7 +79,7 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-export class UserService {
+export class UserService implements ICronProvider {
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly clientDAO: ClientDAO;
@@ -85,6 +91,8 @@ export class UserService {
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly inspectionDAO: InspectionDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly vendorService: VendorService;
   private readonly emitterService: EventEmitterService;
   private readonly permissionService: PermissionService;
@@ -101,6 +109,8 @@ export class UserService {
     maintenanceRequestDAO,
     paymentProcessorDAO,
     subscriptionDAO,
+    propertyUnitDAO,
+    inspectionDAO,
     vendorService,
     emitterService,
     permissionService,
@@ -112,6 +122,8 @@ export class UserService {
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.subscriptionDAO = subscriptionDAO;
+    this.inspectionDAO = inspectionDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -123,6 +135,20 @@ export class UserService {
     this.queueFactory = queueFactory;
 
     this.setupEventListeners();
+  }
+
+  getCronJobs(): ICronJob[] {
+    return [
+      {
+        name: 'user:auto-deactivate-stale-tenants',
+        schedule: '15 3 * * *', // 3:15 AM UTC — overnight batch
+        handler: this.autoDeactivateStaleTenants.bind(this),
+        service: 'UserService',
+        enabled: true,
+        description: 'Force-deactivate tenants in pendingDeactivation state for 30+ days',
+        timeout: 120_000,
+      },
+    ];
   }
 
   private async fetchAndValidateUser(
@@ -345,12 +371,15 @@ export class UserService {
           if (roles.includes(ROLES.VENDOR as string) && user._id) {
             const vendorEntity = await this.vendorService.getVendorByUserId(user._id.toString());
             if (vendorEntity) {
+              const vendorRating = await this.maintenanceRequestDAO.getVendorAvgRating(
+                user._id.toString()
+              );
               tableUserData.vendorInfo = {
                 companyName: vendorEntity.companyName || 'Unknown Company',
                 businessType: vendorEntity.businessType || 'General Contractor',
                 serviceType: vendorEntity.businessType || 'General Contractor',
                 contactPerson: vendorEntity.contactPerson?.name || fullName,
-                rating: 0,
+                rating: vendorRating > 0 ? parseFloat(vendorRating.toFixed(1)) : 0,
                 reviewCount: 0,
                 completedJobs: 0,
                 averageServiceCost: 0,
@@ -627,6 +656,37 @@ export class UserService {
       }
     }
 
+    // Fetch real task stats: maintenance requests managed by this employee + inspections
+    const userId = user._id.toString();
+    const [maintenanceStats, completedInspections, activeInspections, unitsManagedCount] =
+      await Promise.all([
+        this.maintenanceRequestDAO.getStats(cuid, { managedByUserId: userId }),
+        this.inspectionDAO.countDocuments({
+          cuid,
+          inspectorUid: user.uid,
+          status: InspectionStatus.APPROVED,
+          deletedAt: null,
+        }),
+        this.inspectionDAO.countDocuments({
+          cuid,
+          inspectorUid: user.uid,
+          status: {
+            $in: [
+              InspectionStatus.SCHEDULED,
+              InspectionStatus.IN_PROGRESS,
+              InspectionStatus.SUBMITTED,
+              InspectionStatus.PENDING_REVIEW,
+            ],
+          },
+          deletedAt: null,
+        }),
+        this.propertyUnitDAO.countDocuments({
+          cuid,
+          managedBy: new Types.ObjectId(userId),
+          deletedAt: null,
+        }),
+      ]);
+
     return {
       employeeId: employeeInfo.employeeId || '',
       hireDate: hireDate,
@@ -706,25 +766,11 @@ export class UserService {
         phone: 'N/A',
       },
 
-      // Performance statistics
       stats: {
         propertiesManaged: userManagedProperties.length,
-        unitsManaged: userManagedProperties.reduce(
-          (sum: number, p: any) => sum + (p.units || 0),
-          0
-        ),
-        tasksCompleted: 0,
-        onTimeRate: 'N/A',
-        rating: 'N/A',
-        activeTasks: 0,
-      },
-
-      // Performance metrics
-      performance: {
-        taskCompletionRate: 'N/A',
-        tenantSatisfaction: 'N/A',
-        avgOccupancyRate: 'N/A',
-        avgResponseTime: 'N/A',
+        unitsManaged: unitsManagedCount,
+        tasksCompleted: maintenanceStats.completed + completedInspections,
+        activeTasks: maintenanceStats.assigned + maintenanceStats.inProgress + activeInspections,
       },
 
       // Employment tags/badges
@@ -770,6 +816,12 @@ export class UserService {
     const clientConn = vendorInfo?.connectedClients?.find((c: any) => c.cuid === cuid);
     const payoutAccount = clientConn?.payoutAccount;
 
+    // Fetch real maintenance stats and rating for this vendor
+    const [maintenanceStats, avgRating] = await Promise.all([
+      this.maintenanceRequestDAO.getStats(cuid, { vendorUserId: userid }),
+      this.maintenanceRequestDAO.getVendorAvgRating(userid),
+    ]);
+
     return {
       vuid: vendorInfo?.vuid || '',
       companyName: vendorInfo?.companyName || _personalInfo.displayName || '',
@@ -810,12 +862,12 @@ export class UserService {
         phone: vendorInfo?.contactPerson?.phone || _personalInfo.phoneNumber || '',
       },
 
-      // Vendor statistics (placeholder)
       stats: {
-        completedJobs: 0,
-        activeJobs: 0,
-        rating: '0',
-        responseTime: '24h',
+        completedJobs: maintenanceStats.completed,
+        activeJobs: maintenanceStats.assigned + maintenanceStats.inProgress,
+        rating: String(avgRating > 0 ? avgRating.toFixed(1) : '0'),
+        responseTime:
+          maintenanceStats.avgResolutionDays > 0 ? `${maintenanceStats.avgResolutionDays}d` : 'N/A',
         onTimeRate: '0%',
       },
 
@@ -2020,10 +2072,8 @@ export class UserService {
    * - User disconnection from client
    * - Cache invalidation
    *
-   * TODO: When lease/task/maintenance features are added:
-   * - Reassign active leases
-   * - Reassign or complete active tasks
-   * - Reassign active maintenance requests
+   * Note: Does not currently reassign active leases or maintenance requests.
+   * The offboarding flow handles lease termination separately.
    *
    * @param cuid - Client unique identifier
    * @param uid - User unique identifier
@@ -2417,10 +2467,8 @@ export class UserService {
    * - Disconnect tenant from client
    * - Cache invalidation
    *
-   * TODO: When lease/maintenance features are added:
-   * - Check for active leases (prevent deactivation if active)
-   * - Check for pending maintenance requests
-   * - Check for pending service requests
+   * Note: Already checks for active leases and prevents deactivation if found.
+   * Does not currently check for pending maintenance/service requests.
    *
    * @param cuid - Client unique identifier
    * @param uid - User unique identifier (tenant)
@@ -2488,7 +2536,6 @@ export class UserService {
         actions: [],
       };
 
-      // TODO: Check for active leases when lease feature is implemented
       const activeLeases = await this.leaseDAO.getActiveLeaseByTenant(cuid, uid);
       if (activeLeases?.status === 'active') {
         throw new BadRequestError({
@@ -2596,7 +2643,8 @@ export class UserService {
           $set: {
             'cuids.$.isFormerTenant': true,
             'cuids.$.leaseExpiredAt': expiredAt,
-            'cuids.$.isConnected': false,
+            'cuids.$.pendingDeactivation': true,
+            'cuids.$.deactivateAfter': 'inspection',
           },
         }
       );
@@ -2604,9 +2652,59 @@ export class UserService {
       const user = await this.userDAO.getUserById(tenantId);
       if (user) await this.userCache.invalidateUserDetail(cuid, user.uid);
 
-      this.log.info({ tenantId, cuid }, 'Tenant auto-deactivated: no active lease remaining');
+      this.log.info(
+        { tenantId, cuid },
+        'Tenant marked for deferred deactivation (pending inspection)'
+      );
     } catch (error) {
       this.log.error({ error, tenantId, cuid }, 'Error handling lease expired event');
+    }
+  }
+
+  /**
+   * Safety-net cron: auto-deactivate tenants stuck in pendingDeactivation for 30+ days
+   * (e.g. if PM never closes the move-out inspection).
+   */
+  private async autoDeactivateStaleTenants(): Promise<void> {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      const staleTenants = await this.userDAO.listUsers({
+        'cuids.pendingDeactivation': true,
+        'cuids.leaseExpiredAt': { $lt: thirtyDaysAgo },
+      });
+
+      for (const user of staleTenants.items || []) {
+        for (const conn of user.cuids || []) {
+          if (
+            conn.pendingDeactivation &&
+            conn.leaseExpiredAt &&
+            conn.leaseExpiredAt < thirtyDaysAgo
+          ) {
+            await this.userDAO.update(
+              { _id: user._id, 'cuids.cuid': conn.cuid },
+              {
+                $set: {
+                  'cuids.$.isConnected': false,
+                  'cuids.$.pendingDeactivation': false,
+                },
+              }
+            );
+
+            this.log.info('Auto-deactivated stale tenant (30-day safety net)', {
+              userId: user._id.toString(),
+              cuid: conn.cuid,
+            });
+
+            if (user.uid) {
+              await this.userCache?.invalidateUserDetail(conn.cuid, user.uid);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.log.error('Error in autoDeactivateStaleTenants cron', { error });
     }
   }
 }

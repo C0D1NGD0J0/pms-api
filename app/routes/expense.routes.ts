@@ -5,6 +5,7 @@ import { UtilsValidations, validateRequest } from '@shared/validations';
 import { ExpenseValidations } from '@shared/validations/ExpenseValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireActiveSubscription,
   subscriptionEntitlements,
   requirePermission,
   isAuthenticated,
@@ -50,6 +51,7 @@ router.post(
   requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid, body: ExpenseValidations.createExpense }),
   asyncWrapper((req, res) => {
@@ -77,6 +79,7 @@ router.patch(
   requirePermission(PermissionResource.REPORT, PermissionAction.UPDATE),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.expuid),
@@ -94,6 +97,7 @@ router.delete(
   requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),
   asyncWrapper((req, res) => {

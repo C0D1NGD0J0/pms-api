@@ -34,9 +34,11 @@ import { INotificationContext } from './notification.types';
 import { getFormattedNotification } from './notificationMessages';
 import {
   fetchRequestAndEnqueueEmail,
+  sendResourceEventToMany,
   MAINTENANCE_DEPARTMENTS,
   FINANCE_DEPARTMENTS,
   notifyAnnouncement,
+  sendResourceEvent,
   notifyIndividuals,
   ALL_STAFF_ROLES,
   MGMT_ROLES,
@@ -120,21 +122,7 @@ export async function handleInvoiceApproved(
   }
 
   // ── Resource-event SSE → tenant page invalidates cache immediately ──────────
-  if (tenantId) {
-    try {
-      await ctx.sseService.sendToUser(
-        tenantId,
-        cuid,
-        { resource: 'maintenance', action: 'invoice-approved', resourceUId: mruid },
-        'resource-event'
-      );
-    } catch (error) {
-      ctx.log.error('Error sending invoice approved resource-event SSE to tenant', {
-        error,
-        payload,
-      });
-    }
-  }
+  await sendResourceEvent(ctx, tenantId, cuid, 'maintenance', 'invoice-approved', mruid);
 
   if (tenantId) {
     try {
@@ -175,106 +163,6 @@ export async function handleInvoiceApproved(
         ctx.log.error('Error sending billable invoice notice to tenant', { error, payload });
       }
     }
-  }
-}
-
-export async function handleWorkOrderApproved(
-  ctx: INotificationContext,
-  payload: MaintenanceWorkOrderApprovedPayload
-): Promise<void> {
-  const { cuid, mruid, vendorId, technicianId, tenantId } = payload;
-
-  // ── Resource-event SSE → vendor page invalidates cache immediately ──────────
-  // Sending this independently of the notification so the cache refresh is
-  // reliable even if the user has disabled in-app notifications.
-  try {
-    if (vendorId) {
-      await ctx.sseService.sendToUser(
-        vendorId,
-        cuid,
-        { resource: 'maintenance', action: 'work-order-approved', resourceUId: mruid },
-        'resource-event'
-      );
-    }
-    if (technicianId && technicianId !== vendorId) {
-      await ctx.sseService.sendToUser(
-        technicianId,
-        cuid,
-        { resource: 'maintenance', action: 'work-order-approved', resourceUId: mruid },
-        'resource-event'
-      );
-    }
-  } catch (error) {
-    ctx.log.error('Error sending work order approved resource-event SSE', { error, payload });
-  }
-
-  // ── In-app notification → vendor ────────────────────────────────────────────
-  try {
-    if (!vendorId) return;
-    await notifyIndividuals(
-      ctx,
-      cuid,
-      NotificationTypeEnum.MAINTENANCE,
-      'maintenance.workOrderApproved',
-      { mruid },
-      [vendorId, technicianId],
-      { mruid },
-      NotificationPriorityEnum.MEDIUM
-    );
-  } catch (error) {
-    ctx.log.error('Error sending work order approved notification to vendor', { error, payload });
-  }
-
-  // ── In-app notification → tenant ────────────────────────────────────────────
-  try {
-    if (tenantId) {
-      const { title, message } = getFormattedNotification('maintenance.workOrderApprovedTenant', {
-        mruid,
-      });
-      await ctx.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
-        cuid,
-        type: NotificationTypeEnum.MAINTENANCE,
-        recipient: tenantId,
-        recipientType: RecipientTypeEnum.INDIVIDUAL,
-        priority: NotificationPriorityEnum.LOW,
-        title,
-        message,
-        metadata: { mruid },
-      });
-    }
-  } catch (error) {
-    ctx.log.error('Error sending work order approved notification to tenant', { error, payload });
-  }
-
-  // ── Email → vendor ──────────────────────────────────────────────────────────
-  try {
-    if (!vendorId) return;
-    const { approvedBy } = payload;
-    const [request, vendorUser, approvedByUser] = await Promise.all([
-      ctx.maintenanceRequestDAO.getByMruid(mruid, cuid),
-      ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
-      ctx.userDAO.findFirst(
-        { _id: new Types.ObjectId(approvedBy), deletedAt: null },
-        { populate: PROFILE_POPULATE }
-      ),
-    ]);
-    if (request && vendorUser?.email) {
-      ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderApproved', {
-        to: vendorUser.email,
-        emailType: MailType.MAINTENANCE_WORK_ORDER_APPROVED,
-        subject: '',
-        data: {
-          request,
-          workOrder: normalizeWorkOrderForEmail((request as any).workOrder),
-          approvedBy: shapeUserForEmail(approvedByUser),
-        },
-      } as any);
-    }
-  } catch (err) {
-    ctx.log.error(
-      { err, mruid: payload.mruid },
-      'Failed to enqueue maintenanceWorkOrderApproved email'
-    );
   }
 }
 
@@ -446,33 +334,21 @@ export async function handleInvoiceSubmitted(
   }
 }
 
-export async function handleWorkOrderRejected(
+export async function handleWorkOrderApproved(
   ctx: INotificationContext,
-  payload: MaintenanceWorkOrderRejectedPayload
+  payload: MaintenanceWorkOrderApprovedPayload
 ): Promise<void> {
-  const { cuid, mruid, vendorId, technicianId } = payload;
+  const { cuid, mruid, vendorId, technicianId, tenantId } = payload;
 
-  // ── Resource-event SSE → vendor page invalidates cache immediately ──────────
-  try {
-    if (vendorId) {
-      await ctx.sseService.sendToUser(
-        vendorId,
-        cuid,
-        { resource: 'maintenance', action: 'work-order-rejected', resourceUId: mruid },
-        'resource-event'
-      );
-    }
-    if (technicianId && technicianId !== vendorId) {
-      await ctx.sseService.sendToUser(
-        technicianId,
-        cuid,
-        { resource: 'maintenance', action: 'work-order-rejected', resourceUId: mruid },
-        'resource-event'
-      );
-    }
-  } catch (error) {
-    ctx.log.error('Error sending work order rejected resource-event SSE', { error, payload });
-  }
+  // ── Resource-event SSE → vendor/technician pages invalidate cache immediately
+  await sendResourceEventToMany(
+    ctx,
+    [vendorId, technicianId],
+    cuid,
+    'maintenance',
+    'work-order-approved',
+    mruid
+  );
 
   // ── In-app notification → vendor ────────────────────────────────────────────
   try {
@@ -481,45 +357,65 @@ export async function handleWorkOrderRejected(
       ctx,
       cuid,
       NotificationTypeEnum.MAINTENANCE,
-      'maintenance.workOrderRejected',
+      'maintenance.workOrderApproved',
       { mruid },
       [vendorId, technicianId],
       { mruid },
       NotificationPriorityEnum.MEDIUM
     );
   } catch (error) {
-    ctx.log.error('Error sending work order rejected notification', { error, payload });
+    ctx.log.error('Error sending work order approved notification to vendor', { error, payload });
+  }
+
+  // ── In-app notification → tenant ────────────────────────────────────────────
+  try {
+    if (tenantId) {
+      const { title, message } = getFormattedNotification('maintenance.workOrderApprovedTenant', {
+        mruid,
+      });
+      await ctx.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
+        cuid,
+        type: NotificationTypeEnum.MAINTENANCE,
+        recipient: tenantId,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        priority: NotificationPriorityEnum.LOW,
+        title,
+        message,
+        metadata: { mruid },
+      });
+    }
+  } catch (error) {
+    ctx.log.error('Error sending work order approved notification to tenant', { error, payload });
   }
 
   // ── Email → vendor ──────────────────────────────────────────────────────────
   try {
-    const { rejectedBy, rejectionReason } = payload;
     if (!vendorId) return;
-    const [request, vendorUser, rejectedByUser] = await Promise.all([
+    const { approvedBy } = payload;
+    const [request, vendorUser, approvedByUser] = await Promise.all([
       ctx.maintenanceRequestDAO.getByMruid(mruid, cuid),
       ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
       ctx.userDAO.findFirst(
-        { _id: new Types.ObjectId(rejectedBy), deletedAt: null },
+        { _id: new Types.ObjectId(approvedBy), deletedAt: null },
         { populate: PROFILE_POPULATE }
       ),
     ]);
     if (request && vendorUser?.email) {
-      ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderRejected', {
+      ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderApproved', {
         to: vendorUser.email,
-        emailType: MailType.MAINTENANCE_WORK_ORDER_REJECTED,
+        emailType: MailType.MAINTENANCE_WORK_ORDER_APPROVED,
         subject: '',
         data: {
           request,
           workOrder: normalizeWorkOrderForEmail((request as any).workOrder),
-          rejectionReason,
-          rejectedBy: shapeUserForEmail(rejectedByUser),
+          approvedBy: shapeUserForEmail(approvedByUser),
         },
       } as any);
     }
   } catch (err) {
     ctx.log.error(
       { err, mruid: payload.mruid },
-      'Failed to enqueue maintenanceWorkOrderRejected email'
+      'Failed to enqueue maintenanceWorkOrderApproved email'
     );
   }
 }
@@ -666,6 +562,72 @@ export async function handleMRAssigned(
     ctx.log.error(
       { err, mruid: payload.mruid },
       'Failed to enqueue maintenanceRequestAssigned email'
+    );
+  }
+}
+
+export async function handleWorkOrderRejected(
+  ctx: INotificationContext,
+  payload: MaintenanceWorkOrderRejectedPayload
+): Promise<void> {
+  const { cuid, mruid, vendorId, technicianId } = payload;
+
+  // ── Resource-event SSE → vendor/technician pages invalidate cache immediately
+  await sendResourceEventToMany(
+    ctx,
+    [vendorId, technicianId],
+    cuid,
+    'maintenance',
+    'work-order-rejected',
+    mruid
+  );
+
+  // ── In-app notification → vendor ────────────────────────────────────────────
+  try {
+    if (!vendorId) return;
+    await notifyIndividuals(
+      ctx,
+      cuid,
+      NotificationTypeEnum.MAINTENANCE,
+      'maintenance.workOrderRejected',
+      { mruid },
+      [vendorId, technicianId],
+      { mruid },
+      NotificationPriorityEnum.MEDIUM
+    );
+  } catch (error) {
+    ctx.log.error('Error sending work order rejected notification', { error, payload });
+  }
+
+  // ── Email → vendor ──────────────────────────────────────────────────────────
+  try {
+    const { rejectedBy, rejectionReason } = payload;
+    if (!vendorId) return;
+    const [request, vendorUser, rejectedByUser] = await Promise.all([
+      ctx.maintenanceRequestDAO.getByMruid(mruid, cuid),
+      ctx.userDAO.findFirst({ _id: new Types.ObjectId(vendorId), deletedAt: null }),
+      ctx.userDAO.findFirst(
+        { _id: new Types.ObjectId(rejectedBy), deletedAt: null },
+        { populate: PROFILE_POPULATE }
+      ),
+    ]);
+    if (request && vendorUser?.email) {
+      ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderRejected', {
+        to: vendorUser.email,
+        emailType: MailType.MAINTENANCE_WORK_ORDER_REJECTED,
+        subject: '',
+        data: {
+          request,
+          workOrder: normalizeWorkOrderForEmail((request as any).workOrder),
+          rejectionReason,
+          rejectedBy: shapeUserForEmail(rejectedByUser),
+        },
+      } as any);
+    }
+  } catch (err) {
+    ctx.log.error(
+      { err, mruid: payload.mruid },
+      'Failed to enqueue maintenanceWorkOrderRejected email'
     );
   }
 }

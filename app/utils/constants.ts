@@ -190,7 +190,14 @@ export const SIGNATURE_INVALIDATING_LEASE_FIELDS = ['fees', 'duration', 'petPoli
 export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
   draft: ['*'], // All fields editable in draft
   pending_signature: ['internalNotes'],
-  active: ['internalNotes', 'renewalOptions'],
+  active: [
+    'internalNotes',
+    'renewalOptions',
+    'petPolicy',
+    'utilitiesIncluded',
+    'documents',
+    'additionalTerms',
+  ],
   expired: ['internalNotes'], // Admin/Manager only
   terminated: ['internalNotes'], // Admin/Manager only
   cancelled: ['internalNotes'], // Admin/Manager only
@@ -312,7 +319,7 @@ export const LEASE_CONSTANTS = {
     { days: 14, name: '14_day_notice' },
     { days: 7, name: '7_day_notice' },
   ],
-  GRACE_PERIOD_DAYS: 7,
+  GRACE_PERIOD_DAYS: 3,
   DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY: 30,
   DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
   MINIMUM_ACTIVE_DURATION_DAYS: 30,

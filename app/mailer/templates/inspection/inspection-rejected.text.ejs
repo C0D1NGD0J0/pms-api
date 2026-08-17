@@ -1,0 +1,15 @@
+<%= isFinal ? 'Inspection Rejected' : 'Inspection Needs Revision' %>
+============================
+
+Hi <%= currentuser.firstName %>,
+
+<% if (isFinal) { %>Your inspection has been reviewed and rejected. Please contact your property manager for next steps.
+<% } else { %>Your inspection report requires revision before it can be finalized.
+<% } %>
+
+DETAILS
+-------
+Reference #: <%= iuid %>
+Status:      <%= isFinal ? 'Rejected' : 'Revision Required' %>
+Reason:      <%= reason %>
+

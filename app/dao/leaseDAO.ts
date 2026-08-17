@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { computeLeaseMonthlyFees } from '@utils/financial.utils';
@@ -187,7 +188,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           skip,
           limit,
           projection:
-            'luid leaseNumber status duration.startDate duration.endDate fees.rentAmount fees.currency fees.lateFeeDays fees.rentDueDay fees.acceptedPaymentMethod property.unitId tenantId signingMethod eSignature.status includeManagementFee petPolicy.allowed petPolicy.monthlyFee',
+            'luid leaseNumber status duration.startDate duration.endDate fees.rentAmount fees.currency fees.lateFeeDays fees.rentDueDay fees.acceptedPaymentMethod property.unitId property.managedBy tenantId signingMethod eSignature.status includeManagementFee petPolicy.allowed petPolicy.monthlyFee',
           populate: [
             {
               path: 'tenantId',
@@ -198,6 +199,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
               },
             },
             { path: 'property.id', select: 'pid name address.fullAddress fees.managementFees' },
+            { path: 'property.managedBy', select: 'uid' },
             { path: 'property.unitId', select: 'unitNumber puid' },
           ],
         }),
@@ -224,14 +226,12 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         return {
           luid: leaseObj.luid,
           leaseNumber: leaseObj.leaseNumber,
-          tenantName,
-          tenantUid: tenant?._id?.toString() || '',
           propertyAddress,
           unitNumber,
           unitPuid,
           rentAmount: totalMonthlyRent,
           currency: leaseObj.fees?.currency ?? 'USD',
-          gracePeriodDays: leaseObj.fees?.lateFeeDays ?? 5,
+          lateFeesGracePeriod: leaseObj.fees?.lateFeeDays ?? 3,
           rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
           acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,
@@ -241,15 +241,20 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
             leaseObj.signingMethod === 'electronic' && leaseObj.eSignature?.status === 'sent',
           tenantActivated: leaseObj.status === 'active',
           tenant: {
+            id: tenant?._id?.toString() || '',
             uid: tenant?.uid,
             email: tenant?.email,
             fullName: tenantName,
           },
+          daysUntilExpiry: leaseObj.daysUntilExpiry ?? null,
+          isExpiringSoon: leaseObj.isExpiringSoon ?? false,
+          isInGracePeriod: leaseObj.isInGracePeriod ?? false,
           petsAllowed: leaseObj.petPolicy?.allowed ?? false,
           property: {
             pid: leaseObj.property?.id?.pid,
             name: propertyName,
             address: propertyAddress,
+            managedByUid: leaseObj.property?.managedBy?.uid || null,
           },
         };
       });
@@ -1055,6 +1060,300 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       return count > 0;
     } catch (error: any) {
       this.log.error('Error checking lease history for property:', error);
+      throw error;
+    }
+  }
+
+  async submitVacateRequest(
+    cuid: string,
+    leaseId: string,
+    data: {
+      requestedMoveOutDate: Date;
+      reason: string;
+    }
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(`Submitting vacate request for lease ${leaseId}`);
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+          $or: [
+            { 'vacateRequest.status': { $exists: false } },
+            { 'vacateRequest.status': null },
+            { 'vacateRequest.status': 'rejected' },
+          ],
+        },
+        {
+          $set: {
+            'vacateRequest.status': 'pending',
+            'vacateRequest.requestedMoveOutDate': data.requestedMoveOutDate,
+            'vacateRequest.reason': data.reason,
+            'vacateRequest.submittedAt': new Date(),
+          },
+          $unset: {
+            'vacateRequest.decision': '',
+          },
+        },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error submitting vacate request:', error);
+      throw error;
+    }
+  }
+
+  async decideVacateRequest(
+    cuid: string,
+    leaseId: string,
+    decision: {
+      approved: boolean;
+      decidedBy: string;
+      adjustedMoveOutDate?: Date;
+      rejectionReason?: string;
+    }
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(
+        `${decision.approved ? 'Approving' : 'Rejecting'} vacate request for lease ${leaseId}`
+      );
+
+      const updateData: Record<string, any> = {
+        'vacateRequest.status': decision.approved ? 'approved' : 'rejected',
+        'vacateRequest.decision.decidedBy': new Types.ObjectId(decision.decidedBy),
+        'vacateRequest.decision.decidedAt': new Date(),
+      };
+
+      if (decision.adjustedMoveOutDate) {
+        updateData['vacateRequest.decision.adjustedMoveOutDate'] = decision.adjustedMoveOutDate;
+      }
+
+      if (decision.rejectionReason) {
+        updateData['vacateRequest.decision.rejectionReason'] = decision.rejectionReason;
+      }
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          'vacateRequest.status': 'pending',
+          deletedAt: null,
+        },
+        { $set: updateData },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error deciding vacate request:', error);
+      throw error;
+    }
+  }
+
+  async getPendingVacateRequests(cuid: string): Promise<ILeaseDocument[]> {
+    try {
+      this.log.info(`Getting pending vacate requests for client ${cuid}`);
+
+      const result = await this.list(
+        {
+          cuid,
+          'vacateRequest.status': 'pending',
+          deletedAt: null,
+        },
+        {
+          sort: { 'vacateRequest.submittedAt': -1 },
+          populate: [
+            {
+              path: 'tenantId',
+              select: 'uid email',
+              populate: {
+                path: 'profile',
+                select: 'personalInfo.firstName personalInfo.lastName',
+              },
+            },
+            { path: 'property.id', select: 'pid name address.fullAddress' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
+          ],
+        }
+      );
+
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting pending vacate requests:', error);
+      throw error;
+    }
+  }
+
+  async getActiveOffboardings(
+    cuid: string,
+    page = 1,
+    limit = 20
+  ): Promise<{ items: ILeaseDocument[]; total: number }> {
+    try {
+      this.log.info(`Getting active offboardings for client ${cuid}`);
+
+      // Only return recently terminated leases that still have incomplete offboarding.
+      // Offboardings older than this window are excluded — if a deposit refund is
+      // still pending after this period, it should surface via a separate alert.
+      const OFFBOARDING_LOOKBACK_DAYS = 90;
+      const lookbackDate = dayjs().subtract(OFFBOARDING_LOOKBACK_DAYS, 'day').toDate();
+
+      const result = await this.list(
+        {
+          cuid,
+          status: LeaseStatus.TERMINATED,
+          'duration.terminationDate': { $gte: lookbackDate },
+          deletedAt: null,
+        },
+        {
+          page,
+          limit,
+          sort: { 'duration.terminationDate': -1 },
+          populate: [
+            {
+              path: 'tenantId',
+              select: 'uid email',
+              populate: {
+                path: 'profile',
+                select: 'personalInfo.firstName personalInfo.lastName',
+              },
+            },
+            { path: 'property.id', select: 'pid name address.fullAddress' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
+          ],
+        }
+      );
+
+      return { items: result.items, total: result.pagination?.total ?? 0 };
+    } catch (error: any) {
+      this.log.error('Error getting active offboardings:', error);
+      throw error;
+    }
+  }
+
+  async submitRenewalRequest(
+    cuid: string,
+    leaseId: string,
+    data: {
+      requestedTermMonths: number;
+      message?: string;
+    }
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(`Submitting renewal request for lease ${leaseId}`);
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+          'renewalRequest.status': { $ne: 'pending' },
+        },
+        {
+          $set: {
+            'renewalRequest.status': 'pending',
+            'renewalRequest.requestedTermMonths': data.requestedTermMonths,
+            'renewalRequest.message': data.message || '',
+            'renewalRequest.submittedAt': new Date(),
+          },
+          $unset: {
+            'renewalRequest.decision': '',
+          },
+        },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error submitting renewal request:', error);
+      throw error;
+    }
+  }
+
+  async decideRenewalRequest(
+    cuid: string,
+    leaseId: string,
+    decision: {
+      approved: boolean;
+      decidedBy: string;
+      rejectionReason?: string;
+    }
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(
+        `${decision.approved ? 'Approving' : 'Rejecting'} renewal request for lease ${leaseId}`
+      );
+
+      const updateData: Record<string, any> = {
+        'renewalRequest.status': decision.approved ? 'approved' : 'rejected',
+        'renewalRequest.decision.decidedBy': new Types.ObjectId(decision.decidedBy),
+        'renewalRequest.decision.decidedAt': new Date(),
+      };
+
+      if (decision.rejectionReason) {
+        updateData['renewalRequest.decision.rejectionReason'] = decision.rejectionReason;
+      }
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          'renewalRequest.status': 'pending',
+          deletedAt: null,
+        },
+        { $set: updateData },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error deciding renewal request:', error);
+      throw error;
+    }
+  }
+
+  async setRenewalHold(leaseId: string, holdUntil: Date): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(`Setting renewal hold on lease ${leaseId} until ${holdUntil}`);
+
+      return await this.update(
+        {
+          _id: leaseId,
+          deletedAt: null,
+        },
+        {
+          $set: {
+            'renewalRequest.holdUntil': holdUntil,
+          },
+        },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error setting renewal hold:', error);
+      throw error;
+    }
+  }
+
+  async autoRejectRenewalRequest(leaseId: string): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(`Auto-rejecting renewal request for lease ${leaseId}`);
+
+      return await this.update(
+        {
+          _id: leaseId,
+          'renewalRequest.status': 'pending',
+          deletedAt: null,
+        },
+        {
+          $set: {
+            'renewalRequest.status': 'rejected',
+            'renewalRequest.decision.decidedBy': 'system',
+            'renewalRequest.decision.decidedAt': new Date(),
+            'renewalRequest.decision.rejectionReason': 'Not reviewed before lease expiry deadline',
+          },
+        },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error auto-rejecting renewal request:', error);
       throw error;
     }
   }

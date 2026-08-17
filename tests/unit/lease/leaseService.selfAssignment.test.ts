@@ -129,6 +129,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       notificationService: {} as any,
       leaseSignatureService: {} as any,
       leaseDocumentService: {} as any,
+      leaseTemplateService: {} as any,
       leaseRenewalService: {} as any,
       mediaUploadService: {} as any,
       leasePdfService: {} as any,
@@ -138,6 +139,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       userService: {} as any,
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       paymentDAO: {} as any,
+      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }) } as any,
     });
   });
 
@@ -432,11 +434,18 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
       mockLeaseDAO.update.mockResolvedValue(mockLease as any);
 
-      const updateData: Partial<ILeaseFormData> = {
-        fees: { rentAmount: 1200 } as ILeaseFormData['fees'],
-      };
+      const updateData = {
+        internalNotes: [
+          {
+            authorId: 'staff-1',
+            timestamp: new Date(),
+            author: 'Staff User',
+            note: 'Updated by staff',
+          },
+        ],
+      } as unknown as Partial<ILeaseFormData>;
 
-      // This should succeed because lease tenant !== current user
+      // This should succeed because lease tenant !== current user and field is allowed
       const result = await leaseService.updateLease(
         mockContext as IRequestContext,
         testLuid,
@@ -538,6 +547,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         notificationService: {} as any,
         leaseSignatureService: {} as any,
         leaseDocumentService: {} as any,
+        leaseTemplateService: {} as any,
         leaseRenewalService: {} as any,
         mediaUploadService: {} as any,
         leasePdfService: {} as any,
@@ -547,6 +557,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         userService: {} as any,
         smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
         paymentDAO: {} as any,
+        userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }) } as any,
       });
 
       (mockLeaseDAO as any).getFilteredLeases = jest.fn().mockResolvedValue({

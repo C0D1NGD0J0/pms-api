@@ -45,6 +45,17 @@ import {
   notifySystemError as notifySystemErrorFn,
 } from './notification.lease.public';
 import {
+  handleInspectionAIAnalyzed,
+  handleInspectionScheduled,
+  handleInspectionSubmitted,
+  handleInspectionCancelled,
+  handleInspectionReviewed,
+  handleInspectionReminder,
+  handleInspectionApproved,
+  handleInspectionDisputed,
+  handleInspectionRejected,
+} from './notification.inspection.handlers';
+import {
   handlePropertyUpdateNotifications as handlePropertyUpdateNotificationsFn,
   notifyPendingChangesOverridden as notifyPendingChangesOverriddenFn,
   notifyApprovalDecision as notifyApprovalDecisionFn,
@@ -787,8 +798,6 @@ export class NotificationService {
     }
   }
 
-  // ── Property notifications (logic in notification.property.ts) ─────────────
-
   async notifyPropertyUpdate(
     resourceInfo: { resourceName: ResourceContext; resourceUid: string; resourceId: string },
     propertyName: string,
@@ -886,8 +895,6 @@ export class NotificationService {
     );
   }
 
-  // ── Lease notifications (logic in notification.lease.public.ts) ─────────────
-
   async notifyLeaseESignatureSent(params: {
     leaseNumber: string;
     leaseName: string;
@@ -916,6 +923,8 @@ export class NotificationService {
     eventType:
       | 'renewal_created'
       | 'renewal_approved'
+      | 'renewal_hold_urgent'
+      | 'renewal_auto_rejected'
       | 'expiring'
       | 'expired'
       | 'completed'
@@ -929,7 +938,7 @@ export class NotificationService {
       endDate: Date;
       startDate?: Date;
     };
-    recipients: { tenant?: boolean; propertyManager?: string; createdBy?: string };
+    recipients: { tenant?: boolean | string; propertyManager?: string; createdBy?: string };
     metadata?: Record<string, any>;
     customMessage?: { title?: string; message?: string };
   }): Promise<void> {
@@ -1469,6 +1478,7 @@ export class NotificationService {
         [NotificationTypeEnum.ERROR]: 'system', // Map ERROR to system notifications
         [NotificationTypeEnum.INFO]: 'system', // Map INFO to system notifications
         [NotificationTypeEnum.GUESTPASS]: 'system', // Map GUESTPASS to system notifications
+        [NotificationTypeEnum.INSPECTION]: 'maintenance', // Inspections follow maintenance preference
       };
 
       const preferenceField = typeToPreferenceMap[notificationType];
@@ -1604,6 +1614,45 @@ export class NotificationService {
     );
     this.emitterService.on(EventTypes.GUEST_PASS_REVOKED, (p) => handleGuestPassRevoked(ctx, p));
     this.emitterService.on(EventTypes.GUEST_PASS_EXPIRED, (p) => handleGuestPassExpired(ctx, p));
+
+    this.emitterService.on(EventTypes.INSPECTION_SCHEDULED, (p) =>
+      handleInspectionScheduled(ctx, p)
+    );
+    this.emitterService.on(EventTypes.INSPECTION_REMINDER, (p) => handleInspectionReminder(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, (p) =>
+      handleInspectionSubmitted(ctx, p)
+    );
+    this.emitterService.on(EventTypes.INSPECTION_REVIEWED, (p) => handleInspectionReviewed(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_APPROVED, (p) => handleInspectionApproved(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_DISPUTED, (p) => handleInspectionDisputed(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_REJECTED, (p) => handleInspectionRejected(ctx, p));
+    this.emitterService.on(EventTypes.INSPECTION_CANCELLED, (p) =>
+      handleInspectionCancelled(ctx, p)
+    );
+    this.emitterService.on(EventTypes.INSPECTION_AI_ANALYZED, (p) =>
+      handleInspectionAIAnalyzed(ctx, p)
+    );
+  }
+
+  private static CRITICAL_EMAIL_TYPES = new Set([
+    NotificationTypeEnum.PAYMENT,
+    NotificationTypeEnum.SYSTEM,
+    NotificationTypeEnum.LEASE,
+  ]);
+
+  async shouldSendEmail(
+    userId: string,
+    cuid: string,
+    type: NotificationTypeEnum
+  ): Promise<boolean> {
+    if (NotificationService.CRITICAL_EMAIL_TYPES.has(type)) return true;
+    try {
+      const prefs = await this.profileService.getUserNotificationPreferences(userId, cuid);
+      if (!prefs.success || !prefs.data) return true;
+      return prefs.data.emailNotifications !== false;
+    } catch {
+      return true;
+    }
   }
 
   private buildContext(): INotificationContext {
@@ -1613,6 +1662,7 @@ export class NotificationService {
       findApprovers: (...args) => this.findApprovers(...args),
       getUserDisplayName: (...args) => this.getUserDisplayName(...args),
       isSelfNotification: (...args) => this.isSelfNotification(...args),
+      shouldSendEmail: (...args) => this.shouldSendEmail(...args),
       emailQueue: this.emailQueue,
       userDAO: this.userDAO,
       clientDAO: this.clientDAO,

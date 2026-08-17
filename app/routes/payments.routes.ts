@@ -193,6 +193,41 @@ router.post(
   })
 );
 
+// PM/admin explicitly releases a staged deposit refund (PENDING_REFUND → REFUNDED).
+// Only relevant when client.settings.requireDepositRefundApproval = true.
+router.post(
+  '/:cuid/:pytuid/release-deposit',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    body: PaymentValidations.releaseDeposit,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.releaseDepositRefund(req, res);
+  })
+);
+
+// PM/admin confirms a staff-initiated manual payment entry, clears the review flag.
+router.patch(
+  '/:cuid/:pytuid/review',
+  basicLimiter({ max: 20, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    body: PaymentValidations.reviewPayment,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.reviewPayment(req, res);
+  })
+);
+
 router.post(
   '/:cuid/:pytuid/card-checkout',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
@@ -332,6 +367,7 @@ router.patch(
   '/:cuid/payout-account/unblock',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requireRole(['root-admin']),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');

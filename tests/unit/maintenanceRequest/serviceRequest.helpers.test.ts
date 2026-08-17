@@ -43,9 +43,10 @@ beforeEach(() => {
 // ===========================================================================
 
 describe('ALLOWED_TRANSITIONS', () => {
-  it('PENDING may only transition to OPEN', () => {
+  it('PENDING may transition to OPEN or CANCELLED', () => {
     expect(ALLOWED_TRANSITIONS[MaintenanceRequestStatus.PENDING]).toEqual([
       MaintenanceRequestStatus.OPEN,
+      MaintenanceRequestStatus.CANCELLED,
     ]);
   });
 

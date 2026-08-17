@@ -29,12 +29,19 @@ export enum MailType {
   MAINTENANCE_VENDOR_PAID = 'MAINTENANCE_VENDOR_PAID',
   PAYMENT_REQUEST_CREATED = 'PAYMENT_REQUEST_CREATED',
   LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
+  COMPANY_CLOSURE_VENDOR = 'COMPANY_CLOSURE_VENDOR',
   LEASE_SIGNOFF_REQUEST = 'LEASE_SIGNOFF_REQUEST',
+  COMPANY_CLOSURE_STAFF = 'COMPANY_CLOSURE_STAFF',
   ACCOUNT_DISCONNECTED = 'ACCOUNT_DISCONNECTED',
+  INSPECTION_SCHEDULED = 'INSPECTION_SCHEDULED',
+  INSPECTION_SUBMITTED = 'INSPECTION_SUBMITTED',
+  INSPECTION_CANCELLED = 'INSPECTION_CANCELLED',
   SUBSCRIPTION_UPDATE = 'SUBSCRIPTION_UPDATE',
   SUBSCRIPTION_CANCEL = 'SUBSCRIPTION_CANCEL',
   INVITATION_REMINDER = 'INVITATION_REMINDER',
   LEASE_ADMIN_UPDATED = 'LEASE_ADMIN_UPDATED',
+  INSPECTION_APPROVED = 'INSPECTION_APPROVED',
+  INSPECTION_REJECTED = 'INSPECTION_REJECTED',
   ACCOUNT_ACTIVATION = 'ACCOUNT_ACTIVATION',
   LEASE_ENDING_SOON = 'LEASE_ENDING_SOON',
   USER_REGISTRATION = 'USER_REGISTRATION',
@@ -46,8 +53,27 @@ export enum MailType {
   PAYMENT_FAILED = 'PAYMENT_FAILED',
   PASSWORD_RESET = 'PASSWORD_RESET',
   ACCOUNT_UPDATE = 'ACCOUNT_UPDATE',
+  LEASE_EXPIRED = 'LEASE_EXPIRED',
   USER_CREATED = 'USER_CREATED',
   INVITATION = 'INVITATION',
+}
+
+export enum PermissionResource {
+  SUBSCRIPTION = 'subscription',
+  NOTIFICATION = 'notification',
+  MAINTENANCE = 'maintenance',
+  INSPECTION = 'inspection',
+  GUEST_PASS = 'guest-pass',
+  INVITATION = 'invitation',
+  PROPERTY = 'property',
+  BILLING = 'billing',
+  PAYMENT = 'payment',
+  CLIENT = 'client',
+  TENANT = 'tenant',
+  VENDOR = 'vendor',
+  REPORT = 'report',
+  LEASE = 'lease',
+  USER = 'user',
 }
 
 export enum PermissionAction {
@@ -67,23 +93,6 @@ export enum PermissionAction {
   LIST = 'list',
   READ = 'read',
   SEND = 'send',
-}
-
-export enum PermissionResource {
-  SUBSCRIPTION = 'subscription',
-  NOTIFICATION = 'notification',
-  MAINTENANCE = 'maintenance',
-  GUEST_PASS = 'guest-pass',
-  INVITATION = 'invitation',
-  PROPERTY = 'property',
-  BILLING = 'billing',
-  PAYMENT = 'payment',
-  CLIENT = 'client',
-  TENANT = 'tenant',
-  VENDOR = 'vendor',
-  REPORT = 'report',
-  LEASE = 'lease',
-  USER = 'user',
 }
 
 export enum CURRENCIES {
@@ -115,6 +124,7 @@ export enum ResourceContext {
   USER_PROFILE = 'user-profile',
   MAINTENANCE = 'maintenance',
   GUEST_PASS = 'guest-pass',
+  INSPECTION = 'inspection',
   PROPERTY = 'property',
   PAYMENT = 'payment',
   CLIENT = 'client',
@@ -197,6 +207,23 @@ export interface RateLimitOptions {
   max?: number; // max requests per window
 }
 
+export interface ResourceInfo {
+  resourceName:
+    | 'property'
+    | 'profile'
+    | 'client'
+    | 'lease'
+    | 'maintenance'
+    | 'payment-invoice'
+    | 'guest-pass'
+    | 'inspection'; //name of the resource
+  resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
+  resourceId: string; //id of the resource
+  roomIndex?: number; // room index for inspection room-targeted media
+  fieldName: string; //name of the field
+  actorId: string; //user who uploaded the file
+}
+
 export interface IAWSFileUploadResponse {
   serverSideEncryption: string | null;
   contentDisposition: string | null;
@@ -215,21 +242,6 @@ export interface IAWSFileUploadResponse {
   acl?: string;
   etag: string;
   key: string;
-}
-
-export interface ResourceInfo {
-  resourceName:
-    | 'property'
-    | 'profile'
-    | 'client'
-    | 'lease'
-    | 'maintenance'
-    | 'payment-invoice'
-    | 'guest-pass'; //name of the resource
-  resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
-  resourceId: string; //id of the resource
-  fieldName: string; //name of the field
-  actorId: string; //user who uploaded the file
 }
 
 export interface UploadResult {

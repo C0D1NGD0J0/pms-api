@@ -90,11 +90,22 @@ const PaymentSchema = new Schema<IPaymentDocument>(
     ],
     refund: {
       refundedAt: { type: Date },
+      refundedBy: { type: String, trim: true },
       amount: {
         type: Number,
         min: [0, 'Refund amount cannot be negative'],
       },
       reason: { type: String, trim: true },
+      gatewayRefundId: { type: String, trim: true },
+    },
+    managerReviewRequired: {
+      type: Boolean,
+      default: false,
+    },
+    managerReview: {
+      reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      reviewedAt: { type: Date },
+      notes: { type: String, trim: true, maxlength: 500 },
     },
     dispute: {
       status: { type: String, enum: ['open', 'won', 'lost'] },

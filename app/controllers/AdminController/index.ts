@@ -7,6 +7,7 @@ import { InvoiceDAO } from '@dao/invoiceDAO';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { EventTypes } from '@interfaces/events.interface';
+import { AICostService } from '@services/ai/aiCost.service';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { MaintenanceRequestDAO, PaymentDAO, ClientDAO } from '@dao/index';
@@ -30,6 +31,7 @@ export class AdminController {
   private readonly invoiceDAO: InvoiceDAO;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly aiCostService: AICostService;
 
   constructor({
     userCache,
@@ -42,6 +44,7 @@ export class AdminController {
     invoiceDAO,
     maintenanceRequestDAO,
     emitterService,
+    aiCostService,
   }: {
     userCache: UserCache;
     propertyCache: PropertyCache;
@@ -53,6 +56,7 @@ export class AdminController {
     invoiceDAO: InvoiceDAO;
     maintenanceRequestDAO: MaintenanceRequestDAO;
     emitterService: EventEmitterService;
+    aiCostService: AICostService;
   }) {
     this.log = createLogger('AdminController');
     this.userCache = userCache;
@@ -65,6 +69,13 @@ export class AdminController {
     this.invoiceDAO = invoiceDAO;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.emitterService = emitterService;
+    this.aiCostService = aiCostService;
+  }
+
+  async getAIUsage(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const usage = await this.aiCostService.getUsage(cuid);
+    return res.status(200).json({ success: true, data: usage });
   }
 
   /**

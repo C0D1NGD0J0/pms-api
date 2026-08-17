@@ -7,6 +7,7 @@ import { createLogger } from '@utils/index';
 import { MetricsDAO } from '@dao/metricsDAO';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { InspectionDAO } from '@dao/inspectionDAO';
 import { calcPercentChange } from '@utils/math.utils';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
@@ -26,6 +27,12 @@ import {
   MaintenanceRequestCancelledPayload,
   MaintenanceRequestCompletedPayload,
   MaintenanceRequestCreatedPayload,
+  InspectionScheduledPayload,
+  InspectionSubmittedPayload,
+  InspectionCancelledPayload,
+  InspectionApprovedPayload,
+  InspectionRejectedPayload,
+  InspectionDisputedPayload,
   PaymentSucceededPayload,
   PaymentRefundedPayload,
   PaymentOverduePayload,
@@ -36,6 +43,7 @@ interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
+  inspectionDAO: InspectionDAO;
   propertyDAO: PropertyDAO;
   metricsDAO: MetricsDAO;
   paymentDAO: PaymentDAO;
@@ -55,6 +63,7 @@ export class MetricsService implements ICronProvider {
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly inspectionDAO: InspectionDAO;
   private readonly emitterService: EventEmitterService;
   private readonly sseService: SSEService;
 
@@ -67,6 +76,12 @@ export class MetricsService implements ICronProvider {
   private readonly onMaintenanceCancelled = this.handleMaintenanceCancelled.bind(this);
   private readonly onUnitStatusChanged = this.handleUnitStatusChanged.bind(this);
   private readonly onLeaseEsigCompleted = this.handleLeaseEsigCompleted.bind(this);
+  private readonly onInspectionScheduled = this.handleInspectionScheduled.bind(this);
+  private readonly onInspectionSubmitted = this.handleInspectionSubmitted.bind(this);
+  private readonly onInspectionApproved = this.handleInspectionApproved.bind(this);
+  private readonly onInspectionRejected = this.handleInspectionRejected.bind(this);
+  private readonly onInspectionDisputed = this.handleInspectionDisputed.bind(this);
+  private readonly onInspectionCancelled = this.handleInspectionCancelled.bind(this);
 
   constructor(deps: IConstructor) {
     this.log = createLogger('MetricsService');
@@ -78,6 +93,7 @@ export class MetricsService implements ICronProvider {
     this.propertyDAO = deps.propertyDAO;
     this.propertyUnitDAO = deps.propertyUnitDAO;
     this.maintenanceRequestDAO = deps.maintenanceRequestDAO;
+    this.inspectionDAO = deps.inspectionDAO;
     this.emitterService = deps.emitterService;
     this.sseService = deps.sseService;
 
@@ -89,13 +105,19 @@ export class MetricsService implements ICronProvider {
     this.emitterService.on(EventTypes.MAINTENANCE_REQUEST_CANCELLED, this.onMaintenanceCancelled);
     this.emitterService.on(EventTypes.UNIT_STATUS_CHANGED, this.onUnitStatusChanged);
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseEsigCompleted);
+    this.emitterService.on(EventTypes.INSPECTION_SCHEDULED, this.onInspectionScheduled);
+    this.emitterService.on(EventTypes.INSPECTION_SUBMITTED, this.onInspectionSubmitted);
+    this.emitterService.on(EventTypes.INSPECTION_APPROVED, this.onInspectionApproved);
+    this.emitterService.on(EventTypes.INSPECTION_REJECTED, this.onInspectionRejected);
+    this.emitterService.on(EventTypes.INSPECTION_DISPUTED, this.onInspectionDisputed);
+    this.emitterService.on(EventTypes.INSPECTION_CANCELLED, this.onInspectionCancelled);
   }
 
   getCronJobs(): ICronJob[] {
     return [
       {
         name: 'metrics:daily-snapshot',
-        schedule: '0 0 * * *',
+        schedule: '0 4 * * *', // 4:00 AM UTC — end of overnight batch, captures all changes
         handler: this.captureAllSnapshots.bind(this),
         service: 'MetricsService',
         enabled: true,
@@ -118,6 +140,7 @@ export class MetricsService implements ICronProvider {
           this.capturePaymentSnapshot(cuid),
           this.captureUserSnapshot(cuid),
           this.captureMaintenanceSnapshot(cuid),
+          this.captureInspectionSnapshot(cuid),
         ]);
       } catch (err) {
         this.log.error({ err, cuid }, 'Failed to capture snapshot for client');
@@ -215,15 +238,50 @@ export class MetricsService implements ICronProvider {
     });
   }
 
+  private async handleInspectionScheduled(payload: InspectionScheduledPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, {
+      type: 'metrics:delta',
+      inspections: { scheduled: 1 },
+    });
+  }
+
+  private async handleInspectionSubmitted(payload: InspectionSubmittedPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
+  private async handleInspectionApproved(payload: InspectionApprovedPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
+  private async handleInspectionRejected(payload: InspectionRejectedPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
+  private async handleInspectionDisputed(payload: InspectionDisputedPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
+  private async handleInspectionCancelled(payload: InspectionCancelledPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
   async getDashboardStats(cuid: string): Promise<IDashboardStats> {
-    const [leases, payments, unitCounts, propertyCount, users, maintenance] = await Promise.all([
-      this.leaseDAO.getLeaseStats(cuid),
-      this.paymentDAO.getPaymentStats(cuid),
-      this.propertyUnitDAO.getPropertyUnitCounts(cuid),
-      this.propertyDAO.getPropertyCount(cuid),
-      this.userDAO.getUserStats(cuid),
-      this.maintenanceRequestDAO.getStats(cuid),
-    ]);
+    const [leases, payments, unitCounts, propertyCount, users, maintenance, inspections] =
+      await Promise.all([
+        this.leaseDAO.getLeaseStats(cuid),
+        this.paymentDAO.getPaymentStats(cuid),
+        this.propertyUnitDAO.getPropertyUnitCounts(cuid),
+        this.propertyDAO.getPropertyCount(cuid),
+        this.userDAO.getUserStats(cuid),
+        this.maintenanceRequestDAO.getStats(cuid),
+        this.inspectionDAO.getStats(cuid),
+      ]);
 
     const properties = { ...unitCounts, propertyCount };
 
@@ -261,6 +319,19 @@ export class MetricsService implements ICronProvider {
         avgResolutionDays: maintenance.avgResolutionDays,
         byPriority: maintenance.byPriority,
         byCategory: maintenance.byCategory,
+      },
+      inspections: {
+        activeCount: inspections.scheduled + inspections.inProgress + inspections.submitted,
+        avgCompletionDays: inspections.avgCompletionDays,
+        byType: inspections.byType,
+        inProgress: inspections.inProgress,
+        scheduled: inspections.scheduled,
+        submitted: inspections.submitted,
+        cancelled: inspections.cancelled,
+        approved: inspections.approved,
+        rejected: inspections.rejected,
+        disputed: inspections.disputed,
+        total: inspections.total,
       },
       generatedAt: new Date(),
     };
@@ -351,6 +422,20 @@ export class MetricsService implements ICronProvider {
     });
   }
 
+  private async captureInspectionSnapshot(cuid: string): Promise<void> {
+    const stats = await this.inspectionDAO.getStats(cuid);
+    await this.metricsDAO.insertSnapshot(cuid, MetricType.INSPECTION, {
+      scheduled: stats.scheduled,
+      inProgress: stats.inProgress,
+      submitted: stats.submitted,
+      approved: stats.approved,
+      rejected: stats.rejected,
+      disputed: stats.disputed,
+      cancelled: stats.cancelled,
+      avgCompletionDays: stats.avgCompletionDays,
+    });
+  }
+
   // ─── Private helpers ───────────────────────────────────────────────────────
 
   private getPrimaryMeasurementKey(metricType: MetricType): string {
@@ -360,6 +445,7 @@ export class MetricsService implements ICronProvider {
       [MetricType.PROPERTY]: 'occupancyRate',
       [MetricType.USER]: 'total',
       [MetricType.MAINTENANCE]: 'open',
+      [MetricType.INSPECTION]: 'scheduled',
     };
     return map[metricType];
   }
@@ -379,5 +465,11 @@ export class MetricsService implements ICronProvider {
     this.emitterService.off(EventTypes.MAINTENANCE_REQUEST_CANCELLED, this.onMaintenanceCancelled);
     this.emitterService.off(EventTypes.UNIT_STATUS_CHANGED, this.onUnitStatusChanged);
     this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseEsigCompleted);
+    this.emitterService.off(EventTypes.INSPECTION_SCHEDULED, this.onInspectionScheduled);
+    this.emitterService.off(EventTypes.INSPECTION_SUBMITTED, this.onInspectionSubmitted);
+    this.emitterService.off(EventTypes.INSPECTION_APPROVED, this.onInspectionApproved);
+    this.emitterService.off(EventTypes.INSPECTION_REJECTED, this.onInspectionRejected);
+    this.emitterService.off(EventTypes.INSPECTION_DISPUTED, this.onInspectionDisputed);
+    this.emitterService.off(EventTypes.INSPECTION_CANCELLED, this.onInspectionCancelled);
   }
 }

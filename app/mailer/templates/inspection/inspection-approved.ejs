@@ -1,0 +1,47 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Inspection Approved</h2>
+      <p>Hi <strong><%= currentuser.firstName %></strong>,</p>
+      <% if (hasRefund && refundAmount > 0) { %>
+      <p>
+        Your inspection has been reviewed and approved. A refund of
+        <strong><%= (refundAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> out of your
+        <strong><%= (depositAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> security deposit will be processed.
+      </p>
+      <% } else if (hasRefund) { %>
+      <p>
+        Your inspection has been reviewed and approved. No security deposit refund will be issued.
+      </p>
+      <% } else { %>
+      <p>
+        Your inspection has been reviewed and approved. No further action is required on your part.
+      </p>
+      <% } %>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Inspection Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= iuid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Status</td>
+            <td class="detail-value" style="color: #16a34a; font-weight: 600;">Approved</td>
+          </tr>
+          <% if (hasRefund) { %>
+          <tr>
+            <td class="detail-label">Deposit Refund</td>
+            <td class="detail-value"><%= ((refundAmount || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></td>
+          </tr>
+          <% } %>
+        </table>
+      </div>
+    </td>
+  </tr>
+</table>

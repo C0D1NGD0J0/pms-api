@@ -280,6 +280,12 @@ const BaseLeaseSchemaObject = z.object({
   legalTerms: LegalTermsSchema.optional(),
   internalNotes: z.array(InternalNoteSchema).optional(),
   leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
+  autoScheduleInspection: z
+    .object({
+      moveIn: z.boolean(),
+      moveOut: z.boolean(),
+    })
+    .optional(),
 });
 
 export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
@@ -411,6 +417,7 @@ export const FilterLeasesSchema = z.object({
     .object({
       status: z.string().optional(),
       cuid: z.string().optional(),
+      propertyId: z.string().optional(),
       search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
       unitPuid: z.string().optional(),
     })
@@ -566,6 +573,41 @@ export const LeasePreviewSchema = z.object({
   requiresNotarization: z.boolean().optional(),
 });
 
+// Vacate Request Schema (tenant submits)
+export const VacateRequestSchema = z.object({
+  requestedMoveOutDate: calendarDate('Requested move-out date must be a valid date'),
+  reason: z
+    .string()
+    .trim()
+    .min(10, 'Reason must be at least 10 characters')
+    .max(1000, 'Reason must be at most 1000 characters'),
+});
+
+// Vacate Request Decision Schema (PM approves/rejects)
+export const VacateRequestDecisionSchema = z
+  .object({
+    approved: z.boolean(),
+    adjustedMoveOutDate: calendarDate('Adjusted move-out date must be a valid date').optional(),
+    rejectionReason: z
+      .string()
+      .trim()
+      .min(10, 'Rejection reason must be at least 10 characters')
+      .max(1000, 'Rejection reason must be at most 1000 characters')
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.approved && !data.rejectionReason) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Rejection reason is required when rejecting a vacate request',
+      path: ['rejectionReason'],
+    }
+  );
+
 export const GetLeaseByIdQuerySchema = z.object({
   include: z
     .union([
@@ -595,3 +637,33 @@ export const RejectLeaseSchema = z.object({
     .min(10, 'Rejection reason must be at least 10 characters')
     .max(1000, 'Rejection reason must be at most 1000 characters'),
 });
+
+// Renewal Request Schema (tenant submits)
+export const RenewalRequestSchema = z.object({
+  requestedTermMonths: z.number().int().min(1).max(60),
+  message: z.string().trim().max(1000).optional(),
+});
+
+// Renewal Request Decision Schema (PM approves/rejects)
+export const RenewalRequestDecisionSchema = z
+  .object({
+    approved: z.boolean(),
+    rejectionReason: z
+      .string()
+      .trim()
+      .min(10, 'Rejection reason must be at least 10 characters')
+      .max(1000, 'Rejection reason must be at most 1000 characters')
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (!data.approved && (!data.rejectionReason || data.rejectionReason.length < 10)) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Rejection reason is required when rejecting',
+      path: ['rejectionReason'],
+    }
+  );

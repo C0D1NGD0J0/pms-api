@@ -13,9 +13,11 @@ import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { GuestPassController } from '@controllers/GuestPassController';
+import { OffboardingController } from '@controllers/OffboardingController';
 import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
+import { OffboardingService } from '@services/offboarding/offboarding.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
@@ -64,6 +66,7 @@ import {
   Notification,
   PropertyUnit,
   Subscription,
+  Inspection,
   Invitation,
   GuestPass,
   Property,
@@ -85,6 +88,7 @@ import {
   NotificationDAO,
   SubscriptionDAO,
   InvitationDAO,
+  InspectionDAO,
   GuestPassDAO,
   PropertyDAO,
   MetricsDAO,
@@ -103,6 +107,7 @@ import {
   PropertyUnitController,
   MaintenanceController,
   InvitationController,
+  InspectionController,
   PropertyController,
   MetricsController,
   WebhookController,
@@ -124,6 +129,7 @@ import {
   VendorSuggestionService,
   PropertyApprovalService,
   InvoiceTemplateRenderer,
+  InspectionReportService,
   InvitationCsvProcessor,
   subscriptionPlanConfig,
   LeaseSignatureService,
@@ -135,6 +141,7 @@ import {
   LeaseDocumentService,
   LeaseTemplateService,
   PayoutAccountService,
+  InspectionAIService,
   PdfGeneratorService,
   NotificationService,
   EventEmitterService,
@@ -146,6 +153,7 @@ import {
   PaymentCronService,
   PermissionService,
   InvitationService,
+  InspectionService,
   GuestPassService,
   AnthropicService,
   AuthTokenService,
@@ -162,6 +170,7 @@ import {
   StripeService,
   ClientService,
   VendorService,
+  AICostService,
   LeaseService,
   UserService,
   DSARService,
@@ -184,6 +193,7 @@ const ControllerResources = {
   webhookController: asClass(WebhookController).scoped(),
   paymentController: asClass(PaymentController).scoped(),
   expenseController: asClass(ExpenseController).scoped(),
+  inspectionController: asClass(InspectionController).scoped(),
   metricsController: asClass(MetricsController).scoped(),
   propertyController: asClass(PropertyController).scoped(),
   guestPassController: asClass(GuestPassController).scoped(),
@@ -193,6 +203,7 @@ const ControllerResources = {
   notificationController: asClass(NotificationController).scoped(),
   subscriptionController: asClass(SubscriptionController).scoped(),
   emailTemplateController: asClass(EmailTemplateController).scoped(),
+  offboardingController: asClass(OffboardingController).scoped(),
 };
 
 const ModelResources = {
@@ -208,6 +219,7 @@ const ModelResources = {
   paymentModel: asValue(Payment),
   propertyModel: asValue(Property),
   guestPassModel: asValue(GuestPass),
+  inspectionModel: asValue(Inspection),
   invitationModel: asValue(Invitation),
   propertyUnitModel: asValue(PropertyUnit),
   subscriptionModel: asValue(Subscription),
@@ -248,6 +260,10 @@ const ServiceResources = {
   anthropicService: asClass(AnthropicService).singleton(),
   invoiceAIService: asClass(InvoiceAIService).singleton(),
   emitterService: asClass(EventEmitterService).singleton(),
+  inspectionService: asClass(InspectionService).singleton(),
+  inspectionAIService: asClass(InspectionAIService).singleton(),
+  aiCostService: asClass(AICostService).singleton(),
+  inspectionReportService: asClass(InspectionReportService).singleton(),
   permissionService: asClass(PermissionService).singleton(),
   invitationService: asClass(InvitationService).singleton(),
   mediaUploadService: asClass(MediaUploadService).singleton(),
@@ -277,6 +293,7 @@ const ServiceResources = {
   maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),
   maintenanceInvoiceService: asClass(MaintenanceInvoiceService).singleton(),
   subscriptionWebhookService: asClass(SubscriptionWebhookService).singleton(),
+  offboardingService: asClass(OffboardingService).singleton(),
 };
 
 const DAOResources = {
@@ -293,6 +310,7 @@ const DAOResources = {
   invoiceDAO: asClass(InvoiceDAO).singleton(),
   propertyDAO: asClass(PropertyDAO).singleton(),
   guestPassDAO: asClass(GuestPassDAO).singleton(),
+  inspectionDAO: asClass(InspectionDAO).singleton(),
   invitationDAO: asClass(InvitationDAO).singleton(),
   propertyUnitDAO: asClass(PropertyUnitDAO).singleton(),
   subscriptionDAO: asClass(SubscriptionDAO).singleton(),

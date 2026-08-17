@@ -277,7 +277,9 @@ export class AuthService {
         throw new ValidationRequestError({
           message: t('common.errors.validationFailed'),
           errorInfo: {
-            email: [t('common.errors.alreadyExists', { resource: 'An account with this email' })],
+            email: [
+              'Unable to create account with the provided information. Please try again or contact support.',
+            ],
           },
         });
       }
@@ -738,7 +740,10 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.findFirst({ email }, { populate: 'profile' });
+    const user = await this.userDAO.findFirst(
+      { email },
+      { populate: 'profile', select: '+activationToken' }
+    );
 
     if (!user) {
       throw new NotFoundError({ message: t('auth.success.activationLinkSent', { email }) });
@@ -768,10 +773,20 @@ export class AuthService {
       throw new BadRequestError({ message: t('auth.errors.userEmailRequired') });
     }
 
+    // Always return success to prevent account enumeration
+    const genericResponse = {
+      data: null,
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.',
+    };
+
     await this.userDAO.createPasswordResetToken(email);
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, {
+      populate: 'profile',
+      select: '+passwordResetToken',
+    });
     if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
+      return genericResponse;
     }
 
     const emailData = {
@@ -786,11 +801,7 @@ export class AuthService {
 
     const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
     emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
-    return {
-      data: null,
-      success: true,
-      message: t('auth.success.passwordResetEmailSent', { email: user.email }),
-    };
+    return genericResponse;
   }
 
   async resetPassword(resetToken: string, password: string): Promise<ISuccessReturnData> {

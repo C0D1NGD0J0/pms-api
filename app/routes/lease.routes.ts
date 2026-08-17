@@ -4,9 +4,11 @@ import { asyncWrapper } from '@utils/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseController } from '@controllers/LeaseController';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { OffboardingController } from '@controllers/OffboardingController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
 import {
+  requireActiveSubscription,
   subscriptionEntitlements,
   requireVerifiedClient,
   requireNotSuspended,
@@ -68,6 +70,34 @@ router.get(
   })
 );
 
+// PM lists all pending vacate requests for their client
+router.get(
+  '/:cuid/vacate-requests',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getPendingVacateRequests(req, res);
+  })
+);
+
+// PM lists terminated leases with incomplete offboarding
+router.get(
+  '/:cuid/active-offboardings',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getActiveOffboardings(req, res);
+  })
+);
+
 router
   .route('/:cuid')
   .get(
@@ -87,6 +117,7 @@ router
     requireNotSuspended,
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
+    requireActiveSubscription,
     idempotency,
     diskUpload(['document']),
     scanFile,
@@ -147,6 +178,7 @@ router
   .patch(
     basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+    requireActiveSubscription,
     diskUpload(['document']),
     scanFile,
     idempotency,
@@ -178,6 +210,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireVerifiedClient,
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -195,6 +228,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireActiveTenant(),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -259,6 +293,7 @@ router
     requireActiveTenant(),
     requireFeatureFlag(FeatureFlag.ESIGNATURE),
     subscriptionEntitlements,
+    requireActiveSubscription,
     requireFeature('eSignature'),
     idempotency,
     validateRequest({
@@ -349,6 +384,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN]),
     requireVerifiedClient,
+    requireActiveSubscription,
     idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -360,11 +396,126 @@ router
     })
   );
 
+// ============================================================================
+// Vacate Request & Offboarding Routes
+// ============================================================================
+
+// Tenant submits a vacate request on their active lease.
+// Uses READ permission because tenants don't have UPDATE on leases —
+// service-level ownership check (tenantRef === currentUser.sub) is the real guard.
+router.post(
+  '/:cuid/:luid/vacate-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.vacateRequest,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.submitVacateRequest(req, res);
+  })
+);
+
+// PM approves or rejects a vacate request
+router.patch(
+  '/:cuid/:luid/vacate-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveSubscription,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.vacateRequestDecision,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.decideVacateRequest(req, res);
+  })
+);
+
+// Tenant submits a renewal request on their active lease.
+router.post(
+  '/:cuid/:luid/renewal-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  requireActiveTenant(),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.renewalRequest,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.submitRenewalRequest(req, res);
+  })
+);
+
+// PM approves or rejects a renewal request
+router.patch(
+  '/:cuid/:luid/renewal-request',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER]),
+  requireActiveSubscription,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+    body: LeaseValidations.renewalRequestDecision,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.decideRenewalRequest(req, res);
+  })
+);
+
+// Get derived offboarding progress for a specific lease
+router.get(
+  '/:cuid/:luid/offboarding-status',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getOffboardingStatus(req, res);
+  })
+);
+
+// Account closure routes (super-admin only)
+router.post(
+  '/:cuid/close-account',
+  basicLimiter(),
+  requireRole([ROLES.SUPER_ADMIN]),
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: z.object({ reason: z.string().optional() }),
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.initiateAccountClosure(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/closure-status',
+  basicLimiter(),
+  requireRole([ROLES.SUPER_ADMIN]),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getAccountClosureStatus(req, res);
+  })
+);
+
 // Lease Approval Routes
 router.post(
   '/:cuid/:luid/approve',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.approveLease,
@@ -379,6 +530,7 @@ router.post(
   '/:cuid/:luid/reject',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
     body: LeaseValidations.rejectLease,

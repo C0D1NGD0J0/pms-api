@@ -172,10 +172,13 @@ class EnvVariables {
       // Vision AI sends raw binary (PDF/image) content to Anthropic — opt-in only.
       // Set FEATURE_AI_INVOICE_SCANNING_ENABLED=true to enable after reviewing data-handling obligations.
       AI_INVOICE_SCANNING_ENABLED: process.env.FEATURE_AI_INVOICE_SCANNING_ENABLED === 'true',
+      // Inspection photo analysis via Claude vision — opt-in only (sends images to Anthropic).
+      AI_INSPECTION_ANALYSIS_ENABLED: process.env.FEATURE_AI_INSPECTION_ANALYSIS_ENABLED === 'true',
       ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
       PUSH_NOTIFICATIONS_ENABLED: process.env.FEATURE_PUSH_NOTIFICATIONS_ENABLED !== 'false',
+      INSPECTION_ENABLED: process.env.FEATURE_INSPECTION_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
     };
     try {

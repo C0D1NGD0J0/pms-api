@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { type QueryFilter, Model } from 'mongoose';
+import { calcPercentage, createLogger, msToDays } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
-import { calcDaysElapsed, calcPercentage, createLogger, msToDays } from '@utils/index';
 import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
@@ -25,6 +25,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       tenantId?: string;
       leaseId?: string;
       dueDate?: any;
+      pendingReview?: boolean; // When true, return only staff-initiated entries awaiting PM confirmation
     },
     opts?: IFindOptions
   ): ListResultWithPagination<IPaymentDocument[]> {
@@ -47,6 +48,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       if (filters?.tenantId) query.tenant = filters.tenantId;
       if (filters?.leaseId) query.lease = filters.leaseId;
       if (filters?.dueDate) query.dueDate = filters.dueDate;
+      if (filters?.pendingReview === true) query.managerReviewRequired = true;
 
       const populateOpts = {
         ...opts,
@@ -140,13 +142,17 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  async findOverduePayments(): ListResultWithPagination<IPaymentDocument[]> {
+  /** @internal Cron method — returns overdue payments, optionally scoped to specific clients. */
+  async findOverduePayments(
+    extraFilter?: Record<string, any>
+  ): ListResultWithPagination<IPaymentDocument[]> {
     try {
       return await this.list({
         status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
         dueDate: { $lt: dayjs().toDate() },
         'dispute.status': { $nin: ['open', 'needs_response'] },
         deletedAt: null,
+        ...extraFilter,
       });
     } catch (error: any) {
       this.log.error('Error finding overdue payments:', error);
@@ -277,9 +283,10 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       );
 
       // Paid payments with due dates — for on-time calculation
+      // "On time" = paid by end of due day (23:59:59), not millisecond-exact
       const paidWithDueDate = paidPayments.filter((p: any) => p.dueDate && p.paidAt);
       const onTimePayments = paidWithDueDate.filter((p: any) => {
-        return new Date(p.paidAt) <= new Date(p.dueDate);
+        return dayjs(p.paidAt).isBefore(dayjs(p.dueDate).endOf('day').add(1, 'second'));
       });
 
       // Currently overdue: status OVERDUE, or PENDING/FAILED with past due date
@@ -288,7 +295,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
           p.status === PaymentRecordStatus.OVERDUE ||
           ((p.status === PaymentRecordStatus.PENDING || p.status === PaymentRecordStatus.FAILED) &&
             p.dueDate &&
-            dayjs().isAfter(dayjs(p.dueDate)))
+            dayjs().isAfter(dayjs(p.dueDate).endOf('day')))
       );
 
       // On-time rate denominator includes both paid and currently overdue payments
@@ -299,12 +306,16 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
 
       // Delay calculation — combines paid late delays with currently overdue delays
       const paidDelays = paidWithDueDate.map((p: any) => {
-        const diffMs = new Date(p.paidAt).getTime() - new Date(p.dueDate).getTime();
-        return Math.max(0, msToDays(diffMs));
+        const dueDayEnd = dayjs(p.dueDate).endOf('day');
+        const delayDays = dayjs(p.paidAt).diff(dueDayEnd, 'day', true);
+        return Math.max(0, Math.ceil(delayDays));
       });
       const overdueDelays = overduePayments
         .filter((p: any) => p.dueDate)
-        .map((p: any) => calcDaysElapsed(new Date(p.dueDate)));
+        .map((p: any) => {
+          const dueDayEnd = dayjs(p.dueDate).endOf('day');
+          return Math.max(0, Math.ceil(dayjs().diff(dueDayEnd, 'day', true)));
+        });
 
       const allDelays = [...paidDelays, ...overdueDelays];
       const averagePaymentDelay =
@@ -422,8 +433,17 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
             },
             {
               $project: {
-                delayMs: { $subtract: ['$paidAt', '$dueDate'] },
-                onTime: { $lte: ['$paidAt', '$dueDate'] },
+                // End of due day = dueDate + 86399999ms (23:59:59.999)
+                dueDayEnd: {
+                  $add: [{ $dateTrunc: { date: '$dueDate', unit: 'day' } }, 86399999],
+                },
+                paidAt: 1,
+              },
+            },
+            {
+              $project: {
+                delayMs: { $subtract: ['$paidAt', '$dueDayEnd'] },
+                onTime: { $lte: ['$paidAt', '$dueDayEnd'] },
               },
             },
             {

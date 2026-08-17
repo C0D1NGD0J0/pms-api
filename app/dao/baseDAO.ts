@@ -27,26 +27,12 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     this.logger = createLogger('BaseDAO');
   }
 
-  /**
-   * Handle and log errors, then throw a formatted error.
-   *
-   * @param error - The error to handle.
-   * @throws CustomError - Throws the properly formatted CustomError instance.
-   */
   throwErrorHandler(error: Error | MongooseError | any): never {
     const result = handleMongoError(error);
     this.logger.error({ error: result }, 'DAO error');
     throw result;
   }
 
-  /**
-   * Find the first document that matches the filter.
-   *
-   * @param filter - Query used to find the document.
-   * @param opts - Optional settings for the query.
-   * @param select - Optional field selection.
-   * @returns A promise that resolves to the found document or null if no document is found.
-   */
   async findFirst(
     filter: QueryFilter<T>,
     opts?: IFindOptions,
@@ -85,14 +71,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     }
   }
 
-  /**
-   * List documents in the collection that match the filter.
-   *
-   * @param filter - Query used to filter the documents.
-   * @param options - Optional settings for the query.
-   * @param useLean - Whether to return plain objects (true) or Mongoose documents (false). Defaults to false for backward compatibility.
-   * @returns A promise that resolves to an array of found documents.
-   */
   async list(
     filter: QueryFilter<T>,
     options?: {
@@ -142,15 +120,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     }
   }
 
-  /**
-   * Upsert (update or insert) a document in the collection based on the provided filter.
-   *
-   * @param filter - Query used to find the document.
-   * @param data - The data to update or insert.
-   * @param options - Optional settings for the upsert operation.
-   * @param session - Optional MongoDB session for transactions.
-   * @returns A promise that resolves to the updated or inserted document.
-   */
   async upsert(
     data: UpdateQuery<T>,
     filter: QueryFilter<T>,
@@ -178,7 +147,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   }
 
   /**
-   * Delete multiple documents from the collection by their unique identifiers.
+   * @internal Hard-deletes multiple documents. Only for cron/system cleanup (e.g., aged-out notifications).
+   * NEVER call from API response handlers — use soft-delete (deletedAt) instead.
    *
    * @param ids - An array of unique identifiers (strings or ObjectId instances) of the documents to delete.
    * @returns A promise that resolves to true if all documents were successfully deleted, or false if not.
@@ -194,14 +164,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     }
   }
 
-  /**
-   * Update a document in the collection based on its unique identifier.
-   *
-   * @param id - The unique identifier of the document to update.
-   * @param data - The data to update in the document.
-   * @param opts - Optional settings for the update operation.
-   * @returns A promise that resolves to the updated document or null if no document is found.
-   */
   async updateById(
     id: string,
     updateOperation: UpdateQuery<T>,
@@ -226,14 +188,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     }
   }
 
-  /**
-   * Update a document in the collection based on its unique identifier.
-   *
-   * @param filter - Query used to filter the documents.
-   * @param data - The data to update in the document.
-   * @param opts - Optional settings for the update operation.
-   * @returns A promise that resolves to the updated document or null if no document is found.
-   */
   async update(
     filter: QueryFilter<T>,
     updateOperation: UpdateQuery<T>,
@@ -255,7 +209,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   }
 
   /**
-   * Delete a document from the collection.
+   * @internal Hard-deletes a single document. Only for internal system cleanup.
+   * NEVER call from API response handlers — use soft-delete (deletedAt) instead.
    * @param query - An object containing key-value pairs to filter the document to delete.
    * @returns A promise that resolves to true if the document was successfully deleted, or false if not.
    */
@@ -275,13 +230,6 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     }
   }
 
-  /**
-   * Perform an aggregation operation on the collection.
-   *
-   * @param pipeline - An array of aggregation stages to be executed.
-   * @param opts - Optional settings for the aggregation operation.
-   * @returns A promise that resolves to an array of documents produced by the aggregation.
-   */
   async aggregate(pipeline: PipelineStage[], opts?: AggregateOptions): Promise<T[]> {
     try {
       return await this.model.aggregate(pipeline, opts).exec();

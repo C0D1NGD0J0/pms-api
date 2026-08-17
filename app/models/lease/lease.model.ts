@@ -1,4 +1,6 @@
+import dayjs from 'dayjs';
 import { Schema, model } from 'mongoose';
+import { LEASE_CONSTANTS } from '@utils/constants';
 import { calcLateFee } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
 import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
@@ -247,6 +249,10 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     includeManagementFee: { type: Boolean, default: false },
     includeParkingInfo: { type: Boolean, default: false },
     generateFirstPaymentOnActivation: { type: Boolean, default: false },
+    autoScheduleInspection: {
+      moveIn: { type: Boolean, default: true },
+      moveOut: { type: Boolean, default: false },
+    },
     petPolicy: {
       allowed: {
         type: Boolean,
@@ -472,6 +478,55 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         _id: false,
       },
     ],
+    vacateRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+      },
+      requestedMoveOutDate: {
+        type: Date,
+      },
+      reason: {
+        type: String,
+        trim: true,
+        maxlength: 1000,
+      },
+      submittedAt: {
+        type: Date,
+      },
+      decision: {
+        decidedBy: {
+          type: Schema.Types.ObjectId,
+          ref: 'User',
+        },
+        decidedAt: {
+          type: Date,
+        },
+        adjustedMoveOutDate: {
+          type: Date,
+        },
+        rejectionReason: {
+          type: String,
+          trim: true,
+          maxlength: 1000,
+        },
+      },
+    },
+    renewalRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+      },
+      requestedTermMonths: { type: Number },
+      message: { type: String, trim: true },
+      submittedAt: { type: Date },
+      holdUntil: { type: Date },
+      decision: {
+        decidedBy: { type: Schema.Types.Mixed },
+        decidedAt: { type: Date },
+        rejectionReason: { type: String, trim: true },
+      },
+    },
     terminationReason: {
       type: String,
       trim: true,
@@ -531,7 +586,16 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         },
         action: {
           type: String,
-          enum: ['created', 'updated', 'activated', 'terminated', 'cancelled', 'renewed'],
+          enum: [
+            'created',
+            'updated',
+            'activated',
+            'terminated',
+            'cancelled',
+            'renewed',
+            'completed',
+            'expired',
+          ],
           required: true,
         },
         _id: false,
@@ -617,11 +681,7 @@ LeaseSchema.index({ cuid: 1, approvalStatus: 1 });
  */
 LeaseSchema.virtual('daysUntilExpiry').get(function (this: ILeaseDocument) {
   if (!this.duration?.endDate) return null;
-  const today = new Date();
-  const endDate = new Date(this.duration.endDate);
-  const diffTime = endDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
+  return dayjs(this.duration.endDate).startOf('day').diff(dayjs().startOf('day'), 'day');
 });
 
 /**
@@ -642,6 +702,27 @@ LeaseSchema.virtual('durationMonths').get(function (this: ILeaseDocument) {
 LeaseSchema.virtual('isExpiringSoon').get(function (this: ILeaseDocument) {
   const daysUntilExpiry = this.daysUntilExpiry;
   return daysUntilExpiry !== null && daysUntilExpiry > 0 && daysUntilExpiry <= 60;
+});
+
+/**
+ * True when the lease has ended but is still within the grace period window.
+ * Only applies to ACTIVE leases whose endDate has passed.
+ */
+LeaseSchema.virtual('isInGracePeriod').get(function (this: ILeaseDocument) {
+  const daysUntilExpiry = this.daysUntilExpiry;
+  if (daysUntilExpiry == null || daysUntilExpiry > 0) return false;
+  return Math.abs(daysUntilExpiry) <= LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+});
+
+LeaseSchema.virtual('expiryGracePeriodDays').get(function () {
+  return LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
+});
+
+LeaseSchema.virtual('expiryGracePeriodDaysRemaining').get(function (this: ILeaseDocument) {
+  if (!this.isInGracePeriod) return 0;
+  const daysUntilExpiry = this.daysUntilExpiry;
+  if (daysUntilExpiry == null) return 0;
+  return Math.max(0, LEASE_CONSTANTS.GRACE_PERIOD_DAYS - Math.abs(daysUntilExpiry));
 });
 
 LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {
@@ -839,9 +920,9 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
   const totalDeposits = securityDeposit + petDeposit;
 
   let lateFee = 0;
-  const gracePeriod = this.fees?.lateFeeDays || 5;
+  const lateFeeGracePeriod = this.fees?.lateFeeDays || 5;
 
-  if (daysLate >= gracePeriod) {
+  if (daysLate >= lateFeeGracePeriod) {
     if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
       lateFee = calcLateFee(rentAmount, 'percentage', this.fees.lateFeePercentage);
     } else {
@@ -865,7 +946,7 @@ LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
       fee: lateFee,
       type: this.fees?.lateFeeType || 'fixed',
       percentage: this.fees?.lateFeePercentage,
-      gracePeriod,
+      gracePeriod: lateFeeGracePeriod,
     },
     currency: this.fees?.currency || 'USD',
   };

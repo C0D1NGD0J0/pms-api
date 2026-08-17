@@ -143,7 +143,7 @@ export class App implements IAppSetup {
         };
         res.status(200).json(healthCheck);
       } catch (error) {
-        console.error('❌ Health check error:', error);
+        this.log.error({ error }, 'Health check error');
         res.status(500).json({
           uptime: process.uptime(),
           message: 'Health check failed',
@@ -177,6 +177,7 @@ export class App implements IAppSetup {
     app.use(`${this.BASE_PATH}/invites`, routes.invitationRoutes);
     app.use(`${this.BASE_PATH}/properties`, routes.propertyRoutes);
     app.use(`${this.BASE_PATH}/guest-passes`, routes.guestPassRoutes);
+    app.use(`${this.BASE_PATH}/inspections`, routes.inspectionRoutes);
     app.use(`${this.BASE_PATH}/notifications`, routes.notificationRoutes);
     app.use(`${this.BASE_PATH}/subscriptions`, routes.subscriptionRoutes);
     app.use(`${this.BASE_PATH}/email-templates`, routes.emailTemplateRoutes);

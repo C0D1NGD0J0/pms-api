@@ -1,0 +1,35 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Inspection Report Submitted</h2>
+      <p>Hi <strong><%= currentuser.firstName %></strong>,</p>
+      <p>
+        A <strong><%= inspectionType %></strong> inspection report has been submitted and is now
+        available for your review. You can view the full report and respond to the findings.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Inspection Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= iuid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Type</td>
+            <td class="detail-value"><%= inspectionType %></td>
+          </tr>
+        </table>
+      </div>
+
+      <div class="notice-box info" style="margin-top: 20px;">
+        Please review the report at your earliest convenience. If you have any concerns,
+        you may dispute the findings through the portal.
+      </div>
+    </td>
+  </tr>
+</table>

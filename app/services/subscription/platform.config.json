@@ -93,7 +93,9 @@
         "vendorManagement": false,
         "aiTriage": false,
         "maintenanceRequestService": false,
-        "aiInvoiceScanning": false
+        "inspectionService": false,
+        "aiInvoiceScanning": false,
+        "aiInspectionAnalysis": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
@@ -102,6 +104,7 @@
         "SMS notification",
         "Vendor management",
         "Guest Pass Service",
+        "Property Inspections",
         "Reporting & Analytics",
         "Repair Request Service"
       ]
@@ -154,12 +157,15 @@
         "aiInvoiceScanning": true,
         "guestPassService": true,
         "reportingAnalytics": false,
-        "maintenanceRequestService": true
+        "maintenanceRequestService": true,
+        "inspectionService": true,
+        "aiInspectionAnalysis": true
       },
       "featureList": [
         "AI feature",
         "E-Signature",
         "Vendor management",
+        "Property Inspections",
         "SMS notifications",
         "Guest Pass Service",
         "Online payments & AutoPay"
@@ -214,10 +220,13 @@
         "prioritySupport": true,
         "aiTriage": true,
         "smsService": true,
-        "aiInvoiceScanning": true
+        "aiInvoiceScanning": true,
+        "inspectionService": true,
+        "aiInspectionAnalysis": true
       },
       "featureList": [
         "Priority support",
+        "Property Inspections",
         "Everything in Growth",
         "Customizable lease agreements",
         "Advanced reporting & analytics"

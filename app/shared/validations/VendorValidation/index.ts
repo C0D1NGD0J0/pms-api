@@ -1,5 +1,6 @@
 import {
   toggleTeamMemberStatusSchema,
+  vendorReviewsQuerySchema,
   clientVendorsQuerySchema,
   vendorFilterQuerySchema,
   updateTeamMemberSchema,
@@ -17,6 +18,7 @@ export const VendorValidations = {
   vendorIdParam: vendorIdParamSchema,
   clientVendorsQuery: clientVendorsQuerySchema,
   vendorFilterQuery: vendorFilterQuerySchema,
+  vendorReviewsQuery: vendorReviewsQuerySchema,
   // Team member operations
   updateTeamMember: updateTeamMemberSchema,
   toggleTeamMemberStatus: toggleTeamMemberStatusSchema,
@@ -24,6 +26,7 @@ export const VendorValidations = {
 
 export {
   toggleTeamMemberStatusSchema,
+  vendorReviewsQuerySchema,
   clientVendorsQuerySchema,
   vendorFilterQuerySchema,
   updateTeamMemberSchema,

@@ -5,6 +5,7 @@ import * as Sentry from '@sentry/node';
 import { createLogger } from '@utils/helpers';
 import { PidManager } from '@utils/pid-manager';
 import { initQueues } from '@di/registerResources';
+import { closeSharedDLQ } from '@queues/base.queue';
 import { EventListenerSetup } from '@di/eventListenerSetup';
 
 class WorkerProcess {
@@ -37,7 +38,9 @@ class WorkerProcess {
 
       container.resolve('cronService');
     } catch (error) {
-      this.log.error({ err: error }, '❌ Worker startup failed');
+      const message = error instanceof Error ? error.message : String(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+      this.log.error({ err: message, stack }, `❌ Worker startup failed: ${message}`);
       process.exit(1);
     }
   }
@@ -69,6 +72,7 @@ class WorkerProcess {
     try {
       const { queueFactory, emitterService } = container.cradle;
       await queueFactory.shutdownAll();
+      await closeSharedDLQ();
       emitterService.destroy();
     } catch (err) {
       this.log.error({ err }, '❌ Shutdown error — queue/emitter cleanup failed');

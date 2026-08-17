@@ -105,7 +105,7 @@ export class InspectionController {
 
   async reviewInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const userId = req.context.currentuser!.sub;
+    const userId = req.context.currentuser!.uid;
     const userRole = req.context.currentuser!.client.role;
     const result = await this.inspectionService.reviewInspection(
       cuid,
@@ -119,7 +119,7 @@ export class InspectionController {
 
   async approveInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const userId = req.context.currentuser!.sub;
+    const userId = req.context.currentuser!.uid;
     const userRole = req.context.currentuser!.client.role;
     const result = await this.inspectionService.approveInspection(
       cuid,
@@ -140,7 +140,7 @@ export class InspectionController {
 
   async rejectInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const userId = req.context.currentuser!.sub;
+    const userId = req.context.currentuser!.uid;
     const userRole = req.context.currentuser!.client.role;
     const result = await this.inspectionService.rejectInspection(
       cuid,

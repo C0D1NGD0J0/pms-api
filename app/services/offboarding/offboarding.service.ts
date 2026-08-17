@@ -1091,9 +1091,9 @@ export class OffboardingService {
 
     // --- 2. Disconnect all staff/admin users ---
     const staffUsers = await this.userDAO.list({
-      'cuids.cuid': cuid,
-      'cuids.roles': { $in: ROLE_GROUPS.EMPLOYEE_ROLES },
-      'cuids.isConnected': true,
+      cuids: {
+        $elemMatch: { cuid, isConnected: true, roles: { $in: ROLE_GROUPS.EMPLOYEE_ROLES } },
+      },
       deletedAt: null,
     });
 

@@ -160,7 +160,7 @@ export class App implements IAppSetup {
         app.use(
           `${this.BASE_PATH}/queues`,
           isAuthenticated,
-          requireRole([IUserRole.SUPER_ADMIN]),
+          requireRole([IUserRole.ROOT_ADMIN]),
           serverAdapter.getRouter()
         );
       }

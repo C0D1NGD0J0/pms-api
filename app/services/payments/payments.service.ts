@@ -26,6 +26,7 @@ import {
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
+  PropertyDAO,
   PaymentDAO,
   ProfileDAO,
   ClientDAO,
@@ -67,6 +68,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   stripeService: StripeService;
+  propertyDAO: PropertyDAO;
   invoiceDAO: InvoiceDAO;
   paymentDAO: PaymentDAO;
   profileDAO: ProfileDAO;
@@ -130,6 +132,7 @@ export class PaymentService implements ICronProvider {
   private readonly paymentDAO: PaymentDAO;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly propertyDAO: PropertyDAO;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
@@ -152,6 +155,7 @@ export class PaymentService implements ICronProvider {
     emitterService,
     subscriptionDAO,
     stripeService,
+    propertyDAO,
     invoiceDAO,
     paymentDAO,
     profileDAO,
@@ -171,6 +175,7 @@ export class PaymentService implements ICronProvider {
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
     this.invoiceDAO = invoiceDAO;
+    this.propertyDAO = propertyDAO;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentProcessorDAO = paymentProcessorDAO;
@@ -1010,11 +1015,44 @@ export class PaymentService implements ICronProvider {
       );
 
       let lease;
+      let currency: string | undefined;
+      let propertyObjectId: Types.ObjectId | undefined;
+      let unitObjectId: Types.ObjectId | undefined;
+
       if (data.leaseId) {
         lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
         if (!lease) {
           throw new NotFoundError({ message: 'Lease not found' });
         }
+        currency = lease.fees?.currency;
+      } else if (data.propertyId) {
+        // Property-tied entry without a lease
+        const property = await this.propertyDAO.findFirst({
+          pid: data.propertyId,
+          cuid,
+          deletedAt: null,
+        });
+        if (!property) {
+          throw new NotFoundError({ message: 'Property not found' });
+        }
+        propertyObjectId = property._id;
+
+        if (data.unitId) {
+          const PropertyUnitModel = mongoose.model('PropertyUnit');
+          const unit = await PropertyUnitModel.findOne({
+            puid: data.unitId,
+            propertyId: property._id,
+          });
+          if (!unit) {
+            throw new NotFoundError({ message: 'Unit not found for this property' });
+          }
+          unitObjectId = unit._id as Types.ObjectId;
+        }
+      }
+
+      // Derive currency: lease > client settings > default
+      if (!currency) {
+        currency = (client as any).settings?.currency || 'USD';
       }
 
       const payment = await this.paymentDAO.insert({
@@ -1022,9 +1060,12 @@ export class PaymentService implements ICronProvider {
         paymentType: data.paymentType,
         paymentMethod: data.paymentMethod,
         lease: lease ? lease._id : undefined,
+        propertyId: propertyObjectId,
+        unitId: unitObjectId,
         tenant: tenantProfile._id,
         baseAmount: data.baseAmount,
         processingFee: data.processingFee || 0,
+        currency,
         status: data.status || PaymentRecordStatus.PAID,
         dueDate: data.paidAt,
         paidAt: data.paidAt,
@@ -1048,7 +1089,7 @@ export class PaymentService implements ICronProvider {
       return {
         success: true,
         data: payment,
-        message: 'Manual payment recorded successfully',
+        message: 'Payment recorded successfully',
       };
     } catch (error: any) {
       this.log.error('Error recording manual payment:', error);

@@ -8,6 +8,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { UserCache } from '@caching/user.cache';
 import { AuthCache } from '@caching/auth.cache';
 import { S3Service } from '@services/fileUpload';
+import { ICronJob } from '@interfaces/cron.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 
 export interface DSARExport {
@@ -69,6 +70,90 @@ export class DSARService {
     this.userCache = userCache;
     this.authCache = authCache;
     this.s3Service = s3Service;
+  }
+
+  getCronJobs(): ICronJob[] {
+    return [
+      {
+        name: 'dsar:enforce-data-retention',
+        schedule: '30 4 * * *', // 4:30 AM UTC — overnight batch
+        handler: this.enforceDataRetention.bind(this),
+        service: 'DSARService',
+        enabled: true,
+        description: 'Auto-anonymise profiles whose data retention period has expired',
+        timeout: 300_000, // 5 minutes — may process multiple profiles
+      },
+    ];
+  }
+
+  /**
+   * Finds profiles with expired retention dates and anonymises them.
+   * Only processes disconnected/inactive users (no active leases).
+   * Skips users who are already anonymised (email ends with @anonymised.invalid).
+   */
+  private async enforceDataRetention(): Promise<void> {
+    const now = new Date();
+
+    const expiredProfiles = await this.profileDAO.list(
+      {
+        'settings.gdprSettings.retentionExpiryDate': { $lte: now },
+        deletedAt: null,
+      },
+      { limit: 50 }
+    );
+
+    const profiles = expiredProfiles?.items ?? [];
+    if (profiles.length === 0) {
+      this.log.info('Data retention enforcement: no expired profiles found');
+      return;
+    }
+
+    this.log.info(`Data retention enforcement: found ${profiles.length} expired profile(s)`);
+
+    let anonymised = 0;
+    let skipped = 0;
+
+    for (const profile of profiles) {
+      try {
+        const userId = (profile as any).user?.toString();
+        if (!userId) {
+          skipped++;
+          continue;
+        }
+
+        const user = await this.userDAO.getUserById(userId);
+        if (!user) {
+          skipped++;
+          continue;
+        }
+
+        // Skip already-anonymised users
+        if (user.email?.endsWith('@anonymised.invalid')) {
+          skipped++;
+          continue;
+        }
+
+        // Use the first connected cuid for context
+        const activeCuid =
+          user.cuids?.find((c: any) => c.isConnected)?.cuid ?? user.cuids?.[0]?.cuid;
+        if (!activeCuid) {
+          skipped++;
+          continue;
+        }
+
+        await this.anonymiseUser(user.uid, activeCuid, 'system:retention-enforcement');
+        anonymised++;
+        this.log.info(`Retention enforcement: anonymised uid=${user.uid}`);
+      } catch (error: any) {
+        // Active lease guards will throw — that's expected, just skip
+        skipped++;
+        this.log.info(`Retention enforcement: skipped profile (${error.message})`);
+      }
+    }
+
+    this.log.info(
+      `Data retention enforcement complete: ${anonymised} anonymised, ${skipped} skipped`
+    );
   }
 
   async exportUserData(uid: string, cuid: string): Promise<DSARExport> {

@@ -16,9 +16,22 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
     this.log = createLogger('ExpenseDAO');
   }
 
-  async findByExpuid(expuid: string, clientId: string): Promise<IExpenseDocument | null> {
+  async findByExpuid(expuid: string, cuid: string): Promise<IExpenseDocument | null> {
     try {
-      return await this.findFirst({ expuid, clientId, isDeleted: false });
+      return await this.findFirst(
+        { expuid, cuid, deletedAt: null },
+        {
+          populate: [
+            { path: 'propertyId', select: 'name address pid' },
+            { path: 'unitId', select: 'unitNumber puid' },
+            {
+              path: 'createdBy',
+              select: 'email uid',
+              populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+            },
+          ],
+        }
+      );
     } catch (error: any) {
       this.log.error({ error }, 'Error finding expense by expuid');
       throw this.throwErrorHandler(error);
@@ -26,12 +39,12 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
   }
 
   async findByClient(
-    clientId: string,
+    cuid: string,
     filters: IExpenseFilters,
     opts?: IFindOptions
   ): ListResultWithPagination<IExpenseDocument[]> {
     try {
-      const query: QueryFilter<IExpenseDocument> = { clientId, isDeleted: false };
+      const query: QueryFilter<IExpenseDocument> = { cuid, deletedAt: null };
 
       if (filters.propertyId && isValidObjectId(filters.propertyId))
         query.propertyId = new Types.ObjectId(filters.propertyId);
@@ -65,12 +78,12 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
   }
 
   async aggregateByCategory(
-    clientId: string,
+    cuid: string,
     match: QueryFilter<IExpenseDocument>
   ): Promise<Array<{ _id: { category: string; currency: string }; total: number }>> {
     try {
       return (await this.aggregate([
-        { $match: { clientId, isDeleted: false, ...match } },
+        { $match: { cuid, deletedAt: null, ...match } },
         {
           $group: {
             _id: { category: '$category', currency: '$currency' },
@@ -86,12 +99,12 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
   }
 
   async aggregateByProperty(
-    clientId: string,
+    cuid: string,
     match: QueryFilter<IExpenseDocument>
   ): Promise<Array<{ _id: { propertyId: string; currency: string }; total: number }>> {
     try {
       return (await this.aggregate([
-        { $match: { clientId, isDeleted: false, ...match } },
+        { $match: { cuid, deletedAt: null, ...match } },
         {
           $group: {
             _id: { propertyId: '$propertyId', currency: '$currency' },
@@ -102,6 +115,52 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
       ])) as any;
     } catch (error: any) {
       this.log.error({ error }, 'Error aggregating expenses by property');
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async getExpenseStats(cuid: string): Promise<{
+    byCurrency: Array<{ currency: string; totalExpenses: number; monthExpenses: number }>;
+    totalCount: number;
+  }> {
+    try {
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const result = (await this.aggregate([
+        { $match: { cuid, deletedAt: null } },
+        {
+          $facet: {
+            byCurrency: [
+              {
+                $group: {
+                  _id: '$currency',
+                  totalExpenses: { $sum: '$amount' },
+                  monthExpenses: {
+                    $sum: {
+                      $cond: [{ $gte: ['$date', monthStart] }, '$amount', 0],
+                    },
+                  },
+                },
+              },
+            ],
+            totalCount: [{ $count: 'count' }],
+          },
+        },
+      ])) as any[];
+
+      const facet = result[0] || { byCurrency: [], totalCount: [] };
+      return {
+        byCurrency: (facet.byCurrency || []).map((r: any) => ({
+          currency: (r._id || 'USD').toUpperCase(),
+          totalExpenses: r.totalExpenses || 0,
+          monthExpenses: r.monthExpenses || 0,
+        })),
+        totalCount: facet.totalCount?.[0]?.count || 0,
+      };
+    } catch (error: any) {
+      this.log.error({ error }, 'Error getting expense stats');
       throw this.throwErrorHandler(error);
     }
   }

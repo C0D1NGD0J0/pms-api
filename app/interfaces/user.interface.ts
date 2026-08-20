@@ -26,8 +26,8 @@ export interface ICurrentUser {
    * Subscription details — only populated for PM roles (super-admin, admin, manager, staff).
    * Contains plan info, raw entitlements, and paymentFlow (billing state).
    *
-   * Note: `entitlements` here are the raw plan flags. For feature gating, use
-   * `clientEntitlements` instead — it's available to all roles.
+   * Note: `entitlements` here are the raw plan flags from `platform.config.json`.
+   * For feature gating, the frontend uses the dedicated entitlements endpoint.
    */
   subscription?: {
     plan: {
@@ -35,7 +35,7 @@ export interface ICurrentUser {
       status: ISubscriptionStatus;
       billingInterval: 'monthly' | 'annual';
     };
-    /** Raw plan feature flags — see `clientEntitlements` for the resolved version */
+    /** Plan feature flags from platform.config.json — overlaid at login by auth.service */
     entitlements: ISubscriptionEntitlements['entitlements'];
     /**
      * Computed billing state (not stored in DB — derived by aggregation pipeline).
@@ -114,18 +114,6 @@ export interface ICurrentUser {
     theme?: ThemePreference;
     timezone?: string;
   };
-
-  /**
-   * Resolved feature flags from the client's subscription — available to ALL roles.
-   *
-   * This is the primary field for feature gating on the frontend. Tenants and vendors
-   * use this instead of `subscription.entitlements` (which is PM-only and contains
-   * billing details they shouldn't see).
-   *
-   * Populated from `subscription.entitlements` with safe defaults (false) when no
-   * subscription exists.
-   */
-  clientEntitlements: ISubscriptionEntitlements['entitlements'];
 
   /** All client connections for this user (for account switching) */
   clients: IClientUserConnections[];

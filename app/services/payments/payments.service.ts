@@ -1039,7 +1039,7 @@ export class PaymentService implements ICronProvider {
 
         if (data.unitId) {
           const unit = await this.propertyUnitDAO.findFirst({
-            puid: String(data.unitId),
+            puid: data.unitId,
             propertyId: property._id,
             deletedAt: null,
           });

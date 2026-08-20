@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { calendarDate } from '../UtilsValidation';
+import { calendarDate, safeString } from '../UtilsValidation';
 
 export const vendorPayoutParams = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
@@ -12,15 +12,15 @@ export const cardCheckoutParams = z.object({
 
 export const chargeForMaintenance = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
   amount: z.number().int().positive('Amount must be a positive integer (cents)'),
   description: z.string().trim().max(500).optional(),
 });
 
 export const createPayment = z.object({
   paymentType: z.enum(['rent', 'maintenance', 'late_fee', 'security_deposit', 'deposit_refund']),
-  leaseId: z.string().min(1, 'Lease ID is required'),
-  tenantId: z.string().min(1, 'Tenant ID is required'),
+  leaseId: safeString.pipe(z.string().min(1, 'Lease ID is required')),
+  tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
   dueDate: calendarDate(),
   daysLate: z.number().int().min(0).optional(),
   description: z.string().optional(),
@@ -41,10 +41,10 @@ export const recordManualPayment = z
     baseAmount: z.coerce.number().int().min(1, 'Base amount must be at least 1 cent'),
     processingFee: z.coerce.number().int().min(0, 'Processing fee cannot be negative').optional(),
     paidAt: calendarDate(),
-    tenantId: z.string().min(1, 'Tenant ID is required'),
-    leaseId: z.string().optional(),
-    propertyId: z.string().optional(),
-    unitId: z.string().optional(),
+    tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
+    leaseId: safeString.optional(),
+    propertyId: safeString.optional(),
+    unitId: safeString.optional(),
     description: z.string().optional(),
     receipt: z
       .object({

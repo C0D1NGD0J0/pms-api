@@ -122,7 +122,7 @@ const makeServiceWithMocks = (
     paymentProcessorDAO,
     profileDAO,
     clientDAO,
-    vendorDAO: {} as any,
+    vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
   });
 
   const maintenancePaymentService = new MaintenancePaymentService({
@@ -136,7 +136,7 @@ const makeServiceWithMocks = (
     profileDAO,
     paymentDAO,
     clientDAO,
-    vendorDAO: {} as any,
+    vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     leaseDAO,
     userDAO,
   });
@@ -193,6 +193,10 @@ const makeServiceWithMocks = (
     invoiceDAO,
     paymentDAO,
     profileDAO,
+    propertyDAO: {} as any,
+    propertyUnitDAO: {} as any,
+    maintenanceRequestDAO: {} as any,
+    vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     clientDAO,
     leaseDAO,
     userDAO,
@@ -4471,7 +4475,7 @@ describe('MaintenancePaymentService - handleMaintenanceInvoiceApproved', () => {
       emitterService: mockEmitter as unknown as EventEmitterService,
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       userDAO: {} as any,
-      vendorDAO: {} as any,
+      vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       profileDAO: mockProfileDAO,
       clientDAO: {} as any,
       leaseDAO: mockLeaseDAO,

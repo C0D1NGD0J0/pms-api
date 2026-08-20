@@ -13,6 +13,9 @@ import {
   UserDAO,
 } from '@dao/index';
 
+/** Strip characters that could form NoSQL operators ($, {, }) from user input */
+export const safeString = z.string().transform((val) => val.replace(/[${}]/g, ''));
+
 export const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;

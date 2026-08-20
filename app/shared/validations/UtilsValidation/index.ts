@@ -227,7 +227,7 @@ export const ValidateExpuidSchema = z.object({
   expuid: z.string().refine(
     async (expuid) => {
       const { expenseDAO }: { expenseDAO: ExpenseDAO } = (await getContainer()).cradle;
-      const expense = await expenseDAO.findFirst({ expuid, isDeleted: false });
+      const expense = await expenseDAO.findFirst({ expuid, deletedAt: null });
       return !!expense;
     },
     {

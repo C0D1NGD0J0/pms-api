@@ -6,7 +6,7 @@ import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PermissionResource, PermissionAction, PermissionScope } from '@interfaces/utils.interface';
 
-const BASE_ENTITLEMENTS = {
+const _BASE_ENTITLEMENTS = {
   eSignature: false,
   maintenanceRequestService: false,
   inspectionService: false,

@@ -161,6 +161,33 @@ router.get(
   })
 );
 
+// Closure routes — must be before /:cuid/:luid to avoid route conflict
+router.get(
+  '/:cuid/closure-preflight',
+  basicLimiter(),
+  requireRole([ROLES.SUPER_ADMIN]),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.closurePreflightCheck(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/closure-status',
+  basicLimiter(),
+  requireRole([ROLES.SUPER_ADMIN]),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getAccountClosureStatus(req, res);
+  })
+);
+
 router
   .route('/:cuid/:luid')
   .get(
@@ -494,19 +521,6 @@ router.post(
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<OffboardingController>('offboardingController');
     return controller.initiateAccountClosure(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/closure-status',
-  basicLimiter(),
-  requireRole([ROLES.SUPER_ADMIN]),
-  validateRequest({
-    params: UtilsValidations.cuid,
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<OffboardingController>('offboardingController');
-    return controller.getAccountClosureStatus(req, res);
   })
 );
 

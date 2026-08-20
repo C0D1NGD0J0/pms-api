@@ -1171,7 +1171,38 @@ export class OffboardingService {
       }
     }
 
-    // --- 6. Emit closure event for audit ---
+    // --- 6. Send tenant closure emails ---
+    const tenantUsers = await this.userDAO.list({
+      cuids: { $elemMatch: { cuid, roles: { $in: ['tenant'] }, isConnected: true } },
+      deletedAt: null,
+    });
+
+    for (const tenant of tenantUsers.items || []) {
+      if ((tenant as any).email) {
+        this.emailQueue.addToEmailQueue('companyClosure-tenant', {
+          to: (tenant as any).email,
+          emailType: MailType.COMPANY_CLOSURE_TENANT,
+          subject: `${companyName} — Account Closure Notice`,
+          data: { companyName, effectiveDate: new Date().toLocaleDateString() },
+        });
+      }
+    }
+
+    // --- 7. Send owner confirmation email ---
+    this.emailQueue.addToEmailQueue('companyClosure-owner', {
+      to: currentUser.email,
+      emailType: MailType.COMPANY_CLOSURE_OWNER,
+      subject: `${companyName} — Account Closure Confirmation`,
+      data: {
+        companyName,
+        effectiveDate: new Date().toLocaleDateString(),
+        leasesTerminated: leaseResults.succeeded,
+        staffDisconnected,
+        vendorsDisconnected: (vendors.items || []).length,
+      },
+    });
+
+    // --- 8. Emit closure event for audit ---
     this.emitterService.emit(EventTypes.ACCOUNT_CLOSURE_INITIATED, {
       cuid,
       initiatedBy: currentUser.sub,
@@ -1180,12 +1211,125 @@ export class OffboardingService {
 
     this.log.info({ cuid }, 'Account closure completed');
 
+    const vendorsDisconnected = (vendors.items || []).length;
+    const tenantsNotified = (tenantUsers.items || []).length;
+
     return {
       success: true,
       data: {
-        message: `Account closed. ${leaseResults.succeeded} leases terminated, ${staffDisconnected} staff disconnected, ${(vendors.items || []).length} vendors disconnected.`,
+        message: `Account closed. ${leaseResults.succeeded} leases terminated, ${staffDisconnected} staff disconnected, ${vendorsDisconnected} vendors disconnected, ${tenantsNotified} tenants notified.`,
       },
       message: 'Account has been closed successfully',
+    };
+  }
+
+  /**
+   * Pre-flight check before account closure — returns financial warnings/blockers.
+   * The frontend should call this before showing the closure confirmation modal.
+   */
+  async closurePreflightCheck(cuid: string): IPromiseReturnedData<{
+    canProceed: boolean;
+    warnings: Array<{ type: string; message: string; count: number; totalCents: number }>;
+  }> {
+    const warnings: Array<{ type: string; message: string; count: number; totalCents: number }> =
+      [];
+
+    // 1. Outstanding rent / payment balances — query each status separately
+    const [pendingPayments, overduePayments, processingPayments] = await Promise.all([
+      this.paymentDAO.findByCuid(cuid, { status: PaymentRecordStatus.PENDING }, { limit: 1000 }),
+      this.paymentDAO.findByCuid(cuid, { status: PaymentRecordStatus.OVERDUE }, { limit: 1000 }),
+      this.paymentDAO.findByCuid(cuid, { status: PaymentRecordStatus.PROCESSING }, { limit: 1000 }),
+    ]);
+
+    const outstandingPayments = [
+      ...(pendingPayments?.items ?? []),
+      ...(overduePayments?.items ?? []),
+      ...(processingPayments?.items ?? []),
+    ];
+
+    if (outstandingPayments.length > 0) {
+      const totalCents = outstandingPayments.reduce(
+        (sum: number, p: any) => sum + (p.baseAmount ?? 0),
+        0
+      );
+      warnings.push({
+        type: 'outstanding_payments',
+        message: `${outstandingPayments.length} outstanding payment(s) totaling ${(totalCents / 100).toFixed(2)}. These will be cancelled.`,
+        count: outstandingPayments.length,
+        totalCents,
+      });
+    }
+
+    // 2. Unpaid vendor invoices (approved but not yet paid out)
+    const unpaidInvoiceResult = await this.maintenanceRequestDAO.listWithDetails(
+      {
+        cuid,
+        'invoice.status': InvoiceStatus.APPROVED,
+        'invoice.vendorPaidAt': { $exists: false },
+        deletedAt: null,
+      },
+      { limit: 1000 }
+    );
+    const unpaidInvoices = unpaidInvoiceResult?.items ?? [];
+
+    if (unpaidInvoices.length > 0) {
+      const totalCents = unpaidInvoices.reduce(
+        (sum: number, mr: any) => sum + (mr.invoice?.amountInCents ?? 0),
+        0
+      );
+      warnings.push({
+        type: 'unpaid_vendor_invoices',
+        message: `${unpaidInvoices.length} approved vendor invoice(s) totaling ${(totalCents / 100).toFixed(2)} have not been paid out. Vendors will be disconnected without payment.`,
+        count: unpaidInvoices.length,
+        totalCents,
+      });
+    }
+
+    // 3. Security deposits held (active leases with deposits)
+    const activeLeasesResult = await this.leaseDAO.list({
+      cuid,
+      status: LeaseStatus.ACTIVE,
+      'fees.securityDeposit': { $gt: 0 },
+      deletedAt: null,
+    });
+    const activeLeasesWithDeposits = activeLeasesResult?.items ?? [];
+
+    if (activeLeasesWithDeposits.length > 0) {
+      const totalCents = activeLeasesWithDeposits.reduce(
+        (sum: number, l: any) => sum + (l.fees?.securityDeposit ?? 0),
+        0
+      );
+      warnings.push({
+        type: 'security_deposits',
+        message: `${activeLeasesWithDeposits.length} active lease(s) hold security deposits totaling ${(totalCents / 100).toFixed(2)}. Deposits will need to be refunded after move-out inspections.`,
+        count: activeLeasesWithDeposits.length,
+        totalCents,
+      });
+    }
+
+    // 4. Active leases that will be terminated
+    const activeLeaseCount = await this.leaseDAO.countDocuments({
+      cuid,
+      status: LeaseStatus.ACTIVE,
+      deletedAt: null,
+    });
+
+    if (activeLeaseCount > 0) {
+      warnings.push({
+        type: 'active_leases',
+        message: `${activeLeaseCount} active lease(s) will be immediately terminated. Move-out inspections will be auto-scheduled.`,
+        count: activeLeaseCount,
+        totalCents: 0,
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        canProceed: true,
+        warnings,
+      },
+      message: 'Pre-flight check complete',
     };
   }
 

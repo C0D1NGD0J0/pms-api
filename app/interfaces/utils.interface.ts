@@ -30,8 +30,10 @@ export enum MailType {
   PAYMENT_REQUEST_CREATED = 'PAYMENT_REQUEST_CREATED',
   LEASE_PAYMENT_REMINDER = 'LEASE_PAYMENT_REMINDER',
   COMPANY_CLOSURE_VENDOR = 'COMPANY_CLOSURE_VENDOR',
+  COMPANY_CLOSURE_TENANT = 'COMPANY_CLOSURE_TENANT',
   LEASE_SIGNOFF_REQUEST = 'LEASE_SIGNOFF_REQUEST',
   COMPANY_CLOSURE_STAFF = 'COMPANY_CLOSURE_STAFF',
+  COMPANY_CLOSURE_OWNER = 'COMPANY_CLOSURE_OWNER',
   ACCOUNT_DISCONNECTED = 'ACCOUNT_DISCONNECTED',
   INSPECTION_SCHEDULED = 'INSPECTION_SCHEDULED',
   INSPECTION_SUBMITTED = 'INSPECTION_SUBMITTED',
@@ -66,6 +68,7 @@ export enum PermissionResource {
   GUEST_PASS = 'guest-pass',
   INVITATION = 'invitation',
   PROPERTY = 'property',
+  EXPENSE = 'expense',
   BILLING = 'billing',
   PAYMENT = 'payment',
   CLIENT = 'client',
@@ -95,6 +98,21 @@ export enum PermissionAction {
   SEND = 'send',
 }
 
+export enum ResourceContext {
+  SERVICE_REQUEST = 'service-request',
+  TENANT_PROFILE = 'tenant-profile',
+  USER_PROFILE = 'user-profile',
+  MAINTENANCE = 'maintenance',
+  GUEST_PASS = 'guest-pass',
+  INSPECTION = 'inspection',
+  PROPERTY = 'property',
+  PAYMENT = 'payment',
+  EXPENSE = 'expense',
+  CLIENT = 'client',
+  VENDOR = 'vendor',
+  LEASE = 'lease',
+}
+
 export enum CURRENCIES {
   // Major / Stripe-supported
   USD = 'USD',
@@ -116,20 +134,6 @@ export enum CURRENCIES {
   SGD = 'SGD',
   // South America
   BRL = 'BRL',
-}
-
-export enum ResourceContext {
-  SERVICE_REQUEST = 'service-request',
-  TENANT_PROFILE = 'tenant-profile',
-  USER_PROFILE = 'user-profile',
-  MAINTENANCE = 'maintenance',
-  GUEST_PASS = 'guest-pass',
-  INSPECTION = 'inspection',
-  PROPERTY = 'property',
-  PAYMENT = 'payment',
-  CLIENT = 'client',
-  VENDOR = 'vendor',
-  LEASE = 'lease',
 }
 
 export enum PermissionScope {

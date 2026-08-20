@@ -35,17 +35,33 @@ export class MailService {
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
-      const layoutData = { appName: envVariables.APP_NAME, year: new Date().getFullYear() };
+      const frontendUrl = envVariables.FRONTEND?.URL || '';
+      const preferencesUrl = frontendUrl ? `${frontendUrl}/profile/settings` : '';
+      const layoutData = {
+        appName: envVariables.APP_NAME,
+        year: new Date().getFullYear(),
+        preferencesUrl,
+      };
       const renderedHtml = await this.renderLayoutTemplate(html, layoutData);
       const renderedText = await this.renderLayoutTemplate(text, layoutData);
 
       if (envVariables.SERVER.ENV === 'production') {
+        const unsubscribeHeader = preferencesUrl
+          ? `<${preferencesUrl}>, <mailto:support@propertydesk.com?subject=unsubscribe>`
+          : undefined;
+
         const { error } = await this.resendClient.emails.send({
           from: envVariables.EMAIL.APP_EMAIL_ADDRESS,
           to: data.to as string | string[],
           subject: data.subject || this.getDefaultSubject(mailType),
           html: renderedHtml,
           text: renderedText || undefined,
+          headers: unsubscribeHeader
+            ? {
+                'List-Unsubscribe': unsubscribeHeader,
+                'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+              }
+            : undefined,
         });
 
         if (error) {
@@ -58,6 +74,14 @@ export class MailService {
           subject: data.subject || this.getDefaultSubject(mailType),
           html: renderedHtml,
           text: renderedText,
+          ...(preferencesUrl
+            ? {
+                headers: {
+                  'List-Unsubscribe': `<${preferencesUrl}>, <mailto:support@propertydesk.com?subject=unsubscribe>`,
+                  'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+                },
+              }
+            : {}),
         });
       }
 
@@ -202,8 +226,14 @@ export class MailService {
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
         break;
+      case MailType.COMPANY_CLOSURE_TENANT:
+        template = await this.buildTemplate('company-closure-tenant', emailData, 'subscription');
+        break;
       case MailType.COMPANY_CLOSURE_STAFF:
         template = await this.buildTemplate('company-closure-staff', emailData, 'subscription');
+        break;
+      case MailType.COMPANY_CLOSURE_OWNER:
+        template = await this.buildTemplate('company-closure-owner', emailData, 'subscription');
         break;
       case MailType.ACCOUNT_DISCONNECTED:
         template = await this.buildTemplate(
@@ -406,6 +436,8 @@ export class MailService {
       [MailType.INSPECTION_CANCELLED]: 'Inspection Cancelled',
       [MailType.COMPANY_CLOSURE_STAFF]: 'Account Closure Notice',
       [MailType.COMPANY_CLOSURE_VENDOR]: 'Service Disconnection Notice',
+      [MailType.COMPANY_CLOSURE_TENANT]: 'Account Closure Notice',
+      [MailType.COMPANY_CLOSURE_OWNER]: 'Account Closure Confirmation',
     };
 
     return subjectMap[mailType] || subjectMap.default;

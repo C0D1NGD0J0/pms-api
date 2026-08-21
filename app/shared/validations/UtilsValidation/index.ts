@@ -13,8 +13,10 @@ import {
   UserDAO,
 } from '@dao/index';
 
-/** Strip characters that could form NoSQL operators ($, {, }) from user input */
-export const safeString = z.string().transform((val) => val.replace(/[${}]/g, ''));
+/** Reject strings containing NoSQL operator characters ($, {, }) */
+export const safeString = z
+  .string()
+  .refine((val) => !/[${}]/.test(val), { message: 'Invalid characters in field' });
 
 export const getContainer = async () => {
   const { container } = await import('@di/setup');

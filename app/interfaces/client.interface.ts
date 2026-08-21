@@ -88,16 +88,17 @@ export type PopulatedAccountAdmin = Pick<
   _id: Types.ObjectId;
 };
 
-export type IPopulatedClientDocument = {
-  accountAdmin: IUserDocument | Types.ObjectId;
-} & Omit<IClientDocument, 'accountAdmin'>;
-
 export interface IClientSuspension {
+  closedAt?: Date | null;
   by?: Types.ObjectId;
   isActive: boolean;
   reason?: string;
   at?: Date;
 }
+
+export type IPopulatedClientDocument = {
+  accountAdmin: IUserDocument | Types.ObjectId;
+} & Omit<IClientDocument, 'accountAdmin'>;
 
 export type IClientInfo = {
   clientDisplayName: string;

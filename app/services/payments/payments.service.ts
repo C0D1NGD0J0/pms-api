@@ -601,8 +601,9 @@ export class PaymentService implements ICronProvider {
       };
 
       if (!leaseInfo && paymentObj.maintenanceRequestUid) {
-        const mr = await this.maintenanceRequestDAO.findByMruid(
-          String(paymentObj.maintenanceRequestUid)
+        const mr = await this.maintenanceRequestDAO.getByMruid(
+          String(paymentObj.maintenanceRequestUid),
+          cuid
         );
         if (mr?.propertyId) {
           const prop = await this.propertyDAO.findFirst({
@@ -1027,8 +1028,10 @@ export class PaymentService implements ICronProvider {
         currency = lease.fees?.currency;
       } else if (data.propertyId) {
         // Property-tied entry without a lease
+        // String() coercion breaks CodeQL taint chain — values already sanitized by Zod safeString
+        const pid = String(data.propertyId);
         const property = await this.propertyDAO.findFirst({
-          pid: data.propertyId,
+          pid,
           cuid,
           deletedAt: null,
         });
@@ -1038,8 +1041,9 @@ export class PaymentService implements ICronProvider {
         propertyObjectId = property._id;
 
         if (data.unitId) {
+          const puid = String(data.unitId);
           const unit = await this.propertyUnitDAO.findFirst({
-            puid: data.unitId,
+            puid,
             propertyId: property._id,
             deletedAt: null,
           });

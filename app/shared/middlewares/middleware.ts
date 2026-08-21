@@ -152,11 +152,12 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
       // except identity/exit routes so the frontend can display the "account closed" screen
       // and allow the user to switch accounts or log out.
       if (req.context.currentuser?.client?.suspension?.isActive) {
+        const path = req.originalUrl.split('?')[0];
         const isIdentityOrExitRoute =
-          req.originalUrl.endsWith('/me') ||
-          req.originalUrl.includes('/logout') ||
-          req.originalUrl.includes('/switch_client_account') ||
-          req.originalUrl.includes('/notifications');
+          path.endsWith('/me') ||
+          path.endsWith('/logout') ||
+          path.endsWith('/switch_client_account') ||
+          /\/notifications(\/|$)/.test(path);
         if (!isIdentityOrExitRoute) {
           return next(
             new ForbiddenError({

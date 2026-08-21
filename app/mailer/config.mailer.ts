@@ -47,7 +47,7 @@ export class MailService {
 
       if (envVariables.SERVER.ENV === 'production') {
         const unsubscribeHeader = preferencesUrl
-          ? `<${preferencesUrl}>, <mailto:support@propertydesk.com?subject=unsubscribe>`
+          ? `<${preferencesUrl}>, <mailto:${envVariables.EMAIL.APP_EMAIL_ADDRESS}?subject=unsubscribe>`
           : undefined;
 
         const { error } = await this.resendClient.emails.send({
@@ -77,7 +77,7 @@ export class MailService {
           ...(preferencesUrl
             ? {
                 headers: {
-                  'List-Unsubscribe': `<${preferencesUrl}>, <mailto:support@propertydesk.com?subject=unsubscribe>`,
+                  'List-Unsubscribe': `<${preferencesUrl}>, <mailto:${envVariables.EMAIL.APP_EMAIL_ADDRESS}?subject=unsubscribe>`,
                   'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
                 },
               }

@@ -57,17 +57,8 @@ export class ExpenseController {
     return res.status(httpStatusCodes.OK).json(result);
   }
 
-  async exportCsv(req: AppRequest, res: Response): Promise<void> {
-    const { cuid } = req.params;
-    const csv = await this.expenseService.exportCsv(cuid, req.query as any);
-    const filename = `expenses-${cuid}-${new Date().toISOString().split('T')[0]}.csv`;
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(csv);
-  }
-
   async attachReceipt(req: AppRequest, res: Response): Promise<Response> {
-    const { expuid } = req.params;
+    const { cuid, expuid } = req.params;
     const userId = req.context.currentuser!.sub;
 
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
@@ -83,9 +74,21 @@ export class ExpenseController {
       });
     }
 
+    // Persist receipt metadata to the expense document
+    const file = req.scannedFiles?.[0];
+    if (file) {
+      await this.expenseService.updateExpense(expuid, cuid, {
+        receipt: {
+          url: file.url || '',
+          filename: file.originalFileName || file.filename || '',
+          key: file.key || '',
+        },
+      } as any);
+    }
+
     return res.status(httpStatusCodes.OK).json({
       success: true,
-      message: 'Receipt upload queued',
+      message: 'Receipt uploaded',
       fileUpload: uploadResult.message,
       processedFiles: uploadResult.processedFiles,
     });

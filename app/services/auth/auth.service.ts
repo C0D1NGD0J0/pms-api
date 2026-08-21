@@ -550,13 +550,11 @@ export class AuthService {
     const connectedCuids = connectedClients.map((c: any) => c.cuid);
     const clientsResult = await this.clientDAO.list(
       { cuid: { $in: connectedCuids } },
-      { projection: '+suspension.isActive +suspension.reason', limit: connectedCuids.length }
+      { projection: '+suspension.isActive +suspension.closedAt', limit: connectedCuids.length }
     );
     const suspendedCuids = new Set(
       (clientsResult?.items ?? [])
-        .filter(
-          (c: any) => c.suspension?.isActive && c.suspension.reason?.includes('Account closed')
-        )
+        .filter((c: any) => c.suspension?.isActive && c.suspension.closedAt)
         .map((c: any) => c.cuid)
     );
     const nonSuspendedClients = connectedClients.filter((c: any) => !suspendedCuids.has(c.cuid));
@@ -683,12 +681,9 @@ export class AuthService {
     // Block switching to a closed account
     const targetClient = await this.clientDAO.findFirst(
       { cuid: newcuid },
-      { select: '+suspension.isActive +suspension.reason' }
+      { select: '+suspension.isActive +suspension.closedAt' }
     );
-    if (
-      targetClient?.suspension?.isActive &&
-      targetClient.suspension.reason?.includes('Account closed')
-    ) {
+    if (targetClient?.suspension?.isActive && targetClient.suspension.closedAt) {
       throw new ForbiddenError({
         message: 'This account has been closed. You cannot switch to it.',
       });

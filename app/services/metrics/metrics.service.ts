@@ -318,9 +318,19 @@ export class MetricsService implements ICronProvider {
         monthExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.monthExpenses, 0),
         totalExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.totalExpenses, 0),
         totalCount: expenseStats.totalCount,
-        netIncome:
-          payments.byCurrency.reduce((sum, c) => sum + c.monthRevenue, 0) -
-          expenseStats.byCurrency.reduce((sum, c) => sum + c.monthExpenses, 0),
+        netIncomeByCurrency: (() => {
+          const allCurrencies = new Set([
+            ...expenseStats.byCurrency.map((c) => c.currency),
+            ...payments.byCurrency.map((c) => c.currency),
+          ]);
+          return [...allCurrencies].map((currency) => {
+            const revenue =
+              payments.byCurrency.find((c) => c.currency === currency)?.monthRevenue ?? 0;
+            const expenses =
+              expenseStats.byCurrency.find((c) => c.currency === currency)?.monthExpenses ?? 0;
+            return { currency, netIncome: revenue - expenses };
+          });
+        })(),
       },
       properties,
       users,

@@ -124,9 +124,8 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
     totalCount: number;
   }> {
     try {
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      monthStart.setHours(0, 0, 0, 0);
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
       const result = (await this.aggregate([
         { $match: { cuid, deletedAt: null } },

@@ -1035,7 +1035,7 @@ export class OffboardingService {
     if (!client) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
-    if (client.suspension?.isActive && client.suspension.reason?.includes('Account closed')) {
+    if (client.suspension?.isActive && client.suspension.closedAt) {
       return {
         success: true,
         data: { message: 'Account is already closed' },
@@ -1122,6 +1122,7 @@ export class OffboardingService {
 
     // --- 3. Disconnect all vendors ---
     const vendors = await this.vendorDAO.getClientVendors(cuid);
+    const vendorsDisconnected = (vendors.items || []).length;
     for (const vendor of vendors.items || []) {
       try {
         await this.vendorDAO.disconnectClient(vendor._id.toString(), cuid);
@@ -1139,6 +1140,7 @@ export class OffboardingService {
       {
         $set: {
           'suspension.isActive': true,
+          'suspension.closedAt': new Date(),
           'suspension.reason': reason ? `Account closed: ${reason}` : 'Account closed',
           'suspension.at': new Date(),
           'suspension.by': new Types.ObjectId(currentUser.sub),
@@ -1198,7 +1200,7 @@ export class OffboardingService {
         effectiveDate: new Date().toLocaleDateString(),
         leasesTerminated: leaseResults.succeeded,
         staffDisconnected,
-        vendorsDisconnected: (vendors.items || []).length,
+        vendorsDisconnected,
       },
     });
 
@@ -1211,7 +1213,6 @@ export class OffboardingService {
 
     this.log.info({ cuid }, 'Account closure completed');
 
-    const vendorsDisconnected = (vendors.items || []).length;
     const tenantsNotified = (tenantUsers.items || []).length;
 
     return {
@@ -1352,9 +1353,7 @@ export class OffboardingService {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
-    const isClosed = !!(
-      client.suspension?.isActive && client.suspension.reason?.includes('Account closed')
-    );
+    const isClosed = !!(client.suspension?.isActive && client.suspension.closedAt);
 
     const [activeLeases, terminatedLeases, completedLeases] = await Promise.all([
       this.leaseDAO.countDocuments({ cuid, status: LeaseStatus.ACTIVE, deletedAt: null }),

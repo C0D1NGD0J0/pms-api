@@ -164,48 +164,6 @@ export class ExpenseService implements IExpenseService {
     }
   }
 
-  async exportCsv(cuid: string, filters: IExpenseFilters): Promise<string> {
-    try {
-      const result = await this.expenseDAO.findByClient(cuid, filters, {
-        limit: 10000,
-        skip: 0,
-      });
-
-      const expenses = (result as any)?.data ?? [];
-      const header =
-        'Date,Property,Unit,Category,Description,Vendor,Amount,Currency,Payment Method';
-      const rows = expenses.map((exp: any) => {
-        const date = new Date(exp.date).toISOString().split('T')[0];
-        const property = exp.propertyId?.name || '';
-        const unit = exp.unitId?.unitNumber || '';
-        const amount = (exp.amount / 100).toFixed(2);
-        return [
-          date,
-          this.csvEscape(property),
-          this.csvEscape(unit),
-          exp.category,
-          this.csvEscape(exp.description),
-          this.csvEscape(exp.vendor || ''),
-          amount,
-          exp.currency,
-          exp.paymentMethod,
-        ].join(',');
-      });
-
-      return [header, ...rows].join('\n');
-    } catch (error) {
-      this.log.error({ error }, 'Error exporting expenses CSV');
-      throw error;
-    }
-  }
-
-  private csvEscape(value: string): string {
-    if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-      return `"${value.replace(/"/g, '""')}"`;
-    }
-    return value;
-  }
-
   async getPnLSummary(cuid: string, from: string, to: string): IPromiseReturnedData<IPnLSummary> {
     try {
       const fromDate = new Date(from);

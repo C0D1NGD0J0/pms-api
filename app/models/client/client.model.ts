@@ -249,6 +249,7 @@ const ClientSchema = new Schema<IClientDocument>(
     suspension: {
       isActive: { type: Boolean, default: false, index: true, select: false },
       reason: { type: String, select: false },
+      closedAt: { type: Date, default: null, select: false },
       at: { type: Date, select: false },
       by: { type: Schema.Types.ObjectId, ref: 'User', select: false },
     },

@@ -63,8 +63,7 @@ export interface IDashboardStats {
     monthExpenses: number;
     totalExpenses: number;
     totalCount: number;
-    /** monthRevenue - monthExpenses (summed across currencies) */
-    netIncome: number;
+    netIncomeByCurrency: Array<{ currency: string; netIncome: number }>;
   };
   leases: {
     /** Sum of all active lease rent amounts across currencies — the monthly rent roll */

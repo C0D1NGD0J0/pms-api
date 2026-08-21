@@ -36,20 +36,6 @@ router.get(
   })
 );
 
-// GET /:cuid/export — must be before /:cuid/:expuid to avoid route conflict
-router.get(
-  '/:cuid/export',
-  basicLimiter(),
-  requirePermission(PermissionResource.EXPENSE, PermissionAction.LIST),
-  subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
-  validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.listExpensesQuery }),
-  asyncWrapper((req, res) => {
-    const controller = req.container.resolve<ExpenseController>('expenseController');
-    return controller.exportCsv(req, res);
-  })
-);
-
 router.get(
   '/:cuid',
   basicLimiter(),

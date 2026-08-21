@@ -19,23 +19,31 @@ export const ExpenseValidations = {
     paymentMethod: z.enum(paymentMethods, {
       message: `Payment method must be one of: ${paymentMethods.join(', ')}`,
     }),
-    notes: z.string().max(2000).optional(),
+    notes: z
+      .object({
+        html: z.string().max(10000),
+        text: z.string().max(2000),
+      })
+      .optional(),
   }),
 
-  updateExpense: z
-    .object({
-      propertyId: objectId.optional(),
-      unitId: objectId.optional(),
-      amount: z.number().int().min(1).optional(),
-      currency: z.string().length(3).toUpperCase().optional(),
-      category: z.enum(categories).optional(),
-      date: z.coerce.date({ invalid_type_error: 'Date must be a valid date' }).optional(),
-      description: z.string().min(1).max(500).optional(),
-      vendor: z.string().max(200).optional(),
-      paymentMethod: z.enum(paymentMethods).optional(),
-      notes: z.string().max(2000).optional(),
-    })
-    .partial(),
+  updateExpense: z.object({
+    propertyId: objectId.optional(),
+    unitId: objectId.optional(),
+    amount: z.number().int().min(1).optional(),
+    currency: z.string().length(3).toUpperCase().optional(),
+    category: z.enum(categories).optional(),
+    date: z.coerce.date({ invalid_type_error: 'Date must be a valid date' }).optional(),
+    description: z.string().min(1).max(500).optional(),
+    vendor: z.string().max(200).optional(),
+    paymentMethod: z.enum(paymentMethods).optional(),
+    notes: z
+      .object({
+        html: z.string().max(10000),
+        text: z.string().max(2000),
+      })
+      .optional(),
+  }),
 
   listExpensesQuery: z.object({
     propertyId: objectId.optional(),

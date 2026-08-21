@@ -43,6 +43,14 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       type: Schema.Types.ObjectId,
       ref: 'Lease',
     },
+    propertyId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Property',
+    },
+    unitId: {
+      type: Schema.Types.ObjectId,
+      ref: 'PropertyUnit',
+    },
     tenant: {
       type: Schema.Types.ObjectId,
       ref: 'Profile',

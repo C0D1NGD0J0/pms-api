@@ -7,11 +7,15 @@ import { PermissionResource, PermissionAction } from '@interfaces/utils.interfac
 import {
   requireActiveSubscription,
   subscriptionEntitlements,
+  requireVerifiedClient,
+  requireNotSuspended,
   requirePermission,
   isAuthenticated,
   requireFeature,
   basicLimiter,
   idempotency,
+  diskUpload,
+  scanFile,
 } from '@shared/middlewares';
 
 export const router: Router = express.Router();
@@ -22,7 +26,7 @@ router.use(isAuthenticated);
 router.get(
   '/:cuid/summary',
   basicLimiter(),
-  requirePermission(PermissionResource.REPORT, PermissionAction.READ),
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
   validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.pnlQuery }),
@@ -35,7 +39,7 @@ router.get(
 router.get(
   '/:cuid',
   basicLimiter(),
-  requirePermission(PermissionResource.REPORT, PermissionAction.READ),
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
   validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.listExpensesQuery }),
@@ -48,7 +52,9 @@ router.get(
 router.post(
   '/:cuid',
   basicLimiter(),
-  requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
+  requireNotSuspended,
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.CREATE),
+  requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
   requireActiveSubscription,
@@ -63,7 +69,7 @@ router.post(
 router.get(
   '/:cuid/:expuid',
   basicLimiter(),
-  requirePermission(PermissionResource.REPORT, PermissionAction.READ),
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),
@@ -76,7 +82,9 @@ router.get(
 router.patch(
   '/:cuid/:expuid',
   basicLimiter(),
-  requirePermission(PermissionResource.REPORT, PermissionAction.UPDATE),
+  requireNotSuspended,
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.UPDATE),
+  requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
   requireActiveSubscription,
@@ -91,10 +99,30 @@ router.patch(
   })
 );
 
+router.post(
+  '/:cuid/:expuid/receipt',
+  basicLimiter(),
+  requireNotSuspended,
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.UPDATE),
+  requireVerifiedClient,
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
+  idempotency,
+  diskUpload(['receipt.file']),
+  scanFile,
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<ExpenseController>('expenseController');
+    return controller.attachReceipt(req, res);
+  })
+);
+
 router.delete(
   '/:cuid/:expuid',
   basicLimiter(),
-  requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
+  requireNotSuspended,
+  requirePermission(PermissionResource.EXPENSE, PermissionAction.DELETE),
+  requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
   requireActiveSubscription,

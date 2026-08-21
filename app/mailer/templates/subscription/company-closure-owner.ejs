@@ -1,0 +1,48 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Account Closure Confirmation</h2>
+      <p>Hello,</p>
+      <p>
+        This confirms that your account for <strong><%= companyName %></strong> has been
+        closed on <strong><%= effectiveDate %></strong>.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Closure Summary</h3>
+        <ul style="line-height: 1.8;">
+          <li><strong><%= leasesTerminated %></strong> lease(s) terminated</li>
+          <li><strong><%= staffDisconnected %></strong> staff account(s) disconnected</li>
+          <li><strong><%= vendorsDisconnected %></strong> vendor(s) disconnected</li>
+        </ul>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <div class="detail-card" style="border-left: 4px solid #f59e0b;">
+        <h3 style="margin-top: 0;">What Happens Next</h3>
+        <ul style="line-height: 1.8;">
+          <li>Move-out inspections have been auto-scheduled for all active leases</li>
+          <li>Security deposit refunds will be processed after inspections complete</li>
+          <li>All staff and vendor access has been revoked</li>
+          <li>Your account is now suspended &mdash; data is retained but inaccessible</li>
+        </ul>
+      </div>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <p>
+        If this was done in error, please contact our support team within 30 days
+        to discuss account reactivation options.
+      </p>
+    </td>
+  </tr>
+</table>

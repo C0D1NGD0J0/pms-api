@@ -1173,9 +1173,8 @@ export class UserService implements ICronProvider {
         },
         gdprSettings: {
           dataRetentionPolicy: 'standard',
-          dataProcessingConsent: true,
-          processingConsentDate: new Date(),
-          retentionExpiryDate: new Date(Date.now() + daysInMs(365)),
+          dataProcessingConsent: false,
+          retentionExpiryDate: new Date(Date.now() + daysInMs(365 * 7)),
         },
       },
       policies: {

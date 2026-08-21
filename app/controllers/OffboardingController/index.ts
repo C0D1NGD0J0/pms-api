@@ -88,6 +88,12 @@ export class OffboardingController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  closurePreflightCheck = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const result = await this.offboardingService.closurePreflightCheck(cuid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   getAccountClosureStatus = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const result = await this.offboardingService.getAccountClosureStatus(cuid);

@@ -1,6 +1,5 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import mongoose from 'mongoose';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { MoneyUtils } from '@utils/money.utils';
 import { type QueryFilter, Types } from 'mongoose';
@@ -24,10 +23,14 @@ import {
   IRequestContext,
 } from '@interfaces/utils.interface';
 import {
+  MaintenanceRequestDAO,
   PaymentProcessorDAO,
   SubscriptionDAO,
+  PropertyUnitDAO,
+  PropertyDAO,
   PaymentDAO,
   ProfileDAO,
+  VendorDAO,
   ClientDAO,
   LeaseDAO,
   UserDAO,
@@ -59,6 +62,7 @@ interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentWebhookService: PaymentWebhookService;
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   payoutAccountService: PayoutAccountService;
   pdfGeneratorService: PdfGeneratorService;
   paymentProcessorDAO: PaymentProcessorDAO;
@@ -66,10 +70,13 @@ interface IConstructor {
   rentPaymentService: RentPaymentService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
   stripeService: StripeService;
+  propertyDAO: PropertyDAO;
   invoiceDAO: InvoiceDAO;
   paymentDAO: PaymentDAO;
   profileDAO: ProfileDAO;
+  vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -130,6 +137,10 @@ export class PaymentService implements ICronProvider {
   private readonly paymentDAO: PaymentDAO;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly vendorDAO: VendorDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
@@ -152,6 +163,10 @@ export class PaymentService implements ICronProvider {
     emitterService,
     subscriptionDAO,
     stripeService,
+    maintenanceRequestDAO,
+    propertyUnitDAO,
+    propertyDAO,
+    vendorDAO,
     invoiceDAO,
     paymentDAO,
     profileDAO,
@@ -171,6 +186,10 @@ export class PaymentService implements ICronProvider {
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
     this.invoiceDAO = invoiceDAO;
+    this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
+    this.vendorDAO = vendorDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentProcessorDAO = paymentProcessorDAO;
@@ -553,19 +572,12 @@ export class PaymentService implements ICronProvider {
 
             let vendorOrg;
             if (vendorVuid) {
-              // Team member — look up org by vuid
-              vendorOrg = await mongoose.connection.db
-                ?.collection('vendors')
-                .findOne({ vuid: vendorVuid, deletedAt: null }, { projection: { companyName: 1 } });
+              vendorOrg = await this.vendorDAO.getVendorByVuid(String(vendorVuid));
             } else if (clientEntry?.primaryRole === 'vendor') {
-              // Primary account holder — look up org by primaryAccountHolderUserId
-              vendorOrg = await mongoose.connection.db?.collection('vendors').findOne(
-                {
-                  'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
-                  deletedAt: null,
-                },
-                { projection: { companyName: 1 } }
-              );
+              vendorOrg = await this.vendorDAO.findFirst({
+                'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
+                deletedAt: null,
+              });
             }
             vendorName = vendorOrg?.companyName || '';
           }
@@ -589,24 +601,20 @@ export class PaymentService implements ICronProvider {
       };
 
       if (!leaseInfo && paymentObj.maintenanceRequestUid) {
-        const mr = await mongoose.connection.db
-          ?.collection('maintenancerequests')
-          .findOne(
-            { mruid: paymentObj.maintenanceRequestUid, cuid },
-            { projection: { propertyId: 1 } }
-          );
+        const mr = await this.maintenanceRequestDAO.getByMruid(
+          String(paymentObj.maintenanceRequestUid),
+          cuid
+        );
         if (mr?.propertyId) {
-          const prop = await mongoose.connection.db
-            ?.collection('properties')
-            .findOne(
-              { _id: mr.propertyId },
-              { projection: { pid: 1, name: 1, 'address.fullAddress': 1 } }
-            );
+          const prop = await this.propertyDAO.findFirst({
+            _id: mr.propertyId,
+            deletedAt: null,
+          });
           if (prop) {
             propertyInfo = {
-              pid: prop.pid || '',
-              name: prop.name || '',
-              address: prop.address?.fullAddress || '',
+              pid: (prop as any).pid || '',
+              name: (prop as any).name || '',
+              address: (prop as any).address?.fullAddress || '',
             };
           }
         }
@@ -887,13 +895,11 @@ export class PaymentService implements ICronProvider {
 
       // Primary account holders may not have linkedVendorUid set — resolve from vendor collection
       if (!vendorVuid) {
-        const vendorOrg = await mongoose.connection.db
-          ?.collection('vendors')
-          .findOne(
-            { 'connectedClients.primaryAccountHolderUserId': vendor._id, deletedAt: null },
-            { projection: { vuid: 1 } }
-          );
-        vendorVuid = vendorOrg?.vuid || null;
+        const vendorOrg = await this.vendorDAO.findFirst({
+          'connectedClients.primaryAccountHolderUserId': vendor._id,
+          deletedAt: null,
+        });
+        vendorVuid = vendorOrg?.vuid || undefined;
       }
 
       let vendorUserIds = [vendor._id.toString()];
@@ -1010,11 +1016,47 @@ export class PaymentService implements ICronProvider {
       );
 
       let lease;
+      let currency: string | undefined;
+      let propertyObjectId: Types.ObjectId | undefined;
+      let unitObjectId: Types.ObjectId | undefined;
+
       if (data.leaseId) {
         lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
         if (!lease) {
           throw new NotFoundError({ message: 'Lease not found' });
         }
+        currency = lease.fees?.currency;
+      } else if (data.propertyId) {
+        // Property-tied entry without a lease
+        // Values are pre-validated by Zod safeString in PaymentsValidation schema
+        const pid = String(data.propertyId);
+        const property = await this.propertyDAO.findFirst({
+          pid,
+          cuid,
+          deletedAt: null,
+        });
+        if (!property) {
+          throw new NotFoundError({ message: 'Property not found' });
+        }
+        propertyObjectId = property._id;
+
+        if (data.unitId) {
+          const puid = String(data.unitId);
+          const unit = await this.propertyUnitDAO.findFirst({
+            puid,
+            propertyId: property._id,
+            deletedAt: null,
+          });
+          if (!unit) {
+            throw new NotFoundError({ message: 'Unit not found for this property' });
+          }
+          unitObjectId = unit._id as Types.ObjectId;
+        }
+      }
+
+      // Derive currency: lease > client settings > default
+      if (!currency) {
+        currency = (client as any).settings?.currency || 'USD';
       }
 
       const payment = await this.paymentDAO.insert({
@@ -1022,9 +1064,12 @@ export class PaymentService implements ICronProvider {
         paymentType: data.paymentType,
         paymentMethod: data.paymentMethod,
         lease: lease ? lease._id : undefined,
+        propertyId: propertyObjectId,
+        unitId: unitObjectId,
         tenant: tenantProfile._id,
         baseAmount: data.baseAmount,
         processingFee: data.processingFee || 0,
+        currency,
         status: data.status || PaymentRecordStatus.PAID,
         dueDate: data.paidAt,
         paidAt: data.paidAt,
@@ -1048,7 +1093,7 @@ export class PaymentService implements ICronProvider {
       return {
         success: true,
         data: payment,
-        message: 'Manual payment recorded successfully',
+        message: 'Payment recorded successfully',
       };
     } catch (error: any) {
       this.log.error('Error recording manual payment:', error);

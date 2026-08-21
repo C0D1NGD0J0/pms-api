@@ -53,6 +53,7 @@
       ],
       "payment": ["read:any", "create:any", "list:any"],
       "report": ["read:any", "create:any", "list:any"],
+      "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
       "invitation": [
         "send:any",
         "revoke:any",
@@ -73,11 +74,13 @@
       "maintenance": ["read:any", "list:any"],
       "payment": ["read:any", "list:any"],
       "report": ["read:any", "list:any"],
+      "expense": ["read:any", "list:any"],
       "guest_pass": ["read:any", "list:any"],
       "departments": {
         "accounting": {
           "payment": ["read:any", "list:any", "create:any", "update:any"],
           "report": ["read:any", "create:any", "list:any"],
+          "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "lease": ["read:any", "list:any"],
           "tenant": ["read:any", "list:any"],
           "user": ["read:any", "list:any"],
@@ -99,6 +102,7 @@
           "user": ["read:any", "list:any"],
           "inspection": ["read:any", "list:any"],
           "report": ["read:any"],
+          "expense": ["read:any", "list:any"],
           "client": ["read:mine"]
         },
         "management": {
@@ -117,6 +121,7 @@
           "user": ["read:any", "update:any", "list:any"],
           "inspection": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "report": ["read:any", "create:any", "list:any"],
+          "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "client": ["read:mine", "settings:mine"]
         },
         "security": {
@@ -212,6 +217,11 @@
       "actions": ["create", "read", "update", "delete", "list"],
       "scopes": ["any", "mine", "assigned"],
       "description": "Report generation operations"
+    },
+    "expense": {
+      "actions": ["create", "read", "update", "delete", "list"],
+      "scopes": ["any", "mine"],
+      "description": "Expense tracking operations"
     },
     "subscription": {
       "actions": ["read", "update", "manage"],

@@ -131,6 +131,11 @@ function makeService(): MetricsService {
     leaseDAO: mockLeaseDAO,
     userDAO: mockUserDAO,
     sseService: mockSSEService,
+    expenseDAO: {
+      getExpenseStats: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ byCurrency: [], totalCount: 0 })),
+    } as any,
   });
 }
 

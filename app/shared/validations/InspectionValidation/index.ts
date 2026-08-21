@@ -5,6 +5,8 @@ import {
   InspectionType,
 } from '@interfaces/inspection.interface';
 
+import { safeString } from '../UtilsValidation';
+
 const conditionEnum = z.enum(Object.values(ConditionRating) as [string, ...string[]], {
   errorMap: () => ({ message: 'Please select a valid condition rating' }),
 });
@@ -43,9 +45,9 @@ export const InspectionValidations = {
       type: z.enum(Object.values(InspectionType) as [string, ...string[]], {
         errorMap: () => ({ message: 'Please select a valid inspection type' }),
       }),
-      leaseId: z.string().min(1, 'Lease selection is required').optional(),
-      propertyId: z.string().optional(),
-      propertyUnitId: z.string().optional(),
+      leaseId: safeString.pipe(z.string().min(1, 'Lease selection is required')).optional(),
+      propertyId: safeString.optional(),
+      propertyUnitId: safeString.optional(),
       inspectorId: z.string().optional(),
       scheduledDate: z.string().datetime({ message: 'Please provide a valid scheduled date' }),
       overallNotes: richTextSchema(2000, 'Overall notes').optional(),
@@ -108,7 +110,7 @@ export const InspectionValidations = {
   }),
 
   listQuery: z.object({
-    propertyId: z.string().optional(),
+    propertyId: safeString.optional(),
     type: z.enum(Object.values(InspectionType) as [string, ...string[]]).optional(),
     status: z.enum(Object.values(InspectionStatus) as [string, ...string[]]).optional(),
     page: z.coerce.number().int().min(1, 'Page must be at least 1').optional(),

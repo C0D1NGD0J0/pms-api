@@ -6,17 +6,21 @@ import { IFindOptions, IBaseDAO } from './baseDAO.interface';
 
 export interface IExpenseDAO extends IBaseDAO<IExpenseDocument> {
   aggregateByProperty(
-    clientId: string,
+    cuid: string,
     match: QueryFilter<IExpenseDocument>
   ): Promise<Array<{ _id: { propertyId: string; currency: string }; total: number }>>;
   aggregateByCategory(
-    clientId: string,
+    cuid: string,
     match: QueryFilter<IExpenseDocument>
   ): Promise<Array<{ _id: { category: string; currency: string }; total: number }>>;
+  getExpenseStats(cuid: string): Promise<{
+    byCurrency: Array<{ currency: string; totalExpenses: number; monthExpenses: number }>;
+    totalCount: number;
+  }>;
   findByClient(
-    clientId: string,
+    cuid: string,
     filters: IExpenseFilters,
     opts?: IFindOptions
   ): ListResultWithPagination<IExpenseDocument[]>;
-  findByExpuid(expuid: string, clientId: string): Promise<IExpenseDocument | null>;
+  findByExpuid(expuid: string, cuid: string): Promise<IExpenseDocument | null>;
 }

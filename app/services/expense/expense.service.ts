@@ -15,6 +15,20 @@ import {
   IExpense,
 } from '@interfaces/expense.interface';
 
+const UPDATABLE_FIELDS: Array<keyof IExpense> = [
+  'propertyId',
+  'unitId',
+  'amount',
+  'currency',
+  'category',
+  'date',
+  'description',
+  'vendor',
+  'paymentMethod',
+  'notes',
+  'receipt',
+];
+
 export class ExpenseService implements IExpenseService {
   private readonly log: Logger;
   private readonly expenseDAO: IExpenseDAO;
@@ -39,10 +53,7 @@ export class ExpenseService implements IExpenseService {
   async createExpense(
     cuid: string,
     userId: string,
-    data: Omit<
-      IExpense,
-      'expuid' | 'clientId' | 'createdBy' | 'isDeleted' | 'createdAt' | 'updatedAt'
-    >
+    data: Omit<IExpense, 'expuid' | 'cuid' | 'createdBy' | 'createdAt' | 'updatedAt'>
   ): IPromiseReturnedData<IExpenseDocument> {
     try {
       const property = await this.propertyDAO.findFirst({
@@ -57,9 +68,8 @@ export class ExpenseService implements IExpenseService {
 
       const expense = await this.expenseDAO.insert({
         ...data,
-        clientId: cuid,
+        cuid,
         createdBy: new Types.ObjectId(userId),
-        isDeleted: false,
       });
 
       this.log.info({ expuid: expense.expuid, cuid }, 'Expense created');
@@ -83,7 +93,7 @@ export class ExpenseService implements IExpenseService {
       const result = await this.expenseDAO.findByClient(cuid, filters, { limit, skip });
       return {
         success: true,
-        data: result as any,
+        data: result,
         message: t('common.success.retrieved', { resource: 'Expenses' }),
       };
     } catch (error) {
@@ -118,9 +128,14 @@ export class ExpenseService implements IExpenseService {
       if (!expense)
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Expense' }) });
 
-      const { expuid: _e, clientId: _c, createdBy: _cb, isDeleted: _d, ...safeData } = data as any;
+      const safeData: Record<string, any> = {};
+      for (const field of UPDATABLE_FIELDS) {
+        if (field in data) {
+          safeData[field] = data[field as keyof typeof data];
+        }
+      }
 
-      const updated = await this.expenseDAO.update({ expuid, clientId: cuid }, { $set: safeData });
+      const updated = await this.expenseDAO.update({ expuid, cuid }, { $set: safeData });
       return {
         success: true,
         data: updated!,
@@ -138,10 +153,7 @@ export class ExpenseService implements IExpenseService {
       if (!expense)
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Expense' }) });
 
-      await this.expenseDAO.update(
-        { expuid, clientId: cuid },
-        { $set: { isDeleted: true, deletedAt: new Date() } }
-      );
+      await this.expenseDAO.update({ expuid, cuid }, { $set: { deletedAt: new Date() } });
       return {
         success: true,
         data: undefined,
@@ -233,7 +245,7 @@ export class ExpenseService implements IExpenseService {
       return {
         success: true,
         data: { period: { from, to }, byCurrency },
-        message: 'P&L summary generated',
+        message: t('common.success.retrieved', { resource: 'P&L Summary' }),
       };
     } catch (error) {
       this.log.error({ error }, 'Error generating P&L summary');

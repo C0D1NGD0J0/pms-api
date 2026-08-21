@@ -312,7 +312,7 @@ ProfileSchema.methods.getGravatarUrl = function (email: string): string {
 };
 
 ProfileSchema.pre('save', function (this: IProfileDocument) {
-  if (this.isModified('settings.dataRetentionPolicy')) {
+  if (this.isModified('settings.gdprSettings.dataRetentionPolicy')) {
     const today = new Date();
     switch (this.settings?.gdprSettings?.dataRetentionPolicy) {
       case 'extended':

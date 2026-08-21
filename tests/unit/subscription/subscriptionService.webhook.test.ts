@@ -94,6 +94,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       sseService: mockSSEService,
       emailQueue: {} as any,
       paymentProcessorDAO: {} as any,
+      stripeService: {} as any,
       subscriptionPlanConfig,
     });
 

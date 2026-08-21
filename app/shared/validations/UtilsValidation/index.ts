@@ -13,6 +13,11 @@ import {
   UserDAO,
 } from '@dao/index';
 
+/** Reject strings containing NoSQL operator characters ($, {, }) */
+export const safeString = z
+  .string()
+  .refine((val) => !/[${}]/.test(val), { message: 'Invalid characters in field' });
+
 export const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;
@@ -227,7 +232,7 @@ export const ValidateExpuidSchema = z.object({
   expuid: z.string().refine(
     async (expuid) => {
       const { expenseDAO }: { expenseDAO: ExpenseDAO } = (await getContainer()).cradle;
-      const expense = await expenseDAO.findFirst({ expuid, isDeleted: false });
+      const expense = await expenseDAO.findFirst({ expuid, deletedAt: null });
       return !!expense;
     },
     {

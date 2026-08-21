@@ -546,10 +546,29 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.allConnectionsDisabled') });
     }
 
-    let activeAccount = connectedClients.find((c: any) => c.cuid === user.activecuid);
+    // Check suspension status for all connected CUIDs to skip closed accounts
+    const connectedCuids = connectedClients.map((c: any) => c.cuid);
+    const clientsResult = await this.clientDAO.list(
+      { cuid: { $in: connectedCuids } },
+      { projection: '+suspension.isActive +suspension.closedAt', limit: connectedCuids.length }
+    );
+    const suspendedCuids = new Set(
+      (clientsResult?.items ?? [])
+        .filter((c: any) => c.suspension?.isActive && c.suspension.closedAt)
+        .map((c: any) => c.cuid)
+    );
+    const nonSuspendedClients = connectedClients.filter((c: any) => !suspendedCuids.has(c.cuid));
+
+    if (nonSuspendedClients.length === 0) {
+      throw new UnauthorizedError({
+        message: 'All your accounts have been closed. Please contact support.',
+      });
+    }
+
+    let activeAccount = nonSuspendedClients.find((c: any) => c.cuid === user.activecuid);
 
     if (!activeAccount) {
-      activeAccount = connectedClients[0];
+      activeAccount = nonSuspendedClients[0];
       await this.userDAO.updateById(user._id.toString(), {
         $set: { activecuid: activeAccount.cuid },
       });
@@ -657,6 +676,17 @@ export class AuthService {
     // Validate that the new account is connected
     if (!accountExists.isConnected) {
       throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
+    }
+
+    // Block switching to a closed account
+    const targetClient = await this.clientDAO.findFirst(
+      { cuid: newcuid },
+      { select: '+suspension.isActive +suspension.closedAt' }
+    );
+    if (targetClient?.suspension?.isActive && targetClient.suspension.closedAt) {
+      throw new ForbiddenError({
+        message: 'This account has been closed. You cannot switch to it.',
+      });
     }
 
     await this.userDAO.updateById(userId, { $set: { activecuid: newcuid } });

@@ -96,11 +96,13 @@ export interface IPaymentDocument extends Document {
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment
+  propertyId?: Types.ObjectId; // Direct property ref — used for entries without a lease
   vendorId?: Types.ObjectId; // Set for maintenance expense records (vendor who submitted the invoice)
   gatewayPaymentId?: string;
   gatewayChargeId?: string;
   period?: IPaymentPeriod;
   platformRevenue: number; // Platform's net revenue after Stripe gateway fee (applicationFee − processingFee)
+  unitId?: Types.ObjectId; // Direct unit ref — used for entries without a lease
   lease?: Types.ObjectId;
   tenant: Types.ObjectId; // References Profile
   isManualEntry: boolean;
@@ -160,9 +162,11 @@ export interface IManualPaymentFormData {
   period?: IPaymentPeriod;
   processingFee?: number; // In cents
   description?: string;
+  propertyId?: string; // Property ID (pid) — used when no lease
   baseAmount: number; // In cents
   leaseId?: string;
   tenantId: string;
+  unitId?: string; // Unit ID (puid) — used when no lease
   paidAt: Date;
 }
 

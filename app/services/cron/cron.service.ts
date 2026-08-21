@@ -11,6 +11,7 @@ import {
   PaymentService,
   QueueFactory,
   LeaseService,
+  DSARService,
   UserService,
   SMSService,
 } from '@services/index';
@@ -25,6 +26,7 @@ interface IConstructor {
   leaseService: LeaseService;
   queueFactory: QueueFactory;
   userService: UserService;
+  dsarService: DSARService;
   smsService: SMSService;
 }
 
@@ -48,6 +50,7 @@ export class CronService {
     inspectionService,
     paymentService,
     userService,
+    dsarService,
     smsService,
     metricsService,
   }: IConstructor) {
@@ -64,6 +67,7 @@ export class CronService {
       userService,
       smsService,
       metricsService,
+      dsarService,
     ].filter(Boolean);
 
     // Async init: register jobs then clean up stale schedules

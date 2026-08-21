@@ -6,6 +6,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { MetricsDAO } from '@dao/metricsDAO';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { ExpenseDAO } from '@dao/expenseDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { calcPercentChange } from '@utils/math.utils';
@@ -48,6 +49,7 @@ interface IConstructor {
   metricsDAO: MetricsDAO;
   paymentDAO: PaymentDAO;
   sseService: SSEService;
+  expenseDAO: ExpenseDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -64,6 +66,7 @@ export class MetricsService implements ICronProvider {
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly inspectionDAO: InspectionDAO;
+  private readonly expenseDAO: ExpenseDAO;
   private readonly emitterService: EventEmitterService;
   private readonly sseService: SSEService;
 
@@ -94,6 +97,7 @@ export class MetricsService implements ICronProvider {
     this.propertyUnitDAO = deps.propertyUnitDAO;
     this.maintenanceRequestDAO = deps.maintenanceRequestDAO;
     this.inspectionDAO = deps.inspectionDAO;
+    this.expenseDAO = deps.expenseDAO;
     this.emitterService = deps.emitterService;
     this.sseService = deps.sseService;
 
@@ -272,16 +276,25 @@ export class MetricsService implements ICronProvider {
   }
 
   async getDashboardStats(cuid: string): Promise<IDashboardStats> {
-    const [leases, payments, unitCounts, propertyCount, users, maintenance, inspections] =
-      await Promise.all([
-        this.leaseDAO.getLeaseStats(cuid),
-        this.paymentDAO.getPaymentStats(cuid),
-        this.propertyUnitDAO.getPropertyUnitCounts(cuid),
-        this.propertyDAO.getPropertyCount(cuid),
-        this.userDAO.getUserStats(cuid),
-        this.maintenanceRequestDAO.getStats(cuid),
-        this.inspectionDAO.getStats(cuid),
-      ]);
+    const [
+      leases,
+      payments,
+      unitCounts,
+      propertyCount,
+      users,
+      maintenance,
+      inspections,
+      expenseStats,
+    ] = await Promise.all([
+      this.leaseDAO.getLeaseStats(cuid),
+      this.paymentDAO.getPaymentStats(cuid),
+      this.propertyUnitDAO.getPropertyUnitCounts(cuid),
+      this.propertyDAO.getPropertyCount(cuid),
+      this.userDAO.getUserStats(cuid),
+      this.maintenanceRequestDAO.getStats(cuid),
+      this.inspectionDAO.getStats(cuid),
+      this.expenseDAO.getExpenseStats(cuid),
+    ]);
 
     const properties = { ...unitCounts, propertyCount };
 
@@ -299,6 +312,25 @@ export class MetricsService implements ICronProvider {
         totalCount: payments.totalCount,
         onTimeRate: payments.onTimeRate,
         avgPaymentDelayDays: payments.avgPaymentDelayDays,
+      },
+      expenses: {
+        byCurrency: expenseStats.byCurrency,
+        monthExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.monthExpenses, 0),
+        totalExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.totalExpenses, 0),
+        totalCount: expenseStats.totalCount,
+        netIncomeByCurrency: (() => {
+          const allCurrencies = new Set([
+            ...expenseStats.byCurrency.map((c) => c.currency),
+            ...payments.byCurrency.map((c) => c.currency),
+          ]);
+          return [...allCurrencies].map((currency) => {
+            const revenue =
+              payments.byCurrency.find((c) => c.currency === currency)?.monthRevenue ?? 0;
+            const expenses =
+              expenseStats.byCurrency.find((c) => c.currency === currency)?.monthExpenses ?? 0;
+            return { currency, netIncome: revenue - expenses };
+          });
+        })(),
       },
       properties,
       users,

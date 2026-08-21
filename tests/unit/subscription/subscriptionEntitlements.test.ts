@@ -206,6 +206,7 @@ describe('Subscription Entitlements', () => {
         emailQueue: {} as any,
         paymentProcessorDAO: {} as any,
         paymentGatewayService: {} as any,
+        stripeService: {} as any,
         subscriptionPlanConfig,
       });
     });
@@ -316,7 +317,6 @@ describe('Subscription Entitlements', () => {
           currentuser: {
             sub: testUserId,
             client: { cuid: testCuid },
-            clientEntitlements: growthFeatures,
           },
           entitlements: null,
         },
@@ -332,7 +332,7 @@ describe('Subscription Entitlements', () => {
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         data: {
-          clientEntitlements: growthFeatures,
+          clientEntitlements: null,
         },
       });
     });
@@ -363,7 +363,6 @@ describe('Subscription Entitlements', () => {
                 daysUntilDowngrade: null,
               },
             },
-            clientEntitlements: growthFeatures,
             permissions: ['read:any'],
           },
         },
@@ -388,14 +387,13 @@ describe('Subscription Entitlements', () => {
         billingInterval: 'monthly',
       });
 
-      // Should strip entitlements, paymentFlow, clientEntitlements
+      // Should strip entitlements, paymentFlow from subscription
       expect(responseData.subscription.entitlements).toBeUndefined();
       expect(responseData.subscription.paymentFlow).toBeUndefined();
-      expect(responseData.clientEntitlements).toBeUndefined();
 
       // Should keep other fields
       expect(responseData.uid).toBe('TEST_UID');
-      // permissions is destructured out of currentuser along with clientEntitlements
+      // permissions is destructured out of currentuser
       expect(responseData.permissions).toBeUndefined();
     });
 

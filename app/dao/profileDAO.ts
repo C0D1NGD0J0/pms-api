@@ -763,40 +763,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // Feature flags for every role — lets vendor/tenant portals gate
-            // client-plan-dependent features (AI, eSign, etc.) without leaking
-            // billing details (plan name, status, paymentFlow) to external users.
-            clientEntitlements: {
-              eSignature: { $ifNull: ['$subscriptionInfo.entitlements.eSignature', false] },
-              maintenanceRequestService: {
-                $ifNull: ['$subscriptionInfo.entitlements.maintenanceRequestService', false],
-              },
-              guestPassService: {
-                $ifNull: ['$subscriptionInfo.entitlements.guestPassService', false],
-              },
-              reportingAnalytics: {
-                $ifNull: ['$subscriptionInfo.entitlements.reportingAnalytics', false],
-              },
-              leaseTemplates: { $ifNull: ['$subscriptionInfo.entitlements.leaseTemplates', false] },
-              vendorManagement: {
-                $ifNull: ['$subscriptionInfo.entitlements.vendorManagement', false],
-              },
-              prioritySupport: {
-                $ifNull: ['$subscriptionInfo.entitlements.prioritySupport', false],
-              },
-              aiTriage: { $ifNull: ['$subscriptionInfo.entitlements.aiTriage', false] },
-              aiInvoiceScanning: {
-                $ifNull: ['$subscriptionInfo.entitlements.aiInvoiceScanning', false],
-              },
-              smsService: { $ifNull: ['$subscriptionInfo.entitlements.smsService', false] },
-              inspectionService: {
-                $ifNull: ['$subscriptionInfo.entitlements.inspectionService', false],
-              },
-              aiInspectionAnalysis: {
-                $ifNull: ['$subscriptionInfo.entitlements.aiInspectionAnalysis', false],
-              },
-            },
-
             // Payment processor status — only exposed for SUPER_ADMIN
             paymentProcessor: {
               $cond: {

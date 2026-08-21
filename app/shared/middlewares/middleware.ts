@@ -148,6 +148,26 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
         );
       }
 
+      // When a client account has been closed (suspension.isActive), block all requests
+      // except identity/exit routes so the frontend can display the "account closed" screen
+      // and allow the user to switch accounts or log out.
+      if (req.context.currentuser?.client?.suspension?.isActive) {
+        const path = req.originalUrl.split('?')[0];
+        const isIdentityOrExitRoute =
+          path.endsWith('/me') ||
+          path.endsWith('/logout') ||
+          path.endsWith('/switch_client_account') ||
+          /\/notifications(\/|$)/.test(path);
+        if (!isIdentityOrExitRoute) {
+          return next(
+            new ForbiddenError({
+              message:
+                'This account has been closed. Please contact support or switch to another account.',
+            })
+          );
+        }
+      }
+
       // When a PM disables the tenant portal, ALL access is blocked — this is a hard suspension,
       // not read-only mode. Disconnected/former tenants (isConnected === false) are handled
       // separately in requireActiveTenant() and retain read-only access to their history.

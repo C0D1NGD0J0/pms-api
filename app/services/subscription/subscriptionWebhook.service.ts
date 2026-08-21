@@ -13,6 +13,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { SubscriptionCache, AuthCache } from '@caching/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
+import { StripeService } from '@services/external/stripe/stripe.service';
 import {
   IPaymentGatewayProvider,
   ISubscriptionDocument,
@@ -29,6 +30,7 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   subscriptionCache: SubscriptionCache;
   subscriptionDAO: SubscriptionDAO;
+  stripeService: StripeService;
   sseService: SSEService;
   emailQueue: EmailQueue;
   clientDAO: ClientDAO;
@@ -48,6 +50,7 @@ export class SubscriptionWebhookService {
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
+  private readonly stripeService: StripeService;
 
   constructor({
     userDAO,
@@ -60,6 +63,7 @@ export class SubscriptionWebhookService {
     paymentProcessorDAO,
     paymentGatewayService,
     subscriptionPlanConfig,
+    stripeService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -71,6 +75,7 @@ export class SubscriptionWebhookService {
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.paymentGatewayService = paymentGatewayService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
+    this.stripeService = stripeService;
     this.log = createLogger('SubscriptionWebhookService');
   }
 
@@ -241,6 +246,31 @@ export class SubscriptionWebhookService {
           const { last4, brand } = chargeResult.data.payment_method_details.card;
           if (last4) updateData['billing.cardLast4'] = last4;
           if (brand) updateData['billing.cardBrand'] = brand;
+        }
+      }
+
+      // Fallback: if charge extraction didn't yield card details AND
+      // the DB doesn't already have them, fetch from customer's default PM.
+      if (
+        !updateData['billing.cardLast4'] &&
+        !subscription.billing?.cardLast4 &&
+        subscription.billing?.customerId
+      ) {
+        try {
+          const customer = await this.stripeService.getCustomer(subscription.billing.customerId);
+          const defaultPmId =
+            typeof customer?.invoice_settings?.default_payment_method === 'string'
+              ? customer.invoice_settings.default_payment_method
+              : (customer?.invoice_settings?.default_payment_method as any)?.id;
+          if (defaultPmId) {
+            const pm = await this.stripeService.retrievePaymentMethod(defaultPmId);
+            if (pm?.last4) {
+              updateData['billing.cardLast4'] = pm.last4;
+              updateData['billing.cardBrand'] = pm.bankName || pm.type || 'card';
+            }
+          }
+        } catch (pmErr) {
+          this.log.warn({ pmErr }, 'invoice.paid: fallback customer payment method fetch failed');
         }
       }
     } catch (err) {

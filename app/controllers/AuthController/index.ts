@@ -63,7 +63,7 @@ export class AuthController {
     }
 
     // strip entitlements from /me response — now served via GET /subscriptions/:cuid/entitlements
-    const { clientEntitlements, permissions, gdpr, ...userData } = currentuser as any;
+    const { permissions, gdpr, ...userData } = currentuser as any;
     if (userData.subscription) {
       const { entitlements, paymentFlow, ...planData } = userData.subscription;
       userData.subscription = planData;

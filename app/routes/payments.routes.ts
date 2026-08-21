@@ -149,6 +149,7 @@ router.post(
 router.post(
   '/:cuid/manual_entry',
   basicLimiter(),
+  requireNotSuspended,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,

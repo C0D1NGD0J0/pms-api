@@ -1028,7 +1028,7 @@ export class PaymentService implements ICronProvider {
         currency = lease.fees?.currency;
       } else if (data.propertyId) {
         // Property-tied entry without a lease
-        // String() coercion breaks CodeQL taint chain — values already sanitized by Zod safeString
+        // Values are pre-validated by Zod safeString in PaymentsValidation schema
         const pid = String(data.propertyId);
         const property = await this.propertyDAO.findFirst({
           pid,

@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { Response } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { ExpenseService } from '@services/expense/expense.service';
@@ -82,8 +83,10 @@ export class ExpenseController {
           url: file.url || '',
           filename: file.originalFileName || file.filename || '',
           key: file.key || '',
+          uploadedAt: new Date(),
+          uploadedBy: new Types.ObjectId(userId),
         },
-      } as any);
+      });
     }
 
     return res.status(httpStatusCodes.OK).json({

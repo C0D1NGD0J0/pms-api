@@ -1387,7 +1387,7 @@ export class OffboardingService {
       success: true,
       data: {
         isClosed,
-        closedAt: isClosed ? client.suspension!.at || null : null,
+        closedAt: isClosed ? client.suspension!.closedAt || null : null,
         closureReason: isClosed ? client.suspension!.reason || null : null,
         leases: {
           total: totalLeases,

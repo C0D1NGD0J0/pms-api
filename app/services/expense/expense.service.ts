@@ -26,6 +26,7 @@ const UPDATABLE_FIELDS: Array<keyof IExpense> = [
   'vendor',
   'paymentMethod',
   'notes',
+  'receipt',
 ];
 
 export class ExpenseService implements IExpenseService {

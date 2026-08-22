@@ -1,14 +1,17 @@
+import fs from 'fs';
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
-import { ForbiddenError } from '@shared/customErrors';
 import ROLES from '@shared/constants/roles.constants';
 import { CronService } from '@services/cron/cron.service';
 import { MediaUploadService } from '@services/mediaUpload';
 import { PaymentService, InvoiceService } from '@services/index';
+import { InvoiceAIService } from '@services/ai/invoiceAI.service';
+import { BadRequestError, ForbiddenError } from '@shared/customErrors';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
+  invoiceAIService: InvoiceAIService;
   invoiceService: InvoiceService;
   paymentService: PaymentService;
   cronService: CronService;
@@ -19,12 +22,20 @@ export class PaymentController {
   private readonly paymentService: PaymentService;
   private readonly invoiceService: InvoiceService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly invoiceAIService: InvoiceAIService;
   private readonly cronService: CronService;
 
-  constructor({ paymentService, invoiceService, mediaUploadService, cronService }: IConstructor) {
+  constructor({
+    paymentService,
+    invoiceService,
+    mediaUploadService,
+    invoiceAIService,
+    cronService,
+  }: IConstructor) {
     this.paymentService = paymentService;
     this.invoiceService = invoiceService;
     this.mediaUploadService = mediaUploadService;
+    this.invoiceAIService = invoiceAIService;
     this.cronService = cronService;
   }
 
@@ -442,5 +453,32 @@ export class PaymentController {
       notes,
     });
     return res.status(200).json(result);
+  }
+
+  async scanReceipt(req: AppRequest, res: Response) {
+    const file = req.scannedFiles?.[0];
+    if (!file) {
+      throw new BadRequestError({ message: 'No receipt file uploaded' });
+    }
+
+    const buffer = await fs.promises.readFile(file.path);
+    fs.promises.unlink(file.path).catch(() => {});
+
+    const scanResult = await this.invoiceAIService.extractInvoiceData(
+      buffer,
+      file.mimeType,
+      req.params.cuid
+    );
+
+    if (!scanResult.success || !scanResult.data) {
+      throw new BadRequestError({
+        message: scanResult.message ?? 'Failed to extract receipt data.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { extracted: scanResult.data },
+    });
   }
 }

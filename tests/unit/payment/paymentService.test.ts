@@ -1031,6 +1031,52 @@ describe('PaymentService - recordManualPayment', () => {
       paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())
     ).rejects.toThrow(NotFoundError);
   });
+
+  it('should derive currency from lease.fees.currency', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease({ fees: { currency: 'CAD' } }) as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData());
+    expect(mockPaymentDAO.insert.mock.calls[0][0].currency).toBe('CAD');
+  });
+
+  it('should default currency to USD when no lease and no client currency', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined }));
+    expect(mockPaymentDAO.insert.mock.calls[0][0].currency).toBe('USD');
+  });
+
+  it('should set propertyId/unitId for property-tied entry without lease', async () => {
+    const propId = new Types.ObjectId();
+    const unitObjId = new Types.ObjectId();
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+    (paymentService as any).propertyDAO.findFirst = jest.fn().mockResolvedValue({ _id: propId, pid: 'P1', cuid: CUID });
+    (paymentService as any).propertyUnitDAO.findFirst = jest.fn().mockResolvedValue({ _id: unitObjId, puid: 'U1', propertyId: propId });
+
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined, propertyId: 'P1', unitId: 'U1' }));
+
+    const insert = mockPaymentDAO.insert.mock.calls[0][0];
+    expect(insert.propertyId).toEqual(propId);
+    expect(insert.unitId).toEqual(unitObjId);
+    expect(insert.lease).toBeUndefined();
+  });
+
+  it('should throw NotFoundError for invalid propertyId', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    (paymentService as any).propertyDAO.findFirst = jest.fn().mockResolvedValue(null);
+
+    await expect(
+      paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined, propertyId: 'BAD' }))
+    ).rejects.toThrow(NotFoundError);
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════

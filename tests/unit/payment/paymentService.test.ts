@@ -1047,7 +1047,12 @@ describe('PaymentService - recordManualPayment', () => {
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
 
-    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined }));
+    await paymentService.recordManualPayment(
+      CUID,
+      USER_ID,
+      USER_ID,
+      makeData({ leaseId: undefined })
+    );
     expect(mockPaymentDAO.insert.mock.calls[0][0].currency).toBe('USD');
   });
 
@@ -1057,10 +1062,19 @@ describe('PaymentService - recordManualPayment', () => {
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
     mockPaymentDAO.insert.mockResolvedValue({} as any);
-    (paymentService as any).propertyDAO.findFirst = jest.fn().mockResolvedValue({ _id: propId, pid: 'P1', cuid: CUID });
-    (paymentService as any).propertyUnitDAO.findFirst = jest.fn().mockResolvedValue({ _id: unitObjId, puid: 'U1', propertyId: propId });
+    (paymentService as any).propertyDAO.findFirst = jest
+      .fn()
+      .mockResolvedValue({ _id: propId, pid: 'P1', cuid: CUID });
+    (paymentService as any).propertyUnitDAO.findFirst = jest
+      .fn()
+      .mockResolvedValue({ _id: unitObjId, puid: 'U1', propertyId: propId });
 
-    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined, propertyId: 'P1', unitId: 'U1' }));
+    await paymentService.recordManualPayment(
+      CUID,
+      USER_ID,
+      USER_ID,
+      makeData({ leaseId: undefined, propertyId: 'P1', unitId: 'U1' })
+    );
 
     const insert = mockPaymentDAO.insert.mock.calls[0][0];
     expect(insert.propertyId).toEqual(propId);
@@ -1074,7 +1088,12 @@ describe('PaymentService - recordManualPayment', () => {
     (paymentService as any).propertyDAO.findFirst = jest.fn().mockResolvedValue(null);
 
     await expect(
-      paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData({ leaseId: undefined, propertyId: 'BAD' }))
+      paymentService.recordManualPayment(
+        CUID,
+        USER_ID,
+        USER_ID,
+        makeData({ leaseId: undefined, propertyId: 'BAD' })
+      )
     ).rejects.toThrow(NotFoundError);
   });
 });

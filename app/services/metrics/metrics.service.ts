@@ -298,16 +298,22 @@ export class MetricsService implements ICronProvider {
 
     const properties = { ...unitCounts, propertyCount };
 
+    // Use the primary currency (first entry) for top-level convenience fields.
+    // Cross-currency summing is mathematically meaningless; the byCurrency
+    // arrays remain available for multi-currency clients.
+    const primaryPayment = payments.byCurrency[0];
+    const primaryExpense = expenseStats.byCurrency[0];
+
     return {
       leases: {
         ...leases,
-        totalMonthlyRent: leases.monthlyRentByCurrency.reduce((sum, c) => sum + c.total, 0),
+        totalMonthlyRent: leases.monthlyRentByCurrency[0]?.total ?? 0,
       },
       payments: {
         byCurrency: payments.byCurrency,
-        monthRevenue: payments.byCurrency.reduce((sum, c) => sum + c.monthRevenue, 0),
-        totalRevenue: payments.byCurrency.reduce((sum, c) => sum + c.totalRevenue, 0),
-        pendingAmount: payments.byCurrency.reduce((sum, c) => sum + c.pendingAmount, 0),
+        monthRevenue: primaryPayment?.monthRevenue ?? 0,
+        totalRevenue: primaryPayment?.totalRevenue ?? 0,
+        pendingAmount: primaryPayment?.pendingAmount ?? 0,
         overdueCount: payments.overdueCount,
         totalCount: payments.totalCount,
         onTimeRate: payments.onTimeRate,
@@ -315,8 +321,8 @@ export class MetricsService implements ICronProvider {
       },
       expenses: {
         byCurrency: expenseStats.byCurrency,
-        monthExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.monthExpenses, 0),
-        totalExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.totalExpenses, 0),
+        monthExpenses: primaryExpense?.monthExpenses ?? 0,
+        totalExpenses: primaryExpense?.totalExpenses ?? 0,
         totalCount: expenseStats.totalCount,
         netIncomeByCurrency: (() => {
           const allCurrencies = new Set([

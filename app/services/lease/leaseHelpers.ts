@@ -509,11 +509,16 @@ export const handleClosedStatusUpdate = async (
   leaseDAO: LeaseDAO,
   leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {
-  if (!isApprovalRole) {
+  const userRole = convertUserRoleToEnum(currentUser.client.role);
+  const isSuperAdmin = userRole === IUserRole.SUPER_ADMIN || userRole === IUserRole.ROOT_ADMIN;
+
+  if (!isSuperAdmin) {
     throw new BadRequestError({
-      message: `Cannot update lease with status: ${lease.status}. Contact an administrator.`,
+      message: `Cannot update ${lease.status} lease. Only super administrators can modify closed leases.`,
     });
   }
+
+  validateAllowedFields(updateData, lease.status as LeaseStatus);
 
   const updatedLease = await applyDirectUpdate(lease, updateData, currentUser.sub, leaseDAO);
 
@@ -1021,21 +1026,30 @@ export type { LeaseMonthlyFees } from '@utils/financial.utils';
 export const getUserPermissions = (lease: ILeaseDocument, user: any): any => {
   const role = convertUserRoleToEnum(user.client.role);
 
+  const isSuperAdmin = role === IUserRole.SUPER_ADMIN || role === IUserRole.ROOT_ADMIN;
   const isAdmin = role === IUserRole.ADMIN;
   const isManager = role === IUserRole.MANAGER;
   const isStaff = role === IUserRole.STAFF;
 
+  const isClosed = [LeaseStatus.TERMINATED, LeaseStatus.CANCELLED, LeaseStatus.EXPIRED].includes(
+    lease.status as LeaseStatus
+  );
+
+  // Closed leases: only super-admins can edit (limited to internalNotes)
+  const canEdit = isClosed ? isSuperAdmin : isSuperAdmin || isAdmin || isManager;
+
   return {
-    canEdit: isAdmin || isManager,
-    canDelete: isAdmin,
-    canTerminate: isAdmin || isManager,
-    canActivate: isAdmin || isManager,
+    canEdit,
+    limitedEdit: isClosed && isSuperAdmin,
+    canDelete: isSuperAdmin || isAdmin,
+    canTerminate: isSuperAdmin || isAdmin || isManager,
+    canActivate: isSuperAdmin || isAdmin || isManager,
     canDownload: true,
     canViewDocuments: true,
-    canUploadDocuments: isAdmin || isManager || isStaff,
-    canViewActivity: isAdmin || isManager || isStaff,
+    canUploadDocuments: isSuperAdmin || isAdmin || isManager || isStaff,
+    canViewActivity: isSuperAdmin || isAdmin || isManager || isStaff,
     canViewFinancials: true,
-    canManageSignatures: isAdmin || isManager,
+    canManageSignatures: isSuperAdmin || isAdmin || isManager,
     canGeneratePDF: true,
   };
 };

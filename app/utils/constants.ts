@@ -198,9 +198,9 @@ export const EDITABLE_FIELDS_BY_LEASE_STATUS: Record<string, string[]> = {
     'documents',
     'additionalTerms',
   ],
-  expired: ['internalNotes'], // Admin/Manager only
-  terminated: ['internalNotes'], // Admin/Manager only
-  cancelled: ['internalNotes'], // Admin/Manager only
+  expired: ['internalNotes'], // Super-admin only
+  terminated: ['internalNotes'], // Super-admin only
+  cancelled: ['internalNotes'], // Super-admin only
 };
 
 /**

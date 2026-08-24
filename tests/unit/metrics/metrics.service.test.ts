@@ -442,7 +442,7 @@ describe('MetricsService', () => {
   describe('destroy', () => {
     it('should remove all event listeners', async () => {
       await service.destroy();
-      expect(mockEmitterService.off).toHaveBeenCalledTimes(14);
+      expect(mockEmitterService.off).toHaveBeenCalledTimes(17);
     });
   });
 

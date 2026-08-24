@@ -85,6 +85,7 @@ export class MetricsService implements ICronProvider {
   private readonly onInspectionRejected = this.handleInspectionRejected.bind(this);
   private readonly onInspectionDisputed = this.handleInspectionDisputed.bind(this);
   private readonly onInspectionCancelled = this.handleInspectionCancelled.bind(this);
+  private readonly onExpenseChanged = this.handleExpenseChanged.bind(this);
 
   constructor(deps: IConstructor) {
     this.log = createLogger('MetricsService');
@@ -115,6 +116,9 @@ export class MetricsService implements ICronProvider {
     this.emitterService.on(EventTypes.INSPECTION_REJECTED, this.onInspectionRejected);
     this.emitterService.on(EventTypes.INSPECTION_DISPUTED, this.onInspectionDisputed);
     this.emitterService.on(EventTypes.INSPECTION_CANCELLED, this.onInspectionCancelled);
+    this.emitterService.on(EventTypes.EXPENSE_CREATED, this.onExpenseChanged);
+    this.emitterService.on(EventTypes.EXPENSE_UPDATED, this.onExpenseChanged);
+    this.emitterService.on(EventTypes.EXPENSE_DELETED, this.onExpenseChanged);
   }
 
   getCronJobs(): ICronJob[] {
@@ -271,6 +275,11 @@ export class MetricsService implements ICronProvider {
   }
 
   private async handleInspectionCancelled(payload: InspectionCancelledPayload): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
+  private async handleExpenseChanged(payload: { cuid: string }): Promise<void> {
     if (!payload?.cuid) return;
     await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
   }
@@ -509,5 +518,8 @@ export class MetricsService implements ICronProvider {
     this.emitterService.off(EventTypes.INSPECTION_REJECTED, this.onInspectionRejected);
     this.emitterService.off(EventTypes.INSPECTION_DISPUTED, this.onInspectionDisputed);
     this.emitterService.off(EventTypes.INSPECTION_CANCELLED, this.onInspectionCancelled);
+    this.emitterService.off(EventTypes.EXPENSE_CREATED, this.onExpenseChanged);
+    this.emitterService.off(EventTypes.EXPENSE_UPDATED, this.onExpenseChanged);
+    this.emitterService.off(EventTypes.EXPENSE_DELETED, this.onExpenseChanged);
   }
 }

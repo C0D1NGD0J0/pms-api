@@ -93,6 +93,9 @@ export enum EventTypes {
   PROPERTY_CREATED = 'property:created',
   PROPERTY_DELETED = 'property:deleted',
   UPLOAD_COMPLETED = 'upload:completed',
+  EXPENSE_CREATED = 'expense:created',
+  EXPENSE_UPDATED = 'expense:updated',
+  EXPENSE_DELETED = 'expense:deleted',
   INVITATION_SENT = 'invitation:sent',
   USER_UNARCHIVED = 'user:unarchived',
   UNIT_UNARCHIVED = 'unit:unarchived',
@@ -192,6 +195,9 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_FAILED]: PaymentFailedPayload;
   [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
   [EventTypes.PAYMENT_OVERDUE]: PaymentOverduePayload;
+  [EventTypes.EXPENSE_CREATED]: ExpenseEventPayload;
+  [EventTypes.EXPENSE_UPDATED]: ExpenseEventPayload;
+  [EventTypes.EXPENSE_DELETED]: ExpenseEventPayload;
   [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
   [EventTypes.PAD_MANDATE_CONFIRMED]: PadMandateConfirmedPayload;
   [EventTypes.PAD_PRE_DEBIT_NOTIFICATION]: PadPreDebitNotificationPayload;
@@ -931,6 +937,13 @@ export interface EventMetadata {
   timestamp: number;
   source?: string;
   userId?: string;
+}
+
+export interface ExpenseEventPayload {
+  category?: string;
+  amount?: number;
+  expuid: string;
+  cuid: string;
 }
 
 export interface EventPayload<T = unknown> {

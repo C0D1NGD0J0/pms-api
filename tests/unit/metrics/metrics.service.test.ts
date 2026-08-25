@@ -89,6 +89,7 @@ const mockInspectionDAO = {
 } as any;
 const mockClientDAO = {
   getActiveCuids: jest.fn().mockReturnValue(Promise.resolve(['cuid1', 'cuid2'])),
+  findFirst: jest.fn().mockReturnValue(Promise.resolve({ settings: { currency: 'USD' } })),
 } as any;
 
 const mockMetricsDAO = {

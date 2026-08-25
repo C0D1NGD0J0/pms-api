@@ -16,7 +16,7 @@ const PID = 'PROP-001';
 const USER_ID = new Types.ObjectId().toString();
 const PROPERTY_ID = new Types.ObjectId();
 
-const makeContext = (unitCount = 1) => ({
+const makeContext = (_unitCount = 1) => ({
   request: {
     params: { cuid: CUID, pid: PID },
     url: `/clients/${CUID}/properties/${PID}/units`,

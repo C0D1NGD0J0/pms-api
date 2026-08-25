@@ -10,7 +10,7 @@ import { Types } from 'mongoose';
 jest.mock('@di/index', () => ({ container: {} }));
 
 import { DSARService } from '@services/dsar/dsar.service';
-import { NotFoundError, ForbiddenError } from '@shared/customErrors';
+import { ForbiddenError, NotFoundError } from '@shared/customErrors';
 
 const CUID = 'TEST_CUID';
 const UID = 'TEST_UID';
@@ -34,7 +34,9 @@ const makeUser = (overrides: Record<string, any> = {}) => ({
 const makeService = (overrides: Record<string, any> = {}) => {
   return new DSARService({
     userDAO: overrides.userDAO ?? { getUserByUId: jest.fn() },
-    clientDAO: overrides.clientDAO ?? { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) },
+    clientDAO: overrides.clientDAO ?? {
+      findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
+    },
     leaseDAO: overrides.leaseDAO ?? {
       getActiveLeaseByTenant: jest.fn().mockReturnValue(Promise.resolve(null)),
       list: jest.fn().mockReturnValue(Promise.resolve({ items: [] })),
@@ -64,7 +66,9 @@ describe('DSARService — preflightAnonymise', () => {
   });
 
   it('should throw ForbiddenError when user is not connected to client', async () => {
-    const user = makeUser({ cuids: [{ cuid: 'OTHER_CUID', roles: ['tenant'], isConnected: true }] });
+    const user = makeUser({
+      cuids: [{ cuid: 'OTHER_CUID', roles: ['tenant'], isConnected: true }],
+    });
     const userDAO = { getUserByUId: jest.fn().mockReturnValue(Promise.resolve(user)) };
     const service = makeService({ userDAO });
 
@@ -75,10 +79,12 @@ describe('DSARService — preflightAnonymise', () => {
     const user = makeUser();
     const userDAO = { getUserByUId: jest.fn().mockReturnValue(Promise.resolve(user)) };
     const clientDAO = {
-      findFirst: jest.fn().mockReturnValue(Promise.resolve({
-        _id: new Types.ObjectId(),
-        accountAdmin: new Types.ObjectId(), // different from user._id
-      })),
+      findFirst: jest.fn().mockReturnValue(
+        Promise.resolve({
+          _id: new Types.ObjectId(),
+          accountAdmin: new Types.ObjectId(), // different from user._id
+        })
+      ),
     };
     const service = makeService({ userDAO, clientDAO });
 
@@ -93,10 +99,12 @@ describe('DSARService — preflightAnonymise', () => {
     const user = makeUser();
     const userDAO = { getUserByUId: jest.fn().mockReturnValue(Promise.resolve(user)) };
     const clientDAO = {
-      findFirst: jest.fn().mockReturnValue(Promise.resolve({
-        _id: new Types.ObjectId(),
-        accountAdmin: user._id, // same as user
-      })),
+      findFirst: jest.fn().mockReturnValue(
+        Promise.resolve({
+          _id: new Types.ObjectId(),
+          accountAdmin: user._id, // same as user
+        })
+      ),
     };
     const service = makeService({ userDAO, clientDAO });
 
@@ -111,7 +119,9 @@ describe('DSARService — preflightAnonymise', () => {
     const user = makeUser();
     const userDAO = { getUserByUId: jest.fn().mockReturnValue(Promise.resolve(user)) };
     const leaseDAO = {
-      getActiveLeaseByTenant: jest.fn().mockReturnValue(Promise.resolve({ _id: new Types.ObjectId() })),
+      getActiveLeaseByTenant: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ _id: new Types.ObjectId() })),
       list: jest.fn().mockReturnValue(Promise.resolve({ items: [] })),
     };
     const service = makeService({ userDAO, leaseDAO });
@@ -125,24 +135,30 @@ describe('DSARService — preflightAnonymise', () => {
   it('should block when PM manages properties with active leases', async () => {
     const propId = new Types.ObjectId();
     const user = makeUser({
-      cuids: [{
-        cuid: CUID,
-        roles: ['manager'],
-        isConnected: true,
-        clientDisplayName: 'Test Company',
-      }],
+      cuids: [
+        {
+          cuid: CUID,
+          roles: ['manager'],
+          isConnected: true,
+          clientDisplayName: 'Test Company',
+        },
+      ],
     });
     const userDAO = { getUserByUId: jest.fn().mockReturnValue(Promise.resolve(user)) };
     const propertyDAO = {
-      getPropertiesByClientId: jest.fn().mockReturnValue(Promise.resolve({
-        items: [{ _id: propId }],
-      })),
+      getPropertiesByClientId: jest.fn().mockReturnValue(
+        Promise.resolve({
+          items: [{ _id: propId }],
+        })
+      ),
     };
     const leaseDAO = {
       getActiveLeaseByTenant: jest.fn().mockReturnValue(Promise.resolve(null)),
-      list: jest.fn().mockReturnValue(Promise.resolve({
-        items: [{ _id: new Types.ObjectId() }, { _id: new Types.ObjectId() }],
-      })),
+      list: jest.fn().mockReturnValue(
+        Promise.resolve({
+          items: [{ _id: new Types.ObjectId() }, { _id: new Types.ObjectId() }],
+        })
+      ),
     };
     const service = makeService({ userDAO, propertyDAO, leaseDAO });
 
@@ -176,28 +192,36 @@ describe('DSARService — preflightAnonymise', () => {
 
   it('should return multiple blockers when user has multiple issues', async () => {
     const user = makeUser({
-      cuids: [{
-        cuid: CUID,
-        roles: ['tenant', 'manager'],
-        isConnected: true,
-        clientDisplayName: 'Test Company',
-      }],
+      cuids: [
+        {
+          cuid: CUID,
+          roles: ['tenant', 'manager'],
+          isConnected: true,
+          clientDisplayName: 'Test Company',
+        },
+      ],
     });
     const userDAO = { getUserByUId: jest.fn().mockReturnValue(Promise.resolve(user)) };
     const clientDAO = {
-      findFirst: jest.fn().mockReturnValue(Promise.resolve({
-        _id: new Types.ObjectId(),
-        accountAdmin: user._id,
-      })),
+      findFirst: jest.fn().mockReturnValue(
+        Promise.resolve({
+          _id: new Types.ObjectId(),
+          accountAdmin: user._id,
+        })
+      ),
     };
     const leaseDAO = {
-      getActiveLeaseByTenant: jest.fn().mockReturnValue(Promise.resolve({ _id: new Types.ObjectId() })),
+      getActiveLeaseByTenant: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ _id: new Types.ObjectId() })),
       list: jest.fn().mockReturnValue(Promise.resolve({ items: [{ _id: new Types.ObjectId() }] })),
     };
     const propertyDAO = {
-      getPropertiesByClientId: jest.fn().mockReturnValue(Promise.resolve({
-        items: [{ _id: new Types.ObjectId() }],
-      })),
+      getPropertiesByClientId: jest.fn().mockReturnValue(
+        Promise.resolve({
+          items: [{ _id: new Types.ObjectId() }],
+        })
+      ),
     };
     const service = makeService({ userDAO, clientDAO, leaseDAO, propertyDAO });
 

@@ -21,8 +21,8 @@ jest.mock('fs', () => ({
   },
 }));
 
-import { PaymentController } from '@controllers/PaymentController';
 import { BadRequestError } from '@shared/customErrors';
+import { PaymentController } from '@controllers/PaymentController';
 
 const makeController = (overrides: Record<string, any> = {}) => {
   return new PaymentController({
@@ -38,9 +38,7 @@ const makeController = (overrides: Record<string, any> = {}) => {
 
 const makeReq = (overrides: Record<string, any> = {}) => ({
   params: { cuid: 'TEST_CUID' },
-  scannedFiles: overrides.scannedFiles ?? [
-    { path: '/tmp/receipt.jpg', mimeType: 'image/jpeg' },
-  ],
+  scannedFiles: overrides.scannedFiles ?? [{ path: '/tmp/receipt.jpg', mimeType: 'image/jpeg' }],
   context: { currentuser: { sub: 'user123' } },
   ...overrides,
 });
@@ -71,10 +69,12 @@ describe('PaymentController — scanReceipt', () => {
       confidence: 0.92,
     };
     const invoiceAIService = {
-      extractInvoiceData: jest.fn().mockReturnValue(Promise.resolve({
-        success: true,
-        data: extracted,
-      })),
+      extractInvoiceData: jest.fn().mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: extracted,
+        })
+      ),
     };
     const controller = makeController({ invoiceAIService });
     const res = makeRes();
@@ -106,27 +106,31 @@ describe('PaymentController — scanReceipt', () => {
 
   it('should throw BadRequestError when AI extraction fails', async () => {
     const invoiceAIService = {
-      extractInvoiceData: jest.fn().mockReturnValue(Promise.resolve({
-        success: false,
-        data: null,
-        message: 'Not an invoice',
-      })),
+      extractInvoiceData: jest.fn().mockReturnValue(
+        Promise.resolve({
+          success: false,
+          data: null,
+          message: 'Not an invoice',
+        })
+      ),
     };
     const controller = makeController({ invoiceAIService });
 
     (fs.promises.readFile as jest.Mock).mockReturnValue(Promise.resolve(Buffer.from('fake')));
 
-    await expect(
-      controller.scanReceipt(makeReq() as any, makeRes())
-    ).rejects.toThrow(BadRequestError);
+    await expect(controller.scanReceipt(makeReq() as any, makeRes())).rejects.toThrow(
+      BadRequestError
+    );
   });
 
   it('should clean up temp file on successful scan', async () => {
     const invoiceAIService = {
-      extractInvoiceData: jest.fn().mockReturnValue(Promise.resolve({
-        success: true,
-        data: { amountInCents: 100, confidence: 0.9 },
-      })),
+      extractInvoiceData: jest.fn().mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: { amountInCents: 100, confidence: 0.9 },
+        })
+      ),
     };
     const controller = makeController({ invoiceAIService });
 

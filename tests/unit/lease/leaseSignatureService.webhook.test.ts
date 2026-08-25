@@ -212,7 +212,65 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
     });
   });
 
-  describe('Non-Completed events — SSE not called', () => {
+  describe('Declined event', () => {
+    it('should update lease status to DRAFT with declined reason', async () => {
+      const mocks = buildMocks();
+      const service = buildService(mocks);
+
+      await service.handleESignatureWebhook('Declined', testEnvelopeId, {
+        declineReason: 'Not agreeable',
+      });
+
+      expect(mocks.leaseDAO.update).toHaveBeenCalledWith(
+        { _id: leaseId },
+        expect.objectContaining({
+          status: LeaseStatus.DRAFT,
+          'eSignature.status': ILeaseESignatureStatusEnum.DECLINED,
+          'eSignature.declinedReason': 'Not agreeable',
+        })
+      );
+    });
+
+    it('should emit LEASE_ESIGNATURE_DECLINED event', async () => {
+      const mocks = buildMocks();
+      const service = buildService(mocks);
+
+      await service.handleESignatureWebhook(
+        'Declined',
+        testEnvelopeId,
+        { declineReason: 'Terms unacceptable' },
+        { recentSigner: { email: 'tenant@example.com' } } as any
+      );
+
+      expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+        EventTypes.LEASE_ESIGNATURE_DECLINED,
+        expect.objectContaining({
+          leaseId: leaseId.toString(),
+          luid: testLuid,
+          cuid: testCuid,
+          documentId: testEnvelopeId,
+          declinedBy: 'tenant@example.com',
+          declineReason: 'Terms unacceptable',
+        })
+      );
+    });
+
+    it('should use "unknown" as declinedBy when no signer info', async () => {
+      const mocks = buildMocks();
+      const service = buildService(mocks);
+
+      await service.handleESignatureWebhook('Declined', testEnvelopeId, {
+        declineReason: 'No reason',
+      });
+
+      expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+        EventTypes.LEASE_ESIGNATURE_DECLINED,
+        expect.objectContaining({
+          declinedBy: 'unknown',
+        })
+      );
+    });
+
     it('should not call sseService for a Declined event', async () => {
       const mocks = buildMocks();
       const service = buildService(mocks);
@@ -223,7 +281,9 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
 
       expect(mocks.sseService.sendToUser).not.toHaveBeenCalled();
     });
+  });
 
+  describe('Non-Completed events — SSE not called', () => {
     it('should not call sseService for an Expired event', async () => {
       const mocks = buildMocks();
       const service = buildService(mocks);

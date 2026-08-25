@@ -1070,6 +1070,17 @@ export class PaymentCronService implements ICronProvider {
         await this.maintenancePaymentService.payVendor(cuid, mruid);
         paid++;
 
+        // Notify finance staff about the automatic vendor payout
+        const vendorProfile = await this.profileDAO.getProfileByUserId(
+          invoice.submittedBy.toString()
+        );
+        this.emitterService.emit(EventTypes.MAINTENANCE_AUTO_VENDOR_PAID, {
+          amountInCents: invoice.amountInCents,
+          vendorName: vendorProfile?.fullname || 'Unknown Vendor',
+          mruid,
+          cuid,
+        });
+
         this.log.info(
           { cuid, mruid, invuid: invoice.invuid, amount: invoice.amountInCents },
           '[Cron] Auto vendor payout succeeded'

@@ -146,7 +146,7 @@ export type EventPayloadMap = {
   [EventTypes.PDF_GENERATED]: PdfGeneratedPayload;
   [EventTypes.PDF_GENERATION_FAILED]: PdfGenerationFailedPayload;
   [EventTypes.PDF_GENERATION_REQUESTED]: PdfGenerationRequestedPayload;
-  [EventTypes.PROPERTY_CREATED]: any;
+  [EventTypes.PROPERTY_CREATED]: PropertyCreatedPayload;
   [EventTypes.PROPERTY_DELETED]: any;
   [EventTypes.PROPERTY_DOCUMENTS_UPDATE]: PropertyUpdatedPayload;
   [EventTypes.PROPERTY_UPDATE_FAILED]: any;
@@ -283,7 +283,7 @@ export interface IEventBus {
 
   subscribeToEvent<T extends keyof EventPayloadMap>(
     eventType: T,
-    handler: (data: any) => Promise<void>
+    handler: (data: EventPayloadMap[T]) => Promise<void>
   ): void;
 }
 
@@ -856,6 +856,13 @@ export type GuestPassExpiredPayload = {
   expiredAt: Date;
   count: number;
 };
+
+export interface PropertyCreatedPayload {
+  maxAllowedUnits: number;
+  unitsCreated: number;
+  propertyId: string;
+  clientId: string;
+}
 
 export interface PropertyUpdatedPayload {
   updateType: 'documents' | 'details' | 'status';

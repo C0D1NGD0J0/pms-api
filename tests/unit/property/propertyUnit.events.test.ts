@@ -8,8 +8,8 @@ import { Types } from 'mongoose';
 
 jest.mock('@di/index', () => ({ container: {} }));
 
-import { PropertyUnitService } from '@services/property/propertyUnit.service';
 import { EventTypes } from '@interfaces/events.interface';
+import { PropertyUnitService } from '@services/property/propertyUnit.service';
 
 const CUID = 'TEST_CLIENT_001';
 const PID = 'PROP-001';
@@ -24,7 +24,14 @@ const makeContext = (unitCount = 1) => ({
     path: `/clients/${CUID}/properties/${PID}/units`,
     query: {},
   },
-  userAgent: { browser: 'Chrome', version: '120', os: 'MacOS', raw: 'test', isMobile: false, isBot: false },
+  userAgent: {
+    browser: 'Chrome',
+    version: '120',
+    os: 'MacOS',
+    raw: 'test',
+    isMobile: false,
+    isBot: false,
+  },
   langSetting: { lang: 'en', t: jest.fn((key: string) => key) },
   timing: { startTime: Date.now() },
   currentuser: { sub: USER_ID },
@@ -59,20 +66,20 @@ const makeMocks = () => {
 
   const propertyUnitDAO = {
     insert: jest.fn(),
-    startSession: jest.fn().mockReturnValue(Promise.resolve({
-      endSession: jest.fn(),
-    })),
+    startSession: jest.fn().mockReturnValue(
+      Promise.resolve({
+        endSession: jest.fn(),
+      })
+    ),
     withTransaction: jest.fn().mockImplementation(async (_session: any, fn: any) => fn(_session)),
   } as any;
 
   const propertyDAO = {
     findFirst: jest.fn().mockReturnValue(Promise.resolve(makeProperty())),
-    canAddUnitToProperty: jest.fn().mockReturnValue(
-      Promise.resolve({ canAdd: true, maxCapacity: 10, currentCount: 0 })
-    ),
-    getPropertyUnits: jest.fn().mockReturnValue(
-      Promise.resolve({ items: [], pagination: null })
-    ),
+    canAddUnitToProperty: jest
+      .fn()
+      .mockReturnValue(Promise.resolve({ canAdd: true, maxCapacity: 10, currentCount: 0 })),
+    getPropertyUnits: jest.fn().mockReturnValue(Promise.resolve({ items: [], pagination: null })),
   } as any;
 
   const subscriptionDAO = {
@@ -116,9 +123,12 @@ describe('PropertyUnitService — UNIT_CREATED event emission', () => {
     const unit = makeCreatedUnit('U-101');
     mocks.propertyUnitDAO.insert.mockReturnValue(Promise.resolve(unit));
 
-    await service.addPropertyUnit(makeContext() as any, {
-      units: [{ unitNumber: 'U-101', unitType: 'apartment', floor: 1 }],
-    } as any);
+    await service.addPropertyUnit(
+      makeContext() as any,
+      {
+        units: [{ unitNumber: 'U-101', unitType: 'apartment', floor: 1 }],
+      } as any
+    );
 
     expect(mocks.emitterService.emit).toHaveBeenCalledWith(
       EventTypes.UNIT_CREATED,
@@ -141,13 +151,16 @@ describe('PropertyUnitService — UNIT_CREATED event emission', () => {
       .mockReturnValueOnce(Promise.resolve(makeCreatedUnit('U-102')))
       .mockReturnValueOnce(Promise.resolve(makeCreatedUnit('U-103')));
 
-    await service.addPropertyUnit(makeContext(3) as any, {
-      units: [
-        { unitNumber: 'U-101', unitType: 'apartment', floor: 1 },
-        { unitNumber: 'U-102', unitType: 'apartment', floor: 1 },
-        { unitNumber: 'U-103', unitType: 'apartment', floor: 1 },
-      ],
-    } as any);
+    await service.addPropertyUnit(
+      makeContext(3) as any,
+      {
+        units: [
+          { unitNumber: 'U-101', unitType: 'apartment', floor: 1 },
+          { unitNumber: 'U-102', unitType: 'apartment', floor: 1 },
+          { unitNumber: 'U-103', unitType: 'apartment', floor: 1 },
+        ],
+      } as any
+    );
 
     const unitCreatedCalls = mocks.emitterService.emit.mock.calls.filter(
       ([type]: [string]) => type === EventTypes.UNIT_CREATED
@@ -162,12 +175,15 @@ describe('PropertyUnitService — UNIT_CREATED event emission', () => {
       .mockReturnValueOnce(Promise.resolve(makeCreatedUnit('U-101')))
       .mockReturnValueOnce(Promise.resolve(makeCreatedUnit('U-102')));
 
-    await service.addPropertyUnit(makeContext(2) as any, {
-      units: [
-        { unitNumber: 'U-101', unitType: 'apartment', floor: 1 },
-        { unitNumber: 'U-102', unitType: 'apartment', floor: 1 },
-      ],
-    } as any);
+    await service.addPropertyUnit(
+      makeContext(2) as any,
+      {
+        units: [
+          { unitNumber: 'U-101', unitType: 'apartment', floor: 1 },
+          { unitNumber: 'U-102', unitType: 'apartment', floor: 1 },
+        ],
+      } as any
+    );
 
     expect(mocks.emitterService.emit).toHaveBeenCalledWith(
       EventTypes.UNIT_BATCH_CREATED,
@@ -184,16 +200,17 @@ describe('PropertyUnitService — UNIT_CREATED event emission', () => {
     mocks.unitNumberingService.validateUnitNumberUpdate
       .mockReturnValueOnce({ isValid: true })
       .mockReturnValueOnce({ isValid: false, message: 'Duplicate' });
-    mocks.propertyUnitDAO.insert.mockReturnValue(
-      Promise.resolve(makeCreatedUnit('U-101'))
-    );
+    mocks.propertyUnitDAO.insert.mockReturnValue(Promise.resolve(makeCreatedUnit('U-101')));
 
-    await service.addPropertyUnit(makeContext(2) as any, {
-      units: [
-        { unitNumber: 'U-101', unitType: 'apartment', floor: 1 },
-        { unitNumber: 'U-102', unitType: 'apartment', floor: 1 },
-      ],
-    } as any);
+    await service.addPropertyUnit(
+      makeContext(2) as any,
+      {
+        units: [
+          { unitNumber: 'U-101', unitType: 'apartment', floor: 1 },
+          { unitNumber: 'U-102', unitType: 'apartment', floor: 1 },
+        ],
+      } as any
+    );
 
     const unitCreatedCalls = mocks.emitterService.emit.mock.calls.filter(
       ([type]: [string]) => type === EventTypes.UNIT_CREATED

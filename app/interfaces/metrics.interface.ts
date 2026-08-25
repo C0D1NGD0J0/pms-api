@@ -81,6 +81,7 @@ export interface IDashboardStats {
     tenants: number;
     staff: number;
   };
+  primaryCurrency: string;
   generatedAt: Date;
 }
 

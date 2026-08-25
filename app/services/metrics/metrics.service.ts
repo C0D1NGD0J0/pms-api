@@ -307,16 +307,24 @@ export class MetricsService implements ICronProvider {
 
     const properties = { ...unitCounts, propertyCount };
 
-    // Use the primary currency (first entry) for top-level convenience fields.
-    // Cross-currency summing is mathematically meaningless; the byCurrency
-    // arrays remain available for multi-currency clients.
-    const primaryPayment = payments.byCurrency[0];
-    const primaryExpense = expenseStats.byCurrency[0];
+    // Resolve the client's configured currency so top-level convenience fields
+    // always reflect the primary operating currency, not an arbitrary first entry.
+    const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
+    const clientCurrency = ((client as any)?.settings?.currency || 'USD').toUpperCase();
+
+    const primaryPayment =
+      payments.byCurrency.find((c) => c.currency === clientCurrency) ?? payments.byCurrency[0];
+    const primaryExpense =
+      expenseStats.byCurrency.find((c) => c.currency === clientCurrency) ??
+      expenseStats.byCurrency[0];
 
     return {
       leases: {
         ...leases,
-        totalMonthlyRent: leases.monthlyRentByCurrency[0]?.total ?? 0,
+        totalMonthlyRent:
+          leases.monthlyRentByCurrency.find((c: any) => c.currency === clientCurrency)?.total ??
+          leases.monthlyRentByCurrency[0]?.total ??
+          0,
       },
       payments: {
         byCurrency: payments.byCurrency,
@@ -380,6 +388,7 @@ export class MetricsService implements ICronProvider {
         disputed: inspections.disputed,
         total: inspections.total,
       },
+      primaryCurrency: clientCurrency,
       generatedAt: new Date(),
     };
   }

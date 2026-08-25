@@ -8,9 +8,9 @@ import { Types } from 'mongoose';
 
 jest.mock('@di/index', () => ({ container: {} }));
 
+import { ISignupData } from '@interfaces/user.interface';
 import { AuthService } from '@services/auth/auth.service';
 import { EventTypes } from '@interfaces/events.interface';
-import { ISignupData } from '@interfaces/user.interface';
 
 const USER_ID = new Types.ObjectId();
 const CLIENT_ID = new Types.ObjectId();
@@ -160,9 +160,7 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
 
   it('should NOT emit event when user already exists', async () => {
     const mocks = makeMocks();
-    mocks.userDAO.findFirst.mockReturnValue(
-      Promise.resolve({ _id: USER_ID, email: TEST_EMAIL })
-    );
+    mocks.userDAO.findFirst.mockReturnValue(Promise.resolve({ _id: USER_ID, email: TEST_EMAIL }));
     const service = makeService(mocks);
 
     await expect(service.signup(makeSignupData())).rejects.toThrow();

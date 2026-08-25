@@ -11,8 +11,8 @@ jest.mock('@shared/middlewares', () => ({
 }));
 jest.mock('@di/index', () => ({ container: {} }));
 
-import { PaymentCronService } from '@services/payments/paymentCron.service';
 import { EventTypes } from '@interfaces/events.interface';
+import { PaymentCronService } from '@services/payments/paymentCron.service';
 
 const CUID = 'CLIENT_AUTO_PAY';
 const MRUID = 'MR-001';
@@ -39,9 +39,7 @@ const makeMocks = () => {
   } as any;
 
   const profileDAO = {
-    getProfileByUserId: jest.fn().mockReturnValue(
-      Promise.resolve({ fullname: 'Jane Vendor' })
-    ),
+    getProfileByUserId: jest.fn().mockReturnValue(Promise.resolve({ fullname: 'Jane Vendor' })),
   } as any;
 
   const emitterService = {

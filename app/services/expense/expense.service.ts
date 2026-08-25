@@ -148,7 +148,12 @@ export class ExpenseService implements IExpenseService {
       }
 
       const updated = await this.expenseDAO.update({ expuid, cuid }, { $set: safeData });
-      this.emitterService.emit(EventTypes.EXPENSE_UPDATED, { expuid, cuid });
+      this.emitterService.emit(EventTypes.EXPENSE_UPDATED, {
+        expuid,
+        cuid,
+        amount: updated?.amount,
+        category: updated?.category,
+      });
       return {
         success: true,
         data: updated!,

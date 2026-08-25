@@ -461,8 +461,12 @@ export class PaymentController {
       throw new BadRequestError({ message: 'No receipt file uploaded' });
     }
 
-    const buffer = await fs.promises.readFile(file.path);
-    fs.promises.unlink(file.path).catch(() => {});
+    let buffer: Buffer;
+    try {
+      buffer = await fs.promises.readFile(file.path);
+    } finally {
+      fs.promises.unlink(file.path).catch(() => {});
+    }
 
     const scanResult = await this.invoiceAIService.extractInvoiceData(
       buffer,

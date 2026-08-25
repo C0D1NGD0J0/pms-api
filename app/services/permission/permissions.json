@@ -89,7 +89,7 @@
         "maintenance": {
           "maintenance": ["create:assigned", "read:assigned", "update:assigned", "list:assigned"],
           "property": ["read:assigned"],
-          "user": ["read:mine", "update:mine", "delete:mine"],
+          "user": ["read:mine", "update:mine"],
           "inspection": ["read:any", "list:any"],
           "client": ["read:mine"]
         },
@@ -127,7 +127,7 @@
         "security": {
           "property": ["read:any", "list:any"],
           "guest_pass": ["read:any", "list:any", "update:any"],
-          "user": ["read:mine", "update:mine", "delete:mine"],
+          "user": ["read:mine", "update:mine"],
           "client": ["read:mine"]
         }
       }

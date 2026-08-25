@@ -505,7 +505,7 @@ export const handleClosedStatusUpdate = async (
   lease: ILeaseDocument,
   updateData: Partial<ILeaseFormData>,
   currentUser: ICurrentUser,
-  isApprovalRole: boolean,
+  _isApprovalRole: boolean,
   leaseDAO: LeaseDAO,
   leaseCache: any
 ): Promise<ISuccessReturnData<any>> => {

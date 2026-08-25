@@ -16,6 +16,7 @@ import { createLogger, JOB_NAME } from '@utils/index';
 import { MailType } from '@interfaces/utils.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
 
 export interface DSARExport {
@@ -194,11 +195,11 @@ export class DSARService {
     this.log.info(`DSAR preflight check for uid=${uid}, cuid=${cuid}`);
 
     const user = await this.userDAO.getUserByUId(uid);
-    if (!user) throw new Error(`User ${uid} not found`);
+    if (!user) throw new NotFoundError({ message: 'User not found' });
 
     const connection = user.cuids?.find((c: any) => c.cuid === cuid);
     if (!connection) {
-      throw new Error(`User ${uid} is not associated with client ${cuid}`);
+      throw new ForbiddenError({ message: 'User is not associated with this client' });
     }
 
     const blockers: DSARPreflightResult['blockers'] = [];
@@ -214,57 +215,64 @@ export class DSARService {
       });
     }
 
-    // Check all connected clients for lease/property blockers
-    for (const conn of user.cuids || []) {
-      if (!conn.isConnected) continue;
+    // Check all connected clients for lease/property blockers (parallel per-client)
+    const connectedClients = (user.cuids || []).filter((c: any) => c.isConnected);
 
-      const roles: string[] = conn.roles || [];
-      const connCuid = conn.cuid;
-      const clientLabel = conn.clientDisplayName || connCuid;
+    const blockerResults = await Promise.all(
+      connectedClients.map(async (conn: any) => {
+        const results: DSARPreflightResult['blockers'] = [];
+        const roles: string[] = conn.roles || [];
+        const connCuid = conn.cuid;
+        const clientLabel = conn.clientDisplayName || connCuid;
 
-      // Check: tenant with active lease
-      if (roles.includes('tenant')) {
-        const activeLease = await this.leaseDAO.getActiveLeaseByTenant(connCuid, userId);
-        if (activeLease) {
-          blockers.push({
-            type: 'active_leases',
-            message: `You have an active lease on ${clientLabel}. Terminate or wait for it to expire first.`,
-            count: 1,
-          });
-        }
-      }
-
-      // Check: PM managing properties with active leases
-      if (roles.some((r) => PM_ROLES.includes(r))) {
-        const managed = await this.propertyDAO.getPropertiesByClientId(
-          connCuid,
-          { managedBy: userId, deletedAt: null },
-          { limit: 1000 }
-        );
-
-        if (managed.items.length > 0) {
-          const propIds = managed.items.map((p: any) => p._id);
-          const activeLeases = await this.leaseDAO.list(
-            {
-              cuid: connCuid,
-              'property.id': { $in: propIds },
-              status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
-              deletedAt: null,
-            },
-            {},
-            true
-          );
-
-          if (activeLeases.items.length > 0) {
-            blockers.push({
-              type: 'managed_active_leases',
-              message: `You manage properties with ${activeLeases.items.length} active lease(s) on ${clientLabel}. Reassign properties or terminate leases first.`,
-              count: activeLeases.items.length,
+        // Check: tenant with active lease
+        if (roles.includes('tenant')) {
+          const activeLease = await this.leaseDAO.getActiveLeaseByTenant(connCuid, userId);
+          if (activeLease) {
+            results.push({
+              type: 'active_leases',
+              message: `You have an active lease on ${clientLabel}. Terminate or wait for it to expire first.`,
+              count: 1,
             });
           }
         }
-      }
-    }
+
+        // Check: PM managing properties with active leases
+        if (roles.some((r) => PM_ROLES.includes(r))) {
+          const managed = await this.propertyDAO.getPropertiesByClientId(
+            connCuid,
+            { managedBy: userId, deletedAt: null },
+            { limit: 1000 }
+          );
+
+          if (managed.items.length > 0) {
+            const propIds = managed.items.map((p: any) => p._id);
+            const activeLeases = await this.leaseDAO.list(
+              {
+                cuid: connCuid,
+                'property.id': { $in: propIds },
+                status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+                deletedAt: null,
+              },
+              {},
+              true
+            );
+
+            if (activeLeases.items.length > 0) {
+              results.push({
+                type: 'managed_active_leases',
+                message: `You manage properties with ${activeLeases.items.length} active lease(s) on ${clientLabel}. Reassign properties or terminate leases first.`,
+                count: activeLeases.items.length,
+              });
+            }
+          }
+        }
+
+        return results;
+      })
+    );
+
+    blockers.push(...blockerResults.flat());
 
     return {
       eligible: blockers.length === 0,
@@ -402,8 +410,7 @@ export class DSARService {
 
     // ── Cascade: offboarding logic (mirrors archiveUser) ──────────────
 
-    const clientConnection = user.cuids?.find((c: any) => c.cuid === cuid);
-    const roles: string[] = clientConnection?.roles || [];
+    const roles: string[] = connection?.roles || [];
 
     // Reassign managed properties to supervisor
     const managedProperties = await this.propertyDAO.getPropertiesByClientId(
@@ -441,7 +448,7 @@ export class DSARService {
     );
 
     // Vendor cleanup — archive linked vendor accounts
-    if (roles.includes(IUserRole.VENDOR as string) && !clientConnection?.linkedVendorUid) {
+    if (roles.includes(IUserRole.VENDOR) && !connection?.linkedVendorUid) {
       try {
         const vendor = await this.vendorService.getVendorByUserId(userId);
 
@@ -522,7 +529,7 @@ export class DSARService {
       const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
       emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_DISCONNECTED_JOB, {
         to: user.email,
-        subject: 'Your Account Data Has Been Deleted',
+        subject: 'Your Account Data Is Being Deleted',
         emailType: MailType.ACCOUNT_DISCONNECTED,
         client: { cuid, id: client?._id.toString() || '' },
         data: {

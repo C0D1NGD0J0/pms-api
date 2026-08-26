@@ -380,6 +380,19 @@ export class AuthService {
         });
       }
 
+      this.emitterService.emit(EventTypes.USER_SIGNUP_INITIATED, {
+        subscriptionId: subscriptionResult.data?._id?.toString() || '',
+        billingInterval:
+          (signupData.accountType.billingInterval as 'monthly' | 'annual') || 'monthly',
+        planLookUpKey: signupData.accountType.planLookUpKey || '',
+        planName: signupData.accountType.planName || '',
+        planId: signupData.accountType.planId || '',
+        clientId: client._id.toString(),
+        cuid: clientUid,
+        userId: _userId.toString(),
+        email: user.email,
+      });
+
       return {
         userId: _userId.toString(),
         clientId: client._id.toString(),

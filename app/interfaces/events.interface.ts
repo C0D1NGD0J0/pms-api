@@ -40,7 +40,6 @@ export enum EventTypes {
   PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
   MAINTENANCE_CHARGE_CREATED = 'maintenance:charge:created',
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
-  PROPERTY_DOCUMENTS_UPDATE = 'update:property:documents',
   ACCOUNT_CLOSURE_INITIATED = 'account:closure:initiated',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
   VACATE_REQUEST_SUBMITTED = 'vacate:request:submitted',
@@ -54,8 +53,6 @@ export enum EventTypes {
   VACATE_REQUEST_APPROVED = 'vacate:request:approved',
   VACATE_REQUEST_REJECTED = 'vacate:request:rejected',
   GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
-  PROPERTY_UPDATE_FAILED = 'update:property:failed',
-  DELETE_ASSET_COMPLETED = 'delete:asset:completed',
   INSPECTION_AI_ANALYZED = 'inspection:ai:analyzed',
   PAD_MANDATE_CONFIRMED = 'pad:mandate:confirmed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
@@ -70,7 +67,6 @@ export enum EventTypes {
   INSPECTION_REJECTED = 'inspection:rejected',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
   INVITATION_ACCEPTED = 'invitation:accepted',
-  DELETE_ASSET_FAILED = 'delete:asset:failed',
   DELETE_REMOTE_ASSET = 'delete:remote:asset',
   UNIT_STATUS_CHANGED = 'unit:status:changed',
   INSPECTION_REVIEWED = 'inspection:reviewed',
@@ -91,10 +87,11 @@ export enum EventTypes {
   PAYMENT_REFUNDED = 'payment:refunded',
   LEASE_TERMINATED = 'lease:terminated',
   PROPERTY_CREATED = 'property:created',
-  PROPERTY_DELETED = 'property:deleted',
   UPLOAD_COMPLETED = 'upload:completed',
+  EXPENSE_CREATED = 'expense:created',
+  EXPENSE_UPDATED = 'expense:updated',
+  EXPENSE_DELETED = 'expense:deleted',
   INVITATION_SENT = 'invitation:sent',
-  USER_UNARCHIVED = 'user:unarchived',
   UNIT_UNARCHIVED = 'unit:unarchived',
   PAYMENT_OVERDUE = 'payment:overdue',
   INVOICE_OVERDUE = 'invoice:overdue',
@@ -105,19 +102,14 @@ export enum EventTypes {
   LEASE_RENEWED = 'lease:renewed',
   UNIT_ARCHIVED = 'unit:archived',
   UPLOAD_FAILED = 'upload:failed',
-  JOB_COMPLETED = 'job:completed',
   PAYOUT_FAILED = 'payout:failed',
   EMAIL_FAILED = 'email:failed',
-  SYSTEM_ERROR = 'system:error',
   UNIT_CREATED = 'unit:created',
 
   UNIT_UPDATED = 'unit:updated',
 
-  UPLOAD_ASSET = 'upload:asset',
-  JOB_STARTED = 'job:started',
   PAYOUT_PAID = 'payout:paid',
   EMAIL_SENT = 'email:sent',
-  JOB_FAILED = 'job:failed',
 }
 
 export type EventPayloadMap = {
@@ -131,30 +123,20 @@ export type EventPayloadMap = {
   [EventTypes.VACATE_REQUEST_REJECTED]: VacateRequestDecisionPayload;
   [EventTypes.LEASE_TERMINATED]: LeaseTerminatedPayload;
   [EventTypes.LEASE_EXPIRED]: LeaseExpiredPayload;
-  [EventTypes.DELETE_ASSET_COMPLETED]: DeleteAssetCompletedPayload;
-  [EventTypes.DELETE_ASSET_FAILED]: DeleteAssetFailedPayload;
   [EventTypes.DELETE_LOCAL_ASSET]: DeleteLocalAssetPayload;
   [EventTypes.DELETE_REMOTE_ASSET]: DeleteRemoteAssetPayload;
   [EventTypes.EMAIL_FAILED]: EmailFailedPayload;
   [EventTypes.EMAIL_SENT]: EmailSentPayload;
-  [EventTypes.JOB_COMPLETED]: JobNotificationPayload;
-  [EventTypes.JOB_FAILED]: JobNotificationPayload;
-  [EventTypes.JOB_STARTED]: JobNotificationPayload;
   [EventTypes.PDF_GENERATED]: PdfGeneratedPayload;
   [EventTypes.PDF_GENERATION_FAILED]: PdfGenerationFailedPayload;
   [EventTypes.PDF_GENERATION_REQUESTED]: PdfGenerationRequestedPayload;
-  [EventTypes.PROPERTY_CREATED]: any;
-  [EventTypes.PROPERTY_DELETED]: any;
-  [EventTypes.PROPERTY_DOCUMENTS_UPDATE]: PropertyUpdatedPayload;
-  [EventTypes.PROPERTY_UPDATE_FAILED]: any;
-  [EventTypes.SYSTEM_ERROR]: SystemErrorPayload;
+  [EventTypes.PROPERTY_CREATED]: PropertyCreatedPayload;
   [EventTypes.UNIT_ARCHIVED]: UnitChangedPayload;
   [EventTypes.UNIT_BATCH_CREATED]: UnitBatchChangedPayload;
   [EventTypes.UNIT_CREATED]: UnitChangedPayload;
   [EventTypes.UNIT_STATUS_CHANGED]: UnitChangedPayload;
   [EventTypes.UNIT_UNARCHIVED]: UnitChangedPayload;
   [EventTypes.UNIT_UPDATED]: UnitChangedPayload;
-  [EventTypes.UPLOAD_ASSET]: any;
   [EventTypes.UPLOAD_COMPLETED]: UploadCompletedPayload;
   [EventTypes.UPLOAD_FAILED]: UploadFailedPayload;
   [EventTypes.LEASE_RENEWED]: LeaseRenewedPayload;
@@ -164,7 +146,6 @@ export type EventPayloadMap = {
   [EventTypes.INVITATION_EXPIRED]: InvitationEventPayload;
   [EventTypes.INVITATION_REVOKED]: InvitationEventPayload;
   [EventTypes.USER_ARCHIVED]: UserArchivePayload;
-  [EventTypes.USER_UNARCHIVED]: UserArchivePayload;
   [EventTypes.USER_DISCONNECTED]: UserDisconnectedPayload;
   [EventTypes.MAINTENANCE_AI_TRIAGE_COMPLETED]: MaintenanceAITriageCompletedPayload;
   [EventTypes.MAINTENANCE_FEEDBACK_SUBMITTED]: MaintenanceFeedbackSubmittedPayload;
@@ -192,6 +173,9 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_FAILED]: PaymentFailedPayload;
   [EventTypes.PAYMENT_REFUNDED]: PaymentRefundedPayload;
   [EventTypes.PAYMENT_OVERDUE]: PaymentOverduePayload;
+  [EventTypes.EXPENSE_CREATED]: ExpenseEventPayload;
+  [EventTypes.EXPENSE_UPDATED]: ExpenseEventPayload;
+  [EventTypes.EXPENSE_DELETED]: ExpenseEventPayload;
   [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
   [EventTypes.PAD_MANDATE_CONFIRMED]: PadMandateConfirmedPayload;
   [EventTypes.PAD_PRE_DEBIT_NOTIFICATION]: PadPreDebitNotificationPayload;
@@ -233,6 +217,7 @@ export interface UserSignupInitiatedPayload {
   planId: string; // Stripe price ID (required for paid plans)
   userId: string; // MongoDB ObjectId of user
   email: string; // User email (required for Stripe customer creation)
+  cuid: string; // Client unique identifier
 }
 export interface UnitChangedPayload {
   changeType: 'created' | 'updated' | 'archived' | 'unarchived' | 'status_changed';
@@ -277,7 +262,7 @@ export interface IEventBus {
 
   subscribeToEvent<T extends keyof EventPayloadMap>(
     eventType: T,
-    handler: (data: any) => Promise<void>
+    handler: (data: EventPayloadMap[T]) => Promise<void>
   ): void;
 }
 
@@ -440,18 +425,6 @@ export interface InspectionApprovedPayload {
   leaseId: string;
   iuid: string;
   cuid: string;
-}
-
-export interface SystemErrorPayload {
-  error: {
-    message: string;
-    code?: string;
-    stack?: string;
-  };
-  originalEvent?: EventTypes;
-  resourceType?: string;
-  resourceId?: string;
-  context?: any;
 }
 
 export interface MaintenanceInvoiceSubmittedPayload {
@@ -851,10 +824,11 @@ export type GuestPassExpiredPayload = {
   count: number;
 };
 
-export interface PropertyUpdatedPayload {
-  updateType: 'documents' | 'details' | 'status';
+export interface PropertyCreatedPayload {
+  maxAllowedUnits: number;
+  unitsCreated: number;
   propertyId: string;
-  status: 'success';
+  clientId: string;
 }
 
 export interface MaintenanceAutoVendorPaidPayload {
@@ -933,6 +907,13 @@ export interface EventMetadata {
   userId?: string;
 }
 
+export interface ExpenseEventPayload {
+  category?: string;
+  amount?: number;
+  expuid: string;
+  cuid: string;
+}
+
 export interface EventPayload<T = unknown> {
   metadata: EventMetadata;
   eventType: EventTypes;
@@ -962,17 +943,6 @@ export interface EmailSentPayload {
   jobData: Record<string, any>;
   emailType: MailType;
   sentAt: Date;
-}
-
-export interface DeleteAssetFailedPayload {
-  failedKeys: string[];
-  userId?: string;
-  reason: string;
-}
-
-export interface DeleteAssetCompletedPayload {
-  deletedKeys: string[];
-  failedKeys?: string[];
 }
 
 export type DeleteRemoteAssetPayload = AssetIdentifiersPayload;

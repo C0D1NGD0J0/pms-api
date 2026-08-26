@@ -375,7 +375,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     avgPaymentDelayDays: number;
   }> {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = dayjs.utc().startOf('month').toDate();
 
     // Exclude vendor expense records — same reason as findByCuid().
     // These are internal cost-side accounting entries (vendorId set), not

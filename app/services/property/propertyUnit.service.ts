@@ -1055,7 +1055,19 @@ export class PropertyUnitService {
       }
 
       if (createdUnits.length > 0) {
-        // Emit batch unit creation event for property occupancy sync
+        // Emit per-unit creation event for property occupancy sync
+        for (const unit of createdUnits) {
+          this.emitterService.emit(EventTypes.UNIT_CREATED, {
+            propertyId: property.id,
+            propertyPid: pid,
+            cuid,
+            unitId: unit.puid,
+            userId: currentuser.sub,
+            changeType: 'created',
+          });
+        }
+
+        // Emit batch unit creation event
         this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
           propertyId: property.id,
           propertyPid: pid,

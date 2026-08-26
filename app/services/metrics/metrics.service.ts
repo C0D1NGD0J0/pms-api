@@ -85,6 +85,8 @@ export class MetricsService implements ICronProvider {
   private readonly onInspectionRejected = this.handleInspectionRejected.bind(this);
   private readonly onInspectionDisputed = this.handleInspectionDisputed.bind(this);
   private readonly onInspectionCancelled = this.handleInspectionCancelled.bind(this);
+  private readonly onExpenseChanged = this.handleExpenseChanged.bind(this);
+  private readonly onUserSignup = this.handleUserSignup.bind(this);
 
   constructor(deps: IConstructor) {
     this.log = createLogger('MetricsService');
@@ -115,6 +117,10 @@ export class MetricsService implements ICronProvider {
     this.emitterService.on(EventTypes.INSPECTION_REJECTED, this.onInspectionRejected);
     this.emitterService.on(EventTypes.INSPECTION_DISPUTED, this.onInspectionDisputed);
     this.emitterService.on(EventTypes.INSPECTION_CANCELLED, this.onInspectionCancelled);
+    this.emitterService.on(EventTypes.EXPENSE_CREATED, this.onExpenseChanged);
+    this.emitterService.on(EventTypes.EXPENSE_UPDATED, this.onExpenseChanged);
+    this.emitterService.on(EventTypes.EXPENSE_DELETED, this.onExpenseChanged);
+    this.emitterService.on(EventTypes.USER_SIGNUP_INITIATED, this.onUserSignup);
   }
 
   getCronJobs(): ICronJob[] {
@@ -275,6 +281,17 @@ export class MetricsService implements ICronProvider {
     await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
   }
 
+  private async handleExpenseChanged(payload: { cuid: string }): Promise<void> {
+    if (!payload?.cuid) return;
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
+  private async handleUserSignup(payload: { cuid: string }): Promise<void> {
+    if (!payload?.cuid) return;
+    // New user created — invalidate dashboard so user counts refresh
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
   async getDashboardStats(cuid: string): Promise<IDashboardStats> {
     const [
       leases,
@@ -285,6 +302,7 @@ export class MetricsService implements ICronProvider {
       maintenance,
       inspections,
       expenseStats,
+      client,
     ] = await Promise.all([
       this.leaseDAO.getLeaseStats(cuid),
       this.paymentDAO.getPaymentStats(cuid),
@@ -294,20 +312,34 @@ export class MetricsService implements ICronProvider {
       this.maintenanceRequestDAO.getStats(cuid),
       this.inspectionDAO.getStats(cuid),
       this.expenseDAO.getExpenseStats(cuid),
+      this.clientDAO.findFirst({ cuid, deletedAt: null }),
     ]);
 
     const properties = { ...unitCounts, propertyCount };
 
+    // Resolve the client's configured currency so top-level convenience fields
+    // always reflect the primary operating currency, not an arbitrary first entry.
+    const clientCurrency = ((client as any)?.settings?.currency || 'USD').toUpperCase();
+
+    const primaryPayment =
+      payments.byCurrency.find((c) => c.currency === clientCurrency) ?? payments.byCurrency[0];
+    const primaryExpense =
+      expenseStats.byCurrency.find((c) => c.currency === clientCurrency) ??
+      expenseStats.byCurrency[0];
+
     return {
       leases: {
         ...leases,
-        totalMonthlyRent: leases.monthlyRentByCurrency.reduce((sum, c) => sum + c.total, 0),
+        totalMonthlyRent:
+          leases.monthlyRentByCurrency.find((c: any) => c.currency === clientCurrency)?.total ??
+          leases.monthlyRentByCurrency[0]?.total ??
+          0,
       },
       payments: {
         byCurrency: payments.byCurrency,
-        monthRevenue: payments.byCurrency.reduce((sum, c) => sum + c.monthRevenue, 0),
-        totalRevenue: payments.byCurrency.reduce((sum, c) => sum + c.totalRevenue, 0),
-        pendingAmount: payments.byCurrency.reduce((sum, c) => sum + c.pendingAmount, 0),
+        monthRevenue: primaryPayment?.monthRevenue ?? 0,
+        totalRevenue: primaryPayment?.totalRevenue ?? 0,
+        pendingAmount: primaryPayment?.pendingAmount ?? 0,
         overdueCount: payments.overdueCount,
         totalCount: payments.totalCount,
         onTimeRate: payments.onTimeRate,
@@ -315,8 +347,8 @@ export class MetricsService implements ICronProvider {
       },
       expenses: {
         byCurrency: expenseStats.byCurrency,
-        monthExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.monthExpenses, 0),
-        totalExpenses: expenseStats.byCurrency.reduce((sum, c) => sum + c.totalExpenses, 0),
+        monthExpenses: primaryExpense?.monthExpenses ?? 0,
+        totalExpenses: primaryExpense?.totalExpenses ?? 0,
         totalCount: expenseStats.totalCount,
         netIncomeByCurrency: (() => {
           const allCurrencies = new Set([
@@ -365,6 +397,7 @@ export class MetricsService implements ICronProvider {
         disputed: inspections.disputed,
         total: inspections.total,
       },
+      primaryCurrency: clientCurrency,
       generatedAt: new Date(),
     };
   }
@@ -503,5 +536,9 @@ export class MetricsService implements ICronProvider {
     this.emitterService.off(EventTypes.INSPECTION_REJECTED, this.onInspectionRejected);
     this.emitterService.off(EventTypes.INSPECTION_DISPUTED, this.onInspectionDisputed);
     this.emitterService.off(EventTypes.INSPECTION_CANCELLED, this.onInspectionCancelled);
+    this.emitterService.off(EventTypes.EXPENSE_CREATED, this.onExpenseChanged);
+    this.emitterService.off(EventTypes.EXPENSE_UPDATED, this.onExpenseChanged);
+    this.emitterService.off(EventTypes.EXPENSE_DELETED, this.onExpenseChanged);
+    this.emitterService.off(EventTypes.USER_SIGNUP_INITIATED, this.onUserSignup);
   }
 }

@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
@@ -124,8 +125,7 @@ export class ExpenseDAO extends BaseDAO<IExpenseDocument> implements IExpenseDAO
     totalCount: number;
   }> {
     try {
-      const now = new Date();
-      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+      const monthStart = dayjs.utc().startOf('month').toDate();
 
       const result = (await this.aggregate([
         { $match: { cuid, deletedAt: null } },

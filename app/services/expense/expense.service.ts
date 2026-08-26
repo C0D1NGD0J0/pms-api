@@ -4,6 +4,8 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { IExpenseDAO } from '@dao/interfaces/expenseDAO.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -34,19 +36,23 @@ export class ExpenseService implements IExpenseService {
   private readonly expenseDAO: IExpenseDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly paymentDAO: PaymentDAO;
+  private readonly emitterService: EventEmitterService;
 
   constructor({
     expenseDAO,
     propertyDAO,
     paymentDAO,
+    emitterService,
   }: {
     expenseDAO: IExpenseDAO;
     propertyDAO: PropertyDAO;
     paymentDAO: PaymentDAO;
+    emitterService: EventEmitterService;
   }) {
     this.expenseDAO = expenseDAO;
     this.propertyDAO = propertyDAO;
     this.paymentDAO = paymentDAO;
+    this.emitterService = emitterService;
     this.log = createLogger('ExpenseService');
   }
 
@@ -73,6 +79,12 @@ export class ExpenseService implements IExpenseService {
       });
 
       this.log.info({ expuid: expense.expuid, cuid }, 'Expense created');
+      this.emitterService.emit(EventTypes.EXPENSE_CREATED, {
+        expuid: expense.expuid,
+        cuid,
+        amount: expense.amount,
+        category: expense.category,
+      });
       return {
         success: true,
         data: expense,
@@ -136,6 +148,12 @@ export class ExpenseService implements IExpenseService {
       }
 
       const updated = await this.expenseDAO.update({ expuid, cuid }, { $set: safeData });
+      this.emitterService.emit(EventTypes.EXPENSE_UPDATED, {
+        expuid,
+        cuid,
+        amount: updated?.amount,
+        category: updated?.category,
+      });
       return {
         success: true,
         data: updated!,
@@ -154,6 +172,12 @@ export class ExpenseService implements IExpenseService {
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Expense' }) });
 
       await this.expenseDAO.update({ expuid, cuid }, { $set: { deletedAt: new Date() } });
+      this.emitterService.emit(EventTypes.EXPENSE_DELETED, {
+        expuid,
+        cuid,
+        amount: expense.amount,
+        category: expense.category,
+      });
       return {
         success: true,
         data: undefined,

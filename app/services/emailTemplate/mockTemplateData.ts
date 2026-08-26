@@ -387,6 +387,55 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
     },
 
     // ── Guest Pass ───────────────────────────────────────────────
+    // ── Company Closure ─────────────────────────────────────────
+    COMPANY_CLOSURE_OWNER: {
+      companyName: 'Maple Ridge Properties',
+      effectiveDate: 'October 1, 2026',
+    },
+    COMPANY_CLOSURE_STAFF: {
+      companyName: 'Maple Ridge Properties',
+      effectiveDate: 'October 1, 2026',
+    },
+    COMPANY_CLOSURE_TENANT: {
+      companyName: 'Maple Ridge Properties',
+      effectiveDate: 'October 1, 2026',
+    },
+    COMPANY_CLOSURE_VENDOR: {
+      companyName: 'Maple Ridge Properties',
+      effectiveDate: 'October 1, 2026',
+    },
+
+    // ── Inspection ──────────────────────────────────────────────
+    INSPECTION_SCHEDULED: {
+      currentuser: { firstName: 'Sarah', lastName: 'Williams' },
+      inspectionType: 'move-out',
+      scheduledDate: 'September 15, 2026',
+      iuid: 'INSP-2026-0012',
+    },
+    INSPECTION_SUBMITTED: {
+      currentuser: { firstName: 'Mike', lastName: 'Johnson' },
+      inspectionType: 'move-out',
+      iuid: 'INSP-2026-0012',
+    },
+    INSPECTION_APPROVED: {
+      currentuser: { firstName: 'Sarah', lastName: 'Williams' },
+      hasRefund: true,
+      refundAmount: 90000,
+      depositAmount: 90000,
+      iuid: 'INSP-2026-0012',
+    },
+    INSPECTION_REJECTED: {
+      currentuser: { firstName: 'Sarah', lastName: 'Williams' },
+      isFinal: false,
+      reason: 'Photos are blurry — please retake photos of the kitchen and bathroom areas.',
+      iuid: 'INSP-2026-0012',
+    },
+    INSPECTION_CANCELLED: {
+      currentuser: { firstName: 'Sarah', lastName: 'Williams' },
+      iuid: 'INSP-2026-0012',
+    },
+
+    // ── Guest Pass ────────────────────────────────────────────
     GUEST_PASS_CODE: {
       visitorName: 'Jane Visitor',
       code: '847291',

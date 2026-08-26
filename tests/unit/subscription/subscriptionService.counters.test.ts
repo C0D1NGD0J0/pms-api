@@ -10,7 +10,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
   let mockSubscriptionDAO: jest.Mocked<SubscriptionDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockEmitterService: jest.Mocked<EventEmitterService>;
-  let unitBatchCreatedHandler: (payload: unknown) => void | Promise<void>;
+  let unitBatchCreatedHandler: (payload: any) => void | Promise<void>;
 
   const mockClientId = new Types.ObjectId();
   const testCuid = 'test-client-123';
@@ -204,7 +204,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
   });
 
   describe('Additional Seat Enforcement', () => {
-    let invitationSentHandler: (payload: unknown) => void | Promise<void>;
+    let invitationSentHandler: (payload: any) => void | Promise<void>;
 
     beforeEach(() => {
       mockSubscriptionDAO.findFirst = jest.fn();

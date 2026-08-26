@@ -167,6 +167,73 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
     category: 'Lease',
   },
 
+  // ── Company Closure ─────────────────────────────────────────
+  COMPANY_CLOSURE_OWNER: {
+    subdir: 'subscription',
+    filename: 'company-closure-owner',
+    displayName: 'Company Closure — Owner',
+    description: 'Notify account owner that their company account has been closed',
+    category: 'Subscription',
+  },
+  COMPANY_CLOSURE_STAFF: {
+    subdir: 'subscription',
+    filename: 'company-closure-staff',
+    displayName: 'Company Closure — Staff',
+    description: 'Notify staff that the company account has been closed',
+    category: 'Subscription',
+  },
+  COMPANY_CLOSURE_TENANT: {
+    subdir: 'subscription',
+    filename: 'company-closure-tenant',
+    displayName: 'Company Closure — Tenant',
+    description: 'Notify tenant that the property management company has closed',
+    category: 'Subscription',
+  },
+  COMPANY_CLOSURE_VENDOR: {
+    subdir: 'subscription',
+    filename: 'company-closure-vendor',
+    displayName: 'Company Closure — Vendor',
+    description: 'Notify vendor that the property management company has closed',
+    category: 'Subscription',
+  },
+
+  // ── Inspection ──────────────────────────────────────────────
+  INSPECTION_SCHEDULED: {
+    subdir: 'inspection',
+    filename: 'inspection-scheduled',
+    displayName: 'Inspection Scheduled',
+    description: 'Notify tenant that an inspection has been scheduled',
+    category: 'Inspection',
+  },
+  INSPECTION_SUBMITTED: {
+    subdir: 'inspection',
+    filename: 'inspection-submitted',
+    displayName: 'Inspection Submitted',
+    description: 'Notify inspector/PM that an inspection report was submitted',
+    category: 'Inspection',
+  },
+  INSPECTION_APPROVED: {
+    subdir: 'inspection',
+    filename: 'inspection-approved',
+    displayName: 'Inspection Approved',
+    description: 'Notify tenant that their inspection was approved with refund details',
+    category: 'Inspection',
+  },
+  INSPECTION_REJECTED: {
+    subdir: 'inspection',
+    filename: 'inspection-rejected',
+    displayName: 'Inspection Rejected',
+    description: 'Notify tenant that their inspection was rejected with reason',
+    category: 'Inspection',
+  },
+  INSPECTION_CANCELLED: {
+    subdir: 'inspection',
+    filename: 'inspection-cancelled',
+    displayName: 'Inspection Cancelled',
+    description: 'Notify tenant that a scheduled inspection was cancelled',
+    category: 'Inspection',
+  },
+
   // ── Payment ──────────────────────────────────────────────────
   PAYMENT_REQUEST_CREATED: {
     subdir: 'payment',

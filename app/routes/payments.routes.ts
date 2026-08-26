@@ -147,6 +147,21 @@ router.post(
 );
 
 router.post(
+  '/:cuid/scan-receipt',
+  basicLimiter({ max: 5, windowMs: 60 * 1000 }),
+  requireNotSuspended,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireVerifiedClient,
+  diskUpload(['receipt']),
+  scanFile,
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.scanReceipt(req, res);
+  })
+);
+
+router.post(
   '/:cuid/manual_entry',
   basicLimiter(),
   requireNotSuspended,

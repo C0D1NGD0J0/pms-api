@@ -86,6 +86,7 @@ export class MetricsService implements ICronProvider {
   private readonly onInspectionDisputed = this.handleInspectionDisputed.bind(this);
   private readonly onInspectionCancelled = this.handleInspectionCancelled.bind(this);
   private readonly onExpenseChanged = this.handleExpenseChanged.bind(this);
+  private readonly onUserSignup = this.handleUserSignup.bind(this);
 
   constructor(deps: IConstructor) {
     this.log = createLogger('MetricsService');
@@ -119,6 +120,7 @@ export class MetricsService implements ICronProvider {
     this.emitterService.on(EventTypes.EXPENSE_CREATED, this.onExpenseChanged);
     this.emitterService.on(EventTypes.EXPENSE_UPDATED, this.onExpenseChanged);
     this.emitterService.on(EventTypes.EXPENSE_DELETED, this.onExpenseChanged);
+    this.emitterService.on(EventTypes.USER_SIGNUP_INITIATED, this.onUserSignup);
   }
 
   getCronJobs(): ICronJob[] {
@@ -284,6 +286,12 @@ export class MetricsService implements ICronProvider {
     await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
   }
 
+  private async handleUserSignup(payload: { cuid: string }): Promise<void> {
+    if (!payload?.cuid) return;
+    // New user created — invalidate dashboard so user counts refresh
+    await this.pushDelta(payload.cuid, { type: 'metrics:invalidate' });
+  }
+
   async getDashboardStats(cuid: string): Promise<IDashboardStats> {
     const [
       leases,
@@ -294,6 +302,7 @@ export class MetricsService implements ICronProvider {
       maintenance,
       inspections,
       expenseStats,
+      client,
     ] = await Promise.all([
       this.leaseDAO.getLeaseStats(cuid),
       this.paymentDAO.getPaymentStats(cuid),
@@ -303,13 +312,13 @@ export class MetricsService implements ICronProvider {
       this.maintenanceRequestDAO.getStats(cuid),
       this.inspectionDAO.getStats(cuid),
       this.expenseDAO.getExpenseStats(cuid),
+      this.clientDAO.findFirst({ cuid, deletedAt: null }),
     ]);
 
     const properties = { ...unitCounts, propertyCount };
 
     // Resolve the client's configured currency so top-level convenience fields
     // always reflect the primary operating currency, not an arbitrary first entry.
-    const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
     const clientCurrency = ((client as any)?.settings?.currency || 'USD').toUpperCase();
 
     const primaryPayment =
@@ -530,5 +539,6 @@ export class MetricsService implements ICronProvider {
     this.emitterService.off(EventTypes.EXPENSE_CREATED, this.onExpenseChanged);
     this.emitterService.off(EventTypes.EXPENSE_UPDATED, this.onExpenseChanged);
     this.emitterService.off(EventTypes.EXPENSE_DELETED, this.onExpenseChanged);
+    this.emitterService.off(EventTypes.USER_SIGNUP_INITIATED, this.onUserSignup);
   }
 }

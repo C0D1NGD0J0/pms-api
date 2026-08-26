@@ -19,7 +19,7 @@ const TEST_EMAIL = 'signup-test@example.com';
 
 const makeSignupData = (overrides: Record<string, any> = {}): ISignupData => ({
   email: TEST_EMAIL,
-  password: 'SecureP@ss123',
+  password: 'Test_Fixture_Not_Real!1', // nosec — test fixture only
   firstName: 'Test',
   lastName: 'User',
   displayName: 'Test User',
@@ -134,6 +134,7 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
         planName: 'essential',
         planId: 'price_essential',
         clientId: CLIENT_ID.toString(),
+        cuid: expect.any(String),
         email: TEST_EMAIL,
       })
     );

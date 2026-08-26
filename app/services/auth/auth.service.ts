@@ -388,6 +388,7 @@ export class AuthService {
         planName: signupData.accountType.planName || '',
         planId: signupData.accountType.planId || '',
         clientId: client._id.toString(),
+        cuid: clientUid,
         userId: _userId.toString(),
         email: user.email,
       });

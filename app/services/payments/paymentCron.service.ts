@@ -1070,13 +1070,23 @@ export class PaymentCronService implements ICronProvider {
         await this.maintenancePaymentService.payVendor(cuid, mruid);
         paid++;
 
-        // Notify finance staff about the automatic vendor payout
-        const vendorProfile = await this.profileDAO.getProfileByUserId(
-          invoice.submittedBy.toString()
-        );
+        // Notify finance staff — profile fetch is best-effort, payout already succeeded
+        let vendorName = 'Unknown Vendor';
+        try {
+          const vendorProfile = await this.profileDAO.getProfileByUserId(
+            invoice.submittedBy.toString()
+          );
+          vendorName = vendorProfile?.fullname || vendorName;
+        } catch {
+          this.log.warn(
+            { cuid, mruid },
+            '[Cron] Vendor profile fetch failed — using fallback name'
+          );
+        }
+
         this.emitterService.emit(EventTypes.MAINTENANCE_AUTO_VENDOR_PAID, {
           amountInCents: invoice.amountInCents,
-          vendorName: vendorProfile?.fullname || 'Unknown Vendor',
+          vendorName,
           mruid,
           cuid,
         });

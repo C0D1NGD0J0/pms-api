@@ -71,6 +71,14 @@ export class ProfileService {
     this.setupEventListeners();
   }
 
+  async completeTour(userId: string, tourId: string): Promise<void> {
+    await this.profileDAO.addCompletedTour(userId, tourId);
+  }
+
+  async resetTours(userId: string): Promise<void> {
+    await this.profileDAO.removeAllCompletedTours(userId);
+  }
+
   async updateEmployeeInfo(
     profileId: string,
     cuid: string,

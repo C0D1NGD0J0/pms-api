@@ -339,6 +339,20 @@ export class UserController {
     return res.status(httpStatusCodes.OK).json(result);
   };
 
+  completeTour = async (req: AppRequest, res: Response): Promise<Response> => {
+    const { tourId } = req.body;
+    if (!tourId || typeof tourId !== 'string') {
+      throw new BadRequestError({ message: 'tourId is required' });
+    }
+    await this.profileService.completeTour(req.context.currentuser!.sub, tourId);
+    return res.status(httpStatusCodes.OK).json({ success: true });
+  };
+
+  resetTours = async (req: AppRequest, res: Response): Promise<Response> => {
+    await this.profileService.resetTours(req.context.currentuser!.sub);
+    return res.status(httpStatusCodes.OK).json({ success: true });
+  };
+
   updateSMSConsent = async (req: AppRequest, res: Response): Promise<Response> => {
     const { cuid } = req.params;
     const { currentuser } = req.context;

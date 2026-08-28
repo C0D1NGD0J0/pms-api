@@ -80,6 +80,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
         default: 'password',
         enum: ['otp', 'password'],
       },
+      completedTours: { type: [String], default: [] },
       gdprSettings: {
         dataRetentionPolicy: {
           type: String,

@@ -86,6 +86,17 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
+  async addCompletedTour(userId: string, tourId: string): Promise<void> {
+    await this.update(
+      { user: userId } as any,
+      { $addToSet: { 'settings.completedTours': tourId } } as any
+    );
+  }
+
+  async removeAllCompletedTours(userId: string): Promise<void> {
+    await this.update({ user: userId } as any, { $set: { 'settings.completedTours': [] } } as any);
+  }
+
   async updateGDPRSettings(
     profileId: string,
     gdprSettings: Partial<IProfileDocument['settings']['gdprSettings']>
@@ -401,6 +412,7 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               theme: { $ifNull: ['$settings.theme', 'light'] },
               lang: { $ifNull: ['$settings.lang', 'en'] },
               timezone: { $ifNull: ['$settings.timeZone', 'UTC'] },
+              completedTours: { $ifNull: ['$settings.completedTours', []] },
             },
 
             // Active client — resolved via $let to avoid re-filtering userData.cuids

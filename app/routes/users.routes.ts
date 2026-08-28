@@ -270,6 +270,27 @@ router.patch(
   })
 );
 
+// Guided tour completion
+router.post(
+  '/:cuid/tours/complete',
+  basicLimiter(),
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.completeTour(req, res);
+  })
+);
+
+router.delete(
+  '/:cuid/tours',
+  basicLimiter(),
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.resetTours(req, res);
+  })
+);
+
 router.get(
   '/:cuid/filtered-tenants',
   basicLimiter(),

@@ -7,84 +7,24 @@ import {
   ReportStatus,
 } from '@interfaces/report.interface';
 
+import {
+  mockReportScheduleDAO,
+  createReportService,
+  mockReportQueue,
+  mockReportDAO,
+} from './__mocks__';
+
 const CUID = 'TEST_CLIENT_001';
 const USER_ID = new Types.ObjectId().toString();
 const SCHEDULE_ID = new Types.ObjectId().toString();
 const REPORT_ID = new Types.ObjectId().toString();
-
-const mockReportDAO = {
-  createReport: jest.fn() as any,
-  updateStatus: jest.fn() as any,
-  listByClient: jest.fn() as any,
-  findById: jest.fn() as any,
-};
-
-const mockReportScheduleDAO = {
-  upsertSchedule: jest.fn() as any,
-  getSchedule: jest.fn() as any,
-  deactivateSchedule: jest.fn() as any,
-  getDueSchedules: jest.fn() as any,
-  advanceNextRunAt: jest.fn() as any,
-};
-
-const mockReportQueue = {
-  addReportJob: jest.fn() as any,
-};
-
-const mockEmailQueue = {
-  addToEmailQueue: jest.fn() as any,
-} as any;
-
-const mockClientDAO = { findFirst: jest.fn() as any };
-const mockLeaseDAO = {
-  getLeaseStats: jest.fn() as any,
-  getRentRollData: jest.fn() as any,
-  getExpiringLeases: jest.fn() as any,
-};
-const mockPaymentDAO = { getPaymentStats: jest.fn() as any, findByCuid: jest.fn() as any };
-const mockExpenseDAO = {
-  aggregateByCategory: jest.fn() as any,
-  aggregateByProperty: jest.fn() as any,
-  findByClient: jest.fn() as any,
-};
-const mockExpenseService = { getPnLSummary: jest.fn() as any };
-const mockPropertyUnitDAO = { getPropertyUnitCounts: jest.fn() as any };
-const mockUserDAO = { getTenantStats: jest.fn() as any, getUserStats: jest.fn() as any };
-const mockVendorDAO = { getClientVendorStats: jest.fn() as any };
-const mockInspectionDAO = { getStats: jest.fn() as any };
-const mockMaintenanceRequestDAO = { getStats: jest.fn() as any, listWithDetails: jest.fn() as any };
-const mockPdfGeneratorService = { generatePdf: jest.fn() as any };
-const mockS3Service = { uploadBuffer: jest.fn() as any, getSignedUrl: jest.fn() as any };
-const mockSseService = { sendToUser: jest.fn() as any };
-
-function createService() {
-  return new ReportService({
-    reportDAO: mockReportDAO as any,
-    reportScheduleDAO: mockReportScheduleDAO as any,
-    reportQueue: mockReportQueue as any,
-    emailQueue: mockEmailQueue,
-    expenseService: mockExpenseService as any,
-    leaseDAO: mockLeaseDAO as any,
-    paymentDAO: mockPaymentDAO as any,
-    maintenanceRequestDAO: mockMaintenanceRequestDAO as any,
-    expenseDAO: mockExpenseDAO as any,
-    propertyUnitDAO: mockPropertyUnitDAO as any,
-    userDAO: mockUserDAO as any,
-    vendorDAO: mockVendorDAO as any,
-    clientDAO: mockClientDAO as any,
-    inspectionDAO: mockInspectionDAO as any,
-    pdfGeneratorService: mockPdfGeneratorService as any,
-    s3Service: mockS3Service as any,
-    sseService: mockSseService as any,
-  });
-}
 
 describe('ReportService — Schedule Management', () => {
   let service: ReportService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = createService();
+    service = createReportService();
   });
 
   // ─── upsertSchedule ──────────────────────────────────────────────
@@ -132,8 +72,8 @@ describe('ReportService — Schedule Management', () => {
 
       const callData = mockReportScheduleDAO.upsertSchedule.mock.calls[0][1];
       const nextRunAt = callData.nextRunAt as Date;
-      expect(nextRunAt.getDate()).toBe(1); // 1st of month
-      expect(nextRunAt.getHours()).toBe(6); // 6 AM
+      expect(nextRunAt.getDate()).toBe(1);
+      expect(nextRunAt.getHours()).toBe(6);
     });
 
     it('should compute nextRunAt for quarterly schedule', async () => {
@@ -150,6 +90,19 @@ describe('ReportService — Schedule Management', () => {
       const quarterStartMonths = [0, 3, 6, 9];
       expect(quarterStartMonths).toContain(nextRunAt.getMonth());
       expect(nextRunAt.getDate()).toBe(1);
+    });
+
+    it('should use Types.ObjectId for createdBy', async () => {
+      mockReportScheduleDAO.upsertSchedule.mockResolvedValue({
+        _id: new Types.ObjectId(SCHEDULE_ID),
+      });
+
+      await service.upsertSchedule(CUID, USER_ID, {
+        frequency: ScheduleFrequency.MONTHLY,
+      });
+
+      const callData = mockReportScheduleDAO.upsertSchedule.mock.calls[0][1];
+      expect(callData.createdBy).toBeInstanceOf(Types.ObjectId);
     });
   });
 
@@ -215,7 +168,6 @@ describe('ReportService — Schedule Management', () => {
       });
       mockReportQueue.addReportJob.mockResolvedValue({ id: 'job-1' });
 
-      // getCronJobs returns the handler — call it directly
       const cronJobs = service.getCronJobs();
       expect(cronJobs).toHaveLength(1);
       expect(cronJobs[0].name).toBe('report:scheduled-generation');
@@ -289,7 +241,6 @@ describe('ReportService — Schedule Management', () => {
       const cronJobs = service.getCronJobs();
       await cronJobs[0].handler();
 
-      // First failed, second should still process
       expect(mockReportDAO.createReport).toHaveBeenCalledTimes(2);
       expect(mockReportQueue.addReportJob).toHaveBeenCalledTimes(1);
     });

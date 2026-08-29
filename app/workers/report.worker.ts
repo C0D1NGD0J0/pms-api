@@ -19,9 +19,7 @@ export class ReportWorker {
 
   handleGenerateReport = async (job: Job<IReportJobData>): Promise<{ success: boolean }> => {
     this.log.info({ reportId: job.data.reportId }, 'Starting report generation');
-    await job.progress(5);
-    await this.reportService.processReport(job);
-    await job.progress(100);
+    await this.reportService._processReport(job);
     return { success: true };
   };
 }

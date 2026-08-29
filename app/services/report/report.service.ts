@@ -2,6 +2,8 @@ import ejs from 'ejs';
 import path from 'path';
 import { Job } from 'bull';
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
+import { randomUUID } from 'crypto';
 import { createLogger } from '@utils/index';
 import { EmailQueue } from '@queues/email.queue';
 import { ReportQueue } from '@queues/report.queue';
@@ -9,15 +11,6 @@ import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PdfGeneratorService, ExpenseService, SSEService, S3Service } from '@services/index';
-import {
-  IReportStatusResponse,
-  ScheduleFrequency,
-  REPORT_SECTIONS,
-  IReportJobData,
-  ReportSection,
-  ReportPeriod,
-  ReportStatus,
-} from '@interfaces/report.interface';
 import {
   MaintenanceRequestDAO,
   ReportScheduleDAO,
@@ -31,6 +24,17 @@ import {
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
+import {
+  IReportScheduleDocument,
+  IReportStatusResponse,
+  ScheduleFrequency,
+  REPORT_SECTIONS,
+  IReportDocument,
+  IReportJobData,
+  ReportSection,
+  ReportPeriod,
+  ReportStatus,
+} from '@interfaces/report.interface';
 
 interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
@@ -156,7 +160,7 @@ export class ReportService implements ICronProvider {
 
     const report = await this.reportDAO.createReport({
       cuid,
-      requestedBy: userId as any,
+      requestedBy: new Types.ObjectId(userId),
       period,
       status: ReportStatus.PENDING,
       startDate,
@@ -220,7 +224,7 @@ export class ReportService implements ICronProvider {
   async listReports(
     cuid: string,
     query?: { skip?: number; limit?: number }
-  ): IPromiseReturnedData<{ reports: any[]; pagination: any }> {
+  ): IPromiseReturnedData<{ reports: IReportDocument[]; pagination?: Record<string, any> }> {
     const result = await this.reportDAO.listByClient(cuid, query);
     return {
       success: true,
@@ -245,7 +249,7 @@ export class ReportService implements ICronProvider {
 
     const schedule = await this.reportScheduleDAO.upsertSchedule(cuid, {
       cuid,
-      createdBy: userId as any,
+      createdBy: new Types.ObjectId(userId),
       frequency: body.frequency,
       sections,
       emailRecipients: body.emailRecipients || [],
@@ -261,7 +265,7 @@ export class ReportService implements ICronProvider {
     };
   }
 
-  async getSchedule(cuid: string): IPromiseReturnedData<any> {
+  async getSchedule(cuid: string): IPromiseReturnedData<IReportScheduleDocument | null> {
     const schedule = await this.reportScheduleDAO.getSchedule(cuid);
     return { success: true, data: schedule };
   }
@@ -272,7 +276,7 @@ export class ReportService implements ICronProvider {
   }
 
   // ─── Worker entry point ───────────────────────────────────────────
-  async processReport(job: Job<IReportJobData>): Promise<void> {
+  async _processReport(job: Job<IReportJobData>): Promise<void> {
     const {
       reportId,
       cuid,
@@ -336,7 +340,7 @@ export class ReportService implements ICronProvider {
 
       // Upload to S3
       const dateStr = new Date().toISOString().split('T')[0];
-      const uniqueId = Math.random().toString(36).substring(2, 10);
+      const uniqueId = randomUUID().replace(/-/g, '').substring(0, 8);
       const s3Key = `reports/${cuid}/report-${dateStr}-${uniqueId}.pdf`;
       const filename = `report-${dateStr}.pdf`;
 
@@ -378,7 +382,7 @@ export class ReportService implements ICronProvider {
       }
 
       // SSE push to requesting user
-      this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         userId,
         cuid,
         { reportId, presignedUrl, expiresAt, filename },
@@ -403,10 +407,15 @@ export class ReportService implements ICronProvider {
 
     for (const schedule of dueSchedules) {
       try {
-        const period =
-          schedule.frequency === ScheduleFrequency.MONTHLY
-            ? ReportPeriod.LAST_30_DAYS
-            : ReportPeriod.LAST_90_DAYS;
+        const frequencyToPeriod: Record<ScheduleFrequency, ReportPeriod> = {
+          [ScheduleFrequency.MONTHLY]: ReportPeriod.LAST_30_DAYS,
+          [ScheduleFrequency.QUARTERLY]: ReportPeriod.LAST_90_DAYS,
+        };
+        const period = frequencyToPeriod[schedule.frequency];
+        if (!period) {
+          this.log.error({ frequency: schedule.frequency }, 'Unknown schedule frequency');
+          continue;
+        }
 
         const { startDate, endDate, prevStartDate, prevEndDate } = this._resolveDateRange(period);
 
@@ -634,6 +643,12 @@ export class ReportService implements ICronProvider {
         }
         startDate = new Date(startDateStr);
         endDate = new Date(endDateStr);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+          throw new BadRequestError({ message: 'Invalid startDate or endDate' });
+        }
+        if (startDate >= endDate) {
+          throw new BadRequestError({ message: 'startDate must be before endDate' });
+        }
         break;
       default:
         throw new BadRequestError({ message: `Invalid report period: ${period}` });

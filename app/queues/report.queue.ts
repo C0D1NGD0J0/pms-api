@@ -7,7 +7,7 @@ import { BaseQueue } from './base.queue';
 export class ReportQueue extends BaseQueue<IReportJobData> {
   constructor({ reportWorker }: { reportWorker: ReportWorker }) {
     super({ queueName: QUEUE_NAMES.REPORT_QUEUE });
-    this.processQueueJobs(JOB_NAME.GENERATE_REPORT_JOB, 2, reportWorker.handleGenerateReport);
+    this.processAllQueueJobs(2, reportWorker.handleGenerateReport);
   }
 
   addReportJob(data: IReportJobData) {

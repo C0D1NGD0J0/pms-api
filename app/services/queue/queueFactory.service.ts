@@ -81,6 +81,7 @@ export class QueueFactory {
       'pdfGeneratorQueue',
       'cronQueue',
       'paymentQueue',
+      'reportQueue',
     ];
 
     const processType = process.env.PROCESS_TYPE ?? 'unknown';

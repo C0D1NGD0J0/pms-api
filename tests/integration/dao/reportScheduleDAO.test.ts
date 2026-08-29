@@ -52,7 +52,7 @@ describe('ReportScheduleDAO Integration Tests', () => {
         makeSchedule({
           frequency: ScheduleFrequency.QUARTERLY,
           emailRecipients: ['pm@example.com', 'investor@example.com'],
-        }),
+        })
       );
 
       expect(updated.frequency).toBe(ScheduleFrequency.QUARTERLY);
@@ -65,14 +65,14 @@ describe('ReportScheduleDAO Integration Tests', () => {
 
     it('should reject invalid frequency enum', async () => {
       await expect(
-        dao.upsertSchedule(BASE_CUID, makeSchedule({ frequency: 'weekly' })),
+        dao.upsertSchedule(BASE_CUID, makeSchedule({ frequency: 'weekly' }))
       ).rejects.toThrow();
     });
 
     it('should enforce email recipients max limit', async () => {
       const tooMany = Array.from({ length: 11 }, (_, i) => `user${i}@test.com`);
       await expect(
-        dao.upsertSchedule(BASE_CUID, makeSchedule({ emailRecipients: tooMany })),
+        dao.upsertSchedule(BASE_CUID, makeSchedule({ emailRecipients: tooMany }))
       ).rejects.toThrow();
     });
 
@@ -138,9 +138,7 @@ describe('ReportScheduleDAO Integration Tests', () => {
     });
 
     it('should return empty array when no schedules are due', async () => {
-      await ReportScheduleModel.create(
-        makeSchedule({ nextRunAt: new Date('2026-12-01') }),
-      );
+      await ReportScheduleModel.create(makeSchedule({ nextRunAt: new Date('2026-12-01') }));
 
       const due = await dao.getDueSchedules(new Date('2026-09-01'));
 

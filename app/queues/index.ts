@@ -6,6 +6,7 @@ export * from './esignature.queue';
 export * from './eventbus.queue';
 export * from './property.queue';
 export * from './payment.queue';
+export * from './report.queue';
 export * from './upload.queue';
 export * from './email.queue';
 export * from './cron.queue';

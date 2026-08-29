@@ -17,6 +17,12 @@ export const mockReportQueue = {
   addReportJob: jest.fn() as any,
 };
 
+export const mockQueueFactory = {
+  getQueue: jest.fn().mockReturnValue({
+    addReportJob: jest.fn().mockResolvedValue({ id: 'mock-job-id' }),
+  }) as any,
+};
+
 export const mockEmailQueue = {
   addToEmailQueue: jest.fn() as any,
 } as any;
@@ -53,7 +59,7 @@ export function createReportService() {
   return new ReportService({
     reportDAO: mockReportDAO as any,
     reportScheduleDAO: mockReportScheduleDAO as any,
-    reportQueue: mockReportQueue as any,
+    queueFactory: mockQueueFactory as any,
     emailQueue: mockEmailQueue,
     expenseService: mockExpenseService as any,
     leaseDAO: mockLeaseDAO as any,

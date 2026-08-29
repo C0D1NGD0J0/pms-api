@@ -5,6 +5,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { createLogger } from '@utils/index';
+import { QueueFactory } from '@services/queue';
 import { EmailQueue } from '@queues/email.queue';
 import { ReportQueue } from '@queues/report.queue';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
@@ -43,7 +44,7 @@ interface IConstructor {
   propertyUnitDAO: PropertyUnitDAO;
   expenseService: ExpenseService;
   inspectionDAO: InspectionDAO;
-  reportQueue: ReportQueue;
+  queueFactory: QueueFactory;
   emailQueue: EmailQueue;
   paymentDAO: PaymentDAO;
   expenseDAO: ExpenseDAO;
@@ -59,7 +60,7 @@ interface IConstructor {
 export class ReportService implements ICronProvider {
   private readonly reportDAO: ReportDAO;
   private readonly reportScheduleDAO: ReportScheduleDAO;
-  private readonly reportQueue: ReportQueue;
+  private readonly queueFactory: QueueFactory;
   private readonly emailQueue: EmailQueue;
   private readonly expenseService: ExpenseService;
   private readonly leaseDAO: LeaseDAO;
@@ -79,7 +80,7 @@ export class ReportService implements ICronProvider {
   constructor({
     reportDAO,
     reportScheduleDAO,
-    reportQueue,
+    queueFactory,
     emailQueue,
     expenseService,
     leaseDAO,
@@ -97,7 +98,7 @@ export class ReportService implements ICronProvider {
   }: IConstructor) {
     this.reportDAO = reportDAO;
     this.reportScheduleDAO = reportScheduleDAO;
-    this.reportQueue = reportQueue;
+    this.queueFactory = queueFactory;
     this.emailQueue = emailQueue;
     this.expenseService = expenseService;
     this.leaseDAO = leaseDAO;
@@ -170,7 +171,8 @@ export class ReportService implements ICronProvider {
       emailRecipients,
     });
 
-    await this.reportQueue.addReportJob({
+    const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
+    await reportQueue.addReportJob({
       reportId: report._id.toString(),
       cuid,
       userId,
@@ -432,7 +434,8 @@ export class ReportService implements ICronProvider {
           scheduledBy: schedule._id,
         });
 
-        await this.reportQueue.addReportJob({
+        const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
+        await reportQueue.addReportJob({
           reportId: report._id.toString(),
           cuid: schedule.cuid,
           userId: schedule.createdBy.toString(),

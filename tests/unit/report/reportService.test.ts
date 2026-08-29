@@ -4,7 +4,7 @@ import { REPORT_SECTIONS, ReportPeriod, ReportStatus } from '@interfaces/report.
 
 import {
   createReportService,
-  mockReportQueue,
+  mockQueueFactory,
   mockReportDAO,
   mockClientDAO,
   mockS3Service,
@@ -30,7 +30,9 @@ describe('ReportService', () => {
       cuid: CUID,
       status: ReportStatus.PENDING,
     });
-    mockReportQueue.addReportJob.mockResolvedValue({ id: 'job-1' });
+    mockQueueFactory.getQueue.mockReturnValue({
+      addReportJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+    });
     service = createReportService();
   });
 
@@ -46,7 +48,7 @@ describe('ReportService', () => {
       expect(result.data.reportId).toBe(REPORT_ID);
       expect(result.data.status).toBe(ReportStatus.PENDING);
       expect(mockReportDAO.createReport).toHaveBeenCalledTimes(1);
-      expect(mockReportQueue.addReportJob).toHaveBeenCalledTimes(1);
+      expect(mockQueueFactory.getQueue).toHaveBeenCalledWith('reportQueue');
     });
 
     it('should default sections to all when not provided', async () => {
@@ -147,7 +149,8 @@ describe('ReportService', () => {
         period: ReportPeriod.LAST_30_DAYS,
       });
 
-      const jobData = mockReportQueue.addReportJob.mock.calls[0][0];
+      const resolvedQueue = mockQueueFactory.getQueue.mock.results[0].value;
+      const jobData = resolvedQueue.addReportJob.mock.calls[0][0];
       expect(jobData.prevStartDate).toBeDefined();
       expect(jobData.prevEndDate).toBeDefined();
       expect(jobData.prevEndDate.getTime()).toBeLessThan(jobData.startDate.getTime());

@@ -10,7 +10,7 @@ import {
 import {
   mockReportScheduleDAO,
   createReportService,
-  mockReportQueue,
+  mockQueueFactory,
   mockReportDAO,
 } from './__mocks__';
 
@@ -166,7 +166,9 @@ describe('ReportService — Schedule Management', () => {
       mockReportDAO.createReport.mockResolvedValue({
         _id: new Types.ObjectId(REPORT_ID),
       });
-      mockReportQueue.addReportJob.mockResolvedValue({ id: 'job-1' });
+      mockQueueFactory.getQueue.mockReturnValue({
+        addReportJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      });
 
       const cronJobs = service.getCronJobs();
       expect(cronJobs).toHaveLength(1);
@@ -183,7 +185,7 @@ describe('ReportService — Schedule Management', () => {
           scheduledBy: schedule._id,
         })
       );
-      expect(mockReportQueue.addReportJob).toHaveBeenCalledTimes(1);
+      expect(mockQueueFactory.getQueue).toHaveBeenCalledWith('reportQueue');
       expect(mockReportScheduleDAO.advanceNextRunAt).toHaveBeenCalledTimes(1);
     });
 
@@ -242,7 +244,7 @@ describe('ReportService — Schedule Management', () => {
       await cronJobs[0].handler();
 
       expect(mockReportDAO.createReport).toHaveBeenCalledTimes(2);
-      expect(mockReportQueue.addReportJob).toHaveBeenCalledTimes(1);
+      expect(mockQueueFactory.getQueue).toHaveBeenCalledWith('reportQueue');
     });
 
     it('should do nothing when no schedules are due', async () => {
@@ -252,7 +254,7 @@ describe('ReportService — Schedule Management', () => {
       await cronJobs[0].handler();
 
       expect(mockReportDAO.createReport).not.toHaveBeenCalled();
-      expect(mockReportQueue.addReportJob).not.toHaveBeenCalled();
+      expect(mockQueueFactory.getQueue).not.toHaveBeenCalled();
     });
   });
 });

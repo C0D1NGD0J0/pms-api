@@ -51,6 +51,6 @@ export const ReportValidations = {
 
   reportIdParam: z.object({
     cuid: z.string().min(1),
-    reportId: z.string().min(1),
+    reportId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid report ID format'),
   }),
 };

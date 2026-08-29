@@ -18,9 +18,20 @@ export class ReportScheduleDAO extends BaseDAO<IReportScheduleDocument> {
     data: Partial<IReportScheduleDocument>
   ): Promise<IReportScheduleDocument> {
     try {
-      const result = await this.upsert({ $set: data }, { cuid } as any, {
-        runValidators: true,
-      });
+      const { createdBy, cuid: _cuid, ...mutableData } = data;
+      const result = await this.upsert(
+        {
+          $set: mutableData,
+          $setOnInsert: { createdBy, cuid },
+        },
+        { cuid } as any,
+        { runValidators: true }
+      );
+
+      if (!result) {
+        throw new Error(`Failed to upsert schedule for cuid: ${cuid}`);
+      }
+
       return result as unknown as IReportScheduleDocument;
     } catch (error: any) {
       this.log.error({ error, cuid }, 'Error upserting report schedule');
@@ -58,7 +69,10 @@ export class ReportScheduleDAO extends BaseDAO<IReportScheduleDocument> {
 
   async advanceNextRunAt(scheduleId: string, nextRunAt: Date): Promise<void> {
     try {
-      await this.updateById(scheduleId, { $set: { nextRunAt } });
+      const updated = await this.updateById(scheduleId, { $set: { nextRunAt } });
+      if (!updated) {
+        this.log.warn({ scheduleId }, 'advanceNextRunAt: schedule not found');
+      }
     } catch (error: any) {
       this.log.error({ error, scheduleId }, 'Error advancing schedule nextRunAt');
       throw this.throwErrorHandler(error);

@@ -15,7 +15,7 @@ const reportSchema = new Schema<IReportDocument>(
     cuid: {
       type: String,
       required: [true, 'Client ID is required'],
-      index: true,
+      immutable: true,
     },
     requestedBy: {
       type: Schema.Types.ObjectId,
@@ -40,6 +40,10 @@ const reportSchema = new Schema<IReportDocument>(
       type: [String],
       enum: REPORT_SECTIONS,
       default: [...REPORT_SECTIONS],
+      validate: {
+        validator: (v: string[]) => v.length >= 1,
+        message: 'At least one section is required',
+      },
     },
     emailRecipients: {
       type: [String],
@@ -73,6 +77,7 @@ const reportScheduleSchema = new Schema<IReportScheduleDocument>(
     cuid: {
       type: String,
       required: [true, 'Client ID is required'],
+      immutable: true,
       unique: true,
     },
     createdBy: {
@@ -89,6 +94,10 @@ const reportScheduleSchema = new Schema<IReportScheduleDocument>(
       type: [String],
       enum: REPORT_SECTIONS,
       default: [...REPORT_SECTIONS],
+      validate: {
+        validator: (v: string[]) => v.length >= 1,
+        message: 'At least one section is required',
+      },
     },
     emailRecipients: {
       type: [String],

@@ -90,7 +90,10 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
 
       query = query.sort(options?.sort || { createdAt: -1 });
       if (options?.skip) query = query.skip(options.skip);
-      if (options?.limit) query = query.limit(options.limit);
+      // Always enforce a limit to prevent unbounded queries on free-tier MongoDB.
+      // Callers can pass up to 1000; if omitted, defaults to 20.
+      const safeLimit = Math.min(options?.limit || 20, 1000);
+      query = query.limit(safeLimit);
       if (options?.projection) query = query.select(options.projection);
 
       if (options?.populate) {

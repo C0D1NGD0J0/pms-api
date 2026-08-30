@@ -1,17 +1,29 @@
 import crypto from 'crypto';
 import slowDown from 'express-slow-down';
 import rateLimit from 'express-rate-limit';
+import { RedisStore } from 'rate-limit-redis';
 import { httpStatusCodes } from '@utils/index';
+import { RedisService } from '@database/redis-setup';
 import { RateLimitOptions } from '@interfaces/utils.interface';
 
+// Env-configurable defaults so limits can be tuned from Railway dashboard
+// without redeploying.
+const DEFAULT_MAX = parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10);
+const DEFAULT_WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '300000', 10); // 5 min
+
 /**
- * Factory class to manage rate limiter instances
- * Creates instances once and caches them to avoid express-rate-limit validation errors
+ * Factory class to manage rate limiter instances.
+ *
+ * Uses Redis-backed storage (via the shared RedisService) to prevent the
+ * in-memory buildup that caused OOM on long-running processes.
+ * Call `setRedisService()` once during app init to wire up the Redis client;
+ * until then the factory falls back to the default in-memory store.
  */
 export class RateLimiterFactory {
   private static instance: RateLimiterFactory;
   private rateLimiterCache = new Map<string, any>();
   private speedLimiterCache = new Map<string, any>();
+  private redisService: RedisService | null = null;
 
   private constructor() {}
 
@@ -23,18 +35,46 @@ export class RateLimiterFactory {
   }
 
   /**
+   * Inject the shared RedisService instance. Called once from app init
+   * (after DI container is ready) so the factory can create Redis-backed stores
+   * without importing the DI container directly.
+   */
+  public setRedisService(redisService: RedisService): void {
+    this.redisService = redisService;
+  }
+
+  /**
    * Generate a unique key for caching based on options
    */
   private generateCacheKey(options: Partial<RateLimitOptions>): string {
     const normalizedOptions = {
-      windowMs: options.windowMs || 5 * 60 * 1000,
-      max: options.max || 30,
+      windowMs: options.windowMs || DEFAULT_WINDOW_MS,
+      max: options.max || DEFAULT_MAX,
       delayAfter: options.delayAfter || 20,
       delayMs: typeof options.delayMs === 'function' ? 'function' : options.delayMs || 50000,
       message: options.message || 'Too many requests, please try again later.',
     };
 
     return crypto.createHash('md5').update(JSON.stringify(normalizedOptions)).digest('hex');
+  }
+
+  /**
+   * Build a Redis-backed store for rate limiting.
+   * Falls back to the default in-memory store if Redis is unavailable (e.g. tests).
+   */
+  private buildStore(prefix: string): RedisStore | undefined {
+    try {
+      if (process.env.NODE_ENV === 'test') return undefined;
+      if (!this.redisService?.client?.isReady) return undefined;
+
+      return new RedisStore({
+        sendCommand: (...args: string[]) => this.redisService!.client.sendCommand(args),
+        prefix: `rl:${prefix}:`,
+      });
+    } catch {
+      // Redis not connected — fall back to in-memory store
+      return undefined;
+    }
   }
 
   /**
@@ -47,13 +87,16 @@ export class RateLimiterFactory {
       return this.rateLimiterCache.get(cacheKey);
     }
 
-    const windowMs = options.windowMs || 5 * 60 * 1000; // 5 minutes default
+    const windowMs = options.windowMs || DEFAULT_WINDOW_MS;
+    const store = this.buildStore(cacheKey);
+
     const rateLimiter = rateLimit({
       windowMs,
-      max: options.max || 30, // 30 requests per window default
+      max: options.max || DEFAULT_MAX,
       standardHeaders: true,
       keyGenerator: options.keyGenerator,
       skip: options.skip ?? (() => process.env.NODE_ENV !== 'production'),
+      ...(store ? { store } : {}),
       handler: (_req, res, _next) => {
         const message = options.message || 'Too many requests, please try again later.';
         // Send Retry-After header in seconds

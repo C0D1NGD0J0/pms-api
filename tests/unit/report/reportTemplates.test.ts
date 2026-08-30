@@ -216,7 +216,9 @@ describe('Report PDF Template', () => {
       makeTemplateData({
         sections: ['financial_overview', 'maintenance'],
         trends: {
-          totalExpenses: { CAD: { current: 200000, previous: 150000, delta: 50000, deltaPercent: 33.3 } },
+          totalExpenses: {
+            CAD: { current: 200000, previous: 150000, delta: 50000, deltaPercent: 33.3 },
+          },
           openWorkOrders: { current: 10, previous: 5, delta: 5, deltaPercent: 100 },
         },
       })

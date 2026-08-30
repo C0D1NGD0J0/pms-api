@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Property Report</title>
+  <style>
+    @page { size: A4; margin: 0.75in; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 13px;
+      color: #1e293b;
+      line-height: 1.5;
+      print-color-adjust: exact;
+      -webkit-print-color-adjust: exact;
+    }
+
+    /* ─── Cover ─────────────────────────────────────────────── */
+    .cover {
+      text-align: center;
+      padding: 120px 40px 60px;
+      page-break-after: always;
+    }
+    .cover h1 {
+      font-size: 28px;
+      color: #062f4f;
+      margin-bottom: 8px;
+    }
+    .cover .subtitle {
+      font-size: 16px;
+      color: #64748b;
+      margin-bottom: 40px;
+    }
+    .cover .meta {
+      font-size: 13px;
+      color: #94a3b8;
+    }
+    .cover .meta span { display: block; margin-bottom: 4px; }
+
+    /* ─── Section ───────────────────────────────────────────── */
+    .section {
+      page-break-before: always;
+      padding-top: 20px;
+    }
+    .section:first-of-type { page-break-before: auto; }
+    .section h2 {
+      font-size: 18px;
+      color: #062f4f;
+      border-bottom: 2px solid #39a9e0;
+      padding-bottom: 6px;
+      margin-bottom: 16px;
+    }
+    .section h3 {
+      font-size: 14px;
+      color: #334155;
+      margin: 16px 0 8px;
+    }
+
+    /* ─── KPI Cards ─────────────────────────────────────────── */
+    .kpi-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .kpi-card {
+      flex: 1 1 140px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+    .kpi-card .label {
+      font-size: 11px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .kpi-card .value {
+      font-size: 22px;
+      font-weight: 700;
+      color: #062f4f;
+      margin: 4px 0;
+    }
+
+    /* ─── Trend Badge ───────────────────────────────────────── */
+    .trend {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .trend.up { background: #dcfce7; color: #166534; }
+    .trend.down { background: #fee2e2; color: #991b1b; }
+    .trend.neutral { background: #f1f5f9; color: #64748b; }
+
+    /* ─── Tables ─────────────────────────────────────────────── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 12px;
+    }
+    th {
+      background: #f1f5f9;
+      color: #475569;
+      font-weight: 600;
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    td {
+      padding: 7px 10px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    tr:nth-child(even) td { background: #fafbfc; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+
+    /* ─── Currency label ────────────────────────────────────── */
+    .currency-label {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      color: #475569;
+      background: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-bottom: 8px;
+    }
+
+    /* ─── Empty state ───────────────────────────────────────── */
+    .empty {
+      text-align: center;
+      color: #94a3b8;
+      font-style: italic;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<%
+  const has = (s) => sections.includes(s);
+
+  const formatCurrency = (cents, currency) => {
+    const val = (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return currency ? `${val} ${currency}` : val;
+  };
+
+  const formatPercent = (val) => {
+    if (val === null || val === undefined) return 'N/A';
+    return `${val > 0 ? '+' : ''}${val.toFixed(1)}%`;
+  };
+
+  const formatDate = (d) => {
+    if (!d) return '—';
+    const date = new Date(d);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const trendClass = (delta) => {
+    if (delta === null || delta === undefined) return 'neutral';
+    return delta >= 0 ? 'up' : 'down';
+  };
+
+  const trendArrow = (delta) => {
+    if (delta === null || delta === undefined) return '—';
+    return delta >= 0 ? '↑' : '↓';
+  };
+
+  const periodLabel = (() => {
+    if (period === 'last_30_days') return 'Last 30 Days';
+    if (period === 'last_90_days') return 'Last 90 Days';
+    return `${formatDate(startDate)} – ${formatDate(endDate)}`;
+  })();
+%>
+
+<!-- ─── Cover Page ──────────────────────────────────────────────── -->
+<div class="cover">
+  <h1><%= clientName %></h1>
+  <div class="subtitle">Property Management Report</div>
+  <div class="meta">
+    <span><strong>Period:</strong> <%= periodLabel %></span>
+    <span><strong>Generated:</strong> <%= formatDate(generatedAt) %></span>
+    <span><strong>Sections:</strong> <%= sections.length %> of 9</span>
+  </div>
+</div>
+
+<!-- ─── Executive Summary ───────────────────────────────────────── -->
+<% if (has('executive_summary')) { %>
+<div class="section">
+  <h2>Executive Summary</h2>
+  <div class="kpi-grid">
+    <% if (unitCounts) { %>
+    <div class="kpi-card">
+      <div class="label">Total Units</div>
+      <div class="value"><%= unitCounts.total %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Occupancy Rate</div>
+      <div class="value"><%= (unitCounts.occupancyRate || 0).toFixed(1) %>%</div>
+      <% if (trends && trends.occupancyRate) { %>
+      <span class="trend <%= trendClass(trends.occupancyRate.delta) %>">
+        <%= trendArrow(trends.occupancyRate.delta) %> <%= formatPercent(trends.occupancyRate.deltaPercent) %>
+      </span>
+      <% } %>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Occupied</div>
+      <div class="value"><%= unitCounts.occupied %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Vacant</div>
+      <div class="value"><%= unitCounts.vacant %></div>
+    </div>
+    <% } %>
+
+    <% if (leaseStats) { %>
+    <div class="kpi-card">
+      <div class="label">Active Leases</div>
+      <div class="value"><%= leaseStats.activeLeases || 0 %></div>
+      <% if (trends && trends.activeLeases) { %>
+      <span class="trend <%= trendClass(trends.activeLeases.delta) %>">
+        <%= trendArrow(trends.activeLeases.delta) %> <%= formatPercent(trends.activeLeases.deltaPercent) %>
+      </span>
+      <% } %>
+    </div>
+    <% } %>
+
+    <% if (paymentStats) { %>
+    <div class="kpi-card">
+      <div class="label">On-Time Rate</div>
+      <div class="value"><%= (paymentStats.onTimeRate || 0).toFixed(1) %>%</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Overdue</div>
+      <div class="value"><%= paymentStats.overdueCount || 0 %></div>
+    </div>
+    <% } %>
+  </div>
+</div>
+<% } %>
+
+<!-- ─── Financial Overview (P&L) ─────────────────────────────────── -->
+<% if (has('financial_overview') && pnl && pnl.byCurrency) { %>
+<div class="section">
+  <h2>Financial Overview</h2>
+  <% for (const curr of pnl.byCurrency) { %>
+  <div class="currency-label"><%= curr.currency %></div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Total Income</div>
+      <div class="value"><%= formatCurrency(curr.income?.total || 0, curr.currency) %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Total Expenses</div>
+      <div class="value"><%= formatCurrency(curr.expenses?.total || 0, curr.currency) %></div>
+      <% if (trends && trends.totalExpenses && trends.totalExpenses[curr.currency]) { %>
+      <span class="trend <%= trendClass(trends.totalExpenses[curr.currency].delta) %>">
+        <%= trendArrow(trends.totalExpenses[curr.currency].delta) %> <%= formatPercent(trends.totalExpenses[curr.currency].deltaPercent) %>
+      </span>
+      <% } %>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Net Income</div>
+      <div class="value"><%= formatCurrency(curr.netIncome || 0, curr.currency) %></div>
+      <% if (trends && trends.netIncome && trends.netIncome[curr.currency]) { %>
+      <span class="trend <%= trendClass(trends.netIncome[curr.currency].delta) %>">
+        <%= trendArrow(trends.netIncome[curr.currency].delta) %> <%= formatPercent(trends.netIncome[curr.currency].deltaPercent) %>
+      </span>
+      <% } %>
+    </div>
+  </div>
+
+  <% if (curr.income && curr.income.byProperty && curr.income.byProperty.length) { %>
+  <h3>Income by Property</h3>
+  <table>
+    <thead><tr><th>Property</th><th class="text-right">Amount</th></tr></thead>
+    <tbody>
+      <% for (const p of curr.income.byProperty) { %>
+      <tr><td><%= p.propertyName || p.propertyId %></td><td class="text-right"><%= formatCurrency(p.total, curr.currency) %></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+
+  <% if (curr.expenses && curr.expenses.byCategory && curr.expenses.byCategory.length) { %>
+  <h3>Expenses by Category</h3>
+  <table>
+    <thead><tr><th>Category</th><th class="text-right">Amount</th></tr></thead>
+    <tbody>
+      <% for (const c of curr.expenses.byCategory) { %>
+      <tr><td><%= c.category %></td><td class="text-right"><%= formatCurrency(c.total, curr.currency) %></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+  <% } %>
+</div>
+<% } %>
+
+<!-- ─── Payment Analysis ─────────────────────────────────────────── -->
+<% if (has('payment_analysis') && paymentStats) { %>
+<div class="section">
+  <h2>Payment Analysis</h2>
+
+  <% if (paymentStats.byCurrency) { %>
+  <% for (const curr of paymentStats.byCurrency) { %>
+  <div class="currency-label"><%= curr.currency %></div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Total Revenue</div>
+      <div class="value"><%= formatCurrency(curr.totalRevenue || 0, curr.currency) %></div>
+      <% if (trends && trends.revenue && trends.revenue[curr.currency]) { %>
+      <span class="trend <%= trendClass(trends.revenue[curr.currency].delta) %>">
+        <%= trendArrow(trends.revenue[curr.currency].delta) %> <%= formatPercent(trends.revenue[curr.currency].deltaPercent) %>
+      </span>
+      <% } %>
+    </div>
+    <div class="kpi-card">
+      <div class="label">This Month</div>
+      <div class="value"><%= formatCurrency(curr.monthRevenue || 0, curr.currency) %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Pending</div>
+      <div class="value"><%= formatCurrency(curr.pendingAmount || 0, curr.currency) %></div>
+    </div>
+  </div>
+  <% } %>
+  <% } %>
+
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">On-Time Rate</div>
+      <div class="value"><%= (paymentStats.onTimeRate || 0).toFixed(1) %>%</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Avg Delay (days)</div>
+      <div class="value"><%= (paymentStats.avgPaymentDelayDays || 0).toFixed(1) %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Overdue Count</div>
+      <div class="value"><%= paymentStats.overdueCount || 0 %></div>
+    </div>
+  </div>
+
+  <% if (recentPayments && recentPayments.items && recentPayments.items.length) { %>
+  <h3>Recent Payments</h3>
+  <table>
+    <thead><tr><th>Tenant</th><th>Type</th><th class="text-right">Amount</th><th>Due Date</th><th>Status</th></tr></thead>
+    <tbody>
+      <% for (const p of recentPayments.items) { %>
+      <tr>
+        <td><%= p.tenantId?.email || '—' %></td>
+        <td><%= p.paymentType || '—' %></td>
+        <td class="text-right"><%= formatCurrency(p.baseAmount || 0) %></td>
+        <td><%= formatDate(p.dueDate) %></td>
+        <td><%= p.status %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+<% } %>
+
+<!-- ─── Lease & Occupancy ─────────────────────────────────────────── -->
+<% if (has('lease_occupancy') && leaseStats) { %>
+<div class="section">
+  <h2>Lease & Occupancy</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Active</div>
+      <div class="value"><%= leaseStats.activeLeases || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Expiring in 30d</div>
+      <div class="value"><%= leaseStats.expiringIn30Days || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Expiring in 60d</div>
+      <div class="value"><%= leaseStats.expiringIn60Days || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Expiring in 90d</div>
+      <div class="value"><%= leaseStats.expiringIn90Days || 0 %></div>
+    </div>
+  </div>
+
+  <% if (rentRoll && rentRoll.length) { %>
+  <h3>Rent Roll</h3>
+  <table>
+    <thead><tr><th>Tenant</th><th>Property</th><th>Unit</th><th class="text-right">Monthly Rent</th><th>Lease End</th></tr></thead>
+    <tbody>
+      <% for (const r of rentRoll) { %>
+      <tr>
+        <td><%= r.tenantName || '—' %></td>
+        <td><%= r.propertyName || '—' %></td>
+        <td><%= r.unitNumber || '—' %></td>
+        <td class="text-right"><%= formatCurrency(r.monthlyRent || 0) %></td>
+        <td><%= formatDate(r.leaseEndDate) %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+
+  <% if (expiringLeases && expiringLeases.length) { %>
+  <h3>Expiring Leases (next 90 days)</h3>
+  <table>
+    <thead><tr><th>Tenant</th><th>Property</th><th>Expires</th></tr></thead>
+    <tbody>
+      <% for (const l of expiringLeases) { %>
+      <tr>
+        <td><%= l.tenantId?.email || '—' %></td>
+        <td><%= l.propertyId?.name || '—' %></td>
+        <td><%= formatDate(l.endDate) %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+<% } %>
+
+<!-- ─── Maintenance & Work Orders ─────────────────────────────────── -->
+<% if (has('maintenance') && maintenanceStats) { %>
+<div class="section">
+  <h2>Maintenance & Work Orders</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Total Requests</div>
+      <div class="value"><%= maintenanceStats.total || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Open</div>
+      <div class="value"><%= maintenanceStats.open || 0 %></div>
+      <% if (trends && trends.openWorkOrders) { %>
+      <span class="trend <%= trendClass(trends.openWorkOrders.delta) %>">
+        <%= trendArrow(trends.openWorkOrders.delta) %> <%= formatPercent(trends.openWorkOrders.deltaPercent) %>
+      </span>
+      <% } %>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Completed</div>
+      <div class="value"><%= maintenanceStats.completed || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Avg Resolution (days)</div>
+      <div class="value"><%= (maintenanceStats.avgResolutionDays || 0).toFixed(1) %></div>
+    </div>
+  </div>
+
+  <% if (recentWorkOrders && recentWorkOrders.items && recentWorkOrders.items.length) { %>
+  <h3>Recent Work Orders</h3>
+  <table>
+    <thead><tr><th>Title</th><th>Property</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+      <% for (const w of recentWorkOrders.items) { %>
+      <tr>
+        <td><%= w.title || '—' %></td>
+        <td><%= w.propertyId?.name || '—' %></td>
+        <td><%= w.priority || '—' %></td>
+        <td><%= w.status %></td>
+        <td><%= formatDate(w.createdAt) %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+<% } %>
+
+<!-- ─── Expense Breakdown ──────────────────────────────────────────── -->
+<% if (has('expenses')) { %>
+<div class="section">
+  <h2>Expense Breakdown</h2>
+
+  <% if (expenseByCategory && expenseByCategory.length) { %>
+  <h3>By Category</h3>
+  <table>
+    <thead><tr><th>Category</th><th>Currency</th><th class="text-right">Total</th></tr></thead>
+    <tbody>
+      <% for (const e of expenseByCategory) { %>
+      <tr>
+        <td><%= e._id.category %></td>
+        <td><%= e._id.currency %></td>
+        <td class="text-right"><%= formatCurrency(e.total, e._id.currency) %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+
+  <% if (expenseByProperty && expenseByProperty.length) { %>
+  <h3>By Property</h3>
+  <table>
+    <thead><tr><th>Property</th><th>Currency</th><th class="text-right">Total</th></tr></thead>
+    <tbody>
+      <% for (const e of expenseByProperty) { %>
+      <tr>
+        <td><%= e._id.propertyId %></td>
+        <td><%= e._id.currency %></td>
+        <td class="text-right"><%= formatCurrency(e.total, e._id.currency) %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+
+  <% if (recentExpenses && recentExpenses.items && recentExpenses.items.length) { %>
+  <h3>Recent Expenses</h3>
+  <table>
+    <thead><tr><th>Description</th><th>Category</th><th class="text-right">Amount</th><th>Date</th></tr></thead>
+    <tbody>
+      <% for (const e of recentExpenses.items) { %>
+      <tr>
+        <td><%= e.description || '—' %></td>
+        <td><%= e.category %></td>
+        <td class="text-right"><%= formatCurrency(e.amount) %></td>
+        <td><%= formatDate(e.date) %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+
+  <% if ((!expenseByCategory || !expenseByCategory.length) && (!expenseByProperty || !expenseByProperty.length)) { %>
+  <p class="empty">No expense data for this period.</p>
+  <% } %>
+</div>
+<% } %>
+
+<!-- ─── Tenant Summary ────────────────────────────────────────────── -->
+<% if (has('tenants') && (tenantStats || userStats)) { %>
+<div class="section">
+  <h2>Tenant Summary</h2>
+  <div class="kpi-grid">
+    <% if (userStats) { %>
+    <div class="kpi-card">
+      <div class="label">Total Users</div>
+      <div class="value"><%= userStats.total || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Tenants</div>
+      <div class="value"><%= userStats.tenants || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Staff</div>
+      <div class="value"><%= userStats.staff || 0 %></div>
+    </div>
+    <% } %>
+    <% if (tenantStats) { %>
+    <div class="kpi-card">
+      <div class="label">Active Tenants</div>
+      <div class="value"><%= tenantStats.activeTenants || 0 %></div>
+    </div>
+    <% } %>
+  </div>
+</div>
+<% } %>
+
+<!-- ─── Vendor Summary ────────────────────────────────────────────── -->
+<% if (has('vendors') && vendorStats) { %>
+<div class="section">
+  <h2>Vendor Summary</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Total Vendors</div>
+      <div class="value"><%= vendorStats.totalVendors || 0 %></div>
+    </div>
+  </div>
+
+  <% if (vendorStats.businessTypeDistribution && vendorStats.businessTypeDistribution.length) { %>
+  <h3>By Business Type</h3>
+  <table>
+    <thead><tr><th>Type</th><th class="text-right">Count</th></tr></thead>
+    <tbody>
+      <% for (const b of vendorStats.businessTypeDistribution) { %>
+      <tr><td><%= b._id || 'Other' %></td><td class="text-right"><%= b.count %></td></tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
+</div>
+<% } %>
+
+<!-- ─── Inspection Summary ────────────────────────────────────────── -->
+<% if (has('inspections') && inspectionStats) { %>
+<div class="section">
+  <h2>Inspection Summary</h2>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Total</div>
+      <div class="value"><%= inspectionStats.total || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Scheduled</div>
+      <div class="value"><%= inspectionStats.scheduled || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Approved</div>
+      <div class="value"><%= inspectionStats.approved || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Avg Completion (days)</div>
+      <div class="value"><%= (inspectionStats.avgCompletionDays || 0).toFixed(1) %></div>
+    </div>
+  </div>
+</div>
+<% } %>
+
+</body>
+</html>

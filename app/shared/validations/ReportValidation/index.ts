@@ -4,6 +4,7 @@ import {
   ScheduleFrequency,
   REPORT_SECTIONS,
   ReportPeriod,
+  ReportStatus,
 } from '@interfaces/report.interface';
 
 import { UtilsValidations } from '../UtilsValidation';
@@ -49,6 +50,12 @@ export const ReportValidations = {
     emailRecipients: emailRecipientsSchema,
     propertyId: z.string().optional(),
     isActive: z.boolean().optional(),
+  }),
+
+  listQuery: z.object({
+    page: z.coerce.number().int().min(1, 'Page must be at least 1').optional(),
+    limit: z.coerce.number().int().min(1).max(100, 'Limit cannot exceed 100').optional(),
+    status: z.nativeEnum(ReportStatus).optional(),
   }),
 
   reportIdParam: UtilsValidations.cuid.extend({

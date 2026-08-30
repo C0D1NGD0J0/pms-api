@@ -181,6 +181,44 @@ describe('ReportValidations', () => {
     });
   });
 
+  // ─── listQuery ─────────────────────────────────────────────────────
+
+  describe('listQuery', () => {
+    it('should accept empty query (all optional)', () => {
+      const result = ReportValidations.listQuery.safeParse({});
+      expect(result.success).toBe(true);
+    });
+
+    it('should coerce string page/limit to numbers', () => {
+      const result = ReportValidations.listQuery.safeParse({ page: '2', limit: '25' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.page).toBe(2);
+        expect(result.data.limit).toBe(25);
+      }
+    });
+
+    it('should reject page less than 1', () => {
+      const result = ReportValidations.listQuery.safeParse({ page: '0' });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject limit exceeding 100', () => {
+      const result = ReportValidations.listQuery.safeParse({ limit: '200' });
+      expect(result.success).toBe(false);
+    });
+
+    it('should accept valid status filter', () => {
+      const result = ReportValidations.listQuery.safeParse({ status: 'completed' });
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid status filter', () => {
+      const result = ReportValidations.listQuery.safeParse({ status: 'invalid' });
+      expect(result.success).toBe(false);
+    });
+  });
+
   // ─── reportIdParam ────────────────────────────────────────────────
 
   describe('reportIdParam', () => {

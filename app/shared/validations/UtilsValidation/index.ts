@@ -38,6 +38,8 @@ export const calendarDate = (errorMessage?: string) =>
       (val): boolean => {
         if (val instanceof Date) return dayjs(val).isValid();
         const parsed = dayjs(val as string);
+        // isValid() alone doesn't reject overflow dates (dayjs normalises them);
+        // the startsWith check catches them by comparing the UTC date portion.
         return parsed.isValid() && parsed.toISOString().startsWith((val as string).split('T')[0]);
       },
       { message: errorMessage ?? 'Invalid date: this day does not exist in the calendar' }

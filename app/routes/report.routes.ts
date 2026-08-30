@@ -51,7 +51,7 @@ router.get(
   requirePermission(PermissionResource.REPORT, PermissionAction.READ),
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
-  validateRequest({ params: UtilsValidations.cuid }),
+  validateRequest({ params: UtilsValidations.cuid, query: ReportValidations.listQuery }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<ReportController>('reportController');
     return controller.list(req, res);
@@ -91,8 +91,10 @@ router.delete(
   '/:cuid/schedule',
   requireNotSuspended,
   requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
+  requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),
+  requireActiveSubscription,
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<ReportController>('reportController');

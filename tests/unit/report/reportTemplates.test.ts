@@ -210,6 +210,23 @@ describe('Report PDF Template', () => {
     expect(html).toContain('+5.9%');
   });
 
+  it('should render cost metrics with inverted trend (red for increase)', async () => {
+    const html = await ejs.renderFile(
+      PDF_TEMPLATE_PATH,
+      makeTemplateData({
+        sections: ['financial_overview', 'maintenance'],
+        trends: {
+          totalExpenses: { CAD: { current: 200000, previous: 150000, delta: 50000, deltaPercent: 33.3 } },
+          openWorkOrders: { current: 10, previous: 5, delta: 5, deltaPercent: 100 },
+        },
+      })
+    );
+
+    // Expenses going up = bad = red (trend down class)
+    // Open work orders going up = bad = red (trend down class)
+    expect(html).toContain('trend down');
+  });
+
   it('should render multi-currency payment stats', async () => {
     const html = await ejs.renderFile(
       PDF_TEMPLATE_PATH,

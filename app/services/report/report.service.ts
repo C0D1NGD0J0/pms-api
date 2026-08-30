@@ -371,13 +371,17 @@ export class ReportService implements ICronProvider {
       if (emailRecipients.length) {
         const periodLabel = this._getPeriodLabel(period, startDate, endDate);
         for (const recipient of emailRecipients) {
-          this.emailQueue.addToEmailQueue(MailType.REPORT_READY, {
-            emailType: MailType.REPORT_READY,
-            subject: `Your ${periodLabel} Property Report is Ready`,
-            to: recipient,
-            data: { presignedUrl, filename, clientName, periodLabel, expiresAt },
-            client: { cuid, id: client?._id?.toString() || '' },
-          });
+          try {
+            this.emailQueue.addToEmailQueue(MailType.REPORT_READY, {
+              emailType: MailType.REPORT_READY,
+              subject: `Your ${periodLabel} Property Report is Ready`,
+              to: recipient,
+              data: { presignedUrl, filename, clientName, periodLabel, expiresAt },
+              client: { cuid, id: client?._id?.toString() || '' },
+            });
+          } catch (err) {
+            this.log.error({ err, recipient, reportId }, 'Failed to enqueue report email');
+          }
         }
       }
 

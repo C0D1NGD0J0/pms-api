@@ -160,9 +160,12 @@
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
-  const trendClass = (delta) => {
+  // higherIsBetter: true (default) = green for increase, red for decrease
+  // higherIsBetter: false = red for increase (expenses, overdue, open work orders)
+  const trendClass = (delta, higherIsBetter = true) => {
     if (delta === null || delta === undefined) return 'neutral';
-    return delta >= 0 ? 'up' : 'down';
+    const isPositive = delta >= 0;
+    return (isPositive === higherIsBetter) ? 'up' : 'down';
   };
 
   const trendArrow = (delta) => {
@@ -258,7 +261,7 @@
       <div class="label">Total Expenses</div>
       <div class="value"><%= formatCurrency(curr.expenses?.total || 0, curr.currency) %></div>
       <% if (trends && trends.totalExpenses && trends.totalExpenses[curr.currency]) { %>
-      <span class="trend <%= trendClass(trends.totalExpenses[curr.currency].delta) %>">
+      <span class="trend <%= trendClass(trends.totalExpenses[curr.currency].delta, false) %>">
         <%= trendArrow(trends.totalExpenses[curr.currency].delta) %> <%= formatPercent(trends.totalExpenses[curr.currency].deltaPercent) %>
       </span>
       <% } %>
@@ -438,7 +441,7 @@
       <div class="label">Open</div>
       <div class="value"><%= maintenanceStats.open || 0 %></div>
       <% if (trends && trends.openWorkOrders) { %>
-      <span class="trend <%= trendClass(trends.openWorkOrders.delta) %>">
+      <span class="trend <%= trendClass(trends.openWorkOrders.delta, false) %>">
         <%= trendArrow(trends.openWorkOrders.delta) %> <%= formatPercent(trends.openWorkOrders.deltaPercent) %>
       </span>
       <% } %>

@@ -3,6 +3,7 @@ import userRoutes from './users.routes';
 import adminRoutes from './admin.routes';
 import leaseRoutes from './lease.routes';
 import clientRoutes from './client.routes';
+import reportRoutes from './report.routes';
 import vendorRoutes from './vendors.routes';
 import webhookRoutes from './webhook.routes';
 import expenseRoutes from './expense.routes';
@@ -36,4 +37,5 @@ export const routes = {
   expenseRoutes,
   guestPassRoutes,
   inspectionRoutes,
+  reportRoutes,
 };

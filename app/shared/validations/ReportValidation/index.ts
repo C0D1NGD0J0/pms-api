@@ -6,6 +6,8 @@ import {
   ReportPeriod,
 } from '@interfaces/report.interface';
 
+import { UtilsValidations } from '../UtilsValidation';
+
 const sectionsSchema = z
   .array(z.enum(REPORT_SECTIONS as unknown as [string, ...string[]]))
   .min(1, 'At least one section is required')
@@ -49,8 +51,7 @@ export const ReportValidations = {
     isActive: z.boolean().optional(),
   }),
 
-  reportIdParam: z.object({
-    cuid: z.string().min(1),
+  reportIdParam: UtilsValidations.cuid.extend({
     reportId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid report ID format'),
   }),
 };

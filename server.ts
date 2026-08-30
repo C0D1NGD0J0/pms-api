@@ -15,13 +15,14 @@ import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { runSchemaSync } from '@database/schema-sync';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { DatabaseService, Environments } from '@database/index';
+import { DatabaseService, RedisService, Environments } from '@database/index';
 import { SERVICE_RESOURCE_NAMES, QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
 (global as any).rootDir = __dirname;
 
 interface IConstructor {
   dbService: DatabaseService;
+  redisService: RedisService;
 }
 
 class Server {
@@ -39,10 +40,10 @@ class Server {
   private redisClients: { pub: any; sub: any } | null = null;
   private readonly SERVER_ENV = envVariables.SERVER.ENV as Environments;
 
-  constructor({ dbService }: IConstructor) {
+  constructor({ dbService, redisService }: IConstructor) {
     this.expApp = express();
     this.dbService = dbService;
-    this.app = new App(this.expApp, this.dbService);
+    this.app = new App(this.expApp, this.dbService, redisService);
     this.pidManager = new PidManager('api', this.log);
     this.setupProcessErrorHandlers();
   }
@@ -54,7 +55,7 @@ class Server {
     }
 
     // check for existing PID file to prevent duplicate processes
-    this.pidManager.check();
+    await this.pidManager.check();
 
     await this.dbService.connect();
 
@@ -91,8 +92,8 @@ class Server {
 
   public static getInstance(): Server {
     if (!Server.instance) {
-      const { dbService } = container.cradle;
-      Server.instance = new Server({ dbService });
+      const { dbService, redisService } = container.cradle;
+      Server.instance = new Server({ dbService, redisService });
       Server.instance.initialized = true;
     }
     return Server.instance;
@@ -119,6 +120,15 @@ class Server {
     if (this.SERVER_ENV === 'test') {
       return undefined;
     }
+
+    // Prevent hanging requests from exhausting connections.
+    // requestTimeout: max time for the entire request (headers + body + response).
+    // headersTimeout: must be > keepAliveTimeout per Node.js docs.
+    // keepAliveTimeout: how long idle keep-alive connections stay open.
+    //   Set slightly above common reverse-proxy timeouts (Railway uses 60s).
+    httpServer.requestTimeout = 30_000;
+    httpServer.headersTimeout = 70_000;
+    httpServer.keepAliveTimeout = 65_000;
 
     httpServer.listen(this.PORT, '0.0.0.0', () => {
       this.log.info('Server initialized...', { port: this.PORT });
@@ -368,8 +378,8 @@ if (require.main === module) {
       return;
     }
 
-    const { dbService } = container.cradle;
-    const server = new Server({ dbService });
+    const { dbService, redisService } = container.cradle;
+    const server = new Server({ dbService, redisService });
     server.start().catch((err) => {
       console.error('Failed to start server:', err);
       process.exit(1);

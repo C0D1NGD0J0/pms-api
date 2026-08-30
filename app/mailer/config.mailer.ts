@@ -299,6 +299,9 @@ export class MailService {
       case MailType.USER_CREATED:
         template = await this.buildTemplate('userCreated', emailData);
         break;
+      case MailType.REPORT_READY:
+        template = await this.buildTemplate('report-ready', emailData, 'report');
+        break;
       case MailType.INVITATION: {
         // Select template based on user role
         const role = emailData.role;
@@ -438,6 +441,7 @@ export class MailService {
       [MailType.COMPANY_CLOSURE_VENDOR]: 'Service Disconnection Notice',
       [MailType.COMPANY_CLOSURE_TENANT]: 'Account Closure Notice',
       [MailType.COMPANY_CLOSURE_OWNER]: 'Account Closure Confirmation',
+      [MailType.REPORT_READY]: 'Your Property Report is Ready',
     };
 
     return subjectMap[mailType] || subjectMap.default;

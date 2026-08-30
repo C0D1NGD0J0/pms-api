@@ -18,6 +18,12 @@ export class PdfGeneratorService {
   private browserLaunchTime: Date | null = null;
   private readonly BROWSER_IDLE_TIMEOUT = 60 * 1000; // 60 seconds idle timeout
 
+  // Concurrency control — cap simultaneous Chromium pages to prevent OOM.
+  // Each page uses ~30-50MB RAM; on Railway's limited memory this prevents crashes.
+  private readonly MAX_CONCURRENT_PAGES = 2;
+  private activePagesCount = 0;
+  private readonly pageQueue: Array<{ resolve: () => void }> = [];
+
   constructor() {
     this.logger = createLogger('PdfGeneratorService');
     this.stats = {
@@ -31,9 +37,31 @@ export class PdfGeneratorService {
     );
   }
 
+  private async acquirePageSlot(): Promise<void> {
+    if (this.activePagesCount < this.MAX_CONCURRENT_PAGES) {
+      this.activePagesCount++;
+      return;
+    }
+    // Wait in queue until a slot opens
+    return new Promise<void>((resolve) => {
+      this.pageQueue.push({ resolve });
+    });
+  }
+
+  private releasePageSlot(): void {
+    this.activePagesCount--;
+    const next = this.pageQueue.shift();
+    if (next) {
+      this.activePagesCount++;
+      next.resolve();
+    }
+  }
+
   async generatePdf(html: string, options?: PdfGenerationOptions): Promise<PdfGenerationResult> {
     const startTime = Date.now();
     let page: Page | null = null;
+
+    await this.acquirePageSlot();
 
     try {
       this.logger.info('Starting PDF generation...');
@@ -115,6 +143,7 @@ export class PdfGeneratorService {
           this.logger.warn({ error }, 'Failed to close page');
         }
       }
+      this.releasePageSlot();
     }
   }
 

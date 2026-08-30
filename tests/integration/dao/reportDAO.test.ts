@@ -180,6 +180,47 @@ describe('ReportDAO Integration Tests', () => {
 
       expect(result.items[0].file?.key).toBeUndefined();
     });
+
+    it('should filter by status when provided', async () => {
+      await ReportModel.create([
+        makeReport({ status: ReportStatus.COMPLETED }),
+        makeReport({ status: ReportStatus.COMPLETED }),
+        makeReport({ status: ReportStatus.PENDING }),
+        makeReport({ status: ReportStatus.FAILED }),
+      ]);
+
+      const result = await dao.listByClient(BASE_CUID, { status: ReportStatus.COMPLETED });
+
+      expect(result.items).toHaveLength(2);
+      result.items.forEach((r: any) => expect(r.status).toBe(ReportStatus.COMPLETED));
+    });
+
+    it('should return all statuses when status filter is not provided', async () => {
+      await ReportModel.create([
+        makeReport({ status: ReportStatus.COMPLETED }),
+        makeReport({ status: ReportStatus.PENDING }),
+        makeReport({ status: ReportStatus.FAILED }),
+      ]);
+
+      const result = await dao.listByClient(BASE_CUID);
+
+      expect(result.items).toHaveLength(3);
+    });
+
+    it('should apply pagination with status filter', async () => {
+      await ReportModel.create([
+        makeReport({ status: ReportStatus.COMPLETED }),
+        makeReport({ status: ReportStatus.COMPLETED }),
+        makeReport({ status: ReportStatus.COMPLETED }),
+      ]);
+
+      const result = await dao.listByClient(BASE_CUID, {
+        status: ReportStatus.COMPLETED,
+        limit: 2,
+      });
+
+      expect(result.items).toHaveLength(2);
+    });
   });
 
   describe('findById', () => {

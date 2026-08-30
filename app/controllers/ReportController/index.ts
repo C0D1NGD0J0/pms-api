@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { AppRequest } from '@interfaces/utils.interface';
+import { ReportStatus } from '@interfaces/report.interface';
 import { ReportService } from '@services/report/report.service';
 
 interface IConstructor {
@@ -28,7 +29,12 @@ export class ReportController {
 
   list = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const result = await this.reportService.listReports(cuid, req.query as any);
+    const query = {
+      page: req.query.page ? parseInt(req.query.page as string) : undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      status: req.query.status as ReportStatus | undefined,
+    };
+    const result = await this.reportService.listReports(cuid, query);
     return res.status(200).json(result);
   };
 

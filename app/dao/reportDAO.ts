@@ -1,7 +1,6 @@
 import Logger from 'bunyan';
 import { Model } from 'mongoose';
 import { createLogger } from '@utils/index';
-import { IPaginationQuery } from '@interfaces/utils.interface';
 import { IReportDocument, ReportStatus } from '@interfaces/report.interface';
 
 import { BaseDAO } from './baseDAO';
@@ -38,9 +37,20 @@ export class ReportDAO extends BaseDAO<IReportDocument> {
     }
   }
 
-  async listByClient(cuid: string, query?: IPaginationQuery) {
+  async listByClient(
+    cuid: string,
+    query?: { page?: number; limit?: number; status?: ReportStatus }
+  ) {
     try {
-      return await this.list({ cuid }, { ...query, sort: { createdAt: -1 }, projection: '-file' });
+      const filter: Record<string, any> = { cuid };
+      if (query?.status) filter.status = query.status;
+
+      return await this.list(filter, {
+        skip: query?.page,
+        limit: query?.limit,
+        sort: { createdAt: -1 },
+        projection: '-file',
+      });
     } catch (error: any) {
       this.log.error({ error, cuid }, 'Error listing reports');
       throw this.throwErrorHandler(error);

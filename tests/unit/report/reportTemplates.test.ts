@@ -1,12 +1,15 @@
-import path from 'path';
 import ejs from 'ejs';
+import path from 'path';
 import { REPORT_SECTIONS } from '@interfaces/report.interface';
 
 const PDF_TEMPLATE_PATH = path.join(__dirname, '../../../app/templates/reports/report.ejs');
-const EMAIL_HTML_PATH = path.join(__dirname, '../../../app/mailer/templates/report/report-ready.ejs');
+const EMAIL_HTML_PATH = path.join(
+  __dirname,
+  '../../../app/mailer/templates/report/report-ready.ejs'
+);
 const EMAIL_TEXT_PATH = path.join(
   __dirname,
-  '../../../app/mailer/templates/report/report-ready.text.ejs',
+  '../../../app/mailer/templates/report/report-ready.text.ejs'
 );
 
 function makeTemplateData(overrides: Record<string, any> = {}) {
@@ -153,7 +156,7 @@ describe('Report PDF Template', () => {
   it('should render with a subset of sections', async () => {
     const html = await ejs.renderFile(
       PDF_TEMPLATE_PATH,
-      makeTemplateData({ sections: ['executive_summary', 'payment_analysis'] }),
+      makeTemplateData({ sections: ['executive_summary', 'payment_analysis'] })
     );
 
     expect(html).toContain('Executive Summary');
@@ -184,7 +187,7 @@ describe('Report PDF Template', () => {
         vendorStats: null,
         inspectionStats: null,
         trends: {},
-      }),
+      })
     );
 
     expect(html).toContain('Test Property Management');
@@ -200,7 +203,7 @@ describe('Report PDF Template', () => {
           activeLeases: { current: 18, previous: 16, delta: 2, deltaPercent: 12.5 },
           revenue: { CAD: { current: 500000, previous: 450000, delta: 50000, deltaPercent: 11.1 } },
         },
-      }),
+      })
     );
 
     expect(html).toContain('trend up');
@@ -221,7 +224,7 @@ describe('Report PDF Template', () => {
           onTimeRate: 92.5,
           avgPaymentDelayDays: 2.3,
         },
-      }),
+      })
     );
 
     expect(html).toContain('CAD');
@@ -229,10 +232,7 @@ describe('Report PDF Template', () => {
   });
 
   it('should show custom period label for custom date range', async () => {
-    const html = await ejs.renderFile(
-      PDF_TEMPLATE_PATH,
-      makeTemplateData({ period: 'custom' }),
-    );
+    const html = await ejs.renderFile(PDF_TEMPLATE_PATH, makeTemplateData({ period: 'custom' }));
 
     // Custom period renders the startDate – endDate range
     const expectedStart = new Date('2026-08-01').toLocaleDateString('en-US', {

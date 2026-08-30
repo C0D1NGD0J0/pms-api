@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
-import { ReportController } from '@controllers/ReportController';
 import { ReportStatus } from '@interfaces/report.interface';
+import { ReportController } from '@controllers/ReportController';
 
 const CUID = 'TEST_CLIENT_001';
 const USER_ID = new Types.ObjectId().toString();

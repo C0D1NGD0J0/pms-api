@@ -3,14 +3,13 @@ import path from 'path';
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { randomUUID } from 'crypto';
 import { createLogger } from '@utils/index';
 import { QueueFactory } from '@services/queue';
 import { EmailQueue } from '@queues/email.queue';
 import { ReportQueue } from '@queues/report.queue';
-import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { PdfGeneratorService, ExpenseService, SSEService, S3Service } from '@services/index';
 import {
   MaintenanceRequestDAO,
@@ -340,11 +339,10 @@ export class ReportService implements ICronProvider {
       }
       await job.progress(80);
 
-      // Upload to S3
-      const dateStr = new Date().toISOString().split('T')[0];
-      const uniqueId = randomUUID().replace(/-/g, '').substring(0, 8);
-      const s3Key = `reports/${cuid}/report-${dateStr}-${uniqueId}.pdf`;
-      const filename = `report-${dateStr}.pdf`;
+      // Upload to S3 — follows buildS3Key convention: {resource}/{name}|||{id}|||_{timestamp}.{ext}
+      const timestamp = Date.now();
+      const s3Key = `reports/report|||${reportId}|||_${timestamp}.pdf`;
+      const filename = `report-${new Date().toISOString().split('T')[0]}.pdf`;
 
       const uploadResult = await this.s3Service.uploadBuffer(
         pdfResult.buffer,
@@ -373,8 +371,8 @@ export class ReportService implements ICronProvider {
       if (emailRecipients.length) {
         const periodLabel = this._getPeriodLabel(period, startDate, endDate);
         for (const recipient of emailRecipients) {
-          this.emailQueue.addToEmailQueue('reportReady', {
-            emailType: 'report/report-ready',
+          this.emailQueue.addToEmailQueue(MailType.REPORT_READY, {
+            emailType: MailType.REPORT_READY,
             subject: `Your ${periodLabel} Property Report is Ready`,
             to: recipient,
             data: { presignedUrl, filename, clientName, periodLabel, expiresAt },

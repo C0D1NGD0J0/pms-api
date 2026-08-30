@@ -10,6 +10,7 @@ export * from './MetricsController';
 export * from './PaymentController';
 export * from './WebhookController';
 export * from './ExpenseController';
+export * from './ReportController';
 export * from './ClientController';
 export * from './VendorController';
 export * from './AdminController';

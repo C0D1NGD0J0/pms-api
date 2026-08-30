@@ -1,9 +1,11 @@
 import { z } from 'zod';
+import dayjs from 'dayjs';
 import { isValidObjectId } from 'mongoose';
 import {
   NotificationDAO,
   PropertyUnitDAO,
   InvitationDAO,
+  InspectionDAO,
   PropertyDAO,
   PaymentDAO,
   ExpenseDAO,
@@ -25,8 +27,7 @@ export const getContainer = async () => {
 
 /**
  * Zod schema for a real calendar date that rejects impossible dates like Feb 30 or Jan 32.
- * z.coerce.date() silently overflows these (e.g. Feb 29 on a non-leap year → Mar 1),
- * so this validates the date components match after construction.
+ * Uses dayjs strict parsing to validate the date string before constructing a Date object.
  *
  * Accepts ISO strings ("2027-03-15", "2027-03-15T10:00:00Z") and Date objects.
  */
@@ -35,21 +36,15 @@ export const calendarDate = (errorMessage?: string) =>
     .union([z.string(), z.date()])
     .refine(
       (val): boolean => {
-        if (val instanceof Date) return !isNaN(val.getTime());
-        const d = new Date(val as string);
-        if (isNaN(d.getTime())) return false;
-        const dateOnly = (val as string).split('T')[0];
-        const parts = dateOnly.split('-');
-        if (parts.length !== 3) return false;
-        const [year, month, day] = parts.map(Number);
-        if (isNaN(year) || isNaN(month) || isNaN(day)) return false;
-        return (
-          d.getUTCFullYear() === year && d.getUTCMonth() + 1 === month && d.getUTCDate() === day
-        );
+        if (val instanceof Date) return dayjs(val).isValid();
+        const parsed = dayjs(val as string);
+        // isValid() alone doesn't reject overflow dates (dayjs normalises them);
+        // the startsWith check catches them by comparing the UTC date portion.
+        return parsed.isValid() && parsed.toISOString().startsWith((val as string).split('T')[0]);
       },
       { message: errorMessage ?? 'Invalid date: this day does not exist in the calendar' }
     )
-    .transform((val) => (val instanceof Date ? val : new Date(val as string)));
+    .transform((val) => (val instanceof Date ? val : dayjs(val as string).toDate()));
 
 export const ValidateCuidSchema = z.object({
   cuid: z.string().refine(
@@ -57,6 +52,19 @@ export const ValidateCuidSchema = z.object({
       const { clientDAO }: { clientDAO: ClientDAO } = (await getContainer()).cradle;
       const client = await clientDAO.findFirst({ cuid });
       return !!client;
+    },
+    {
+      message: 'Invalid params detected in the request.',
+    }
+  ),
+});
+
+export const ValidateIuidSchema = z.object({
+  iuid: z.string().refine(
+    async (iuid) => {
+      const { inspectionDAO }: { inspectionDAO: InspectionDAO } = (await getContainer()).cradle;
+      const inspection = await inspectionDAO.findFirst({ iuid, deletedAt: null });
+      return !!inspection;
     },
     {
       message: 'Invalid params detected in the request.',
@@ -247,6 +255,7 @@ export const ValidateUidSchema = z.object({
 
 export const UtilsValidations = {
   cuid: ValidateCuidSchema,
+  iuid: ValidateIuidSchema,
   vuid: ValidateVuidSchema,
   luid: ValidateLuidSchema,
   nuid: ValidateNuidSchema,

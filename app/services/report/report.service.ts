@@ -225,7 +225,7 @@ export class ReportService implements ICronProvider {
 
   async listReports(
     cuid: string,
-    query?: { skip?: number; limit?: number }
+    query?: { page?: number; limit?: number; status?: ReportStatus }
   ): IPromiseReturnedData<{ reports: IReportDocument[]; pagination?: Record<string, any> }> {
     const result = await this.reportDAO.listByClient(cuid, query);
     return {

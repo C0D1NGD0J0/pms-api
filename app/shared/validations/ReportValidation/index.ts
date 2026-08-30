@@ -4,7 +4,10 @@ import {
   ScheduleFrequency,
   REPORT_SECTIONS,
   ReportPeriod,
+  ReportStatus,
 } from '@interfaces/report.interface';
+
+import { UtilsValidations } from '../UtilsValidation';
 
 const sectionsSchema = z
   .array(z.enum(REPORT_SECTIONS as unknown as [string, ...string[]]))
@@ -49,8 +52,13 @@ export const ReportValidations = {
     isActive: z.boolean().optional(),
   }),
 
-  reportIdParam: z.object({
-    cuid: z.string().min(1),
+  listQuery: z.object({
+    page: z.coerce.number().int().min(1, 'Page must be at least 1').optional(),
+    limit: z.coerce.number().int().min(1).max(100, 'Limit cannot exceed 100').optional(),
+    status: z.nativeEnum(ReportStatus).optional(),
+  }),
+
+  reportIdParam: UtilsValidations.cuid.extend({
     reportId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid report ID format'),
   }),
 };

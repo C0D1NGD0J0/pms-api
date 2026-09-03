@@ -270,6 +270,18 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async listCustomerSubscriptions(
+    customerId: string,
+    options?: { status?: string; limit?: number }
+  ): Promise<Stripe.ApiList<Stripe.Subscription>> {
+    return this.stripe.subscriptions.list({
+      customer: customerId,
+      status: options?.status as any,
+      limit: options?.limit ?? 1,
+      expand: ['data.items.data.price'],
+    });
+  }
+
   async getPriceByLookupKey(lookupKey: string): Promise<Stripe.Price | null> {
     try {
       const prices = await this.stripe.prices.list({

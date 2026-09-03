@@ -1,5 +1,4 @@
 import dayjs from 'dayjs';
-import Decimal from 'decimal.js';
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { ClientDAO } from '@dao/clientDAO';
@@ -465,65 +464,72 @@ export class SubscriptionWebhookService {
         }
       }
 
-      // Sync seat count directly from webhook items — no extra Stripe API call needed
+      // ── Detect plan change from webhook items ────────────────────────
       const webhookItems: any[] = items ?? [];
-      if (webhookItems.length > 0) {
-        const config = subscriptionPlanConfig.getConfig(subscription.planName);
-        const seatLookupKeys = [
-          config.seatPricing.lookUpKeys?.monthly,
-          config.seatPricing.lookUpKeys?.annual,
-          config.seatPricing.lookUpKey,
-        ].filter(Boolean);
+      let currentPlanName = subscription.planName;
 
-        const seatItem = webhookItems.find((item: any) =>
-          seatLookupKeys.includes(item.price?.lookup_key)
-        );
+      if (webhookItems.length > 0) {
+        // Detect plan change from Stripe price lookup_key
+        for (const item of webhookItems) {
+          const lookupKey = item.price?.lookup_key;
+          if (!lookupKey) continue;
+          const resolvedPlan = subscriptionPlanConfig.resolvePlanByLookupKey(lookupKey);
+          if (resolvedPlan && resolvedPlan !== currentPlanName) {
+            this.log.info(
+              { stripeSubscriptionId, oldPlan: currentPlanName, newPlan: resolvedPlan },
+              'Plan change detected in webhook, syncing planName and entitlements'
+            );
+            const newConfig = subscriptionPlanConfig.getConfig(resolvedPlan);
+            updateData.planName = resolvedPlan;
+            updateData.entitlements = newConfig.features;
+            if (item.price?.id) updateData['billing.planId'] = item.price.id;
+            updateData.totalMonthlyPrice =
+              newConfig.pricing[subscription.billingInterval || 'monthly'].priceInCents +
+              (subscription.additionalSeatsCost ?? 0);
+            currentPlanName = resolvedPlan;
+            break;
+          }
+        }
+      }
+
+      // Sync seat count directly from webhook items — no extra Stripe API call needed
+      if (webhookItems.length > 0) {
+        const activeConfig = subscriptionPlanConfig.getConfig(currentPlanName);
+
+        // Collect seat lookup keys from both old and new plans (seat item may still
+        // have the old plan's key if Stripe hasn't migrated it yet)
+        const allSeatKeys = new Set<string>();
+        for (const pn of [subscription.planName, currentPlanName]) {
+          const c = subscriptionPlanConfig.getConfig(pn);
+          if (c.seatPricing.lookUpKeys?.monthly) allSeatKeys.add(c.seatPricing.lookUpKeys.monthly);
+          if (c.seatPricing.lookUpKeys?.annual) allSeatKeys.add(c.seatPricing.lookUpKeys.annual);
+          if (c.seatPricing.lookUpKey) allSeatKeys.add(c.seatPricing.lookUpKey);
+        }
+
+        const seatItem = webhookItems.find((item: any) => allSeatKeys.has(item.price?.lookup_key));
 
         if (seatItem) {
           const newSeatQuantity = seatItem.quantity || 0;
-          if (newSeatQuantity !== subscription.additionalSeatsCount) {
-            this.log.info(
-              {
-                stripeSubscriptionId,
-                oldQuantity: subscription.additionalSeatsCount,
-                newQuantity: newSeatQuantity,
-              },
-              'Seat quantity changed in Stripe, syncing to database'
-            );
-
-            const newAdditionalCost = calcSeatCost(
-              newSeatQuantity,
-              config.seatPricing.additionalSeatPriceCents
-            );
-            const priceDifference = new Decimal(newAdditionalCost)
-              .minus(subscription.additionalSeatsCost ?? 0)
-              .toNumber();
-
-            updateData.additionalSeatsCount = newSeatQuantity;
-            updateData.additionalSeatsCost = newAdditionalCost;
-            updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
-              .plus(priceDifference)
-              .toNumber();
-
-            if (seatItem.id && !subscription.billing?.seatItemId) {
-              updateData['billing.seatItemId'] = seatItem.id;
-            }
-          }
-        } else if (subscription.additionalSeatsCount > 0) {
-          this.log.warn(
-            {
-              stripeSubscriptionId,
-              dbSeatCount: subscription.additionalSeatsCount,
-            },
-            'Seat item not found in webhook items but DB has seats, syncing to zero'
+          // Always recalculate with the ACTIVE plan's per-seat price
+          const newAdditionalCost = calcSeatCost(
+            newSeatQuantity,
+            activeConfig.seatPricing.additionalSeatPriceCents
           );
 
+          updateData.additionalSeatsCount = newSeatQuantity;
+          updateData.additionalSeatsCost = newAdditionalCost;
+          if (seatItem.id) updateData['billing.seatItemId'] = seatItem.id;
+        } else if (subscription.additionalSeatsCount > 0) {
           updateData.additionalSeatsCount = 0;
           updateData.additionalSeatsCost = 0;
-          updateData.totalMonthlyPrice = new Decimal(subscription.totalMonthlyPrice ?? 0)
-            .minus(subscription.additionalSeatsCost ?? 0)
-            .toNumber();
         }
+
+        // Recalculate totalMonthlyPrice from scratch (avoids drift from incremental diffs)
+        const basePriceCents =
+          activeConfig.pricing[subscription.billingInterval || 'monthly'].priceInCents;
+        updateData.totalMonthlyPrice =
+          basePriceCents +
+          ((updateData.additionalSeatsCost as number) ?? subscription.additionalSeatsCost ?? 0);
       }
 
       const updatedSubscription = await this.subscriptionDAO.update(

@@ -317,6 +317,15 @@ export class PaymentGatewayService {
     }
   }
 
+  async listCustomerSubscriptions(
+    provider: IPaymentGatewayProvider,
+    customerId: string,
+    options?: { status?: string; limit?: number }
+  ): Promise<any> {
+    const providerInstance = this.getProvider(provider);
+    return (providerInstance as any).listCustomerSubscriptions(customerId, options);
+  }
+
   async addSubscriptionItem(
     provider: IPaymentGatewayProvider,
     subscriptionId: string,

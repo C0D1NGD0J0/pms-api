@@ -172,7 +172,10 @@ export class S3Service {
     }
   }
 
-  async getSignedUrl(s3Key: string): Promise<string> {
+  async getSignedUrl(
+    s3Key: string,
+    options?: { disposition?: 'inline' | 'attachment' }
+  ): Promise<string> {
     if (!s3Key) {
       throw new Error('S3 key is required');
     }
@@ -186,6 +189,7 @@ export class S3Service {
             const command = new GetObjectCommand({
               Bucket: this.bucketName,
               Key: s3Key,
+              ...(options?.disposition ? { ResponseContentDisposition: options.disposition } : {}),
             });
             return getSignedUrl(this.s3, command, { expiresIn: 3600 });
           },

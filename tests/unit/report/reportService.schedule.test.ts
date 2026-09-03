@@ -171,8 +171,9 @@ describe('ReportService — Schedule Management', () => {
       });
 
       const cronJobs = service.getCronJobs();
-      expect(cronJobs).toHaveLength(1);
+      expect(cronJobs).toHaveLength(2);
       expect(cronJobs[0].name).toBe('report:scheduled-generation');
+      expect(cronJobs[1].name).toBe('report:monthly-usage-reset');
 
       await cronJobs[0].handler();
 

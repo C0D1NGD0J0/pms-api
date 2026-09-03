@@ -2,6 +2,9 @@ export const mockReportDAO = {
   createReport: jest.fn() as any,
   updateStatus: jest.fn() as any,
   listByClient: jest.fn() as any,
+  getMonthlyCount: jest.fn().mockResolvedValue(0) as any,
+  countDocuments: jest.fn().mockResolvedValue(0) as any,
+  deleteItem: jest.fn().mockResolvedValue(true) as any,
   findById: jest.fn() as any,
 };
 
@@ -48,9 +51,41 @@ export const mockMaintenanceRequestDAO = {
   getStats: jest.fn() as any,
   listWithDetails: jest.fn() as any,
 };
+export const mockPropertyDAO = { aggregate: jest.fn().mockResolvedValue([]) as any };
 export const mockPdfGeneratorService = { generatePdf: jest.fn() as any };
-export const mockS3Service = { uploadBuffer: jest.fn() as any, getSignedUrl: jest.fn() as any };
+export const mockS3Service = {
+  uploadBuffer: jest.fn() as any,
+  getSignedUrl: jest.fn() as any,
+  deleteFile: jest.fn().mockResolvedValue({}) as any,
+};
 export const mockSseService = { sendToUser: jest.fn() as any };
+export const mockReportAnalysisAIService = {
+  analyzeReport: jest.fn().mockResolvedValue({ ok: false, reason: 'feature_disabled' }) as any,
+};
+export const mockSubscriptionDAO = {
+  findFirst: jest.fn().mockResolvedValue({ planName: 'portfolio' }) as any,
+  update: jest.fn().mockResolvedValue({}) as any,
+  updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }) as any,
+  incrementUsageCounter: jest.fn().mockResolvedValue({ matched: true, modified: true }) as any,
+  setUsageFields: jest.fn().mockResolvedValue(1) as any,
+  bulkResetUsageCounters: jest.fn().mockResolvedValue(0) as any,
+};
+export const mockSubscriptionPlanConfig = {
+  hasFeature: jest.fn().mockReturnValue(true) as any,
+  getReportLimits: jest.fn().mockReturnValue({
+    maxReportsPerMonth: 10,
+    maxReportSections: 9,
+    maxReportEmails: 10,
+  }) as any,
+};
+export const mockRedisService = {
+  client: {
+    get: jest.fn().mockResolvedValue(null) as any,
+    set: jest.fn().mockResolvedValue('OK') as any,
+    incr: jest.fn().mockResolvedValue(1) as any,
+    ttl: jest.fn().mockResolvedValue(-2) as any,
+  },
+};
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { ReportService } = require('@services/report/report.service');
@@ -71,7 +106,12 @@ export function createReportService() {
     vendorDAO: mockVendorDAO as any,
     clientDAO: mockClientDAO as any,
     inspectionDAO: mockInspectionDAO as any,
+    propertyDAO: mockPropertyDAO as any,
     pdfGeneratorService: mockPdfGeneratorService as any,
+    reportAnalysisAIService: mockReportAnalysisAIService as any,
+    subscriptionPlanConfig: mockSubscriptionPlanConfig as any,
+    subscriptionDAO: mockSubscriptionDAO as any,
+    redisService: mockRedisService as any,
     s3Service: mockS3Service as any,
     sseService: mockSseService as any,
   });

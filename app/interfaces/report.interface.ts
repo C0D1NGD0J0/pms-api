@@ -51,6 +51,7 @@ export interface IReportDocument extends Document {
   period: ReportPeriod;
   status: ReportStatus;
   propertyId?: string;
+  aiSummary?: string;
   completedAt?: Date;
   createdAt: Date;
   startDate: Date;
@@ -78,7 +79,7 @@ export interface IReportScheduleDocument extends Document {
   createdBy: Types.ObjectId;
   emailRecipients: string[];
   sections: ReportSection[];
-  propertyId?: string;
+  propertyId: string;
   isActive: boolean;
   createdAt: Date;
   nextRunAt: Date;

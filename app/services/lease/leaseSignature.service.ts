@@ -240,13 +240,54 @@ export class LeaseSignatureService {
    * Mark a lease as manually signed
    */
   async markAsManualySigned(
-    _cuid: string,
+    cuid: string,
     leaseId: string,
-    _signedBy: any[],
-    _userId: string
+    signedBy: { name: string; email: string; role: string }[],
+    userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Marking lease ${leaseId} as manually signed`);
-    throw new Error('markAsManualySigned not yet implemented');
+    const lease = await this.leaseDAO.findFirst({ luid: leaseId, cuid, deletedAt: null });
+    if (!lease) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+
+    if (lease.status !== LeaseStatus.READY_FOR_SIGNATURE && lease.status !== LeaseStatus.DRAFT) {
+      throw new BadRequestError({ message: 'Lease is not in a signable state' });
+    }
+
+    const now = new Date();
+    const signatures = signedBy.map((signer) => ({
+      signatureMethod: 'manual' as const,
+      userId: new Types.ObjectId(userId),
+      role: signer.role,
+      signedAt: now,
+      landlordInfo:
+        signer.role === 'landlord' ? { name: signer.name, email: signer.email } : undefined,
+    }));
+
+    const updated = await this.leaseDAO.update(
+      { _id: lease._id },
+      {
+        $set: {
+          status: LeaseStatus.ACTIVE,
+          signingMethod: 'manual',
+          signedDate: now,
+          updatedAt: now,
+        },
+        $push: { signatures: { $each: signatures } },
+      }
+    );
+
+    if (!updated) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'mark lease as signed' }),
+      });
+    }
+
+    this.log.info(
+      { leaseId, cuid, signerCount: signedBy.length },
+      'Lease marked as manually signed'
+    );
+    return { success: true, data: updated };
   }
 
   /**
@@ -310,8 +351,20 @@ export class LeaseSignatureService {
    * Get signature details for a lease
    */
   async getSignatureDetails(cuid: string, leaseId: string): IPromiseReturnedData<any> {
-    this.log.info(`Getting signature details for lease ${leaseId}`);
-    throw new Error('getSignatureDetails not yet implemented');
+    const lease = await this.leaseDAO.findFirst({ luid: leaseId, cuid, deletedAt: null });
+    if (!lease) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+
+    return {
+      success: true,
+      data: {
+        signingMethod: lease.signingMethod || 'pending',
+        signedDate: lease.signedDate,
+        eSignature: lease.eSignature || null,
+        signatures: lease.signatures || [],
+      },
+    };
   }
 
   /**

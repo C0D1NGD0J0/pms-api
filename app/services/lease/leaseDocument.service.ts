@@ -3,8 +3,9 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { LeaseDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
-import { BadRequestError } from '@shared/customErrors';
+import { S3Service } from '@services/fileUpload';
 import { ILeaseDocument } from '@interfaces/lease.interface';
+import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   IPromiseReturnedData,
   ISuccessReturnData,
@@ -12,66 +13,104 @@ import {
 } from '@interfaces/utils.interface';
 
 interface IConstructor {
+  s3Service: S3Service;
   leaseDAO: LeaseDAO;
 }
 
 export class LeaseDocumentService {
   private readonly log: Logger;
   private readonly leaseDAO: LeaseDAO;
+  private readonly s3Service: S3Service;
 
-  constructor({ leaseDAO }: IConstructor) {
+  constructor({ leaseDAO, s3Service }: IConstructor) {
     this.leaseDAO = leaseDAO;
+    this.s3Service = s3Service;
     this.log = createLogger('LeaseDocumentService');
   }
 
-  /**
-   * Upload a document for a lease
-   * @param cuid - Client ID
-   * @param leaseId - Lease ID
-   * @param _file - File to upload
-   * @param _uploadedBy - User ID of uploader
-   */
   async uploadLeaseDocument(
     cuid: string,
     leaseId: string,
-    _file: any,
-    _uploadedBy: string
+    file: any,
+    uploadedBy: string
   ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Uploading document for lease ${leaseId}`);
-    throw new Error('uploadLeaseDocument not yet implemented');
+    if (!file) {
+      throw new BadRequestError({ message: 'No file provided' });
+    }
+
+    const lease = await this._findLease(leaseId, cuid);
+
+    const uploadResult: UploadResult = {
+      key: file.key || file.location,
+      url: file.location || file.path,
+      size: file.size,
+      mimeType: file.mimetype,
+    };
+
+    const updated = await this.leaseDAO.updateLeaseDocuments(
+      lease._id.toString(),
+      [uploadResult],
+      uploadedBy
+    );
+
+    if (!updated) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'upload document' }),
+      });
+    }
+
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.created', { resource: 'Lease document' }),
+    };
   }
 
-  /**
-   * Get URL for a lease document
-   * @param cuid - Client ID
-   * @param leaseId - Lease ID
-   */
   async getLeaseDocumentUrl(cuid: string, leaseId: string): IPromiseReturnedData<string> {
-    this.log.info(`Getting document URL for lease ${leaseId}`);
-    throw new Error('getLeaseDocumentUrl not yet implemented');
+    const lease = await this._findLease(leaseId, cuid);
+
+    const activeDoc = lease.leaseDocuments?.find((d: any) => d.status === 'active');
+    if (!activeDoc?.key) {
+      throw new NotFoundError({ message: 'No active document found for this lease' });
+    }
+
+    const presignedUrl = await this.s3Service.getSignedUrl(activeDoc.key, {
+      disposition: 'inline',
+    });
+    return {
+      success: true,
+      data: presignedUrl,
+      message: t('common.success.retrieved', { resource: 'Document URL' }),
+    };
   }
 
-  /**
-   * Remove a document from a lease
-   * @param cuid - Client ID
-   * @param leaseId - Lease ID
-   * @param _userId - User ID requesting removal
-   */
   async removeLeaseDocument(
     cuid: string,
     leaseId: string,
     _userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
-    this.log.info(`Removing document for lease ${leaseId}`);
-    throw new Error('removeLeaseDocument not yet implemented');
+    const lease = await this._findLease(leaseId, cuid);
+
+    const activeDoc = lease.leaseDocuments?.find((d: any) => d.status === 'active');
+    if (!activeDoc?.key) {
+      throw new NotFoundError({ message: 'No active document found for this lease' });
+    }
+
+    // Soft-delete: mark as deleted in DB but keep S3 file for audit/record purposes
+    const updated = await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'deleted');
+    if (!updated) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'remove document' }),
+      });
+    }
+
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.deleted', { resource: 'Lease document' }),
+    };
   }
 
-  /**
-   * Update lease with uploaded document information
-   * @param leaseId - Lease ID (ObjectId or luid)
-   * @param uploadResults - Array of upload results
-   * @param userId - User ID who uploaded
-   */
   async updateLeaseDocuments(
     leaseId: string,
     uploadResults: UploadResult[],
@@ -87,7 +126,6 @@ export class LeaseDocumentService {
       });
     }
 
-    // Flexible query - supports both ObjectId and luid
     const query = Types.ObjectId.isValid(leaseId)
       ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
       : { luid: leaseId, deletedAt: null };
@@ -96,12 +134,14 @@ export class LeaseDocumentService {
     if (!lease) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
+
     const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
     if (!updatedLease) {
       throw new BadRequestError({
         message: t('common.errors.operationFailed', { action: 'update lease documents' }),
       });
     }
+
     return {
       success: true,
       data: updatedLease,
@@ -109,17 +149,21 @@ export class LeaseDocumentService {
     };
   }
 
-  /**
-   * Mark lease documents as failed
-   * @param leaseId - Lease ID
-   * @param errorMessage - Error message to record
-   */
   async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
-    this.log.warn('Marking lease documents as failed', {
-      leaseId,
-      errorMessage,
-    });
-
+    this.log.warn('Marking lease documents as failed', { leaseId, errorMessage });
     await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'failed', errorMessage);
+  }
+
+  private async _findLease(leaseId: string, cuid?: string): Promise<ILeaseDocument> {
+    const query: Record<string, any> = Types.ObjectId.isValid(leaseId)
+      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
+      : { luid: leaseId, deletedAt: null };
+    if (cuid) query.cuid = cuid;
+
+    const lease = await this.leaseDAO.findFirst(query);
+    if (!lease) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+    return lease;
   }
 }

@@ -62,6 +62,7 @@ const reportSchema = new Schema<IReportDocument>(
       uploadedAt: { type: Date },
     },
     failedReason: { type: String },
+    aiSummary: { type: String },
     completedAt: { type: Date },
     scheduledBy: { type: Schema.Types.ObjectId, ref: 'ReportSchedule' },
   },

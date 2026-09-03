@@ -1126,7 +1126,7 @@ export class PaymentService implements ICronProvider {
       return;
     }
 
-    await this.subscriptionDAO.update({ cuid }, { $inc: { 'manualRecords.countThisPeriod': 1 } });
+    await this.subscriptionDAO.incrementUsageCounter(cuid, 'manualRecords.countThisPeriod');
   }
 
   async cancelPayment(

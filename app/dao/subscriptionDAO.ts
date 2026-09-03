@@ -18,6 +18,79 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
     this.logger = createLogger('SubscriptionDAO');
   }
 
+  /**
+   * Atomically increment a usage counter on the subscription.
+   * Uses updateOne instead of findOneAndUpdate to avoid Mongoose 9 strict-mode
+   * quirks with $inc on nested subdocument paths via findOneAndUpdate.
+   */
+  async incrementUsageCounter(
+    cuid: string,
+    field:
+      | 'reportGenerationUsage.countThisPeriod'
+      | 'smsUsage.countThisPeriod'
+      | 'manualRecords.countThisPeriod',
+    amount = 1
+  ): Promise<{ matched: boolean; modified: boolean }> {
+    const result = await Subscription.updateOne({ cuid }, { $inc: { [field]: amount } });
+    return {
+      matched: result.matchedCount > 0,
+      modified: result.modifiedCount > 0,
+    };
+  }
+
+  /**
+   * Atomically increment a usage counter only if it's below the given limit.
+   * Returns the updated document or null if the limit was already reached.
+   * Used by SMS service for atomic quota enforcement.
+   */
+  async incrementUsageCounterIfUnder(
+    cuid: string,
+    field: 'smsUsage.countThisPeriod' | 'manualRecords.countThisPeriod',
+    limit: number
+  ): Promise<ISubscriptionDocument | null> {
+    return Subscription.findOneAndUpdate(
+      { cuid, [field]: { $lt: limit } },
+      { $inc: { [field]: 1 } },
+      { returnDocument: 'after' }
+    );
+  }
+
+  /**
+   * Atomically set a nested boolean flag on a subscription (only if currently false).
+   * Returns true if a document was modified (flag was flipped).
+   * Used for SMS threshold notifications (notifiedAt80, notifiedAt100).
+   */
+  async setFlagIfFalse(cuid: string, field: string, value: unknown = true): Promise<boolean> {
+    const result = await Subscription.updateOne(
+      { cuid, [field]: false },
+      { $set: { [field]: value } }
+    );
+    return result.modifiedCount > 0;
+  }
+
+  /**
+   * Directly set usage counter fields on a subscription.
+   * Uses updateOne to bypass findOneAndUpdate strict-mode issues.
+   */
+  async setUsageFields(
+    filter: Record<string, unknown>,
+    setFields: Record<string, unknown>
+  ): Promise<number> {
+    const result = await Subscription.updateOne(filter, { $set: setFields });
+    return result.modifiedCount;
+  }
+
+  /**
+   * Bulk-reset usage counters for subscriptions matching the filter.
+   */
+  async bulkResetUsageCounters(
+    filter: Record<string, unknown>,
+    setFields: Record<string, unknown>
+  ): Promise<number> {
+    const result = await Subscription.updateMany(filter, { $set: setFields });
+    return result.modifiedCount;
+  }
+
   async findByPaymentGatewayId(
     paymentGatewayId: string,
     opts?: IFindOptions

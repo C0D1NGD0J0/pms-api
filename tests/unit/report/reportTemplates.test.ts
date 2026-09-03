@@ -22,12 +22,22 @@ function makeTemplateData(overrides: Record<string, any> = {}) {
     prevEndDate: new Date('2026-07-31'),
     generatedAt: new Date(),
     sections: [...REPORT_SECTIONS],
+    aiSummary: null as string | null,
+    aiGenerated: false,
     trends: {},
 
     // Executive summary data
     unitCounts: { total: 20, occupied: 18, vacant: 2, occupancyRate: 90 },
     leaseStats: {
-      activeLeases: 18,
+      totalLeases: 20,
+      leasesByStatus: {
+        active: 18,
+        expired: 2,
+        draft: 0,
+        pending_signature: 0,
+        terminated: 0,
+        cancelled: 0,
+      },
       expiringIn30Days: 2,
       expiringIn60Days: 4,
       expiringIn90Days: 5,
@@ -49,11 +59,11 @@ function makeTemplateData(overrides: Record<string, any> = {}) {
           currency: 'CAD',
           income: {
             total: 5000000,
-            byProperty: [{ propertyName: '123 Main St', total: 3000000 }],
+            byProperty: [{ name: '123 Main St', amount: 3000000 }],
           },
           expenses: {
             total: 1500000,
-            byCategory: [{ category: 'repairs', total: 800000 }],
+            byCategory: [{ category: 'repairs', amount: 800000 }],
           },
           netIncome: 3500000,
         },
@@ -114,8 +124,14 @@ function makeTemplateData(overrides: Record<string, any> = {}) {
       ],
     },
 
+    // Property details
+    properties: [
+      { name: '123 Main St', type: 'apartment', address: 'Main St, Toronto, ON', unitCount: 10 },
+      { name: '456 Oak Ave', type: 'house', address: 'Oak Ave, Toronto, ON', unitCount: 1 },
+    ],
+
     // Tenant/user data
-    tenantStats: { activeTenants: 18 },
+    tenantStats: { activeLeases: 18, total: 18 },
     userStats: { total: 25, tenants: 18, staff: 7 },
 
     // Vendor data
@@ -268,7 +284,7 @@ describe('Report PDF Template', () => {
     expect(html).toContain('Test Property Management');
     expect(html).toContain('Property Management Report');
     expect(html).toContain('Last 30 Days');
-    expect(html).toContain('9 of 9');
+    expect(html).toContain('This report provides an overview');
   });
 });
 

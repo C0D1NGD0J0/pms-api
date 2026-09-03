@@ -38,13 +38,13 @@ export {
   subscriptionPlanConfig,
   SubscriptionService,
 } from './subscription';
+export { ReportAnalysisAIService, InvoiceAIService, AICostService, AIService } from './ai';
 export { InspectionReportService } from './inspection/inspectionReport.service';
 export { InspectionAIService } from './inspection/inspectionAI.service';
 export { OffboardingService } from './offboarding/offboarding.service';
 export { InvitationCsvProcessor, PropertyCsvProcessor } from './csv';
 export { InvoiceTemplateRenderer, InvoiceService } from './invoice';
 export { InspectionService } from './inspection/inspection.service';
-export { InvoiceAIService, AICostService, AIService } from './ai';
 export { ExpenseService } from './expense/expense.service';
 export { MetricsService } from './metrics/metrics.service';
 export { PaymentGatewayService } from './paymentGateway';

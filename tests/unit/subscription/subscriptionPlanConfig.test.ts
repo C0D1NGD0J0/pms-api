@@ -142,4 +142,30 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       expect(subscriptionPlanConfig.getFormattedPrice('portfolio', 'annual')).toBe('$1440.00');
     });
   });
+
+  describe('resolvePlanByLookupKey', () => {
+    it('should resolve portfolio from monthly lookup key', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('portfolio_monthly_price')).toBe(
+        'portfolio'
+      );
+    });
+
+    it('should resolve growth from annual lookup key', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('growth_annual_price')).toBe('growth');
+    });
+
+    it('should resolve essential', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('essential_monthly_price')).toBe(
+        'essential'
+      );
+    });
+
+    it('should return null for unknown key', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('unknown_plan_price')).toBeNull();
+    });
+
+    it('should return null for empty string', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('')).toBeNull();
+    });
+  });
 });

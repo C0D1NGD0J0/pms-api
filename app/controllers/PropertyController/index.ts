@@ -206,18 +206,18 @@ export class PropertyController {
   };
 
   deleteMediaFromProperty = async (req: AppRequest, res: Response) => {
-    // const { cuid, pid } = req.params;
-    const { currentuser } = req.context;
+    const { cuid, pid } = req.params;
+    const { documentId } = req.body;
 
-    if (!currentuser) {
-      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+    if (!documentId) {
+      return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
-        message: 'User not authenticated',
+        message: 'Document ID is required',
       });
     }
-    res
-      .status(httpStatusCodes.NOT_IMPLEMENTED)
-      .json({ success: false, message: 'Archive restoration is not yet implemented' });
+
+    const result = await this.propertyService.archivePropertyMedia(cuid, pid, documentId);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getPropertyFormMetadata = async (req: AppRequest, res: Response) => {

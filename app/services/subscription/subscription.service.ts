@@ -1367,6 +1367,23 @@ export class SubscriptionService {
           throw new BadRequestError({ message: t('subscription.errors.noActiveSubscription') });
         }
 
+        // Block downgrades when current usage exceeds target plan limits
+        const targetPlanName = (checkoutData.planName as PlanName) || subscription.planName;
+        if (subscriptionPlanConfig.isDowngrade(subscription.planName, targetPlanName)) {
+          const violations = subscriptionPlanConfig.validateDowngradeLimits(targetPlanName, {
+            seats: subscription.currentSeats,
+            properties: subscription.currentProperties,
+            units: subscription.currentUnits,
+          });
+
+          if (violations.length > 0) {
+            const targetName = subscriptionPlanConfig.getDisplayName(targetPlanName);
+            throw new BadRequestError({
+              message: `Cannot downgrade to ${targetName}: your account has ${violations.join(', ')}. Please reduce usage before downgrading.`,
+            });
+          }
+        }
+
         const session = await this.subscriptionDAO.startSession();
         try {
           const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {

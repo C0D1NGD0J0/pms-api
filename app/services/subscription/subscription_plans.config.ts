@@ -335,6 +335,41 @@ export class SubscriptionPlanConfig {
     }
     return gateway;
   }
+  public isDowngrade(fromPlan: PlanName, toPlan: PlanName): boolean {
+    return this.getConfig(toPlan).displayOrder < this.getConfig(fromPlan).displayOrder;
+  }
+
+  public validateDowngradeLimits(
+    toPlan: PlanName,
+    currentUsage: { seats: number; properties: number; units: number }
+  ): string[] {
+    const config = this.getConfig(toPlan);
+    const violations: string[] = [];
+
+    const maxSeats =
+      config.seatPricing.includedSeats +
+      (config.seatPricing.maxAdditionalSeats === -1
+        ? Infinity
+        : config.seatPricing.maxAdditionalSeats);
+    if (currentUsage.seats > maxSeats) {
+      violations.push(`${currentUsage.seats} team members (limit: ${maxSeats})`);
+    }
+
+    if (
+      config.limits.maxProperties !== -1 &&
+      currentUsage.properties > config.limits.maxProperties
+    ) {
+      violations.push(
+        `${currentUsage.properties} properties (limit: ${config.limits.maxProperties})`
+      );
+    }
+
+    if (config.limits.maxUnits !== -1 && currentUsage.units > config.limits.maxUnits) {
+      violations.push(`${currentUsage.units} units (limit: ${config.limits.maxUnits})`);
+    }
+
+    return violations;
+  }
 }
 
 export const subscriptionPlanConfig = SubscriptionPlanConfig.getInstance();

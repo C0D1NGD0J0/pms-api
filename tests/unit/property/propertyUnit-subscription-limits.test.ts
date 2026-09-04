@@ -139,7 +139,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           _id: new Types.ObjectId(),
           cuid: testCuid,
           planName: 'essential',
-          currentUnits: 8, // 8 of 10 used
+          currentUnits: 3, // 3 of 5 used
         })
       );
 

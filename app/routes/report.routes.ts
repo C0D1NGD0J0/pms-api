@@ -104,7 +104,7 @@ router.get(
 router.delete(
   '/:cuid/schedule',
   requireNotSuspended,
-  requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
+  requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),

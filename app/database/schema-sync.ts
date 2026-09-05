@@ -341,6 +341,28 @@ const SYNC_RULES: SyncRule[] = [
       },
     },
   },
+  {
+    label: 'subscription.reportGenerationUsage',
+    collection: 'subscriptions',
+    filter: { reportGenerationUsage: { $exists: false } },
+    update: {
+      reportGenerationUsage: {
+        countThisPeriod: 0,
+        periodStart: new Date(),
+      },
+    },
+  },
+  {
+    label: 'subscription.reportGenerationUsage.periodStart',
+    collection: 'subscriptions',
+    filter: {
+      reportGenerationUsage: { $exists: true },
+      'reportGenerationUsage.periodStart': { $exists: false },
+    },
+    update: {
+      'reportGenerationUsage.periodStart': new Date(),
+    },
+  },
 ];
 
 const CLEANUP_RULES: CleanupRule[] = [

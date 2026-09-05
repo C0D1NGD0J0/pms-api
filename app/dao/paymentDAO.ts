@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { type QueryFilter, Model } from 'mongoose';
 import { calcPercentage, createLogger, msToDays } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
+import { type PipelineStage, type QueryFilter, Model, Types } from 'mongoose';
 import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@interfaces/index';
 
 import { BaseDAO } from './baseDAO';
@@ -361,7 +361,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
    */
   async getPaymentStats(
     cuid: string,
-    opts?: { profileId?: string }
+    opts?: { profileId?: string; propertyId?: string }
   ): Promise<{
     byCurrency: Array<{
       currency: string;
@@ -385,8 +385,33 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       match.tenant = opts.profileId;
     }
 
+    // When filtering by property, join to lease to access lease.property.id
+    const propertyFilterStages: PipelineStage[] = [];
+    if (opts?.propertyId) {
+      propertyFilterStages.push(
+        {
+          $lookup: {
+            from: 'leases',
+            localField: 'lease',
+            foreignField: '_id',
+            as: '_leaseDoc',
+          },
+        },
+        { $unwind: { path: '$_leaseDoc', preserveNullAndEmptyArrays: true } },
+        {
+          $match: {
+            $or: [
+              { '_leaseDoc.property.id': new Types.ObjectId(opts.propertyId) },
+              { propertyId: new Types.ObjectId(opts.propertyId) },
+            ],
+          },
+        }
+      );
+    }
+
     const results = await this.aggregate([
       { $match: match },
+      ...propertyFilterStages,
       {
         $facet: {
           revenue: [
@@ -506,7 +531,8 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
    */
   async getIncomeByPropertyAndCurrency(
     cuid: string,
-    dateMatch: { $gte: Date; $lte: Date }
+    dateMatch: { $gte: Date; $lte: Date },
+    propertyId?: string
   ): Promise<
     Array<{ _id: { currency: string; propertyId: string }; total: number; propertyName: string }>
   > {
@@ -517,6 +543,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
           status: PaymentRecordStatus.PAID,
           paidAt: dateMatch,
           deletedAt: null,
+          vendorId: { $exists: false },
         },
       },
       {
@@ -528,11 +555,27 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         },
       },
       { $unwind: { path: '$leaseDoc', preserveNullAndEmptyArrays: false } },
+      ...(propertyId
+        ? [{ $match: { 'leaseDoc.property.id': new Types.ObjectId(propertyId) } }]
+        : []),
+      // Resolve property name — lease.property only stores id + address, not name
+      {
+        $lookup: {
+          from: 'properties',
+          localField: 'leaseDoc.property.id',
+          foreignField: '_id',
+          as: '_propertyDoc',
+        },
+      },
       {
         $group: {
           _id: { currency: '$currency', propertyId: '$leaseDoc.property.id' },
           total: { $sum: '$baseAmount' },
-          propertyName: { $first: '$leaseDoc.property.name' },
+          propertyName: {
+            $first: {
+              $ifNull: [{ $arrayElemAt: ['$_propertyDoc.name', 0] }, '$leaseDoc.property.address'],
+            },
+          },
         },
       },
     ]);

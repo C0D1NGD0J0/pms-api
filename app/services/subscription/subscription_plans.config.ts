@@ -222,6 +222,21 @@ export class SubscriptionPlanConfig {
   }
 
   /**
+   * Resolve planName from a Stripe price lookup_key (e.g. "portfolio_monthly_price" → "portfolio").
+   * Lookup keys are set in the Stripe dashboard and always start with the plan name.
+   */
+  public resolvePlanByLookupKey(lookupKey: string): PlanName | null {
+    if (!lookupKey) return null;
+    const key = lookupKey.toLowerCase();
+    for (const planName of Object.keys(this.configs)) {
+      if (key.startsWith(planName)) {
+        return planName as PlanName;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Get payment gateway processing fees
    * @param provider - Payment gateway provider (e.g., 'stripe', 'paypal')
    * @returns Processing fees configuration
@@ -281,6 +296,19 @@ export class SubscriptionPlanConfig {
    * Falls back to the top-level manualPaymentRecords.freeQuotaPerPeriod if the
    * plan does not define its own quota.
    */
+  public getReportLimits(planName: PlanName): {
+    maxReportsPerMonth: number;
+    maxReportSections: number;
+    maxReportEmails: number;
+  } {
+    const config = this.getConfig(planName);
+    return {
+      maxReportsPerMonth: config.limits.maxReportsPerMonth ?? 0,
+      maxReportSections: config.limits.maxReportSections ?? 0,
+      maxReportEmails: config.limits.maxReportEmails ?? 0,
+    };
+  }
+
   public getManualRecordQuota(planName: PlanName): number {
     const config = this.getConfig(planName);
     return (
@@ -306,6 +334,41 @@ export class SubscriptionPlanConfig {
       throw new Error(`Payment gateway not found: ${provider}`);
     }
     return gateway;
+  }
+  public isDowngrade(fromPlan: PlanName, toPlan: PlanName): boolean {
+    return this.getConfig(toPlan).displayOrder < this.getConfig(fromPlan).displayOrder;
+  }
+
+  public validateDowngradeLimits(
+    toPlan: PlanName,
+    currentUsage: { seats: number; properties: number; units: number }
+  ): string[] {
+    const config = this.getConfig(toPlan);
+    const violations: string[] = [];
+
+    const maxSeats =
+      config.seatPricing.includedSeats +
+      (config.seatPricing.maxAdditionalSeats === -1
+        ? Infinity
+        : config.seatPricing.maxAdditionalSeats);
+    if (currentUsage.seats > maxSeats) {
+      violations.push(`${currentUsage.seats} team members (limit: ${maxSeats})`);
+    }
+
+    if (
+      config.limits.maxProperties !== -1 &&
+      currentUsage.properties > config.limits.maxProperties
+    ) {
+      violations.push(
+        `${currentUsage.properties} properties (limit: ${config.limits.maxProperties})`
+      );
+    }
+
+    if (config.limits.maxUnits !== -1 && currentUsage.units > config.limits.maxUnits) {
+      violations.push(`${currentUsage.units} units (limit: ${config.limits.maxUnits})`);
+    }
+
+    return violations;
   }
 }
 

@@ -2461,4 +2461,37 @@ export class PropertyService {
 
     this.log.info(t('property.logging.eventListenersRemoved'));
   }
+
+  async archivePropertyMedia(
+    cuid: string,
+    pid: string,
+    documentId: string
+  ): Promise<ISuccessReturnData> {
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+
+    const docIndex = property.documents?.findIndex((d: any) => d._id?.toString() === documentId);
+    if (docIndex === undefined || docIndex === -1) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Document' }) });
+    }
+
+    const updated = await this.propertyDAO.update(
+      { _id: property._id },
+      { $set: { [`documents.${docIndex}.status`]: 'deleted' } }
+    );
+
+    if (!updated) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'archive document' }),
+      });
+    }
+
+    return {
+      success: true,
+      data: updated,
+      message: t('common.success.deleted', { resource: 'Document' }),
+    };
+  }
 }

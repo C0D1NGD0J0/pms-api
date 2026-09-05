@@ -52,6 +52,17 @@ export interface ISubscriptionPlansConfig {
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
     aiInspectionAnalysis: boolean;
+    aiReportAnalysis?: boolean;
+  };
+  limits: {
+    maxUnits: number;
+    smsQuota?: number;
+    maxVendors: number;
+    maxProperties: number;
+    manualRecordQuota?: number;
+    maxReportsPerMonth?: number;
+    maxReportSections?: number;
+    maxReportEmails?: number;
   };
   pricing: {
     monthly: {
@@ -63,13 +74,6 @@ export interface ISubscriptionPlansConfig {
       priceInCents: number;
       savingsPercent: number;
     };
-  };
-  limits: {
-    maxUnits: number;
-    smsQuota?: number;
-    maxVendors: number;
-    maxProperties: number;
-    manualRecordQuota?: number;
   };
   transactionFeePercent: number;
   disabledFeatures?: string[];
@@ -124,6 +128,12 @@ export interface ISubscriptionPlanUsage {
     startDate: Date;
     endDate: Date | null;
   };
+  reportGenerationUsage: {
+    countThisPeriod: number;
+    quota: number;
+    remaining: number;
+    percentUsed: number;
+  };
   isLimitReached: {
     properties: boolean;
     units: boolean;
@@ -153,7 +163,9 @@ export interface ISubscription {
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
-    aiInspectionAnalysis: boolean;
+    inspectionService?: boolean;
+    aiInspectionAnalysis?: boolean;
+    aiReportAnalysis?: boolean;
   };
   smsUsage?: {
     countThisPeriod: number;
@@ -161,6 +173,10 @@ export interface ISubscription {
     lastResetAt?: Date;
     notifiedAt80: boolean;
     notifiedAt100: boolean;
+  };
+  reportGenerationUsage?: {
+    countThisPeriod: number;
+    periodStart: Date;
   };
   manualRecords?: {
     countThisPeriod: number;

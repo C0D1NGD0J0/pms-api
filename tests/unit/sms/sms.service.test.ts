@@ -75,6 +75,10 @@ const makeMocks = (overrides: Record<string, any> = {}) => {
     update: jest.fn().mockResolvedValue({
       smsUsage: { countThisPeriod: 6 },
     }),
+    incrementUsageCounterIfUnder: jest.fn().mockResolvedValue({
+      smsUsage: { countThisPeriod: 6 },
+    }),
+    setFlagIfFalse: jest.fn().mockResolvedValue(true),
     updateMany: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
     ...overrides.subscriptionDAO,
   } as any;
@@ -286,7 +290,7 @@ describe('SMSService', () => {
             smsUsage: { countThisPeriod: 40 },
           }),
           // Atomic increment returns null when quota is already at limit
-          update: jest.fn().mockResolvedValue(null),
+          incrementUsageCounterIfUnder: jest.fn().mockResolvedValue(null),
         },
       });
 
@@ -643,12 +647,7 @@ describe('SMSService', () => {
 
   describe('checkThresholds (via sendSMS)', () => {
     it('should notify at 80% threshold and set notifiedAt80 flag', async () => {
-      const mockUpdate = jest
-        .fn()
-        // First call: incrementQuota — getActiveSubscription
-        .mockResolvedValueOnce({ smsUsage: { countThisPeriod: 32 } })
-        // Second call: checkThresholds — update notifiedAt80
-        .mockResolvedValueOnce({ smsUsage: { notifiedAt80: true } });
+      const mockSetFlag = jest.fn().mockResolvedValue(true);
 
       const { service, notificationService } = makeService({
         subscriptionDAO: {
@@ -658,7 +657,10 @@ describe('SMSService', () => {
             planName: 'growth',
             smsUsage: { countThisPeriod: 31 },
           }),
-          update: mockUpdate,
+          incrementUsageCounterIfUnder: jest.fn().mockResolvedValue({
+            smsUsage: { countThisPeriod: 32 },
+          }),
+          setFlagIfFalse: mockSetFlag,
         },
         subscriptionPlanConfig: {
           getConfig: jest.fn().mockReturnValue({ limits: { smsQuota: 40 } }),
@@ -667,21 +669,12 @@ describe('SMSService', () => {
 
       await service.sendSMS(makeSendInput({ messageType: SMSMessageType.SYSTEM }));
 
-      // checkThresholds should have tried to update the notifiedAt80 flag
-      expect(mockUpdate).toHaveBeenCalledWith(
-        { cuid: CUID, 'smsUsage.notifiedAt80': false },
-        { $set: { 'smsUsage.notifiedAt80': true } }
-      );
+      expect(mockSetFlag).toHaveBeenCalledWith(CUID, 'smsUsage.notifiedAt80');
       expect(notificationService.createNotificationFromTemplate).toHaveBeenCalled();
     });
 
     it('should notify at 100% threshold and set notifiedAt100 flag', async () => {
-      const mockUpdate = jest
-        .fn()
-        // incrementQuota returns the updated doc at count=40
-        .mockResolvedValueOnce({ smsUsage: { countThisPeriod: 40 } })
-        // checkThresholds updates notifiedAt100
-        .mockResolvedValueOnce({ smsUsage: { notifiedAt100: true } });
+      const mockSetFlag = jest.fn().mockResolvedValue(true);
 
       const { service, notificationService } = makeService({
         subscriptionDAO: {
@@ -691,7 +684,10 @@ describe('SMSService', () => {
             planName: 'growth',
             smsUsage: { countThisPeriod: 39 },
           }),
-          update: mockUpdate,
+          incrementUsageCounterIfUnder: jest.fn().mockResolvedValue({
+            smsUsage: { countThisPeriod: 40 },
+          }),
+          setFlagIfFalse: mockSetFlag,
         },
         subscriptionPlanConfig: {
           getConfig: jest.fn().mockReturnValue({ limits: { smsQuota: 40 } }),
@@ -700,21 +696,11 @@ describe('SMSService', () => {
 
       await service.sendSMS(makeSendInput({ messageType: SMSMessageType.SYSTEM }));
 
-      expect(mockUpdate).toHaveBeenCalledWith(
-        { cuid: CUID, 'smsUsage.notifiedAt100': false },
-        { $set: { 'smsUsage.notifiedAt100': true } }
-      );
+      expect(mockSetFlag).toHaveBeenCalledWith(CUID, 'smsUsage.notifiedAt100');
       expect(notificationService.createNotificationFromTemplate).toHaveBeenCalled();
     });
 
     it('should not send duplicate notification when already notified at 80%', async () => {
-      const mockUpdate = jest
-        .fn()
-        // incrementQuota
-        .mockResolvedValueOnce({ smsUsage: { countThisPeriod: 33 } })
-        // checkThresholds — already notified, returns null
-        .mockResolvedValueOnce(null);
-
       const { service, notificationService } = makeService({
         subscriptionDAO: {
           findFirst: jest.fn().mockResolvedValue({
@@ -723,7 +709,11 @@ describe('SMSService', () => {
             planName: 'growth',
             smsUsage: { countThisPeriod: 32, notifiedAt80: true },
           }),
-          update: mockUpdate,
+          incrementUsageCounterIfUnder: jest.fn().mockResolvedValue({
+            smsUsage: { countThisPeriod: 33 },
+          }),
+          // setFlagIfFalse returns false — flag was already true, no document modified
+          setFlagIfFalse: jest.fn().mockResolvedValue(false),
         },
         subscriptionPlanConfig: {
           getConfig: jest.fn().mockReturnValue({ limits: { smsQuota: 40 } }),
@@ -732,8 +722,6 @@ describe('SMSService', () => {
 
       await service.sendSMS(makeSendInput({ messageType: SMSMessageType.SYSTEM }));
 
-      // createNotificationFromTemplate should NOT be called because the update
-      // to notifiedAt80 returned null (filter didn't match — already notified)
       expect(notificationService.createNotificationFromTemplate).not.toHaveBeenCalled();
     });
   });

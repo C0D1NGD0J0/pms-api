@@ -5156,6 +5156,9 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
         })
       ),
       update: jest.fn().mockReturnValue(Promise.resolve(true)),
+      incrementUsageCounter: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ matched: true, modified: true })),
     } as any;
 
     const mockPaymentDAO = {
@@ -5181,9 +5184,9 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
     // Give fire-and-forget time to execute
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
-      { cuid: CUID },
-      { $inc: { 'manualRecords.countThisPeriod': 1 } }
+    expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+      CUID,
+      'manualRecords.countThisPeriod'
     );
   });
 

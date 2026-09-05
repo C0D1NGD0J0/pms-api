@@ -102,13 +102,10 @@ export class LeaseController {
   };
 
   deleteLease = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    this.log.info(`Deleting lease ${leaseId} for client ${cuid}`);
-
-    res.status(httpStatusCodes.SERVICE_UNAVAILABLE).json({
-      success: false,
-      message: 'Delete lease not yet implemented',
-    });
+    const { cuid, luid } = req.params;
+    const userId = req.context.currentuser!.sub;
+    const result = await this.leaseService.deleteLease(cuid, luid, userId);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   activateLease = async (req: AppRequest, res: Response) => {
@@ -161,33 +158,23 @@ export class LeaseController {
   };
 
   uploadLeaseDocument = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    this.log.info(`${cuid}, Uploading document for lease ${leaseId}`);
-
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Upload lease document not yet implemented',
-    });
+    const { cuid, luid } = req.params;
+    const userId = req.context.currentuser!.sub;
+    const result = await this.leaseService.uploadLeaseDocument(cuid, luid, req.file, userId);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getLeaseDocument = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    this.log.info(`${cuid}, Getting document for lease ${leaseId}`);
-
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Get lease document not yet implemented',
-    });
+    const { cuid, luid } = req.params;
+    const result = await this.leaseService.getLeaseDocumentUrl(cuid, luid);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   removeLeaseDocument = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    this.log.info(`${cuid}, Removing document for lease ${leaseId}`);
-
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Remove lease document not yet implemented',
-    });
+    const { cuid, luid } = req.params;
+    const userId = req.context.currentuser!.sub;
+    const result = await this.leaseService.removeLeaseDocument(cuid, luid, userId);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   handleSignatureAction = async (req: AppRequest, res: Response) => {
@@ -195,12 +182,18 @@ export class LeaseController {
     let result;
 
     switch (action) {
-      case 'manual':
-        res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-          success: false,
-          message: 'Manual signing not yet implemented',
-        });
-        return;
+      case 'manual': {
+        const { cuid: manualCuid, luid: manualLuid } = req.params;
+        const { currentuser: manualUser } = req.context;
+        const { signedBy } = req.body;
+        result = await this.leaseService.markAsManualySigned(
+          manualCuid,
+          manualLuid,
+          signedBy || [],
+          manualUser!.sub
+        );
+        break;
+      }
       case 'cancel': {
         const { cuid: cancelCuid, luid: cancelLuid } = req.params;
         const { currentuser } = req.context;
@@ -222,13 +215,9 @@ export class LeaseController {
   };
 
   getSignatureDetails = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    this.log.info(`${cuid}, Getting signature details for lease ${leaseId}`);
-
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Get signature details not yet implemented',
-    });
+    const { cuid, luid } = req.params;
+    const result = await this.leaseService.getSignatureDetails(cuid, luid);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   generateLeasePDF = async (req: AppRequest, res: Response) => {
@@ -307,13 +296,9 @@ export class LeaseController {
   };
 
   downloadLeasePDF = async (req: AppRequest, res: Response) => {
-    const { cuid, leaseId } = req.params;
-    this.log.info(`Downloading PDF for lease ${leaseId}, client ${cuid}`);
-
-    res.status(httpStatusCodes.NOT_IMPLEMENTED).json({
-      success: false,
-      message: 'Download PDF not yet implemented',
-    });
+    const { cuid, luid } = req.params;
+    const result = await this.leaseService.getLeaseDocumentUrl(cuid, luid);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   getExpiringLeases = async (req: AppRequest, res: Response) => {

@@ -25,7 +25,7 @@ export const ReportValidations = {
       period: z.nativeEnum(ReportPeriod),
       startDate: z.string().datetime().optional(),
       endDate: z.string().datetime().optional(),
-      propertyId: z.string().optional(),
+      propertyId: z.string().min(1).optional(),
       sections: sectionsSchema,
       emailRecipients: emailRecipientsSchema,
     })
@@ -48,7 +48,7 @@ export const ReportValidations = {
     frequency: z.nativeEnum(ScheduleFrequency),
     sections: sectionsSchema,
     emailRecipients: emailRecipientsSchema,
-    propertyId: z.string().optional(),
+    propertyId: z.string().min(1).optional(),
     isActive: z.boolean().optional(),
   }),
 

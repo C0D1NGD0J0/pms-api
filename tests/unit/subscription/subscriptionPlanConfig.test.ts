@@ -6,7 +6,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       const config = subscriptionPlanConfig.getConfig('essential');
 
       expect(config.name).toBe('Essential');
-      expect(config.transactionFeePercent).toBe(4.5);
+      expect(config.transactionFeePercent).toBe(4.2);
       expect(config.limits.maxProperties).toBe(3);
       expect(config.features.eSignature).toBe(false);
     });
@@ -15,7 +15,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       const config = subscriptionPlanConfig.getConfig('growth');
 
       expect(config.name).toBe('Growth');
-      expect(config.transactionFeePercent).toBe(4.0);
+      expect(config.transactionFeePercent).toBe(3.9);
       expect(config.limits.maxProperties).toBe(15);
       expect(config.features.eSignature).toBe(true);
     });
@@ -114,8 +114,8 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
   describe('getTransactionFeePercent', () => {
     it('should return correct fees for each plan', () => {
-      expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(4.5);
-      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(4.0);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(4.2);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(3.9);
       expect(subscriptionPlanConfig.getTransactionFeePercent('portfolio')).toBe(3.5);
     });
   });
@@ -140,6 +140,32 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
     it('should format portfolio plan annual price with decimals', () => {
       expect(subscriptionPlanConfig.getFormattedPrice('portfolio', 'annual')).toBe('$1440.00');
+    });
+  });
+
+  describe('resolvePlanByLookupKey', () => {
+    it('should resolve portfolio from monthly lookup key', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('portfolio_monthly_price')).toBe(
+        'portfolio'
+      );
+    });
+
+    it('should resolve growth from annual lookup key', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('growth_annual_price')).toBe('growth');
+    });
+
+    it('should resolve essential', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('essential_monthly_price')).toBe(
+        'essential'
+      );
+    });
+
+    it('should return null for unknown key', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('unknown_plan_price')).toBeNull();
+    });
+
+    it('should return null for empty string', () => {
+      expect(subscriptionPlanConfig.resolvePlanByLookupKey('')).toBeNull();
     });
   });
 });

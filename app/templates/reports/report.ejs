@@ -3,57 +3,148 @@
 <head>
   <meta charset="UTF-8" />
   <title>Property Report</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    @page { size: A4; margin: 0.75in; }
+    @page { size: A4; margin: 0.6in 0.75in; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
       font-size: 13px;
       color: #1e293b;
-      line-height: 1.5;
+      line-height: 1.65;
       print-color-adjust: exact;
       -webkit-print-color-adjust: exact;
     }
 
+    /* ─── Watermark ────────────────────────────────────────── */
+    .watermark {
+      position: fixed;
+      top: 45%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(-35deg);
+      font-size: 72px;
+      font-weight: 800;
+      color: rgba(6, 47, 79, 0.03);
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      pointer-events: none;
+      z-index: 0;
+      white-space: nowrap;
+    }
+
     /* ─── Cover ─────────────────────────────────────────────── */
     .cover {
-      text-align: center;
-      padding: 120px 40px 60px;
       page-break-after: always;
+      position: relative;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 0 40px;
     }
-    .cover h1 {
+    .cover-accent {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #062f4f 0%, #39a9e0 50%, #2dd4bf 100%);
+    }
+    .cover-logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .cover-logo svg {
+      width: 56px;
+      height: 56px;
+    }
+    .cover-wordmark {
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
       font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+    .cover-wordmark .wp { color: #062f4f; }
+    .cover-wordmark .wd { color: #D9952B; }
+    .cover h1 {
+      font-size: 26px;
       color: #062f4f;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
     }
     .cover .subtitle {
-      font-size: 16px;
+      font-size: 14px;
       color: #64748b;
-      margin-bottom: 40px;
+      font-weight: 400;
+      margin-bottom: 32px;
     }
-    .cover .meta {
-      font-size: 13px;
+    .cover .meta-grid {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 28px;
+    }
+    .cover .meta-item {
+      text-align: center;
+    }
+    .cover .meta-item .meta-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
       color: #94a3b8;
+      margin-bottom: 4px;
     }
-    .cover .meta span { display: block; margin-bottom: 4px; }
+    .cover .meta-item .meta-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #062f4f;
+    }
+    .cover .intro {
+      max-width: 440px;
+      color: #64748b;
+      font-size: 12px;
+      line-height: 1.7;
+      margin-top: 8px;
+    }
+    .cover-footer {
+      position: absolute;
+      bottom: 40px;
+      font-size: 10px;
+      color: #cbd5e1;
+    }
 
     /* ─── Section ───────────────────────────────────────────── */
     .section {
-      page-break-before: always;
-      padding-top: 20px;
+      page-break-inside: avoid;
+      margin-top: 36px;
+      padding-top: 0;
     }
-    .section:first-of-type { page-break-before: auto; }
     .section h2 {
       font-size: 18px;
+      font-weight: 700;
       color: #062f4f;
-      border-bottom: 2px solid #39a9e0;
-      padding-bottom: 6px;
-      margin-bottom: 16px;
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+      border-bottom: 3px solid transparent;
+      border-image: linear-gradient(90deg, #062f4f, #39a9e0) 1;
+    }
+    .section-desc {
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.7;
+      margin-bottom: 20px;
     }
     .section h3 {
       font-size: 14px;
+      font-weight: 600;
       color: #334155;
-      margin: 16px 0 8px;
+      margin: 20px 0 10px;
     }
 
     /* ─── KPI Cards ─────────────────────────────────────────── */
@@ -61,20 +152,22 @@
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      margin-bottom: 20px;
+      margin-bottom: 22px;
     }
     .kpi-card {
-      flex: 1 1 140px;
-      background: #f8fafc;
+      flex: 1 1 130px;
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
       border: 1px solid #e2e8f0;
-      border-radius: 6px;
+      border-radius: 8px;
       padding: 14px 16px;
+      border-left: 3px solid #39a9e0;
     }
     .kpi-card .label {
-      font-size: 11px;
+      font-size: 10px;
       color: #64748b;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
+      font-weight: 600;
     }
     .kpi-card .value {
       font-size: 22px;
@@ -87,8 +180,8 @@
     .trend {
       font-size: 11px;
       font-weight: 600;
-      padding: 2px 6px;
-      border-radius: 4px;
+      padding: 3px 8px;
+      border-radius: 10px;
       display: inline-block;
     }
     .trend.up { background: #dcfce7; color: #166534; }
@@ -99,35 +192,40 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 16px;
+      margin-bottom: 20px;
       font-size: 12px;
     }
     th {
-      background: #f1f5f9;
-      color: #475569;
+      background: #062f4f;
+      color: #ffffff;
       font-weight: 600;
       text-align: left;
-      padding: 8px 10px;
-      border-bottom: 2px solid #e2e8f0;
+      padding: 10px 12px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
     }
+    th:first-child { border-radius: 4px 0 0 0; }
+    th:last-child { border-radius: 0 4px 0 0; }
     td {
-      padding: 7px 10px;
-      border-bottom: 1px solid #f1f5f9;
+      padding: 9px 12px;
+      border-bottom: 1px solid #e2e8f0;
     }
-    tr:nth-child(even) td { background: #fafbfc; }
+    tr:nth-child(even) td { background: #f8fafc; }
     .text-right { text-align: right; }
     .text-center { text-align: center; }
 
     /* ─── Currency label ────────────────────────────────────── */
     .currency-label {
       display: inline-block;
-      font-size: 10px;
-      font-weight: 600;
-      color: #475569;
-      background: #e2e8f0;
-      padding: 2px 6px;
-      border-radius: 3px;
-      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      background: linear-gradient(135deg, #062f4f, #39a9e0);
+      padding: 4px 12px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      margin-top: 4px;
     }
 
     /* ─── Empty state ───────────────────────────────────────── */
@@ -135,7 +233,21 @@
       text-align: center;
       color: #94a3b8;
       font-style: italic;
-      padding: 20px;
+      padding: 24px;
+      background: #f8fafc;
+      border-radius: 6px;
+      border: 1px dashed #e2e8f0;
+      font-size: 13px;
+    }
+
+    /* ─── AI Disclaimer ─────────────────────────────────────── */
+    .ai-disclaimer {
+      font-size: 9pt;
+      color: #9ca3af;
+      margin-top: 20px;
+      font-style: italic;
+      padding-top: 14px;
+      border-top: 1px solid #f1f5f9;
     }
   </style>
 </head>
@@ -150,9 +262,12 @@
   };
 
   const formatPercent = (val) => {
-    if (val === null || val === undefined) return 'N/A';
+    if (val === null || val === undefined) return null;
     return `${val > 0 ? '+' : ''}${val.toFixed(1)}%`;
   };
+
+  // Only render trend badge when there's actual comparison data
+  const hasTrend = (trendObj) => trendObj && trendObj.deltaPercent !== null && trendObj.deltaPercent !== undefined;
 
   const formatDate = (d) => {
     if (!d) return '—';
@@ -168,6 +283,11 @@
     return (isPositive === higherIsBetter) ? 'up' : 'down';
   };
 
+  const humanize = (str) => {
+    if (!str) return '—';
+    return str.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).replace(/ And /g, ' & ');
+  };
+
   const trendArrow = (delta) => {
     if (delta === null || delta === undefined) return '—';
     return delta >= 0 ? '↑' : '↓';
@@ -180,14 +300,44 @@
   })();
 %>
 
+<!-- ─── Watermark ──────────────────────────────────────────────── -->
+<div class="watermark">PROPERTYDESK</div>
+
 <!-- ─── Cover Page ──────────────────────────────────────────────── -->
 <div class="cover">
+  <div class="cover-accent"></div>
+  <div class="cover-logo">
+    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="64" height="64" rx="13" fill="#153D4D"/>
+      <rect x="10" y="45" width="44" height="10" rx="2" fill="#D9952B"/>
+      <rect x="10" y="32" width="36" height="10" rx="2" fill="#ffffff" fill-opacity="0.85"/>
+      <rect x="10" y="19" width="26" height="10" rx="2" fill="#ffffff" fill-opacity="0.60"/>
+      <rect x="10" y="6"  width="16" height="10" rx="2" fill="#ffffff" fill-opacity="0.35"/>
+    </svg>
+    <div class="cover-wordmark"><span class="wp">Property</span><span class="wd">Desk</span></div>
+  </div>
   <h1><%= clientName %></h1>
   <div class="subtitle">Property Management Report</div>
-  <div class="meta">
-    <span><strong>Period:</strong> <%= periodLabel %></span>
-    <span><strong>Generated:</strong> <%= formatDate(generatedAt) %></span>
-    <span><strong>Sections:</strong> <%= sections.length %> of 9</span>
+  <div class="meta-grid">
+    <div class="meta-item">
+      <div class="meta-label">Period</div>
+      <div class="meta-value"><%= periodLabel %></div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Generated</div>
+      <div class="meta-value"><%= formatDate(generatedAt) %></div>
+    </div>
+    <div class="meta-item">
+      <div class="meta-label">Sections</div>
+      <div class="meta-value"><%= sections.length %></div>
+    </div>
+  </div>
+  <p class="intro">
+    This report provides an overview of your property portfolio performance
+    for the period <%= formatDate(startDate) %> to <%= formatDate(endDate) %>.
+  </p>
+  <div class="cover-footer">
+    &copy; <%= new Date().getFullYear() %> PropertyDesk &mdash; WeTalkingTech Labs Inc.
   </div>
 </div>
 
@@ -195,6 +345,22 @@
 <% if (has('executive_summary')) { %>
 <div class="section">
   <h2>Executive Summary</h2>
+  <p style="color: #374151; font-size: 14px; line-height: 1.7; margin-bottom: 14px; background: #f0f9ff; border-left: 3px solid #39a9e0; padding: 10px 14px; border-radius: 0 6px 6px 0;">
+    This report covers the performance of <strong><%= clientName %></strong>'s portfolio for the period
+    <%= formatDate(startDate) %> to <%= formatDate(endDate) %>.
+    <% if (properties && properties.length) { %>
+    The portfolio consists of <%= properties.length %> propert<%= properties.length === 1 ? 'y' : 'ies' %>
+    (<%= properties.map(p => `${p.name} — ${humanize(p.type)}, ${p.unitCount} unit${p.unitCount === 1 ? '' : 's'}`).join('; ') %>)
+    with a total of <%= unitCounts ? unitCounts.total : 0 %> units across all properties.
+    <% } %>
+    <% if (unitCounts) { %>
+    Current occupancy stands at <%= (unitCounts.occupancyRate || 0).toFixed(1) %>% with <%= unitCounts.occupied %> unit<%= unitCounts.occupied === 1 ? '' : 's' %> occupied
+    and <%= unitCounts.vacant %> vacant.
+    <% } %>
+    <% if (leaseStats) { %>
+    There are <%= leaseStats.leasesByStatus?.active || 0 %> active lease<%= (leaseStats.leasesByStatus?.active || 0) === 1 ? '' : 's' %><% if (leaseStats.expiringIn90Days) { %>, with <%= leaseStats.expiringIn90Days %> expiring within the next 90 days<% } %>.
+    <% } %>
+  </p>
   <div class="kpi-grid">
     <% if (unitCounts) { %>
     <div class="kpi-card">
@@ -204,7 +370,7 @@
     <div class="kpi-card">
       <div class="label">Occupancy Rate</div>
       <div class="value"><%= (unitCounts.occupancyRate || 0).toFixed(1) %>%</div>
-      <% if (trends && trends.occupancyRate) { %>
+      <% if (hasTrend(trends?.occupancyRate)) { %>
       <span class="trend <%= trendClass(trends.occupancyRate.delta) %>">
         <%= trendArrow(trends.occupancyRate.delta) %> <%= formatPercent(trends.occupancyRate.deltaPercent) %>
       </span>
@@ -223,8 +389,8 @@
     <% if (leaseStats) { %>
     <div class="kpi-card">
       <div class="label">Active Leases</div>
-      <div class="value"><%= leaseStats.activeLeases || 0 %></div>
-      <% if (trends && trends.activeLeases) { %>
+      <div class="value"><%= leaseStats.leasesByStatus?.active || 0 %></div>
+      <% if (hasTrend(trends?.activeLeases)) { %>
       <span class="trend <%= trendClass(trends.activeLeases.delta) %>">
         <%= trendArrow(trends.activeLeases.delta) %> <%= formatPercent(trends.activeLeases.deltaPercent) %>
       </span>
@@ -243,6 +409,23 @@
     </div>
     <% } %>
   </div>
+
+  <% if (properties && properties.length) { %>
+  <h3>Properties</h3>
+  <table>
+    <thead><tr><th>Property</th><th>Type</th><th>Address</th><th class="text-center">Units</th></tr></thead>
+    <tbody>
+      <% for (const p of properties) { %>
+      <tr>
+        <td><%= p.name %></td>
+        <td><%= humanize(p.type) %></td>
+        <td><%= p.address || '—' %></td>
+        <td class="text-center"><%= p.unitCount %></td>
+      </tr>
+      <% } %>
+    </tbody>
+  </table>
+  <% } %>
 </div>
 <% } %>
 
@@ -250,6 +433,7 @@
 <% if (has('financial_overview') && pnl && pnl.byCurrency) { %>
 <div class="section">
   <h2>Financial Overview</h2>
+  <p class="section-desc">Income, expenses, and net profit/loss for the reporting period, broken down by currency and category.</p>
   <% for (const curr of pnl.byCurrency) { %>
   <div class="currency-label"><%= curr.currency %></div>
   <div class="kpi-grid">
@@ -260,7 +444,7 @@
     <div class="kpi-card">
       <div class="label">Total Expenses</div>
       <div class="value"><%= formatCurrency(curr.expenses?.total || 0, curr.currency) %></div>
-      <% if (trends && trends.totalExpenses && trends.totalExpenses[curr.currency]) { %>
+      <% if (hasTrend(trends?.totalExpenses?.[curr.currency])) { %>
       <span class="trend <%= trendClass(trends.totalExpenses[curr.currency].delta, false) %>">
         <%= trendArrow(trends.totalExpenses[curr.currency].delta) %> <%= formatPercent(trends.totalExpenses[curr.currency].deltaPercent) %>
       </span>
@@ -269,7 +453,7 @@
     <div class="kpi-card">
       <div class="label">Net Income</div>
       <div class="value"><%= formatCurrency(curr.netIncome || 0, curr.currency) %></div>
-      <% if (trends && trends.netIncome && trends.netIncome[curr.currency]) { %>
+      <% if (hasTrend(trends?.netIncome?.[curr.currency])) { %>
       <span class="trend <%= trendClass(trends.netIncome[curr.currency].delta) %>">
         <%= trendArrow(trends.netIncome[curr.currency].delta) %> <%= formatPercent(trends.netIncome[curr.currency].deltaPercent) %>
       </span>
@@ -283,7 +467,7 @@
     <thead><tr><th>Property</th><th class="text-right">Amount</th></tr></thead>
     <tbody>
       <% for (const p of curr.income.byProperty) { %>
-      <tr><td><%= p.propertyName || p.propertyId %></td><td class="text-right"><%= formatCurrency(p.total, curr.currency) %></td></tr>
+      <tr><td><%= p.name || p.propertyId %></td><td class="text-right"><%= formatCurrency(p.amount, curr.currency) %></td></tr>
       <% } %>
     </tbody>
   </table>
@@ -295,7 +479,7 @@
     <thead><tr><th>Category</th><th class="text-right">Amount</th></tr></thead>
     <tbody>
       <% for (const c of curr.expenses.byCategory) { %>
-      <tr><td><%= c.category %></td><td class="text-right"><%= formatCurrency(c.total, curr.currency) %></td></tr>
+      <tr><td><%= humanize(c.category) %></td><td class="text-right"><%= formatCurrency(c.amount, curr.currency) %></td></tr>
       <% } %>
     </tbody>
   </table>
@@ -308,6 +492,7 @@
 <% if (has('payment_analysis') && paymentStats) { %>
 <div class="section">
   <h2>Payment Analysis</h2>
+  <p class="section-desc">Revenue collection performance including on-time rates, overdue payments, and recent transactions.</p>
 
   <% if (paymentStats.byCurrency) { %>
   <% for (const curr of paymentStats.byCurrency) { %>
@@ -316,7 +501,7 @@
     <div class="kpi-card">
       <div class="label">Total Revenue</div>
       <div class="value"><%= formatCurrency(curr.totalRevenue || 0, curr.currency) %></div>
-      <% if (trends && trends.revenue && trends.revenue[curr.currency]) { %>
+      <% if (hasTrend(trends?.revenue?.[curr.currency])) { %>
       <span class="trend <%= trendClass(trends.revenue[curr.currency].delta) %>">
         <%= trendArrow(trends.revenue[curr.currency].delta) %> <%= formatPercent(trends.revenue[curr.currency].deltaPercent) %>
       </span>
@@ -350,21 +535,41 @@
   </div>
 
   <% if (recentPayments && recentPayments.items && recentPayments.items.length) { %>
-  <h3>Recent Payments</h3>
+  <%
+    const paymentGroups = {
+      rent: { label: 'Rent Payments', items: [] },
+      maintenance: { label: 'Maintenance Payments', items: [] },
+      other: { label: 'Other Payments', items: [] },
+    };
+    for (const p of recentPayments.items) {
+      if (p.paymentType === 'rent') {
+        paymentGroups.rent.items.push(p);
+      } else if (p.paymentType === 'maintenance') {
+        paymentGroups.maintenance.items.push(p);
+      } else {
+        paymentGroups.other.items.push(p);
+      }
+    }
+  %>
+  <% for (const [groupKey, group] of Object.entries(paymentGroups)) { %>
+  <% if (group.items.length > 0) { %>
+  <h3><%= group.label %></h3>
   <table>
     <thead><tr><th>Tenant</th><th>Type</th><th class="text-right">Amount</th><th>Due Date</th><th>Status</th></tr></thead>
     <tbody>
-      <% for (const p of recentPayments.items) { %>
+      <% for (const p of group.items) { %>
       <tr>
-        <td><%= p.tenantId?.email || '—' %></td>
-        <td><%= p.paymentType || '—' %></td>
+        <td><%= p.tenant?.personalInfo ? `${p.tenant.personalInfo.firstName || ''} ${p.tenant.personalInfo.lastName || ''}`.trim() : '—' %></td>
+        <td><%= humanize(p.paymentType) %></td>
         <td class="text-right"><%= formatCurrency(p.baseAmount || 0) %></td>
         <td><%= formatDate(p.dueDate) %></td>
-        <td><%= p.status %></td>
+        <td><%= humanize(p.status) %></td>
       </tr>
       <% } %>
     </tbody>
   </table>
+  <% } %>
+  <% } %>
   <% } %>
 </div>
 <% } %>
@@ -373,22 +578,23 @@
 <% if (has('lease_occupancy') && leaseStats) { %>
 <div class="section">
   <h2>Lease & Occupancy</h2>
+  <p class="section-desc">Current lease status, upcoming expirations, and the rent roll for active tenancies.</p>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="label">Active</div>
-      <div class="value"><%= leaseStats.activeLeases || 0 %></div>
+      <div class="value"><%= leaseStats.leasesByStatus?.active || 0 %></div>
     </div>
     <div class="kpi-card">
-      <div class="label">Expiring in 30d</div>
-      <div class="value"><%= leaseStats.expiringIn30Days || 0 %></div>
+      <div class="label">Expired</div>
+      <div class="value"><%= leaseStats.leasesByStatus?.expired || 0 %></div>
     </div>
     <div class="kpi-card">
-      <div class="label">Expiring in 60d</div>
-      <div class="value"><%= leaseStats.expiringIn60Days || 0 %></div>
-    </div>
-    <div class="kpi-card">
-      <div class="label">Expiring in 90d</div>
+      <div class="label">Expiring in 90 Days</div>
       <div class="value"><%= leaseStats.expiringIn90Days || 0 %></div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Total Leases</div>
+      <div class="value"><%= leaseStats.totalLeases || 0 %></div>
     </div>
   </div>
 
@@ -417,8 +623,8 @@
     <tbody>
       <% for (const l of expiringLeases) { %>
       <tr>
-        <td><%= l.tenantId?.email || '—' %></td>
-        <td><%= l.propertyId?.name || '—' %></td>
+        <td><%= l.tenantId?.profile?.personalInfo ? `${l.tenantId.profile.personalInfo.firstName || ''} ${l.tenantId.profile.personalInfo.lastName || ''}`.trim() : (l.tenantId?.email || '—') %></td>
+        <td><%= l.propertyId?.name || l.property?.name || '—' %></td>
         <td><%= formatDate(l.endDate) %></td>
       </tr>
       <% } %>
@@ -432,6 +638,7 @@
 <% if (has('maintenance') && maintenanceStats) { %>
 <div class="section">
   <h2>Maintenance & Work Orders</h2>
+  <p class="section-desc">Overview of maintenance requests, resolution times, and recent work order activity.</p>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="label">Total Requests</div>
@@ -440,7 +647,7 @@
     <div class="kpi-card">
       <div class="label">Open</div>
       <div class="value"><%= maintenanceStats.open || 0 %></div>
-      <% if (trends && trends.openWorkOrders) { %>
+      <% if (hasTrend(trends?.openWorkOrders)) { %>
       <span class="trend <%= trendClass(trends.openWorkOrders.delta, false) %>">
         <%= trendArrow(trends.openWorkOrders.delta) %> <%= formatPercent(trends.openWorkOrders.deltaPercent) %>
       </span>
@@ -465,8 +672,8 @@
       <tr>
         <td><%= w.title || '—' %></td>
         <td><%= w.propertyId?.name || '—' %></td>
-        <td><%= w.priority || '—' %></td>
-        <td><%= w.status %></td>
+        <td><%= humanize(w.priority) %></td>
+        <td><%= humanize(w.status) %></td>
         <td><%= formatDate(w.createdAt) %></td>
       </tr>
       <% } %>
@@ -480,6 +687,7 @@
 <% if (has('expenses')) { %>
 <div class="section">
   <h2>Expense Breakdown</h2>
+  <p class="section-desc">Detailed expense analysis by category, property, and recent transactions for the reporting period.</p>
 
   <% if (expenseByCategory && expenseByCategory.length) { %>
   <h3>By Category</h3>
@@ -488,7 +696,7 @@
     <tbody>
       <% for (const e of expenseByCategory) { %>
       <tr>
-        <td><%= e._id.category %></td>
+        <td><%= humanize(e._id.category) %></td>
         <td><%= e._id.currency %></td>
         <td class="text-right"><%= formatCurrency(e.total, e._id.currency) %></td>
       </tr>
@@ -504,7 +712,7 @@
     <tbody>
       <% for (const e of expenseByProperty) { %>
       <tr>
-        <td><%= e._id.propertyId %></td>
+        <td><%= e._propertyName || e._id.propertyId %></td>
         <td><%= e._id.currency %></td>
         <td class="text-right"><%= formatCurrency(e.total, e._id.currency) %></td>
       </tr>
@@ -521,7 +729,7 @@
       <% for (const e of recentExpenses.items) { %>
       <tr>
         <td><%= e.description || '—' %></td>
-        <td><%= e.category %></td>
+        <td><%= humanize(e.category) %></td>
         <td class="text-right"><%= formatCurrency(e.amount) %></td>
         <td><%= formatDate(e.date) %></td>
       </tr>
@@ -540,6 +748,7 @@
 <% if (has('tenants') && (tenantStats || userStats)) { %>
 <div class="section">
   <h2>Tenant Summary</h2>
+  <p class="section-desc">User and tenant counts across your portfolio.</p>
   <div class="kpi-grid">
     <% if (userStats) { %>
     <div class="kpi-card">
@@ -558,7 +767,7 @@
     <% if (tenantStats) { %>
     <div class="kpi-card">
       <div class="label">Active Tenants</div>
-      <div class="value"><%= tenantStats.activeTenants || 0 %></div>
+      <div class="value"><%= tenantStats.activeLeases || tenantStats.total || 0 %></div>
     </div>
     <% } %>
   </div>
@@ -569,6 +778,7 @@
 <% if (has('vendors') && vendorStats) { %>
 <div class="section">
   <h2>Vendor Summary</h2>
+  <p class="section-desc">Vendor partnerships and service provider distribution.</p>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="label">Total Vendors</div>
@@ -582,7 +792,7 @@
     <thead><tr><th>Type</th><th class="text-right">Count</th></tr></thead>
     <tbody>
       <% for (const b of vendorStats.businessTypeDistribution) { %>
-      <tr><td><%= b._id || 'Other' %></td><td class="text-right"><%= b.count %></td></tr>
+      <tr><td><%= humanize(b._id) || 'Other' %></td><td class="text-right"><%= b.count %></td></tr>
       <% } %>
     </tbody>
   </table>
@@ -594,6 +804,7 @@
 <% if (has('inspections') && inspectionStats) { %>
 <div class="section">
   <h2>Inspection Summary</h2>
+  <p class="section-desc">Property inspection activity, completion rates, and scheduling status.</p>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="label">Total</div>
@@ -612,6 +823,18 @@
       <div class="value"><%= (inspectionStats.avgCompletionDays || 0).toFixed(1) %></div>
     </div>
   </div>
+</div>
+<% } %>
+
+<!-- ─── Summary & Analysis (always last) ────────────────────────── -->
+<% if (aiSummary) { %>
+<div class="section" style="page-break-before: always;">
+  <h2>Summary & Analysis</h2>
+  <p class="section-desc"><%= aiGenerated ? 'AI-powered analysis of your portfolio data for the reporting period.' : 'Automated summary of your portfolio performance.' %></p>
+  <div style="line-height: 1.85; color: #374151; font-size: 11pt; white-space: pre-line;"><%= aiSummary %></div>
+  <% if (aiGenerated) { %>
+  <p class="ai-disclaimer">This analysis is AI-generated and should not be treated as financial advice.</p>
+  <% } %>
 </div>
 <% } %>
 

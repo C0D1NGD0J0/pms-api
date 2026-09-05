@@ -69,20 +69,23 @@
           "savingsPercent": 0
         }
       },
-      "transactionFeePercent": 4.5,
+      "transactionFeePercent": 4.2,
       "isCustomPricing": false,
       "seatPricing": {
-        "includedSeats": 3,
+        "includedSeats": 1,
         "additionalSeatPriceCents": 0,
         "maxAdditionalSeats": 0,
         "lookUpKey": ""
       },
       "limits": {
         "maxProperties": 3,
-        "maxUnits": 10,
+        "maxUnits": 5,
         "maxVendors": -1,
         "smsQuota": 0,
-        "manualRecordQuota": 5
+        "manualRecordQuota": 3,
+        "maxReportsPerMonth": 0,
+        "maxReportSections": 0,
+        "maxReportEmails": 0
       },
       "features": {
         "eSignature": false,
@@ -95,7 +98,8 @@
         "maintenanceRequestService": false,
         "inspectionService": false,
         "aiInvoiceScanning": false,
-        "aiInspectionAnalysis": false
+        "aiInspectionAnalysis": false,
+        "aiReportAnalysis": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
@@ -129,7 +133,7 @@
       "isFeatured": true,
       "featuredBadge": "Most Popular",
       "displayOrder": 2,
-      "transactionFeePercent": 4.0,
+      "transactionFeePercent": 3.9,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 10,
@@ -146,7 +150,10 @@
         "maxUnits": 50,
         "maxVendors": -1,
         "smsQuota": 40,
-        "manualRecordQuota": 15
+        "manualRecordQuota": 15,
+        "maxReportsPerMonth": 0,
+        "maxReportSections": 0,
+        "maxReportEmails": 0
       },
       "features": {
         "aiTriage": true,
@@ -154,15 +161,16 @@
         "smsService": true,
         "leaseTemplates": false,
         "vendorManagement": true,
-        "aiInvoiceScanning": true,
+        "aiInvoiceScanning": false,
         "guestPassService": true,
-        "reportingAnalytics": true,
+        "reportingAnalytics": false,
         "maintenanceRequestService": true,
         "inspectionService": true,
-        "aiInspectionAnalysis": true
+        "aiInspectionAnalysis": false,
+        "aiReportAnalysis": false
       },
       "featureList": [
-        "AI feature",
+        "AI features*",
         "E-Signature",
         "Vendor management",
         "Property Inspections",
@@ -208,7 +216,10 @@
         "maxUnits": 200,
         "maxVendors": -1,
         "smsQuota": 100,
-        "manualRecordQuota": 30
+        "manualRecordQuota": 30,
+        "maxReportsPerMonth": 10,
+        "maxReportSections": 9,
+        "maxReportEmails": 10
       },
       "features": {
         "eSignature": true,
@@ -222,7 +233,8 @@
         "smsService": true,
         "aiInvoiceScanning": true,
         "inspectionService": true,
-        "aiInspectionAnalysis": true
+        "aiInspectionAnalysis": true,
+        "aiReportAnalysis": true
       },
       "featureList": [
         "Priority support",

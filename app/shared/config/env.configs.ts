@@ -174,6 +174,8 @@ class EnvVariables {
       AI_INVOICE_SCANNING_ENABLED: process.env.FEATURE_AI_INVOICE_SCANNING_ENABLED === 'true',
       // Inspection photo analysis via Claude vision — opt-in only (sends images to Anthropic).
       AI_INSPECTION_ANALYSIS_ENABLED: process.env.FEATURE_AI_INSPECTION_ANALYSIS_ENABLED === 'true',
+      // Text-based AI report analysis — opt-out (no sensitive data sent, just aggregated numbers).
+      AI_REPORT_ANALYSIS_ENABLED: process.env.FEATURE_AI_REPORT_ANALYSIS_ENABLED !== 'false',
       ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',

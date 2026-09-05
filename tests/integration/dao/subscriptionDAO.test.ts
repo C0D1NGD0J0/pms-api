@@ -273,6 +273,60 @@ describe('SubscriptionDAO - updateResourceCount', () => {
     });
   });
 
+  describe('reportGenerationUsage $inc', () => {
+    it('should increment reportGenerationUsage.countThisPeriod via $inc', async () => {
+      // Verify initial state
+      const before = await Subscription.findOne({ client: testClientId });
+      expect(before?.reportGenerationUsage?.countThisPeriod).toBe(0);
+
+      // Increment via subscriptionDAO.update (same pattern as report.service.ts)
+      const updated = await subscriptionDAO.update(
+        { cuid: 'TEST_CLIENT' },
+        { $inc: { 'reportGenerationUsage.countThisPeriod': 1 } }
+      );
+
+      expect(updated).not.toBeNull();
+      expect(updated?.reportGenerationUsage?.countThisPeriod).toBe(1);
+
+      // Verify persistence by re-reading from DB
+      const after = await Subscription.findOne({ client: testClientId });
+      expect(after?.reportGenerationUsage?.countThisPeriod).toBe(1);
+    });
+
+    it('should increment multiple times', async () => {
+      await subscriptionDAO.update(
+        { cuid: 'TEST_CLIENT' },
+        { $inc: { 'reportGenerationUsage.countThisPeriod': 1 } }
+      );
+      await subscriptionDAO.update(
+        { cuid: 'TEST_CLIENT' },
+        { $inc: { 'reportGenerationUsage.countThisPeriod': 1 } }
+      );
+
+      const after = await Subscription.findOne({ client: testClientId });
+      expect(after?.reportGenerationUsage?.countThisPeriod).toBe(2);
+    });
+
+    it('should increment even when periodStart is missing', async () => {
+      // Simulate user's real scenario: reportGenerationUsage exists but without periodStart
+      await Subscription.updateOne(
+        { client: testClientId },
+        { $set: { reportGenerationUsage: { countThisPeriod: 0 } } }
+      );
+
+      const updated = await subscriptionDAO.update(
+        { cuid: 'TEST_CLIENT' },
+        { $inc: { 'reportGenerationUsage.countThisPeriod': 1 } }
+      );
+
+      expect(updated).not.toBeNull();
+      expect(updated?.reportGenerationUsage?.countThisPeriod).toBe(1);
+
+      const after = await Subscription.findOne({ client: testClientId });
+      expect(after?.reportGenerationUsage?.countThisPeriod).toBe(1);
+    });
+  });
+
   describe('bulkExpireSubscriptions', () => {
     it('should expire active subscriptions past end date', async () => {
       const expiredDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);

@@ -71,7 +71,7 @@ describe('ReportService', () => {
 
       expect(mockReportDAO.createReport).toHaveBeenCalledWith(
         expect.objectContaining({
-          sections: ['financial_overview', 'payment_analysis'],
+          sections: ['executive_summary', 'financial_overview', 'payment_analysis'],
         })
       );
     });
@@ -200,7 +200,9 @@ describe('ReportService', () => {
       expect(result.data.presignedUrl).toBe('https://s3.example.com/signed-url');
       expect(result.data.expiresAt).toBeDefined();
       expect(result.data.filename).toBe('report.pdf');
-      expect(mockS3Service.getSignedUrl).toHaveBeenCalledWith('reports/test/report.pdf');
+      expect(mockS3Service.getSignedUrl).toHaveBeenCalledWith('reports/test/report.pdf', {
+        disposition: 'inline',
+      });
     });
 
     it('should throw NotFoundError if report does not exist', async () => {

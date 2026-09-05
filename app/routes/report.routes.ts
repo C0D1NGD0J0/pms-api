@@ -58,6 +58,20 @@ router.get(
   })
 );
 
+router.delete(
+  '/:cuid/:reportId',
+  requireNotSuspended,
+  requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
+  requireVerifiedClient,
+  subscriptionEntitlements,
+  requireFeature('reportingAnalytics'),
+  validateRequest({ params: ReportValidations.reportIdParam }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<ReportController>('reportController');
+    return controller.deleteReport(req, res);
+  })
+);
+
 // ─── Schedule management ────────────────────────────────────────────
 
 router.post(
@@ -90,7 +104,7 @@ router.get(
 router.delete(
   '/:cuid/schedule',
   requireNotSuspended,
-  requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
+  requirePermission(PermissionResource.REPORT, PermissionAction.DELETE),
   requireVerifiedClient,
   subscriptionEntitlements,
   requireFeature('reportingAnalytics'),

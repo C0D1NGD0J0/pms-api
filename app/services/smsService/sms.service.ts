@@ -433,9 +433,10 @@ export class SMSService implements ICronProvider {
     }
 
     // Atomic check + increment — prevents race conditions
-    const updated = await this.subscriptionDAO.update(
-      { cuid, 'smsUsage.countThisPeriod': { $lt: limit } },
-      { $inc: { 'smsUsage.countThisPeriod': 1 } }
+    const updated = await this.subscriptionDAO.incrementUsageCounterIfUnder(
+      cuid,
+      'smsUsage.countThisPeriod',
+      limit
     );
 
     if (!updated) {
@@ -461,17 +462,11 @@ export class SMSService implements ICronProvider {
     const percentUsed = calcPercentage(used, limit);
 
     if (percentUsed >= 100) {
-      const updated = await this.subscriptionDAO.update(
-        { cuid, 'smsUsage.notifiedAt100': false },
-        { $set: { 'smsUsage.notifiedAt100': true } }
-      );
-      if (updated) await this.notifyAccountAdmin(cuid, 'sms.quotaExhausted', { used, limit });
+      const wasSet = await this.subscriptionDAO.setFlagIfFalse(cuid, 'smsUsage.notifiedAt100');
+      if (wasSet) await this.notifyAccountAdmin(cuid, 'sms.quotaExhausted', { used, limit });
     } else if (percentUsed >= 80) {
-      const updated = await this.subscriptionDAO.update(
-        { cuid, 'smsUsage.notifiedAt80': false },
-        { $set: { 'smsUsage.notifiedAt80': true } }
-      );
-      if (updated)
+      const wasSet = await this.subscriptionDAO.setFlagIfFalse(cuid, 'smsUsage.notifiedAt80');
+      if (wasSet)
         await this.notifyAccountAdmin(cuid, 'sms.quotaWarning', {
           used,
           limit,

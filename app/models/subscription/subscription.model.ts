@@ -71,6 +71,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       aiInvoiceScanning: { type: Boolean, required: true, default: false },
       inspectionService: { type: Boolean, default: false },
       aiInspectionAnalysis: { type: Boolean, default: false },
+      aiReportAnalysis: { type: Boolean, default: false },
     },
     billing: {
       customerId: {
@@ -120,6 +121,10 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     pendingDowngradeAt: { type: Date, index: true },
     currentUnits: { type: Number, default: 0 },
     manualRecords: {
+      countThisPeriod: { type: Number, default: 0 },
+      periodStart: { type: Date, default: Date.now },
+    },
+    reportGenerationUsage: {
       countThisPeriod: { type: Number, default: 0 },
       periodStart: { type: Date, default: Date.now },
     },

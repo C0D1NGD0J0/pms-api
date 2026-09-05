@@ -46,7 +46,7 @@ export class MaintenanceRequestDAO
         '-workOrder.submittedBy -workOrder.reviewedBy -workOrder.notes ' +
         '-workOrder.rejectionReason',
       populate: [
-        { path: 'propertyId', select: 'address pid title' },
+        { path: 'propertyId', select: 'address pid name' },
         { path: 'invoiceId', select: 'status amountInCents vendorPayoutStatus submittedAt invuid' },
         {
           path: 'vendorId',

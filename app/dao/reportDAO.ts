@@ -37,6 +37,12 @@ export class ReportDAO extends BaseDAO<IReportDocument> {
     }
   }
 
+  async getMonthlyCount(cuid: string): Promise<number> {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    return this.countDocuments({ cuid, createdAt: { $gte: startOfMonth } });
+  }
+
   async listByClient(
     cuid: string,
     query?: { page?: number; limit?: number; status?: ReportStatus }
@@ -45,9 +51,12 @@ export class ReportDAO extends BaseDAO<IReportDocument> {
       const filter: Record<string, any> = { cuid };
       if (query?.status) filter.status = query.status;
 
+      const page = query?.page ?? 1;
+      const limit = query?.limit ?? 10;
+
       return await this.list(filter, {
-        skip: query?.page,
-        limit: query?.limit,
+        skip: (page - 1) * limit,
+        limit,
         sort: { createdAt: -1 },
         projection: '-file',
       });

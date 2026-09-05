@@ -9,6 +9,8 @@ import { RedisService } from '@database/index';
 import { EmailQueue } from '@queues/email.queue';
 import { ReportQueue } from '@queues/report.queue';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -48,7 +50,6 @@ import {
 } from '@interfaces/report.interface';
 
 const COOLDOWN_TTL_SECONDS = 900; // 15 minutes
-const REPORT_QUOTA_PREFIX = 'report-quota';
 const REPORT_COOLDOWN_PREFIX = 'report-cooldown';
 
 interface IConstructor {
@@ -57,6 +58,7 @@ interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
   pdfGeneratorService: PdfGeneratorService;
   reportScheduleDAO: ReportScheduleDAO;
+  emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   subscriptionDAO: SubscriptionDAO;
   expenseService: ExpenseService;
@@ -95,6 +97,7 @@ export class ReportService implements ICronProvider {
   private readonly reportAnalysisAIService: ReportAnalysisAIService;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly pdfGeneratorService: PdfGeneratorService;
+  private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly redisService: RedisService;
   private readonly s3Service: S3Service;
@@ -120,6 +123,7 @@ export class ReportService implements ICronProvider {
     pdfGeneratorService,
     reportAnalysisAIService,
     subscriptionPlanConfig,
+    emitterService,
     subscriptionDAO,
     redisService,
     s3Service,
@@ -143,11 +147,34 @@ export class ReportService implements ICronProvider {
     this.pdfGeneratorService = pdfGeneratorService;
     this.reportAnalysisAIService = reportAnalysisAIService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
+    this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.redisService = redisService;
     this.s3Service = s3Service;
     this.sseService = sseService;
     this.log = createLogger('ReportService');
+    this._setupEventListeners();
+  }
+
+  private _setupEventListeners(): void {
+    this.emitterService.on(EventTypes.PLAN_DOWNGRADED, (payload) => {
+      if (payload.disabledFeatures.includes('reportingAnalytics')) {
+        this.reportScheduleDAO
+          .deactivateSchedule(payload.cuid)
+          .then(() =>
+            this.log.info(
+              { cuid: payload.cuid },
+              'Report schedule deactivated due to plan downgrade'
+            )
+          )
+          .catch((err) =>
+            this.log.warn(
+              { err, cuid: payload.cuid },
+              'Failed to deactivate report schedule on downgrade'
+            )
+          );
+      }
+    });
   }
 
   // ─── ICronProvider ────────────────────────────────────────────────
@@ -217,8 +244,17 @@ export class ReportService implements ICronProvider {
     // ── Cooldown check (Redis) ──
     await this._checkCooldown(cuid);
 
-    // ── Monthly quota check (Redis cache → MongoDB fallback) ──
-    await this._checkMonthlyQuota(cuid, limits.maxReportsPerMonth);
+    // ── Atomic quota check + increment (prevents race conditions) ──
+    const updatedSub = await this.subscriptionDAO.incrementUsageCounterIfUnder(
+      cuid,
+      'reportGenerationUsage.countThisPeriod',
+      limits.maxReportsPerMonth
+    );
+    if (!updatedSub) {
+      throw new BadRequestError({
+        message: `Monthly report limit reached (${limits.maxReportsPerMonth} per month on your plan)`,
+      });
+    }
 
     const { startDate, endDate, prevStartDate, prevEndDate } = this._resolveDateRange(
       period,
@@ -243,22 +279,7 @@ export class ReportService implements ICronProvider {
       emailRecipients,
     });
 
-    // Set cooldown, increment quota cache, and track usage on subscription
     this._setCooldown(cuid);
-    this._incrementQuotaCache(cuid);
-    try {
-      const { matched, modified } = await this.subscriptionDAO.incrementUsageCounter(
-        cuid,
-        'reportGenerationUsage.countThisPeriod'
-      );
-      if (!matched) {
-        this.log.warn({ cuid }, 'Report usage increment matched no subscription document');
-      } else {
-        this.log.info({ cuid, modified }, '>>> Report usage counter incremented');
-      }
-    } catch (err) {
-      this.log.error({ err, cuid }, 'Failed to increment report usage on subscription');
-    }
 
     const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
     await reportQueue.addReportJob({
@@ -1052,31 +1073,6 @@ export class ReportService implements ICronProvider {
     this.redisService.client
       .set(key, '1', { EX: COOLDOWN_TTL_SECONDS })
       .catch((err) => this.log.warn({ err, cuid }, 'Failed to set report cooldown'));
-  }
-
-  private async _checkMonthlyQuota(cuid: string, maxPerMonth: number): Promise<void> {
-    const subscription = await this.subscriptionDAO.findFirst({ cuid });
-    const count = subscription?.reportGenerationUsage?.countThisPeriod ?? 0;
-
-    if (count >= maxPerMonth) {
-      throw new BadRequestError({
-        message: `Monthly report limit reached (${count}/${maxPerMonth} on your plan)`,
-      });
-    }
-  }
-
-  private _incrementQuotaCache(cuid: string): void {
-    const month = new Date().toISOString().slice(0, 7);
-    const key = `${REPORT_QUOTA_PREFIX}:${cuid}:${month}`;
-    this.redisService.client
-      .incr(key)
-      .catch((err) => this.log.warn({ err, cuid }, 'Failed to increment report quota cache'));
-  }
-
-  private _getMonthEndTTL(): number {
-    const now = new Date();
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    return Math.ceil((endOfMonth.getTime() - now.getTime()) / 1000);
   }
 
   /**

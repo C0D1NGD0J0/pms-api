@@ -79,14 +79,11 @@ describe('ReportService — Quota & Cooldown', () => {
 
   // ─── Monthly Quota ───────────────────────────────────────────────
 
-  describe('monthly quota', () => {
+  describe('monthly quota (atomic)', () => {
     it('should reject when monthly limit reached', async () => {
       mockRedisService.client.get.mockResolvedValue(null); // cooldown clear
-      // Subscription shows 10 reports used — at the limit
-      mockSubscriptionDAO.findFirst.mockResolvedValue({
-        planName: 'portfolio',
-        reportGenerationUsage: { countThisPeriod: 10 },
-      });
+      // incrementUsageCounterIfUnder returns null when at/over limit
+      mockSubscriptionDAO.incrementUsageCounterIfUnder.mockResolvedValue(null);
 
       await expect(
         service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS })
@@ -95,9 +92,9 @@ describe('ReportService — Quota & Cooldown', () => {
 
     it('should allow when under quota', async () => {
       mockRedisService.client.get.mockResolvedValue(null);
-      mockSubscriptionDAO.findFirst.mockResolvedValue({
+      mockSubscriptionDAO.incrementUsageCounterIfUnder.mockResolvedValue({
         planName: 'portfolio',
-        reportGenerationUsage: { countThisPeriod: 3 },
+        reportGenerationUsage: { countThisPeriod: 4 },
       });
 
       const result = await service.requestReport(CUID, USER_ID, {
@@ -107,18 +104,19 @@ describe('ReportService — Quota & Cooldown', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should increment subscription usage after successful request', async () => {
+    it('should atomically check and increment usage', async () => {
       mockRedisService.client.get.mockResolvedValue(null);
-      mockSubscriptionDAO.findFirst.mockResolvedValue({
+      mockSubscriptionDAO.incrementUsageCounterIfUnder.mockResolvedValue({
         planName: 'portfolio',
-        reportGenerationUsage: { countThisPeriod: 0 },
+        reportGenerationUsage: { countThisPeriod: 1 },
       });
 
       await service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS });
 
-      expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+      expect(mockSubscriptionDAO.incrementUsageCounterIfUnder).toHaveBeenCalledWith(
         CUID,
-        'reportGenerationUsage.countThisPeriod'
+        'reportGenerationUsage.countThisPeriod',
+        10
       );
     });
   });

@@ -1439,6 +1439,18 @@ export class SubscriptionService {
             return updatedSubscription;
           });
 
+          // Deactivate feature-specific resources on downgrade
+          if (subscriptionPlanConfig.isDowngrade(subscription.planName, targetPlanName)) {
+            if (!planConfig.features.reportingAnalytics) {
+              this.emitterService.emit(EventTypes.PLAN_DOWNGRADED, {
+                cuid,
+                fromPlan: subscription.planName,
+                toPlan: targetPlanName,
+                disabledFeatures: ['reportingAnalytics'],
+              });
+            }
+          }
+
           // Invalidate cache
           try {
             const cacheKey = `billing_history:${result.cuid}`;

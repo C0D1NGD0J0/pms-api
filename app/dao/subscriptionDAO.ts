@@ -45,7 +45,10 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
    */
   async incrementUsageCounterIfUnder(
     cuid: string,
-    field: 'smsUsage.countThisPeriod' | 'manualRecords.countThisPeriod',
+    field:
+      | 'smsUsage.countThisPeriod'
+      | 'manualRecords.countThisPeriod'
+      | 'reportGenerationUsage.countThisPeriod',
     limit: number
   ): Promise<ISubscriptionDocument | null> {
     return Subscription.findOneAndUpdate(

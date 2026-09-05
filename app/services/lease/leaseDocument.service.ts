@@ -45,6 +45,10 @@ export class LeaseDocumentService {
       url: file.location || file.path,
       size: file.size,
       mimeType: file.mimetype,
+      filename: file.originalname || file.filename || 'document',
+      resourceId: lease._id.toString(),
+      fieldName: 'leaseDocument',
+      publicuid: leaseId,
     };
 
     const updated = await this.leaseDAO.updateLeaseDocuments(

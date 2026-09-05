@@ -1441,7 +1441,8 @@ export class SubscriptionService {
 
           // Deactivate feature-specific resources on downgrade
           if (subscriptionPlanConfig.isDowngrade(subscription.planName, targetPlanName)) {
-            if (!planConfig.features.reportingAnalytics) {
+            const targetConfig = subscriptionPlanConfig.getConfig(targetPlanName);
+            if (!targetConfig.features.reportingAnalytics) {
               this.emitterService.emit(EventTypes.PLAN_DOWNGRADED, {
                 cuid,
                 fromPlan: subscription.planName,

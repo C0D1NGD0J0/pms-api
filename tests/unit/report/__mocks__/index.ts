@@ -71,12 +71,10 @@ export const mockSubscriptionDAO = {
   update: jest.fn().mockResolvedValue({}) as any,
   updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }) as any,
   incrementUsageCounter: jest.fn().mockResolvedValue({ matched: true, modified: true }) as any,
-  incrementUsageCounterIfUnder: jest
-    .fn()
-    .mockResolvedValue({
-      planName: 'portfolio',
-      reportGenerationUsage: { countThisPeriod: 1 },
-    }) as any,
+  incrementUsageCounterIfUnder: jest.fn().mockResolvedValue({
+    planName: 'portfolio',
+    reportGenerationUsage: { countThisPeriod: 1 },
+  }) as any,
   setUsageFields: jest.fn().mockResolvedValue(1) as any,
   bulkResetUsageCounters: jest.fn().mockResolvedValue(0) as any,
 };

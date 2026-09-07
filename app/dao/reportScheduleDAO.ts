@@ -48,12 +48,35 @@ export class ReportScheduleDAO extends BaseDAO<IReportScheduleDocument> {
     }
   }
 
-  async deactivateSchedule(cuid: string): Promise<IReportScheduleDocument | null> {
+  async deactivateSchedule(
+    cuid: string,
+    pausedReason?: string
+  ): Promise<IReportScheduleDocument | null> {
     try {
-      return await this.update({ cuid } as any, { $set: { isActive: false } });
+      return await this.update({ cuid } as any, {
+        $set: { isActive: false, ...(pausedReason && { pausedReason }) },
+      });
     } catch (error: any) {
       this.log.error({ error, cuid }, 'Error deactivating report schedule');
       throw this.throwErrorHandler(error);
+    }
+  }
+
+  async incrementUnviewedCount(cuid: string): Promise<void> {
+    try {
+      await this.update({ cuid, isActive: true } as any, {
+        $inc: { consecutiveUnviewedCount: 1 },
+      });
+    } catch (error: any) {
+      this.log.error({ error, cuid }, 'Error incrementing unviewed count');
+    }
+  }
+
+  async resetUnviewedCount(cuid: string): Promise<void> {
+    try {
+      await this.update({ cuid } as any, { $set: { consecutiveUnviewedCount: 0 } });
+    } catch (error: any) {
+      this.log.error({ error, cuid }, 'Error resetting unviewed count');
     }
   }
 

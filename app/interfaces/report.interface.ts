@@ -59,6 +59,21 @@ export interface IReportDocument extends Document {
   cuid: string;
 }
 
+export interface IReportScheduleDocument extends Document {
+  consecutiveUnviewedCount: number;
+  frequency: ScheduleFrequency;
+  createdBy: Types.ObjectId;
+  emailRecipients: string[];
+  sections: ReportSection[];
+  pausedReason?: string;
+  propertyId: string;
+  isActive: boolean;
+  createdAt: Date;
+  nextRunAt: Date;
+  updatedAt: Date;
+  cuid: string;
+}
+
 export interface IReportStatusResponse {
   sections: ReportSection[];
   failedReason?: string;
@@ -72,19 +87,6 @@ export interface IReportStatusResponse {
   createdAt: Date;
   startDate: Date;
   endDate: Date;
-}
-
-export interface IReportScheduleDocument extends Document {
-  frequency: ScheduleFrequency;
-  createdBy: Types.ObjectId;
-  emailRecipients: string[];
-  sections: ReportSection[];
-  propertyId: string;
-  isActive: boolean;
-  createdAt: Date;
-  nextRunAt: Date;
-  updatedAt: Date;
-  cuid: string;
 }
 
 export interface IReportJobData {

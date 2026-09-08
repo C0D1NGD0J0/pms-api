@@ -8,7 +8,9 @@ import {
 } from '@interfaces/report.interface';
 
 import {
+  mockSubscriptionPlanConfig,
   mockReportScheduleDAO,
+  mockSubscriptionDAO,
   createReportService,
   mockQueueFactory,
   mockReportDAO,
@@ -256,6 +258,192 @@ describe('ReportService — Schedule Management', () => {
 
       expect(mockReportDAO.createReport).not.toHaveBeenCalled();
       expect(mockQueueFactory.getQueue).not.toHaveBeenCalled();
+    });
+
+    // ─── Guard: Orphan cleanup ────────────────────────────────────
+
+    it('should deactivate schedule when subscription is missing', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(),
+        cuid: 'ORPHAN_CLIENT',
+        createdBy: new Types.ObjectId(),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 0,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockSubscriptionDAO.findFirst.mockResolvedValueOnce(null);
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportScheduleDAO.deactivateSchedule).toHaveBeenCalledWith(
+        'ORPHAN_CLIENT',
+        'orphaned'
+      );
+      expect(mockReportDAO.createReport).not.toHaveBeenCalled();
+    });
+
+    it('should deactivate schedule when subscription is inactive', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(),
+        cuid: 'INACTIVE_CLIENT',
+        createdBy: new Types.ObjectId(),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 0,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockSubscriptionDAO.findFirst.mockResolvedValueOnce({
+        planName: 'portfolio',
+        status: 'inactive',
+      });
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportScheduleDAO.deactivateSchedule).toHaveBeenCalledWith(
+        'INACTIVE_CLIENT',
+        'orphaned'
+      );
+      expect(mockReportDAO.createReport).not.toHaveBeenCalled();
+    });
+
+    // ─── Guard: Feature check ─────────────────────────────────────
+
+    it('should deactivate schedule when plan lacks reportingAnalytics', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(),
+        cuid: 'DOWNGRADED_CLIENT',
+        createdBy: new Types.ObjectId(),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 0,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockSubscriptionDAO.findFirst.mockResolvedValueOnce({
+        planName: 'essential',
+        status: 'active',
+      });
+      mockSubscriptionPlanConfig.hasFeature.mockReturnValueOnce(false);
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportScheduleDAO.deactivateSchedule).toHaveBeenCalledWith(
+        'DOWNGRADED_CLIENT',
+        'plan_downgraded'
+      );
+      expect(mockReportDAO.createReport).not.toHaveBeenCalled();
+    });
+
+    // ─── Guard: Quota ─────────────────────────────────────────────
+
+    it('should skip when monthly quota is reached', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        createdBy: new Types.ObjectId(),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 0,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockSubscriptionDAO.incrementUsageCounterIfUnder.mockResolvedValueOnce(null);
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportDAO.createReport).not.toHaveBeenCalled();
+      // Should NOT deactivate — quota resets next billing cycle
+      expect(mockReportScheduleDAO.deactivateSchedule).not.toHaveBeenCalled();
+    });
+
+    // ─── Guard: Unviewed ──────────────────────────────────────────
+
+    it('should pause schedule after 3 consecutive unviewed reports', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(),
+        cuid: 'STALE_CLIENT',
+        createdBy: new Types.ObjectId(),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 3,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportScheduleDAO.deactivateSchedule).toHaveBeenCalledWith(
+        'STALE_CLIENT',
+        'unviewed_reports'
+      );
+      expect(mockReportDAO.createReport).not.toHaveBeenCalled();
+    });
+
+    it('should increment unviewed count after enqueuing scheduled report', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(SCHEDULE_ID),
+        cuid: CUID,
+        createdBy: new Types.ObjectId(USER_ID),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 1,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockReportDAO.createReport.mockResolvedValue({ _id: new Types.ObjectId() });
+      mockQueueFactory.getQueue.mockReturnValue({
+        addReportJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      });
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportScheduleDAO.incrementUnviewedCount).toHaveBeenCalledWith(CUID);
+    });
+
+    it('should allow schedule with unviewed count under threshold', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(SCHEDULE_ID),
+        cuid: CUID,
+        createdBy: new Types.ObjectId(USER_ID),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: [],
+        isActive: true,
+        consecutiveUnviewedCount: 2,
+        nextRunAt: new Date(),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockReportDAO.createReport.mockResolvedValue({ _id: new Types.ObjectId() });
+      mockQueueFactory.getQueue.mockReturnValue({
+        addReportJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
+      });
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      expect(mockReportDAO.createReport).toHaveBeenCalledTimes(1);
+      expect(mockReportScheduleDAO.deactivateSchedule).not.toHaveBeenCalled();
     });
   });
 });

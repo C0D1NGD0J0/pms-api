@@ -492,6 +492,7 @@ export class ReportService implements ICronProvider {
         ...currentData,
         trends,
         period,
+        sections,
       });
       if (aiResult.ok) {
         aiSummary = aiResult.summary;
@@ -577,10 +578,23 @@ export class ReportService implements ICronProvider {
       const presignedUrl = await this.s3Service.getSignedUrl(uploadResult.key);
       const expiresAt = new Date(Date.now() + 3600 * 1000);
 
-      // Email delivery
-      if (emailRecipients.length) {
+      // For scheduled reports, auto-include the creator's email
+      const allRecipients = [...emailRecipients];
+      const report = await this.reportDAO.findById(reportId);
+      if (report?.scheduledBy) {
+        try {
+          const creator = await this.userDAO.findById(userId);
+          if (creator?.email && !allRecipients.includes(creator.email)) {
+            allRecipients.push(creator.email);
+          }
+        } catch (err) {
+          this.log.warn({ err, userId, reportId }, 'Failed to look up schedule creator email');
+        }
+      }
+
+      if (allRecipients.length) {
         const periodLabel = this._getPeriodLabel(period, startDate, endDate);
-        for (const recipient of emailRecipients) {
+        for (const recipient of allRecipients) {
           try {
             this.emailQueue.addToEmailQueue(MailType.REPORT_READY, {
               emailType: MailType.REPORT_READY,
@@ -599,8 +613,8 @@ export class ReportService implements ICronProvider {
       await this.sseService.sendToUser(
         userId,
         cuid,
-        { reportId, presignedUrl, expiresAt, filename },
-        'report:ready'
+        { resource: 'report', action: 'ready', reportId, presignedUrl, expiresAt, filename },
+        'resource-event'
       );
 
       this.log.info({ reportId, cuid }, 'Report generation completed');
@@ -655,12 +669,16 @@ export class ReportService implements ICronProvider {
           continue;
         }
 
-        // ── Guard 3: Monthly quota ──
+        // ── Guard 3: Atomic quota check + increment ──
         const reportLimits = this.subscriptionPlanConfig.getReportLimits(pName);
-        const usedCount = sub.reportGenerationUsage?.countThisPeriod ?? 0;
-        if (usedCount >= reportLimits.maxReportsPerMonth) {
+        const updatedSub = await this.subscriptionDAO.incrementUsageCounterIfUnder(
+          schedule.cuid,
+          'reportGenerationUsage.countThisPeriod',
+          reportLimits.maxReportsPerMonth
+        );
+        if (!updatedSub) {
           this.log.info(
-            { cuid: schedule.cuid, usedCount, limit: reportLimits.maxReportsPerMonth },
+            { cuid: schedule.cuid, limit: reportLimits.maxReportsPerMonth },
             'Scheduled report skipped — monthly quota reached'
           );
           continue;
@@ -688,25 +706,6 @@ export class ReportService implements ICronProvider {
           propertyId: schedule.propertyId,
           scheduledBy: schedule._id,
         });
-
-        // Track usage on subscription
-        try {
-          const { matched } = await this.subscriptionDAO.incrementUsageCounter(
-            schedule.cuid,
-            'reportGenerationUsage.countThisPeriod'
-          );
-          if (!matched) {
-            this.log.warn(
-              { cuid: schedule.cuid },
-              'Scheduled report usage increment matched no subscription'
-            );
-          }
-        } catch (err) {
-          this.log.error(
-            { err, cuid: schedule.cuid },
-            'Failed to increment scheduled report usage'
-          );
-        }
 
         const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
         await reportQueue.addReportJob({

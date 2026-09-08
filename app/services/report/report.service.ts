@@ -330,6 +330,13 @@ export class ReportService implements ICronProvider {
       });
       response.expiresAt = new Date(Date.now() + 3600 * 1000);
       response.filename = report.file.filename;
+
+      // Reset unviewed counter when a scheduled report is viewed by anyone
+      if (report.scheduledBy) {
+        this.reportScheduleDAO
+          .resetUnviewedCount(cuid)
+          .catch((err) => this.log.warn({ err, cuid }, 'Failed to reset unviewed count'));
+      }
     }
 
     return { success: true, data: response };
@@ -485,6 +492,7 @@ export class ReportService implements ICronProvider {
         ...currentData,
         trends,
         period,
+        sections,
       });
       if (aiResult.ok) {
         aiSummary = aiResult.summary;
@@ -570,10 +578,23 @@ export class ReportService implements ICronProvider {
       const presignedUrl = await this.s3Service.getSignedUrl(uploadResult.key);
       const expiresAt = new Date(Date.now() + 3600 * 1000);
 
-      // Email delivery
-      if (emailRecipients.length) {
+      // For scheduled reports, auto-include the creator's email
+      const allRecipients = [...emailRecipients];
+      const report = await this.reportDAO.findById(reportId);
+      if (report?.scheduledBy) {
+        try {
+          const creator = await this.userDAO.findById(userId);
+          if (creator?.email && !allRecipients.includes(creator.email)) {
+            allRecipients.push(creator.email);
+          }
+        } catch (err) {
+          this.log.warn({ err, userId, reportId }, 'Failed to look up schedule creator email');
+        }
+      }
+
+      if (allRecipients.length) {
         const periodLabel = this._getPeriodLabel(period, startDate, endDate);
-        for (const recipient of emailRecipients) {
+        for (const recipient of allRecipients) {
           try {
             this.emailQueue.addToEmailQueue(MailType.REPORT_READY, {
               emailType: MailType.REPORT_READY,
@@ -608,7 +629,7 @@ export class ReportService implements ICronProvider {
 
   // ─── Cron handler ─────────────────────────────────────────────────
 
-  private async processScheduledReports(): Promise<void> {
+  async processScheduledReports(): Promise<void> {
     const now = new Date();
     const dueSchedules = await this.reportScheduleDAO.getDueSchedules(now);
 
@@ -626,14 +647,49 @@ export class ReportService implements ICronProvider {
 
         const { startDate, endDate, prevStartDate, prevEndDate } = this._resolveDateRange(period);
 
-        // Check monthly quota for scheduled reports too
+        // ── Guard 1: Orphan check — subscription must exist and be active ──
         const sub = await this.subscriptionDAO.findFirst({ cuid: schedule.cuid });
-        const pName = (sub?.planName ?? 'essential') as PlanName;
-        const reportLimits = this.subscriptionPlanConfig.getReportLimits(pName);
-        const usedCount = sub?.reportGenerationUsage?.countThisPeriod ?? 0;
-        if (usedCount >= reportLimits.maxReportsPerMonth) {
+        if (!sub || !['past_due', 'active'].includes(sub.status)) {
+          this.log.warn(
+            { cuid: schedule.cuid, status: sub?.status },
+            'Deactivating orphaned report schedule — no active subscription'
+          );
+          await this.reportScheduleDAO.deactivateSchedule(schedule.cuid, 'orphaned');
+          continue;
+        }
+
+        // ── Guard 2: Feature check — plan must still include reporting ──
+        const pName = (sub.planName ?? 'essential') as PlanName;
+        if (!this.subscriptionPlanConfig.hasFeature(pName, 'reportingAnalytics')) {
           this.log.info(
-            { cuid: schedule.cuid, usedCount, limit: reportLimits.maxReportsPerMonth },
+            { cuid: schedule.cuid, plan: pName },
+            'Deactivating report schedule — plan no longer includes reporting'
+          );
+          await this.reportScheduleDAO.deactivateSchedule(schedule.cuid, 'plan_downgraded');
+          continue;
+        }
+
+        // ── Guard 3: Consecutive unviewed reports — auto-pause stale schedules ──
+        // (Must run BEFORE quota increment to avoid consuming a quota slot for a paused schedule)
+        if (schedule.consecutiveUnviewedCount >= 3) {
+          this.log.info(
+            { cuid: schedule.cuid, unviewedCount: schedule.consecutiveUnviewedCount },
+            'Pausing report schedule — 3 consecutive reports went unviewed'
+          );
+          await this.reportScheduleDAO.deactivateSchedule(schedule.cuid, 'unviewed_reports');
+          continue;
+        }
+
+        // ── Guard 4: Atomic quota check + increment ──
+        const reportLimits = this.subscriptionPlanConfig.getReportLimits(pName);
+        const updatedSub = await this.subscriptionDAO.incrementUsageCounterIfUnder(
+          schedule.cuid,
+          'reportGenerationUsage.countThisPeriod',
+          reportLimits.maxReportsPerMonth
+        );
+        if (!updatedSub) {
+          this.log.info(
+            { cuid: schedule.cuid, limit: reportLimits.maxReportsPerMonth },
             'Scheduled report skipped — monthly quota reached'
           );
           continue;
@@ -652,25 +708,6 @@ export class ReportService implements ICronProvider {
           scheduledBy: schedule._id,
         });
 
-        // Track usage on subscription
-        try {
-          const { matched } = await this.subscriptionDAO.incrementUsageCounter(
-            schedule.cuid,
-            'reportGenerationUsage.countThisPeriod'
-          );
-          if (!matched) {
-            this.log.warn(
-              { cuid: schedule.cuid },
-              'Scheduled report usage increment matched no subscription'
-            );
-          }
-        } catch (err) {
-          this.log.error(
-            { err, cuid: schedule.cuid },
-            'Failed to increment scheduled report usage'
-          );
-        }
-
         const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
         await reportQueue.addReportJob({
           reportId: report._id.toString(),
@@ -688,6 +725,9 @@ export class ReportService implements ICronProvider {
 
         const nextRunAt = this._computeNextRunAt(schedule.frequency);
         await this.reportScheduleDAO.advanceNextRunAt(schedule._id.toString(), nextRunAt);
+
+        // Track unviewed — will be reset when someone views the report
+        await this.reportScheduleDAO.incrementUnviewedCount(schedule.cuid);
 
         this.log.info(
           { cuid: schedule.cuid, frequency: schedule.frequency },

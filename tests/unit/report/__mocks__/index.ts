@@ -14,6 +14,8 @@ export const mockReportScheduleDAO = {
   deactivateSchedule: jest.fn() as any,
   getDueSchedules: jest.fn() as any,
   advanceNextRunAt: jest.fn() as any,
+  incrementUnviewedCount: jest.fn().mockResolvedValue(undefined) as any,
+  resetUnviewedCount: jest.fn().mockResolvedValue(undefined) as any,
 };
 
 export const mockReportQueue = {
@@ -67,7 +69,7 @@ export const mockReportAnalysisAIService = {
   analyzeReport: jest.fn().mockResolvedValue({ ok: false, reason: 'feature_disabled' }) as any,
 };
 export const mockSubscriptionDAO = {
-  findFirst: jest.fn().mockResolvedValue({ planName: 'portfolio' }) as any,
+  findFirst: jest.fn().mockResolvedValue({ planName: 'portfolio', status: 'active' }) as any,
   update: jest.fn().mockResolvedValue({}) as any,
   updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }) as any,
   incrementUsageCounter: jest.fn().mockResolvedValue({ matched: true, modified: true }) as any,

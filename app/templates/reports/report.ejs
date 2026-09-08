@@ -267,7 +267,8 @@
   };
 
   // Only render trend badge when there's actual comparison data
-  const hasTrend = (trendObj) => trendObj && trendObj.deltaPercent !== null && trendObj.deltaPercent !== undefined;
+  // Only show trend badge when there's a meaningful non-zero change
+  const hasTrend = (trendObj) => trendObj && trendObj.deltaPercent !== null && trendObj.deltaPercent !== undefined && trendObj.deltaPercent !== 0;
 
   const formatDate = (d) => {
     if (!d) return '—';
@@ -553,6 +554,7 @@
   %>
   <% for (const [groupKey, group] of Object.entries(paymentGroups)) { %>
   <% if (group.items.length > 0) { %>
+  <div style="page-break-inside: avoid;">
   <h3><%= group.label %></h3>
   <table>
     <thead><tr><th>Tenant</th><th>Type</th><th class="text-right">Amount</th><th>Due Date</th><th>Status</th></tr></thead>
@@ -568,6 +570,7 @@
       <% } %>
     </tbody>
   </table>
+  </div>
   <% } %>
   <% } %>
   <% } %>

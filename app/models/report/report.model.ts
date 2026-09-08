@@ -111,6 +111,8 @@ const reportScheduleSchema = new Schema<IReportScheduleDocument>(
     propertyId: { type: String },
     nextRunAt: { type: Date, required: true },
     isActive: { type: Boolean, default: true },
+    consecutiveUnviewedCount: { type: Number, default: 0 },
+    pausedReason: { type: String },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

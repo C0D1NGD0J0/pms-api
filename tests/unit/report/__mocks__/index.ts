@@ -14,8 +14,8 @@ export const mockReportScheduleDAO = {
   deactivateSchedule: jest.fn() as any,
   getDueSchedules: jest.fn() as any,
   advanceNextRunAt: jest.fn() as any,
-  incrementUnviewedCount: jest.fn() as any,
-  resetUnviewedCount: jest.fn() as any,
+  incrementUnviewedCount: jest.fn().mockResolvedValue(undefined) as any,
+  resetUnviewedCount: jest.fn().mockResolvedValue(undefined) as any,
 };
 
 export const mockReportQueue = {

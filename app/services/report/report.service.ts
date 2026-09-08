@@ -613,8 +613,8 @@ export class ReportService implements ICronProvider {
       await this.sseService.sendToUser(
         userId,
         cuid,
-        { resource: 'report', action: 'ready', reportId, presignedUrl, expiresAt, filename },
-        'resource-event'
+        { reportId, presignedUrl, expiresAt, filename },
+        'report:ready'
       );
 
       this.log.info({ reportId, cuid }, 'Report generation completed');
@@ -669,7 +669,18 @@ export class ReportService implements ICronProvider {
           continue;
         }
 
-        // ── Guard 3: Atomic quota check + increment ──
+        // ── Guard 3: Consecutive unviewed reports — auto-pause stale schedules ──
+        // (Must run BEFORE quota increment to avoid consuming a quota slot for a paused schedule)
+        if (schedule.consecutiveUnviewedCount >= 3) {
+          this.log.info(
+            { cuid: schedule.cuid, unviewedCount: schedule.consecutiveUnviewedCount },
+            'Pausing report schedule — 3 consecutive reports went unviewed'
+          );
+          await this.reportScheduleDAO.deactivateSchedule(schedule.cuid, 'unviewed_reports');
+          continue;
+        }
+
+        // ── Guard 4: Atomic quota check + increment ──
         const reportLimits = this.subscriptionPlanConfig.getReportLimits(pName);
         const updatedSub = await this.subscriptionDAO.incrementUsageCounterIfUnder(
           schedule.cuid,
@@ -681,16 +692,6 @@ export class ReportService implements ICronProvider {
             { cuid: schedule.cuid, limit: reportLimits.maxReportsPerMonth },
             'Scheduled report skipped — monthly quota reached'
           );
-          continue;
-        }
-
-        // ── Guard 4: Consecutive unviewed reports — auto-pause stale schedules ──
-        if (schedule.consecutiveUnviewedCount >= 3) {
-          this.log.info(
-            { cuid: schedule.cuid, unviewedCount: schedule.consecutiveUnviewedCount },
-            'Pausing report schedule — 3 consecutive reports went unviewed'
-          );
-          await this.reportScheduleDAO.deactivateSchedule(schedule.cuid, 'unviewed_reports');
           continue;
         }
 

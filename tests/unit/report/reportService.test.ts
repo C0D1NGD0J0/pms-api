@@ -3,6 +3,7 @@ import { ReportService } from '@services/report/report.service';
 import { REPORT_SECTIONS, ReportPeriod, ReportStatus } from '@interfaces/report.interface';
 
 import {
+  mockReportScheduleDAO,
   createReportService,
   mockQueueFactory,
   mockReportDAO,
@@ -203,6 +204,48 @@ describe('ReportService', () => {
       expect(mockS3Service.getSignedUrl).toHaveBeenCalledWith('reports/test/report.pdf', {
         disposition: 'inline',
       });
+    });
+
+    it('should reset unviewed count when viewing a scheduled report', async () => {
+      const scheduleId = new Types.ObjectId();
+      mockReportDAO.findById.mockResolvedValue({
+        _id: new Types.ObjectId(REPORT_ID),
+        cuid: CUID,
+        status: ReportStatus.COMPLETED,
+        period: ReportPeriod.LAST_30_DAYS,
+        startDate: new Date(),
+        endDate: new Date(),
+        sections: [...REPORT_SECTIONS],
+        createdAt: new Date(),
+        completedAt: new Date(),
+        scheduledBy: scheduleId,
+        file: { key: 'reports/test/report.pdf', filename: 'report.pdf' },
+      });
+      mockS3Service.getSignedUrl.mockResolvedValue('https://s3.example.com/signed-url');
+
+      await service.getReportStatus(CUID, REPORT_ID);
+
+      expect(mockReportScheduleDAO.resetUnviewedCount).toHaveBeenCalledWith(CUID);
+    });
+
+    it('should NOT reset unviewed count for on-demand reports', async () => {
+      mockReportDAO.findById.mockResolvedValue({
+        _id: new Types.ObjectId(REPORT_ID),
+        cuid: CUID,
+        status: ReportStatus.COMPLETED,
+        period: ReportPeriod.LAST_30_DAYS,
+        startDate: new Date(),
+        endDate: new Date(),
+        sections: [...REPORT_SECTIONS],
+        createdAt: new Date(),
+        completedAt: new Date(),
+        file: { key: 'reports/test/report.pdf', filename: 'report.pdf' },
+      });
+      mockS3Service.getSignedUrl.mockResolvedValue('https://s3.example.com/signed-url');
+
+      await service.getReportStatus(CUID, REPORT_ID);
+
+      expect(mockReportScheduleDAO.resetUnviewedCount).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundError if report does not exist', async () => {

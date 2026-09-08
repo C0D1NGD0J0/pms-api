@@ -12,6 +12,7 @@ import {
   mockReportScheduleDAO,
   mockSubscriptionDAO,
   createReportService,
+  mockEmitterService,
   mockQueueFactory,
   mockReportDAO,
 } from './__mocks__';
@@ -443,6 +444,55 @@ describe('ReportService — Schedule Management', () => {
       await cronJobs[0].handler();
 
       expect(mockReportDAO.createReport).toHaveBeenCalledTimes(1);
+      expect(mockReportScheduleDAO.deactivateSchedule).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── PLAN_DOWNGRADED event listener ─────────────────────────────
+
+  describe('PLAN_DOWNGRADED event handler', () => {
+    it('should register listener for PLAN_DOWNGRADED on construction', () => {
+      expect(mockEmitterService.on).toHaveBeenCalledWith('plan:downgraded', expect.any(Function));
+    });
+
+    it('should deactivate schedule when reportingAnalytics is disabled', async () => {
+      // Extract the registered handler
+      const onCall = mockEmitterService.on.mock.calls.find(
+        (call: any[]) => call[0] === 'plan:downgraded'
+      );
+      expect(onCall).toBeDefined();
+      const handler = onCall![1];
+
+      mockReportScheduleDAO.deactivateSchedule.mockResolvedValue({});
+
+      await handler({
+        cuid: CUID,
+        fromPlan: 'portfolio',
+        toPlan: 'growth',
+        disabledFeatures: ['reportingAnalytics'],
+      });
+
+      // Wait for the promise chain to resolve
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(mockReportScheduleDAO.deactivateSchedule).toHaveBeenCalledWith(CUID);
+    });
+
+    it('should NOT deactivate schedule for unrelated feature downgrades', async () => {
+      const onCall = mockEmitterService.on.mock.calls.find(
+        (call: any[]) => call[0] === 'plan:downgraded'
+      );
+      const handler = onCall![1];
+
+      handler({
+        cuid: CUID,
+        fromPlan: 'portfolio',
+        toPlan: 'growth',
+        disabledFeatures: ['smsService'],
+      });
+
+      await new Promise((r) => setTimeout(r, 10));
+
       expect(mockReportScheduleDAO.deactivateSchedule).not.toHaveBeenCalled();
     });
   });

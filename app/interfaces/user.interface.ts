@@ -13,12 +13,6 @@ import {
   ITenantInfo,
 } from './profile.interface';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
-
 export enum IUserRelationshipsEnum {
   parents = 'parents',
   sibling = 'sibling',
@@ -27,19 +21,13 @@ export enum IUserRelationshipsEnum {
   other = 'other',
 }
 
-/**
- * Current User Interface
- * Authenticated user session data built by `profileDAO.generateCurrentUserInfo()`.
- * Cached in Redis; stripped of internal-only fields before sending to the frontend.
- * See `app-documentation/currentUser.md` for full field reference.
- */
 export interface ICurrentUser {
   /**
    * Subscription details — only populated for PM roles (super-admin, admin, manager, staff).
    * Contains plan info, raw entitlements, and paymentFlow (billing state).
    *
-   * Note: `entitlements` here are the raw plan flags. For feature gating, use
-   * `clientEntitlements` instead — it's available to all roles.
+   * Note: `entitlements` here are the raw plan flags from `platform.config.json`.
+   * For feature gating, the frontend uses the dedicated entitlements endpoint.
    */
   subscription?: {
     plan: {
@@ -47,7 +35,7 @@ export interface ICurrentUser {
       status: ISubscriptionStatus;
       billingInterval: 'monthly' | 'annual';
     };
-    /** Raw plan feature flags — see `clientEntitlements` for the resolved version */
+    /** Plan feature flags from platform.config.json — overlaid at login by auth.service */
     entitlements: ISubscriptionEntitlements['entitlements'];
     /**
      * Computed billing state (not stored in DB — derived by aggregation pipeline).
@@ -127,18 +115,6 @@ export interface ICurrentUser {
     timezone?: string;
   };
 
-  /**
-   * Resolved feature flags from the client's subscription — available to ALL roles.
-   *
-   * This is the primary field for feature gating on the frontend. Tenants and vendors
-   * use this instead of `subscription.entitlements` (which is PM-only and contains
-   * billing details they shouldn't see).
-   *
-   * Populated from `subscription.entitlements` with safe defaults (false) when no
-   * subscription exists.
-   */
-  clientEntitlements: ISubscriptionEntitlements['entitlements'];
-
   /** All client connections for this user (for account switching) */
   clients: IClientUserConnections[];
   fullname: string | null;
@@ -155,10 +131,6 @@ export interface ICurrentUser {
   uid: string;
 }
 
-/**
- * Vendor Detail Information
- * Complete vendor profile and metrics
- */
 export interface IVendorDetailInfo {
   address?: {
     fullAddress: string;
@@ -205,11 +177,6 @@ export interface IVendorDetailInfo {
   vuid: string;
 }
 
-/**
- * Client Tenant Details Interface
- * Comprehensive tenant details for property management view
- * Used by getTenantManagementDetails endpoint
- */
 export interface IClientTenantDetails {
   profile: Pick<
     IBaseUserProfile,
@@ -249,23 +216,13 @@ export interface IClientTenantDetails {
   roles: string[];
 }
 
-/**
- * Employee Detail Information
- * Complete employee profile and metrics
- */
 export interface IEmployeeDetailInfo {
-  performance: {
-    avgOccupancyRate: string;
-    avgResponseTime: string;
-    taskCompletionRate: string;
-    tenantSatisfaction: string;
-  };
   stats: {
     propertiesManaged: number;
     tasksCompleted: number;
     unitsManaged: number;
     activeTasks: number;
-  } & IBaseStats;
+  };
   emergencyContact: {
     relationship: string;
     phone: string;
@@ -287,10 +244,6 @@ export interface IEmployeeDetailInfo {
   tenure: string;
 }
 
-/**
- * Tenant Statistics Interface
- * Comprehensive tenant metrics and distribution
- */
 export interface ITenantStats {
   backgroundCheckDistribution: {
     notRequired: number;
@@ -316,10 +269,6 @@ export interface ITenantStats {
   total: number;
 }
 
-/**
- * User Detail Response Interface
- * Structured response for getClientUserInfo endpoint
- */
 export interface IUserDetailResponse {
   profile: Pick<
     IBaseUserProfile,
@@ -344,16 +293,6 @@ export interface IUserDetailResponse {
   status: UserStatus;
 }
 
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
-
-/**
- * User Document Interface
- * Extends IUser with MongoDB document properties and methods
- */
 export interface IUserDocument extends Document, IUser {
   validatePassword: (pwd1: string) => Promise<boolean>;
   cuids: IClientUserConnections[];
@@ -369,16 +308,6 @@ export interface IUserDocument extends Document, IUser {
   id: string;
 }
 
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Filtered User Interface
- * User data for listing/table views
- */
 export interface FilteredUser
   extends Pick<IUserDocument, 'uid' | 'email' | 'isActive' | 'createdAt'> {
   vendorInfo?: FilteredVendorInfo;
@@ -395,10 +324,6 @@ export interface FilteredUser
   avatar?: string;
 }
 
-/**
- * Filtered User Vendor Info
- * Minimal vendor info for table display
- */
 export interface FilteredUserVendorInfo
   extends Pick<IVendorDetailInfo, 'companyName' | 'businessType'> {
   averageResponseTime?: string;
@@ -414,10 +339,6 @@ export interface FilteredUserVendorInfo
   vuid?: string;
 }
 
-/**
- * Tenant Filter Options
- * Extended filter options specific to tenant queries
- */
 export interface ITenantFilterOptions extends IUserFilterOptions {
   connectionStatus?: 'connected' | 'disconnected' | 'all'; // Filter by connection status
   backgroundCheckStatus?: BackgroundCheckStatus;
@@ -428,9 +349,6 @@ export interface ITenantFilterOptions extends IUserFilterOptions {
   unitType?: string;
 }
 
-/**
- * Vendor Team Member Response Interface
- */
 export interface IVendorTeamMember
   extends Pick<
     IBaseUserProfile,
@@ -443,10 +361,6 @@ export interface IVendorTeamMember
   sub: string; // MongoDB _id as hex string — used to filter assignedTechnician.userId
 }
 
-/**
- * Filtered User Table Data
- * Lightweight user data for table display only
- */
 export interface FilteredUserTableData extends Pick<IUser, 'email'> {
   employeeInfo?: FilteredUserEmployeeInfo;
   tenantInfo?: FilteredUserTenantInfo;
@@ -459,10 +373,6 @@ export interface FilteredUserTableData extends Pick<IUser, 'email'> {
   uid: string;
 }
 
-/**
- * Signup Data Type
- * User registration form data
- */
 export type ISignupData = {
   companyProfile?: ICompanyProfile;
   accountType: ISignupAccountType;
@@ -478,10 +388,6 @@ export type ISignupData = {
   lang: string;
 };
 
-/**
- * Identification Type Interface
- * Client identity verification data (Stripe Identity)
- */
 export interface IIdentificationType {
   identityVerification?: {
     sessionId?: string;
@@ -493,10 +399,6 @@ export interface IIdentificationType {
   dataProcessingConsent: boolean;
 }
 
-/**
- * Filtered User Tenant Info
- * Minimal tenant info for table display (lightweight)
- */
 export interface FilteredUserTenantInfo {
   propertyAddress?: string; // Full address of the property
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
@@ -504,16 +406,6 @@ export interface FilteredUserTenantInfo {
   rentStatus?: string; // paid, overdue, pending, etc.
 }
 
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * Main User Interface
- * Core authentication and account data
- */
 export interface IUser {
   passwordResetTokenExpiresAt: Date | number | null;
   activationTokenExpiresAt: Date | number | null;
@@ -524,10 +416,6 @@ export interface IUser {
   email: string;
 }
 
-/**
- * Base User Profile Interface
- * Core user profile fields used across different contexts
- */
 export interface IBaseUserProfile {
   phoneNumber: string;
   displayName: string;
@@ -542,10 +430,6 @@ export interface IBaseUserProfile {
   id: string;
 }
 
-/**
- * Signup Account Type Interface
- * Extended account type for signup requests (includes plan selection)
- */
 export interface ISignupAccountType extends IAccountType {
   billingInterval: 'monthly' | 'annual';
   totalMonthlyPrice?: number;
@@ -554,10 +438,6 @@ export interface ISignupAccountType extends IAccountType {
   planId: string;
 }
 
-/**
- * User Property Interface
- * Minimal property info for user context
- */
 export interface IUserProperty {
   propertyId: string;
   occupancy: string;
@@ -568,10 +448,6 @@ export interface IUserProperty {
   pid: string;
 }
 
-/**
- * Base User Filter Options
- * Common filtering options for user queries
- */
 export interface IUserFilterOptions {
   role?: IUserRoleType | IUserRoleType[];
   status?: 'active' | 'inactive';
@@ -579,16 +455,6 @@ export interface IUserFilterOptions {
   search?: string;
 }
 
-/**
- * ============================================================================
- * CURRENT USER & SESSION INTERFACES
- * ============================================================================
- */
-
-/**
- * Extended Pagination Interface
- * Alternative pagination structure with hasNext/hasPrev
- */
 export interface IExtendedPagination {
   totalPages: number;
   hasNext: boolean;
@@ -598,26 +464,12 @@ export interface IExtendedPagination {
   page: number;
 }
 
-/**
- * ============================================================================
- * DETAIL INFO INTERFACES (Role-Specific)
- * ============================================================================
- */
-
-/**
- * User Statistics Interface
- * User statistics for filtered users response
- */
 export interface IUserStats {
   departmentDistribution: StatsDistribution[];
   roleDistribution: StatsDistribution[];
   totalFilteredUsers: number;
 }
 
-/**
- * Base Pagination Interface
- * Standard pagination structure
- */
 export interface IBasePagination {
   hasMoreResource: boolean;
   currentPage: number;
@@ -626,217 +478,87 @@ export interface IBasePagination {
   total: number;
 }
 
-/**
- * Extended Vendor Info Interface
- * Includes additional fields from getUsersByRole
- */
 export interface FilteredVendorInfo extends IVendorInfo {
   isPrimaryVendor?: boolean;
   isLinkedAccount: boolean;
   linkedVendorUid?: string;
 }
 
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
-
-/**
- * Linked Vendor User Info
- */
 export interface ILinkedVendorUser
   extends Pick<IBaseUserProfile, 'displayName' | 'isActive' | 'email' | 'uid'> {
   phoneNumber?: string;
 }
 
-/**
- * Filtered User Employee Info
- * Minimal employee info for table display
- */
 export interface FilteredUserEmployeeInfo {
   startDate?: Date | string;
   department?: string;
   jobTitle?: string;
 }
 
-/**
- * Vendor Team Members Response with Pagination
- */
 export interface IVendorTeamMembersResponse {
   pagination: IBasePagination;
   items: IVendorTeamMember[];
 }
 
-/**
- * ============================================================================
- * FILTERED/LIGHTWEIGHT INTERFACES
- * ============================================================================
- */
-
-/**
- * Account Type Interface
- * Basic account categorization (plan details stored in Subscription)
- */
 export interface IAccountType {
   category: 'business' | 'individual';
   isEnterpriseAccount: boolean;
 }
 
-/**
- * Contact Info Type Interface
- * Generic contact information
- */
 export interface IContactInfoType {
   contactPerson: string;
   phoneNumber?: string;
   email: string;
 }
 
-/**
- * Refresh Token Document Interface
- */
 export interface IRefreshTokenDocument extends Document {
   user: Types.ObjectId;
   token: string;
 }
 
-/**
- * Base Contact Info Interface
- * Standard contact information structure
- */
 export interface IBaseContactInfo {
   phoneNumber: string;
   email: string;
   name: string;
 }
 
-/**
- * Stats Distribution Interface
- * Generic distribution data for charts
- */
 export interface StatsDistribution {
   percentage: number;
   value: number;
   name: string;
 }
 
-/**
- * Paginated Result Interface
- * Generic paginated response wrapper
- */
 export interface IPaginatedResult<T> {
   pagination: IExtendedPagination;
   items: T;
 }
 
-/**
- * Background Check Status Type
- * Used for tenant screening
- */
 export type BackgroundCheckStatus = 'pending' | 'approved' | 'failed' | 'not_required';
 
-/**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
- * User Populated Document Type
- * User document with populated profile
- */
 export type IUserPopulatedDocument = {
   profile: IProfileDocument;
 } & IUserDocument;
 
-/**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
- * User Consent Record
- * Captured when the user completes the consent form on first activation
- */
 export interface IUserConsent {
   acceptedOn: Date | null;
   acceptedBy: string;
 }
 
-/**
- * Lease Status Type
- * Current lease state for tenants
- */
 export type LeaseStatusType = 'active' | 'expired' | 'pending' | 'terminated';
 
-/**
- * ============================================================================
- * STATISTICS INTERFACES
- * ============================================================================
- */
-
-/**
- * Base Stats Interface
- * Common stats pattern for employees and vendors
- */
 export interface IBaseStats {
   onTimeRate: string;
   rating: string;
 }
 
-/**
- * Rent Status Type
- * Current payment status for tenants
- */
 export type RentStatus = 'current' | 'late' | 'overdue' | 'no_lease';
 
-/**
- * Tenant Detail Information
- * Extends ITenantInfo from profile interface
- */
 export interface ITenantDetailInfo extends ITenantInfo {}
 
-/**
- * ============================================================================
- * PAGINATION INTERFACES
- * ============================================================================
- */
-
-/**
- * User Type Union
- * The three primary user types in the system
- */
 export type UserType = 'employee' | 'vendor' | 'tenant';
-
-/**
- * ============================================================================
- * UTILITY INTERFACES
- * ============================================================================
- */
 
 export type IRefreshToken = IRefreshTokenDocument;
 
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
-/**
- * User Status Type
- * Active/Inactive status for users
- */
 export type UserStatus = 'Active' | 'Inactive';
 
-/**
- * ============================================================================
- * DEPRECATED/LEGACY TYPE ALIASES
- * ============================================================================
- */
-
-/**
- * Theme Preference Type
- */
 export type ThemePreference = 'light' | 'dark';

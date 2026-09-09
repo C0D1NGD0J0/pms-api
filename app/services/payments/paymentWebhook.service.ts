@@ -92,6 +92,9 @@ interface IStripeDisputeWebhookData {
 }
 
 interface IStripeChargeWebhookData {
+  refunds?: {
+    data?: Array<{ id: string }>;
+  };
   amount_refunded?: number;
 }
 
@@ -292,7 +295,9 @@ export class PaymentWebhookService {
             `Payment of $${(payment.baseAmount / 100).toFixed(2)} received successfully.`,
             SMSMessageType.SYSTEM
           )
-          .catch(() => {});
+          .catch((err: any) => {
+            this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+          });
       }
 
       await this.markMaintenanceChargePaid(
@@ -470,7 +475,9 @@ export class PaymentWebhookService {
             'Your payment could not be processed. Please check your payment method.',
             SMSMessageType.SYSTEM
           )
-          .catch(() => {});
+          .catch((err: any) => {
+            this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+          });
       }
 
       return { success: true, data: undefined, message: 'Payment marked as failed' };
@@ -763,6 +770,7 @@ export class PaymentWebhookService {
       }
 
       const refundAmountInCents = chargeData.amount_refunded || 0;
+      const gatewayRefundId = chargeData.refunds?.data?.[0]?.id;
 
       await this.paymentDAO.update(
         { _id: payment._id, cuid: payment.cuid },
@@ -770,7 +778,9 @@ export class PaymentWebhookService {
           $set: {
             status: PaymentRecordStatus.REFUNDED,
             'refund.refundedAt': dayjs().toDate(),
+            'refund.refundedBy': 'system:stripe-webhook',
             'refund.amount': refundAmountInCents,
+            ...(gatewayRefundId && { 'refund.gatewayRefundId': gatewayRefundId }),
           },
         }
       );

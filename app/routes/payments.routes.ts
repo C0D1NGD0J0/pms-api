@@ -147,8 +147,24 @@ router.post(
 );
 
 router.post(
+  '/:cuid/scan-receipt',
+  basicLimiter({ max: 5, windowMs: 60 * 1000 }),
+  requireNotSuspended,
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
+  requireVerifiedClient,
+  diskUpload(['receipt']),
+  scanFile,
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.scanReceipt(req, res);
+  })
+);
+
+router.post(
   '/:cuid/manual_entry',
   basicLimiter(),
+  requireNotSuspended,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,
@@ -190,6 +206,41 @@ router.post(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.refundPayment(req, res);
+  })
+);
+
+// PM/admin explicitly releases a staged deposit refund (PENDING_REFUND → REFUNDED).
+// Only relevant when client.settings.requireDepositRefundApproval = true.
+router.post(
+  '/:cuid/:pytuid/release-deposit',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    body: PaymentValidations.releaseDeposit,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.releaseDepositRefund(req, res);
+  })
+);
+
+// PM/admin confirms a staff-initiated manual payment entry, clears the review flag.
+router.patch(
+  '/:cuid/:pytuid/review',
+  basicLimiter({ max: 20, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    body: PaymentValidations.reviewPayment,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.reviewPayment(req, res);
   })
 );
 
@@ -332,6 +383,7 @@ router.patch(
   '/:cuid/payout-account/unblock',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requireRole(['root-admin']),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');

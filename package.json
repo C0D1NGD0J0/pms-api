@@ -13,6 +13,7 @@
     "prettier:write": "prettier --write './app/**/*.{ts,json,js}' './tests/**/*.{ts,json,js}'",
     "lint:fix": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}' --fix",
     "lint": "eslint './app/**/*.{ts,js}' './tests/**/*.{ts,js}'",
+    "fix": "npm run prettier:write && npm run lint:fix",
     "prepare": "husky",
     "dev": "npm run killdev && concurrently \"npm run dev:api\" \"npm run dev:worker\"",
     "killdev": "pkill -f 'nodemon.*pms-api' 2>/dev/null; pkill -f 'ts-node/register server\\.ts' 2>/dev/null; pkill -f 'ts-node/register worker_process\\.ts' 2>/dev/null; rm -f .pids/api.pid .pids/worker.pid; true",
@@ -45,7 +46,7 @@
     "@aws-sdk/s3-request-presigner": "3.1022.0",
     "@bull-board/express": "6.7.10",
     "@bull-board/ui": "6.7.10",
-    "@sentry/node": "10.70.0",
+    "@sentry/node": "10.45.0",
     "@socket.io/redis-adapter": "8.3.0",
     "@types/compression": "1.7.5",
     "@types/express-serve-static-core": "5.0.6",
@@ -104,7 +105,7 @@
     "puppeteer": "24.27.0",
     "redis": "4.7.0",
     "resend": "6.9.4",
-    "sanitize-html": "2.17.6",
+    "sanitize-html": "2.14.0",
     "slugify": "1.6.6",
     "socket.io": "4.8.1",
     "stripe": "17.7.0",
@@ -112,7 +113,7 @@
     "twilio": "5.11.2",
     "typescript-transform-paths": "3.5.3",
     "ua-parser-js": "2.0.10",
-    "uuid": "14.0.0",
+    "uuid": "11.1.0",
     "web-push": "3.6.7",
     "zod": "3.25.76"
   },
@@ -173,5 +174,8 @@
     "tsc-alias": "1.8.11",
     "tsconfig-paths": "4.2.0",
     "typescript": "5.8.2"
+  },
+  "redisMemoryServer": {
+    "version": "7.2.7"
   }
 }

@@ -31,10 +31,7 @@ export interface IExpenseService {
   createExpense(
     cuid: string,
     userId: string,
-    data: Omit<
-      IExpense,
-      'expuid' | 'clientId' | 'createdBy' | 'isDeleted' | 'createdAt' | 'updatedAt'
-    >
+    data: Omit<IExpense, 'expuid' | 'cuid' | 'createdBy' | 'createdAt' | 'updatedAt'>
   ): IPromiseReturnedData<IExpenseDocument>;
 
   updateExpense(
@@ -53,14 +50,20 @@ export interface IExpenseService {
 }
 
 export interface IExpense {
+  receipt?: {
+    url: string;
+    filename: string;
+    key: string;
+    uploadedAt: Date;
+    uploadedBy: Types.ObjectId;
+  };
+  notes?: { html: string; text: string };
   paymentMethod: ExpensePaymentMethod;
   propertyId: Types.ObjectId;
   category: ExpenseCategory;
   createdBy: Types.ObjectId;
   unitId?: Types.ObjectId;
   description: string;
-  isDeleted: boolean;
-  clientId: string;
   currency: string;
   deletedAt?: Date;
   vendor?: string;
@@ -68,7 +71,7 @@ export interface IExpense {
   updatedAt: Date;
   expuid: string;
   amount: number;
-  notes?: string;
+  cuid: string;
   date: Date;
 }
 

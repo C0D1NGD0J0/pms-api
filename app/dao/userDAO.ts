@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import crypto from 'crypto';
 import Logger from 'bunyan';
 import { Lease } from '@models/index';
 import { IUserDocument } from '@interfaces/user.interface';
@@ -67,6 +68,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     };
   }
 
+  /** @internal Queries by _id without cuid scope. For service-internal use only — never expose directly to untrusted route params. */
   async getUserById(id: string, opts?: IFindOptions): Promise<IUserDocument | null> {
     try {
       if (!id) {
@@ -115,7 +117,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
   async verifyCredentials(email: string, password: string): Promise<IUserDocument | null> {
     try {
-      const user = await this.getActiveUserByEmail(email);
+      const user = await this.getActiveUserByEmail(email, { select: '+password' });
       if (!user) return null;
 
       const isValid = await user.validatePassword(password);
@@ -164,7 +166,9 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         isActive: false,
       };
 
-      const result = await this.findFirst(query);
+      const result = await this.findFirst(query, {
+        select: '+activationToken +activationTokenExpiresAt',
+      });
       if (!result) return null;
       result.isActive = true;
       result.activationToken = '';
@@ -402,12 +406,25 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
   async resetPassword(token: string, password: string): Promise<IUserDocument | null> {
     try {
-      const user = await this.findFirst({
-        passwordResetToken: token,
-        passwordResetTokenExpiresAt: { $gt: new Date() },
-      });
+      const user = await this.findFirst(
+        {
+          passwordResetToken: token,
+          passwordResetTokenExpiresAt: { $gt: new Date() },
+        },
+        { select: '+password +passwordResetToken +passwordResetTokenExpiresAt' }
+      );
 
-      if (!user) {
+      if (!user || !user.passwordResetToken) {
+        return null;
+      }
+
+      // Constant-time comparison to prevent timing attacks on token verification
+      const storedToken = Buffer.from(user.passwordResetToken, 'utf-8');
+      const providedToken = Buffer.from(token, 'utf-8');
+      if (
+        storedToken.length !== providedToken.length ||
+        !crypto.timingSafeEqual(storedToken, providedToken)
+      ) {
         return null;
       }
 

@@ -635,6 +635,11 @@
           </div>
           <% }); %>
         </div>
+        <p style="margin-top: 15px; font-size: 10pt; font-style: italic; color: #555555; padding: 10px; background: #fff9e6; border: 1px solid #d4af37;">
+          All co-tenants listed in this Agreement shall be jointly and severally liable for all obligations
+          arising under this Agreement, including but not limited to the payment of rent and the repair of
+          damages. Any notice given to one co-tenant shall be deemed notice to all co-tenants.
+        </p>
       </div>
       <% } %>
 
@@ -755,17 +760,7 @@
         <% } %>
       </table>
 
-      <% if (renewalOptions && renewalOptions.autoRenew) { %>
-      <div class="legal-callout">
-        <div class="legal-callout-title">⚠ Automatic Renewal Provision</div>
-        <p style="margin: 0; line-height: 1.8;">
-          This Agreement contains an automatic renewal clause. Unless either Party provides written notice
-          of termination at least <strong><%= renewalOptions.noticePeriodDays %> days</strong> prior to the
-          expiration date, this Agreement shall automatically renew for an additional term of
-          <strong><%= renewalOptions.renewalTermMonths %> months</strong> under the same terms and conditions.
-        </p>
-      </div>
-      <% } %>
+      <!-- Auto-renewal is not applicable to short-term rentals -->
     </div>
 
     <!-- SECTION II: CUSTOM LEGAL TERMS -->
@@ -806,19 +801,19 @@
 
       <div class="subsection-header">2.3 Rental Payment Obligations</div>
       <p class="legal-paragraph">
-        The Tenant covenants and agrees to pay to the Landlord, without demand, offset, or deduction, the sum of
-        <strong><%= rentAmount %></strong> per calendar month as rent for the Premises. Payment shall
-        be made in advance on the <strong><%= rentDueDayOrdinal %></strong> day of each month during the
-        term of this Agreement. All payments shall be made to the Landlord at the address specified above or at
-        such other place as the Landlord may designate in writing.
+        The Tenant covenants and agrees to pay to the Landlord the total sum of
+        <strong><%= rentAmount %></strong> for the entire rental period, except as may be expressly permitted
+        by applicable law. Payment shall be made in full prior to or upon commencement of the rental period
+        unless otherwise agreed in writing. All payments shall be made to the Landlord at the address specified
+        above or at such other place as the Landlord may designate in writing.
       </p>
 
       <% if (lateFee) { %>
       <p class="legal-paragraph">
-        In the event that any rental payment is not received by the Landlord within
+        In the event that any payment is not received by the Landlord within
         <strong><%= lateFee.gracePeriodDays %></strong> days after the due date, the Tenant shall pay a late charge of
-        <strong><%= lateFee.amount %></strong><% if (lateFee.type === 'percentage') { %> of the monthly rent<% } %>.
-        This provision shall not be construed as a waiver of the Tenant's obligation to make timely rental payments.
+        <strong><%= lateFee.amount %></strong><% if (lateFee.type === 'percentage') { %> of the total rental amount<% } %>.
+        This provision shall not be construed as a waiver of the Tenant's obligation to make timely payments.
       </p>
       <% } %>
       <% if (acceptedPaymentMethod) { %>
@@ -829,8 +824,8 @@
 
       <% if (managementFee) { %>
       <p class="legal-paragraph">
-        In addition to the monthly rent, the Tenant shall pay a management fee of
-        <strong><%= managementFee.formatted %></strong> per month. This fee covers property management services
+        In addition to the rental amount, the Tenant shall pay a management fee of
+        <strong><%= managementFee.formatted %></strong>. This fee covers property management services
         provided by the Landlord or their appointed management company.
       </p>
       <% } %>
@@ -840,7 +835,7 @@
         Upon execution of this Agreement, the Tenant has deposited with the Landlord the sum of
         <strong><%= securityDeposit %></strong> as security for the faithful performance and observance
         by the Tenant of the terms, provisions, and conditions of this Agreement. Said deposit shall be returned
-        to the Tenant, without interest, within the time period required by applicable law following termination
+        to the Tenant, together with any interest required by applicable law, within the time period required by applicable law following termination
         of the tenancy, less any lawful deductions for damages beyond normal wear and tear, unpaid rent, or other
         charges due under this Agreement.
       </p>
@@ -887,23 +882,67 @@
 
       <div class="subsection-header">2.9 Right of Entry</div>
       <p class="legal-paragraph">
-        The Landlord and Landlord's agents shall have the right to enter the Premises at all reasonable times for
-        the purpose of examining or inspecting the Premises, making necessary repairs or alterations, or showing
-        the Premises to prospective tenants, purchasers, or lenders. Except in cases of emergency, the Landlord
-        shall provide the Tenant with reasonable advance notice of such entry.
+        The Landlord and Landlord's agents shall have the right to enter the Property at all reasonable times for
+        the purpose of examining or inspecting the Property, making necessary repairs or alterations, or showing
+        the Property to prospective tenants, purchasers, or lenders. Except in cases of emergency, the Landlord
+        shall provide the Tenant with at least 24 hours advance written notice of such entry, or such longer
+        period as required by applicable law.
       </p>
 
       <div class="subsection-header">2.10 Termination and Surrender</div>
       <p class="legal-paragraph">
-        <% if (renewalOptions && renewalOptions.noticePeriodDays) { %>
-        Either Party may terminate this Agreement by providing written notice to the other Party at least
-        <strong><%= renewalOptions.noticePeriodDays %> days</strong> prior to the intended termination date.
-        <% } else { %>
-        Either Party may terminate this Agreement by providing written notice to the other Party at least
-        <strong>30 days</strong> prior to the intended termination date.
-        <% } %>
-        Upon termination, the Tenant shall surrender the Premises to the Landlord in the same condition as received,
-        ordinary wear and tear excepted, and shall remove all personal property belonging to the Tenant.
+        Upon the end of the rental period, the Tenant shall vacate the Property and surrender it to the Landlord
+        in the same condition as received, ordinary wear and tear excepted, and shall remove all personal property
+        belonging to the Tenant.
+      </p>
+
+      <div class="subsection-header">2.11 Check-In and Check-Out</div>
+      <p class="legal-paragraph">
+        Check-in and check-out times shall be as communicated by the Landlord prior to the rental period.
+        Early check-in or late check-out may be available upon request and at the Landlord's sole discretion.
+        Late check-out without prior approval may result in additional charges.
+      </p>
+
+      <div class="subsection-header">2.12 Cancellation and Refund Policy</div>
+      <p class="legal-paragraph">
+        Cancellations made more than thirty (30) days before the check-in date shall receive a full refund of the
+        rental amount, less any non-refundable fees. Cancellations made fifteen (15) to thirty (30) days before
+        the check-in date shall receive a fifty percent (50%) refund. Cancellations made less than fifteen (15) days
+        before the check-in date shall receive no refund. Early departure shall not entitle the Tenant to a refund
+        for unused nights. Cancellations due to force majeure events shall be handled on a case-by-case basis at
+        the Landlord's reasonable discretion.
+      </p>
+
+      <div class="subsection-header">2.13 House Rules</div>
+      <p class="legal-paragraph">
+        The Tenant agrees to comply with all house rules and property guidelines provided by the Landlord, which
+        are incorporated into this Agreement by reference. Violations of house rules may result in immediate
+        termination of this Agreement without refund. The Tenant shall ensure that all guests and visitors also
+        comply with the house rules.
+      </p>
+
+      <div class="subsection-header">2.14 Damage Reporting</div>
+      <p class="legal-paragraph">
+        The Tenant shall inspect the Property upon arrival and report any pre-existing damage or issues to the
+        Landlord within twenty-four (24) hours of check-in. Failure to report pre-existing damage may result in
+        the Tenant being held responsible for such damage. The Tenant shall promptly report any damage that occurs
+        during the rental period to the Landlord.
+      </p>
+
+      <div class="subsection-header">2.15 Quiet Enjoyment</div>
+      <p class="legal-paragraph">
+        The Landlord covenants that the Tenant, upon paying the rental amount and performing the covenants herein,
+        shall peacefully and quietly hold, occupy, and enjoy the Property during the rental period without
+        hindrance or interruption by the Landlord or any person claiming through the Landlord.
+      </p>
+
+      <div class="subsection-header">2.16 Default</div>
+      <p class="legal-paragraph">
+        A default under this Agreement shall include, but not be limited to: (a) failure to pay any amounts due;
+        (b) violation of any material term or condition of this Agreement, including house rules; (c) use of the
+        Property for any unlawful purpose or hosting unauthorized events. In the event of a material breach, the
+        Landlord may terminate this Agreement immediately and require the Tenant to vacate the Property without
+        refund of any amounts paid.
       </p>
       <% } %>
     </div>
@@ -964,6 +1003,24 @@
         heirs, executors, administrators, successors, and assigns, subject to the provisions herein regarding
         assignment.
       </p>
+
+      <div class="subsection-header">3.7 Force Majeure</div>
+      <p class="legal-paragraph">
+        Neither Party shall be liable for any failure or delay in performing its obligations under this Agreement
+        if such failure or delay results from circumstances beyond the reasonable control of that Party, including
+        but not limited to: acts of God, natural disasters, pandemics, epidemics, government orders or regulations,
+        civil unrest, fire, flood, or utility failures. The affected Party shall promptly notify the other Party
+        and shall use reasonable efforts to mitigate the effects of the force majeure event.
+      </p>
+
+      <div class="subsection-header">3.8 Dispute Resolution</div>
+      <p class="legal-paragraph">
+        In the event of any dispute arising under this Agreement, the Parties agree to first attempt resolution
+        through good-faith negotiation. If the dispute cannot be resolved through negotiation within thirty (30)
+        days, either Party may pursue mediation before a mutually agreed-upon mediator. The costs of mediation
+        shall be shared equally by the Parties. Nothing in this section shall prevent either Party from seeking
+        emergency or injunctive relief from a court of competent jurisdiction.
+      </p>
     </div>
 
     <!-- SECTION DIVIDER -->
@@ -974,7 +1031,7 @@
     <!-- SIGNATURES -->
     <div class="signature-section">
       <div class="signature-intro">
-        <strong>IN WITNESS WHEREOF,</strong> the Parties have executed this Residential Lease Agreement
+        <strong>IN WITNESS WHEREOF,</strong> the Parties have executed this Short-Term Rental Agreement
         as of the day and year first above written.
       </div>
 
@@ -1076,6 +1133,11 @@
       <p>This instrument constitutes the entire agreement between the parties and supersedes all prior understandings.</p>
       <p style="font-style: italic; margin-top: 10px;">
         Each party acknowledges receipt of a fully executed copy of this Agreement.
+      </p>
+      <p style="font-size: 9pt; margin-top: 15px; padding-top: 10px; border-top: 1px solid #dee2e6; color: #666666;">
+        This property is offered in compliance with all applicable federal, state, and local fair housing laws.
+        The Landlord does not discriminate on the basis of race, color, religion, sex, national origin, familial
+        status, disability, or any other characteristic protected by law.
       </p>
     </div>
   </div>

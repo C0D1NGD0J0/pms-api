@@ -609,7 +609,7 @@ export class SMSService implements ICronProvider {
     return [
       {
         name: 'sms:monthly-quota-reset',
-        schedule: '5 0 * * *',
+        schedule: '15 4 * * *', // 4:15 AM UTC — overnight batch
         handler: this.resetQuotasForBillingCycle.bind(this),
         enabled: true,
         service: 'SMSService',

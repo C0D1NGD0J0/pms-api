@@ -6,9 +6,10 @@ import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PermissionResource, PermissionAction, PermissionScope } from '@interfaces/utils.interface';
 
-const BASE_ENTITLEMENTS = {
+const _BASE_ENTITLEMENTS = {
   eSignature: false,
   maintenanceRequestService: false,
+  inspectionService: false,
   guestPassService: false,
   reportingAnalytics: false,
   leaseTemplates: false,
@@ -16,6 +17,7 @@ const BASE_ENTITLEMENTS = {
   smsService: false,
   aiTriage: false,
   aiInvoiceScanning: false,
+  aiInspectionAnalysis: false,
 };
 
 describe('PermissionService Integration Tests', () => {
@@ -48,7 +50,6 @@ describe('PermissionService Integration Tests', () => {
           isVerified: true,
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(adminUser);
@@ -78,7 +79,6 @@ describe('PermissionService Integration Tests', () => {
           isVerified: true,
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(managerUser);
@@ -111,7 +111,6 @@ describe('PermissionService Integration Tests', () => {
           jobTitle: 'Accountant',
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(accountingStaff);
@@ -145,7 +144,6 @@ describe('PermissionService Integration Tests', () => {
           jobTitle: 'Maintenance Tech',
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(maintenanceStaff);
@@ -175,7 +173,6 @@ describe('PermissionService Integration Tests', () => {
           isVerified: true,
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(staffNoDept);
@@ -207,7 +204,6 @@ describe('PermissionService Integration Tests', () => {
           isVerified: true,
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(tenantUser);
@@ -239,7 +235,6 @@ describe('PermissionService Integration Tests', () => {
           isVerified: true,
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(vendorUser);
@@ -273,7 +268,6 @@ describe('PermissionService Integration Tests', () => {
           isVerified: true,
         },
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
       } as ICurrentUser;
 
       const result = await permissionService.populateUserPermissions(rootAdminUser);
@@ -452,7 +446,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
@@ -489,7 +482,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
@@ -526,7 +518,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
@@ -563,7 +554,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
@@ -603,7 +593,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [{ cuid: 'test-cuid', isConnected: true } as any],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
@@ -636,7 +625,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [{ cuid: 'test-cuid', isConnected: true } as any],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',
@@ -669,7 +657,6 @@ describe('PermissionService Integration Tests', () => {
         isActive: true,
         clients: [{ cuid: 'test-cuid', isConnected: false } as any],
         preferences: {},
-        clientEntitlements: BASE_ENTITLEMENTS,
         client: {
           cuid: 'test-cuid',
           displayname: 'Test Company',

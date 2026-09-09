@@ -1,3 +1,8 @@
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+
+dayjs.extend(utc);
+
 export * from './authorization.utils';
 export * from './unitTypeConstants';
 export * from './profileCompletion';

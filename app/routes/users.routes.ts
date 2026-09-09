@@ -385,10 +385,26 @@ router.delete(
 );
 
 // DSAR — Data Subject Access Requests
+// Uses requireUserPermission to enable self-service (delete:mine scope)
+router.get(
+  '/:cuid/dsar/:uid/preflight',
+  basicLimiter(),
+  isAuthenticated,
+  requireUserPermission(PermissionAction.DELETE),
+  validateRequest({
+    params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+  }),
+  asyncWrapper((req, res) => {
+    const dsarController = req.container.resolve<DSARController>('dsarController');
+    return dsarController.preflightAnonymise(req, res);
+  })
+);
+
 router.get(
   '/:cuid/dsar/:uid/export',
   basicLimiter(),
   isAuthenticated,
+  requireUserPermission(PermissionAction.DELETE),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
   }),
@@ -402,6 +418,7 @@ router.delete(
   '/:cuid/dsar/:uid/anonymise',
   basicLimiter(),
   isAuthenticated,
+  requireUserPermission(PermissionAction.DELETE),
   validateRequest({
     params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
   }),

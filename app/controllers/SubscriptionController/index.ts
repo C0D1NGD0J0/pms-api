@@ -86,7 +86,23 @@ export class SubscriptionController {
     }
 
     const result = await this.subscriptionService.syncFromStripe(cuid);
-    res.status(httpStatusCodes.OK).json(result);
+
+    // Invalidate the caller's session so the next /me request picks up the new status
+    const { authCache } = req.container.cradle;
+    await authCache.invalidateCurrentUser(currentuser.sub, cuid).catch(() => {});
+
+    const sub = result.data;
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      data: {
+        status: sub?.status,
+        planName: sub?.planName,
+        billingInterval: sub?.billingInterval,
+        totalMonthlyPrice: sub?.totalMonthlyPrice,
+        startDate: sub?.startDate,
+        endDate: sub?.endDate,
+      },
+    });
   };
 
   manageSeats = async (req: AppRequest, res: Response) => {
@@ -116,13 +132,12 @@ export class SubscriptionController {
     }
 
     const entitlements = req.context.entitlements;
-    const clientEntitlements = currentuser.clientEntitlements;
 
     return res.status(200).json({
       success: true,
       data: {
         ...(entitlements && { subscription: entitlements }),
-        clientEntitlements: entitlements?.entitlements || clientEntitlements || null,
+        clientEntitlements: entitlements?.entitlements || null,
       },
     });
   };

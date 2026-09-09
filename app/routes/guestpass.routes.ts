@@ -5,6 +5,7 @@ import { UtilsValidations, validateRequest } from '@shared/validations';
 import { GuestPassValidations } from '@shared/validations/GuestPassValidation';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireActiveSubscription,
   subscriptionEntitlements,
   requireActiveTenant,
   requirePermission,
@@ -105,6 +106,7 @@ router.post(
   requireActiveTenant('guestPass'),
   subscriptionEntitlements,
   requireFeature('guestPassService'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid, body: GuestPassValidations.createPass }),
   asyncWrapper((req, res) => {
@@ -166,6 +168,7 @@ router.delete(
   requireActiveTenant('guestPass'),
   subscriptionEntitlements,
   requireFeature('guestPassService'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid.merge(GuestPassValidations.vpuid) }),
   asyncWrapper((req, res) => {

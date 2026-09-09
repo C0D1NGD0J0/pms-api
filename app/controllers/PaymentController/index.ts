@@ -1,13 +1,17 @@
+import fs from 'fs';
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import ROLES from '@shared/constants/roles.constants';
 import { CronService } from '@services/cron/cron.service';
 import { MediaUploadService } from '@services/mediaUpload';
 import { PaymentService, InvoiceService } from '@services/index';
+import { InvoiceAIService } from '@services/ai/invoiceAI.service';
+import { BadRequestError, ForbiddenError } from '@shared/customErrors';
 import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
+  invoiceAIService: InvoiceAIService;
   invoiceService: InvoiceService;
   paymentService: PaymentService;
   cronService: CronService;
@@ -18,12 +22,20 @@ export class PaymentController {
   private readonly paymentService: PaymentService;
   private readonly invoiceService: InvoiceService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly invoiceAIService: InvoiceAIService;
   private readonly cronService: CronService;
 
-  constructor({ paymentService, invoiceService, mediaUploadService, cronService }: IConstructor) {
+  constructor({
+    paymentService,
+    invoiceService,
+    mediaUploadService,
+    invoiceAIService,
+    cronService,
+  }: IConstructor) {
     this.paymentService = paymentService;
     this.invoiceService = invoiceService;
     this.mediaUploadService = mediaUploadService;
+    this.invoiceAIService = invoiceAIService;
     this.cronService = cronService;
   }
 
@@ -37,6 +49,7 @@ export class PaymentController {
       leaseId: req.query.leaseId as string,
       luid: req.query.luid as string,
       maintenanceRequestUid: req.query.maintenanceRequestUid as string,
+      pendingReview: req.query.pendingReview === 'true',
       page: req.query.page ? Number(req.query.page) : 1,
       limit: req.query.limit ? Number(req.query.limit) : 10,
       sortDirection: req.query.sortDirection as 'asc' | 'desc' | undefined,
@@ -324,33 +337,55 @@ export class PaymentController {
 
     const { jobName } = req.params;
 
-    // Maps short dev-friendly alias → full registered job name in CronService
-    const aliasMap: Record<string, string> = {
-      'weekly-invoices': 'payment.weekly-rent-invoices',
-      'daily-safety-net': 'payment.daily-rent-safety-net',
-      'mark-overdue': 'payment.mark-overdue',
-      'auto-charge-rent': 'payment.auto-charge-due-rent',
-      'auto-charge-maintenance': 'payment.auto-charge-overdue-maintenance',
-      'reconcile-processing': 'payment.reconcile-stale-processing',
-      'auto-payout-vendors': 'payment.auto-payout-vendors',
-      'expire-guest-passes': 'guestpass.expire-stale-passes',
+    // Maps alias → [service DI name, method name] — resolves directly from container
+    // so it works in both API and worker processes without relying on CronService registration
+    const jobMap: Record<string, [string, string]> = {
+      // Payment
+      'weekly-invoices': ['paymentService', 'queueWeeklyRentInvoices'],
+      'daily-safety-net': ['paymentService', 'queueDailySafetyNetInvoices'],
+      'reconcile-processing': ['paymentService', 'reconcileStaleProcessingPayments'],
+      'auto-payout-vendors': ['paymentService', 'autoPayoutVendors'],
+      // Lease
+      'mark-expired-leases': ['leaseService', 'markExpiredLeases'],
+      'process-expiring-leases': ['leaseService', 'processExpiringLeases'],
+      // Inspection
+      'inspection-reminders': ['inspectionService', 'sendInspectionReminders'],
+      'inspection-auto-close': ['inspectionService', 'autoCloseUnresponsiveInspections'],
+      'inspection-auto-cancel': ['inspectionService', 'autoCancelExpiredScheduledInspections'],
+      'inspection-auto-schedule': ['inspectionService', 'checkUpcomingLeaseExpirations'],
+      // Subscription
+      'mark-expired-subscriptions': ['subscriptionService', 'processExpiredSubscriptions'],
+      // User
+      'deactivate-stale-tenants': ['userService', 'autoDeactivateStaleTenants'],
+      // Other
+      'expire-guest-passes': ['guestPassService', 'expireStaleGuestPasses'],
+      'metrics-snapshot': ['metricsService', 'captureAllSnapshots'],
     };
 
-    const fullJobName = aliasMap[jobName];
-    if (!fullJobName) {
+    const entry = jobMap[jobName];
+    if (!entry) {
       return res.status(400).json({
-        message: `Unknown job. Allowed: ${Object.keys(aliasMap).join(', ')}`,
+        message: `Unknown job. Allowed: ${Object.keys(jobMap).join(', ')}`,
       });
     }
 
-    const handler = this.cronService.getJobHandler(fullJobName);
-    if (!handler) {
-      return res.status(500).json({ message: `Handler not registered for: ${fullJobName}` });
-    }
+    const [serviceName, methodName] = entry;
 
-    this.log.info({ jobName, fullJobName }, 'Dev: manually triggering cron job');
-    await handler();
-    return res.status(200).json({ success: true, jobName, fullJobName });
+    try {
+      const service = req.container.resolve<any>(serviceName);
+      if (typeof service[methodName] !== 'function') {
+        return res
+          .status(500)
+          .json({ message: `Method ${methodName} not found on ${serviceName}` });
+      }
+
+      this.log.info({ jobName, serviceName, methodName }, 'Dev: manually triggering cron job');
+      await service[methodName]();
+      return res.status(200).json({ success: true, jobName, serviceName, methodName });
+    } catch (error: any) {
+      this.log.error({ error: error.message, jobName }, 'Dev: cron job trigger failed');
+      return res.status(500).json({ success: false, message: error.message });
+    }
   }
 
   async downloadMyReceipt(req: AppRequest, res: Response) {
@@ -381,5 +416,73 @@ export class PaymentController {
       limit: req.query.limit ? Number(req.query.limit) : 50,
     });
     return res.status(200).json(result);
+  }
+
+  /**
+   * PM/admin releases a staged deposit refund (PENDING_REFUND → REFUNDED via Stripe).
+   * Only applicable when requireDepositRefundApproval is enabled on the client.
+   */
+  async releaseDepositRefund(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const releasedBy = req.context?.currentuser?.sub;
+    if (!releasedBy) {
+      throw new ForbiddenError({ message: 'Authenticated user identity is required' });
+    }
+    const { reason, isManualRelease } = req.body as { reason?: string; isManualRelease?: boolean };
+
+    const result = await this.paymentService.releaseDepositRefund(cuid, pytuid, releasedBy, {
+      reason,
+      isManualRelease,
+    });
+    return res.status(200).json(result);
+  }
+
+  /**
+   * PM/admin confirms a staff-initiated manual payment entry, clearing the
+   * managerReviewRequired flag and recording the reviewer identity.
+   */
+  async reviewPayment(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const reviewerId = req.context?.currentuser?.sub;
+    if (!reviewerId) {
+      throw new ForbiddenError({ message: 'Authenticated user identity is required' });
+    }
+    const { notes } = req.body as { notes?: string };
+
+    const result = await this.paymentService.reviewManualPayment(cuid, pytuid, reviewerId, {
+      notes,
+    });
+    return res.status(200).json(result);
+  }
+
+  async scanReceipt(req: AppRequest, res: Response) {
+    const file = req.scannedFiles?.[0];
+    if (!file) {
+      throw new BadRequestError({ message: 'No receipt file uploaded' });
+    }
+
+    let buffer: Buffer;
+    try {
+      buffer = await fs.promises.readFile(file.path);
+    } finally {
+      fs.promises.unlink(file.path).catch(() => {});
+    }
+
+    const scanResult = await this.invoiceAIService.extractInvoiceData(
+      buffer,
+      file.mimeType,
+      req.params.cuid
+    );
+
+    if (!scanResult.success || !scanResult.data) {
+      throw new BadRequestError({
+        message: scanResult.message ?? 'Failed to extract receipt data.',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { extracted: scanResult.data },
+    });
   }
 }

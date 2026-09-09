@@ -122,7 +122,7 @@ const makeServiceWithMocks = (
     paymentProcessorDAO,
     profileDAO,
     clientDAO,
-    vendorDAO: {} as any,
+    vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
   });
 
   const maintenancePaymentService = new MaintenancePaymentService({
@@ -136,7 +136,7 @@ const makeServiceWithMocks = (
     profileDAO,
     paymentDAO,
     clientDAO,
-    vendorDAO: {} as any,
+    vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     leaseDAO,
     userDAO,
   });
@@ -193,6 +193,10 @@ const makeServiceWithMocks = (
     invoiceDAO,
     paymentDAO,
     profileDAO,
+    propertyDAO: {} as any,
+    propertyUnitDAO: {} as any,
+    maintenanceRequestDAO: {} as any,
+    vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     clientDAO,
     leaseDAO,
     userDAO,
@@ -1025,6 +1029,71 @@ describe('PaymentService - recordManualPayment', () => {
 
     await expect(
       paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())
+    ).rejects.toThrow(NotFoundError);
+  });
+
+  it('should derive currency from lease.fees.currency', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease({ fees: { currency: 'CAD' } }) as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData());
+    expect(mockPaymentDAO.insert.mock.calls[0][0].currency).toBe('CAD');
+  });
+
+  it('should default currency to USD when no lease and no client currency', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.recordManualPayment(
+      CUID,
+      USER_ID,
+      USER_ID,
+      makeData({ leaseId: undefined })
+    );
+    expect(mockPaymentDAO.insert.mock.calls[0][0].currency).toBe('USD');
+  });
+
+  it('should set propertyId/unitId for property-tied entry without lease', async () => {
+    const propId = new Types.ObjectId();
+    const unitObjId = new Types.ObjectId();
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+    (paymentService as any).propertyDAO.findFirst = jest
+      .fn()
+      .mockResolvedValue({ _id: propId, pid: 'P1', cuid: CUID });
+    (paymentService as any).propertyUnitDAO.findFirst = jest
+      .fn()
+      .mockResolvedValue({ _id: unitObjId, puid: 'U1', propertyId: propId });
+
+    await paymentService.recordManualPayment(
+      CUID,
+      USER_ID,
+      USER_ID,
+      makeData({ leaseId: undefined, propertyId: 'P1', unitId: 'U1' })
+    );
+
+    const insert = mockPaymentDAO.insert.mock.calls[0][0];
+    expect(insert.propertyId).toEqual(propId);
+    expect(insert.unitId).toEqual(unitObjId);
+    expect(insert.lease).toBeUndefined();
+  });
+
+  it('should throw NotFoundError for invalid propertyId', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    (paymentService as any).propertyDAO.findFirst = jest.fn().mockResolvedValue(null);
+
+    await expect(
+      paymentService.recordManualPayment(
+        CUID,
+        USER_ID,
+        USER_ID,
+        makeData({ leaseId: undefined, propertyId: 'BAD' })
+      )
     ).rejects.toThrow(NotFoundError);
   });
 });
@@ -3308,21 +3377,17 @@ describe('PaymentService - buildLineItemsFromFees', () => {
     expect(items[1].description).toContain('5%');
   });
 
-  it('should include security and pet deposits on first payment', () => {
+  it('should NOT include deposits in line items (deposits invoiced separately)', () => {
     const fees = {
       ...baseFees,
       deposits: { security: 150000, pet: 25000, total: 175000 },
     };
     const items = callBuild(fees, { isFirstPayment: true });
-    expect(items).toHaveLength(3);
-    expect(items.find((i: any) => i.description === 'Security Deposit')).toEqual({
-      description: 'Security Deposit',
-      amountInCents: 150000,
-    });
-    expect(items.find((i: any) => i.description === 'Pet Deposit')).toEqual({
-      description: 'Pet Deposit',
-      amountInCents: 25000,
-    });
+    // Deposits are now invoiced as a separate payment record, not included in rent line items
+    expect(items).toHaveLength(1);
+    expect(items[0].description).toBe('Monthly Rent');
+    expect(items.find((i: any) => i.description === 'Security Deposit')).toBeUndefined();
+    expect(items.find((i: any) => i.description === 'Pet Deposit')).toBeUndefined();
   });
 
   it('should NOT include deposits when isFirstPayment is false', () => {
@@ -3717,7 +3782,7 @@ describe('PaymentService - queueWeeklyRentInvoices', () => {
       securityDeposit: 0,
     },
     includeManagementFee: false,
-    duration: { startDate: new Date('2020-01-01') },
+    duration: { startDate: new Date('2020-01-01'), endDate: new Date('2030-12-31') },
   });
 
   const makeCashLease = () => ({
@@ -3727,7 +3792,7 @@ describe('PaymentService - queueWeeklyRentInvoices', () => {
     tenantId: new Types.ObjectId(),
     fees: { acceptedPaymentMethod: 'cash', rentDueDay, rentAmount: 350000, securityDeposit: 0 },
     includeManagementFee: false,
-    duration: { startDate: new Date('2020-01-01') },
+    duration: { startDate: new Date('2020-01-01'), endDate: new Date('2030-12-31') },
   });
 
   beforeEach(() => {
@@ -4475,7 +4540,7 @@ describe('MaintenancePaymentService - handleMaintenanceInvoiceApproved', () => {
       emitterService: mockEmitter as unknown as EventEmitterService,
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       userDAO: {} as any,
-      vendorDAO: {} as any,
+      vendorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
       profileDAO: mockProfileDAO,
       clientDAO: {} as any,
       leaseDAO: mockLeaseDAO,

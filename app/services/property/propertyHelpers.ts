@@ -183,6 +183,14 @@ export const canViewMaintenance = (department?: EmployeeDepartment): boolean =>
     EmployeeDepartment.MANAGEMENT,
   ].includes(department);
 
+export const canViewInspections = (department?: EmployeeDepartment): boolean =>
+  !department ||
+  [
+    EmployeeDepartment.MAINTENANCE,
+    EmployeeDepartment.OPERATIONS,
+    EmployeeDepartment.MANAGEMENT,
+  ].includes(department);
+
 /**
  * Validate occupancy status changes
  */

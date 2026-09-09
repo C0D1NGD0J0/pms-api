@@ -171,6 +171,8 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       notificationService: mockNotificationService,
       subscriptionDAO: {} as any,
       paymentDAO: {} as any,
+      maintenanceRequestDAO: {} as any,
+      inspectionDAO: {} as any,
     });
   });
 

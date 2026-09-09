@@ -148,6 +148,26 @@ export const isAuthenticated = async (req: Request, res: Response, next: NextFun
         );
       }
 
+      // When a client account has been closed (suspension.isActive), block all requests
+      // except identity/exit routes so the frontend can display the "account closed" screen
+      // and allow the user to switch accounts or log out.
+      if (req.context.currentuser?.client?.suspension?.isActive) {
+        const path = req.originalUrl.split('?')[0];
+        const isIdentityOrExitRoute =
+          path.endsWith('/me') ||
+          path.endsWith('/logout') ||
+          path.endsWith('/switch_client_account') ||
+          /\/notifications(\/|$)/.test(path);
+        if (!isIdentityOrExitRoute) {
+          return next(
+            new ForbiddenError({
+              message:
+                'This account has been closed. Please contact support or switch to another account.',
+            })
+          );
+        }
+      }
+
       // When a PM disables the tenant portal, ALL access is blocked — this is a hard suspension,
       // not read-only mode. Disconnected/former tenants (isConnected === false) are handled
       // separately in requireActiveTenant() and retain read-only access to their history.
@@ -641,6 +661,13 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
  * subscription service outage does not break the application.
  */
 export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
+  // Tenants and vendors are not gated by PM subscription status — they have
+  // their own access controlled by lease/connection status, not the PM's SaaS bill.
+  const role = req.context?.currentuser?.client?.role;
+  if (role === 'tenant' || role === 'vendor') {
+    return next();
+  }
+
   const entitlements = req.context?.entitlements;
   if (!entitlements) {
     return next(
@@ -891,6 +918,19 @@ export const requireUserPermission = (action: PermissionAction | string) => {
 };
 
 /**
+ * Context extractor for routes that external roles (tenant, vendor) access via MINE scope.
+ * Returns { ownerId } for tenants/vendors so the permission check resolves to MINE scope.
+ * Admins/managers/staff return {} → defaults to ANY scope.
+ */
+export const roleBasedContext = (req: AppRequest) => {
+  const role = req.context?.currentuser?.client?.role;
+  if (role === 'vendor' || role === 'tenant') {
+    return { ownerId: req.context?.currentuser?.sub ?? '' };
+  }
+  return {};
+};
+
+/**
  * Guard for tenant-role users: blocks write actions for former (disconnected) tenants
  * and optionally gates a specific PM-controlled feature toggle.
  * Fails open when tenantFeatures is absent to protect existing sessions.
@@ -915,6 +955,34 @@ export const requireActiveTenant = (tenantFeature?: keyof ITenantFeatureSettings
       return next(
         new ForbiddenError({
           message: t('auth.errors.connectionInactive'),
+        })
+      );
+    }
+
+    // Restrict tenants with pending deactivation to read-only + inspection actions
+    if (activeConnection?.pendingDeactivation) {
+      const method = req.method.toUpperCase();
+      const path = req.originalUrl.split('?')[0].toLowerCase();
+
+      // Allow all GET requests (read-only access)
+      if (method === 'GET') {
+        return next();
+      }
+
+      // Allow inspection acknowledge and dispute actions only
+      const isInspectionAction =
+        path.includes('/inspections/') &&
+        (path.endsWith('/acknowledge') || path.endsWith('/dispute'));
+
+      if (isInspectionAction) {
+        return next();
+      }
+
+      // Block all other write operations
+      return next(
+        new ForbiddenError({
+          message:
+            'Your lease has expired. You can only view your account and respond to inspections.',
         })
       );
     }

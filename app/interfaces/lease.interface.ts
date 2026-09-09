@@ -1,22 +1,14 @@
 import { Document, Types } from 'mongoose';
 
 import { AddressDetails } from './property.interface';
+import { IPaymentListItem } from './payments.interface';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Lease Status Enum
- * Represents the current state of a lease agreement
- */
 export enum LeaseStatus {
   READY_FOR_SIGNATURE = 'ready_for_signature',
   PENDING_SIGNATURE = 'pending_signature',
   DRAFT_RENEWAL = 'draft_renewal',
   TERMINATED = 'terminated',
+  COMPLETED = 'completed',
   CANCELLED = 'cancelled',
   RENEWED = 'renewed',
   EXPIRED = 'expired',
@@ -33,34 +25,24 @@ export enum ILeaseESignatureStatusEnum {
   SENT = 'sent',
 }
 
-/**
- * Signing Method Enum
- */
 export enum SigningMethod {
   ELECTRONIC = 'electronic',
   PENDING = 'pending',
   MANUAL = 'manual',
 }
 
-/**
- * Lease Type Enum
- * Defines the term structure of the lease
- */
 export enum LeaseType {
   MONTH_TO_MONTH = 'month_to_month',
   FIXED_TERM = 'fixed_term',
 }
 
-/**
- * Main Lease Interface
- * Core lease data structure
- */
 export interface ILease {
   autoSendInfo?: {
     sent: boolean;
     failedAt: Date;
     failureReason: 'not_approved' | 'auto_send_disabled';
   };
+  autoScheduleInspection?: { moveIn: boolean; moveOut: boolean };
   pendingChanges?: IPendingLeaseChanges | null;
   generateFirstPaymentOnActivation?: boolean;
   previousLeaseId?: Types.ObjectId | string;
@@ -74,12 +56,14 @@ export interface ILease {
   utilitiesIncluded?: UtilityType[];
   tenantId: Types.ObjectId | string;
   renewalOptions?: IRenewalOptions;
+  renewalRequest?: IRenewalRequest;
   templateType: LeaseTemplateType;
   internalNotes?: IInternalNote[];
   includeManagementFee?: boolean;
   requiresNotarization?: boolean;
   signatures?: ILeaseSignature[];
   metadata?: Record<string, any>; // Store enriched data for lease generation
+  vacateRequest?: IVacateRequest;
   eSignature?: ILeaseESignature;
   includeParkingInfo?: boolean;
   terminationReason?: string;
@@ -98,10 +82,6 @@ export interface ILease {
   cuid: string;
 }
 
-/**
- * Lease Financial Summary Interface
- * Financial information and payment tracking
- */
 export interface ILeaseFinancialSummary {
   acceptedPaymentMethod?: PaymentMethodType;
   proRatedLastMonthDaysInMonth: number;
@@ -118,6 +98,7 @@ export interface ILeaseFinancialSummary {
   proRatedLastMonthDays: number;
   isLastMonthFullMonth: boolean;
   lastPaymentDate: Date | null;
+  nextPaymentDate: Date | null;
   proRatedDaysInMonth: number;
   securityDepositRaw: number; // Raw amount in cents
   firstPaymentAmount: number;
@@ -131,7 +112,6 @@ export interface ILeaseFinancialSummary {
   firstPaymentDate: Date;
   rentAmountRaw: number; // Raw amount in cents
   totalExpected: number;
-  nextPaymentDate: Date;
   lateFeeDays?: number;
   proRatedDays: number;
   rentAmount: string; // Formatted currency string
@@ -140,12 +120,6 @@ export interface ILeaseFinancialSummary {
   totalOwed: number;
   currency: string;
 }
-
-/**
- * ============================================================================
- * ENUMS
- * ============================================================================
- */
 
 /**
  * Legacy interface - keeping for backward compatibility
@@ -193,10 +167,6 @@ export type LeasePreviewData = {
   currency?: string;
 };
 
-/**
- * Lease Form Data Interface
- * Used for creating/updating leases via API
- */
 export interface ILeaseFormData {
   tenantInfo: {
     id: string | null; // if existing tenant
@@ -252,13 +222,16 @@ export interface ILeaseDocument extends Document, ILease {
   // Instance methods
   softDelete(userId: Types.ObjectId): Promise<ILeaseDocument>;
   hasOverlap(startDate: Date, endDate: Date): boolean;
+  expiryGracePeriodDaysRemaining: number;
   propertyInfo?: ILeasePropertyInfo;
   propertyUnitInfo?: ILeaseUnitInfo;
   // Virtual properties (computed)
   daysUntilExpiry: number | null;
   durationMonths: number | null;
   tenantInfo?: ILeaseTenantInfo;
+  expiryGracePeriodDays: number;
   totalMonthlyFees: number;
+  isInGracePeriod: boolean;
   isExpiringSoon: boolean;
   _id: Types.ObjectId;
   isActive: boolean;
@@ -269,9 +242,8 @@ export interface ILeaseDocument extends Document, ILease {
 }
 
 /**
- * Renewal Metadata Interface
- * Pre-calculated renewal information for active/draft_renewal leases
- * Only included in lease response when status is 'active' or 'draft_renewal'
+ * Pre-calculated renewal information for active/draft_renewal leases.
+ * Only included in lease response when status is 'active' or 'draft_renewal'.
  */
 export interface IRenewalMetadata {
   renewalFormData?: {
@@ -325,16 +297,6 @@ export interface ILeasePreviewRequest {
   currency: string;
 }
 
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Lease Filter Options Interface
- * Used for querying leases
- */
 export interface ILeaseFilterOptions {
   approvalStatus?: LeaseApprovalStatus | LeaseApprovalStatus[];
   signingMethod?: SigningMethod | string;
@@ -356,11 +318,6 @@ export interface ILeaseFilterOptions {
   search?: string; // For lease number or tenant name search
 }
 
-/**
- * Property Reference Interface
- * Links lease to property and unit
- * Includes essential property information for lease documents
- */
 export interface ILeaseProperty {
   specifications?: {
     totalArea?: number; // Square footage
@@ -378,10 +335,6 @@ export interface ILeaseProperty {
   name?: string; // Property name (e.g., "Sunset Towers", "Oak Street Plaza")
 }
 
-/**
- * Lease Stats Interface
- * Statistics for reporting
- */
 export interface ILeaseStats {
   leasesByStatus: {
     draft: number;
@@ -401,10 +354,33 @@ export interface ILeaseStats {
   totalLeases: number;
 }
 
-/**
- * Lease Activity Event Interface
- * Individual activity/audit event in lease history
- */
+export interface ILeaseListItem {
+  property: {
+    pid: string;
+    name: string;
+    address: string;
+    managedByUid?: string | null;
+  };
+  tenant: {
+    id: string;
+    uid: string;
+    email: string;
+    fullName: string;
+  };
+  lateFeesGracePeriod: number;
+  sentForSignature: boolean;
+  tenantActivated: boolean;
+  propertyAddress: string;
+  petsAllowed: boolean;
+  leaseNumber: string;
+  status: LeaseStatus;
+  unitNumber?: string;
+  rentAmount: number;
+  startDate: Date;
+  endDate: Date;
+  luid: string;
+}
+
 export interface ILeaseActivityEvent {
   type:
     | 'created'
@@ -429,10 +405,6 @@ export interface ILeaseActivityEvent {
   notes?: string;
 }
 
-/**
- * Renewal Options Interface
- * Automatic renewal settings
- */
 export interface IRenewalOptions {
   daysBeforeExpiryToAutoSendSignature?: number;
   daysBeforeExpiryToGenerateRenewal?: number;
@@ -463,22 +435,6 @@ export interface ILeasePreviewResponse extends ILeasePreviewRequest {
   landlordName: string;
 }
 
-export interface ILeaseDetailResponse {
-  financialSummary: ILeaseFinancialSummary;
-  permissions: ILeaseUserPermissions;
-  documents?: ILeaseDocumentItem[];
-  activity?: ILeaseActivityEvent[];
-  property: ILeasePropertyInfo;
-  timeline?: ILeaseTimeline;
-  tenant: ILeaseTenantInfo;
-  lease: ILeaseDocument;
-  payments?: any[]; // TODO: Define payment interface when payments service is ready
-}
-
-/**
- * Rent Roll Item Interface
- * Individual entry in rent roll report
- */
 export interface IRentRollItem {
   leaseId: Types.ObjectId | string;
   daysUntilExpiry: number | null;
@@ -497,10 +453,6 @@ export interface IRentRollItem {
   luid: string;
 }
 
-/**
- * Signature Interface
- * Individual signature tracking
- */
 export interface ILeaseSignature {
   landlordInfo?: {
     name: string;
@@ -520,31 +472,6 @@ export interface ILeaseSignature {
   signedAt?: Date;
 }
 
-/**
- * Lease List Item Interface
- * Simplified lease data for list views
- */
-export interface ILeaseListItem {
-  sentForSignature: boolean;
-  tenantActivated: boolean;
-  propertyAddress: string;
-  gracePeriodDays: number;
-  petsAllowed: boolean;
-  leaseNumber: string;
-  status: LeaseStatus;
-  unitNumber?: string;
-  rentAmount: number;
-  tenantName: string;
-  tenantUid: string;
-  startDate: Date;
-  endDate: Date;
-  luid: string;
-}
-
-/**
- * Rent Roll Report Interface
- * Complete rent roll with summary
- */
 export interface IRentRollReport {
   summary: {
     totalLeases: number;
@@ -577,10 +504,18 @@ export interface LeaseESignatureCompletedPayload {
   cuid: string;
 }
 
-/**
- * Lease User Permissions Interface
- * User-specific permissions for lease operations
- */
+export interface ILeaseDetailResponse {
+  financialSummary: ILeaseFinancialSummary;
+  permissions: ILeaseUserPermissions;
+  documents?: ILeaseDocumentItem[];
+  activity?: ILeaseActivityEvent[];
+  payments?: IPaymentListItem[];
+  property: ILeasePropertyInfo;
+  timeline?: ILeaseTimeline;
+  tenant: ILeaseTenantInfo;
+  lease: ILeaseDocument;
+}
+
 export interface ILeaseUserPermissions {
   canManageSignatures: boolean;
   canUploadDocuments: boolean;
@@ -610,16 +545,6 @@ export interface LeaseESignatureSentPayload {
   sentAt: Date;
 }
 
-/**
- * ============================================================================
- * MAIN LEASE INTERFACE
- * ============================================================================
- */
-
-/**
- * Lease Document Item Interface
- * Tracks uploaded lease documents
- */
 export interface ILeaseDocumentItem {
   status: 'active' | 'inactive' | 'failed' | 'deleted';
   documentType?: 'lease_agreement' | 'other';
@@ -633,16 +558,20 @@ export interface ILeaseDocumentItem {
   key: string;
 }
 
-/**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
+export interface ILeaseTimeline {
+  isInGracePeriod: boolean;
+  isExpiringSoon: boolean;
+  daysRemaining: number;
+  daysElapsed: number;
+  moveInDate?: Date;
+  isActive: boolean;
+  progress: number; // 0-100 percentage
+  startDate: Date;
+  created: Date;
+  signed?: Date;
+  endDate: Date;
+}
 
-/**
- * Fees Interface
- * All financial terms of the lease
- */
 export interface ILeaseFees {
   acceptedPaymentMethod?: PaymentMethodType;
   lateFeePercentage?: number;
@@ -656,9 +585,32 @@ export interface ILeaseFees {
 }
 
 /**
- * E-Signature Interface
- * Tracks electronic signature provider details
+ * Offboarding Status (derived at query time — not persisted)
  */
+export interface IOffboardingStatus {
+  depositRefundStatus: 'refunded' | 'pending' | 'not_applicable';
+  inspectionStatus: string | null;
+  inspectionScheduledDate?: Date;
+  paymentsCancelled: boolean;
+  leaseTerminated: boolean;
+  terminationDate?: Date;
+  depositAmount?: number;
+}
+
+/** Embedded subdocument on the Lease model -- tenant requests lease renewal */
+export interface IRenewalRequest {
+  decision?: {
+    decidedBy: Types.ObjectId;
+    decidedAt: Date;
+    rejectionReason?: string;
+  };
+  status: 'pending' | 'approved' | 'rejected';
+  requestedTermMonths?: number;
+  submittedAt: Date;
+  message?: string;
+  holdUntil?: Date;
+}
+
 export interface ILeaseESignature {
   status?: ILeaseESignatureStatusEnum;
   provider: 'hellosign' | 'boldsign';
@@ -669,6 +621,20 @@ export interface ILeaseESignature {
   completedAt?: Date;
   failedAt?: Date;
   sentAt?: Date;
+}
+
+/** Embedded subdocument on the Lease model -- tenant requests to vacate early */
+export interface IVacateRequest {
+  decision?: {
+    decidedBy: Types.ObjectId;
+    decidedAt: Date;
+    adjustedMoveOutDate?: Date;
+    rejectionReason?: string;
+  };
+  status: VacateRequestStatus;
+  requestedMoveOutDate: Date;
+  submittedAt: Date;
+  reason: string;
 }
 
 export interface LeaseTerminatedPayload {
@@ -684,33 +650,6 @@ export interface LeaseTerminatedPayload {
   cuid: string;
 }
 
-/**
- * Lease Timeline Interface
- * Key milestone dates and progress tracking
- */
-export interface ILeaseTimeline {
-  isExpiringSoon: boolean;
-  daysRemaining: number;
-  daysElapsed: number;
-  moveInDate?: Date;
-  isActive: boolean;
-  progress: number; // 0-100 percentage
-  startDate: Date;
-  created: Date;
-  signed?: Date;
-  endDate: Date;
-}
-
-/**
- * ============================================================================
- * RENEWAL METADATA INTERFACE
- * ============================================================================
- */
-
-/**
- * Lease Approval Entry Interface
- * Tracks individual approval actions
- */
 export interface ILeaseApprovalEntry {
   action: 'created' | 'submitted' | 'approved' | 'rejected' | 'updated' | 'overridden';
   actor: Types.ObjectId | string;
@@ -720,16 +659,6 @@ export interface ILeaseApprovalEntry {
   notes?: string;
 }
 
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * E-Signature Request Data Interface
- * Used when sending lease for signature
- */
 export interface IESignatureRequestData {
   signers: {
     email: string;
@@ -742,12 +671,6 @@ export interface IESignatureRequestData {
   message?: string;
 }
 
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
 export interface LeaseESignatureFailedPayload {
   jobId: string | number;
   errorDetails?: any;
@@ -758,10 +681,6 @@ export interface LeaseESignatureFailedPayload {
   cuid: string;
 }
 
-/**
- * Populated Property Info Interface
- * Property details returned in lease response
- */
 export interface ILeasePropertyInfo extends ILeaseProperty {
   managedBy?: Types.ObjectId | string;
   propertyType?: LeasePropertyType;
@@ -771,10 +690,6 @@ export interface ILeasePropertyInfo extends ILeaseProperty {
   pid?: string;
 }
 
-/**
- * Populated Unit Info Interface
- * Unit details returned in lease response (secure field selection)
- */
 export interface ILeaseUnitInfo {
   _id: Types.ObjectId | string;
   specifications?: any;
@@ -787,10 +702,6 @@ export interface ILeaseUnitInfo {
   id: string;
 }
 
-/**
- * Populated Tenant Info Interface
- * Tenant details returned in lease response
- */
 export interface ILeaseTenantInfo {
   _id: Types.ObjectId | string;
   phoneNumber?: string;
@@ -802,10 +713,6 @@ export interface ILeaseTenantInfo {
   uid?: string;
 }
 
-/**
- * Pending Changes Preview Interface
- * Preview of pending changes awaiting approval
- */
 export interface ILeasePendingChangesPreview {
   updatedBy: Types.ObjectId | string;
   changes: Record<string, any>;
@@ -825,16 +732,6 @@ export interface LeaseESignatureDeclinedPayload {
   cuid: string;
 }
 
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
-
-/**
- * Last Modified By Interface
- * Audit trail entry
- */
 export interface ILastModifiedBy {
   action: 'created' | 'updated' | 'activated' | 'terminated' | 'cancelled' | 'renewed';
   userId: Types.ObjectId | string;
@@ -850,15 +747,6 @@ export interface LeaseESignatureRequestedPayload {
   cuid: string;
 }
 
-/**
- * ============================================================================
- * ACTIVITY & EVENT INTERFACES
- * ============================================================================
- */
-
-/**
- * Lease Template Types
- */
 export type LeaseTemplateType =
   | 'generic'
   | 'residential-single-family'
@@ -867,16 +755,6 @@ export type LeaseTemplateType =
   | 'commercial-retail'
   | 'short-term-rental';
 
-/**
- * ============================================================================
- * E-SIGNATURE PAYLOAD INTERFACES
- * ============================================================================
- */
-
-/**
- * Lease Termination Data Interface
- * Used when terminating a lease
- */
 export interface ILeaseTerminationData {
   terminationDate: Date | string;
   moveOutDate?: Date | string;
@@ -884,10 +762,6 @@ export interface ILeaseTerminationData {
   notes?: string;
 }
 
-/**
- * Lease Query Options Interface
- * Pagination and sorting options
- */
 export interface ILeaseQueryOptions {
   sortOrder?: 'asc' | 'desc';
   populate?: string[];
@@ -896,9 +770,6 @@ export interface ILeaseQueryOptions {
   page?: number;
 }
 
-/**
- * Utility Types
- */
 export type UtilityType =
   | 'water'
   | 'gas'
@@ -910,10 +781,6 @@ export type UtilityType =
   | 'heating'
   | 'cooling';
 
-/**
- * Pending Lease Changes Interface
- * Stores lease changes awaiting approval
- */
 export interface IPendingLeaseChanges {
   updatedBy: Types.ObjectId | string;
   displayName?: string;
@@ -921,10 +788,6 @@ export interface IPendingLeaseChanges {
   updatedAt: Date;
 }
 
-/**
- * Internal Note Interface
- * Audit trail for internal notes on a lease
- */
 export interface IInternalNote {
   authorId: Types.ObjectId | string;
   timestamp: Date;
@@ -933,10 +796,6 @@ export interface IInternalNote {
   note: string;
 }
 
-/**
- * Duration Interface
- * All date-related information
- */
 export interface ILeaseDuration {
   terminationDate?: Date;
   moveOutDate?: Date;
@@ -945,10 +804,6 @@ export interface ILeaseDuration {
   endDate: Date;
 }
 
-/**
- * Pet Policy Interface
- * Defines pet rules and associated fees
- */
 export interface IPetPolicy {
   monthlyFee?: number;
   allowed: boolean;
@@ -957,15 +812,12 @@ export interface IPetPolicy {
   maxPets?: number;
 }
 
-/**
- * ============================================================================
- * ACTION DATA INTERFACES
- * ============================================================================
- */
+export interface IVacateRequestDecision {
+  adjustedMoveOutDate?: Date | string;
+  rejectionReason?: string;
+  approved: boolean;
+}
 
-/**
- * Property Types (for lease context)
- */
 export type LeasePropertyType =
   | 'apartment'
   | 'house'
@@ -974,20 +826,12 @@ export type LeasePropertyType =
   | 'commercial'
   | 'industrial';
 
-/**
- * Lease Activation Data Interface
- * Used when activating a lease
- */
 export interface ILeaseActivationData {
   signedDate?: Date | string;
   moveInDate?: Date | string;
   notes?: string;
 }
 
-/**
- * Co-Tenant Interface
- * Additional tenants on the lease
- */
 export interface ICoTenant {
   occupation?: string;
   email: string;
@@ -995,45 +839,18 @@ export interface ICoTenant {
   name: string;
 }
 
-/**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
- * Legal Terms Interface
- * Stores lease agreement terms
- */
 export interface ILegalTerms {
   text?: string;
   html?: string;
   url?: string;
 }
 
-/**
- * Signer/Participant Role Types
- */
 export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
 
-/**
- * ============================================================================
- * REPORTING INTERFACES
- * ============================================================================
- */
-
-/**
- * Lease Approval Status Type
- * Tracks the approval state of a lease
- */
 export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
 
-/**
- * Payment Method Types
- */
 export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
 
-/**
- * Late Fee Types
- */
+export type VacateRequestStatus = 'pending' | 'approved' | 'rejected';
+
 export type LateFeeType = 'fixed' | 'percentage';

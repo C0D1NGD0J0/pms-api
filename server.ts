@@ -10,6 +10,7 @@ import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
+import { closeSharedDLQ } from '@queues/index';
 import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { runSchemaSync } from '@database/schema-sync';
@@ -110,7 +111,7 @@ class Server {
       const io = await this.setupSocketIO(this.httpServer);
       io && this.socketConnections(io);
     } catch (error: any) {
-      this.log.error('Error: ', error.message);
+      this.log.error({ err: error.message, stack: error.stack }, `Server startup failed: ${error.message}`);
     }
   }
 
@@ -304,6 +305,7 @@ class Server {
         }
       }
 
+      await closeSharedDLQ();
       container.dispose();
       this.log.info(`Shutdown ${queueCount} queues`);
       this.log.info('DI container disposed');

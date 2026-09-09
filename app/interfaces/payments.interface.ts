@@ -6,6 +6,7 @@ import { ILeaseDocument, ILeaseProperty } from './lease.interface';
 import { IProfileDocument, IProfileWithUser } from './profile.interface';
 
 export enum PaymentRecordStatus {
+  PENDING_REFUND = 'pending_refund', // deposit approved for refund, awaiting PM/admin release (when requireDepositRefundApproval is enabled)
   PROCESSING = 'processing', // charge submitted to bank, awaiting settlement (ACSS/bank transfer)
   CANCELLED = 'cancelled',
   REFUNDED = 'refunded',
@@ -48,6 +49,18 @@ export interface IPaymentDocument extends Document {
     chargeId?: string;
     paidAt?: Date;
   }[];
+  managerReview?: {
+    reviewedBy?: Types.ObjectId; // User who reviewed/confirmed the payment
+    reviewedAt?: Date;
+    notes?: string;
+  };
+  refund?: {
+    refundedAt?: Date;
+    refundedBy?: string;
+    amount?: number;
+    reason?: string;
+    gatewayRefundId?: string;
+  };
   receipt?: {
     url?: string;
     filename?: string;
@@ -66,11 +79,6 @@ export interface IPaymentDocument extends Document {
     key: string;
     generatedAt: Date;
   };
-  refund?: {
-    refundedAt?: Date;
-    amount?: number;
-    reason?: string;
-  };
   notes?: {
     note: string;
     author: string;
@@ -81,17 +89,20 @@ export interface IPaymentDocument extends Document {
     amountInCents: number;
   }[];
   stripePaymentMethodType?: string; // e.g. 'card', 'acss_debit', 'us_bank_account'
+  managerReviewRequired?: boolean; // true for staff-initiated manual entries — PM must confirm
   paymentType: PaymentRecordType;
   maintenanceRequestUid?: string; // mruid — links maintenance expense/charge back to its request
   paymentSource?: PaymentSource;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
   recordedBy?: Types.ObjectId; // User who recorded manual payment
+  propertyId?: Types.ObjectId; // Direct property ref — used for entries without a lease
   vendorId?: Types.ObjectId; // Set for maintenance expense records (vendor who submitted the invoice)
   gatewayPaymentId?: string;
   gatewayChargeId?: string;
   period?: IPaymentPeriod;
   platformRevenue: number; // Platform's net revenue after Stripe gateway fee (applicationFee − processingFee)
+  unitId?: Types.ObjectId; // Direct unit ref — used for entries without a lease
   lease?: Types.ObjectId;
   tenant: Types.ObjectId; // References Profile
   isManualEntry: boolean;
@@ -151,9 +162,11 @@ export interface IManualPaymentFormData {
   period?: IPaymentPeriod;
   processingFee?: number; // In cents
   description?: string;
+  propertyId?: string; // Property ID (pid) — used when no lease
   baseAmount: number; // In cents
   leaseId?: string;
   tenantId: string;
+  unitId?: string; // Unit ID (puid) — used when no lease
   paidAt: Date;
 }
 
@@ -190,6 +203,12 @@ export interface IVendorEarningItem {
   paidAt?: Date;
 }
 
+export interface IRefundPaymentData {
+  isManualRelease?: boolean; // When true, skip Stripe and record refund as processed outside the app
+  amount?: number;
+  reason?: string;
+}
+
 /**
  * Fully populated payment: tenant includes the populated User doc,
  * lease includes the populated Property and PropertyUnit docs.
@@ -219,11 +238,6 @@ export interface IPaymentPopulated extends Omit<IPaymentDocument, 'tenant' | 'le
  */
 export interface ILeaseDocumentPopulated extends Omit<ILeaseDocument, 'property'> {
   property: ILeasePropertyPopulated;
-}
-
-export interface IRefundPaymentData {
-  amount?: number;
-  reason?: string;
 }
 
 export type PaymentSource = 'cron' | 'pm_initiated' | 'staff_initiated';

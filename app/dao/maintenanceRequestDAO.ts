@@ -133,6 +133,7 @@ export class MaintenanceRequestDAO
       tenantUserId?: string;
       vendorUserId?: string;
       assignedTechnicianUserId?: string;
+      managedByUserId?: string;
     }
   ): Promise<IMaintenanceStats> {
     const matchStage: QueryFilter<IMaintenanceRequestDocument> = { cuid, deletedAt: null };
@@ -141,6 +142,7 @@ export class MaintenanceRequestDAO
     if (opts?.vendorUserId) matchStage.vendorId = new Types.ObjectId(opts.vendorUserId);
     if (opts?.assignedTechnicianUserId)
       matchStage['assignedTechnician.userId'] = new Types.ObjectId(opts.assignedTechnicianUserId);
+    if (opts?.managedByUserId) matchStage.managedBy = new Types.ObjectId(opts.managedByUserId);
 
     const results = await this.aggregate([
       { $match: matchStage },
@@ -302,6 +304,102 @@ export class MaintenanceRequestDAO
     }
 
     return result;
+  }
+
+  /**
+   * Paginated list of confirmed tenant reviews for a vendor, with tenant name lookup.
+   */
+  async getVendorReviews(
+    cuid: string,
+    vendorUserId: string,
+    opts: { page: number; limit: number }
+  ): Promise<{
+    reviews: Array<{
+      tenantName: string;
+      title: string;
+      category: string;
+      rating: number;
+      comment: string;
+      completedAt: Date;
+    }>;
+    total: number;
+    averageRating: number;
+  }> {
+    const skip = (opts.page - 1) * opts.limit;
+
+    const result = await this.aggregate([
+      {
+        $match: {
+          cuid,
+          vendorId: new Types.ObjectId(vendorUserId),
+          status: MaintenanceRequestStatus.COMPLETED,
+          'tenantFeedback.status': 'confirmed',
+          'tenantFeedback.rating': { $exists: true, $ne: null },
+          deletedAt: null,
+        },
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'tenantId',
+          foreignField: '_id',
+          pipeline: [
+            {
+              $lookup: {
+                from: 'profiles',
+                localField: 'profile',
+                foreignField: '_id',
+                pipeline: [
+                  { $project: { 'personalInfo.firstName': 1, 'personalInfo.lastName': 1 } },
+                ],
+                as: 'profileDoc',
+              },
+            },
+            { $unwind: { path: '$profileDoc', preserveNullAndEmptyArrays: true } },
+            { $project: { email: 1, profileDoc: 1 } },
+          ],
+          as: 'tenantUser',
+        },
+      },
+      { $unwind: { path: '$tenantUser', preserveNullAndEmptyArrays: true } },
+      { $sort: { completedAt: -1 } },
+      {
+        $facet: {
+          reviews: [
+            { $skip: skip },
+            { $limit: opts.limit },
+            {
+              $project: {
+                tenantName: {
+                  $concat: [
+                    { $ifNull: ['$tenantUser.profileDoc.personalInfo.firstName', ''] },
+                    ' ',
+                    { $ifNull: ['$tenantUser.profileDoc.personalInfo.lastName', ''] },
+                  ],
+                },
+                title: 1,
+                category: 1,
+                rating: '$tenantFeedback.rating',
+                comment: { $ifNull: ['$tenantFeedback.comment', ''] },
+                completedAt: 1,
+              },
+            },
+          ],
+          total: [{ $count: 'count' }],
+          avgRating: [{ $group: { _id: null, avg: { $avg: '$tenantFeedback.rating' } } }],
+        },
+      },
+    ]);
+
+    const raw = (result as any[])[0] || {};
+    return {
+      reviews: (raw.reviews || []).map((r: any) => ({
+        ...r,
+        tenantName: (r.tenantName || '').trim() || 'Tenant',
+      })),
+      total: raw.total?.[0]?.count || 0,
+      averageRating: raw.avgRating?.[0]?.avg ?? 0,
+    };
   }
 
   /**

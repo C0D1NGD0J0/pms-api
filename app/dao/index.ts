@@ -3,6 +3,7 @@ export { PaymentProcessorDAO } from './paymentProcessorDAO';
 export { PropertyUnitDAO } from './propertyUnitDAO';
 export { SubscriptionDAO } from './subscriptionDAO';
 export { NotificationDAO } from './notificationDAO';
+export { InspectionDAO } from './inspectionDAO';
 export { InvitationDAO } from './invitationDAO';
 export { GuestPassDAO } from './guestpassDAO';
 export { PropertyDAO } from './propertyDAO';

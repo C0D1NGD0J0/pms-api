@@ -372,7 +372,9 @@ export class MaintenancePaymentService {
           `A payout has been initiated for service request #${mruid}.`,
           SMSMessageType.SYSTEM
         )
-        .catch(() => {});
+        .catch((err: any) => {
+          this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+        });
 
       this.log.info(
         { mruid, invuid: invoice.invuid, transferId: transferResult.data.transferId, cuid },

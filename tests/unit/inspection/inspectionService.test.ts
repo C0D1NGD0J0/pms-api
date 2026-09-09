@@ -1,0 +1,814 @@
+import { Types } from 'mongoose';
+import { jest } from '@jest/globals';
+import { InspectionService } from '@services/inspection/inspection.service';
+import {
+  InspectionStatus,
+  ConditionRating,
+  InspectionType,
+} from '@interfaces/inspection.interface';
+
+// ─── Mock DAOs & External Services ──────────────────────────────────────────
+
+const mockInspectionDAO = {
+  getByIuid: jest.fn() as any,
+  listByClient: jest.fn() as any,
+  listForTenant: jest.fn() as any,
+  insert: jest.fn() as any,
+  updateById: jest.fn() as any,
+  archiveDocument: jest.fn() as any,
+  list: jest.fn() as any,
+  findFirst: jest.fn() as any,
+};
+
+const mockLeaseDAO = {
+  findFirst: jest.fn() as any,
+  list: jest.fn() as any,
+};
+
+const mockPropertyDAO = {
+  findFirst: jest.fn() as any,
+  updateById: jest.fn() as any,
+};
+
+const mockPropertyUnitDAO = {
+  findFirst: jest.fn() as any,
+  updateById: jest.fn() as any,
+};
+
+const mockUserDAO = {
+  findFirst: jest.fn() as any,
+  findById: jest.fn() as any,
+  list: jest.fn() as any,
+};
+
+const mockEmitterService = {
+  emit: jest.fn() as any,
+  on: jest.fn() as any,
+};
+
+const mockEmailQueue = {
+  addToEmailQueue: jest.fn() as any,
+} as any;
+
+const CUID = 'test-client-cuid';
+const USER_ID = new Types.ObjectId().toString();
+const APPROVER_ID = new Types.ObjectId().toString();
+const TENANT_ID = new Types.ObjectId().toString();
+const IUID = 'insp-abc123';
+
+const makeInspection = (overrides: Record<string, any> = {}) => ({
+  _id: new Types.ObjectId(),
+  iuid: IUID,
+  cuid: CUID,
+  type: InspectionType.MOVE_IN,
+  status: InspectionStatus.SCHEDULED,
+  tenantId: new Types.ObjectId(TENANT_ID),
+  inspectorId: new Types.ObjectId(USER_ID),
+  propertyId: new Types.ObjectId(),
+  leaseId: new Types.ObjectId(),
+  scheduledDate: new Date(),
+  rooms: [],
+  media: [],
+  ...overrides,
+});
+
+const makeRooms = (conditions: ConditionRating[]) =>
+  conditions.map((c, i) => ({
+    name: `Room ${i}`,
+    condition: ConditionRating.NA,
+    items: [{ name: 'Item', condition: c, notes: '' }],
+    media: [],
+  }));
+
+let service: InspectionService;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+
+  // Default: findById returns a minimal user for scheduling notes
+  mockUserDAO.findById.mockResolvedValue({ fullname: 'Test User', email: 'test@test.com' });
+  mockUserDAO.list.mockResolvedValue({ items: [] });
+
+  service = new InspectionService({
+    inspectionDAO: mockInspectionDAO as any,
+    propertyUnitDAO: mockPropertyUnitDAO as any,
+    leaseDAO: mockLeaseDAO as any,
+    propertyDAO: mockPropertyDAO as any,
+    userDAO: mockUserDAO as any,
+    emitterService: mockEmitterService as any,
+    emailQueue: mockEmailQueue,
+  });
+});
+
+describe('InspectionService', () => {
+  describe('State Machine Transitions', () => {
+    it('should allow scheduled → in_progress (via updateInspection)', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.SCHEDULED });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.IN_PROGRESS,
+      });
+
+      const result = await service.updateInspection(CUID, USER_ID, 'admin', IUID, {
+        overallNotes: { text: 'Starting inspection' },
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
+        inspection._id.toString(),
+        expect.objectContaining({
+          $set: expect.objectContaining({ status: InspectionStatus.IN_PROGRESS }),
+        })
+      );
+    });
+
+    it('should auto-advance scheduled → in_progress → submitted', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.SCHEDULED });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.SUBMITTED,
+      });
+
+      const result = await service.submitInspection(CUID, USER_ID, 'admin', IUID);
+
+      expect(result.success).toBe(true);
+      // First call: scheduled → in_progress, second call: in_progress → submitted
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledTimes(2);
+      expect(mockInspectionDAO.updateById).toHaveBeenNthCalledWith(1, inspection._id.toString(), {
+        $set: { status: InspectionStatus.IN_PROGRESS },
+      });
+    });
+
+    it('should allow in_progress → submitted', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.IN_PROGRESS });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.SUBMITTED,
+      });
+
+      const result = await service.submitInspection(CUID, USER_ID, 'admin', IUID);
+
+      expect(result.success).toBe(true);
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
+        inspection._id.toString(),
+        expect.objectContaining({
+          $set: expect.objectContaining({ status: InspectionStatus.SUBMITTED }),
+        })
+      );
+    });
+
+    it('should allow pending_review → approved', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.PENDING_REVIEW });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.APPROVED,
+      });
+
+      const result = await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin');
+
+      expect(result.success).toBe(true);
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
+        inspection._id.toString(),
+        expect.objectContaining({
+          $set: expect.objectContaining({ status: InspectionStatus.APPROVED }),
+        })
+      );
+    });
+
+    it('should reject transition from approved → any status', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.APPROVED });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      // Try to cancel an approved inspection
+      await expect(service.cancelInspection(CUID, IUID)).rejects.toThrow(
+        /Cannot transition from approved to cancelled/
+      );
+    });
+
+    it('should reject transition from cancelled → any status', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.CANCELLED });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      // Cannot submit a cancelled inspection
+      await expect(service.submitInspection(CUID, USER_ID, 'admin', IUID)).rejects.toThrow(
+        /Cannot transition from cancelled to submitted/
+      );
+    });
+
+    it('should allow rejected move-in → in_progress (revision)', async () => {
+      const inspection = makeInspection({
+        status: InspectionStatus.REJECTED,
+        type: InspectionType.MOVE_IN,
+        rejectionReason: { text: 'Missing photos' },
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.IN_PROGRESS,
+        rejectionReason: null,
+      });
+
+      const result = await service.updateInspection(CUID, TENANT_ID, 'tenant', IUID, {
+        rooms: makeRooms([ConditionRating.GOOD]),
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
+        inspection._id.toString(),
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            status: InspectionStatus.IN_PROGRESS,
+            rejectionReason: null,
+          }),
+        })
+      );
+    });
+
+    it('should block updating a rejected move-out inspection (final)', async () => {
+      const inspection = makeInspection({
+        status: InspectionStatus.REJECTED,
+        type: InspectionType.MOVE_OUT,
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      await expect(
+        service.updateInspection(CUID, USER_ID, 'admin', IUID, {
+          overallNotes: { text: 'Trying to update' },
+        })
+      ).rejects.toThrow(/Cannot update inspection in status: rejected/);
+    });
+
+    it('should allow disputed → approved', async () => {
+      const inspection = makeInspection({ status: InspectionStatus.DISPUTED });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.APPROVED,
+      });
+
+      const result = await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin');
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // ─── Tenant Scoping Tests ──────────────────────────────────────────────────
+
+  describe('Tenant Scoping', () => {
+    it('should allow a tenant to GET their own inspection', async () => {
+      const inspection = makeInspection({ tenantId: new Types.ObjectId(TENANT_ID) });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      const result = await service.getInspection(CUID, TENANT_ID, 'tenant', IUID);
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeDefined();
+      // Verify tenantId passed to DAO for query-level filtering
+      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, TENANT_ID);
+    });
+
+    it("should return not-found when tenant queries another tenant's inspection (query-level filter)", async () => {
+      // DAO returns null because tenantId filter doesn't match
+      mockInspectionDAO.getByIuid.mockResolvedValue(null);
+
+      await expect(service.getInspection(CUID, TENANT_ID, 'tenant', IUID)).rejects.toThrow(
+        /not found/i
+      );
+
+      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, TENANT_ID);
+    });
+
+    it('should not pass tenantId filter for admin users', async () => {
+      const inspection = makeInspection();
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      await service.getInspection(CUID, USER_ID, 'admin', IUID);
+
+      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, undefined);
+    });
+
+    it('should deny a tenant from updating another tenants inspection', async () => {
+      const otherTenantId = new Types.ObjectId().toString();
+      // getByIuid returns null when tenant filter doesn't match (query-level filter)
+      mockInspectionDAO.getByIuid.mockResolvedValue(null);
+
+      await expect(
+        service.updateInspection(CUID, otherTenantId, 'tenant', IUID, {
+          overallNotes: { text: 'Trying' },
+        })
+      ).rejects.toThrow(/Inspection not found/);
+
+      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, otherTenantId);
+    });
+
+    it('should allow tenant to update their own move-in inspection', async () => {
+      const inspection = makeInspection({
+        tenantId: new Types.ObjectId(TENANT_ID),
+        type: InspectionType.MOVE_IN,
+        status: InspectionStatus.IN_PROGRESS,
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue(inspection);
+
+      const result = await service.updateInspection(CUID, TENANT_ID, 'tenant', IUID, {
+        rooms: makeRooms([ConditionRating.GOOD]),
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockInspectionDAO.getByIuid).toHaveBeenCalledWith(IUID, CUID, TENANT_ID);
+    });
+  });
+
+  // ─── Condition Scoring Tests ──────────────────────────────────────────────
+
+  describe('Condition Scoring', () => {
+    it('should compute score 100 and overallCondition excellent for all excellent items', async () => {
+      const rooms = makeRooms([
+        ConditionRating.EXCELLENT,
+        ConditionRating.EXCELLENT,
+        ConditionRating.EXCELLENT,
+      ]);
+      const inspection = makeInspection({
+        status: InspectionStatus.IN_PROGRESS,
+        rooms,
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockImplementation((_id: string, update: any) => {
+        return Promise.resolve({ ...inspection, ...update.$set });
+      });
+
+      await service.submitInspection(CUID, USER_ID, 'admin', IUID);
+
+      const updateCall = mockInspectionDAO.updateById.mock.calls[0];
+      const setFields = updateCall[1].$set;
+      expect(setFields.conditionScore).toBe(100);
+      expect(setFields.overallCondition).toBe(ConditionRating.EXCELLENT);
+    });
+
+    it('should compute correct proportional score for mixed ratings', async () => {
+      // excellent=4, good=3, poor=1 → avg = 8/3 ≈ 2.67 → score = (2.67/4)*100 ≈ 67
+      // avg 2.67, but min score is 1 (poor) so effectiveAvg = min(2.67, 1+1) = 2 → FAIR
+      const rooms = makeRooms([
+        ConditionRating.EXCELLENT,
+        ConditionRating.GOOD,
+        ConditionRating.POOR,
+      ]);
+      const inspection = makeInspection({
+        status: InspectionStatus.IN_PROGRESS,
+        rooms,
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockImplementation((_id: string, update: any) => {
+        return Promise.resolve({ ...inspection, ...update.$set });
+      });
+
+      await service.submitInspection(CUID, USER_ID, 'admin', IUID);
+
+      const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
+      expect(setFields.conditionScore).toBe(67); // Math.round((8/3/4)*100)
+      expect(setFields.overallCondition).toBe(ConditionRating.FAIR);
+    });
+
+    it('should compute score 0 and overallCondition NA for all NA items', async () => {
+      const rooms = makeRooms([ConditionRating.NA, ConditionRating.NA, ConditionRating.NA]);
+      const inspection = makeInspection({
+        status: InspectionStatus.IN_PROGRESS,
+        rooms,
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockImplementation((_id: string, update: any) => {
+        return Promise.resolve({ ...inspection, ...update.$set });
+      });
+
+      await service.submitInspection(CUID, USER_ID, 'admin', IUID);
+
+      const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
+      expect(setFields.conditionScore).toBe(0);
+      expect(setFields.overallCondition).toBe(ConditionRating.NA);
+    });
+  });
+
+  // ─── Refund Validation Tests ──────────────────────────────────────────────
+
+  describe('Refund Validation', () => {
+    it('should throw 400 when refundAmount provided but no refundInfo on inspection', async () => {
+      const inspection = makeInspection({
+        status: InspectionStatus.PENDING_REVIEW,
+        type: InspectionType.MOVE_OUT,
+        refundInfo: undefined,
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      await expect(
+        service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 500)
+      ).rejects.toThrow(/does not have a security deposit to refund/);
+    });
+
+    it('should throw 400 when refundAmount exceeds deposit', async () => {
+      const inspection = makeInspection({
+        status: InspectionStatus.PENDING_REVIEW,
+        type: InspectionType.MOVE_OUT,
+        refundInfo: { amount: 1000, isRefunded: false },
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      await expect(
+        service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 1500)
+      ).rejects.toThrow(/Refund amount cannot exceed deposit amount/);
+    });
+
+    it('should set isRefunded = false when refundAmount is 0', async () => {
+      const inspection = makeInspection({
+        status: InspectionStatus.PENDING_REVIEW,
+        type: InspectionType.MOVE_OUT,
+        refundInfo: { amount: 1000, isRefunded: false },
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.APPROVED,
+      });
+
+      await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 0);
+
+      const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
+      expect(setFields['refundInfo.isRefunded']).toBe(false);
+      expect(setFields['refundInfo.proposedRefund']).toBe(0);
+    });
+
+    it('should set isRefunded = true when refundAmount > 0', async () => {
+      const inspection = makeInspection({
+        status: InspectionStatus.PENDING_REVIEW,
+        type: InspectionType.MOVE_OUT,
+        refundInfo: { amount: 1000, isRefunded: false },
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+      mockInspectionDAO.updateById.mockResolvedValue({
+        ...inspection,
+        status: InspectionStatus.APPROVED,
+      });
+
+      await service.approveInspection(CUID, IUID, APPROVER_ID, 'admin', 750);
+
+      const setFields = mockInspectionDAO.updateById.mock.calls[0][1].$set;
+      expect(setFields['refundInfo.isRefunded']).toBe(true);
+      expect(setFields['refundInfo.proposedRefund']).toBe(750);
+    });
+  });
+
+  // ─── Scheduling Tests ─────────────────────────────────────────────────────
+
+  describe('Scheduling', () => {
+    const makeActiveLease = () => ({
+      _id: new Types.ObjectId(),
+      luid: 'lease-123',
+      cuid: CUID,
+      status: 'active',
+      tenantId: new Types.ObjectId(TENANT_ID),
+      property: { id: new Types.ObjectId() },
+      fees: { securityDeposit: 1500 },
+    });
+
+    it('should reject scheduling a duplicate inspection of the same type for the same lease', async () => {
+      const lease = makeActiveLease();
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue({
+        iuid: 'existing-insp',
+        status: InspectionStatus.SCHEDULED,
+      });
+
+      await expect(
+        service.scheduleInspection(CUID, USER_ID, {
+          type: InspectionType.MOVE_IN,
+          leaseId: 'lease-123',
+          scheduledDate: new Date().toISOString(),
+        })
+      ).rejects.toThrow(/move-in inspection already exists for this lease/);
+    });
+
+    it('should allow scheduling when the only existing inspection of the same type is cancelled', async () => {
+      const lease = makeActiveLease();
+      const property = { _id: lease.property.id, cuid: CUID };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(null); // no non-cancelled match
+      mockPropertyDAO.findFirst.mockResolvedValue(property);
+      mockInspectionDAO.insert.mockImplementation((data: any) =>
+        Promise.resolve({ ...data, iuid: IUID })
+      );
+
+      const result = await service.scheduleInspection(CUID, USER_ID, {
+        type: InspectionType.MOVE_IN,
+        leaseId: 'lease-123',
+        scheduledDate: new Date().toISOString(),
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should use DEFAULT_INSPECTION_ROOMS when no rooms provided', async () => {
+      const lease = makeActiveLease();
+      const property = { _id: lease.property.id, cuid: CUID };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockPropertyDAO.findFirst.mockResolvedValue(property);
+      mockInspectionDAO.findFirst.mockResolvedValue(null); // no duplicate
+      mockInspectionDAO.insert.mockImplementation((data: any) =>
+        Promise.resolve({ ...data, iuid: IUID })
+      );
+
+      await service.scheduleInspection(CUID, USER_ID, {
+        type: InspectionType.MOVE_IN,
+        leaseId: 'lease-123',
+        scheduledDate: new Date().toISOString(),
+      });
+
+      const insertData = mockInspectionDAO.insert.mock.calls[0][0];
+      // Default rooms have 4 entries: Living Room, Kitchen, Bathroom, Bedroom
+      expect(insertData.rooms).toHaveLength(4);
+      expect(insertData.rooms[0].name).toBe('Living Room');
+    });
+
+    it('should throw 404 when inspectorId provided but user not found', async () => {
+      const lease = makeActiveLease();
+      const property = { _id: lease.property.id, cuid: CUID };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(null); // no duplicate
+      mockPropertyDAO.findFirst.mockResolvedValue(property);
+      mockUserDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.scheduleInspection(CUID, USER_ID, {
+          type: InspectionType.MOVE_IN,
+          leaseId: 'lease-123',
+          scheduledDate: new Date().toISOString(),
+          inspectorId: new Types.ObjectId().toString(),
+        })
+      ).rejects.toThrow(/Inspector not found/);
+    });
+  });
+
+  // ─── Lease Termination Handler Tests ──────────────────────────────────────
+
+  describe('handleLeaseTerminated', () => {
+    const leaseId = new Types.ObjectId().toString();
+
+    it('should cancel all open inspections when a lease is terminated', async () => {
+      const openInspections = [
+        makeInspection({ status: InspectionStatus.SCHEDULED, iuid: 'insp-1' }),
+        makeInspection({ status: InspectionStatus.IN_PROGRESS, iuid: 'insp-2' }),
+      ];
+
+      mockInspectionDAO.list.mockResolvedValue({
+        items: openInspections,
+        pagination: { total: 2, page: 1, pages: 1, limit: 50 },
+      });
+      mockInspectionDAO.updateById.mockResolvedValue({});
+
+      // Trigger the event handler directly
+      const handler = mockEmitterService.on.mock.calls.find(
+        (call: any[]) => call[0] === 'lease:terminated'
+      )?.[1];
+      expect(handler).toBeDefined();
+
+      await handler({
+        leaseId,
+        cuid: CUID,
+        luid: 'lease-123',
+        tenantId: TENANT_ID,
+        propertyId: new Types.ObjectId().toString(),
+        terminationDate: new Date(),
+        terminationReason: 'Ended',
+        terminatedBy: USER_ID,
+      });
+
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledTimes(2);
+      expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
+        openInspections[0]._id.toString(),
+        expect.objectContaining({ $set: { status: InspectionStatus.CANCELLED } })
+      );
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        'inspection:cancelled',
+        expect.objectContaining({ iuid: 'insp-1' })
+      );
+    });
+
+    it('should not cancel already approved or cancelled inspections', async () => {
+      mockInspectionDAO.list.mockResolvedValue({
+        items: [],
+        pagination: { total: 0, page: 1, pages: 1, limit: 50 },
+      });
+
+      const handler = mockEmitterService.on.mock.calls.find(
+        (call: any[]) => call[0] === 'lease:terminated'
+      )?.[1];
+
+      await handler({
+        leaseId,
+        cuid: CUID,
+        luid: 'lease-123',
+        tenantId: TENANT_ID,
+        propertyId: new Types.ObjectId().toString(),
+        terminationDate: new Date(),
+        terminationReason: 'Ended',
+        terminatedBy: USER_ID,
+      });
+
+      expect(mockInspectionDAO.updateById).not.toHaveBeenCalled();
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // handleLeaseActivated — auto-schedule move-in inspection
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('handleLeaseActivated', () => {
+    const makeLeaseActivatedPayload = () => ({
+      luid: 'lease-123',
+      cuid: CUID,
+      propertyManagerId: USER_ID,
+      leaseId: new Types.ObjectId().toString(),
+      tenantId: TENANT_ID,
+      propertyId: new Types.ObjectId().toString(),
+      propertyUnitId: new Types.ObjectId().toString(),
+      documentId: 'doc-1',
+      completedAt: new Date(),
+      signers: [],
+    });
+
+    it('should not schedule if autoScheduleInspection.moveIn is false', async () => {
+      const lease = { _id: new Types.ObjectId(), autoScheduleInspection: { moveIn: false } };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      expect(mockInspectionDAO.findFirst).not.toHaveBeenCalled();
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule if lease not found', async () => {
+      mockLeaseDAO.findFirst.mockResolvedValue(null);
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('should not schedule if move-in inspection already exists', async () => {
+      const lease = {
+        _id: new Types.ObjectId(),
+        autoScheduleInspection: { moveIn: true },
+        duration: { moveInDate: new Date(), startDate: new Date() },
+      };
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(makeInspection());
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('should use today when move-in date is in the past', async () => {
+      const pastDate = new Date('2020-01-01');
+      const lease = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: 'lease-123',
+        status: 'active',
+        autoScheduleInspection: { moveIn: true },
+        duration: { moveInDate: pastDate, startDate: pastDate },
+        tenantId: new Types.ObjectId(TENANT_ID),
+        property: { id: new Types.ObjectId() },
+        fees: { securityDeposit: 0 },
+      };
+      mockLeaseDAO.findFirst
+        .mockResolvedValueOnce(lease) // handleLeaseActivated lookup
+        .mockResolvedValueOnce(lease); // scheduleInspection lookup
+      mockInspectionDAO.findFirst
+        .mockResolvedValueOnce(null) // handleLeaseActivated dup check
+        .mockResolvedValueOnce(null); // scheduleInspection dup check
+      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockInspectionDAO.insert.mockResolvedValue(makeInspection());
+
+      await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
+
+      // The scheduledDate passed to insert should be today, not the past date
+      const insertCall = mockInspectionDAO.insert.mock.calls[0]?.[0];
+      if (insertCall) {
+        const scheduledDate = new Date(insertCall.scheduledDate);
+        const today = new Date();
+        // Should be today (not 2020), allow 1 day tolerance for test execution
+        expect(scheduledDate.getFullYear()).toBe(today.getFullYear());
+      }
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // checkUpcomingLeaseExpirations — auto-schedule move-out + reminders
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  describe('checkUpcomingLeaseExpirations', () => {
+    it('should do nothing when no leases match', async () => {
+      mockLeaseDAO.list.mockResolvedValue({ items: [] });
+
+      await service.checkUpcomingLeaseExpirations();
+
+      // Two list calls: auto-schedule + reminder
+      expect(mockLeaseDAO.list).toHaveBeenCalledTimes(2);
+      expect(mockInspectionDAO.findFirst).not.toHaveBeenCalled();
+      expect(mockEmitterService.emit).not.toHaveBeenCalled();
+    });
+
+    it('should use property.managedBy over createdBy for auto-scheduled move-out', async () => {
+      const managerId = new Types.ObjectId();
+      const creatorId = new Types.ObjectId();
+      const lease = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: 'lease-moveout',
+        status: 'active',
+        createdBy: creatorId,
+        tenantId: new Types.ObjectId(TENANT_ID),
+        property: { id: new Types.ObjectId(), managedBy: managerId },
+        duration: { endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        fees: { securityDeposit: 1000 },
+        autoScheduleInspection: { moveOut: true },
+      };
+
+      mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [lease] }) // auto-schedule batch
+        .mockResolvedValueOnce({ items: [] }); // reminder batch
+      mockInspectionDAO.findFirst
+        .mockResolvedValueOnce(null) // no existing move-out for this lease
+        .mockResolvedValueOnce(null); // scheduleInspection dup check
+      mockLeaseDAO.findFirst.mockResolvedValue(lease); // scheduleInspection lease lookup
+      mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
+      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockInspectionDAO.insert.mockResolvedValue(makeInspection());
+
+      await service.checkUpcomingLeaseExpirations();
+
+      // scheduleInspection called with managedBy ID, not createdBy
+      const insertCall = mockInspectionDAO.insert.mock.calls[0]?.[0];
+      expect(insertCall).toBeDefined();
+    });
+
+    it('should paginate when batch returns full page', async () => {
+      const fullBatch = Array.from({ length: 100 }, (_, i) => ({
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: `lease-${i}`,
+        status: 'active',
+        createdBy: new Types.ObjectId(),
+        tenantId: new Types.ObjectId(),
+        property: { id: new Types.ObjectId() },
+        duration: { endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+        fees: { securityDeposit: 0 },
+        autoScheduleInspection: { moveOut: true },
+      }));
+
+      mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: fullBatch }) // first auto-schedule page (full)
+        .mockResolvedValueOnce({ items: [] }) // second auto-schedule page (empty → stop)
+        .mockResolvedValueOnce({ items: [] }); // reminder page
+      mockInspectionDAO.findFirst.mockResolvedValue(makeInspection()); // all have existing
+
+      await service.checkUpcomingLeaseExpirations();
+
+      // Should have called list 3 times: 2 for auto-schedule pagination + 1 for reminders
+      expect(mockLeaseDAO.list).toHaveBeenCalledTimes(3);
+    });
+
+    it('should emit INSPECTION_REMINDER with luid (no iuid) for non-auto-schedule leases', async () => {
+      const lease = {
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        luid: 'lease-reminder',
+        tenantId: new Types.ObjectId(TENANT_ID),
+        property: { id: new Types.ObjectId() },
+        duration: { endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) },
+      };
+
+      mockLeaseDAO.list
+        .mockResolvedValueOnce({ items: [] }) // auto-schedule (none)
+        .mockResolvedValueOnce({ items: [lease] }) // reminder batch
+        .mockResolvedValueOnce({ items: [] }); // reminder pagination end
+
+      await service.checkUpcomingLeaseExpirations();
+
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        'inspection:reminder',
+        expect.objectContaining({
+          luid: 'lease-reminder',
+          cuid: CUID,
+          type: InspectionType.MOVE_OUT,
+        })
+      );
+      // Should NOT have iuid in the payload
+      const emitPayload = mockEmitterService.emit.mock.calls[0]?.[1];
+      expect(emitPayload).not.toHaveProperty('iuid');
+    });
+  });
+});

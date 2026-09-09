@@ -479,7 +479,8 @@
   },
   "tenant": {
     "success": {
-      "detailsRetrieved": "Tenant details retrieved successfully"
+      "detailsRetrieved": "Tenant details retrieved successfully",
+      "profileUpdated": "Tenant profile updated successfully"
     },
     "errors": {
       "notFound": "Tenant not found"

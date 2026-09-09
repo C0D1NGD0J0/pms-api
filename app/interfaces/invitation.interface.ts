@@ -4,16 +4,6 @@ import { IUserRole } from '@shared/constants/roles.constants';
 import { IUserDocument } from './user.interface';
 import { EmployeeInfo, TenantInfo, VendorInfo } from './profile.interface';
 
-/**
- * ============================================================================
- * BASE TYPE DEFINITIONS (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Main Invitation Interface
- * Core invitation data structure
- */
 export interface IInvitation {
   personalInfo: IInvitationPersonalInfo;
   linkedVendorUid?: Types.ObjectId;
@@ -33,10 +23,6 @@ export interface IInvitation {
   iuid: string;
 }
 
-/**
- * Invitation Document Interface
- * Extends IInvitation with MongoDB document properties and methods
- */
 export interface IInvitationDocument extends IInvitation, Document {
   revoke(revokedBy: string, reason?: string): Promise<IInvitationDocument>;
   accept(acceptedBy: string): Promise<IInvitationDocument>;
@@ -50,16 +36,6 @@ export interface IInvitationDocument extends IInvitation, Document {
   updatedAt: Date;
 }
 
-/**
- * ============================================================================
- * CORE INTERFACES (Single Source of Truth)
- * ============================================================================
- */
-
-/**
- * Invitation Acceptance Data Interface
- * Used when accepting an invitation
- */
 export interface IInvitationAcceptance {
   newsletterOptIn: boolean;
   confirmPassword: string;
@@ -77,10 +53,6 @@ export interface IInvitationAcceptance {
   cuid: string;
 }
 
-/**
- * Invitation List Query Interface
- * Used for querying and filtering invitations
- */
 export interface IInvitationListQuery {
   sortBy?: 'createdAt' | 'expiresAt' | 'inviteeEmail';
   sortOrder?: 'asc' | 'desc';
@@ -92,10 +64,6 @@ export interface IInvitationListQuery {
   cuid: string;
 }
 
-/**
- * Invitation Form Data Interface
- * Used for creating new invitations via API
- */
 export interface IInvitationData {
   personalInfo: IInvitationPersonalInfo;
   metadata?: IInvitationMetadataInput;
@@ -105,10 +73,6 @@ export interface IInvitationData {
   role: IUserRole;
 }
 
-/**
- * Invitation Metadata Interface
- * Additional invitation context and tracking
- */
 export interface IInvitationMetadata {
   employeeInfo?: EmployeeInfo;
   expectedStartDate?: Date;
@@ -119,32 +83,12 @@ export interface IInvitationMetadata {
   remindersSent: number;
 }
 
-/**
- * ============================================================================
- * DOCUMENT INTERFACES (Mongoose Extensions)
- * ============================================================================
- */
-
-/**
- * Populated Invitation Document Interface
- * Invitation with populated user references
- */
 export type IInvitationDocumentPopulated = {
   invitedBy: Partial<IUserDocument>;
   acceptedBy?: Partial<IUserDocument>;
   revokedBy?: Partial<IUserDocument>;
 } & Omit<IInvitationDocument, 'invitedBy' | 'acceptedBy' | 'revokedBy'>;
 
-/**
- * ============================================================================
- * FORM DATA INTERFACES
- * ============================================================================
- */
-
-/**
- * Invitation Stats Interface
- * Statistics for invitation reporting
- */
 export interface IInvitationStats {
   byRole: Record<IUserRole, number>;
   accepted: number;
@@ -155,10 +99,6 @@ export interface IInvitationStats {
   sent: number;
 }
 
-/**
- * Send Invitation Result Interface
- * Result of sending an invitation email
- */
 export interface ISendInvitationResult {
   emailData: {
     to: string;
@@ -168,10 +108,6 @@ export interface ISendInvitationResult {
   invitation: IInvitationDocument;
 }
 
-/**
- * Invitation Status Type
- * Represents the current state of an invitation
- */
 export type InvitationStatus =
   | 'draft'
   | 'pending'
@@ -181,64 +117,26 @@ export type InvitationStatus =
   | 'sent'
   | 'declined';
 
-/**
- * ============================================================================
- * POPULATED/ENRICHED INTERFACES
- * ============================================================================
- */
-
-/**
- * Invitation Validation Result Interface
- * Result of validating an invitation token
- */
 export interface IInvitationValidation {
   invitation?: IInvitationDocument;
   isValid: boolean;
   error?: string;
 }
 
-/**
- * ============================================================================
- * QUERY & FILTER INTERFACES
- * ============================================================================
- */
-
-/**
- * Personal Information Interface
- * Basic personal details for invitation recipients
- */
 export interface IInvitationPersonalInfo {
   phoneNumber?: string;
   firstName: string;
   lastName: string;
 }
 
-/**
- * ============================================================================
- * RESPONSE INTERFACES
- * ============================================================================
- */
-
-/**
- * Invitation Metadata Input Interface
- * Metadata structure for creating/updating invitations (without tracking fields)
- */
 export type IInvitationMetadataInput = Omit<
   IInvitationMetadata,
   'remindersSent' | 'lastReminderSent'
 >;
 
-/**
- * Resend Invitation Data Interface
- * Used when resending an invitation
- */
 export interface IResendInvitationData {
   customMessage?: string;
   iuid: string;
 }
 
-/**
- * Draft/Initial Invitation Status Type
- * Used when creating new invitations
- */
 export type InitialInvitationStatus = 'draft' | 'pending';

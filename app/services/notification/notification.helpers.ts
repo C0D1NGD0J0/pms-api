@@ -130,3 +130,52 @@ export async function notifyAnnouncement(
   };
   await ctx.createNotification(cuid, type, data);
 }
+
+/**
+ * Send a resource-event SSE to a specific user, wrapped in try/catch.
+ * Replaces the repeated pattern: ctx.sseService.sendToUser(...) + try/catch + log.error.
+ */
+export async function sendResourceEvent(
+  ctx: INotificationContext,
+  userId: string | undefined | null,
+  cuid: string,
+  resource: string,
+  action: string,
+  resourceUId: string,
+  errorLabel?: string
+): Promise<void> {
+  if (!userId) return;
+  try {
+    await ctx.sseService.sendToUser(
+      userId,
+      cuid,
+      { resource, action, resourceUId },
+      'resource-event'
+    );
+  } catch (error) {
+    ctx.log.error(
+      { error, userId, resourceUId },
+      `Error sending ${errorLabel || action} resource-event SSE`
+    );
+  }
+}
+
+/**
+ * Send resource-event SSE to multiple users, deduplicating and skipping nullish IDs.
+ */
+export async function sendResourceEventToMany(
+  ctx: INotificationContext,
+  userIds: (string | undefined | null)[],
+  cuid: string,
+  resource: string,
+  action: string,
+  resourceUId: string,
+  errorLabel?: string
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const id of userIds) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    await sendResourceEvent(ctx, id, cuid, resource, action, resourceUId, errorLabel);
+  }
+}

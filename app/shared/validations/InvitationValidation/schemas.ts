@@ -3,6 +3,8 @@ import { isValidPhoneNumber } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
+import { safeString } from '../UtilsValidation';
+
 const employeeInfoSchema = z
   .object({
     permissions: z.array(z.string()).optional(),
@@ -41,8 +43,8 @@ const tenantInfoSchema = z
     activeLeases: z
       .array(
         z.object({
-          cuid: z.string().optional(),
-          leaseId: z.string().optional(),
+          cuid: safeString.optional(),
+          leaseId: safeString.optional(),
         })
       )
       .optional(),
@@ -111,8 +113,8 @@ const tenantInfoSchema = z
         })
       )
       .optional(),
-    propertyId: z.string().min(8).optional(),
-    unitId: z.string().min(8).optional(),
+    propertyId: safeString.pipe(z.string().min(8)).optional(),
+    unitId: safeString.pipe(z.string().min(8)).optional(),
   })
   .optional();
 

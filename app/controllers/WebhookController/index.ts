@@ -115,7 +115,8 @@ export class WebhookController {
       this.log.error('Error processing BoldSign webhook', {
         error: error.message,
         stack: error.stack,
-        body: req.body,
+        eventType: req.body?.event?.eventType,
+        documentId: req.body?.event?.eventData?.documentId,
       });
       return res.status(500).json({
         success: false,

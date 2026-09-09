@@ -230,7 +230,8 @@ export class MediaUploadService {
 
     for (const file of files) {
       const routingInfo = this.getFileRouting(file.fieldName, context);
-      const groupKey = `${routingInfo.resourceName}_${routingInfo.fieldName}`;
+      const roomSuffix = routingInfo.roomIndex !== undefined ? `_room${routingInfo.roomIndex}` : '';
+      const groupKey = `${routingInfo.resourceName}_${routingInfo.fieldName}${roomSuffix}`;
 
       if (!groups[groupKey]) {
         groups[groupKey] = {
@@ -240,6 +241,7 @@ export class MediaUploadService {
             resourceId: routingInfo.resourceId,
             fieldName: routingInfo.fieldName,
             actorId: context.uploadedBy,
+            ...(routingInfo.roomIndex !== undefined && { roomIndex: routingInfo.roomIndex }),
           },
           fileGroup: [],
         };
@@ -261,9 +263,17 @@ export class MediaUploadService {
       resourceContext?: ResourceContext;
     }
   ): {
-    resourceName: 'property' | 'profile' | 'client' | 'lease' | 'maintenance' | 'payment-invoice';
+    resourceName:
+      | 'property'
+      | 'profile'
+      | 'client'
+      | 'lease'
+      | 'maintenance'
+      | 'payment-invoice'
+      | 'inspection';
     resourceId: string;
     fieldName: string;
+    roomIndex?: number;
   } {
     if (fieldName === 'identification.idimage' || fieldName.startsWith('identification.')) {
       return {
@@ -334,6 +344,25 @@ export class MediaUploadService {
         resourceName: 'maintenance',
         resourceId: context.primaryResourceId,
         fieldName: 'media',
+      };
+    }
+
+    if (context.resourceContext === ResourceContext.INSPECTION) {
+      // Room-targeted media: field names like rooms[2][media][0][file]
+      const roomMatch = fieldName.match(/^rooms\[(\d+)\]\[media\]/);
+      if (roomMatch) {
+        return {
+          resourceName: 'inspection',
+          resourceId: context.primaryResourceId,
+          fieldName: 'roomMedia',
+          roomIndex: parseInt(roomMatch[1], 10),
+        };
+      }
+
+      return {
+        resourceName: 'inspection',
+        resourceId: context.primaryResourceId,
+        fieldName: fieldName === 'reportDocument' ? 'reportDocument' : 'media',
       };
     }
 

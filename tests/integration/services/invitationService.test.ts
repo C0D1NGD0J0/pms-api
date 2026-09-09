@@ -303,6 +303,7 @@ describe('InvitationService Integration Tests', () => {
         const result = await invitationService.revokeInvitation(
           invitation.iuid,
           adminUser._id.toString(),
+          testClient.cuid,
           'Position filled'
         );
 
@@ -321,7 +322,11 @@ describe('InvitationService Integration Tests', () => {
         });
 
         await expect(
-          invitationService.revokeInvitation(invitation.iuid, adminUser._id.toString())
+          invitationService.revokeInvitation(
+            invitation.iuid,
+            adminUser._id.toString(),
+            testClient.cuid
+          )
         ).rejects.toThrow(BadRequestError);
       });
     });

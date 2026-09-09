@@ -184,15 +184,16 @@ function makeLeaseDoc(overrides: Record<string, any> = {}): any {
 }
 
 describe('calculateFinancialSummary — first payment composition', () => {
-  it('full-month start: firstPayment = rent + security deposit (no pets)', () => {
+  it('full-month start: firstPayment = rent only (deposits invoiced separately)', () => {
     const lease = makeLeaseDoc();
     const summary = calculateFinancialSummary(lease);
-    // pro-rated = full 200000; firstPayment = 200000 + 200000
-    expect(summary.firstPaymentAmount).toBe(400000);
+    // Deposits are now invoiced separately; firstPayment = pro-rated rent only
+    expect(summary.firstPaymentAmount).toBe(200000);
+    expect(summary.depositAmount).toBe(200000); // security deposit tracked separately
     expect(summary.isFirstMonthFullMonth).toBe(true);
   });
 
-  it('mid-month start includes pro-rated rent + security deposit only (no pets)', () => {
+  it('mid-month start includes pro-rated rent only (deposits invoiced separately)', () => {
     // June 15: daysCharged=16, ceil(200000 × 16/30) = 106667
     const lease = makeLeaseDoc({
       duration: { startDate: new Date(2024, 5, 15), endDate: new Date(2025, 4, 31) },
@@ -200,7 +201,8 @@ describe('calculateFinancialSummary — first payment composition', () => {
     const summary = calculateFinancialSummary(lease);
     const expectedProRated = Math.ceil((200000 * 16) / 30); // 106667
     expect(summary.proRatedFirstMonthAmount).toBe(expectedProRated);
-    expect(summary.firstPaymentAmount).toBe(expectedProRated + 200000);
+    expect(summary.firstPaymentAmount).toBe(expectedProRated);
+    expect(summary.depositAmount).toBe(200000); // tracked separately
   });
 
   it('includes pet monthly fee in first payment when pets allowed', () => {
@@ -208,26 +210,28 @@ describe('calculateFinancialSummary — first payment composition', () => {
       petPolicy: { allowed: true, monthlyFee: 5000, deposit: 0 },
     });
     const summary = calculateFinancialSummary(lease);
-    // full month: 200000 rent + 200000 deposit + 5000 pet fee
-    expect(summary.firstPaymentAmount).toBe(405000);
+    // full month: 200000 rent + 5000 pet fee (deposits separate)
+    expect(summary.firstPaymentAmount).toBe(205000);
     expect(summary.petFeeRaw).toBe(5000);
   });
 
-  it('includes pet deposit in first payment when pets allowed', () => {
+  it('tracks pet deposit in depositAmount separately from firstPaymentAmount', () => {
     const lease = makeLeaseDoc({
       petPolicy: { allowed: true, monthlyFee: 5000, deposit: 25000 },
     });
     const summary = calculateFinancialSummary(lease);
-    // 200000 + 200000 + 5000 + 25000
-    expect(summary.firstPaymentAmount).toBe(430000);
+    // firstPayment = 200000 rent + 5000 pet fee; deposits invoiced separately
+    expect(summary.firstPaymentAmount).toBe(205000);
+    expect(summary.depositAmount).toBe(200000 + 25000); // security + pet deposit
   });
 
-  it('pet deposit is one-time: included in firstPaymentAmount', () => {
+  it('pet deposit is tracked in depositAmount, not firstPaymentAmount', () => {
     const lease = makeLeaseDoc({
       petPolicy: { allowed: true, monthlyFee: 0, deposit: 30000 },
     });
     const summary = calculateFinancialSummary(lease);
-    expect(summary.firstPaymentAmount).toBe(200000 + 200000 + 30000);
+    expect(summary.firstPaymentAmount).toBe(200000); // rent only
+    expect(summary.depositAmount).toBe(200000 + 30000); // security + pet deposit
   });
 
   it('no pet fee display when monthlyFee is 0', () => {
@@ -285,7 +289,7 @@ describe('calculateFinancialSummary — first payment composition', () => {
     const proRatedRent = Math.ceil((200000 * 16) / 30); // 106667
     const proRatedMgmt = Math.ceil((15000 * 16) / 30); // 8000
     expect(summary.proRatedManagementFeeAmount).toBe(proRatedMgmt);
-    expect(summary.firstPaymentAmount).toBe(proRatedRent + proRatedMgmt + 200000); // + security deposit
+    expect(summary.firstPaymentAmount).toBe(proRatedRent + proRatedMgmt); // deposits invoiced separately
   });
 
   it('forwards lateFeePercentage from lease fees', () => {
@@ -392,18 +396,20 @@ describe('calculateNextPaymentDate', () => {
   it('returns startDate when lease has not started yet (future start)', () => {
     const futureStart = daysFromNow(10);
     const result = calculateNextPaymentDate(1, futureStart);
+    expect(result).not.toBeNull();
     // Should be the same day as startDate
-    result.setHours(0, 0, 0, 0);
+    result!.setHours(0, 0, 0, 0);
     futureStart.setHours(0, 0, 0, 0);
-    expect(result.getTime()).toBe(futureStart.getTime());
+    expect(result!.getTime()).toBe(futureStart.getTime());
   });
 
   it('returns startDate when start date is today', () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const result = calculateNextPaymentDate(1, today);
-    result.setHours(0, 0, 0, 0);
-    expect(result.getTime()).toBe(today.getTime());
+    expect(result).not.toBeNull();
+    result!.setHours(0, 0, 0, 0);
+    expect(result!.getTime()).toBe(today.getTime());
   });
 
   it('returns next occurrence of rentDueDay when lease is active and due day is in the future this month', () => {
@@ -419,8 +425,9 @@ describe('calculateNextPaymentDate', () => {
     }
 
     const result = calculateNextPaymentDate(futureDay, pastStart);
-    expect(result.getDate()).toBe(futureDay);
-    expect(result.getMonth()).toBe(today.getMonth());
+    expect(result).not.toBeNull();
+    expect(result!.getDate()).toBe(futureDay);
+    expect(result!.getMonth()).toBe(today.getMonth());
   });
 
   it('returns next month occurrence when rentDueDay has already passed this month', () => {
@@ -433,13 +440,45 @@ describe('calculateNextPaymentDate', () => {
     if (today.getDate() === 1) {
       // Edge case: if today IS the 1st, use day 28 instead
       const result = calculateNextPaymentDate(28, pastStart);
-      expect(result.getDate()).toBe(28);
+      expect(result).not.toBeNull();
+      expect(result!.getDate()).toBe(28);
       return;
     }
 
     const result = calculateNextPaymentDate(rentDueDay, pastStart);
+    expect(result).not.toBeNull();
     const expectedMonth = (today.getMonth() + 1) % 12;
-    expect(result.getDate()).toBe(rentDueDay);
-    expect(result.getMonth()).toBe(expectedMonth);
+    expect(result!.getDate()).toBe(rentDueDay);
+    expect(result!.getMonth()).toBe(expectedMonth);
+  });
+
+  it('returns null when next due date is after lease endDate', () => {
+    const pastStart = daysFromNow(-60);
+    const pastEnd = daysFromNow(-5);
+    const result = calculateNextPaymentDate(1, pastStart, pastEnd);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when next due date is after terminationDate', () => {
+    const pastStart = daysFromNow(-60);
+    const futureEnd = daysFromNow(60);
+    const pastTermination = daysFromNow(-3);
+    const result = calculateNextPaymentDate(1, pastStart, futureEnd, pastTermination);
+    expect(result).toBeNull();
+  });
+
+  it('terminationDate takes precedence over endDate', () => {
+    const pastStart = daysFromNow(-60);
+    const futureEnd = daysFromNow(60);
+    const pastTermination = daysFromNow(-1);
+    const result = calculateNextPaymentDate(15, pastStart, futureEnd, pastTermination);
+    expect(result).toBeNull();
+  });
+
+  it('returns date when due date is before endDate', () => {
+    const pastStart = daysFromNow(-30);
+    const futureEnd = daysFromNow(60);
+    const result = calculateNextPaymentDate(15, pastStart, futureEnd);
+    expect(result).not.toBeNull();
   });
 });

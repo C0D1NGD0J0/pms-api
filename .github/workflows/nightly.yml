@@ -35,14 +35,24 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
+      - name: Cache Redis binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/redis-memory-server
+          key: redis-binary-${{ runner.os }}-${{ runner.arch }}-7.2.7
+
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
       - name: Type check
         run: npx tsc --noEmit -p tsconfig.build.json
 
       - name: Run unit tests
         run: npm test
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
       - name: Cache MongoDB binary
         uses: actions/cache@v4
@@ -52,6 +62,8 @@ jobs:
 
       - name: Run integration tests
         run: npm run test:integration
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
       - name: Build
         run: npm run build

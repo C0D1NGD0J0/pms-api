@@ -47,9 +47,9 @@ const createSharedRedisConnection = (): Redis => {
     sharedIORedisClient = new Redis(redisUrl, redisConfig);
 
     // Increase max listeners to prevent warning
-    // Each queue (10) creates ~3-4 listeners per connection type (client, subscriber, bclient)
-    // Set to 40 to accommodate all queues without warnings
-    sharedIORedisClient.setMaxListeners(40);
+    // Each queue adds ~3 listeners (error/ready/close) on the shared client connection
+    // 13 queues + 1 shared DLQ + explicit listeners = ~45
+    sharedIORedisClient.setMaxListeners(50);
 
     sharedIORedisClient.on('error', (err) => {
       const logger = createLogger('IORedis');
@@ -125,7 +125,22 @@ export type JobData = any;
 
 export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
-let deadLetterQueue: Queue.Queue | null;
+let sharedDLQ: Queue.Queue | null = null;
+
+const getSharedDLQ = (): Queue.Queue => {
+  if (!sharedDLQ) {
+    sharedDLQ = new Queue('dead-letter-queue', DEFAULT_QUEUE_OPTIONS);
+  }
+  return sharedDLQ;
+};
+
+export const closeSharedDLQ = async (): Promise<void> => {
+  if (sharedDLQ) {
+    sharedDLQ.removeAllListeners();
+    await sharedDLQ.close();
+    sharedDLQ = null;
+  }
+};
 
 /**
  * Initialize Bull Board server adapter for lazy-loaded queues
@@ -152,12 +167,7 @@ export class BaseQueue<T extends JobData = JobData> {
     const queueOptions: BullQueueOptions = DEFAULT_QUEUE_OPTIONS;
 
     this.queue = new Queue(queueName, queueOptions);
-
-    if (!deadLetterQueue) {
-      const dlqName = `${queueName}-DLQ`;
-      deadLetterQueue = new Queue(dlqName, queueOptions);
-    }
-    this.dlq = deadLetterQueue;
+    this.dlq = getSharedDLQ();
 
     // Only register with Bull Board in API process (not worker)
     // Worker queues don't need UI - they just process jobs
@@ -171,8 +181,6 @@ export class BaseQueue<T extends JobData = JobData> {
     }
 
     this.initializeQueueEvents();
-
-    deadLetterQueue = null;
   }
 
   protected initializeQueueEvents(): void {
@@ -381,14 +389,8 @@ export class BaseQueue<T extends JobData = JobData> {
       await this.queue.resume();
 
       this.queue.removeAllListeners();
-      if (this.dlq) {
-        this.dlq.removeAllListeners();
-      }
-
       await this.queue.close();
-      if (this.dlq) {
-        await this.dlq.close();
-      }
+      // Shared DLQ is closed separately via closeSharedDLQ()
       this.log.info(`Queue ${this.queue.name} shutdown complete`);
     } catch (error) {
       this.log.error(`Error shutting down queue ${this.queue.name}:`, error);

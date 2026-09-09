@@ -1,6 +1,5 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import mongoose from 'mongoose';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { MoneyUtils } from '@utils/money.utils';
 import { type QueryFilter, Types } from 'mongoose';
@@ -24,10 +23,14 @@ import {
   IRequestContext,
 } from '@interfaces/utils.interface';
 import {
+  MaintenanceRequestDAO,
   PaymentProcessorDAO,
   SubscriptionDAO,
+  PropertyUnitDAO,
+  PropertyDAO,
   PaymentDAO,
   ProfileDAO,
+  VendorDAO,
   ClientDAO,
   LeaseDAO,
   UserDAO,
@@ -59,6 +62,7 @@ interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentWebhookService: PaymentWebhookService;
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   payoutAccountService: PayoutAccountService;
   pdfGeneratorService: PdfGeneratorService;
   paymentProcessorDAO: PaymentProcessorDAO;
@@ -66,10 +70,13 @@ interface IConstructor {
   rentPaymentService: RentPaymentService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  propertyUnitDAO: PropertyUnitDAO;
   stripeService: StripeService;
+  propertyDAO: PropertyDAO;
   invoiceDAO: InvoiceDAO;
   paymentDAO: PaymentDAO;
   profileDAO: ProfileDAO;
+  vendorDAO: VendorDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -108,6 +115,9 @@ interface IStripeDisputeWebhookData {
 }
 
 interface IStripeChargeWebhookData {
+  refunds?: {
+    data?: Array<{ id: string }>;
+  };
   amount_refunded?: number;
 }
 
@@ -127,6 +137,10 @@ export class PaymentService implements ICronProvider {
   private readonly paymentDAO: PaymentDAO;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
+  private readonly vendorDAO: VendorDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly paymentGatewayService: PaymentGatewayService;
@@ -149,6 +163,10 @@ export class PaymentService implements ICronProvider {
     emitterService,
     subscriptionDAO,
     stripeService,
+    maintenanceRequestDAO,
+    propertyUnitDAO,
+    propertyDAO,
+    vendorDAO,
     invoiceDAO,
     paymentDAO,
     profileDAO,
@@ -168,6 +186,10 @@ export class PaymentService implements ICronProvider {
     this.profileDAO = profileDAO;
     this.paymentDAO = paymentDAO;
     this.invoiceDAO = invoiceDAO;
+    this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
+    this.vendorDAO = vendorDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentProcessorDAO = paymentProcessorDAO;
@@ -220,6 +242,7 @@ export class PaymentService implements ICronProvider {
       leaseId?: string;
       luid?: string;
       maintenanceRequestUid?: string;
+      pendingReview?: boolean;
       page?: number;
       limit?: number;
       sortDirection?: 'asc' | 'desc';
@@ -283,6 +306,10 @@ export class PaymentService implements ICronProvider {
         query.maintenanceRequestUid = filters.maintenanceRequestUid;
       }
 
+      if (filters?.pendingReview === true) {
+        query.managerReviewRequired = true;
+      }
+
       const role = context?.currentuser?.client?.role;
       const vendorSub = context?.currentuser?.sub;
       if (role === 'vendor' && vendorSub) {
@@ -314,7 +341,7 @@ export class PaymentService implements ICronProvider {
             },
           ],
           projection:
-            'pytuid paymentMethod paymentType baseAmount processingFee applicationFee platformRevenue status dueDate paidAt period failure receipt lineItems currency maintenanceRequestUid',
+            'pytuid paymentMethod paymentType baseAmount processingFee applicationFee platformRevenue status dueDate paidAt period failure receipt lineItems currency maintenanceRequestUid refund managerReviewRequired',
           skip,
           limit,
         },
@@ -369,6 +396,13 @@ export class PaymentService implements ICronProvider {
           failure: payment.failure || undefined,
           receipt: payment.receipt || undefined,
           maintenanceRequestUid: (payment as any).maintenanceRequestUid || undefined,
+          managerReviewRequired: (payment as any).managerReviewRequired || false,
+          ...(payment.status === PaymentRecordStatus.REFUNDED && payment.refund
+            ? {
+                refundAmount: payment.refund.amount,
+                refundedAt: payment.refund.refundedAt,
+              }
+            : {}),
         };
       });
 
@@ -538,19 +572,12 @@ export class PaymentService implements ICronProvider {
 
             let vendorOrg;
             if (vendorVuid) {
-              // Team member — look up org by vuid
-              vendorOrg = await mongoose.connection.db
-                ?.collection('vendors')
-                .findOne({ vuid: vendorVuid, deletedAt: null }, { projection: { companyName: 1 } });
+              vendorOrg = await this.vendorDAO.getVendorByVuid(String(vendorVuid));
             } else if (clientEntry?.primaryRole === 'vendor') {
-              // Primary account holder — look up org by primaryAccountHolderUserId
-              vendorOrg = await mongoose.connection.db?.collection('vendors').findOne(
-                {
-                  'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
-                  deletedAt: null,
-                },
-                { projection: { companyName: 1 } }
-              );
+              vendorOrg = await this.vendorDAO.findFirst({
+                'connectedClients.primaryAccountHolderUserId': invoice.submittedBy,
+                deletedAt: null,
+              });
             }
             vendorName = vendorOrg?.companyName || '';
           }
@@ -574,24 +601,20 @@ export class PaymentService implements ICronProvider {
       };
 
       if (!leaseInfo && paymentObj.maintenanceRequestUid) {
-        const mr = await mongoose.connection.db
-          ?.collection('maintenancerequests')
-          .findOne(
-            { mruid: paymentObj.maintenanceRequestUid, cuid },
-            { projection: { propertyId: 1 } }
-          );
+        const mr = await this.maintenanceRequestDAO.getByMruid(
+          String(paymentObj.maintenanceRequestUid),
+          cuid
+        );
         if (mr?.propertyId) {
-          const prop = await mongoose.connection.db
-            ?.collection('properties')
-            .findOne(
-              { _id: mr.propertyId },
-              { projection: { pid: 1, name: 1, 'address.fullAddress': 1 } }
-            );
+          const prop = await this.propertyDAO.findFirst({
+            _id: mr.propertyId,
+            deletedAt: null,
+          });
           if (prop) {
             propertyInfo = {
-              pid: prop.pid || '',
-              name: prop.name || '',
-              address: prop.address?.fullAddress || '',
+              pid: (prop as any).pid || '',
+              name: (prop as any).name || '',
+              address: (prop as any).address?.fullAddress || '',
             };
           }
         }
@@ -872,13 +895,11 @@ export class PaymentService implements ICronProvider {
 
       // Primary account holders may not have linkedVendorUid set — resolve from vendor collection
       if (!vendorVuid) {
-        const vendorOrg = await mongoose.connection.db
-          ?.collection('vendors')
-          .findOne(
-            { 'connectedClients.primaryAccountHolderUserId': vendor._id, deletedAt: null },
-            { projection: { vuid: 1 } }
-          );
-        vendorVuid = vendorOrg?.vuid || null;
+        const vendorOrg = await this.vendorDAO.findFirst({
+          'connectedClients.primaryAccountHolderUserId': vendor._id,
+          deletedAt: null,
+        });
+        vendorVuid = vendorOrg?.vuid || undefined;
       }
 
       let vendorUserIds = [vendor._id.toString()];
@@ -995,11 +1016,47 @@ export class PaymentService implements ICronProvider {
       );
 
       let lease;
+      let currency: string | undefined;
+      let propertyObjectId: Types.ObjectId | undefined;
+      let unitObjectId: Types.ObjectId | undefined;
+
       if (data.leaseId) {
         lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
         if (!lease) {
           throw new NotFoundError({ message: 'Lease not found' });
         }
+        currency = lease.fees?.currency;
+      } else if (data.propertyId) {
+        // Property-tied entry without a lease
+        // Values are pre-validated by Zod safeString in PaymentsValidation schema
+        const pid = String(data.propertyId);
+        const property = await this.propertyDAO.findFirst({
+          pid,
+          cuid,
+          deletedAt: null,
+        });
+        if (!property) {
+          throw new NotFoundError({ message: 'Property not found' });
+        }
+        propertyObjectId = property._id;
+
+        if (data.unitId) {
+          const puid = String(data.unitId);
+          const unit = await this.propertyUnitDAO.findFirst({
+            puid,
+            propertyId: property._id,
+            deletedAt: null,
+          });
+          if (!unit) {
+            throw new NotFoundError({ message: 'Unit not found for this property' });
+          }
+          unitObjectId = unit._id as Types.ObjectId;
+        }
+      }
+
+      // Derive currency: lease > client settings > default
+      if (!currency) {
+        currency = (client as any).settings?.currency || 'USD';
       }
 
       const payment = await this.paymentDAO.insert({
@@ -1007,9 +1064,12 @@ export class PaymentService implements ICronProvider {
         paymentType: data.paymentType,
         paymentMethod: data.paymentMethod,
         lease: lease ? lease._id : undefined,
+        propertyId: propertyObjectId,
+        unitId: unitObjectId,
         tenant: tenantProfile._id,
         baseAmount: data.baseAmount,
         processingFee: data.processingFee || 0,
+        currency,
         status: data.status || PaymentRecordStatus.PAID,
         dueDate: data.paidAt,
         paidAt: data.paidAt,
@@ -1017,6 +1077,8 @@ export class PaymentService implements ICronProvider {
         description: data.description,
         recordedBy: new Types.ObjectId(userId),
         isManualEntry: true,
+        // Staff-initiated entries require PM/admin confirmation before considered verified
+        managerReviewRequired: paymentSource === 'staff_initiated',
         ...(paymentSource ? { paymentSource } : {}),
         ...(data.receipt
           ? { receipt: { ...data.receipt, uploadedBy: new Types.ObjectId(userId) } }
@@ -1031,7 +1093,7 @@ export class PaymentService implements ICronProvider {
       return {
         success: true,
         data: payment,
-        message: 'Manual payment recorded successfully',
+        message: 'Payment recorded successfully',
       };
     } catch (error: any) {
       this.log.error('Error recording manual payment:', error);
@@ -1195,21 +1257,33 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: 'Payment processor not configured for this account' });
       }
 
-      await this.paymentGatewayService.createRefund(IPaymentGatewayProvider.STRIPE, {
-        chargeId: payment.gatewayChargeId,
-        amountInCents: data.amount,
-        reason: data.reason,
-      });
+      const refundResult = await this.paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          chargeId: payment.gatewayChargeId,
+          amountInCents: data.amount,
+          reason: data.reason,
+        }
+      );
+
+      if (!refundResult.success) {
+        throw new BadRequestError({
+          message: refundResult.message || 'Stripe refund failed',
+        });
+      }
 
       const updated = await this.paymentDAO.updateById(payment._id.toString(), {
         status: PaymentRecordStatus.REFUNDED,
         'refund.refundedAt': dayjs().toDate(),
+        'refund.refundedBy': requestingUserSub,
         'refund.amount': data.amount || payment.baseAmount,
         'refund.reason': data.reason,
+        'refund.gatewayRefundId': refundResult.data?.refundId,
       });
 
       this.log.info('Payment refund initiated', {
         pytuid: payment.pytuid,
+        refundedBy: requestingUserSub,
         refundAmount: data.amount || payment.baseAmount,
         isPartial: !!data.amount && data.amount < payment.baseAmount,
       });
@@ -1217,6 +1291,129 @@ export class PaymentService implements ICronProvider {
       return { success: true, data: updated as IPaymentDocument };
     } catch (error: any) {
       this.log.error({ error: error.message, cuid, pytuid }, 'Error refunding payment');
+      throw error;
+    }
+  }
+
+  /**
+   * Releases a security deposit that is staged as PENDING_REFUND (requires PM/admin action
+   * when requireDepositRefundApproval is enabled on the client).
+   * Executes the Stripe refund against the deposit's original charge.
+   */
+  async releaseDepositRefund(
+    cuid: string,
+    pytuid: string,
+    releasedBy: string,
+    data?: IRefundPaymentData
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (payment.paymentType !== PaymentRecordType.SECURITY_DEPOSIT) {
+        throw new BadRequestError({
+          message: 'Only security deposit payments can be released via this route',
+        });
+      }
+
+      if (payment.status !== PaymentRecordStatus.PENDING_REFUND) {
+        throw new BadRequestError({
+          message: `Cannot release deposit with status: ${payment.status}. Only PENDING_REFUND deposits can be released.`,
+        });
+      }
+
+      const refundAmount = payment.refund?.amount ?? payment.baseAmount;
+
+      if (data?.isManualRelease || !payment.gatewayChargeId) {
+        // PM recorded the refund as processed outside the app, or no Stripe charge exists — DB update only
+        const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.REFUNDED,
+            'refund.refundedAt': dayjs().toDate(),
+            'refund.refundedBy': releasedBy,
+            'refund.reason': data?.reason || 'Security deposit refund released by PM (offline)',
+          },
+        });
+        this.log.info({ pytuid, cuid, releasedBy }, 'Offline deposit refund released');
+        return { success: true, data: updated as IPaymentDocument };
+      }
+
+      const refundResult = await this.paymentGatewayService.createRefund(
+        IPaymentGatewayProvider.STRIPE,
+        {
+          chargeId: payment.gatewayChargeId,
+          amountInCents: refundAmount,
+          reason: data?.reason || 'Security deposit refund released by PM',
+        }
+      );
+
+      if (!refundResult.success) {
+        throw new BadRequestError({
+          message: refundResult.message || 'Stripe deposit refund failed',
+        });
+      }
+
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+        $set: {
+          status: PaymentRecordStatus.REFUNDED,
+          'refund.refundedAt': dayjs().toDate(),
+          'refund.refundedBy': releasedBy,
+          'refund.reason': data?.reason || 'Security deposit refund released by PM',
+          'refund.gatewayRefundId': refundResult.data?.refundId,
+        },
+      });
+
+      this.log.info(
+        { pytuid, cuid, releasedBy, refundAmount },
+        'Security deposit refund released via Stripe'
+      );
+
+      return { success: true, data: updated as IPaymentDocument };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error releasing deposit refund');
+      throw error;
+    }
+  }
+
+  /**
+   * PM/admin confirms a staff-initiated manual payment entry.
+   * Clears the managerReviewRequired flag and records who reviewed it.
+   */
+  async reviewManualPayment(
+    cuid: string,
+    pytuid: string,
+    reviewerId: string,
+    data?: { notes?: string }
+  ): IPromiseReturnedData<IPaymentDocument> {
+    try {
+      const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+      if (!payment) {
+        throw new NotFoundError({ message: 'Payment not found' });
+      }
+
+      if (!payment.managerReviewRequired) {
+        throw new BadRequestError({ message: 'This payment does not require manager review' });
+      }
+
+      const updated = await this.paymentDAO.updateById(payment._id.toString(), {
+        $set: {
+          managerReviewRequired: false,
+          'managerReview.reviewedBy': new Types.ObjectId(reviewerId),
+          'managerReview.reviewedAt': dayjs().toDate(),
+          ...(data?.notes ? { 'managerReview.notes': data.notes } : {}),
+        },
+      });
+
+      this.log.info({ pytuid, cuid, reviewerId }, 'Manual payment reviewed and confirmed');
+      return {
+        success: true,
+        data: updated as IPaymentDocument,
+        message: 'Payment review confirmed',
+      };
+    } catch (error: any) {
+      this.log.error({ error: error.message, cuid, pytuid }, 'Error reviewing manual payment');
       throw error;
     }
   }

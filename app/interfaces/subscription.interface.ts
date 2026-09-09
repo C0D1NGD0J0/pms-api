@@ -42,6 +42,7 @@ export interface ISubscriptionPlansConfig {
   features: {
     eSignature: boolean;
     maintenanceRequestService: boolean;
+    inspectionService: boolean;
     guestPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
@@ -50,6 +51,7 @@ export interface ISubscriptionPlansConfig {
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
+    aiInspectionAnalysis: boolean;
   };
   pricing: {
     monthly: {
@@ -151,6 +153,7 @@ export interface ISubscription {
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
+    aiInspectionAnalysis: boolean;
   };
   smsUsage?: {
     countThisPeriod: number;
@@ -186,6 +189,7 @@ export interface ISubscriptionEntitlements {
   entitlements: {
     eSignature: boolean;
     maintenanceRequestService: boolean;
+    inspectionService: boolean;
     guestPassService: boolean;
     reportingAnalytics: boolean;
     leaseTemplates: boolean;
@@ -194,6 +198,7 @@ export interface ISubscriptionEntitlements {
     prioritySupport?: boolean;
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
+    aiInspectionAnalysis: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;

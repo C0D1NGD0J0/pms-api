@@ -5,16 +5,7 @@ import { IBaseDAO } from './baseDAO.interface';
 import { IFindOptions } from './baseDAO.interface';
 import { IUserFilterOptions } from './userDAO.interface';
 
-/**
- * Data Access Object interface for Client operations.
- */
 export interface IClientDAO extends IBaseDAO<IClientDocument> {
-  /**
-   * Get user statistics for department and role distribution for a client
-   * @param cuid - Client ID
-   * @param filterOptions - Filter options (same as getUsersByFilteredType but ignoring pagination)
-   * @returns Statistics about the filtered user set for the client
-   */
   getClientUsersStats(
     cuid: string,
     filterOptions: IUserFilterOptions
@@ -24,110 +15,45 @@ export interface IClientDAO extends IBaseDAO<IClientDocument> {
     totalFilteredUsers: number;
   }>;
 
-  /**
-   * Updates a client's settings.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param settings - The settings fields to update
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
   updateClientSettings(
     clientId: string,
     settings: Partial<IClientSettings>
   ): Promise<IClientDocument | null>;
 
-  /**
-   * Updates a client's company information.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param companyInfo - The company information fields to update
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
   updateCompanyInfo(
     clientId: string,
     companyInfo: Partial<ICompanyProfile>
   ): Promise<IClientDocument | null>;
 
-  /**
-   * Retrieves all clients associated with a specific account admin.
-   *
-   * @param adminId - The MongoDB ObjectId of the admin user
-   * @param opts - Optional parameters for the query (projection, population, etc.)
-   * @returns A promise that resolves to an array of client documents
-   */
   getClientsByAccountAdmin(
     adminId: string,
     opts?: IFindOptions
   ): ListResultWithPagination<IClientDocument[]>;
 
-  /**
-   * Updates a client's account type (individual / enterprise status).
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param data - {planName: string, planId: string, isEnterprise: boolean} - The account type fields to update
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
   updateAccountType(
     clientId: string,
     data: IClientDocument['accountType']
   ): Promise<IClientDocument | null>;
 
-  /**
-   * Updates a client's subscription.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param subscriptionId - The MongoDB ObjectId of the subscription or null to remove
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
   updateSubscription(
     clientId: string,
     subscriptionId: string | null
   ): Promise<IClientDocument | null>;
 
-  /**
-   * Searches for clients matching a search term across various fields.
-   *
-   * @param searchTerm - The term to search for
-   * @param opts - Optional parameters for the query (pagination, sorting, etc.)
-   * @returns A promise that resolves to an array of matching client documents
-   */
   searchClients(
     searchTerm: string,
     opts?: IFindOptions
   ): ListResultWithPagination<IClientDocument[]>;
 
-  /**
-   * Updates a client's data processing consent.
-   *
-   * @param clientId - The MongoDB ObjectId of the client to update
-   * @param consent - Whether consent is given
-   * @returns A promise that resolves to the updated client document or null if not found
-   */
   updateDataProcessingConsent(clientId: string, consent: boolean): Promise<IClientDocument | null>;
 
-  /**
-   * Retrieves a client by its unique client ID (cuid).
-   *
-   * @param cuid - The unique client identifier
-   * @param opts - Optional parameters for the query (projection, population, etc.)
-   * @returns A promise that resolves to the client document or null if not found
-   * @throws Error if an error occurs during the query
-   */
   getClientByCuid(cuid: string, opts?: IFindOptions): Promise<IClientDocument | null>;
 
-  /**
-   * Creates a new client in the database.
-   *
-   * @param clientData - The data for the new client
-   * @returns A promise that resolves to the created client document
-   */
   createClient(clientData: Partial<IClientDocument>): Promise<IClientDocument>;
 
-  /**
-   * Checks if a client with the specified client ID exists.
-   *
-   * @param cuid - The unique client identifier to check
-   * @returns A promise that resolves to true if the client exists, false otherwise
-   */
+  getCuidsByTimezone(timezone: string): Promise<string[]>;
+
   doesClientExist(cuid: string): Promise<boolean>;
+
+  getDistinctTimezones(): Promise<string[]>;
 }

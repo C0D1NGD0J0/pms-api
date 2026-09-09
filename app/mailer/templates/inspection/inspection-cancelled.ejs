@@ -1,0 +1,30 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <h2>Inspection Cancelled</h2>
+      <p>Hi <strong><%= currentuser.firstName %></strong>,</p>
+      <p>
+        A previously scheduled inspection has been cancelled. No action is required on your part.
+        If you have questions, please contact your property manager.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div class="detail-card">
+        <h3 style="margin-top: 0;">Details</h3>
+        <table class="detail-table">
+          <tr>
+            <td class="detail-label">Reference #</td>
+            <td class="detail-value"><%= iuid %></td>
+          </tr>
+          <tr>
+            <td class="detail-label">Status</td>
+            <td class="detail-value" style="color: #64748b; font-weight: 600;">Cancelled</td>
+          </tr>
+        </table>
+      </div>
+    </td>
+  </tr>
+</table>

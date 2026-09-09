@@ -18,7 +18,7 @@ export async function handleLeaseActivated(ctx: INotificationContext, payload: a
       priority: NotificationPriorityEnum.HIGH,
       title: 'Lease Activated',
       message: `Your lease ${luid} has been fully signed and is now active.`,
-      metadata: { leaseId, luid },
+      metadata: { leaseId: leaseId?.toString(), luid },
     });
 
     await ctx.createNotification(cuid, NotificationTypeEnum.LEASE, {
@@ -29,7 +29,7 @@ export async function handleLeaseActivated(ctx: INotificationContext, payload: a
       priority: NotificationPriorityEnum.MEDIUM,
       title: 'Lease Activated',
       message: `Lease ${luid} has been fully signed and activated.`,
-      metadata: { leaseId, luid },
+      metadata: { leaseId: leaseId?.toString(), luid },
     });
   } catch (error) {
     ctx.log.error('Error sending lease activation notifications', { error, payload });

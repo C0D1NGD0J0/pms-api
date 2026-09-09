@@ -11,7 +11,10 @@ import {
 } from '@interfaces/maintenanceRequest.interface';
 
 export const ALLOWED_TRANSITIONS: Record<MaintenanceRequestStatus, MaintenanceRequestStatus[]> = {
-  [MaintenanceRequestStatus.PENDING]: [MaintenanceRequestStatus.OPEN],
+  [MaintenanceRequestStatus.PENDING]: [
+    MaintenanceRequestStatus.OPEN,
+    MaintenanceRequestStatus.CANCELLED,
+  ],
   [MaintenanceRequestStatus.OPEN]: [
     MaintenanceRequestStatus.ASSIGNED,
     MaintenanceRequestStatus.CANCELLED,

@@ -18,22 +18,33 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     this.logger = createLogger('ProfileDAO');
   }
 
+  /**
+   * Builds a flat $set object from a nested section path and data, then calls updateById.
+   * Shared by updatePersonalInfo, updateGDPRSettings, updateTenantInfo, updateCommonEmployeeInfo, etc.
+   */
+  private async updateNestedFields(
+    profileId: string,
+    sectionPath: string,
+    data: Record<string, any>,
+    context: string
+  ): Promise<IProfileDocument | null> {
+    try {
+      const updateFields: Record<string, any> = {};
+      for (const [key, value] of Object.entries(data)) {
+        updateFields[`${sectionPath}.${key}`] = value;
+      }
+      return await this.updateById(profileId, { $set: updateFields });
+    } catch (error) {
+      this.logger.error(`Error updating ${context} for profile ${profileId}:`, error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
   async updatePersonalInfo(
     profileId: string,
     personalInfo: Partial<IProfileDocument['personalInfo']>
   ): Promise<IProfileDocument | null> {
-    try {
-      const updateFields: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(personalInfo)) {
-        updateFields[`personalInfo.${key}`] = value;
-      }
-
-      return await this.updateById(profileId, { $set: updateFields });
-    } catch (error) {
-      this.logger.error(`Error updating personal info for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
+    return this.updateNestedFields(profileId, 'personalInfo', personalInfo, 'personal info');
   }
 
   async updateAvatar(
@@ -79,38 +90,19 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     profileId: string,
     gdprSettings: Partial<IProfileDocument['settings']['gdprSettings']>
   ): Promise<IProfileDocument | null> {
-    try {
-      const updateFields: Record<string, any> = {};
-      if (gdprSettings) {
-        for (const [key, value] of Object.entries(gdprSettings)) {
-          updateFields[`settings.gdprSettings.${key}`] = value;
-        }
-      }
-
-      return await this.updateById(profileId, { $set: updateFields });
-    } catch (error) {
-      this.logger.error(`Error updating GDPR settings for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
+    return this.updateNestedFields(
+      profileId,
+      'settings.gdprSettings',
+      gdprSettings ?? {},
+      'GDPR settings'
+    );
   }
 
   async updateTenantInfo(
     profileId: string,
     tenantInfo: Partial<IProfileDocument['tenantInfo']>
   ): Promise<IProfileDocument | null> {
-    try {
-      const updateFields: Record<string, any> = {};
-
-      const safeInfo: Record<string, any> = tenantInfo ?? {};
-      for (const [key, value] of Object.entries(safeInfo)) {
-        updateFields[`tenantInfo.${key}`] = value;
-      }
-
-      return await this.updateById(profileId, { $set: updateFields });
-    } catch (error) {
-      this.logger.error(`Error updating tenant info for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
+    return this.updateNestedFields(profileId, 'tenantInfo', tenantInfo ?? {}, 'tenant info');
   }
 
   async updateNotificationPreferences(
@@ -771,34 +763,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
               },
             },
 
-            // Feature flags for every role — lets vendor/tenant portals gate
-            // client-plan-dependent features (AI, eSign, etc.) without leaking
-            // billing details (plan name, status, paymentFlow) to external users.
-            clientEntitlements: {
-              eSignature: { $ifNull: ['$subscriptionInfo.entitlements.eSignature', false] },
-              maintenanceRequestService: {
-                $ifNull: ['$subscriptionInfo.entitlements.maintenanceRequestService', false],
-              },
-              guestPassService: {
-                $ifNull: ['$subscriptionInfo.entitlements.guestPassService', false],
-              },
-              reportingAnalytics: {
-                $ifNull: ['$subscriptionInfo.entitlements.reportingAnalytics', false],
-              },
-              leaseTemplates: { $ifNull: ['$subscriptionInfo.entitlements.leaseTemplates', false] },
-              vendorManagement: {
-                $ifNull: ['$subscriptionInfo.entitlements.vendorManagement', false],
-              },
-              prioritySupport: {
-                $ifNull: ['$subscriptionInfo.entitlements.prioritySupport', false],
-              },
-              aiTriage: { $ifNull: ['$subscriptionInfo.entitlements.aiTriage', false] },
-              aiInvoiceScanning: {
-                $ifNull: ['$subscriptionInfo.entitlements.aiInvoiceScanning', false],
-              },
-              smsService: { $ifNull: ['$subscriptionInfo.entitlements.smsService', false] },
-            },
-
             // Payment processor status — only exposed for SUPER_ADMIN
             paymentProcessor: {
               $cond: {
@@ -862,22 +826,10 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     profileId: string,
     employeeInfo: Record<string, any>
   ): Promise<IProfileDocument | null> {
-    try {
-      if (!employeeInfo || typeof employeeInfo !== 'object') {
-        throw new Error('Employee info must be a valid object');
-      }
-
-      const updateFields: Record<string, any> = {};
-
-      for (const [key, value] of Object.entries(employeeInfo)) {
-        updateFields[`employeeInfo.${key}`] = value;
-      }
-
-      return await this.updateById(profileId, { $set: updateFields });
-    } catch (error) {
-      this.logger.error(`Error updating common employee info for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
+    if (!employeeInfo || typeof employeeInfo !== 'object') {
+      throw new Error('Employee info must be a valid object');
     }
+    return this.updateNestedFields(profileId, 'employeeInfo', employeeInfo, 'common employee info');
   }
 
   /**
@@ -886,40 +838,29 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
    */
   async updateEmployeeInfo(
     profileId: string,
-    cuid: string,
+    _cuid: string,
     employeeInfo: Record<string, any>
   ): Promise<IProfileDocument | null> {
-    try {
-      if (!employeeInfo || typeof employeeInfo !== 'object') {
-        throw new Error('Employee info must be a valid object');
-      }
-
-      const updateFields: Record<string, any> = {};
-
-      // Since clientSettings is removed, we update the top-level employeeInfo
-      for (const [key, value] of Object.entries(employeeInfo)) {
-        if (
-          [
-            'permissions',
-            'department',
-            'employeeId',
-            'reportsTo',
-            'startDate',
-            'jobTitle',
-          ].includes(key)
-        ) {
-          updateFields[`employeeInfo.${key}`] = value;
-        }
-      }
-
-      return await this.updateById(profileId, { $set: updateFields });
-    } catch (error) {
-      this.logger.error(
-        `Error updating employee info for profile ${profileId}, client ${cuid}:`,
-        error
-      );
-      throw this.throwErrorHandler(error);
+    if (!employeeInfo || typeof employeeInfo !== 'object') {
+      throw new Error('Employee info must be a valid object');
     }
+
+    const allowedFields = [
+      'permissions',
+      'department',
+      'employeeId',
+      'reportsTo',
+      'startDate',
+      'jobTitle',
+    ];
+    const filtered: Record<string, any> = {};
+    for (const [key, value] of Object.entries(employeeInfo)) {
+      if (allowedFields.includes(key)) {
+        filtered[key] = value;
+      }
+    }
+
+    return this.updateNestedFields(profileId, 'employeeInfo', filtered, 'employee info');
   }
 
   /**

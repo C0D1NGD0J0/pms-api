@@ -36,7 +36,12 @@ export const CreateNotificationSchema = z.object({
   recipientType: z.nativeEnum(RecipientTypeEnum),
   recipient: z.union([z.string(), ObjectIdSchema]).optional(),
   priority: z.nativeEnum(NotificationPriorityEnum).default(NotificationPriorityEnum.LOW),
-  actionUrl: z.string().url('Invalid action URL').optional(),
+  actionUrl: z
+    .string()
+    .refine((val) => val.startsWith('/') || /^https?:\/\//.test(val), {
+      message: 'Invalid action URL — must be a relative path or full URL',
+    })
+    .optional(),
   metadata: NotificationMetadataSchema,
   resourceInfo: ResourceInfoSchema.optional(),
   expiresAt: z.date().optional(),
@@ -49,7 +54,12 @@ export const UpdateNotificationSchema = z.object({
   title: z.string().min(1, 'Title is required').max(200, 'Title too long').optional(),
   message: z.string().min(1, 'Message is required').max(1000, 'Message too long').optional(),
   priority: z.nativeEnum(NotificationPriorityEnum).optional(),
-  actionUrl: z.string().url('Invalid action URL').optional(),
+  actionUrl: z
+    .string()
+    .refine((val) => val.startsWith('/') || /^https?:\/\//.test(val), {
+      message: 'Invalid action URL — must be a relative path or full URL',
+    })
+    .optional(),
   metadata: NotificationMetadataSchema,
   isRead: z.boolean().optional(),
   expiresAt: z.date().optional(),
@@ -78,7 +88,12 @@ export const BulkNotificationSchema = z.object({
   type: z.nativeEnum(NotificationTypeEnum),
   recipients: z.array(z.string()).min(1, 'At least one recipient is required'),
   priority: z.nativeEnum(NotificationPriorityEnum).optional().default(NotificationPriorityEnum.LOW),
-  actionUrl: z.string().url('Invalid action URL').optional(),
+  actionUrl: z
+    .string()
+    .refine((val) => val.startsWith('/') || /^https?:\/\//.test(val), {
+      message: 'Invalid action URL — must be a relative path or full URL',
+    })
+    .optional(),
   metadata: NotificationMetadataSchema,
   cuid: z.string().min(1, 'Client ID is required'),
 });

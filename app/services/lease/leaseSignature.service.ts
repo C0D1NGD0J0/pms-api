@@ -506,6 +506,16 @@ export class LeaseSignatureService {
               updatedAt: new Date(),
             }
           );
+
+          this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_DECLINED, {
+            leaseId: lease._id.toString(),
+            luid: lease.luid,
+            cuid: lease.cuid,
+            documentId,
+            declinedBy: recentSigner?.email || 'unknown',
+            declinedAt: new Date(),
+            declineReason: data?.declineReason,
+          });
           break;
 
         case 'Expired':

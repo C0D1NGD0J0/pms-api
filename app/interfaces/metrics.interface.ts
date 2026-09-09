@@ -2,6 +2,7 @@ import { ILeaseStats } from './lease.interface';
 
 export enum MetricType {
   MAINTENANCE = 'maintenance',
+  INSPECTION = 'inspection',
   PROPERTY = 'property',
   PAYMENT = 'payment',
   LEASE = 'lease',
@@ -39,6 +40,31 @@ export interface IDashboardStats {
     byPriority: Record<string, number>;
     byCategory: Record<string, number>;
   };
+  inspections: {
+    /** scheduled + inProgress + submitted (pure workflow states) */
+    activeCount: number;
+    avgCompletionDays: number;
+    byType: Record<string, number>;
+    inProgress: number;
+    scheduled: number;
+    submitted: number;
+    cancelled: number;
+    approved: number;
+    rejected: number;
+    disputed: number;
+    total: number;
+  };
+  expenses: {
+    byCurrency: Array<{
+      currency: string;
+      totalExpenses: number;
+      monthExpenses: number;
+    }>;
+    monthExpenses: number;
+    totalExpenses: number;
+    totalCount: number;
+    netIncomeByCurrency: Array<{ currency: string; netIncome: number }>;
+  };
   leases: {
     /** Sum of all active lease rent amounts across currencies — the monthly rent roll */
     totalMonthlyRent: number;
@@ -55,6 +81,7 @@ export interface IDashboardStats {
     tenants: number;
     staff: number;
   };
+  primaryCurrency: string;
   generatedAt: Date;
 }
 
@@ -82,6 +109,9 @@ export interface IMetricsDelta {
     vacant?: number;
   };
   type: 'metrics:delta' | 'metrics:invalidate';
+  inspections?: {
+    scheduled?: number;
+  };
   payments?: {
     overdueCount?: number;
   };

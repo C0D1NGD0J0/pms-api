@@ -5,22 +5,28 @@ import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import {
   SubscriptionService,
   NotificationService,
+  InspectionService,
   GuestPassService,
   MetricsService,
   PaymentService,
   QueueFactory,
   LeaseService,
+  DSARService,
+  UserService,
   SMSService,
 } from '@services/index';
 
 interface IConstructor {
   notificationService?: NotificationService;
   subscriptionService: SubscriptionService;
+  inspectionService: InspectionService;
   guestPassService: GuestPassService;
   metricsService: MetricsService;
   paymentService: PaymentService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
+  userService: UserService;
+  dsarService: DSARService;
   smsService: SMSService;
 }
 
@@ -41,7 +47,10 @@ export class CronService {
     leaseService,
     guestPassService,
     subscriptionService,
+    inspectionService,
     paymentService,
+    userService,
+    dsarService,
     smsService,
     metricsService,
   }: IConstructor) {
@@ -54,8 +63,11 @@ export class CronService {
       subscriptionService,
       paymentService,
       guestPassService,
+      inspectionService,
+      userService,
       smsService,
       metricsService,
+      dsarService,
     ].filter(Boolean);
 
     // Async init: register jobs then clean up stale schedules

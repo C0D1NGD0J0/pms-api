@@ -16,7 +16,7 @@ const ExpenseSchema = new Schema<IExpenseDocument>(
       index: true,
       default: () => generateShortUID(),
     },
-    clientId: {
+    cuid: {
       type: String,
       required: [true, 'Client ID is required'],
       immutable: true,
@@ -72,18 +72,22 @@ const ExpenseSchema = new Schema<IExpenseDocument>(
       required: [true, 'Payment method is required'],
     },
     notes: {
-      type: String,
-      trim: true,
-      maxlength: 2000,
+      html: { type: String, trim: true, maxlength: 10000 },
+      text: { type: String, trim: true, maxlength: 2000 },
+      _id: false,
+    },
+    receipt: {
+      url: { type: String },
+      filename: { type: String },
+      key: { type: String },
+      uploadedAt: { type: Date, default: Date.now },
+      uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+      _id: false,
     },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-    },
-    isDeleted: {
-      type: Boolean,
-      default: false,
     },
     deletedAt: {
       type: Date,
@@ -97,9 +101,9 @@ const ExpenseSchema = new Schema<IExpenseDocument>(
   }
 );
 
-ExpenseSchema.index({ clientId: 1, date: -1 });
-ExpenseSchema.index({ clientId: 1, propertyId: 1, date: -1 });
-ExpenseSchema.index({ clientId: 1, category: 1, date: -1 });
+ExpenseSchema.index({ cuid: 1, date: -1 });
+ExpenseSchema.index({ cuid: 1, propertyId: 1, date: -1 });
+ExpenseSchema.index({ cuid: 1, category: 1, date: -1 });
 
 const ExpenseModel = model<IExpenseDocument>('Expense', ExpenseSchema);
 if (process.env.SYNC_EXPENSE_INDEXES === 'true') {

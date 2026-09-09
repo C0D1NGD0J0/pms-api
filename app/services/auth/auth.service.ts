@@ -277,7 +277,9 @@ export class AuthService {
         throw new ValidationRequestError({
           message: t('common.errors.validationFailed'),
           errorInfo: {
-            email: [t('common.errors.alreadyExists', { resource: 'An account with this email' })],
+            email: [
+              'Unable to create account with the provided information. Please try again or contact support.',
+            ],
           },
         });
       }
@@ -377,6 +379,19 @@ export class AuthService {
           message: subscriptionResult.message || t('auth.errors.subscriptionCreationFailed'),
         });
       }
+
+      this.emitterService.emit(EventTypes.USER_SIGNUP_INITIATED, {
+        subscriptionId: subscriptionResult.data?._id?.toString() || '',
+        billingInterval:
+          (signupData.accountType.billingInterval as 'monthly' | 'annual') || 'monthly',
+        planLookUpKey: signupData.accountType.planLookUpKey || '',
+        planName: signupData.accountType.planName || '',
+        planId: signupData.accountType.planId || '',
+        clientId: client._id.toString(),
+        cuid: clientUid,
+        userId: _userId.toString(),
+        email: user.email,
+      });
 
       return {
         userId: _userId.toString(),
@@ -544,10 +559,29 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.allConnectionsDisabled') });
     }
 
-    let activeAccount = connectedClients.find((c: any) => c.cuid === user.activecuid);
+    // Check suspension status for all connected CUIDs to skip closed accounts
+    const connectedCuids = connectedClients.map((c: any) => c.cuid);
+    const clientsResult = await this.clientDAO.list(
+      { cuid: { $in: connectedCuids } },
+      { projection: '+suspension.isActive +suspension.closedAt', limit: connectedCuids.length }
+    );
+    const suspendedCuids = new Set(
+      (clientsResult?.items ?? [])
+        .filter((c: any) => c.suspension?.isActive && c.suspension.closedAt)
+        .map((c: any) => c.cuid)
+    );
+    const nonSuspendedClients = connectedClients.filter((c: any) => !suspendedCuids.has(c.cuid));
+
+    if (nonSuspendedClients.length === 0) {
+      throw new UnauthorizedError({
+        message: 'All your accounts have been closed. Please contact support.',
+      });
+    }
+
+    let activeAccount = nonSuspendedClients.find((c: any) => c.cuid === user.activecuid);
 
     if (!activeAccount) {
-      activeAccount = connectedClients[0];
+      activeAccount = nonSuspendedClients[0];
       await this.userDAO.updateById(user._id.toString(), {
         $set: { activecuid: activeAccount.cuid },
       });
@@ -657,6 +691,17 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.connectionInactive') });
     }
 
+    // Block switching to a closed account
+    const targetClient = await this.clientDAO.findFirst(
+      { cuid: newcuid },
+      { select: '+suspension.isActive +suspension.closedAt' }
+    );
+    if (targetClient?.suspension?.isActive && targetClient.suspension.closedAt) {
+      throw new ForbiddenError({
+        message: 'This account has been closed. You cannot switch to it.',
+      });
+    }
+
     await this.userDAO.updateById(userId, { $set: { activecuid: newcuid } });
     await this.userCache.invalidateUserDetail(newcuid, user.uid).catch((err) => {
       this.log.warn({ err, cuid: newcuid }, 'Cache invalidation failed after account switch');
@@ -738,7 +783,10 @@ export class AuthService {
     }
 
     await this.userDAO.createActivationToken('', email)!;
-    const user = await this.userDAO.findFirst({ email }, { populate: 'profile' });
+    const user = await this.userDAO.findFirst(
+      { email },
+      { populate: 'profile', select: '+activationToken' }
+    );
 
     if (!user) {
       throw new NotFoundError({ message: t('auth.success.activationLinkSent', { email }) });
@@ -768,10 +816,20 @@ export class AuthService {
       throw new BadRequestError({ message: t('auth.errors.userEmailRequired') });
     }
 
+    // Always return success to prevent account enumeration
+    const genericResponse = {
+      data: null,
+      success: true,
+      message: 'If an account with that email exists, a password reset link has been sent.',
+    };
+
     await this.userDAO.createPasswordResetToken(email);
-    const user = await this.userDAO.getActiveUserByEmail(email, { populate: 'profile' });
+    const user = await this.userDAO.getActiveUserByEmail(email, {
+      populate: 'profile',
+      select: '+passwordResetToken',
+    });
     if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.noRecordFound') });
+      return genericResponse;
     }
 
     const emailData = {
@@ -786,11 +844,7 @@ export class AuthService {
 
     const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
     emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, emailData);
-    return {
-      data: null,
-      success: true,
-      message: t('auth.success.passwordResetEmailSent', { email: user.email }),
-    };
+    return genericResponse;
   }
 
   async resetPassword(resetToken: string, password: string): Promise<ISuccessReturnData> {

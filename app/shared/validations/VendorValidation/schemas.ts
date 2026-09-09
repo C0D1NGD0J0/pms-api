@@ -176,6 +176,12 @@ export const toggleTeamMemberStatusSchema = z.object({
   isActive: z.boolean({ required_error: 'isActive is required' }),
 });
 
+// Vendor reviews query schema
+export const vendorReviewsQuerySchema = z.object({
+  page: z.string().regex(/^\d+$/).transform(Number).optional().default('1'),
+  limit: z.string().regex(/^\d+$/).transform(Number).optional().default('10'),
+});
+
 // Vendor filter query schema (for filtered vendors endpoint)
 export const vendorFilterQuerySchema = z.object({
   pagination: z

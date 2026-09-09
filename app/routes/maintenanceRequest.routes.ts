@@ -7,10 +7,12 @@ import { UtilsValidations, validateRequest } from '@shared/validations/index';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
   requirePermissionWithContext,
+  requireActiveSubscription,
   subscriptionEntitlements,
   requireActiveTenant,
   requireFeatureFlag,
   requirePermission,
+  roleBasedContext,
   isAuthenticated,
   requireFeature,
   basicLimiter,
@@ -18,16 +20,6 @@ import {
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
-
-// Context extractor for routes vendors/tenants access via MINE scope.
-// Admins/managers resolve to ANY scope (no ownerId → defaults to ANY).
-const roleBasedContext = (req: AppRequest) => {
-  const role = req.context?.currentuser?.client?.role;
-  if (role === 'vendor' || role === 'tenant') {
-    return { ownerId: req.context?.currentuser?.sub ?? '' };
-  }
-  return {};
-};
 
 const router = Router();
 
@@ -58,6 +50,7 @@ router
     requirePermission(PermissionResource.MAINTENANCE, PermissionAction.CREATE),
     requireActiveTenant('maintenanceRequests'),
     subscriptionEntitlements,
+    requireActiveSubscription,
     requireFeature('maintenanceRequestService'),
     idempotency,
     diskUpload(['media[*][file]']),
@@ -116,6 +109,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
@@ -137,6 +131,7 @@ router.patch(
     roleBasedContext
   ),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
@@ -154,6 +149,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -174,7 +170,7 @@ router.patch(
     roleBasedContext
   ),
   requireActiveTenant('maintenanceRequests'),
-  requireActiveTenant('maintenanceRequests'),
+  requireActiveSubscription,
   idempotency,
   diskUpload(['media[*][file]']),
   scanFile,
@@ -193,6 +189,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -208,6 +205,7 @@ router.patch(
   '/:cuid/:mruid/finalize',
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -226,6 +224,7 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -247,6 +246,7 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -265,6 +265,7 @@ router.patch(
     PermissionAction.UPDATE,
     roleBasedContext
   ),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -280,6 +281,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
+  requireActiveSubscription,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -300,6 +302,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
@@ -317,6 +320,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
@@ -338,6 +342,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   validateRequest({
     params: UtilsValidations.cuid.merge(MaintenanceValidations.mruidParam),
@@ -359,6 +364,7 @@ router.post(
     roleBasedContext
   ),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({
@@ -376,6 +382,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
+  requireActiveSubscription,
   requireFeature('maintenanceRequestService'),
   idempotency,
   validateRequest({

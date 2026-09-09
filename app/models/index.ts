@@ -12,6 +12,7 @@ import Payment from '@models/payments/payments.model';
 import Property from '@models/property/property.model';
 import GuestPass from '@models/guestPass/guestpass.model';
 import Invitation from '@models/invitation/invitation.model';
+import Inspection from '@models/inspection/inspection.model';
 import { MetricsSnapshot } from '@models/metrics/metrics.model';
 import Subscription from '@models/subscription/subscription.model';
 import Notification from '@models/notification/notification.model';
@@ -26,6 +27,7 @@ export {
   Notification,
   Subscription,
   PropertyUnit,
+  Inspection,
   Invitation,
   GuestPass,
   UnitModel,

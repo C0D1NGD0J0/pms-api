@@ -19,8 +19,10 @@ env:
   STRIPE_SECRET_KEY: sk_test_ci_placeholder
 
 jobs:
-  lint:
-    name: Lint & Format
+  # Lightweight job for Dependabot/security PRs — only verify install + build
+  dependency-check:
+    name: Dependency Check
+    if: github.actor == 'dependabot[bot]' || contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -38,6 +40,34 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
+
+      - name: Build
+        run: npm run build
+
+  lint:
+    name: Lint & Format
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Check formatting
         run: npm run prettier:check
@@ -47,6 +77,7 @@ jobs:
 
   typecheck:
     name: TypeScript
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -64,12 +95,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Type check
         run: npx tsc --noEmit -p tsconfig.build.json
 
   unit-tests:
     name: Unit Tests
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -85,14 +119,26 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
 
+      - name: Cache Redis binary
+        id: redis-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/redis-memory-server
+          key: redis-binary-${{ runner.os }}-${{ runner.arch }}-7.2.7
+
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
       - name: Run unit tests
         run: npm test
+        env:
+          REDISMS_DOWNLOAD_DIR: ~/.cache/redis-memory-server
 
   build:
     name: Build
+    if: github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'dependencies')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: [lint, typecheck]
@@ -111,6 +157,8 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          REDISMS_DISABLE_POSTINSTALL: "1"
 
       - name: Build
         run: npm run build

@@ -29,16 +29,19 @@ export class PermissionService {
     }
   }
 
-  async checkPermission(permissionCheck: IPermissionCheck): Promise<IPermissionResult> {
+  async checkPermission(
+    permissionCheck: { department?: string } & IPermissionCheck
+  ): Promise<IPermissionResult> {
     try {
-      const { role, resource, action, scope, context } = permissionCheck;
+      const { role, resource, action, scope, context, department } = permissionCheck;
       // This handles both CRUD and custom actions (send, revoke, settings, etc.)
       return this.evaluateBusinessSpecificPermission(
         role,
         resource.toString(),
         action,
         scope || PermissionScope.ANY,
-        context
+        context,
+        department
       );
     } catch (error) {
       this.log.error('Error checking permission:', error);
@@ -57,12 +60,13 @@ export class PermissionService {
     resource: string,
     action: string,
     scope: string,
-    context?: IPermissionCheck['context']
+    context?: IPermissionCheck['context'],
+    department?: string
   ): IPermissionResult {
     const requiredPermission = `${action}:${scope}`;
 
     // First check if the role has this specific permission
-    if (!this.hasPermissionWithInheritance(role, resource, requiredPermission)) {
+    if (!this.hasPermissionWithInheritance(role, resource, requiredPermission, department)) {
       return {
         granted: false,
         reason: `Role '${role}' does not have permission '${requiredPermission}' on resource '${resource}'`,
@@ -95,7 +99,8 @@ export class PermissionService {
   private hasPermissionWithInheritance(
     role: string,
     resource: string,
-    permission: string
+    permission: string,
+    department?: string
   ): boolean {
     const visited = new Set<string>();
 
@@ -121,6 +126,25 @@ export class PermissionService {
         const anyEquivalent = permission.replace(':mine', ':any');
         if (Array.isArray(rolePermissions) && rolePermissions.includes(anyEquivalent)) {
           return true;
+        }
+      }
+
+      // Check department-level permissions for staff
+      if (department && roleConfig.departments) {
+        const deptConfig = (roleConfig.departments as Record<string, Record<string, string[]>>)[
+          department
+        ];
+        if (deptConfig) {
+          const deptPermissions = deptConfig[resource];
+          if (Array.isArray(deptPermissions) && deptPermissions.includes(permission)) {
+            return true;
+          }
+          if (permission.endsWith(':mine')) {
+            const anyEquivalent = permission.replace(':mine', ':any');
+            if (Array.isArray(deptPermissions) && deptPermissions.includes(anyEquivalent)) {
+              return true;
+            }
+          }
         }
       }
 
@@ -202,6 +226,7 @@ export class PermissionService {
       action,
       scope,
       context,
+      department: currentUser.employeeInfo?.department,
     };
 
     const result = await this.checkPermission(permissionCheckData);

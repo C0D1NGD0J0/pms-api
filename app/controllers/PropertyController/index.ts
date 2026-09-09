@@ -215,8 +215,9 @@ export class PropertyController {
         message: 'User not authenticated',
       });
     }
-    // TODO: implement archive restoration
-    res.status(httpStatusCodes.OK).json({ success: true, message: 'Method not implemented yet' });
+    res
+      .status(httpStatusCodes.NOT_IMPLEMENTED)
+      .json({ success: false, message: 'Archive restoration is not yet implemented' });
   };
 
   getPropertyFormMetadata = async (req: AppRequest, res: Response) => {

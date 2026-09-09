@@ -78,7 +78,10 @@ const makeService = (mocks: Record<string, any> = {}) => {
     authCache,
     twilioService,
     featureFlagService,
-    clientDAO: {} as any,
+    clientDAO: {
+      list: jest.fn().mockReturnValue(Promise.resolve({ data: [] })),
+      findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
+    } as any,
     leaseDAO: {} as any,
     queueFactory: {} as any,
     vendorService: {} as any,

@@ -176,6 +176,16 @@ export class PaymentCronService implements ICronProvider {
           'Auto-pay vendors whose invoices have had settled funds for 5+ days without PM action',
         timeout: 300000,
       },
+      {
+        name: 'payment.sync-connect-account-statuses',
+        schedule: '0 4 * * *', // 4 AM UTC daily
+        handler: this.syncConnectAccountStatuses.bind(this),
+        enabled: true,
+        service: 'PaymentCronService',
+        description:
+          'Sync Stripe Connect account statuses (chargesEnabled, payoutsEnabled, detailsSubmitted) for all active processors',
+        timeout: 300000,
+      },
     ];
 
     // Time-sensitive jobs — register once per distinct client timezone so they fire
@@ -1293,5 +1303,54 @@ export class PaymentCronService implements ICronProvider {
       default:
         return PaymentMethod.OTHER;
     }
+  }
+
+  private async syncConnectAccountStatuses(): Promise<void> {
+    this.log.info('Starting Stripe Connect account status sync');
+
+    const processors = await this.paymentProcessorDAO.list({
+      accountId: { $exists: true, $ne: null },
+      deletedAt: null,
+    } as any);
+
+    let synced = 0;
+    let errors = 0;
+
+    for (const proc of processors.items) {
+      try {
+        const result = await this.paymentGatewayService.getConnectAccount(
+          IPaymentGatewayProvider.STRIPE,
+          proc.accountId
+        );
+        if (!result.success || !result.data) continue;
+
+        const account = result.data;
+        const updates: Record<string, any> = {};
+
+        if (proc.chargesEnabled !== (account.charges_enabled || false)) {
+          updates.chargesEnabled = account.charges_enabled || false;
+        }
+        if (proc.payoutsEnabled !== (account.payouts_enabled || false)) {
+          updates.payoutsEnabled = account.payouts_enabled || false;
+        }
+        if (proc.detailsSubmitted !== (account.details_submitted || false)) {
+          updates.detailsSubmitted = account.details_submitted || false;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await this.paymentProcessorDAO.update({ _id: proc._id }, { $set: updates });
+          this.log.info({ accountId: proc.accountId, updates }, 'Connect status updated');
+        }
+        synced++;
+      } catch (err: any) {
+        this.log.warn({ err: err.message, accountId: proc.accountId }, 'Failed to sync account');
+        errors++;
+      }
+    }
+
+    this.log.info(
+      { synced, errors, total: processors.items.length },
+      'Connect status sync complete'
+    );
   }
 }

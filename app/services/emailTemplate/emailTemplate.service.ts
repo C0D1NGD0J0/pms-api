@@ -3,6 +3,7 @@ import ejs from 'ejs';
 import path from 'path';
 import { createLogger } from '@utils/index';
 import { ROLES } from '@shared/constants/roles.constants';
+import { TEMPLATE_HERO_CONFIG } from '@mailer/config.mailer';
 
 import { getMockTemplateData } from './mockTemplateData';
 
@@ -515,11 +516,15 @@ export class EmailTemplateService {
         filename: templateFilePath,
       };
 
+      const heroConfig = TEMPLATE_HERO_CONFIG[templateType] || { icon: '&#x1F3E0;', title: '' };
       const templateVariables = {
         ...variables,
         ROLES,
         appName: variables.appName || 'PropertyDesk',
         year: new Date().getFullYear(),
+        icon: heroConfig.icon,
+        title: heroConfig.title,
+        subtitle: heroConfig.subtitle || '',
       };
 
       let layoutContent: string;

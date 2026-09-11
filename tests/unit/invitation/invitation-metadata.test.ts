@@ -107,6 +107,7 @@ describe('Invitation Metadata Transfer', () => {
       vendorService: mockVendorService,
       userService: mockUserService,
       emitterService,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
       mediaUploadService: mockMediaUploadService,
       authCache: { invalidateUserDetail: jest.fn() } as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,

@@ -150,11 +150,17 @@ export class MaintenancePaymentService {
     }
 
     const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
-    if (paymentProcessor?.payoutsBlocked) {
+    if (!paymentProcessor?.accountId || !paymentProcessor.chargesEnabled) {
+      throw new BadRequestError({
+        message:
+          'Payment account not configured or charges not enabled. Complete KYC setup before creating charges.',
+      });
+    }
+    if (paymentProcessor.payoutsBlocked || (paymentProcessor as any).payoutsPaused) {
       throw new ForbiddenError({
         message:
           paymentProcessor.payoutsBlockedReason ||
-          'Payouts are currently blocked for this account.',
+          'Payouts are currently blocked or paused for this account.',
       });
     }
 
@@ -246,6 +252,11 @@ export class MaintenancePaymentService {
           message: 'Payment account not configured or charges not enabled.',
         });
       }
+      if ((pmProcessor as any).payoutsBlocked || (pmProcessor as any).payoutsPaused) {
+        throw new ForbiddenError({
+          message: 'PM payouts are currently blocked or paused.',
+        });
+      }
 
       // Resolve vendor ORG from the invoice submitter (a team member of the vendor org)
       const vendorUser = await this.userDAO.findFirst({
@@ -283,11 +294,11 @@ export class MaintenancePaymentService {
             'Vendor has not set up their payout account. Ask them to complete Stripe Connect onboarding.',
         });
       }
-      if ((vendorProcessor as any).payoutsBlocked) {
+      if ((vendorProcessor as any).payoutsBlocked || (vendorProcessor as any).payoutsPaused) {
         throw new ForbiddenError({
           message:
             (vendorProcessor as any).payoutsBlockedReason ||
-            'Vendor payout account is globally blocked.',
+            'Vendor payout account is globally blocked or paused.',
         });
       }
 

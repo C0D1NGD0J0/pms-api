@@ -99,25 +99,22 @@
         "inspectionService": false,
         "aiInvoiceScanning": false,
         "aiInspectionAnalysis": false,
-        "aiReportAnalysis": false
+        "aiReportAnalysis": false,
+        "expenseTracking": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
-        "E-Signature",
-        "AI features",
-        "SMS notification",
         "Vendor management",
-        "Guest Pass Service",
         "Property Inspections",
         "Reporting & Analytics",
-        "Repair Request Service"
+        "AI features"
       ]
     },
     "growth": {
       "planName": "growth",
       "name": "Growth",
       "description": "For growing property managers",
-      "trialDays": 14,
+      "trialDays": 0,
       "pricing": {
         "monthly": {
           "priceId": "price_growth_monthly",
@@ -129,7 +126,7 @@
           "savingsPercent": 20
         }
       },
-      "ctaText": "Start 14-Day Free Trial",
+      "ctaText": "Get Started",
       "isFeatured": true,
       "featuredBadge": "Most Popular",
       "displayOrder": 2,
@@ -167,24 +164,23 @@
         "maintenanceRequestService": true,
         "inspectionService": true,
         "aiInspectionAnalysis": false,
-        "aiReportAnalysis": false
+        "aiReportAnalysis": false,
+        "expenseTracking": false
       },
       "featureList": [
         "AI features*",
         "E-Signature",
         "Vendor management",
         "Property Inspections",
-        "SMS notifications",
-        "Guest Pass Service",
-        "Online payments & AutoPay"
+        "SMS notifications"
       ],
-      "disabledFeatures": ["Reporting & Analytics", "Customizable Lease Templates"]
+      "disabledFeatures": ["Reporting & Analytics", "Expense tracking"]
     },
     "portfolio": {
       "planName": "portfolio",
       "name": "Portfolio",
       "description": "For established businesses",
-      "trialDays": 14,
+      "trialDays": 0,
       "pricing": {
         "monthly": {
           "priceId": "price_portfolio_monthly",
@@ -196,7 +192,7 @@
           "savingsPercent": 20
         }
       },
-      "ctaText": "Start 14-Day Free Trial",
+      "ctaText": "Get Started",
       "isFeatured": false,
       "displayOrder": 3,
       "transactionFeePercent": 3.5,
@@ -234,14 +230,15 @@
         "aiInvoiceScanning": true,
         "inspectionService": true,
         "aiInspectionAnalysis": true,
-        "aiReportAnalysis": true
+        "aiReportAnalysis": true,
+        "expenseTracking": true
       },
       "featureList": [
-        "Priority support",
-        "Property Inspections",
         "Everything in Growth",
+        "Advanced reporting & analytics",
+        "Expense tracking & P&L",
         "Customizable lease agreements",
-        "Advanced reporting & analytics"
+        "Priority support"
       ],
       "disabledFeatures": []
     }

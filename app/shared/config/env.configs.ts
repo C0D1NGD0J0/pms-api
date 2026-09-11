@@ -115,7 +115,7 @@ class EnvVariables {
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
     };
     this.FRONTEND = {
-      URL: process.env.FRONTEND_URL || '',
+      URL: (process.env.FRONTEND_URL || '').split(',')[0].trim(),
     };
     this.STRIPE = {
       SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',

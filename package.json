@@ -28,7 +28,8 @@
     "test:unit": "cross-env NODE_ENV=test JEST_USE_DB=false jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:integration": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts",
     "test:integration:watch": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts --watch",
-    "migrate": "ts-node -r tsconfig-paths/register"
+    "migrate": "ts-node -r tsconfig-paths/register",
+    "seed:region": "ts-node -r tsconfig-paths/register scripts/seeds/seed-regional-data.ts"
   },
   "keywords": [
     "property-management-system",

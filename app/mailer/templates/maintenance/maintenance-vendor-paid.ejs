@@ -1,7 +1,6 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Payout Initiated</h2>
       <p>
         A payout has been <strong style="color: #16a34a;">initiated</strong> for the maintenance job below. Funds will arrive in your bank account according to your payout schedule.
       </p>
@@ -10,35 +9,18 @@
 
   <tr>
     <td class="content" style="padding-top: 0;">
-      <div class="detail-card success">
-        <h3 style="margin-top: 0;">Payout Details</h3>
-        <table class="detail-table">
-          <tr>
-            <td class="detail-label">Reference #</td>
-            <td class="detail-value"><%= mruid %></td>
-          </tr>
-          <% if (jobTitle) { %>
-          <tr>
-            <td class="detail-label">Job</td>
-            <td class="detail-value"><%= jobTitle %></td>
-          </tr>
-          <% } %>
-          <tr>
-            <td class="detail-label">Payout Amount</td>
-            <td class="detail-value" style="font-size: 18px; font-weight: 700; color: #16a34a;">
-              $<%= (amountInCents / 100).toFixed(2) %> <%= currency.toUpperCase() %>
-            </td>
-          </tr>
-          <tr>
-            <td class="detail-label">Transfer ID</td>
-            <td class="detail-value" style="font-family: monospace; font-size: 13px;"><%= transferId %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Date</td>
-            <td class="detail-value"><%= new Date().toLocaleDateString() %></td>
-          </tr>
-        </table>
-      </div>
+      <%
+        var _rows = [
+          { label: 'Reference #', value: mruid }
+        ];
+        if (jobTitle) {
+          _rows.push({ label: 'Job', value: jobTitle });
+        }
+        _rows.push({ label: 'Payout Amount', value: '$' + (amountInCents / 100).toFixed(2) + ' ' + currency.toUpperCase() });
+        _rows.push({ label: 'Transfer ID', value: transferId });
+        _rows.push({ label: 'Date', value: new Date().toLocaleDateString() });
+      %>
+      <%- include("../shared/html/_detail-table", { rows: _rows }) %>
     </td>
   </tr>
 

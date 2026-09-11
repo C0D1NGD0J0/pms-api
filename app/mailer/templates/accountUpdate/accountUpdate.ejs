@@ -1,15 +1,11 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Account Updated</h2>
-      <p>Hi <%= fullname %>,</p>
+      <p>Hi <strong><%= fullname %></strong>,</p>
       <p>
         Your PropertyDesk account was updated on <strong><%= updatedAt %></strong>.
       </p>
-      <div class="notice-box warning">
-        <strong>Wasn't you?</strong> If you didn't make this change, please contact our support team at
-        <a href="mailto:support@propertydesk.com">support@propertydesk.com</a> right away.
-      </div>
+      <%- include("../shared/html/_notice", { text: '<strong>Wasn\'t you?</strong> If you didn\'t make this change, please contact our support team at <a href="mailto:support@propertydesk.com" style="color: #92400e;">support@propertydesk.com</a> right away.', type: 'warning' }) %>
     </td>
   </tr>
 </table>

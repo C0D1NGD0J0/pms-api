@@ -1,21 +1,16 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Reminder: Pending Invitation</h2>
-      <p>Hi <%= inviteeName %>,</p>
+      <p>Hi <strong><%= inviteeName %></strong>,</p>
       <p>
         <strong><%= resenderName %></strong> has sent a reminder — your invitation to join <strong><%= companyName %></strong> as a <strong><%= role %></strong> on PropertyDesk is still pending.
       </p>
 
       <% if (customMessage) { %>
-      <div class="message-quote">
-        "<%= customMessage %>"
-      </div>
+      <%- include("../shared/html/_quote", { message: customMessage, author: resenderName }) %>
       <% } %>
 
-      <div class="notice-box warning">
-        This invitation expires on <strong><%= new Date(expiresAt).toLocaleDateString() %></strong>. Accept before then to avoid needing a new one.
-      </div>
+      <%- include("../shared/html/_notice", { text: 'This invitation expires on <strong>' + new Date(expiresAt).toLocaleDateString() + '</strong>. Accept before then to avoid needing a new one.', type: 'expiry' }) %>
 
       <p style="font-size: 14px; color: #64748b;">
         Already have a PropertyDesk account? The invitation will automatically link <%= companyName %> to your existing account when you accept.
@@ -25,10 +20,6 @@
   <tr>
     <td class="cta">
       <%- include("../shared/html/_button", { url: invitationUrl, label: "Accept Invitation" }) %>
-      <p class="fallback-link">
-        Button not working? Copy and paste this link into your browser:<br />
-        <%= invitationUrl %>
-      </p>
     </td>
   </tr>
 </table>

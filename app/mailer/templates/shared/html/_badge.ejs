@@ -1,0 +1,14 @@
+<%
+  // Params: label (string), color? ('success' | 'warning' | 'danger' | 'info' | 'neutral')
+  var _color = typeof color !== 'undefined' && color ? color : 'info';
+  var _bg, _text;
+
+  if (_color === 'success') { _bg = '#dcfce7'; _text = '#166534'; }
+  if (_color === 'warning') { _bg = '#fef3c7'; _text = '#92400e'; }
+  if (_color === 'danger')  { _bg = '#fee2e2'; _text = '#991b1b'; }
+  if (_color === 'info')    { _bg = '#e6f0f3'; _text = '#153D4D'; }
+  if (_color === 'neutral') { _bg = '#f1f5f9'; _text = '#475569'; }
+%>
+<span style="display: inline-block; background-color: <%= _bg %>; color: <%= _text %>; font-family: 'DM Sans', system-ui, sans-serif; font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 20px;">
+  <%= label %>
+</span>

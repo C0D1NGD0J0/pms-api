@@ -1,13 +1,52 @@
+<%
+  var _icon = typeof icon !== 'undefined' && icon ? icon : '&#x1F3E0;';
+  var _title = typeof title !== 'undefined' && title ? title : '';
+  var _subtitle = typeof subtitle !== 'undefined' && subtitle ? subtitle : '';
+%>
+<!-- Hero gradient bar with logo -->
 <tr>
-  <td style="background-color: #062f4f; padding: 24px 36px;">
-    <img
-      src="https://property-management-sys.s3.ca-central-1.amazonaws.com/logos/logos/png/email-logo-clean.png"
-      alt="PropertyDesk"
-      width="180"
-      style="display: block; height: auto; border: 0;"
-    />
+  <td style="background: #153D4D; padding: 22px 40px 0 40px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td>
+          <!-- PropertyDesk logo mark -->
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="width: 26px; height: 26px; background-color: rgba(255,255,255,0.15); border-radius: 6px; text-align: center; vertical-align: middle;">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
+                  <tr><td style="height: 2px;"></td></tr>
+                  <tr><td style="width: 13px; height: 2.5px; background: rgba(255,255,255,0.35); border-radius: 1px;"></td></tr>
+                  <tr><td style="height: 1px;"></td></tr>
+                  <tr><td style="width: 13px; height: 2.5px; background: rgba(255,255,255,0.6); border-radius: 1px;"></td></tr>
+                  <tr><td style="height: 1px;"></td></tr>
+                  <tr><td style="width: 13px; height: 2.5px; background: rgba(255,255,255,0.85); border-radius: 1px;"></td></tr>
+                  <tr><td style="height: 1px;"></td></tr>
+                  <tr><td style="width: 13px; height: 2.5px; background: #D9952B; border-radius: 1px;"></td></tr>
+                </table>
+              </td>
+              <td style="padding-left: 8px; font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; font-weight: 700; letter-spacing: -0.03em;">
+                <span style="color: #ffffff;">Property</span><span style="color: #D9952B;">Desk</span>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   </td>
 </tr>
+<!-- Hero content: icon + title -->
 <tr>
-  <td style="height: 3px; background-color: #39a9e0;"></td>
+  <td style="background: linear-gradient(180deg, #153D4D 0%, #1a5a6a 100%); padding: 32px 40px 40px 40px; text-align: center;">
+    <%- include("_hero-icon", { icon: _icon }) %>
+    <% if (_title) { %>
+    <h1 style="margin: 0 0 6px 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 28px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em;">
+      <%= _title %>
+    </h1>
+    <% } %>
+    <% if (_subtitle) { %>
+    <p style="margin: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; color: rgba(255,255,255,0.65);">
+      <%= _subtitle %>
+    </p>
+    <% } %>
+  </td>
 </tr>

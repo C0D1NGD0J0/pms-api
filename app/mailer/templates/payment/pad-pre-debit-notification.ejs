@@ -1,15 +1,14 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Upcoming Pre-Authorized Debit</h2>
-      <p>Hi <%= tenantName %>,</p>
+      <p>Hi <strong><%= tenantName %></strong>,</p>
       <p>
         A pre-authorized debit of <strong><%= amount %></strong> (<%= currency %>) will be charged to your bank account
         by <strong><%= payeeName %></strong>.
       </p>
-      <p>
-        Please ensure sufficient funds are available in your account to avoid any processing issues.
-      </p>
+
+      <%- include("../shared/html/_notice", { text: 'Please ensure sufficient funds are available in your account to avoid any processing issues.', type: 'warning' }) %>
+
       <p style="font-size: 13px; color: #555;">
         If you have questions about this debit, please contact <strong><%= payeeName %></strong>.
       </p>

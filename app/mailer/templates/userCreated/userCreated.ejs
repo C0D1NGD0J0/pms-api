@@ -1,8 +1,7 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Your Account is Ready</h2>
-      <p>Hi <%= firstName %>,</p>
+      <p>Hi <strong><%= firstName %></strong>,</p>
       <p>
         Your PropertyDesk account at <strong><%= companyName %></strong> has been set up. Here's what you need to know before you log in.
       </p>
@@ -32,9 +31,7 @@
       <% } %>
 
       <% if (customMessage) { %>
-      <div class="message-quote">
-        "<%= customMessage %>"
-      </div>
+      <%- include("../shared/html/_quote", { message: customMessage }) %>
       <% } %>
     </td>
   </tr>
@@ -43,19 +40,11 @@
     <td class="content" style="padding-top: 0;">
       <div class="credential-box">
         <h3>Your Login Credentials</h3>
-        <table role="presentation" width="100%" style="font-size: 14px;">
-          <tr>
-            <td style="padding: 5px 0; color: #64748b; width: 35%;">Email</td>
-            <td style="padding: 5px 0; font-weight: 600;"><%= email %></td>
-          </tr>
-          <tr>
-            <td style="padding: 5px 0; color: #64748b;">Temporary Password</td>
-            <td style="padding: 5px 0;"><code><%= temporaryPassword %></code></td>
-          </tr>
-        </table>
-        <p style="font-size: 13px; color: #64748b; margin: 12px 0 0 0;">
-          For your security, please change your password immediately after your first login.
-        </p>
+        <%- include("../shared/html/_detail-table", { rows: [
+          { label: "Email", value: email },
+          { label: "Temporary Password", value: '<code>' + temporaryPassword + '</code>' }
+        ]}) %>
+        <%- include("../shared/html/_notice", { text: 'For your security, please change your password immediately after your first login.', type: 'info' }) %>
       </div>
 
       <% if (expectedStartDate) { %>
@@ -69,10 +58,6 @@
   <tr>
     <td class="cta">
       <%- include("../shared/html/_button", { url: loginUrl, label: "Log In to PropertyDesk" }) %>
-      <p class="fallback-link">
-        Button not working? Copy and paste this link into your browser:<br />
-        <%= loginUrl %>
-      </p>
     </td>
   </tr>
 </table>

@@ -48,6 +48,7 @@
     "@bull-board/express": "6.7.10",
     "@bull-board/ui": "6.7.10",
     "@sentry/node": "10.45.0",
+    "@simplewebauthn/server": "14.0.1",
     "@socket.io/redis-adapter": "8.3.0",
     "@types/compression": "1.7.5",
     "@types/express-serve-static-core": "5.0.6",

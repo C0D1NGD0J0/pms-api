@@ -10,6 +10,7 @@ import type {
   FeaturesConfig,
   FrontendConfig,
   GeocoderConfig,
+  WebAuthnConfig,
   ClamavConfig,
   ServerConfig,
   StripeConfig,
@@ -39,6 +40,7 @@ class EnvVariables {
   public ANTHROPIC: AnthropicConfig;
   public TWILIO: TwilioConfig;
   public FEATURES: FeaturesConfig;
+  public WEBAUTHN: WebAuthnConfig;
   public APP_NAME: string;
 
   constructor() {
@@ -115,7 +117,7 @@ class EnvVariables {
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
     };
     this.FRONTEND = {
-      URL: process.env.FRONTEND_URL || '',
+      URL: (process.env.FRONTEND_URL || '').split(',')[0].trim(),
     };
     this.STRIPE = {
       SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
@@ -182,6 +184,12 @@ class EnvVariables {
       PUSH_NOTIFICATIONS_ENABLED: process.env.FEATURE_PUSH_NOTIFICATIONS_ENABLED !== 'false',
       INSPECTION_ENABLED: process.env.FEATURE_INSPECTION_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
+    };
+    this.WEBAUTHN = {
+      ENABLED: process.env.WEBAUTHN_ENABLED === 'true',
+      RP_ID: process.env.WEBAUTHN_RP_ID || 'localhost',
+      RP_NAME: process.env.WEBAUTHN_RP_NAME || this.APP_NAME || 'PropertyDesk',
+      RP_ORIGIN: process.env.WEBAUTHN_RP_ORIGIN || this.FRONTEND.URL || 'http://localhost:3000',
     };
     try {
       this.validateSecretValue();

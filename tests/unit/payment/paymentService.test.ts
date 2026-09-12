@@ -2750,7 +2750,12 @@ describe('PaymentService - chargeForMaintenance', () => {
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
 
     mockSubscriptionDAO.findFirst.mockResolvedValue({ status: 'active', planName: 'basic' } as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ payoutsBlocked: false } as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({
+      accountId: 'acct_test123',
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      payoutsBlocked: false,
+    } as any);
 
     const mockLeaseDAO = {
       getActiveLeaseByTenant: jest.fn().mockResolvedValue({ fees: { currency: 'USD' } }),

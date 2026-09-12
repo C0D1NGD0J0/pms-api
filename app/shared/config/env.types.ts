@@ -84,6 +84,13 @@ export interface AwsConfig {
   REGION: string;
 }
 
+export interface WebAuthnConfig {
+  RP_ORIGIN: string;
+  ENABLED: boolean;
+  RP_NAME: string;
+  RP_ID: string;
+}
+
 export interface ClamavConfig {
   ENABLED: boolean;
   SOCKET: string;

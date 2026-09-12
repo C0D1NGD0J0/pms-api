@@ -78,7 +78,7 @@ const ProfileSchema = new Schema<IProfileDocument>(
       loginType: {
         type: String,
         default: 'password',
-        enum: ['otp', 'password'],
+        enum: ['otp', 'password', 'passkey'],
       },
       completedTours: { type: [String], default: [] },
       gdprSettings: {

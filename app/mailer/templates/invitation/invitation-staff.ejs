@@ -1,8 +1,7 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>You've Been Invited to Join the Team</h2>
-      <p>Hi <%= inviteeName %>,</p>
+      <p>Hi <strong><%= inviteeName %></strong>,</p>
       <p>
         <strong><%= inviterName %></strong> has invited you to join <strong><%= companyName %></strong> as a team member on PropertyDesk.
       </p>
@@ -11,23 +10,15 @@
       </p>
 
       <% if (customMessage) { %>
-      <div class="message-quote">
-        "<%= customMessage %>"
-      </div>
+      <%- include("../shared/html/_quote", { message: customMessage, author: inviterName }) %>
       <% } %>
 
-      <p style="font-size: 13px; color: #64748b;">
-        This invitation expires on <strong><%= new Date(expiresAt).toLocaleDateString() %></strong>. If you weren't expecting this, you can safely ignore this email.
-      </p>
+      <%- include("../shared/html/_notice", { text: 'This invitation expires on <strong>' + new Date(expiresAt).toLocaleDateString() + '</strong>. If you weren\'t expecting this, you can safely ignore this email.', type: 'expiry' }) %>
     </td>
   </tr>
   <tr>
     <td class="cta">
       <%- include("../shared/html/_button", { url: invitationUrl, label: "Accept Invitation" }) %>
-      <p class="fallback-link">
-        Button not working? Copy and paste this link into your browser:<br />
-        <%= invitationUrl %>
-      </p>
     </td>
   </tr>
 </table>

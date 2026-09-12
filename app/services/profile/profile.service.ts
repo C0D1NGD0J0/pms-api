@@ -3,11 +3,11 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { AuthCache } from '@caching/auth.cache';
 import { UserCache } from '@caching/user.cache';
-import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
+import { PaymentProcessorDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { computeProfileCompletion, buildDotNotation, createLogger } from '@utils/index';
@@ -24,6 +24,7 @@ import {
 } from '@interfaces/index';
 
 interface IConstructor {
+  paymentProcessorDAO: PaymentProcessorDAO;
   mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   vendorService: VendorService;
@@ -37,6 +38,7 @@ interface IConstructor {
 
 export class ProfileService {
   private readonly profileDAO: ProfileDAO;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly clientDAO: ClientDAO;
   private readonly userDAO: UserDAO;
   private readonly vendorService: VendorService;
@@ -49,6 +51,7 @@ export class ProfileService {
 
   constructor({
     profileDAO,
+    paymentProcessorDAO,
     clientDAO,
     userDAO,
     vendorService,
@@ -59,6 +62,7 @@ export class ProfileService {
     userCache,
   }: IConstructor) {
     this.userDAO = userDAO;
+    this.paymentProcessorDAO = paymentProcessorDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
     this.userCache = userCache;
@@ -722,6 +726,21 @@ export class ProfileService {
         targetUid,
         context.currentuser!
       );
+
+      // Immutable location guard: block location changes when payment processor is set up
+      if (profileData.personalInfo?.location !== undefined) {
+        const existingProfile = await this.profileDAO.findFirst({
+          _id: new Types.ObjectId(profileId),
+        });
+        if (existingProfile?.personalInfo?.location !== profileData.personalInfo.location) {
+          const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
+          if (processor?.accountId) {
+            throw new BadRequestError({
+              message: t('client.errors.immutableFieldLocked'),
+            });
+          }
+        }
+      }
 
       const { result } = await this.processProfileUpdates(
         profileData,

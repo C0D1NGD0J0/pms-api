@@ -344,6 +344,8 @@ describe('Subscription Entitlements', () => {
     it('should strip entitlements, paymentFlow, and clientEntitlements from /me response', () => {
       const controller = new AuthController({
         authService: {} as any,
+        webAuthnService: {} as any,
+        userDAO: {} as any,
       });
 
       const req = {
@@ -400,6 +402,8 @@ describe('Subscription Entitlements', () => {
     it('should return 401 when currentuser is null', () => {
       const controller = new AuthController({
         authService: {} as any,
+        webAuthnService: {} as any,
+        userDAO: {} as any,
       });
 
       const req = { context: { currentuser: null } };

@@ -28,7 +28,8 @@
     "test:unit": "cross-env NODE_ENV=test JEST_USE_DB=false jest --testPathPattern=\"tests/unit/${npm_config_path:-}\"",
     "test:integration": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts",
     "test:integration:watch": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts --watch",
-    "migrate": "ts-node -r tsconfig-paths/register"
+    "migrate": "ts-node -r tsconfig-paths/register",
+    "seed:region": "ts-node -r tsconfig-paths/register scripts/seeds/seed-regional-data.ts"
   },
   "keywords": [
     "property-management-system",
@@ -47,6 +48,7 @@
     "@bull-board/express": "6.7.10",
     "@bull-board/ui": "6.7.10",
     "@sentry/node": "10.45.0",
+    "@simplewebauthn/server": "14.0.1",
     "@socket.io/redis-adapter": "8.3.0",
     "@types/compression": "1.7.5",
     "@types/express-serve-static-core": "5.0.6",

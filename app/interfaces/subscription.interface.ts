@@ -53,6 +53,7 @@ export interface ISubscriptionPlansConfig {
     aiInvoiceScanning: boolean;
     aiInspectionAnalysis: boolean;
     aiReportAnalysis?: boolean;
+    expenseTracking: boolean;
   };
   limits: {
     maxUnits: number;
@@ -166,6 +167,7 @@ export interface ISubscription {
     inspectionService?: boolean;
     aiInspectionAnalysis?: boolean;
     aiReportAnalysis?: boolean;
+    expenseTracking?: boolean;
   };
   smsUsage?: {
     countThisPeriod: number;
@@ -215,6 +217,7 @@ export interface ISubscriptionEntitlements {
     aiTriage: boolean;
     aiInvoiceScanning: boolean;
     aiInspectionAnalysis: boolean;
+    expenseTracking: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;

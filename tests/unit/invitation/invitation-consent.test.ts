@@ -100,6 +100,7 @@ describe('Invitation Acceptance — Consent Recording', () => {
       vendorService: mockVendorService,
       userService: mockUserService,
       emitterService,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
       mediaUploadService: { handleMediaDeletion: jest.fn() } as any,
       authCache: { invalidateUserDetail: jest.fn() } as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,

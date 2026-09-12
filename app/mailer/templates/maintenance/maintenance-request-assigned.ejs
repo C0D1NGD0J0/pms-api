@@ -1,8 +1,7 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>New Job Assignment</h2>
-      <p>Hi <%= vendor.firstName || vendor.email %>,</p>
+      <p>Hi <strong><%= vendor.firstName || vendor.email %></strong>,</p>
       <p>
         <strong><%= assignedBy.firstName || assignedBy.email %></strong> has assigned you a maintenance request. Please review the details below and <strong>accept or decline within 24 hours</strong>.
       </p>
@@ -11,59 +10,29 @@
 
   <tr>
     <td class="content" style="padding-top: 0;">
-      <div class="detail-card">
-        <h3 style="margin-top: 0;">Job Details</h3>
-        <table class="detail-table">
-          <tr>
-            <td class="detail-label">Reference #</td>
-            <td class="detail-value"><%= request.mruid %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Title</td>
-            <td class="detail-value"><%= request.title %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Description</td>
-            <td class="detail-value"><%= request.description %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Category</td>
-            <td class="detail-value"><%= request.category.replace(/_/g, ' ') %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Priority</td>
-            <td class="detail-value" style="font-weight: 600; text-transform: uppercase;"><%= request.priority %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Property Entry</td>
-            <td class="detail-value"><%= request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' %></td>
-          </tr>
-          <% if (request.scheduledDate) { %>
-          <tr>
-            <td class="detail-label">Scheduled Date</td>
-            <td class="detail-value"><%= new Date(request.scheduledDate).toLocaleDateString() %></td>
-          </tr>
-          <% } %>
-          <% if (request.estimatedCost) { %>
-          <tr>
-            <td class="detail-label">Estimated Cost</td>
-            <td class="detail-value">$<%= (request.estimatedCost / 100).toFixed(2) %></td>
-          </tr>
-          <% } %>
-          <% if (request.preferredDate) { %>
-          <tr>
-            <td class="detail-label">Resident Preferred Date</td>
-            <td class="detail-value"><%= new Date(request.preferredDate).toLocaleDateString() %></td>
-          </tr>
-          <% } %>
-          <% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>
-          <tr>
-            <td class="detail-label">Resident Availability</td>
-            <td class="detail-value"><%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %></td>
-          </tr>
-          <% } %>
-        </table>
-      </div>
+      <%
+        var _rows = [
+          { label: 'Reference #', value: request.mruid },
+          { label: 'Title', value: request.title },
+          { label: 'Description', value: request.description },
+          { label: 'Category', value: request.category.replace(/_/g, ' ') },
+          { label: 'Priority', value: request.priority.toUpperCase(), badge: { bg: '#fef3c7', color: '#92400e' } },
+          { label: 'Property Entry', value: request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' }
+        ];
+        if (request.scheduledDate) {
+          _rows.push({ label: 'Scheduled Date', value: new Date(request.scheduledDate).toLocaleDateString() });
+        }
+        if (request.estimatedCost) {
+          _rows.push({ label: 'Estimated Cost', value: '$' + (request.estimatedCost / 100).toFixed(2) });
+        }
+        if (request.preferredDate) {
+          _rows.push({ label: 'Resident Preferred Date', value: new Date(request.preferredDate).toLocaleDateString() });
+        }
+        if (request.availabilityWindows && request.availabilityWindows.length > 0) {
+          _rows.push({ label: 'Resident Availability', value: request.availabilityWindows.join(', ').replace(/_/g, ' ') });
+        }
+      %>
+      <%- include("../shared/html/_detail-table", { rows: _rows }) %>
     </td>
   </tr>
 

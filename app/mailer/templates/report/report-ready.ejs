@@ -1,7 +1,6 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Your Report is Ready</h2>
       <p>Hi,</p>
       <p>Your <strong><%= periodLabel %></strong> property report for <strong><%= clientName %></strong> has been generated and is ready for download.</p>
     </td>
@@ -9,31 +8,17 @@
 
   <tr>
     <td class="content" style="padding-top: 0;">
-      <div class="detail-card">
-        <h3 style="margin-top: 0;">Report Details</h3>
-        <table class="detail-table">
-          <tr>
-            <td class="detail-label">Report</td>
-            <td class="detail-value"><%= filename %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Period</td>
-            <td class="detail-value"><%= periodLabel %></td>
-          </tr>
-          <tr>
-            <td class="detail-label">Client</td>
-            <td class="detail-value"><%= clientName %></td>
-          </tr>
-        </table>
-      </div>
+      <%- include("../shared/html/_detail-table", { rows: [
+        { label: "Report", value: filename },
+        { label: "Period", value: periodLabel },
+        { label: "Client", value: clientName }
+      ]}) %>
 
       <div style="text-align: center; margin: 28px 0;">
         <%- include("../shared/html/_button", { url: presignedUrl, label: "Download Report", colorClass: "btn-accent" }) %>
       </div>
 
-      <div class="notice-box warning" style="margin-top: 20px;">
-        <strong>Note:</strong> This download link expires in 1 hour. After that, you can generate a new link from the Reports page in your dashboard.
-      </div>
+      <%- include("../shared/html/_notice", { text: '<strong>Note:</strong> This download link expires in 1 hour. After that, you can generate a new link from the Reports page in your dashboard.', type: 'warning' }) %>
     </td>
   </tr>
 </table>

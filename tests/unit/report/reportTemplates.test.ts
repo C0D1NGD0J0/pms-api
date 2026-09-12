@@ -302,7 +302,6 @@ describe('Report Email HTML Template', () => {
   it('should render with all required variables', async () => {
     const html = await ejs.renderFile(EMAIL_HTML_PATH, emailData);
 
-    expect(html).toContain('Your Report is Ready');
     expect(html).toContain('Test Property Management');
     expect(html).toContain('Monthly');
     expect(html).toContain('report-2026-08-29.pdf');
@@ -316,11 +315,12 @@ describe('Report Email HTML Template', () => {
     expect(html).toContain('https://s3.example.com/reports/report.pdf?signed=abc123');
   });
 
-  it('should render detail card with report info', async () => {
+  it('should render detail table with report info', async () => {
     const html = await ejs.renderFile(EMAIL_HTML_PATH, emailData);
 
-    expect(html).toContain('Report Details');
-    expect(html).toContain('detail-card');
+    expect(html).toContain('Report');
+    expect(html).toContain('Period');
+    expect(html).toContain('Client');
   });
 });
 

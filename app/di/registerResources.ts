@@ -11,6 +11,7 @@ import { ClamScannerService } from '@shared/config/index';
 import { AssetService } from '@services/asset/asset.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { DatabaseService, RedisService } from '@database/index';
+import { WebAuthnService } from '@services/auth/webauthn.service';
 import { AwilixContainer, asFunction, asValue, asClass } from 'awilix';
 import { GuestPassController } from '@controllers/GuestPassController';
 import { OffboardingController } from '@controllers/OffboardingController';
@@ -248,6 +249,7 @@ const ServiceResources = {
   pushService: asClass(PushService).singleton(),
   dsarService: asClass(DSARService).singleton(),
   authService: asClass(AuthService).singleton(),
+  webAuthnService: asClass(WebAuthnService).singleton(),
   cronService: asClass(CronService).singleton(),
   userService: asClass(UserService).singleton(),
   assetService: asClass(AssetService).singleton(),

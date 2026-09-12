@@ -7,7 +7,6 @@ import { AuthCache } from '@caching/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
-import { ISignupData } from '@interfaces/user.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PaymentMethodType } from '@interfaces/lease.interface';
@@ -15,7 +14,9 @@ import { subscriptionPlanConfig } from '@services/subscription';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { PaymentService } from '@services/payments/payments.service';
+import { IUserDocument, ISignupData } from '@interfaces/user.interface';
 import { TwilioService } from '@services/external/twilio/twilio.service';
+import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
@@ -36,6 +37,7 @@ import {
 import {
   STRIPE_SUPPORTED_COUNTRY_CODES,
   getCountryCodeFromLocation,
+  getCurrencyForCountry,
   getLocationDetails,
   generateShortUID,
   hashGenerator,
@@ -43,6 +45,8 @@ import {
   createLogger,
   JOB_NAME,
 } from '@utils/index';
+
+import { WebAuthnService } from './webauthn.service';
 
 const ELECTRONIC_PAYMENT_METHODS = new Set<PaymentMethodType>(['auto-debit']);
 
@@ -52,6 +56,7 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   featureFlagService: FeatureFlagService;
   emitterService: EventEmitterService;
+  webAuthnService: WebAuthnService;
   paymentService: PaymentService;
   tokenService: AuthTokenService;
   twilioService: TwilioService;
@@ -83,6 +88,7 @@ export class AuthService {
   private readonly emitterService: EventEmitterService;
   private readonly twilioService: TwilioService;
   private readonly featureFlagService: FeatureFlagService;
+  private readonly webAuthnService: WebAuthnService;
 
   constructor({
     userDAO,
@@ -101,6 +107,7 @@ export class AuthService {
     emitterService,
     twilioService,
     featureFlagService,
+    webAuthnService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -118,6 +125,7 @@ export class AuthService {
     this.emitterService = emitterService;
     this.twilioService = twilioService;
     this.featureFlagService = featureFlagService;
+    this.webAuthnService = webAuthnService;
     this.log = createLogger('AuthService');
     this.setupEventListeners();
   }
@@ -331,6 +339,7 @@ export class AuthService {
           cuid: clientUid,
           accountAdmin: _userId,
           displayName: signupData.displayName,
+          settings: { defaultCurrency: getCurrencyForCountry(countryCode) } as any,
           accountType: {
             category: signupData.accountType.category,
             isEnterpriseAccount: signupData.accountType.isEnterpriseAccount,
@@ -428,17 +437,23 @@ export class AuthService {
     email: string;
     password?: string;
     otp?: string;
+    passkeyResponse?: AuthenticationResponseJSON;
     rememberMe?: boolean;
   }): Promise<ISuccessReturnData> {
-    const { email, password, otp, rememberMe = false } = data;
+    const { email, password, otp, passkeyResponse, rememberMe = false } = data;
 
     if (!email) {
       throw new BadRequestError({ message: t('auth.errors.emailPasswordRequired') });
     }
 
     // Step 1: email only — determine login type and send OTP if needed
-    if (!password && !otp) {
+    if (!password && !otp && !passkeyResponse) {
       return this.resolveLoginType(email);
+    }
+
+    // Step 2c: passkey authentication
+    if (passkeyResponse) {
+      return this.loginWithPasskey(email, passkeyResponse, rememberMe);
     }
 
     // Step 2a: password login
@@ -468,6 +483,24 @@ export class AuthService {
       this.featureFlagService.isEnabled(FeatureFlag.SMS) &&
       profile?.settings?.phoneVerification?.verified &&
       profile?.settings?.phoneVerification?.verifiedPhone;
+
+    // Check for registered passkeys
+    const hasPasskeys = await this.userDAO.hasPasskeys(email);
+    if (hasPasskeys) {
+      const passkeyOptions = await this.webAuthnService.generateAuthenticationOptions(email);
+      const phone = profile?.settings?.phoneVerification?.verifiedPhone;
+      return {
+        success: true,
+        data: {
+          step: 'passkey_available',
+          loginType: 'passkey',
+          fallbackLoginType: canUseOTP ? 'otp' : 'password',
+          passkeyOptions,
+          ...(canUseOTP && phone && { maskedPhone: phone.replace(/.(?=.{4})/g, '*') }),
+        },
+        message: t('auth.success.loginTypeResolved'),
+      };
+    }
 
     if (!canUseOTP) {
       return {
@@ -549,6 +582,22 @@ export class AuthService {
       throw new UnauthorizedError({ message: t('auth.errors.otpVerificationFailed') });
     }
 
+    return this.completeLogin(user, rememberMe);
+  }
+
+  private async loginWithPasskey(
+    email: string,
+    passkeyResponse: AuthenticationResponseJSON,
+    rememberMe: boolean
+  ): Promise<ISuccessReturnData> {
+    const user = await this.webAuthnService.verifyAuthentication(email, passkeyResponse);
+    return this.completeLogin(user, rememberMe);
+  }
+
+  async completeLoginFromPasskey(
+    user: IUserDocument,
+    rememberMe: boolean
+  ): Promise<ISuccessReturnData> {
     return this.completeLogin(user, rememberMe);
   }
 
@@ -877,6 +926,19 @@ export class AuthService {
       data: null,
       success: true,
       message: t('auth.success.passwordResetEmailSent', { email: user.email }),
+    };
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<ISuccessReturnData> {
+    await this.userDAO.changePassword(userId, currentPassword, newPassword);
+    return {
+      data: null,
+      success: true,
+      message: 'Password updated successfully',
     };
   }
 

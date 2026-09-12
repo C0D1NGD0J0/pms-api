@@ -321,7 +321,23 @@ export const LoginSchema = z.object({
     .max(20, { message: 'Invalid password value provided.' })
     .optional(),
   otp: z.string().length(6, { message: 'Verification code must be 6 digits.' }).optional(),
+  passkeyResponse: z.record(z.unknown()).optional(),
   rememberMe: z.boolean().optional(),
+});
+
+export const PasskeyRegVerifySchema = z.object({
+  friendlyName: z
+    .string({ message: 'A name for this passkey is required.' })
+    .min(1, { message: 'Passkey name is required.' })
+    .max(100, { message: 'Passkey name must be 100 characters or fewer.' }),
+  registrationResponse: z.record(z.unknown()),
+});
+
+export const PasskeyDeleteSchema = z.object({
+  credentialId: z.string({ message: 'Credential ID is required.' }).min(1),
+  password: z
+    .string({ message: 'Password confirmation required.' })
+    .min(6, { message: 'Password must be at least 6 characters.' }),
 });
 
 export const TenantSchema = z.object({
@@ -402,4 +418,16 @@ export const ClientSchema = z.object({
       businessRegistrationNumber: z.string(),
     })
     .optional(),
+});
+
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z
+    .string()
+    .min(8, 'New password must be at least 8 characters')
+    .max(15, 'New password must be less than 15 characters')
+    .regex(
+      /^(?=.*[A-Z])(?=.*\d)/,
+      'New password must contain at least one uppercase letter and one number'
+    ),
 });

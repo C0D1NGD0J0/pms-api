@@ -1,18 +1,26 @@
+import { UserDAO } from '@dao/index';
 import { t } from '@shared/languages';
 import { Response, Request } from 'express';
 import { AuthService } from '@services/index';
 import { AppRequest } from '@interfaces/utils.interface';
+import { WebAuthnService } from '@services/auth/webauthn.service';
 import { httpStatusCodes, setAuthCookies, JWT_KEY_NAMES } from '@utils/index';
 
 interface IConstructor {
+  webAuthnService: WebAuthnService;
   authService: AuthService;
+  userDAO: UserDAO;
 }
 
 export class AuthController {
+  private readonly webAuthnService: WebAuthnService;
   private readonly authService: AuthService;
+  private readonly userDAO: UserDAO;
 
-  constructor({ authService }: IConstructor) {
+  constructor({ authService, webAuthnService, userDAO }: IConstructor) {
     this.authService = authService;
+    this.webAuthnService = webAuthnService;
+    this.userDAO = userDAO;
   }
 
   signup = async (req: Request, res: Response) => {
@@ -24,7 +32,7 @@ export class AuthController {
   login = async (req: Request, res: Response) => {
     const result = await this.authService.login(req.body);
 
-    // step 1 responses (password_required / otp_sent) have no tokens
+    // step 1 responses (password_required / otp_sent / passkey_available) have no tokens
     if (result.data.step !== 'authenticated') {
       return res.status(httpStatusCodes.OK).json({
         success: true,
@@ -32,6 +40,8 @@ export class AuthController {
         step: result.data.step,
         loginType: result.data.loginType,
         maskedPhone: result.data.maskedPhone,
+        fallbackLoginType: result.data.fallbackLoginType,
+        passkeyOptions: result.data.passkeyOptions,
       });
     }
 
@@ -122,6 +132,13 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  changePassword = async (req: AppRequest, res: Response) => {
+    const userId = req.context.currentuser!.sub;
+    const { currentPassword, newPassword } = req.body;
+    const result = await this.authService.changePassword(userId, currentPassword, newPassword);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   logout = async (req: Request, res: Response) => {
     let token = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
     if (!token) {
@@ -209,6 +226,107 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json({
       success: true,
       message: result.message,
+    });
+  };
+
+  // ── Passkey (WebAuthn) Methods ──────────────────────────────────
+
+  getPasskeyRegistrationOptions = async (req: AppRequest, res: Response) => {
+    const userId = req.context?.currentuser?.sub;
+    if (!userId) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('common.errors.unauthorized'),
+      });
+    }
+
+    const options = await this.webAuthnService.generateRegistrationOptions(userId);
+    res.status(httpStatusCodes.OK).json({ success: true, data: options });
+  };
+
+  verifyPasskeyRegistration = async (req: AppRequest, res: Response) => {
+    const userId = req.context?.currentuser?.sub;
+    if (!userId) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('common.errors.unauthorized'),
+      });
+    }
+
+    const { friendlyName, registrationResponse } = req.body;
+    const credential = await this.webAuthnService.verifyRegistration(
+      userId,
+      registrationResponse,
+      friendlyName
+    );
+    res.status(httpStatusCodes.CREATED).json({ success: true, data: credential });
+  };
+
+  listPasskeys = async (req: AppRequest, res: Response) => {
+    const userId = req.context?.currentuser?.sub;
+    if (!userId) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('common.errors.unauthorized'),
+      });
+    }
+
+    const passkeys = await this.userDAO.getUserPasskeys(userId);
+    const safePasskeys = passkeys.map(({ publicKey: _pk, ...rest }) => rest);
+    res.status(httpStatusCodes.OK).json({ success: true, data: safePasskeys });
+  };
+
+  deletePasskey = async (req: AppRequest, res: Response) => {
+    const userId = req.context?.currentuser?.sub;
+    const email = req.context?.currentuser?.email;
+    if (!userId || !email) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('common.errors.unauthorized'),
+      });
+    }
+
+    const { credentialId, password } = req.body;
+    const user = await this.userDAO.verifyCredentials(email, password);
+    if (!user) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: t('auth.errors.invalidCredentials'),
+      });
+    }
+
+    await this.webAuthnService.deletePasskey(userId, credentialId);
+    res.status(httpStatusCodes.OK).json({ success: true, data: null });
+  };
+
+  // Discoverable passkey login (no email required)
+  getDiscoverablePasskeyOptions = async (req: Request, res: Response) => {
+    const { options, sessionId } = await this.webAuthnService.generateDiscoverableAuthOptions();
+    res.status(httpStatusCodes.OK).json({ success: true, data: { options, sessionId } });
+  };
+
+  verifyDiscoverablePasskey = async (req: Request, res: Response) => {
+    const { sessionId, passkeyResponse, rememberMe } = req.body;
+    const user = await this.webAuthnService.verifyDiscoverableAuthentication(
+      sessionId,
+      passkeyResponse
+    );
+    const result = await this.authService.completeLoginFromPasskey(user, rememberMe ?? false);
+
+    res = setAuthCookies(
+      {
+        accessToken: result.data.accessToken,
+        refreshToken: result.data.refreshToken,
+        rememberMe: result.data.rememberMe,
+      },
+      res
+    );
+    res.status(httpStatusCodes.OK).json({
+      success: true,
+      msg: result.message,
+      step: result.data.step,
+      accounts: result.data.accounts,
+      activeAccount: result.data.activeAccount,
     });
   };
 }

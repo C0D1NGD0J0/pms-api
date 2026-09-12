@@ -99,6 +99,19 @@ router.patch(
   })
 );
 
+router.patch(
+  '/change_password',
+  isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  validateRequest({
+    body: AuthValidations.changePassword,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.changePassword(req, res);
+  })
+);
+
 router.delete(
   '/:cuid/logout',
   isAuthenticated,
@@ -168,6 +181,70 @@ router.delete(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.removePaymentMethod(req, res);
+  })
+);
+
+// ── Passkey Discoverable Login (no email required) ─────────────
+
+router.get(
+  '/passkeys/auth_options',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.getDiscoverablePasskeyOptions(req, res);
+  })
+);
+
+router.post(
+  '/passkeys/auth_verify',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.verifyDiscoverablePasskey(req, res);
+  })
+);
+
+// ── Passkey Management (authenticated) ─────────────────────────
+
+router.get(
+  '/:cuid/passkeys',
+  isAuthenticated,
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.listPasskeys(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/passkeys/registration_options',
+  isAuthenticated,
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.getPasskeyRegistrationOptions(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/passkeys/registration_verify',
+  isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  validateRequest({ body: AuthValidations.passkeyRegVerify }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.verifyPasskeyRegistration(req, res);
+  })
+);
+
+router.delete(
+  '/:cuid/passkeys',
+  isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  validateRequest({ body: AuthValidations.passkeyDelete }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.deletePasskey(req, res);
   })
 );
 

@@ -446,7 +446,10 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     newPassword: string
   ): Promise<IUserDocument> {
     try {
-      const user = await this.model.findById(userId).select('+password').exec();
+      const user = await this.findFirst(
+        { _id: new Types.ObjectId(userId) },
+        { select: '+password' }
+      );
       if (!user) {
         throw new NotFoundError({ message: 'User not found' });
       }

@@ -198,6 +198,7 @@ router.get(
 router.post(
   '/passkeys/auth_verify',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  validateRequest({ body: AuthValidations.passkeyDiscoverableVerify }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.verifyDiscoverablePasskey(req, res);

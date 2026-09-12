@@ -729,11 +729,16 @@ export class ProfileService {
 
       // Immutable location guard: block location changes when payment processor is set up
       if (profileData.personalInfo?.location !== undefined) {
-        const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
-        if (processor?.accountId) {
-          throw new BadRequestError({
-            message: t('client.errors.immutableFieldLocked'),
-          });
+        const existingProfile = await this.profileDAO.findFirst({
+          _id: new Types.ObjectId(profileId),
+        });
+        if (existingProfile?.personalInfo?.location !== profileData.personalInfo.location) {
+          const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
+          if (processor?.accountId) {
+            throw new BadRequestError({
+              message: t('client.errors.immutableFieldLocked'),
+            });
+          }
         }
       }
 

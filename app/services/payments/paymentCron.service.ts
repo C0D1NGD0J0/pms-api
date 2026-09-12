@@ -1308,10 +1308,10 @@ export class PaymentCronService implements ICronProvider {
   private async syncConnectAccountStatuses(): Promise<void> {
     this.log.info('Starting Stripe Connect account status sync');
 
-    const processors = await this.paymentProcessorDAO.list({
-      accountId: { $exists: true, $ne: null },
-      deletedAt: null,
-    } as any);
+    const processors = await this.paymentProcessorDAO.list(
+      { accountId: { $exists: true, $ne: null }, deletedAt: null } as any,
+      { limit: 10000 }
+    );
 
     let synced = 0;
     let errors = 0;

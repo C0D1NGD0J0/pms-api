@@ -156,7 +156,7 @@ export class MaintenancePaymentService {
           'Payment account not configured or charges not enabled. Complete KYC setup before creating charges.',
       });
     }
-    if (paymentProcessor.payoutsBlocked || (paymentProcessor as any).payoutsPaused) {
+    if (paymentProcessor.payoutsBlocked || paymentProcessor.payoutsPaused) {
       throw new ForbiddenError({
         message:
           paymentProcessor.payoutsBlockedReason ||
@@ -252,7 +252,7 @@ export class MaintenancePaymentService {
           message: 'Payment account not configured or charges not enabled.',
         });
       }
-      if ((pmProcessor as any).payoutsBlocked || (pmProcessor as any).payoutsPaused) {
+      if (pmProcessor.payoutsBlocked || pmProcessor.payoutsPaused) {
         throw new ForbiddenError({
           message: 'PM payouts are currently blocked or paused.',
         });
@@ -294,10 +294,10 @@ export class MaintenancePaymentService {
             'Vendor has not set up their payout account. Ask them to complete Stripe Connect onboarding.',
         });
       }
-      if ((vendorProcessor as any).payoutsBlocked || (vendorProcessor as any).payoutsPaused) {
+      if (vendorProcessor.payoutsBlocked || vendorProcessor.payoutsPaused) {
         throw new ForbiddenError({
           message:
-            (vendorProcessor as any).payoutsBlockedReason ||
+            vendorProcessor.payoutsBlockedReason ||
             'Vendor payout account is globally blocked or paused.',
         });
       }

@@ -1,4 +1,5 @@
 import {
+  PasskeyDiscoverableVerifySchema,
   SwitchClientAccountSchema,
   SetupPaymentIntentSchema,
   completeOnboardingSchema,
@@ -26,6 +27,7 @@ export class AuthValidations {
   static signup = UserSignupSchema;
   static login = LoginSchema;
   static passkeyRegVerify = PasskeyRegVerifySchema;
+  static passkeyDiscoverableVerify = PasskeyDiscoverableVerifySchema;
   static passkeyDelete = PasskeyDeleteSchema;
   static completeOnboarding = completeOnboardingSchema;
 }

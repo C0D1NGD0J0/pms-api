@@ -333,6 +333,12 @@ export const PasskeyRegVerifySchema = z.object({
   registrationResponse: z.record(z.unknown()),
 });
 
+export const PasskeyDiscoverableVerifySchema = z.object({
+  sessionId: z.string({ message: 'Session ID is required.' }).min(1),
+  passkeyResponse: z.record(z.unknown()),
+  rememberMe: z.boolean().optional(),
+});
+
 export const PasskeyDeleteSchema = z.object({
   credentialId: z.string({ message: 'Credential ID is required.' }).min(1),
   password: z

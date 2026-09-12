@@ -248,9 +248,7 @@ export class AuthCache extends BaseCache {
 
   async getAndDeleteWebAuthnRegChallenge(userId: string): Promise<string | null> {
     const key = `${this.KEY_PREFIXES.WEBAUTHN_REG}:${userId}`;
-    const challenge = await this.client.get(key);
-    if (challenge) await this.client.del(key);
-    return challenge;
+    return this.client.getDel(key);
   }
 
   async saveWebAuthnAuthChallenge(email: string, challenge: string): Promise<ISuccessReturnData> {
@@ -260,9 +258,7 @@ export class AuthCache extends BaseCache {
 
   async getAndDeleteWebAuthnAuthChallenge(email: string): Promise<string | null> {
     const key = `${this.KEY_PREFIXES.WEBAUTHN_AUTH}:${email}`;
-    const challenge = await this.client.get(key);
-    if (challenge) await this.client.del(key);
-    return challenge;
+    return this.client.getDel(key);
   }
 
   /**

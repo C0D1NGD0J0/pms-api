@@ -2,9 +2,10 @@ import dayjs from 'dayjs';
 import crypto from 'crypto';
 import Logger from 'bunyan';
 import { Lease } from '@models/index';
-import { IUserDocument } from '@interfaces/user.interface';
+import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
 import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import { hashGenerator, createLogger, escapeRegExp } from '@utils/index';
+import { IPasskeyCredential, IUserDocument } from '@interfaces/user.interface';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
 import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
@@ -434,6 +435,32 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       await user.save();
       return user;
     } catch (error) {
+      this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<IUserDocument> {
+    try {
+      const user = await this.model.findById(userId).select('+password').exec();
+      if (!user) {
+        throw new NotFoundError({ message: 'User not found' });
+      }
+
+      const isValid = await user.validatePassword(currentPassword);
+      if (!isValid) {
+        throw new UnauthorizedError({ message: 'Current password is incorrect' });
+      }
+
+      user.password = newPassword;
+      await user.save();
+      return user;
+    } catch (error) {
+      if (error.name === 'NotFoundError' || error.name === 'UnauthorizedError') throw error;
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
@@ -1357,5 +1384,63 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       tenants: row.tenants || 0,
       staff: row.staff || 0,
     };
+  }
+
+  // ── Passkey (WebAuthn) Methods ──────────────────────────────────
+
+  async getUserPasskeys(userId: string): Promise<IPasskeyCredential[]> {
+    const user = await this.findFirst({ _id: new Types.ObjectId(userId) }, { select: '+passkeys' });
+    return (user?.passkeys as IPasskeyCredential[]) || [];
+  }
+
+  async hasPasskeys(email: string): Promise<boolean> {
+    const count = await this.countDocuments({
+      email,
+      deletedAt: null,
+      isActive: true,
+      'passkeys.0': { $exists: true },
+    } as QueryFilter<IUserDocument>);
+    return count > 0;
+  }
+
+  async findByPasskeyCredentialId(credentialId: string): Promise<IUserDocument | null> {
+    return this.findFirst(
+      {
+        'passkeys.credentialId': credentialId,
+        deletedAt: null,
+      } as QueryFilter<IUserDocument>,
+      { select: '+passkeys' }
+    );
+  }
+
+  async addPasskey(userId: string, credential: IPasskeyCredential): Promise<void> {
+    await this.updateById(userId, {
+      $push: { passkeys: credential },
+    } as any);
+  }
+
+  async removePasskey(userId: string, credentialId: string): Promise<void> {
+    await this.updateById(userId, {
+      $pull: { passkeys: { credentialId } },
+    } as any);
+  }
+
+  async updatePasskeyCounter(
+    userId: string,
+    credentialId: string,
+    newCounter: number
+  ): Promise<void> {
+    await this.update(
+      {
+        _id: new Types.ObjectId(userId),
+        'passkeys.credentialId': credentialId,
+      } as QueryFilter<IUserDocument>,
+      {
+        $set: {
+          'passkeys.$.counter': newCounter,
+          'passkeys.$.lastUsedAt': new Date(),
+        },
+      } as any
+    );
   }
 }

@@ -330,9 +330,9 @@ export type PaymentStatus = 'paid' | 'late' | 'pending';
 
 export type EmailFrequencyType = 'immediate' | 'daily';
 
-export type PaymentType = 'rent' | 'fee' | 'deposit';
+export type LoginType = 'otp' | 'password' | 'passkey';
 
-export type LoginType = 'otp' | 'password';
+export type PaymentType = 'rent' | 'fee' | 'deposit';
 
 export type ThemeType = 'light' | 'dark';
 

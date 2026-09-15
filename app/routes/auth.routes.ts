@@ -5,9 +5,9 @@ import { asyncWrapper } from '@utils/index';
 import { QueueFactory } from '@services/queue';
 import { httpStatusCodes } from '@utils/constants';
 import { AuthController } from '@controllers/index';
-import { MailType } from '@interfaces/utils.interface';
-import { isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { validateRequest, AuthValidations } from '@shared/validations';
+import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { PermissionResource, PermissionAction, MailType } from '@interfaces/utils.interface';
 
 const FeedbackSchema = z.object({
   category: z.enum(['general', 'bug', 'improvement', 'feature_request']),
@@ -248,11 +248,10 @@ router.post(
   })
 );
 
-// ── Passkey Management (authenticated) ─────────────────────────
-
 router.get(
   '/:cuid/passkeys',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
   basicLimiter(),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -263,6 +262,7 @@ router.get(
 router.get(
   '/:cuid/passkeys/registration_options',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -273,6 +273,7 @@ router.get(
 router.post(
   '/:cuid/passkeys/registration_verify',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.passkeyRegVerify }),
   asyncWrapper((req, res) => {
@@ -284,6 +285,7 @@ router.post(
 router.delete(
   '/:cuid/passkeys',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.DELETE),
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.passkeyDelete }),
   asyncWrapper((req, res) => {

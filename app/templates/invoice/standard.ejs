@@ -255,6 +255,9 @@
   <!-- Header -->
   <div class="header">
     <div class="brand">
+      <% if (typeof logoUrl !== 'undefined' && logoUrl) { %>
+      <img src="<%= logoUrl %>" alt="<%= companyName %>" style="max-height: 40px; width: auto; margin-bottom: 6px;" />
+      <% } %>
       <div class="brand-name"><%= companyName %></div>
       <div class="brand-sub"><%= documentTitle %></div>
     </div>

@@ -473,6 +473,18 @@ export class ReportService implements ICronProvider {
         client?.companyProfile?.legalEntityName ||
         'Your Company';
 
+      // Brand context for white-label report rendering
+      const brand =
+        client?.brandAssets?.logoUrl || client?.brandAssets?.primaryColor
+          ? {
+              appName: clientName,
+              logoUrl: client.brandAssets?.logoUrl ?? null,
+              primaryColor: client.brandAssets?.primaryColor ?? '#062f4f',
+              accentColor: client.brandAssets?.accentColor ?? '#D9952B',
+              companyAddress: client.companyProfile?.companyAddress ?? null,
+            }
+          : null;
+
       // Fetch current + previous period data in parallel, only for selected sections
       const [currentData, previousData] = await Promise.all([
         this._aggregateData(cuid, startDate, endDate, propertyId, sections),
@@ -515,6 +527,7 @@ export class ReportService implements ICronProvider {
         ...currentData,
         trends,
         clientName,
+        brand,
         period,
         startDate,
         endDate,

@@ -273,7 +273,7 @@ export class AuthController {
 
     const passkeys = await this.userDAO.getUserPasskeys(userId);
     const safePasskeys = passkeys.map((pk) => {
-      const plain = typeof pk.toObject === 'function' ? pk.toObject() : pk;
+      const plain = typeof (pk as any).toObject === 'function' ? (pk as any).toObject() : pk;
       const { publicKey: _pk, ...rest } = plain;
       return rest;
     });

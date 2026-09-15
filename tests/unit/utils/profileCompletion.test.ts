@@ -1,6 +1,6 @@
-import { computeProfileCompletion, IAccountSetupData } from '@utils/profileCompletion';
-import { IProfileDocument } from '@interfaces/profile.interface';
 import { IClientDocument } from '@interfaces/client.interface';
+import { IProfileDocument } from '@interfaces/profile.interface';
+import { computeProfileCompletion, IAccountSetupData } from '@utils/profileCompletion';
 
 const makeProfile = (overrides: Record<string, any> = {}): IProfileDocument =>
   ({
@@ -48,7 +48,12 @@ describe('computeProfileCompletion — account setup sections', () => {
   });
 
   it('should NOT include setup sections for non-admin roles', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), ['staff'], makeAccountData());
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['staff'],
+      makeAccountData()
+    );
     expect(result.sections.find((s) => s.key === 'accountSetup')).toBeUndefined();
   });
 

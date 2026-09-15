@@ -4,9 +4,11 @@ import { ClientController } from '@controllers/ClientController';
 import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  subscriptionEntitlements,
   requireUserManagement,
   requirePermission,
   isAuthenticated,
+  requireFeature,
   basicLimiter,
   idempotency,
 } from '@shared/middlewares';
@@ -125,6 +127,23 @@ router.patch(
   asyncWrapper((req, res) => {
     const clientController = req.container.resolve<ClientController>('clientController');
     return clientController.updateTenantFeatures(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/brand-assets',
+  basicLimiter(),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  subscriptionEntitlements,
+  requireFeature('whiteLabelling'),
+  idempotency,
+  validateRequest({
+    params: ClientValidations.clientIdParam,
+    body: ClientValidations.updateBrandAssets,
+  }),
+  asyncWrapper((req, res) => {
+    const clientController = req.container.resolve<ClientController>('clientController');
+    return clientController.updateBrandAssets(req, res);
   })
 );
 

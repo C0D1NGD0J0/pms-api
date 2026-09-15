@@ -179,6 +179,13 @@ const ClientSchema = new Schema<IClientDocument>(
         },
       },
     },
+    brandAssets: {
+      logoUrl: { type: String, trim: true, default: null },
+      logoIconUrl: { type: String, trim: true, default: null },
+      faviconUrl: { type: String, trim: true, default: null },
+      primaryColor: { type: String, trim: true, default: null },
+      accentColor: { type: String, trim: true, default: null },
+    },
     settings: {
       notificationPreferences: {
         email: {

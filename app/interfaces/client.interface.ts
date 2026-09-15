@@ -16,6 +16,7 @@ export interface IClient {
   accountAdmin: Types.ObjectId | PopulatedAccountAdmin;
   subscription: Types.ObjectId | null;
   companyProfile?: ICompanyProfile;
+  brandAssets?: IClientBrandAssets;
   dataProcessingConsent?: boolean;
   lastModifiedBy: Types.ObjectId;
   /** Populated only when explicitly selected via .select('+suspension') */
@@ -79,6 +80,14 @@ export interface ITenantFeatureSettings {
   onlinePayments: boolean;
   inspections: boolean;
   guestPass: boolean;
+}
+
+export interface IClientBrandAssets {
+  primaryColor?: string | null;
+  logoIconUrl?: string | null;
+  accentColor?: string | null;
+  faviconUrl?: string | null;
+  logoUrl?: string | null;
 }
 
 export type PopulatedAccountAdmin = Pick<

@@ -155,8 +155,8 @@ router.post(
         rating: rating || null,
         userName: currentuser?.fullname || 'Unknown',
         userEmail: currentuser?.email || 'N/A',
-        userRole: currentuser?.role || 'N/A',
-        clientName: currentuser?.clientDisplayName || cuid,
+        userRole: currentuser?.client?.role || 'N/A',
+        clientName: currentuser?.client?.displayname || cuid,
       },
     });
 

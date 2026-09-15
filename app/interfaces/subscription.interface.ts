@@ -56,6 +56,19 @@ export interface ISubscriptionPlansConfig {
     expenseTracking: boolean;
     whiteLabelling?: boolean;
   };
+  pricing: {
+    monthly: {
+      priceId: string;
+      priceInCents: number;
+      currencies?: Record<string, { priceId: string; priceInCents: number }>;
+    };
+    annual: {
+      priceId: string;
+      priceInCents: number;
+      savingsPercent: number;
+      currencies?: Record<string, { priceId: string; priceInCents: number }>;
+    };
+  };
   limits: {
     maxUnits: number;
     smsQuota?: number;
@@ -65,17 +78,6 @@ export interface ISubscriptionPlansConfig {
     maxReportsPerMonth?: number;
     maxReportSections?: number;
     maxReportEmails?: number;
-  };
-  pricing: {
-    monthly: {
-      priceId: string;
-      priceInCents: number;
-    };
-    annual: {
-      priceId: string;
-      priceInCents: number;
-      savingsPercent: number;
-    };
   };
   transactionFeePercent: number;
   disabledFeatures?: string[];

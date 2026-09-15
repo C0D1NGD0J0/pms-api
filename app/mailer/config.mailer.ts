@@ -6,6 +6,7 @@ import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import nodemailer, { SendMailOptions, Transporter } from 'nodemailer';
+import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
 
 export interface EmailBrandContext {
   logoUrl: string | null;
@@ -308,7 +309,6 @@ export class MailService {
   private readonly log: Logger;
   private readonly templateCache: Map<string, EmailTemplate> = new Map();
   private readonly clientDAO: any;
-  private readonly brandCache: Map<string, EmailBrandContext> = new Map();
 
   constructor({ clientDAO }: { clientDAO?: any } = {}) {
     this.log = createLogger('MailerService');
@@ -318,35 +318,12 @@ export class MailService {
   }
 
   async resolveBrandContext(clientCuid?: string): Promise<EmailBrandContext> {
-    if (!clientCuid || !this.clientDAO) return EMAIL_BRAND_DEFAULTS;
-
-    if (this.brandCache.has(clientCuid)) return this.brandCache.get(clientCuid)!;
+    if (!clientCuid) return EMAIL_BRAND_DEFAULTS;
 
     try {
-      const client = await this.clientDAO.getClientByCuid(clientCuid);
-      if (!client) return EMAIL_BRAND_DEFAULTS;
-
-      const companyName =
-        client.displayName ||
-        client.companyProfile?.tradingName ||
-        client.companyProfile?.legalEntityName ||
-        EMAIL_BRAND_DEFAULTS.appName;
-
-      const companyAddress = client.companyProfile?.companyAddress
-        ? `${companyName} — ${client.companyProfile.companyAddress}`
-        : EMAIL_BRAND_DEFAULTS.companyAddress;
-
-      const brand: EmailBrandContext = {
-        appName: companyName,
-        logoUrl: client.brandAssets?.logoUrl ?? null,
-        primaryColor: client.brandAssets?.primaryColor ?? EMAIL_BRAND_DEFAULTS.primaryColor,
-        accentColor: client.brandAssets?.accentColor ?? EMAIL_BRAND_DEFAULTS.accentColor,
-        companyAddress,
-        supportEmail: client.companyProfile?.companyEmail ?? EMAIL_BRAND_DEFAULTS.supportEmail,
-      };
-
-      this.brandCache.set(clientCuid, brand);
-      return brand;
+      const config = await loadBrandConfig(clientCuid);
+      const client = this.clientDAO ? await this.clientDAO.getClientByCuid(clientCuid) : null;
+      return toEmailBrandContext(config, client ?? undefined);
     } catch (error) {
       this.log.error({ error, clientCuid }, 'Failed to resolve brand context, using defaults');
       return EMAIL_BRAND_DEFAULTS;

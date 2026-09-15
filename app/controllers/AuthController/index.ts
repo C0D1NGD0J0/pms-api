@@ -272,7 +272,11 @@ export class AuthController {
     }
 
     const passkeys = await this.userDAO.getUserPasskeys(userId);
-    const safePasskeys = passkeys.map(({ publicKey: _pk, ...rest }) => rest);
+    const safePasskeys = passkeys.map((pk) => {
+      const plain = typeof pk.toObject === 'function' ? pk.toObject() : pk;
+      const { publicKey: _pk, ...rest } = plain;
+      return rest;
+    });
     res.status(httpStatusCodes.OK).json({ success: true, data: safePasskeys });
   };
 

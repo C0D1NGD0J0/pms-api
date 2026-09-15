@@ -14,6 +14,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import {
@@ -473,15 +474,17 @@ export class ReportService implements ICronProvider {
         client?.companyProfile?.legalEntityName ||
         'Your Company';
 
-      // Brand context for white-label report rendering
+      // Brand context for white-label report rendering (from S3 JSON files)
+      const brandConfig = await loadBrandConfig(cuid);
+      const emailBrand = toEmailBrandContext(brandConfig, client ?? undefined);
       const brand =
-        client?.brandAssets?.logoUrl || client?.brandAssets?.primaryColor
+        brandConfig.identity.logoUrl || brandConfig.identity.primaryHex
           ? {
-              appName: clientName,
-              logoUrl: client.brandAssets?.logoUrl ?? null,
-              primaryColor: client.brandAssets?.primaryColor ?? '#062f4f',
-              accentColor: client.brandAssets?.accentColor ?? '#D9952B',
-              companyAddress: client.companyProfile?.companyAddress ?? null,
+              appName: emailBrand.appName,
+              logoUrl: brandConfig.identity.logoUrl,
+              primaryColor: emailBrand.primaryColor,
+              accentColor: emailBrand.accentColor,
+              companyAddress: client?.companyProfile?.companyAddress ?? null,
             }
           : null;
 

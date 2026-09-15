@@ -75,28 +75,6 @@ export const CompanyProfileSchema = z.object({
     .optional(),
 });
 
-const hexColorRegex = /^#[0-9a-fA-F]{6}$/;
-
-export const UpdateBrandAssetsSchema = z
-  .object({
-    logoUrl: z.string().url('Invalid logo URL').nullable().optional(),
-    logoIconUrl: z.string().url('Invalid logo icon URL').nullable().optional(),
-    faviconUrl: z.string().url('Invalid favicon URL').nullable().optional(),
-    primaryColor: z
-      .string()
-      .regex(hexColorRegex, 'Primary color must be a valid hex color (e.g. #1a5276)')
-      .nullable()
-      .optional(),
-    accentColor: z
-      .string()
-      .regex(hexColorRegex, 'Accent color must be a valid hex color (e.g. #d4a017)')
-      .nullable()
-      .optional(),
-  })
-  .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one brand asset field must be provided',
-  });
-
 export const ClientIdentificationSchema = z.object({
   dataProcessingConsent: z.boolean().default(false),
   processingConsentDate: z.string().datetime('Invalid date format').optional(),

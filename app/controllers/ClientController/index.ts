@@ -102,14 +102,4 @@ export class ClientController {
     const result = await this.clientService.updateTenantFeatures(req.context, req.body);
     res.status(httpStatusCodes.OK).json(result);
   };
-
-  updateBrandAssets = async (req: AppRequest, res: Response) => {
-    this.log.info(`Updating brand assets for cuid: ${req.params.cuid}`);
-    const result = await this.clientService.updateBrandAssets(req.context, req.body);
-    res.status(httpStatusCodes.OK).json({
-      success: true,
-      data: result.data,
-      message: t('common.success.updated', { resource: 'Brand assets' }),
-    });
-  };
 }

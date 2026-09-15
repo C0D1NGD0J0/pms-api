@@ -9,7 +9,6 @@ import {
   ClientSubscriptionSchema,
   FilteredUsersQuerySchema,
   ClientDisplayNameSchema,
-  UpdateBrandAssetsSchema,
   AssignDepartmentSchema,
   ClientSettingsSchema,
   CompanyProfileSchema,
@@ -35,5 +34,4 @@ export class ClientValidations {
   static updateTenantProfile = UpdateTenantProfileSchema;
   static enterpriseValidation = EnterpriseClientValidationSchema;
   static updateTenantFeatures = UpdateTenantFeaturesSchema;
-  static updateBrandAssets = UpdateBrandAssetsSchema;
 }

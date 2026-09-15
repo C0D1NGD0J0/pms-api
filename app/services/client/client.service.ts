@@ -24,16 +24,15 @@ import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
+  ITenantFeatureSettings,
+  IClientDocument,
+  IClientStats,
+} from '@interfaces/client.interface';
+import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
-import {
-  ITenantFeatureSettings,
-  IClientBrandAssets,
-  IClientDocument,
-  IClientStats,
-} from '@interfaces/client.interface';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -1314,44 +1313,6 @@ export class ClientService {
         );
       })
     );
-
-    return { success: true, data: updated };
-  }
-
-  async updateBrandAssets(
-    cxt: IRequestContext,
-    brandAssets: Partial<IClientBrandAssets>
-  ): Promise<ISuccessReturnData<IClientDocument>> {
-    const { cuid } = cxt.request.params;
-
-    const client = await this.clientDAO.getClientByCuid(cuid);
-    if (!client) {
-      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
-    }
-
-    const allowedKeys: (keyof IClientBrandAssets)[] = [
-      'logoUrl',
-      'logoIconUrl',
-      'faviconUrl',
-      'primaryColor',
-      'accentColor',
-    ];
-
-    const updateSet: Record<string, string | null> = {};
-    for (const key of allowedKeys) {
-      if (key in brandAssets) {
-        updateSet[`brandAssets.${key}`] = brandAssets[key] ?? null;
-      }
-    }
-
-    if (Object.keys(updateSet).length === 0) {
-      throw new BadRequestError({ message: 'At least one brand asset field must be provided' });
-    }
-
-    const updated = await this.clientDAO.updateById(client._id.toString(), { $set: updateSet });
-    if (!updated) {
-      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
-    }
 
     return { success: true, data: updated };
   }

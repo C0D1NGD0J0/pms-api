@@ -23,7 +23,8 @@ export class SubscriptionController {
   }
 
   getSubscriptionPlans = async (req: Request, res: Response) => {
-    const result = await this.subscriptionService.getSubscriptionPlans();
+    const currency = (req.query.currency as string)?.toLowerCase() || 'usd';
+    const result = await this.subscriptionService.getSubscriptionPlans(currency);
 
     res.status(httpStatusCodes.OK).json(result);
   };

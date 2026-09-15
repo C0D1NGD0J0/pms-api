@@ -54,6 +54,7 @@ export interface ISubscriptionPlansConfig {
     aiInspectionAnalysis: boolean;
     aiReportAnalysis?: boolean;
     expenseTracking: boolean;
+    whiteLabelling?: boolean;
   };
   limits: {
     maxUnits: number;
@@ -168,6 +169,7 @@ export interface ISubscription {
     aiInspectionAnalysis?: boolean;
     aiReportAnalysis?: boolean;
     expenseTracking?: boolean;
+    whiteLabelling?: boolean;
   };
   smsUsage?: {
     countThisPeriod: number;
@@ -218,6 +220,7 @@ export interface ISubscriptionEntitlements {
     aiInvoiceScanning: boolean;
     aiInspectionAnalysis: boolean;
     expenseTracking: boolean;
+    whiteLabelling?: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;
@@ -287,4 +290,4 @@ export interface IPaymentGateway extends ISubscriptionBilling {
   connectedAccountId?: string;
 }
 
-export type PlanName = 'essential' | 'growth' | 'portfolio';
+export type PlanName = 'essential' | 'growth' | 'portfolio' | 'enterprise';

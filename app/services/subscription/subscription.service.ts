@@ -182,7 +182,9 @@ export class SubscriptionService {
     }
   }
 
-  async getSubscriptionPlans(): IPromiseReturnedData<ISubscriptionPlanResponse[]> {
+  async getSubscriptionPlans(
+    currency: string = 'usd'
+  ): IPromiseReturnedData<ISubscriptionPlanResponse[]> {
     const STRIPE_PLANS_CACHE_KEY = 'subscription:stripe:plans';
     const STRIPE_PLANS_CACHE_TTL = 60 * 60; // 1 hour
 
@@ -219,8 +221,28 @@ export class SubscriptionService {
       const stripeData = stripePriceMap.get(config.name.toLowerCase());
       const completeFeatures = subscriptionPlanConfig.getCompleteFeatureList(planName);
 
-      const monthlyPriceInCents = stripeData?.monthly.amount ?? config.pricing.monthly.priceInCents;
-      const annualPriceInCents = stripeData?.annual.amount ?? config.pricing.annual.priceInCents;
+      // Resolve currency-specific pricing (fall back to default/USD)
+      const cur = currency.toLowerCase();
+      const monthlyCurrencyConfig = config.pricing.monthly.currencies?.[cur];
+      const annualCurrencyConfig = config.pricing.annual.currencies?.[cur];
+
+      const monthlyPriceInCents =
+        monthlyCurrencyConfig?.priceInCents ??
+        stripeData?.monthly.amount ??
+        config.pricing.monthly.priceInCents;
+      const annualPriceInCents =
+        annualCurrencyConfig?.priceInCents ??
+        stripeData?.annual.amount ??
+        config.pricing.annual.priceInCents;
+
+      const monthlyPriceId =
+        monthlyCurrencyConfig?.priceId ||
+        stripeData?.monthly.priceId ||
+        config.pricing.monthly.priceId;
+      const annualPriceId =
+        annualCurrencyConfig?.priceId ||
+        stripeData?.annual.priceId ||
+        config.pricing.annual.priceId;
 
       return {
         planName: config.planName,
@@ -238,17 +260,18 @@ export class SubscriptionService {
         limits: config.limits,
         featureList: completeFeatures.enabled,
         disabledFeatures: completeFeatures.disabled,
+        currency: cur,
         pricing: {
           monthly: {
-            priceId: stripeData?.monthly.priceId || config.pricing.monthly.priceId,
+            priceId: monthlyPriceId,
             priceInCents: monthlyPriceInCents,
-            displayPrice: this.formatPrice(monthlyPriceInCents || 0),
+            displayPrice: this.formatPrice(monthlyPriceInCents || 0, cur),
             lookUpKey: stripeData?.monthly.lookUpKey || null,
           },
           annual: {
-            priceId: stripeData?.annual.priceId || config.pricing.annual.priceId,
+            priceId: annualPriceId,
             priceInCents: annualPriceInCents,
-            displayPrice: this.formatPrice(annualPriceInCents || 0),
+            displayPrice: this.formatPrice(annualPriceInCents || 0, cur),
             savingsPercent: config.pricing.annual.savingsPercent,
             savingsDisplay: `Save ${config.pricing.annual.savingsPercent}%`,
             lookUpKey: stripeData?.annual.lookUpKey || null,
@@ -1489,9 +1512,9 @@ export class SubscriptionService {
     }
   }
 
-  private formatPrice(priceInCents: number): string {
-    if (priceInCents === 0) return '$0';
-    return `$${MoneyUtils.centsToDisplay(priceInCents)}`;
+  private formatPrice(priceInCents: number, currency: string = 'usd'): string {
+    if (priceInCents === 0) return MoneyUtils.formatCurrency(0, currency.toUpperCase());
+    return MoneyUtils.formatCurrency(priceInCents, currency.toUpperCase());
   }
 
   // WEBHOOKS — delegated to SubscriptionWebhookService

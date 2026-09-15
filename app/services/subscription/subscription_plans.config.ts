@@ -14,6 +14,31 @@ try {
   throw new Error('Platform configuration file not found or invalid');
 }
 
+/**
+ * Override price IDs from environment variables.
+ * Pattern: STRIPE_PRICE_{PLAN}_{INTERVAL}_{CURRENCY}
+ * e.g. STRIPE_PRICE_GROWTH_MONTHLY_CAD=price_live_xxx
+ * Falls back to whatever is in platform.config.json if env var is not set.
+ */
+function applyEnvPriceOverrides(plans: Record<string, any>): void {
+  for (const [planName, config] of Object.entries(plans)) {
+    for (const interval of ['monthly', 'annual'] as const) {
+      const pricing = config.pricing?.[interval];
+      if (!pricing?.currencies) continue;
+
+      for (const currency of Object.keys(pricing.currencies)) {
+        const envKey = `STRIPE_PRICE_${planName.toUpperCase()}_${interval.toUpperCase()}_${currency.toUpperCase()}`;
+        const envVal = process.env[envKey];
+        if (envVal) {
+          pricing.currencies[currency].priceId = envVal;
+        }
+      }
+    }
+  }
+}
+
+applyEnvPriceOverrides(platformConfig.subscriptionPlans);
+
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = platformConfig.subscriptionPlans;
 
 export type SubscriptionPlanName = keyof typeof PLAN_CONFIGS;

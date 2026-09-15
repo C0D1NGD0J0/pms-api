@@ -1,8 +1,19 @@
+import { z } from 'zod';
 import express, { Router } from 'express';
+import { EmailQueue } from '@queues/index';
 import { asyncWrapper } from '@utils/index';
+import { QueueFactory } from '@services/queue';
+import { httpStatusCodes } from '@utils/constants';
 import { AuthController } from '@controllers/index';
+import { MailType } from '@interfaces/utils.interface';
 import { isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { validateRequest, AuthValidations } from '@shared/validations';
+
+const FeedbackSchema = z.object({
+  category: z.enum(['general', 'bug', 'improvement', 'feature_request']),
+  message: z.string().trim().min(10, 'Feedback must be at least 10 characters').max(1000),
+  rating: z.number().int().min(1).max(5).optional(),
+});
 
 const router: Router = express.Router();
 
@@ -118,6 +129,38 @@ router.delete(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.logout(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/feedback',
+  isAuthenticated,
+  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
+  validateRequest({ body: FeedbackSchema }),
+  asyncWrapper(async (req, res) => {
+    const { category, message, rating } = req.body;
+    const currentuser = req.context?.currentuser;
+    const { cuid } = req.params;
+
+    const queueFactory = req.container.resolve<QueueFactory>('queueFactory');
+    const emailQueue = queueFactory.getQueue('emailQueue') as EmailQueue;
+
+    emailQueue.addToEmailQueue(MailType.USER_FEEDBACK, {
+      to: 'support@propertydesk.live',
+      subject: `[Feedback] ${category} — ${currentuser?.fullname || 'Unknown User'}`,
+      emailType: MailType.USER_FEEDBACK,
+      data: {
+        category,
+        message,
+        rating: rating || null,
+        userName: currentuser?.fullname || 'Unknown',
+        userEmail: currentuser?.email || 'N/A',
+        userRole: currentuser?.role || 'N/A',
+        clientName: currentuser?.clientDisplayName || cuid,
+      },
+    });
+
+    res.status(httpStatusCodes.OK).json({ success: true, message: 'Feedback submitted' });
   })
 );
 

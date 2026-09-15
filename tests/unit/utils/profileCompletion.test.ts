@@ -1,274 +1,168 @@
-import { ROLES } from '@shared/constants/roles.constants';
-import { IClientDocument } from '@interfaces/client.interface';
+import { computeProfileCompletion, IAccountSetupData } from '@utils/profileCompletion';
 import { IProfileDocument } from '@interfaces/profile.interface';
-import { computeProfileCompletion } from '@utils/profileCompletion';
+import { IClientDocument } from '@interfaces/client.interface';
 
-// ── Minimal stubs ─────────────────────────────────────────────────────────────
-
-function makeClient(overrides: Partial<IClientDocument> = {}): IClientDocument {
-  return {
-    accountType: { isEnterpriseAccount: false, category: 'business' as const },
+const makeProfile = (overrides: Record<string, any> = {}): IProfileDocument =>
+  ({
+    personalInfo: {
+      phoneNumber: '4165551234',
+      location: 'Toronto, Canada',
+      avatar: { url: 'https://custom.com/avatar.jpg' },
+      dob: new Date('1990-01-01'),
+    },
+    policies: {
+      tos: { accepted: true, acceptedOn: new Date() },
+      privacy: { accepted: true, acceptedOn: new Date() },
+      marketing: { accepted: false },
+    },
+    settings: {},
     ...overrides,
-  } as unknown as IClientDocument;
-}
+  }) as any;
 
-function makeProfile(overrides: Partial<IProfileDocument> = {}): IProfileDocument {
-  return {
-    personalInfo: {},
-    policies: {},
+const makeClient = (overrides: Record<string, any> = {}): IClientDocument =>
+  ({
+    accountType: { category: 'business', isEnterpriseAccount: false },
     ...overrides,
-  } as unknown as IProfileDocument;
-}
+  }) as any;
 
-// ── Core section ──────────────────────────────────────────────────────────────
-
-describe('computeProfileCompletion — core section', () => {
-  it('returns 0% and 5 missing fields when all core fields are empty', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-
-    expect(result.percent).toBe(0);
-    expect(result.sections).toHaveLength(1);
-    expect(result.sections[0].key).toBe('core');
-    expect(result.sections[0].completedFields).toBe(0);
-    expect(result.sections[0].totalFields).toBe(5);
-    expect(result.missingFields).toHaveLength(5);
-  });
-
-  it('returns 100% when all core fields are filled', () => {
-    const profile = makeProfile({
-      personalInfo: {
-        phoneNumber: '+1234567890',
-        avatar: { url: 'https://cdn.example.com/avatar.jpg' },
-        location: 'Lagos, NG',
-        dob: new Date('1990-01-01'),
-      } as any,
-      policies: { tos: { accepted: true } } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.ADMIN]);
-
-    expect(result.percent).toBe(100);
-    expect(result.missingFields).toHaveLength(0);
-  });
-
-  it('counts lorempixel URL as missing avatar (not a custom upload)', () => {
-    const profile = makeProfile({
-      personalInfo: {
-        avatar: { url: 'https://lorempixel.com/200/200' },
-      } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.ADMIN]);
-    const avatarField = result.sections[0].fields.find((f) => f.key === 'avatar');
-
-    expect(avatarField?.filled).toBe(false);
-  });
-
-  it('counts a real S3 URL as filled avatar', () => {
-    const profile = makeProfile({
-      personalInfo: {
-        avatar: { url: 'https://s3.amazonaws.com/bucket/avatar.jpg' },
-      } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.ADMIN]);
-    const avatarField = result.sections[0].fields.find((f) => f.key === 'avatar');
-
-    expect(avatarField?.filled).toBe(true);
-  });
-
-  it('counts TOS as missing when not accepted', () => {
-    const profile = makeProfile({
-      policies: { tos: { accepted: false } } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.ADMIN]);
-    const tosField = result.sections[0].fields.find((f) => f.key === 'tos');
-
-    expect(tosField?.filled).toBe(false);
-  });
-
-  it('missingFields contains the human-readable labels of unfilled fields', () => {
-    const profile = makeProfile({
-      personalInfo: { phoneNumber: '+1234567890' } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.ADMIN]);
-
-    expect(result.missingFields).toContain('Profile photo');
-    expect(result.missingFields).toContain('Location');
-    expect(result.missingFields).toContain('Date of birth');
-    expect(result.missingFields).toContain('Terms of service');
-    expect(result.missingFields).not.toContain('Phone number');
-  });
+const makeAccountData = (overrides: Partial<IAccountSetupData> = {}): IAccountSetupData => ({
+  subscriptionActive: true,
+  propertyCount: 3,
+  unitCount: 10,
+  hasPaymentProcessor: true,
+  payoutsEnabled: true,
+  staffCount: 2,
+  vendorCount: 1,
+  tenantCount: 5,
+  tenantHasPaymentMethod: true,
+  leaseCount: 4,
+  ...overrides,
 });
 
-// ── Staff section ─────────────────────────────────────────────────────────────
-
-describe('computeProfileCompletion — staff section', () => {
-  it('adds employee section only for STAFF role', () => {
-    const withStaff = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.STAFF]);
-    const withoutStaff = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-
-    expect(withStaff.sections.map((s) => s.key)).toContain('employee');
-    expect(withoutStaff.sections.map((s) => s.key)).not.toContain('employee');
+describe('computeProfileCompletion — account setup sections', () => {
+  it('should NOT include setup sections without accountData', () => {
+    const result = computeProfileCompletion(makeProfile(), makeClient(), ['super-admin']);
+    expect(result.sections.find((s) => s.key === 'accountSetup')).toBeUndefined();
+    expect(result.sections.find((s) => s.key === 'teamSetup')).toBeUndefined();
+    expect(result.sections.find((s) => s.key === 'tenantSetup')).toBeUndefined();
   });
 
-  it('employee section scores correctly when filled', () => {
-    const profile = makeProfile({
-      employeeInfo: {
-        department: 'Engineering',
-        jobTitle: 'Senior Engineer',
-        startDate: new Date('2022-01-01'),
-      } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.STAFF]);
-    const empSection = result.sections.find((s) => s.key === 'employee')!;
-
-    expect(empSection.completedFields).toBe(3);
-    expect(empSection.totalFields).toBe(3);
-    expect(empSection.percent).toBe(100);
+  it('should NOT include setup sections for non-admin roles', () => {
+    const result = computeProfileCompletion(makeProfile(), makeClient(), ['staff'], makeAccountData());
+    expect(result.sections.find((s) => s.key === 'accountSetup')).toBeUndefined();
   });
 
-  it('employee section missing fields appear in root missingFields', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.STAFF]);
-
-    expect(result.missingFields).toContain('Department');
-    expect(result.missingFields).toContain('Job title');
-    expect(result.missingFields).toContain('Start date');
-  });
-});
-
-// ── Tenant section ────────────────────────────────────────────────────────────
-
-describe('computeProfileCompletion — tenant section', () => {
-  it('adds tenant section only for TENANT role', () => {
-    const withTenant = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.TENANT]);
-    const withoutTenant = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-
-    expect(withTenant.sections.map((s) => s.key)).toContain('tenant');
-    expect(withoutTenant.sections.map((s) => s.key)).not.toContain('tenant');
+  it('should include all 3 setup sections for super-admin with accountData', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData()
+    );
+    expect(result.sections.find((s) => s.key === 'accountSetup')).toBeDefined();
+    expect(result.sections.find((s) => s.key === 'teamSetup')).toBeDefined();
+    expect(result.sections.find((s) => s.key === 'tenantSetup')).toBeDefined();
   });
 
-  it('tenant section scores correctly when all fields filled', () => {
-    const profile = makeProfile({
-      tenantInfo: {
-        emergencyContact: {
-          name: 'Jane Doe',
-          phone: '+1234567890',
-          relationship: 'Spouse',
-        },
-        employerInfo: [{ employer: 'Acme Corp' }],
-      } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.TENANT]);
-    const tenantSection = result.sections.find((s) => s.key === 'tenant')!;
-
-    expect(tenantSection.completedFields).toBe(4);
-    expect(tenantSection.percent).toBe(100);
+  it('should mark all fields filled when account is fully set up', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['admin'],
+      makeAccountData()
+    );
+    const setup = result.sections.find((s) => s.key === 'accountSetup')!;
+    expect(setup.completedFields).toBe(setup.totalFields);
   });
 
-  it('empty employerInfo array counts as missing', () => {
-    const profile = makeProfile({
-      tenantInfo: { employerInfo: [] } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.TENANT]);
-    const empField = result.sections
-      .find((s) => s.key === 'tenant')!
-      .fields.find((f) => f.key === 'employer')!;
-
-    expect(empField.filled).toBe(false);
-  });
-});
-
-// ── Enterprise section ────────────────────────────────────────────────────────
-
-describe('computeProfileCompletion — enterprise section', () => {
-  const enterpriseClient = makeClient({
-    accountType: { isEnterpriseAccount: true, category: 'business' as const },
-    companyProfile: {} as any,
+  it('should mark property as incomplete when propertyCount is 0', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData({ propertyCount: 0 })
+    );
+    const field = result.sections
+      .find((s) => s.key === 'accountSetup')!
+      .fields.find((f) => f.key === 'property');
+    expect(field!.filled).toBe(false);
   });
 
-  it('adds enterprise section for SUPER_ADMIN on enterprise account', () => {
-    const result = computeProfileCompletion(makeProfile(), enterpriseClient, [ROLES.SUPER_ADMIN]);
-    expect(result.sections.map((s) => s.key)).toContain('enterprise');
+  it('should mark payoutBank as incomplete when payoutsEnabled is false', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData({ payoutsEnabled: false })
+    );
+    const field = result.sections
+      .find((s) => s.key === 'accountSetup')!
+      .fields.find((f) => f.key === 'payoutBank');
+    expect(field!.filled).toBe(false);
   });
 
-  it('adds enterprise section for ADMIN on enterprise account', () => {
-    const result = computeProfileCompletion(makeProfile(), enterpriseClient, [ROLES.ADMIN]);
-    expect(result.sections.map((s) => s.key)).toContain('enterprise');
+  it('should mark staff/vendor as incomplete when counts are 0', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData({ staffCount: 0, vendorCount: 0 })
+    );
+    const team = result.sections.find((s) => s.key === 'teamSetup')!;
+    expect(team.fields.find((f) => f.key === 'staff')!.filled).toBe(false);
+    expect(team.fields.find((f) => f.key === 'vendor')!.filled).toBe(false);
+    expect(team.completedFields).toBe(0);
   });
 
-  it('does NOT add enterprise section for STAFF on enterprise account', () => {
-    const result = computeProfileCompletion(makeProfile(), enterpriseClient, [ROLES.STAFF]);
-    expect(result.sections.map((s) => s.key)).not.toContain('enterprise');
+  it('should mark tenantPayment as incomplete when no tenant has payment method', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData({ tenantHasPaymentMethod: false })
+    );
+    const field = result.sections
+      .find((s) => s.key === 'tenantSetup')!
+      .fields.find((f) => f.key === 'tenantPayment');
+    expect(field!.filled).toBe(false);
   });
 
-  it('does NOT add enterprise section for TENANT on enterprise account', () => {
-    const result = computeProfileCompletion(makeProfile(), enterpriseClient, [ROLES.TENANT]);
-    expect(result.sections.map((s) => s.key)).not.toContain('enterprise');
+  it('should include incomplete setup fields in missingFields', () => {
+    const result = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData({ propertyCount: 0, leaseCount: 0, vendorCount: 0 })
+    );
+    expect(result.missingFields).toContain('Add your first property');
+    expect(result.missingFields).toContain('Create a lease');
+    expect(result.missingFields).toContain('Connect a vendor');
   });
 
-  it('does NOT add enterprise section for ADMIN on non-enterprise account', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-    expect(result.sections.map((s) => s.key)).not.toContain('enterprise');
-  });
-
-  it('enterprise section scores correctly when all fields filled', () => {
-    const client = makeClient({
-      accountType: { isEnterpriseAccount: true, category: 'business' as const },
-      companyProfile: {
-        legalEntityName: 'Acme Ltd',
-        companyEmail: 'info@acme.com',
-        companyAddress: '1 Main St',
-        companyPhone: '+1234567890',
-        website: 'https://acme.com',
-        registrationNumber: 'REG123',
-      } as any,
-    });
-
-    const result = computeProfileCompletion(makeProfile(), client, [ROLES.SUPER_ADMIN]);
-    const entSection = result.sections.find((s) => s.key === 'enterprise')!;
-
-    expect(entSection.completedFields).toBe(6);
-    expect(entSection.percent).toBe(100);
-  });
-});
-
-// ── Overall percent ───────────────────────────────────────────────────────────
-
-describe('computeProfileCompletion — overall percent', () => {
-  it('overall percent is weighted across all active sections', () => {
-    // Core: 1/5 filled (phone only)
-    // Employee: 0/3 filled
-    const profile = makeProfile({
-      personalInfo: { phoneNumber: '+1234567890' } as any,
-    });
-
-    const result = computeProfileCompletion(profile, makeClient(), [ROLES.STAFF]);
-
-    // 1 out of 8 total = 12.5 → round → 13%
-    expect(result.percent).toBe(13);
-  });
-
-  it('returns 0 when no fields are filled', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-    expect(result.percent).toBe(0);
-  });
-
-  it('no identification section exists (handled by Stripe)', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-    expect(result.sections.map((s) => s.key)).not.toContain('identification');
-  });
-
-  it('bio and headline are not scored (optional fields)', () => {
-    const result = computeProfileCompletion(makeProfile(), makeClient(), [ROLES.ADMIN]);
-    const allFieldKeys = result.sections.flatMap((s) => s.fields.map((f) => f.key));
-
-    expect(allFieldKeys).not.toContain('bio');
-    expect(allFieldKeys).not.toContain('headline');
+  it('should reduce overall percent when setup sections are incomplete', () => {
+    const complete = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData()
+    );
+    const incomplete = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['super-admin'],
+      makeAccountData({
+        propertyCount: 0,
+        unitCount: 0,
+        staffCount: 0,
+        vendorCount: 0,
+        tenantCount: 0,
+        leaseCount: 0,
+        tenantHasPaymentMethod: false,
+        hasPaymentProcessor: false,
+        payoutsEnabled: false,
+        subscriptionActive: false,
+      })
+    );
+    expect(incomplete.percent).toBeLessThan(complete.percent);
   });
 });

@@ -69,7 +69,7 @@ export const UserSignupSchema = z
           message: 'Account category must be either "business" or "individual"',
         }),
         isEnterpriseAccount: z.boolean().optional(), // Will be derived from category
-        planName: z.enum(['essential', 'growth', 'portfolio'], {
+        planName: z.enum(['essential', 'growth', 'portfolio', 'enterprise'], {
           message: 'Invalid plan name provided.',
         }),
         billingInterval: z.enum(['monthly', 'annual'], {

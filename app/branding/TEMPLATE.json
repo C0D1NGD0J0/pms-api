@@ -1,0 +1,19 @@
+{
+  "_comment": "Enterprise white-label brand template. Copy this file as {your-cuid}.json into the tenants/ directory and customize.",
+  "identity": {
+    "appName": "Your Company Name",
+    "logoUrl": "https://your-cdn.com/logo.svg",
+    "logoIconUrl": "https://your-cdn.com/icon-64.svg",
+    "faviconUrl": "https://your-cdn.com/favicon.ico",
+    "appleTouchIconUrl": "https://your-cdn.com/apple-touch-icon.png",
+    "primaryHex": "#1a5276"
+  },
+  "colors": {
+    "primary": { "h": 200, "s": "50%", "l": "30%" },
+    "secondary": { "h": 40, "s": "80%", "l": "50%" },
+    "navbar-bg": { "h": 200, "s": "50%", "l": "15%" },
+    "sidebar-bg": { "h": 200, "s": "50%", "l": "12%" },
+    "footer-bg": { "h": 200, "s": "50%", "l": "12%" },
+    "btn-bg": { "h": 200, "s": "50%", "l": "30%" }
+  }
+}

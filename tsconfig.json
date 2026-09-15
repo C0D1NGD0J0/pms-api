@@ -35,6 +35,7 @@
       "@caching/*": ["./app/caching/*"],
       "@queues/*": ["./app/queues/*"],
       "@mailer/*": ["./app/mailer/*"],
+      "@branding/*": ["./app/branding/*"],
       "@dao/*": ["./app/dao/*"],
       "@di/*": ["./app/di/*"],
       "@shared/*": ["./app/shared/*"],

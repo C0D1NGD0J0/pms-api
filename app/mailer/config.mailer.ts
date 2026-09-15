@@ -29,7 +29,7 @@ export const EMAIL_BRAND_DEFAULTS: EmailBrandContext = {
   primaryColor: '#062f4f',
   accentColor: '#D9952B',
   companyAddress: 'WeTalkingTech Labs Inc. — 1111B S Governors Ave #90461, Dover, DE 19904',
-  supportEmail: 'support@propertydesk.com',
+  supportEmail: 'support@propertydesk.live',
 };
 
 interface MailOptions extends SendMailOptions {

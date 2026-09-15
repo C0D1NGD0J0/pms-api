@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import express, { Router } from 'express';
 import { EmailQueue } from '@queues/index';
 import { asyncWrapper } from '@utils/index';
@@ -8,12 +7,6 @@ import { AuthController } from '@controllers/index';
 import { validateRequest, AuthValidations } from '@shared/validations';
 import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { PermissionResource, PermissionAction, MailType } from '@interfaces/utils.interface';
-
-const FeedbackSchema = z.object({
-  category: z.enum(['general', 'bug', 'improvement', 'feature_request']),
-  message: z.string().trim().min(10, 'Feedback must be at least 10 characters').max(1000),
-  rating: z.number().int().min(1).max(5).optional(),
-});
 
 const router: Router = express.Router();
 
@@ -135,8 +128,9 @@ router.delete(
 router.post(
   '/:cuid/feedback',
   isAuthenticated,
+  requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
-  validateRequest({ body: FeedbackSchema }),
+  validateRequest({ body: AuthValidations.feedback }),
   asyncWrapper(async (req, res) => {
     const { category, message, rating } = req.body;
     const currentuser = req.context?.currentuser;

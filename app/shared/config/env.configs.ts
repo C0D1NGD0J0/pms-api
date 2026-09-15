@@ -138,7 +138,7 @@ class EnvVariables {
       DEFAULT_SENDER_EMAIL:
         process.env.BOLDSIGN_DEFAULT_SENDER_EMAIL ||
         process.env.APP_EMAIL_ADDRESS ||
-        'noreply@propertydesk.com',
+        'noreply@propertydesk.live',
     };
     this.GEOCODER = {
       PROVIDER: process.env.GEOCODER_PROVIDER || '',
@@ -164,7 +164,7 @@ class EnvVariables {
     this.VAPID = {
       PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
       PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
-      SUBJECT: process.env.VAPID_SUBJECT || 'mailto:support@propertydesk.com',
+      SUBJECT: process.env.VAPID_SUBJECT || 'mailto:support@propertydesk.live',
     };
     this.FEATURES = {
       AI_ENABLED: process.env.FEATURE_AI_ENABLED !== 'false',

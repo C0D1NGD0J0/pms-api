@@ -34,7 +34,7 @@ export interface ColorToken {
 // ─── S3 Client ──────────────────────────────────────────────────────────────
 
 const S3_BRAND_PREFIX = 'branding';
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const log: Logger = createLogger('BrandingService');
 
@@ -177,12 +177,19 @@ async function fetchBrandFromS3(cuid: string): Promise<Partial<BrandConfig> | nu
       chunks.push(chunk);
     }
     const raw = Buffer.concat(chunks).toString('utf-8');
-    return JSON.parse(raw) as Partial<BrandConfig>;
+    const parsed: unknown = JSON.parse(raw);
+
+    if (!isValidBrandPartial(parsed)) {
+      log.warn({ cuid }, 'S3 brand config has invalid shape, ignoring');
+      return null;
+    }
+
+    return parsed;
   } catch (error: any) {
     if (error?.name === 'NoSuchKey' || error?.$metadata?.httpStatusCode === 404) {
       return null; // No brand file for this tenant
     }
-    log.warn({ error: error.message, cuid }, 'Failed to fetch brand config from S3');
+    log.warn({ error, cuid }, 'Failed to fetch brand config from S3');
     return null;
   }
 }
@@ -201,11 +208,26 @@ function hslToHex(h: number, s: string, l: string): string {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
 function getDefaultBrand(): BrandConfig {
   if (!defaultBrand) {
-    defaultBrand = JSON.parse(fs.readFileSync(DEFAULT_PATH, 'utf-8')) as BrandConfig;
+    try {
+      defaultBrand = JSON.parse(fs.readFileSync(DEFAULT_PATH, 'utf-8')) as BrandConfig;
+    } catch (error) {
+      log.fatal({ error, path: DEFAULT_PATH }, 'Failed to load default brand config');
+      throw new Error(`Missing or invalid brand.default.json at ${DEFAULT_PATH}`);
+    }
   }
   return defaultBrand;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Validate that the parsed S3 JSON has the expected shape.
+ * Rejects non-object values and unexpected top-level keys.
+ */
+function isValidBrandPartial(data: unknown): data is Partial<BrandConfig> {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return false;
+  const allowed = new Set(['typography', 'identity', '_comment', 'colors', 'radius', 'motion']);
+  return Object.keys(data).every((key) => allowed.has(key));
 }

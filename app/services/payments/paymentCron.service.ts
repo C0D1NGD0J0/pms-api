@@ -1154,6 +1154,13 @@ export class PaymentCronService implements ICronProvider {
 
     for (const payment of stalePayments.items) {
       try {
+        // Skip if client has no payment processor — no point calling Stripe
+        const processor = await this.paymentProcessorDAO.findFirst({ cuid: payment.cuid });
+        if (!processor?.accountId) {
+          this.log.debug({ cuid: payment.cuid }, 'Skipping reconciliation — no payment processor');
+          continue;
+        }
+
         const invoice = await this.stripeService.getInvoice(payment.gatewayPaymentId!);
 
         if (invoice.status === 'paid') {

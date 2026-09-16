@@ -9,6 +9,7 @@ import webhookRoutes from './webhook.routes';
 import expenseRoutes from './expense.routes';
 import metricsRoutes from './metrics.routes';
 import paymentRoutes from './payments.routes';
+import brandingRoutes from './branding.routes';
 import propertyRoutes from './property.routes';
 import guestPassRoutes from './guestpass.routes';
 import inspectionRoutes from './inspection.routes';
@@ -21,6 +22,7 @@ import maintenanceRequestRoutes from './maintenanceRequest.routes';
 export const routes = {
   adminRoutes,
   authRoutes,
+  brandingRoutes,
   userRoutes,
   leaseRoutes,
   clientRoutes,

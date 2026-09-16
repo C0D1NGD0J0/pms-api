@@ -16,7 +16,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
       expect(config.name).toBe('Growth');
       expect(config.transactionFeePercent).toBe(3.9);
-      expect(config.limits.maxProperties).toBe(15);
+      expect(config.limits.maxProperties).toBe(8);
       expect(config.features.eSignature).toBe(true);
     });
 
@@ -25,19 +25,20 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
       expect(config.name).toBe('Portfolio');
       expect(config.transactionFeePercent).toBe(3.5);
-      expect(config.limits.maxProperties).toBe(30);
+      expect(config.limits.maxProperties).toBe(20);
       expect(config.seatPricing.includedSeats).toBe(25);
     });
   });
 
   describe('getAllPlans', () => {
-    it('should return all three plan names', () => {
+    it('should return all plan names', () => {
       const plans = subscriptionPlanConfig.getAllPlans();
 
-      expect(plans).toHaveLength(3);
+      expect(plans).toHaveLength(4);
       expect(plans).toContain('essential');
       expect(plans).toContain('growth');
       expect(plans).toContain('portfolio');
+      expect(plans).toContain('enterprise');
     });
   });
 
@@ -53,10 +54,10 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
     });
 
     it('should respect property limit for portfolio', () => {
-      const canAdd = subscriptionPlanConfig.canAddProperty(29, 'portfolio');
+      const canAdd = subscriptionPlanConfig.canAddProperty(19, 'portfolio');
       expect(canAdd).toBe(true);
 
-      const cannotAdd = subscriptionPlanConfig.canAddProperty(30, 'portfolio');
+      const cannotAdd = subscriptionPlanConfig.canAddProperty(20, 'portfolio');
       expect(cannotAdd).toBe(false);
     });
   });

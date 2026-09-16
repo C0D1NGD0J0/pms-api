@@ -6,6 +6,16 @@ import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import nodemailer, { SendMailOptions, Transporter } from 'nodemailer';
+import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
+
+export interface EmailBrandContext {
+  logoUrl: string | null;
+  companyAddress: string;
+  primaryColor: string;
+  supportEmail: string;
+  accentColor: string;
+  appName: string;
+}
 
 export interface HeroConfig {
   subtitle?: string;
@@ -13,7 +23,17 @@ export interface HeroConfig {
   icon: string;
 }
 
+export const EMAIL_BRAND_DEFAULTS: EmailBrandContext = {
+  appName: 'PropertyDesk',
+  logoUrl: null,
+  primaryColor: '#062f4f',
+  accentColor: '#D9952B',
+  companyAddress: 'WeTalkingTech Labs Inc. — 1111B S Governors Ave #90461, Dover, DE 19904',
+  supportEmail: 'support@propertydesk.live',
+};
+
 interface MailOptions extends SendMailOptions {
+  client?: { cuid: string; id?: string };
   data: EmailTemplateData;
 }
 
@@ -274,6 +294,13 @@ export const TEMPLATE_HERO_CONFIG: Record<string, HeroConfig> = {
     title: 'Report Ready',
     subtitle: 'Your property report is available',
   },
+
+  // Feedback
+  [MailType.USER_FEEDBACK]: {
+    icon: '&#x1F4AC;',
+    title: 'User Feedback',
+    subtitle: 'A user submitted feedback',
+  },
 };
 
 export class MailService {
@@ -281,21 +308,38 @@ export class MailService {
   private readonly resendClient: Resend;
   private readonly log: Logger;
   private readonly templateCache: Map<string, EmailTemplate> = new Map();
+  private readonly clientDAO: any;
 
-  constructor() {
+  constructor({ clientDAO }: { clientDAO?: any } = {}) {
     this.log = createLogger('MailerService');
     this.transporter = this.buildMailTransporter();
     this.resendClient = new Resend(envVariables.EMAIL.PROD.PROVIDER_PASSWORD);
+    this.clientDAO = clientDAO;
+  }
+
+  async resolveBrandContext(clientCuid?: string): Promise<EmailBrandContext> {
+    if (!clientCuid) return EMAIL_BRAND_DEFAULTS;
+
+    try {
+      const config = await loadBrandConfig(clientCuid);
+      const client = this.clientDAO ? await this.clientDAO.getClientByCuid(clientCuid) : null;
+      return toEmailBrandContext(config, client ?? undefined);
+    } catch (error) {
+      this.log.error({ error, clientCuid }, 'Failed to resolve brand context, using defaults');
+      return EMAIL_BRAND_DEFAULTS;
+    }
   }
 
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
+      const brand = await this.resolveBrandContext(data.client?.cuid);
       const frontendUrl = envVariables.FRONTEND?.URL || '';
       const preferencesUrl = frontendUrl ? `${frontendUrl}/profile/settings` : '';
       const heroConfig = TEMPLATE_HERO_CONFIG[mailType] || { icon: '&#x1F3E0;', title: '' };
       const layoutData = {
-        appName: envVariables.APP_NAME,
+        appName: brand.appName,
+        brand,
         year: new Date().getFullYear(),
         preferencesUrl,
         icon: heroConfig.icon,
@@ -556,6 +600,9 @@ export class MailService {
       case MailType.LEASE_EXPIRED:
         template = await this.buildTemplate('lease-expired', emailData, 'lease');
         break;
+      case MailType.USER_FEEDBACK:
+        template = await this.buildTemplate('user-feedback', emailData, 'feedback');
+        break;
       case MailType.USER_CREATED:
         template = await this.buildTemplate('userCreated', emailData);
         break;
@@ -647,7 +694,7 @@ export class MailService {
   }
 
   private getDefaultSubject(mailType: MailType): string {
-    const defaultText = 'Notification from PropertyDesk';
+    const defaultText = `Notification from ${envVariables.APP_NAME || 'PropertyDesk'}`;
 
     const subjectMap: Record<MailType | 'default', string> = {
       [MailType.ACCOUNT_ACTIVATION]: 'Activate Your Account',
@@ -702,6 +749,7 @@ export class MailService {
       [MailType.COMPANY_CLOSURE_TENANT]: 'Account Closure Notice',
       [MailType.COMPANY_CLOSURE_OWNER]: 'Account Closure Confirmation',
       [MailType.REPORT_READY]: 'Your Property Report is Ready',
+      [MailType.USER_FEEDBACK]: 'User Feedback Submitted',
     };
 
     return subjectMap[mailType] || subjectMap.default;

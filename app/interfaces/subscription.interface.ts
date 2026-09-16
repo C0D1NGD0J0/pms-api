@@ -54,6 +54,20 @@ export interface ISubscriptionPlansConfig {
     aiInspectionAnalysis: boolean;
     aiReportAnalysis?: boolean;
     expenseTracking: boolean;
+    whiteLabelling?: boolean;
+  };
+  pricing: {
+    monthly: {
+      priceId: string;
+      priceInCents: number;
+      currencies?: Record<string, { priceId: string; priceInCents: number }>;
+    };
+    annual: {
+      priceId: string;
+      priceInCents: number;
+      savingsPercent: number;
+      currencies?: Record<string, { priceId: string; priceInCents: number }>;
+    };
   };
   limits: {
     maxUnits: number;
@@ -64,17 +78,6 @@ export interface ISubscriptionPlansConfig {
     maxReportsPerMonth?: number;
     maxReportSections?: number;
     maxReportEmails?: number;
-  };
-  pricing: {
-    monthly: {
-      priceId: string;
-      priceInCents: number;
-    };
-    annual: {
-      priceId: string;
-      priceInCents: number;
-      savingsPercent: number;
-    };
   };
   transactionFeePercent: number;
   disabledFeatures?: string[];
@@ -168,6 +171,7 @@ export interface ISubscription {
     aiInspectionAnalysis?: boolean;
     aiReportAnalysis?: boolean;
     expenseTracking?: boolean;
+    whiteLabelling?: boolean;
   };
   smsUsage?: {
     countThisPeriod: number;
@@ -218,6 +222,7 @@ export interface ISubscriptionEntitlements {
     aiInvoiceScanning: boolean;
     aiInspectionAnalysis: boolean;
     expenseTracking: boolean;
+    whiteLabelling?: boolean;
   };
   paymentFlow?: {
     requiresPayment: boolean;
@@ -287,4 +292,4 @@ export interface IPaymentGateway extends ISubscriptionBilling {
   connectedAccountId?: string;
 }
 
-export type PlanName = 'essential' | 'growth' | 'portfolio';
+export type PlanName = 'essential' | 'growth' | 'portfolio' | 'enterprise';

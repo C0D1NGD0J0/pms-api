@@ -677,7 +677,14 @@ export const requireActiveSubscription = (req: Request, _res: Response, next: Ne
     );
   }
   const { status } = entitlements.plan;
-  if (status === ISubscriptionStatus.INACTIVE || status === ISubscriptionStatus.PENDING_PAYMENT) {
+  if (status === ISubscriptionStatus.PENDING_PAYMENT) {
+    return next(
+      new ForbiddenError({
+        message: 'Complete your payment to activate your subscription and access this feature.',
+      })
+    );
+  }
+  if (status === ISubscriptionStatus.INACTIVE) {
     return next(new ForbiddenError({ message: t('auth.errors.subscriptionInactive') }));
   }
   // PAST_DUE is allowed through — grace period is active, banner shown on frontend

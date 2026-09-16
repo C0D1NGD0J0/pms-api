@@ -14,6 +14,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import {
@@ -473,6 +474,20 @@ export class ReportService implements ICronProvider {
         client?.companyProfile?.legalEntityName ||
         'Your Company';
 
+      // Brand context for white-label report rendering (from S3 JSON files)
+      const brandConfig = await loadBrandConfig(cuid);
+      const emailBrand = toEmailBrandContext(brandConfig, client ?? undefined);
+      const brand =
+        brandConfig.identity.logoUrl || brandConfig.identity.primaryHex
+          ? {
+              appName: emailBrand.appName,
+              logoUrl: brandConfig.identity.logoUrl,
+              primaryColor: emailBrand.primaryColor,
+              accentColor: emailBrand.accentColor,
+              companyAddress: client?.companyProfile?.companyAddress ?? null,
+            }
+          : null;
+
       // Fetch current + previous period data in parallel, only for selected sections
       const [currentData, previousData] = await Promise.all([
         this._aggregateData(cuid, startDate, endDate, propertyId, sections),
@@ -515,6 +530,7 @@ export class ReportService implements ICronProvider {
         ...currentData,
         trends,
         clientName,
+        brand,
         period,
         startDate,
         endDate,

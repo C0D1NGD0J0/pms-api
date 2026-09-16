@@ -69,7 +69,7 @@ export const UserSignupSchema = z
           message: 'Account category must be either "business" or "individual"',
         }),
         isEnterpriseAccount: z.boolean().optional(), // Will be derived from category
-        planName: z.enum(['essential', 'growth', 'portfolio'], {
+        planName: z.enum(['essential', 'growth', 'portfolio', 'enterprise'], {
           message: 'Invalid plan name provided.',
         }),
         billingInterval: z.enum(['monthly', 'annual'], {
@@ -436,4 +436,10 @@ export const ChangePasswordSchema = z.object({
       /^(?=.*[A-Z])(?=.*\d)/,
       'New password must contain at least one uppercase letter and one number'
     ),
+});
+
+export const FeedbackSchema = z.object({
+  category: z.enum(['general', 'bug', 'improvement', 'feature_request']),
+  message: z.string().trim().min(10, 'Feedback must be at least 10 characters').max(1000),
+  rating: z.number().int().min(1).max(5).optional(),
 });

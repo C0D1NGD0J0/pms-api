@@ -51,6 +51,7 @@ const config: JestConfigWithTsJest = {
     '@sockets/(.*)': '<rootDir>/app/sockets/$1',
     '@utils/(.*)': '<rootDir>/app/utils/$1',
     '@mailer/(.*)': '<rootDir>/app/mailer/$1',
+    '@branding/(.*)': '<rootDir>/app/branding/$1',
     '@dao/(.*)': '<rootDir>/app/dao/$1',
     '@shared/(.*)': '<rootDir>/app/shared/$1',
     '@services/(.*)': '<rootDir>/app/services/$1',

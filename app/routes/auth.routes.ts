@@ -1,8 +1,12 @@
 import express, { Router } from 'express';
+import { EmailQueue } from '@queues/index';
 import { asyncWrapper } from '@utils/index';
+import { QueueFactory } from '@services/queue';
+import { httpStatusCodes } from '@utils/constants';
 import { AuthController } from '@controllers/index';
-import { isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { validateRequest, AuthValidations } from '@shared/validations';
+import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { PermissionResource, PermissionAction, MailType } from '@interfaces/utils.interface';
 
 const router: Router = express.Router();
 
@@ -122,6 +126,39 @@ router.delete(
 );
 
 router.post(
+  '/:cuid/feedback',
+  isAuthenticated,
+  requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
+  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
+  validateRequest({ body: AuthValidations.feedback }),
+  asyncWrapper(async (req, res) => {
+    const { category, message, rating } = req.body;
+    const currentuser = req.context?.currentuser;
+    const { cuid } = req.params;
+
+    const queueFactory = req.container.resolve<QueueFactory>('queueFactory');
+    const emailQueue = queueFactory.getQueue('emailQueue') as EmailQueue;
+
+    emailQueue.addToEmailQueue(MailType.USER_FEEDBACK, {
+      to: 'support@propertydesk.live',
+      subject: `[Feedback] ${category} — ${currentuser?.fullname || 'Unknown User'}`,
+      emailType: MailType.USER_FEEDBACK,
+      data: {
+        category,
+        message,
+        rating: rating || null,
+        userName: currentuser?.fullname || 'Unknown',
+        userEmail: currentuser?.email || 'N/A',
+        userRole: currentuser?.client?.role || 'N/A',
+        clientName: currentuser?.client?.displayname || cuid,
+      },
+    });
+
+    res.status(httpStatusCodes.OK).json({ success: true, message: 'Feedback submitted' });
+  })
+);
+
+router.post(
   '/refresh_token',
   basicLimiter({ max: 10, windowMs: 5 * 60 * 1000 }),
   asyncWrapper((req, res) => {
@@ -205,11 +242,10 @@ router.post(
   })
 );
 
-// ── Passkey Management (authenticated) ─────────────────────────
-
 router.get(
   '/:cuid/passkeys',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
   basicLimiter(),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -220,6 +256,7 @@ router.get(
 router.get(
   '/:cuid/passkeys/registration_options',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -230,6 +267,7 @@ router.get(
 router.post(
   '/:cuid/passkeys/registration_verify',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.passkeyRegVerify }),
   asyncWrapper((req, res) => {
@@ -241,6 +279,7 @@ router.post(
 router.delete(
   '/:cuid/passkeys',
   isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.DELETE),
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.passkeyDelete }),
   asyncWrapper((req, res) => {

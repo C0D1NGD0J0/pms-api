@@ -12,6 +12,7 @@ import {
   PasskeyDeleteSchema,
   ConsentBodySchema,
   UserSignupSchema,
+  FeedbackSchema,
   LoginSchema,
 } from './schemas';
 
@@ -30,6 +31,7 @@ export class AuthValidations {
   static passkeyDiscoverableVerify = PasskeyDiscoverableVerifySchema;
   static passkeyDelete = PasskeyDeleteSchema;
   static completeOnboarding = completeOnboardingSchema;
+  static feedback = FeedbackSchema;
 }
 
 export { completeOnboardingSchema };

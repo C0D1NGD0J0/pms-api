@@ -159,6 +159,60 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
     );
   });
 
+  it('should set profile policies from termsAccepted during signup', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks);
+
+    await service.signup(makeSignupData({ termsAccepted: true }));
+
+    expect(mocks.profileDAO.createUserProfile).toHaveBeenCalledWith(
+      expect.any(Types.ObjectId),
+      expect.objectContaining({
+        policies: expect.objectContaining({
+          tos: expect.objectContaining({ accepted: true, acceptedOn: expect.any(Date) }),
+          privacy: expect.objectContaining({ accepted: true, acceptedOn: expect.any(Date) }),
+          marketing: expect.objectContaining({ accepted: false }),
+        }),
+        settings: expect.objectContaining({
+          gdprSettings: expect.objectContaining({
+            dataProcessingConsent: true,
+          }),
+        }),
+      }),
+      expect.anything()
+    );
+  });
+
+  it('should set client dataProcessingConsent from termsAccepted during signup', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks);
+
+    await service.signup(makeSignupData({ termsAccepted: true }));
+
+    expect(mocks.clientDAO.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dataProcessingConsent: true,
+      }),
+      expect.anything()
+    );
+  });
+
+  it('should set defaultCurrency from location during signup', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks);
+
+    await service.signup(makeSignupData({ location: 'Toronto, Canada' }));
+
+    expect(mocks.clientDAO.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        settings: expect.objectContaining({
+          defaultCurrency: 'CAD',
+        }),
+      }),
+      expect.anything()
+    );
+  });
+
   it('should NOT emit event when user already exists', async () => {
     const mocks = makeMocks();
     mocks.userDAO.findFirst.mockReturnValue(Promise.resolve({ _id: USER_ID, email: TEST_EMAIL }));

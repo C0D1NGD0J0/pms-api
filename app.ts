@@ -172,6 +172,7 @@ export class App implements IAppSetup {
     }
     app.use(`${this.BASE_PATH}/admin`, routes.adminRoutes);
     app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);
+    app.use(`${this.BASE_PATH}/branding`, routes.brandingRoutes);
     app.use(`${this.BASE_PATH}/users`, routes.userRoutes);
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);
     app.use(`${this.BASE_PATH}/reports`, routes.reportRoutes);

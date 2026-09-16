@@ -302,12 +302,15 @@
 %>
 
 <!-- ─── Watermark ──────────────────────────────────────────────── -->
-<div class="watermark">PROPERTYDESK</div>
+<div class="watermark"><%= typeof brand !== 'undefined' && brand ? brand.appName.toUpperCase() : 'PROPERTYDESK' %></div>
 
 <!-- ─── Cover Page ──────────────────────────────────────────────── -->
 <div class="cover">
   <div class="cover-accent"></div>
   <div class="cover-logo">
+    <% if (typeof brand !== 'undefined' && brand && brand.logoUrl) { %>
+    <img src="<%= brand.logoUrl %>" alt="<%= brand.appName %>" style="max-height: 64px; width: auto;" />
+    <% } else { %>
     <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
       <rect width="64" height="64" rx="13" fill="#153D4D"/>
       <rect x="10" y="45" width="44" height="10" rx="2" fill="#D9952B"/>
@@ -316,6 +319,7 @@
       <rect x="10" y="6"  width="16" height="10" rx="2" fill="#ffffff" fill-opacity="0.35"/>
     </svg>
     <div class="cover-wordmark"><span class="wp">Property</span><span class="wd">Desk</span></div>
+    <% } %>
   </div>
   <h1><%= clientName %></h1>
   <div class="subtitle">Property Management Report</div>
@@ -338,7 +342,7 @@
     for the period <%= formatDate(startDate) %> to <%= formatDate(endDate) %>.
   </p>
   <div class="cover-footer">
-    &copy; <%= new Date().getFullYear() %> PropertyDesk &mdash; WeTalkingTech Labs Inc.
+    &copy; <%= new Date().getFullYear() %> <%= typeof brand !== 'undefined' && brand ? brand.appName : 'PropertyDesk' %><% if (typeof brand !== 'undefined' && brand && brand.companyAddress) { %> &mdash; <%= brand.companyAddress %><% } else { %> &mdash; WeTalkingTech Labs Inc.<% } %>
   </div>
 </div>
 

@@ -339,6 +339,7 @@ export class AuthService {
           cuid: clientUid,
           accountAdmin: _userId,
           displayName: signupData.displayName,
+          dataProcessingConsent: signupData.termsAccepted,
           settings: { defaultCurrency: getCurrencyForCountry(countryCode) } as any,
           accountType: {
             category: signupData.accountType.category,
@@ -351,6 +352,7 @@ export class AuthService {
         session
       );
 
+      const consentDate = signupData.termsAccepted ? new Date() : null;
       const profile = await this.profileDAO.createUserProfile(
         _userId,
         {
@@ -367,7 +369,15 @@ export class AuthService {
             lang: signupData.lang,
             loginType: 'password',
             timeZone: signupData.timeZone,
+            gdprSettings: {
+              dataProcessingConsent: signupData.termsAccepted,
+            } as any,
           },
+          policies: {
+            tos: { accepted: signupData.termsAccepted, acceptedOn: consentDate },
+            privacy: { accepted: signupData.termsAccepted, acceptedOn: consentDate },
+            marketing: { accepted: false, acceptedOn: null },
+          } as any,
         },
         session
       );

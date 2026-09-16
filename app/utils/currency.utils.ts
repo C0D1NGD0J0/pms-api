@@ -56,4 +56,15 @@ export function getCurrencyForCountry(countryCode: string): string {
   return COUNTRY_TO_CURRENCY[countryCode.toUpperCase()] ?? 'USD';
 }
 
-export { COUNTRY_TO_CURRENCY };
+/**
+ * Currencies supported for subscription billing via Stripe.
+ * NGN is not supported for recurring subscriptions — Nigeria falls back to USD.
+ */
+const SUPPORTED_SUBSCRIPTION_CURRENCIES = ['usd', 'cad', 'eur'];
+
+export function getSubscriptionCurrency(countryCode: string): string {
+  const currency = getCurrencyForCountry(countryCode).toLowerCase();
+  return SUPPORTED_SUBSCRIPTION_CURRENCIES.includes(currency) ? currency : 'usd';
+}
+
+export { SUPPORTED_SUBSCRIPTION_CURRENCIES, COUNTRY_TO_CURRENCY };

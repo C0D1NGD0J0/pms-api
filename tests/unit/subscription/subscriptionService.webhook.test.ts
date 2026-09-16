@@ -63,6 +63,11 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
     mockAuthCache = {
       invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true, data: null }),
+      client: {
+        GET: jest.fn().mockResolvedValue(null) as any,
+        DEL: jest.fn().mockResolvedValue(1) as any,
+        SETEX: jest.fn().mockResolvedValue('OK') as any,
+      },
     } as any;
 
     mockSSEService = {
@@ -656,25 +661,17 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockPaymentGatewayService.getSubscriptionWithItems).not.toHaveBeenCalled();
+      // totalMonthlyPrice = growth annual base (76800) + 2 seats * 799 (1598) = 78398
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         expect.objectContaining({
           $set: expect.objectContaining({
             additionalSeatsCount: 2,
             additionalSeatsCost: 1598,
-            totalMonthlyPrice: 2366,
+            totalMonthlyPrice: 78398,
             'billing.seatItemId': 'si_seat123',
           }),
         })
-      );
-      expect(mockSSEService.sendToUser).toHaveBeenCalledWith(
-        expect.any(String),
-        'client123',
-        expect.objectContaining({
-          eventType: 'subscription_updated',
-          message: expect.stringContaining('Seats: 2'),
-        }),
-        'resource-event'
       );
     });
 
@@ -712,13 +709,14 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockPaymentGatewayService.getSubscriptionWithItems).not.toHaveBeenCalled();
+      // totalMonthlyPrice = growth monthly base (7999) + 0 seats = 7999
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         expect.objectContaining({
           $set: expect.objectContaining({
             additionalSeatsCount: 0,
             additionalSeatsCost: 0,
-            totalMonthlyPrice: 29,
+            totalMonthlyPrice: 7999,
           }),
         })
       );
@@ -904,6 +902,72 @@ describe('SubscriptionService - Webhook Handlers', () => {
       expect(Subscription.find).toHaveBeenCalled();
       expect(mockSubscriptionDAO.update).not.toHaveBeenCalled();
       expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleSubscriptionUpdated — plan change detection', () => {
+    it('should update planName and entitlements when Stripe items indicate a plan upgrade', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'client123',
+        planName: 'growth',
+        status: 'active',
+        billingInterval: 'monthly',
+        billing: { subscriberId: 'sub_test123', customerId: 'cus_test' },
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        totalMonthlyPrice: 7999,
+        endDate: new Date('2026-10-01'),
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+      mockSubscriptionDAO.update.mockResolvedValue({
+        ...mockSubscription,
+        planName: 'portfolio',
+      } as any);
+
+      await subscriptionService.handleSubscriptionUpdated({
+        stripeSubscriptionId: 'sub_test123',
+        status: 'active',
+        items: [{ price: { id: 'price_1RealStripeId', lookup_key: 'portfolio_monthly_price' } }],
+      });
+
+      expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
+        { _id: mockSubscription._id },
+        expect.objectContaining({
+          $set: expect.objectContaining({
+            planName: 'portfolio',
+            entitlements: expect.objectContaining({ reportingAnalytics: true }),
+          }),
+        })
+      );
+    });
+
+    it('should not update planName when Stripe items match the current plan', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        cuid: 'client123',
+        planName: 'growth',
+        status: 'active',
+        billingInterval: 'monthly',
+        billing: { subscriberId: 'sub_test123', customerId: 'cus_test' },
+        additionalSeatsCount: 0,
+        additionalSeatsCost: 0,
+        totalMonthlyPrice: 7999,
+        endDate: new Date('2026-10-01'),
+      };
+
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+      mockSubscriptionDAO.update.mockResolvedValue(mockSubscription as any);
+
+      await subscriptionService.handleSubscriptionUpdated({
+        stripeSubscriptionId: 'sub_test123',
+        status: 'active',
+        items: [{ price: { id: 'price_growth_monthly', lookup_key: 'growth_monthly' } }],
+      });
+
+      const updateCall = mockSubscriptionDAO.update.mock.calls[0][1];
+      expect(updateCall.$set.planName).toBeUndefined();
     });
   });
 });

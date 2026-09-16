@@ -134,12 +134,15 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         {
-          $set: {
+          $set: expect.objectContaining({
+            planName: 'growth',
             billingInterval: 'annual',
             entitlements: expect.any(Object),
+            additionalSeatsCost: expect.any(Number),
+            totalMonthlyPrice: expect.any(Number),
             'billing.planId': 'price_growth_annual',
             'billing.planLookUpKey': 'growth_annual',
-          },
+          }),
         },
         undefined,
         mockSession

@@ -17,6 +17,7 @@ import mongoSanitize from 'express-mongo-sanitize';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { DatabaseService, RedisService } from '@database/index';
+import { rateLimiterFactory } from '@shared/middlewares/rateLimiterFactory';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
@@ -36,17 +37,21 @@ export interface IAppSetup {
 export class App implements IAppSetup {
   private readonly log = createLogger('App');
   private readonly db: DatabaseService;
+  private readonly redisService: RedisService;
   protected expApp: Application;
   protected readonly BASE_PATH = '/api/v1';
 
-  constructor(expressApp: Application, dbService: DatabaseService) {
+  constructor(expressApp: Application, dbService: DatabaseService, redisService: RedisService) {
     this.expApp = expressApp;
     this.db = dbService;
+    this.redisService = redisService;
   }
 
   initConfig = (): void => {
     this.securityMiddleware(this.expApp);
     this.standardMiddleware(this.expApp);
+    // Wire Redis into rate limiter factory (must happen before routes register their limiters)
+    rateLimiterFactory.setRedisService(this.redisService);
     // Initialize Bull Board adapter before routes (for lazy-loaded queues)
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -167,8 +172,10 @@ export class App implements IAppSetup {
     }
     app.use(`${this.BASE_PATH}/admin`, routes.adminRoutes);
     app.use(`${this.BASE_PATH}/auth`, routes.authRoutes);
+    app.use(`${this.BASE_PATH}/branding`, routes.brandingRoutes);
     app.use(`${this.BASE_PATH}/users`, routes.userRoutes);
     app.use(`${this.BASE_PATH}/leases`, routes.leaseRoutes);
+    app.use(`${this.BASE_PATH}/reports`, routes.reportRoutes);
     app.use(`${this.BASE_PATH}/clients`, routes.clientRoutes);
     app.use(`${this.BASE_PATH}/vendors`, routes.vendorRoutes);
     app.use(`${this.BASE_PATH}/metrics`, routes.metricsRoutes);

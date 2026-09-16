@@ -28,7 +28,7 @@ router.get(
   basicLimiter(),
   requirePermission(PermissionResource.EXPENSE, PermissionAction.READ),
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.pnlQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
@@ -41,7 +41,7 @@ router.get(
   basicLimiter(),
   requirePermission(PermissionResource.EXPENSE, PermissionAction.READ),
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   validateRequest({ params: UtilsValidations.cuid, query: ExpenseValidations.listExpensesQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
@@ -56,7 +56,7 @@ router.post(
   requirePermission(PermissionResource.EXPENSE, PermissionAction.CREATE),
   requireVerifiedClient,
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   requireActiveSubscription,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid, body: ExpenseValidations.createExpense }),
@@ -71,7 +71,7 @@ router.get(
   basicLimiter(),
   requirePermission(PermissionResource.EXPENSE, PermissionAction.READ),
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<ExpenseController>('expenseController');
@@ -86,7 +86,7 @@ router.patch(
   requirePermission(PermissionResource.EXPENSE, PermissionAction.UPDATE),
   requireVerifiedClient,
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   requireActiveSubscription,
   idempotency,
   validateRequest({
@@ -106,7 +106,7 @@ router.post(
   requirePermission(PermissionResource.EXPENSE, PermissionAction.UPDATE),
   requireVerifiedClient,
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   idempotency,
   diskUpload(['receipt.file']),
   scanFile,
@@ -124,7 +124,7 @@ router.delete(
   requirePermission(PermissionResource.EXPENSE, PermissionAction.DELETE),
   requireVerifiedClient,
   subscriptionEntitlements,
-  requireFeature('reportingAnalytics'),
+  requireFeature('expenseTracking'),
   requireActiveSubscription,
   idempotency,
   validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.expuid) }),

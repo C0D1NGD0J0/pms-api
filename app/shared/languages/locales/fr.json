@@ -51,11 +51,10 @@
       "tokenRefreshed": "Jeton rafraîchi avec succès",
       "tokenValidated": "Jeton validé avec succès",
       "userHasAccess": "L'utilisateur a accès au client",
-      "activationEmailSent": "Email d'activation de compte envoyé à {{email}}",
       "loginSuccessful": "Connexion réussie.",
       "accountSelected": "Succès.",
       "accountActivated": "Compte activé avec succès.",
-      "activationLinkSent": "Lien d'activation envoyé à {{email}}.",
+      "activationEmailSent": "Vérifiez votre email ({{email}}) pour un lien d'activation afin de vérifier votre compte. Si vous ne le voyez pas, vérifiez votre dossier de spam.",
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
       "logoutSuccessful": "Déconnexion réussie.",
       "onboardingCompleted": "Intégration complétée avec succès."

@@ -3,7 +3,6 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { AuthCache } from '@caching/auth.cache';
 import { UserCache } from '@caching/user.cache';
-import { ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
@@ -11,6 +10,15 @@ import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { computeProfileCompletion, buildDotNotation, createLogger } from '@utils/index';
+import {
+  PaymentProcessorDAO,
+  SubscriptionDAO,
+  ProfileDAO,
+  ClientDAO,
+  VendorDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   IProfileUpdateData,
   ISuccessReturnData,
@@ -24,20 +32,28 @@ import {
 } from '@interfaces/index';
 
 interface IConstructor {
+  paymentProcessorDAO: PaymentProcessorDAO;
   mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
+  subscriptionDAO: SubscriptionDAO;
   vendorService: VendorService;
   userService: UserService;
   profileDAO: ProfileDAO;
+  vendorDAO: VendorDAO;
   authCache: AuthCache;
   userCache: UserCache;
   clientDAO: ClientDAO;
+  leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
 export class ProfileService {
   private readonly profileDAO: ProfileDAO;
+  private readonly paymentProcessorDAO: PaymentProcessorDAO;
+  private readonly subscriptionDAO: SubscriptionDAO;
+  private readonly vendorDAO: VendorDAO;
   private readonly clientDAO: ClientDAO;
+  private readonly leaseDAO: LeaseDAO;
   private readonly userDAO: UserDAO;
   private readonly vendorService: VendorService;
   private readonly userService: UserService;
@@ -49,7 +65,11 @@ export class ProfileService {
 
   constructor({
     profileDAO,
+    paymentProcessorDAO,
+    subscriptionDAO,
     clientDAO,
+    vendorDAO,
+    leaseDAO,
     userDAO,
     vendorService,
     userService,
@@ -59,6 +79,10 @@ export class ProfileService {
     userCache,
   }: IConstructor) {
     this.userDAO = userDAO;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.subscriptionDAO = subscriptionDAO;
+    this.vendorDAO = vendorDAO;
+    this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
     this.authCache = authCache;
     this.userCache = userCache;
@@ -69,6 +93,14 @@ export class ProfileService {
     this.mediaUploadService = mediaUploadService;
     this.logger = createLogger('ProfileService');
     this.setupEventListeners();
+  }
+
+  async completeTour(userId: string, tourId: string): Promise<void> {
+    await this.profileDAO.addCompletedTour(userId, tourId);
+  }
+
+  async resetTours(userId: string): Promise<void> {
+    await this.profileDAO.removeAllCompletedTours(userId);
   }
 
   async updateEmployeeInfo(
@@ -715,6 +747,21 @@ export class ProfileService {
         context.currentuser!
       );
 
+      // Immutable location guard: block location changes when payment processor is set up
+      if (profileData.personalInfo?.location !== undefined) {
+        const existingProfile = await this.profileDAO.findFirst({
+          _id: new Types.ObjectId(profileId),
+        });
+        if (existingProfile?.personalInfo?.location !== profileData.personalInfo.location) {
+          const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
+          if (processor?.accountId) {
+            throw new BadRequestError({
+              message: t('client.errors.immutableFieldLocked'),
+            });
+          }
+        }
+      }
+
       const { result } = await this.processProfileUpdates(
         profileData,
         profileId,
@@ -1021,7 +1068,41 @@ export class ProfileService {
       };
     }
 
-    const data = computeProfileCompletion(profile, client, roles);
+    let accountData;
+    const isAdmin = roles.some((r) => [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(r as any));
+
+    if (isAdmin) {
+      const [subscription, processor, userStats, vendorCount, leaseCount, tenantWithPayment] =
+        await Promise.all([
+          this.subscriptionDAO.findFirst({ cuid }),
+          this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null }),
+          this.userDAO.getUserStats(cuid),
+          this.vendorDAO.countDocuments({ 'connectedClients.cuid': cuid, deletedAt: null }),
+          this.leaseDAO.countDocuments({ cuid, deletedAt: null }),
+          this.userDAO.countDocuments({
+            'cuids.cuid': cuid,
+            'cuids.roles': 'tenant',
+            'cuids.isConnected': true,
+            stripePaymentMethodId: { $exists: true, $ne: null },
+            deletedAt: null,
+          }),
+        ]);
+
+      accountData = {
+        subscriptionActive: subscription?.status === 'active',
+        propertyCount: subscription?.currentProperties ?? 0,
+        unitCount: subscription?.currentUnits ?? 0,
+        hasPaymentProcessor: !!processor?.accountId,
+        payoutsEnabled: !!processor?.payoutsEnabled,
+        staffCount: Math.max(0, (userStats?.staff ?? 0) - 1), // exclude the account holder
+        vendorCount,
+        tenantCount: userStats?.tenants ?? 0,
+        tenantHasPaymentMethod: tenantWithPayment > 0,
+        leaseCount,
+      };
+    }
+
+    const data = computeProfileCompletion(profile, client, roles, accountData);
     return { success: true, data };
   }
 

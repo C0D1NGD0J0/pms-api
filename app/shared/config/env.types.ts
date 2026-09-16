@@ -3,6 +3,7 @@ export interface FeaturesConfig {
   AI_INSPECTION_ANALYSIS_ENABLED: boolean;
   AI_MAINTENANCE_TRIAGE_ENABLED: boolean;
   AI_INVOICE_SCANNING_ENABLED: boolean;
+  AI_REPORT_ANALYSIS_ENABLED: boolean;
   PUSH_NOTIFICATIONS_ENABLED: boolean;
   INVOICE_WEBHOOK_ENABLED: boolean;
   INSPECTION_ENABLED: boolean;
@@ -81,6 +82,13 @@ export interface AwsConfig {
   ACCESS_KEY: string;
   SECRET_KEY: string;
   REGION: string;
+}
+
+export interface WebAuthnConfig {
+  RP_ORIGIN: string;
+  ENABLED: boolean;
+  RP_NAME: string;
+  RP_ID: string;
 }
 
 export interface ClamavConfig {

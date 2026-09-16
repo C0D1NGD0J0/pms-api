@@ -45,8 +45,8 @@ router.get(
 
 router.get(
   '/:cuid/filtered-users',
-  isAuthenticated,
   basicLimiter(),
+  isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.LIST),
   validateRequest({
     params: ClientValidations.clientIdParam,
@@ -267,6 +267,27 @@ router.patch(
   asyncWrapper((req, res) => {
     const userController = req.container.resolve<UserController>('userController');
     return userController.updateSMSConsent(req, res);
+  })
+);
+
+// Guided tour completion
+router.post(
+  '/:cuid/tours/complete',
+  basicLimiter(),
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.completeTour(req, res);
+  })
+);
+
+router.delete(
+  '/:cuid/tours',
+  basicLimiter(),
+  isAuthenticated,
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.resetTours(req, res);
   })
 );
 

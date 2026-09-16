@@ -3,11 +3,13 @@ import userRoutes from './users.routes';
 import adminRoutes from './admin.routes';
 import leaseRoutes from './lease.routes';
 import clientRoutes from './client.routes';
+import reportRoutes from './report.routes';
 import vendorRoutes from './vendors.routes';
 import webhookRoutes from './webhook.routes';
 import expenseRoutes from './expense.routes';
 import metricsRoutes from './metrics.routes';
 import paymentRoutes from './payments.routes';
+import brandingRoutes from './branding.routes';
 import propertyRoutes from './property.routes';
 import guestPassRoutes from './guestpass.routes';
 import inspectionRoutes from './inspection.routes';
@@ -20,6 +22,7 @@ import maintenanceRequestRoutes from './maintenanceRequest.routes';
 export const routes = {
   adminRoutes,
   authRoutes,
+  brandingRoutes,
   userRoutes,
   leaseRoutes,
   clientRoutes,
@@ -36,4 +39,5 @@ export const routes = {
   expenseRoutes,
   guestPassRoutes,
   inspectionRoutes,
+  reportRoutes,
 };

@@ -1,13 +1,18 @@
 import {
+  PasskeyDiscoverableVerifySchema,
   SwitchClientAccountSchema,
   SetupPaymentIntentSchema,
   completeOnboardingSchema,
   AccountActivationSchema,
   ResendActivationSchema,
+  PasskeyRegVerifySchema,
   ForgotPasswordSchema,
+  ChangePasswordSchema,
   ResetPasswordSchema,
+  PasskeyDeleteSchema,
   ConsentBodySchema,
   UserSignupSchema,
+  FeedbackSchema,
   LoginSchema,
 } from './schemas';
 
@@ -19,9 +24,14 @@ export class AuthValidations {
   static setupPaymentIntent = SetupPaymentIntentSchema;
   static emailValidation = ForgotPasswordSchema;
   static resetPassword = ResetPasswordSchema;
+  static changePassword = ChangePasswordSchema;
   static signup = UserSignupSchema;
   static login = LoginSchema;
+  static passkeyRegVerify = PasskeyRegVerifySchema;
+  static passkeyDiscoverableVerify = PasskeyDiscoverableVerifySchema;
+  static passkeyDelete = PasskeyDeleteSchema;
   static completeOnboarding = completeOnboardingSchema;
+  static feedback = FeedbackSchema;
 }
 
 export { completeOnboardingSchema };

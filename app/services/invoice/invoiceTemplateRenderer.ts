@@ -33,16 +33,18 @@ export interface InvoiceRenderData {
   /** Title for the line items section (default: "Amount Breakdown") */
   lineItemsTitle?: string;
 
+  /** Optional company logo URL for white-label branding */
+  logoUrl?: string | null;
   /** Subtitle under company name (e.g. "Payment Invoice", "Expense Report") */
   documentTitle: string;
+
   /** Unique invoice / receipt number */
   invoiceNumber: string;
-
   /** Title for the details section (default: "Details") */
   detailsTitle?: string;
+
   /** Accent color (CSS value). Default: "#2563eb" (blue-600) */
   accentColor?: string;
-
   /** Top-left company / issuer name */
   companyName: string;
   /** Human-readable status label (e.g. "PAID", "PENDING") */

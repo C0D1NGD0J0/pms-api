@@ -511,7 +511,11 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
     }
   }
 
-  async getExpiringLeases(cuid: string, daysAhead: number): Promise<ILeaseDocument[]> {
+  async getExpiringLeases(
+    cuid: string,
+    daysAhead: number,
+    propertyId?: string
+  ): Promise<ILeaseDocument[]> {
     try {
       this.log.info(`Getting leases expiring within ${daysAhead} days for client ${cuid}`);
 
@@ -519,28 +523,28 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       const futureDate = new Date();
       futureDate.setDate(today.getDate() + daysAhead);
 
-      const result = await this.list(
-        {
-          cuid,
-          status: LeaseStatus.ACTIVE,
-          deletedAt: null,
-          'duration.endDate': {
-            $gte: today,
-            $lte: futureDate,
-          },
+      const query: Record<string, any> = {
+        cuid,
+        status: LeaseStatus.ACTIVE,
+        deletedAt: null,
+        'duration.endDate': {
+          $gte: today,
+          $lte: futureDate,
         },
-        {
-          populate: [
-            {
-              path: 'tenantId',
-              select: 'email uid',
-              populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
-            },
-            { path: 'property.id', select: 'name address' },
-          ],
-          sort: { 'duration.endDate': 1 },
-        }
-      );
+      };
+      if (propertyId) query['property.id'] = propertyId;
+
+      const result = await this.list(query, {
+        populate: [
+          {
+            path: 'tenantId',
+            select: 'email uid',
+            populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+          },
+          { path: 'property.id', select: 'name address' },
+        ],
+        sort: { 'duration.endDate': 1 },
+      });
 
       return result.items;
     } catch (error: any) {

@@ -6,8 +6,34 @@ import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import nodemailer, { SendMailOptions, Transporter } from 'nodemailer';
+import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
+
+export interface EmailBrandContext {
+  logoUrl: string | null;
+  companyAddress: string;
+  primaryColor: string;
+  supportEmail: string;
+  accentColor: string;
+  appName: string;
+}
+
+export interface HeroConfig {
+  subtitle?: string;
+  title: string;
+  icon: string;
+}
+
+export const EMAIL_BRAND_DEFAULTS: EmailBrandContext = {
+  appName: 'PropertyDesk',
+  logoUrl: null,
+  primaryColor: '#062f4f',
+  accentColor: '#D9952B',
+  companyAddress: 'WeTalkingTech Labs Inc. — 1111B S Governors Ave #90461, Dover, DE 19904',
+  supportEmail: 'support@propertydesk.live',
+};
 
 interface MailOptions extends SendMailOptions {
+  client?: { cuid: string; id?: string };
   data: EmailTemplateData;
 }
 
@@ -20,27 +46,305 @@ interface EmailTemplateData {
   [key: string]: any;
 }
 
+export const TEMPLATE_HERO_CONFIG: Record<string, HeroConfig> = {
+  // Account / Auth
+  [MailType.ACCOUNT_ACTIVATION]: {
+    icon: '&#x1F6E1;',
+    title: 'Activate Your Account',
+    subtitle: "You're one step away from getting started",
+  },
+  [MailType.FORGOT_PASSWORD]: {
+    icon: '&#x1F6E1;',
+    title: 'Reset Your Password',
+    subtitle: 'Secure your account',
+  },
+  [MailType.PASSWORD_RESET]: {
+    icon: '&#x1F6E1;',
+    title: 'Password Updated',
+    subtitle: 'Your password has been changed',
+  },
+  [MailType.USER_CREATED]: {
+    icon: '&#x1F6E1;',
+    title: 'Welcome to PropertyDesk',
+    subtitle: 'Your account is ready',
+  },
+  [MailType.ACCOUNT_UPDATE]: {
+    icon: '&#x1F6E1;',
+    title: 'Account Updated',
+    subtitle: 'Changes to your account',
+  },
+  [MailType.ACCOUNT_DISCONNECTED]: {
+    icon: '&#x1F6E1;',
+    title: 'Account Disconnected',
+    subtitle: 'Your connection has been removed',
+  },
+
+  // Invitation
+  [MailType.INVITATION]: {
+    icon: '&#x2709;',
+    title: "You've Been Invited!",
+    subtitle: 'Join your team on PropertyDesk',
+  },
+  [MailType.INVITATION_REMINDER]: {
+    icon: '&#x2709;',
+    title: 'Invitation Reminder',
+    subtitle: 'Your invitation is still active',
+  },
+
+  // Lease
+  [MailType.LEASE_ACTIVATED]: {
+    icon: '&#x1F511;',
+    title: 'Lease Activated',
+    subtitle: 'Your lease is now active',
+  },
+  [MailType.LEASE_ADMIN_UPDATED]: {
+    icon: '&#x1F511;',
+    title: 'Lease Updated',
+    subtitle: 'Changes to your lease',
+  },
+  [MailType.LEASE_ENDING_SOON]: {
+    icon: '&#x1F511;',
+    title: 'Lease Ending Soon',
+    subtitle: 'Action required before your lease expires',
+  },
+  [MailType.LEASE_TERMINATED]: {
+    icon: '&#x1F511;',
+    title: 'Lease Terminated',
+    subtitle: 'Your lease has been ended',
+  },
+  [MailType.LEASE_EXPIRED]: {
+    icon: '&#x1F511;',
+    title: 'Lease Expired',
+    subtitle: 'Your lease has reached its end date',
+  },
+  [MailType.LEASE_PAYMENT_REMINDER]: {
+    icon: '&#x1F511;',
+    title: 'Payment Reminder',
+    subtitle: 'Your rent payment is due',
+  },
+
+  // Payment
+  [MailType.PAYMENT_REQUEST_CREATED]: {
+    icon: '&#x1F4B3;',
+    title: 'Payment Request',
+    subtitle: 'A new payment has been requested',
+  },
+  [MailType.PAYMENT_RECEIPT]: {
+    icon: '&#x1F4B3;',
+    title: 'Payment Receipt',
+    subtitle: 'Transaction confirmed',
+  },
+  [MailType.PAYMENT_FAILED]: {
+    icon: '&#x1F4B3;',
+    title: 'Payment Failed',
+    subtitle: 'Your payment could not be processed',
+  },
+  [MailType.PAD_MANDATE_CONFIRMATION]: {
+    icon: '&#x1F4B3;',
+    title: 'PAD Agreement Confirmed',
+    subtitle: 'Pre-authorized debit setup complete',
+  },
+  [MailType.PAD_PRE_DEBIT_NOTIFICATION]: {
+    icon: '&#x1F4B3;',
+    title: 'Upcoming Debit',
+    subtitle: 'Pre-authorized debit notification',
+  },
+
+  // Maintenance
+  [MailType.MAINTENANCE_REQUEST_CREATED]: {
+    icon: '&#x1F527;',
+    title: 'Request Submitted',
+    subtitle: 'Maintenance request received',
+  },
+  [MailType.MAINTENANCE_REQUEST_ASSIGNED]: {
+    icon: '&#x1F527;',
+    title: 'Request Assigned',
+    subtitle: 'A vendor has been assigned',
+  },
+  [MailType.MAINTENANCE_REQUEST_ACCEPTED]: {
+    icon: '&#x1F527;',
+    title: 'Request Accepted',
+    subtitle: 'Your request is being handled',
+  },
+  [MailType.MAINTENANCE_REQUEST_DECLINED]: {
+    icon: '&#x1F527;',
+    title: 'Assignment Declined',
+    subtitle: 'Vendor declined the assignment',
+  },
+  [MailType.MAINTENANCE_REQUEST_COMPLETED]: {
+    icon: '&#x1F527;',
+    title: 'Request Completed',
+    subtitle: 'Maintenance work is done',
+  },
+  [MailType.MAINTENANCE_CHARGE_CREATED]: {
+    icon: '&#x1F527;',
+    title: 'Maintenance Charge',
+    subtitle: 'A charge has been added to your account',
+  },
+  [MailType.MAINTENANCE_INVOICE_SUBMITTED]: {
+    icon: '&#x1F527;',
+    title: 'Invoice Submitted',
+    subtitle: 'Review required',
+  },
+  [MailType.MAINTENANCE_INVOICE_APPROVED]: {
+    icon: '&#x1F527;',
+    title: 'Invoice Approved',
+    subtitle: 'Payment will be processed',
+  },
+  [MailType.MAINTENANCE_INVOICE_REJECTED]: {
+    icon: '&#x1F527;',
+    title: 'Invoice Rejected',
+    subtitle: 'Revision required',
+  },
+  [MailType.MAINTENANCE_VENDOR_PAID]: {
+    icon: '&#x1F527;',
+    title: 'Payout Initiated',
+    subtitle: 'Payment for your service',
+  },
+  [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED]: {
+    icon: '&#x1F527;',
+    title: 'Work Order Submitted',
+    subtitle: 'Review required',
+  },
+  [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: {
+    icon: '&#x1F527;',
+    title: 'Work Order Submitted',
+    subtitle: 'For your maintenance request',
+  },
+  [MailType.MAINTENANCE_WORK_ORDER_APPROVED]: {
+    icon: '&#x1F527;',
+    title: 'Work Order Approved',
+    subtitle: 'Proceed with the job',
+  },
+  [MailType.MAINTENANCE_WORK_ORDER_REJECTED]: {
+    icon: '&#x1F527;',
+    title: 'Work Order Rejected',
+    subtitle: 'Revision required',
+  },
+
+  // Inspection
+  [MailType.INSPECTION_SCHEDULED]: {
+    icon: '&#x1F4CB;',
+    title: 'Inspection Scheduled',
+    subtitle: 'A property inspection has been planned',
+  },
+  [MailType.INSPECTION_SUBMITTED]: {
+    icon: '&#x1F4CB;',
+    title: 'Inspection Submitted',
+    subtitle: 'Report ready for review',
+  },
+  [MailType.INSPECTION_APPROVED]: {
+    icon: '&#x1F4CB;',
+    title: 'Inspection Approved',
+    subtitle: 'Report has been accepted',
+  },
+  [MailType.INSPECTION_REJECTED]: {
+    icon: '&#x1F4CB;',
+    title: 'Inspection Rejected',
+    subtitle: 'Action required',
+  },
+  [MailType.INSPECTION_CANCELLED]: {
+    icon: '&#x1F4CB;',
+    title: 'Inspection Cancelled',
+    subtitle: 'The inspection has been cancelled',
+  },
+
+  // Subscription
+  [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: {
+    icon: '&#x2B50;',
+    title: 'Renewal Upcoming',
+    subtitle: 'Your subscription is renewing soon',
+  },
+  [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: {
+    icon: '&#x2B50;',
+    title: 'Renewal Receipt',
+    subtitle: 'Subscription renewed successfully',
+  },
+  [MailType.COMPANY_CLOSURE_OWNER]: {
+    icon: '&#x2B50;',
+    title: 'Account Closure',
+    subtitle: 'Your account has been closed',
+  },
+  [MailType.COMPANY_CLOSURE_STAFF]: {
+    icon: '&#x2B50;',
+    title: 'Account Closure Notice',
+    subtitle: 'An account you belong to has been closed',
+  },
+  [MailType.COMPANY_CLOSURE_TENANT]: {
+    icon: '&#x2B50;',
+    title: 'Account Closure Notice',
+    subtitle: 'An account you belong to has been closed',
+  },
+  [MailType.COMPANY_CLOSURE_VENDOR]: {
+    icon: '&#x2B50;',
+    title: 'Service Disconnection',
+    subtitle: 'A service connection has been removed',
+  },
+
+  // Guest Pass
+  [MailType.GUEST_PASS_CODE]: {
+    icon: '&#x1F3AB;',
+    title: 'Visitor Access Code',
+    subtitle: 'Your guest pass is ready',
+  },
+
+  // Report
+  [MailType.REPORT_READY]: {
+    icon: '&#x1F4CA;',
+    title: 'Report Ready',
+    subtitle: 'Your property report is available',
+  },
+
+  // Feedback
+  [MailType.USER_FEEDBACK]: {
+    icon: '&#x1F4AC;',
+    title: 'User Feedback',
+    subtitle: 'A user submitted feedback',
+  },
+};
+
 export class MailService {
   private readonly transporter: Transporter;
   private readonly resendClient: Resend;
   private readonly log: Logger;
   private readonly templateCache: Map<string, EmailTemplate> = new Map();
+  private readonly clientDAO: any;
 
-  constructor() {
+  constructor({ clientDAO }: { clientDAO?: any } = {}) {
     this.log = createLogger('MailerService');
     this.transporter = this.buildMailTransporter();
     this.resendClient = new Resend(envVariables.EMAIL.PROD.PROVIDER_PASSWORD);
+    this.clientDAO = clientDAO;
+  }
+
+  async resolveBrandContext(clientCuid?: string): Promise<EmailBrandContext> {
+    if (!clientCuid) return EMAIL_BRAND_DEFAULTS;
+
+    try {
+      const config = await loadBrandConfig(clientCuid);
+      const client = this.clientDAO ? await this.clientDAO.getClientByCuid(clientCuid) : null;
+      return toEmailBrandContext(config, client ?? undefined);
+    } catch (error) {
+      this.log.error({ error, clientCuid }, 'Failed to resolve brand context, using defaults');
+      return EMAIL_BRAND_DEFAULTS;
+    }
   }
 
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
+      const brand = await this.resolveBrandContext(data.client?.cuid);
       const frontendUrl = envVariables.FRONTEND?.URL || '';
       const preferencesUrl = frontendUrl ? `${frontendUrl}/profile/settings` : '';
+      const heroConfig = TEMPLATE_HERO_CONFIG[mailType] || { icon: '&#x1F3E0;', title: '' };
       const layoutData = {
-        appName: envVariables.APP_NAME,
+        appName: brand.appName,
+        brand,
         year: new Date().getFullYear(),
         preferencesUrl,
+        icon: heroConfig.icon,
+        title: heroConfig.title,
+        subtitle: heroConfig.subtitle || '',
       };
       const renderedHtml = await this.renderLayoutTemplate(html, layoutData);
       const renderedText = await this.renderLayoutTemplate(text, layoutData);
@@ -296,8 +600,14 @@ export class MailService {
       case MailType.LEASE_EXPIRED:
         template = await this.buildTemplate('lease-expired', emailData, 'lease');
         break;
+      case MailType.USER_FEEDBACK:
+        template = await this.buildTemplate('user-feedback', emailData, 'feedback');
+        break;
       case MailType.USER_CREATED:
         template = await this.buildTemplate('userCreated', emailData);
+        break;
+      case MailType.REPORT_READY:
+        template = await this.buildTemplate('report-ready', emailData, 'report');
         break;
       case MailType.INVITATION: {
         // Select template based on user role
@@ -384,7 +694,7 @@ export class MailService {
   }
 
   private getDefaultSubject(mailType: MailType): string {
-    const defaultText = 'Notification from PropertyDesk';
+    const defaultText = `Notification from ${envVariables.APP_NAME || 'PropertyDesk'}`;
 
     const subjectMap: Record<MailType | 'default', string> = {
       [MailType.ACCOUNT_ACTIVATION]: 'Activate Your Account',
@@ -438,6 +748,8 @@ export class MailService {
       [MailType.COMPANY_CLOSURE_VENDOR]: 'Service Disconnection Notice',
       [MailType.COMPANY_CLOSURE_TENANT]: 'Account Closure Notice',
       [MailType.COMPANY_CLOSURE_OWNER]: 'Account Closure Confirmation',
+      [MailType.REPORT_READY]: 'Your Property Report is Ready',
+      [MailType.USER_FEEDBACK]: 'User Feedback Submitted',
     };
 
     return subjectMap[mailType] || subjectMap.default;

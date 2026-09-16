@@ -5,7 +5,7 @@ import {
   InspectionType,
 } from '@interfaces/inspection.interface';
 
-import { safeString } from '../UtilsValidation';
+import { UtilsValidations, safeString } from '../UtilsValidation';
 
 const conditionEnum = z.enum(Object.values(ConditionRating) as [string, ...string[]], {
   errorMap: () => ({ message: 'Please select a valid condition rating' }),
@@ -118,10 +118,7 @@ export const InspectionValidations = {
     sort: z.string().optional(),
   }),
 
-  iuidParam: z.object({
-    cuid: z.string().min(1, 'Client ID is required'),
-    iuid: z.string().min(1, 'Inspection ID is required'),
-  }),
+  iuidParam: UtilsValidations.cuid.merge(UtilsValidations.iuid),
 
   addNoteBody: z.object({
     note: z.string().min(1, 'Note cannot be empty').max(2000, 'Note cannot exceed 2000 characters'),

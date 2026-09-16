@@ -1,0 +1,63 @@
+{
+  "identity": {
+    "appName": "PropertyDesk",
+    "logoUrl": null,
+    "logoIconUrl": null,
+    "faviconUrl": null,
+    "appleTouchIconUrl": null,
+    "primaryHex": null
+  },
+  "colors": {
+    "primary": { "h": 194, "s": "66%", "l": "24%" },
+    "secondary": { "h": 39, "s": "73%", "l": "49%" },
+    "blue-ink": { "h": 204, "s": "88%", "l": "17%" },
+    "success": { "h": 130, "s": "100%", "l": "37%" },
+    "danger": { "h": 0, "s": "100%", "l": "50%" },
+    "warning": { "h": 37, "s": "100%", "l": "67%" },
+    "white": { "h": 0, "s": "0%", "l": "100%" },
+    "black": { "h": 0, "s": "0%", "l": "0%" },
+    "grey": { "h": 213, "s": "14%", "l": "56%" },
+    "dark-grey": { "h": 0, "s": "0%", "l": "20%" },
+    "light-grey": { "h": 0, "s": "0%", "l": "80%" },
+    "off-white": { "h": 204, "s": "8%", "l": "98%" },
+    "background": { "h": 0, "s": "0%", "l": "96%" },
+    "alice-blue": { "h": 208, "s": "100%", "l": "97%" },
+    "light-gold": { "h": 48, "s": "100%", "l": "96%" },
+    "labels": { "h": 0, "s": "61%", "l": "16%" },
+    "navbar-bg": { "h": 204, "s": "88%", "l": "17%" },
+    "sidebar-bg": { "h": 204, "s": "88%", "l": "17%" },
+    "footer-bg": { "h": 204, "s": "88%", "l": "17%" },
+    "btn-bg": { "h": 194, "s": "66%", "l": "24%" },
+    "btn-text": { "h": 0, "s": "0%", "l": "100%" },
+    "modal-bg": { "h": 0, "s": "0%", "l": "100%" },
+    "card-bg": { "h": 0, "s": "0%", "l": "100%" }
+  },
+  "radius": {
+    "sm": "0.2rem",
+    "md": "0.4rem",
+    "base": "0.5rem",
+    "lg": "0.8rem",
+    "xl": "1.2rem"
+  },
+  "typography": {
+    "fontPrimary": "\"Roboto\", sans-serif",
+    "fontSecondary": "\"Lato\", sans-serif",
+    "fsBase": "1.4rem",
+    "fsSm": "1.2rem",
+    "fsMd": "1.6rem",
+    "fsLg": "1.8rem",
+    "fsXlg": "2.4rem",
+    "fwNormal": "400",
+    "fwBold": "600",
+    "fwLight": "200",
+    "lineHeight": "1.7",
+    "letterSpacing": "0.1rem"
+  },
+  "motion": {
+    "pageDuration": "0.8s",
+    "pageDistance": "28px",
+    "btnDuration": "0.15s",
+    "btnLift": "-2px",
+    "modalDuration": "0.7s"
+  }
+}

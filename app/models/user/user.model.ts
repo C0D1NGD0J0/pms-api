@@ -49,6 +49,24 @@ const UserSchema = new Schema<IUserDocument>(
       acceptedBy: { type: String, default: '' },
       _id: false,
     },
+    passkeys: {
+      type: [
+        {
+          credentialId: { type: String, required: true },
+          publicKey: { type: String, required: true },
+          counter: { type: Number, required: true, default: 0 },
+          deviceType: { type: String, default: 'singleDevice' },
+          backedUp: { type: Boolean, default: false },
+          transports: [{ type: String }],
+          friendlyName: { type: String, required: true, maxlength: 100 },
+          createdAt: { type: Date, default: Date.now },
+          lastUsedAt: { type: Date, default: null },
+          _id: false,
+        },
+      ],
+      select: false,
+      default: [],
+    },
   },
   {
     timestamps: true,
@@ -56,6 +74,7 @@ const UserSchema = new Schema<IUserDocument>(
       virtuals: true,
       transform: (_doc: any, ret: any) => {
         delete ret.password;
+        delete ret.passkeys;
         delete ret.activationToken;
         delete ret.passwordResetToken;
         delete ret.activationTokenExpiresAt;
@@ -99,6 +118,8 @@ UserSchema.virtual('fullname').get(function () {
 UserSchema.methods.validatePassword = async function (pwd: string): Promise<boolean> {
   return await bcrypt.compare(pwd, this.password);
 };
+
+UserSchema.index({ 'passkeys.credentialId': 1 });
 
 const UserModel = model<IUserDocument>('User', UserSchema);
 

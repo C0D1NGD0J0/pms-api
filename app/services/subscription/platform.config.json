@@ -69,20 +69,23 @@
           "savingsPercent": 0
         }
       },
-      "transactionFeePercent": 4.5,
+      "transactionFeePercent": 4.2,
       "isCustomPricing": false,
       "seatPricing": {
-        "includedSeats": 3,
+        "includedSeats": 1,
         "additionalSeatPriceCents": 0,
         "maxAdditionalSeats": 0,
         "lookUpKey": ""
       },
       "limits": {
         "maxProperties": 3,
-        "maxUnits": 10,
+        "maxUnits": 5,
         "maxVendors": -1,
         "smsQuota": 0,
-        "manualRecordQuota": 5
+        "manualRecordQuota": 3,
+        "maxReportsPerMonth": 0,
+        "maxReportSections": 0,
+        "maxReportEmails": 0
       },
       "features": {
         "eSignature": false,
@@ -95,41 +98,50 @@
         "maintenanceRequestService": false,
         "inspectionService": false,
         "aiInvoiceScanning": false,
-        "aiInspectionAnalysis": false
+        "aiInspectionAnalysis": false,
+        "aiReportAnalysis": false,
+        "expenseTracking": false,
+        "whiteLabelling": false
       },
       "featureList": ["Tenant management", "Rent collection"],
       "disabledFeatures": [
-        "E-Signature",
-        "AI features",
-        "SMS notification",
         "Vendor management",
-        "Guest Pass Service",
         "Property Inspections",
         "Reporting & Analytics",
-        "Repair Request Service"
+        "AI features"
       ]
     },
     "growth": {
       "planName": "growth",
       "name": "Growth",
       "description": "For growing property managers",
-      "trialDays": 14,
+      "trialDays": 0,
       "pricing": {
         "monthly": {
           "priceId": "price_growth_monthly",
-          "priceInCents": 7999
+          "priceInCents": 7999,
+          "currencies": {
+            "usd": { "priceId": "price_growth_monthly_usd", "priceInCents": 7999 },
+            "cad": { "priceId": "price_1UFHpYQ578Wn96UMXQfgHfhy", "priceInCents": 7999 },
+            "eur": { "priceId": "price_1UFHwTQ578Wn96UMpLMqJKes", "priceInCents": 7999 }
+          }
         },
         "annual": {
           "priceId": "price_growth_annual",
           "priceInCents": 76800,
-          "savingsPercent": 20
+          "savingsPercent": 20,
+          "currencies": {
+            "usd": { "priceId": "price_growth_annual_usd", "priceInCents": 76800 },
+            "cad": { "priceId": "price_1UFHslQ578Wn96UMCTWrTJ8v", "priceInCents": 76800 },
+            "eur": { "priceId": "price_1UFHxEQ578Wn96UMFGJTNBVt", "priceInCents": 76800 }
+          }
         }
       },
-      "ctaText": "Start 14-Day Free Trial",
+      "ctaText": "Get Started",
       "isFeatured": true,
       "featuredBadge": "Most Popular",
       "displayOrder": 2,
-      "transactionFeePercent": 4.0,
+      "transactionFeePercent": 3.9,
       "isCustomPricing": false,
       "seatPricing": {
         "includedSeats": 10,
@@ -142,11 +154,14 @@
         }
       },
       "limits": {
-        "maxProperties": 15,
-        "maxUnits": 50,
+        "maxProperties": 8,
+        "maxUnits": 45,
         "maxVendors": -1,
         "smsQuota": 40,
-        "manualRecordQuota": 15
+        "manualRecordQuota": 15,
+        "maxReportsPerMonth": 0,
+        "maxReportSections": 0,
+        "maxReportEmails": 0
       },
       "features": {
         "aiTriage": true,
@@ -154,41 +169,52 @@
         "smsService": true,
         "leaseTemplates": false,
         "vendorManagement": true,
-        "aiInvoiceScanning": true,
+        "aiInvoiceScanning": false,
         "guestPassService": true,
-        "reportingAnalytics": true,
+        "reportingAnalytics": false,
         "maintenanceRequestService": true,
         "inspectionService": true,
-        "aiInspectionAnalysis": true
+        "aiInspectionAnalysis": false,
+        "aiReportAnalysis": false,
+        "expenseTracking": false,
+        "whiteLabelling": false
       },
       "featureList": [
-        "AI feature",
+        "AI features*",
         "E-Signature",
         "Vendor management",
         "Property Inspections",
-        "SMS notifications",
-        "Guest Pass Service",
-        "Online payments & AutoPay"
+        "SMS notifications"
       ],
-      "disabledFeatures": ["Reporting & Analytics", "Customizable Lease Templates"]
+      "disabledFeatures": ["Reporting & Analytics", "Expense tracking"]
     },
     "portfolio": {
       "planName": "portfolio",
       "name": "Portfolio",
       "description": "For established businesses",
-      "trialDays": 14,
+      "trialDays": 0,
       "pricing": {
         "monthly": {
           "priceId": "price_portfolio_monthly",
-          "priceInCents": 14999
+          "priceInCents": 14999,
+          "currencies": {
+            "usd": { "priceId": "price_portfolio_monthly_usd", "priceInCents": 14999 },
+            "cad": { "priceId": "price_1UFI0iQ578Wn96UMdSmRfiOo", "priceInCents": 14999 },
+            "eur": { "priceId": "price_1UFI3TQ578Wn96UMJ5KgjntX", "priceInCents": 14999 }
+          }
         },
         "annual": {
           "priceId": "price_portfolio_annual",
           "priceInCents": 144000,
-          "savingsPercent": 20
+          "savingsPercent": 20,
+          "currencies": {
+            "usd": { "priceId": "price_portfolio_annual_usd", "priceInCents": 144000 },
+            "cad": { "priceId": "price_1UFI1nQ578Wn96UMMhUFwuMa", "priceInCents": 144000 },
+            "eur": { "priceId": "price_1UFI46Q578Wn96UM0ceEYuam", "priceInCents": 144000 }
+          }
         }
       },
-      "ctaText": "Start 14-Day Free Trial",
+      "ctaText": "Get Started",
       "isFeatured": false,
       "displayOrder": 3,
       "transactionFeePercent": 3.5,
@@ -204,11 +230,91 @@
         }
       },
       "limits": {
-        "maxProperties": 30,
-        "maxUnits": 200,
+        "maxProperties": 20,
+        "maxUnits": 150,
         "maxVendors": -1,
         "smsQuota": 100,
-        "manualRecordQuota": 30
+        "manualRecordQuota": 30,
+        "maxReportsPerMonth": 10,
+        "maxReportSections": 9,
+        "maxReportEmails": 10
+      },
+      "features": {
+        "eSignature": true,
+        "maintenanceRequestService": true,
+        "guestPassService": true,
+        "reportingAnalytics": true,
+        "leaseTemplates": false,
+        "vendorManagement": true,
+        "prioritySupport": false,
+        "aiTriage": true,
+        "smsService": true,
+        "aiInvoiceScanning": true,
+        "inspectionService": true,
+        "aiInspectionAnalysis": true,
+        "aiReportAnalysis": true,
+        "expenseTracking": true,
+        "whiteLabelling": false
+      },
+      "featureList": [
+        "Everything in Growth",
+        "AI-powered portfolio reports",
+        "AI invoice & inspection analysis",
+        "Advanced reporting & analytics",
+        "Expense tracking & P&L"
+      ],
+      "disabledFeatures": ["Custom Lease Templates", "Priority Support", "White-Label Branding"]
+    },
+    "enterprise": {
+      "planName": "enterprise",
+      "name": "Enterprise",
+      "description": "For large-scale operations",
+      "trialDays": 0,
+      "pricing": {
+        "monthly": {
+          "priceId": "price_enterprise_monthly",
+          "priceInCents": 29999,
+          "currencies": {
+            "usd": { "priceId": "price_enterprise_monthly_usd", "priceInCents": 29999 },
+            "cad": { "priceId": "price_1UFI7aQ578Wn96UMnZFJX8Zm", "priceInCents": 29999 },
+            "eur": { "priceId": "price_1UFI89Q578Wn96UM9GrBBlOZ", "priceInCents": 29999 }
+          }
+        },
+        "annual": {
+          "priceId": "price_enterprise_annual",
+          "priceInCents": 288000,
+          "savingsPercent": 20,
+          "currencies": {
+            "usd": { "priceId": "price_enterprise_annual_usd", "priceInCents": 288000 },
+            "cad": { "priceId": "price_1UFI94Q578Wn96UMyuCxzS1B", "priceInCents": 288000 },
+            "eur": { "priceId": "price_1UFIA3Q578Wn96UMhkN3QZjd", "priceInCents": 288000 }
+          }
+        }
+      },
+      "ctaText": "Contact Sales",
+      "isFeatured": false,
+      "displayOrder": 4,
+      "transactionFeePercent": 2.9,
+      "isCustomPricing": false,
+      "seatPricing": {
+        "includedSeats": 50,
+        "additionalSeatPriceCents": 499,
+        "maxAdditionalSeats": 100,
+        "lookUpKey": "enterprise_seats",
+        "lookUpKeys": {
+          "monthly": "enterprise_seat_monthly",
+          "annual": "enterprise_seat_annual"
+        }
+      },
+      "limits": {
+        "maxProperties": -1,
+        "maxUnits": 500,
+        "maxVendors": -1,
+        "smsQuota": 500,
+        "manualRecordQuota": -1,
+        "maxReportsPerMonth": -1,
+        "maxReportSections": 9,
+        "maxReportEmails": 25
       },
       "features": {
         "eSignature": true,
@@ -222,14 +328,18 @@
         "smsService": true,
         "aiInvoiceScanning": true,
         "inspectionService": true,
-        "aiInspectionAnalysis": true
+        "aiInspectionAnalysis": true,
+        "aiReportAnalysis": true,
+        "expenseTracking": true,
+        "whiteLabelling": true
       },
       "featureList": [
+        "Everything in Portfolio",
+        "Unlimited properties & units",
+        "Custom lease templates",
+        "White-label branding",
         "Priority support",
-        "Property Inspections",
-        "Everything in Growth",
-        "Customizable lease agreements",
-        "Advanced reporting & analytics"
+        "Dedicated account manager"
       ],
       "disabledFeatures": []
     }

@@ -13,6 +13,7 @@
     },
     "admin": {
       "$extend": ["manager"],
+      "report": ["delete:any"],
       "property": ["create:any", "read:any", "update:any", "delete:any"],
       "lease": ["create:any", "list:any", "read:any", "update:any"],
       "user": ["remove:any", "delete:any", "assign_roles:any"],
@@ -52,7 +53,7 @@
         "stats:any"
       ],
       "payment": ["read:any", "create:any", "list:any"],
-      "report": ["read:any", "create:any", "list:any"],
+      "report": ["read:any", "create:any", "list:any", "update:any"],
       "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
       "invitation": [
         "send:any",

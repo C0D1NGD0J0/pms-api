@@ -1,7 +1,6 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Account Closure Notice</h2>
       <p>Hello,</p>
       <p>
         We are writing to inform you that <strong><%= companyName %></strong> has closed
@@ -12,16 +11,7 @@
 
   <tr>
     <td class="content" style="padding-top: 0;">
-      <div class="detail-card">
-        <h3 style="margin-top: 0;">What This Means For You</h3>
-        <ul style="line-height: 1.8;">
-          <li>Your lease has been <strong>terminated</strong> as part of this closure</li>
-          <li>Any security deposit refund will be processed after your move-out inspection</li>
-          <li>Outstanding payments prior to closure remain on record</li>
-          <li>You will no longer have access to the tenant portal for this property</li>
-          <li>Your payment and lease history will remain available for reference</li>
-        </ul>
-      </div>
+      <%- include("../shared/html/_notice", { text: '<strong>What This Means For You</strong><br><ul style="margin: 8px 0 0 0; padding-left: 20px; line-height: 1.8;"><li>Your lease has been <strong>terminated</strong> as part of this closure</li><li>Any security deposit refund will be processed after your move-out inspection</li><li>Outstanding payments prior to closure remain on record</li><li>You will no longer have access to the tenant portal for this property</li><li>Your payment and lease history will remain available for reference</li></ul>', type: 'info' }) %>
     </td>
   </tr>
 

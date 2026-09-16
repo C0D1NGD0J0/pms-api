@@ -4,6 +4,19 @@ import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
 import { calcPercentage } from './math.utils';
 
+export interface IAccountSetupData {
+  tenantHasPaymentMethod: boolean;
+  hasPaymentProcessor: boolean;
+  subscriptionActive: boolean;
+  payoutsEnabled: boolean;
+  propertyCount: number;
+  vendorCount: number;
+  tenantCount: number;
+  staffCount: number;
+  leaseCount: number;
+  unitCount: number;
+}
+
 export interface ICompletionSection {
   fields: ICompletionField[];
   completedFields: number;
@@ -30,7 +43,8 @@ const DEFAULT_AVATAR_PATTERN = 'lorempixel.com';
 export function computeProfileCompletion(
   profile: IProfileDocument,
   client: IClientDocument,
-  roles: IUserRoleType[]
+  roles: IUserRoleType[],
+  accountData?: IAccountSetupData
 ): IProfileCompletion {
   const sections: ICompletionSection[] = [];
 
@@ -123,6 +137,74 @@ export function computeProfileCompletion(
           key: 'regNumber',
           label: 'Registration number',
           value: cp?.registrationNumber,
+        },
+      ])
+    );
+  }
+
+  // ── Account setup (admin/super-admin only) ────────────────────────────────
+  if (accountData && roles.some((r) => [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(r as any))) {
+    sections.push(
+      scoreSection('accountSetup', 'Account Setup', [
+        {
+          key: 'subscription',
+          label: 'Active subscription',
+          value: accountData.subscriptionActive ? 'active' : null,
+        },
+        {
+          key: 'property',
+          label: 'Add your first property',
+          value: accountData.propertyCount > 0 ? 'done' : null,
+        },
+        {
+          key: 'unit',
+          label: 'Add property units',
+          value: accountData.unitCount > 0 ? 'done' : null,
+        },
+        {
+          key: 'paymentGateway',
+          label: 'Set up payment processing',
+          value: accountData.hasPaymentProcessor ? 'done' : null,
+        },
+        {
+          key: 'payoutBank',
+          label: 'Connect bank for payouts',
+          value: accountData.payoutsEnabled ? 'done' : null,
+        },
+      ])
+    );
+
+    sections.push(
+      scoreSection('teamSetup', 'Build Your Team', [
+        {
+          key: 'staff',
+          label: 'Invite staff members',
+          value: accountData.staffCount > 0 ? 'done' : null,
+        },
+        {
+          key: 'vendor',
+          label: 'Connect a vendor',
+          value: accountData.vendorCount > 0 ? 'done' : null,
+        },
+      ])
+    );
+
+    sections.push(
+      scoreSection('tenantSetup', 'Tenant Management', [
+        {
+          key: 'tenant',
+          label: 'Invite tenants',
+          value: accountData.tenantCount > 0 ? 'done' : null,
+        },
+        {
+          key: 'tenantPayment',
+          label: 'Tenant payment method set up',
+          value: accountData.tenantHasPaymentMethod ? 'done' : null,
+        },
+        {
+          key: 'lease',
+          label: 'Create a lease',
+          value: accountData.leaseCount > 0 ? 'done' : null,
         },
       ])
     );

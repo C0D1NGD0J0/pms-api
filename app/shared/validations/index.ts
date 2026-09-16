@@ -10,6 +10,7 @@ export * from './PaymentsValidation';
 export * from './MetricsValidation';
 export * from './ProfileValidation';
 export * from './ExpenseValidation';
+export * from './ReportValidation';
 export * from './ClientValidation';
 export * from './VendorValidation';
 export * from './UtilsValidation';

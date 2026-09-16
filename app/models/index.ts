@@ -5,6 +5,7 @@ import Asset from '@models/asset/asset.model';
 import UnitModel from '@models/unit/unit.model';
 import Client from '@models/client/client.model';
 import Vendor from '@models/vendor/vendor.model';
+import Report from '@models/report/report.model';
 import Profile from '@models/profile/profile.model';
 import Invoice from '@models/invoice/invoice.model';
 import Expense from '@models/expense/expense.model';
@@ -13,6 +14,7 @@ import Property from '@models/property/property.model';
 import GuestPass from '@models/guestPass/guestpass.model';
 import Invitation from '@models/invitation/invitation.model';
 import Inspection from '@models/inspection/inspection.model';
+import { ReportSchedule } from '@models/report/report.model';
 import { MetricsSnapshot } from '@models/metrics/metrics.model';
 import Subscription from '@models/subscription/subscription.model';
 import Notification from '@models/notification/notification.model';
@@ -24,6 +26,7 @@ export {
   MaintenanceRequest,
   PaymentProcessor,
   MetricsSnapshot,
+  ReportSchedule,
   Notification,
   Subscription,
   PropertyUnit,
@@ -36,6 +39,7 @@ export {
   Expense,
   Payment,
   Profile,
+  Report,
   SMSLog,
   Client,
   Vendor,

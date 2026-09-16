@@ -593,14 +593,20 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
     }
   }
 
-  async getPropertyUnitCounts(cuid: string): Promise<{
+  async getPropertyUnitCounts(
+    cuid: string,
+    propertyId?: string
+  ): Promise<{
     total: number;
     occupied: number;
     vacant: number;
     occupancyRate: number;
   }> {
+    const match: Record<string, any> = { cuid, deletedAt: null, isArchived: { $ne: true } };
+    if (propertyId) match.propertyId = new Types.ObjectId(propertyId);
+
     const results = await this.aggregate([
-      { $match: { cuid, deletedAt: null, isArchived: { $ne: true } } },
+      { $match: match },
       {
         $group: {
           _id: null,

@@ -35,6 +35,7 @@ const makeService = (mocks: Record<string, any> = {}) => {
     getActiveUserByEmail: jest.fn(),
     verifyCredentials: jest.fn(),
     updateById: jest.fn(),
+    hasPasskeys: jest.fn().mockResolvedValue(false),
     ...mocks.userDAO,
   };
 
@@ -90,6 +91,7 @@ const makeService = (mocks: Record<string, any> = {}) => {
     paymentGatewayService: {} as any,
     subscriptionService: {} as any,
     paymentService: {} as any,
+    webAuthnService: {} as any,
   } as any);
 };
 

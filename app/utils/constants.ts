@@ -38,6 +38,7 @@ export const QUEUE_NAMES = {
   CRON_QUEUE: 'cronQueue',
   MEDIA_QUEUE: 'mediaQueue',
   EMAIL_QUEUE: 'emailQueue',
+  REPORT_QUEUE: 'reportQueue',
   PAYMENT_QUEUE: 'paymentQueue',
   PROPERTY_QUEUE: 'propertyQueue',
   EVENT_BUS_QUEUE: 'eventBusQueue',
@@ -78,6 +79,7 @@ export const JOB_NAME = {
   CANCEL_PAYMENT_JOB: 'cancelPaymentJob',
   ACCOUNT_DISCONNECTED_JOB: 'accountDisconnectedJob',
   VENDOR_TEAM_DISCONNECT_JOB: 'vendorTeamDisconnectJob',
+  GENERATE_REPORT_JOB: 'generateReportJob',
 };
 
 export const defaultPagination: IPropertyFilterQuery = {

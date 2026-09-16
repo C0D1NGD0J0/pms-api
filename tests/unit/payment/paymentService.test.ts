@@ -2750,7 +2750,12 @@ describe('PaymentService - chargeForMaintenance', () => {
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
 
     mockSubscriptionDAO.findFirst.mockResolvedValue({ status: 'active', planName: 'basic' } as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ payoutsBlocked: false } as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({
+      accountId: 'acct_test123',
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      payoutsBlocked: false,
+    } as any);
 
     const mockLeaseDAO = {
       getActiveLeaseByTenant: jest.fn().mockResolvedValue({ fees: { currency: 'USD' } }),
@@ -5156,6 +5161,9 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
         })
       ),
       update: jest.fn().mockReturnValue(Promise.resolve(true)),
+      incrementUsageCounter: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ matched: true, modified: true })),
     } as any;
 
     const mockPaymentDAO = {
@@ -5181,9 +5189,9 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
     // Give fire-and-forget time to execute
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
-      { cuid: CUID },
-      { $inc: { 'manualRecords.countThisPeriod': 1 } }
+    expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+      CUID,
+      'manualRecords.countThisPeriod'
     );
   });
 

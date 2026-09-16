@@ -1,0 +1,39 @@
+<div class="content">
+  <p>A user has submitted feedback from the app.</p>
+
+  <div class="detail-card">
+    <table class="detail-table">
+      <tr>
+        <td class="detail-label">Category</td>
+        <td class="detail-value"><%= category %></td>
+      </tr>
+      <% if (typeof rating !== 'undefined' && rating) { %>
+      <tr>
+        <td class="detail-label">Rating</td>
+        <td class="detail-value"><%= '★'.repeat(rating) %><%= '☆'.repeat(5 - rating) %> (<%= rating %>/5)</td>
+      </tr>
+      <% } %>
+      <tr>
+        <td class="detail-label">User</td>
+        <td class="detail-value"><%= userName %> (<%= userEmail %>)</td>
+      </tr>
+      <% if (typeof userRole !== 'undefined' && userRole) { %>
+      <tr>
+        <td class="detail-label">Role</td>
+        <td class="detail-value"><%= userRole %></td>
+      </tr>
+      <% } %>
+      <% if (typeof clientName !== 'undefined' && clientName) { %>
+      <tr>
+        <td class="detail-label">Account</td>
+        <td class="detail-value"><%= clientName %></td>
+      </tr>
+      <% } %>
+    </table>
+  </div>
+
+  <h3>Message</h3>
+  <div class="message-quote">
+    <%= message %>
+  </div>
+</div>

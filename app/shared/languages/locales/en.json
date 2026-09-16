@@ -54,7 +54,7 @@
       "tokenRefreshed": "Token refreshed successfully",
       "tokenValidated": "Token validated successfully",
       "userHasAccess": "User has access to client",
-      "activationEmailSent": "Account activation email has been sent to {{email}}",
+      "activationEmailSent": "Check your email ({{email}}) for an activation link to verify your account. If you don't see it, check your spam folder.",
       "loginSuccessful": "Login successful.",
       "loginTypeResolved": "Please enter your password.",
       "otpSent": "Verification code sent to your phone.",

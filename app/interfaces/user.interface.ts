@@ -388,6 +388,17 @@ export type ISignupData = {
   lang: string;
 };
 
+export interface IUser {
+  passwordResetTokenExpiresAt: Date | number | null;
+  activationTokenExpiresAt: Date | number | null;
+  passkeys?: IPasskeyCredential[];
+  passwordResetToken?: string;
+  activationToken?: string;
+  consent?: IUserConsent;
+  password: string;
+  email: string;
+}
+
 export interface IIdentificationType {
   identityVerification?: {
     sessionId?: string;
@@ -406,16 +417,6 @@ export interface FilteredUserTenantInfo {
   rentStatus?: string; // paid, overdue, pending, etc.
 }
 
-export interface IUser {
-  passwordResetTokenExpiresAt: Date | number | null;
-  activationTokenExpiresAt: Date | number | null;
-  passwordResetToken?: string;
-  activationToken?: string;
-  consent?: IUserConsent;
-  password: string;
-  email: string;
-}
-
 export interface IBaseUserProfile {
   phoneNumber: string;
   displayName: string;
@@ -428,6 +429,18 @@ export interface IBaseUserProfile {
   email: string;
   uid: string;
   id: string;
+}
+
+export interface IPasskeyCredential {
+  lastUsedAt: Date | null;
+  transports?: string[];
+  credentialId: string;
+  friendlyName: string;
+  deviceType: string;
+  publicKey: string;
+  backedUp: boolean;
+  counter: number;
+  createdAt: Date;
 }
 
 export interface ISignupAccountType extends IAccountType {

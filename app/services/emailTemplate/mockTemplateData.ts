@@ -154,7 +154,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       unitNumber: '101',
       endDate: '2026-08-10T00:00:00.000Z',
       leaseUrl: 'http://localhost:3000/leases/L2026-XYNU6',
-      propertyManagerEmail: 'manager@propertydesk.com',
+      propertyManagerEmail: 'manager@propertydesk.live',
       propertyManagerPhone: '(416) 555-0123',
     },
     LEASE_PAYMENT_REMINDER: {

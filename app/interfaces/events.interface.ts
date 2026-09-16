@@ -95,6 +95,7 @@ export enum EventTypes {
   UNIT_UNARCHIVED = 'unit:unarchived',
   PAYMENT_OVERDUE = 'payment:overdue',
   INVOICE_OVERDUE = 'invoice:overdue',
+  PLAN_DOWNGRADED = 'plan:downgraded',
   PAYMENT_FAILED = 'payment:failed',
   LEASE_EXPIRED = 'lease:expired',
   USER_ARCHIVED = 'user:archived',
@@ -104,10 +105,10 @@ export enum EventTypes {
   UPLOAD_FAILED = 'upload:failed',
   PAYOUT_FAILED = 'payout:failed',
   EMAIL_FAILED = 'email:failed',
+
   UNIT_CREATED = 'unit:created',
 
   UNIT_UPDATED = 'unit:updated',
-
   PAYOUT_PAID = 'payout:paid',
   EMAIL_SENT = 'email:sent',
 }
@@ -196,6 +197,7 @@ export type EventPayloadMap = {
   [EventTypes.GUEST_PASS_REVOKED]: GuestPassRevokedPayload;
   [EventTypes.GUEST_PASS_ACKNOWLEDGED]: GuestPassAcknowledgedPayload;
   [EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING]: SubscriptionRenewalUpcomingPayload;
+  [EventTypes.PLAN_DOWNGRADED]: PlanDowngradedPayload;
   [EventTypes.INSPECTION_SCHEDULED]: InspectionScheduledPayload;
   [EventTypes.INSPECTION_REMINDER]: InspectionReminderPayload;
   [EventTypes.INSPECTION_SUBMITTED]: InspectionSubmittedPayload;
@@ -862,6 +864,13 @@ export interface PadMandateConfirmedPayload {
   pmAccountId: string;
   mandateId: string;
   tenantId: string;
+  cuid: string;
+}
+
+export interface PlanDowngradedPayload {
+  disabledFeatures: string[];
+  fromPlan: string;
+  toPlan: string;
   cuid: string;
 }
 

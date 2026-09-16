@@ -9,6 +9,7 @@ import {
   GuestPassService,
   MetricsService,
   PaymentService,
+  ReportService,
   QueueFactory,
   LeaseService,
   DSARService,
@@ -23,6 +24,7 @@ interface IConstructor {
   guestPassService: GuestPassService;
   metricsService: MetricsService;
   paymentService: PaymentService;
+  reportService: ReportService;
   leaseService: LeaseService;
   queueFactory: QueueFactory;
   userService: UserService;
@@ -48,6 +50,7 @@ export class CronService {
     guestPassService,
     subscriptionService,
     inspectionService,
+    reportService,
     paymentService,
     userService,
     dsarService,
@@ -64,6 +67,7 @@ export class CronService {
       paymentService,
       guestPassService,
       inspectionService,
+      reportService,
       userService,
       smsService,
       metricsService,

@@ -3,7 +3,7 @@ import { App } from '@root/app';
 import { container } from '@di/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
-import { DatabaseService } from '@database/index';
+import { DatabaseService, RedisService } from '@database/index';
 
 /**
  * Creates a test Express application for integration testing
@@ -13,11 +13,12 @@ import { DatabaseService } from '@database/index';
 export const createTestApp = (): Application => {
   const expApp = express();
 
-  // Get database service from container
+  // Get database and redis services from container
   const dbService = container.resolve<DatabaseService>('dbService');
+  const redisService = container.resolve<RedisService>('redisService');
 
   // Initialize the app with all middleware and routes
-  const app = new App(expApp, dbService);
+  const app = new App(expApp, dbService, redisService);
   app.initConfig();
 
   return expApp;

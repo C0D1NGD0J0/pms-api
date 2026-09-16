@@ -182,7 +182,9 @@ export class SubscriptionService {
     }
   }
 
-  async getSubscriptionPlans(): IPromiseReturnedData<ISubscriptionPlanResponse[]> {
+  async getSubscriptionPlans(
+    currency: string = 'usd'
+  ): IPromiseReturnedData<ISubscriptionPlanResponse[]> {
     const STRIPE_PLANS_CACHE_KEY = 'subscription:stripe:plans';
     const STRIPE_PLANS_CACHE_TTL = 60 * 60; // 1 hour
 
@@ -219,8 +221,28 @@ export class SubscriptionService {
       const stripeData = stripePriceMap.get(config.name.toLowerCase());
       const completeFeatures = subscriptionPlanConfig.getCompleteFeatureList(planName);
 
-      const monthlyPriceInCents = stripeData?.monthly.amount ?? config.pricing.monthly.priceInCents;
-      const annualPriceInCents = stripeData?.annual.amount ?? config.pricing.annual.priceInCents;
+      // Resolve currency-specific pricing (fall back to default/USD)
+      const cur = currency.toLowerCase();
+      const monthlyCurrencyConfig = config.pricing.monthly.currencies?.[cur];
+      const annualCurrencyConfig = config.pricing.annual.currencies?.[cur];
+
+      const monthlyPriceInCents =
+        monthlyCurrencyConfig?.priceInCents ??
+        stripeData?.monthly.amount ??
+        config.pricing.monthly.priceInCents;
+      const annualPriceInCents =
+        annualCurrencyConfig?.priceInCents ??
+        stripeData?.annual.amount ??
+        config.pricing.annual.priceInCents;
+
+      const monthlyPriceId =
+        monthlyCurrencyConfig?.priceId ||
+        stripeData?.monthly.priceId ||
+        config.pricing.monthly.priceId;
+      const annualPriceId =
+        annualCurrencyConfig?.priceId ||
+        stripeData?.annual.priceId ||
+        config.pricing.annual.priceId;
 
       return {
         planName: config.planName,
@@ -238,17 +260,18 @@ export class SubscriptionService {
         limits: config.limits,
         featureList: completeFeatures.enabled,
         disabledFeatures: completeFeatures.disabled,
+        currency: cur,
         pricing: {
           monthly: {
-            priceId: stripeData?.monthly.priceId || config.pricing.monthly.priceId,
+            priceId: monthlyPriceId,
             priceInCents: monthlyPriceInCents,
-            displayPrice: this.formatPrice(monthlyPriceInCents || 0),
+            displayPrice: this.formatPrice(monthlyPriceInCents || 0, cur),
             lookUpKey: stripeData?.monthly.lookUpKey || null,
           },
           annual: {
-            priceId: stripeData?.annual.priceId || config.pricing.annual.priceId,
+            priceId: annualPriceId,
             priceInCents: annualPriceInCents,
-            displayPrice: this.formatPrice(annualPriceInCents || 0),
+            displayPrice: this.formatPrice(annualPriceInCents || 0, cur),
             savingsPercent: config.pricing.annual.savingsPercent,
             savingsDisplay: `Save ${config.pricing.annual.savingsPercent}%`,
             lookUpKey: stripeData?.annual.lookUpKey || null,
@@ -824,6 +847,16 @@ export class SubscriptionService {
             percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
           };
         })(),
+        reportGenerationUsage: (() => {
+          const count = subscription.reportGenerationUsage?.countThisPeriod ?? 0;
+          const quota = config.limits.maxReportsPerMonth ?? 0;
+          return {
+            countThisPeriod: count,
+            quota,
+            remaining: Math.max(0, quota - count),
+            percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
+          };
+        })(),
       };
 
       return { data: planUsage, success: true };
@@ -1357,6 +1390,23 @@ export class SubscriptionService {
           throw new BadRequestError({ message: t('subscription.errors.noActiveSubscription') });
         }
 
+        // Block downgrades when current usage exceeds target plan limits
+        const targetPlanName = (checkoutData.planName as PlanName) || subscription.planName;
+        if (subscriptionPlanConfig.isDowngrade(subscription.planName, targetPlanName)) {
+          const violations = subscriptionPlanConfig.validateDowngradeLimits(targetPlanName, {
+            seats: subscription.currentSeats,
+            properties: subscription.currentProperties,
+            units: subscription.currentUnits,
+          });
+
+          if (violations.length > 0) {
+            const targetName = subscriptionPlanConfig.getDisplayName(targetPlanName);
+            throw new BadRequestError({
+              message: `Cannot downgrade to ${targetName}: your account has ${violations.join(', ')}. Please reduce usage before downgrading.`,
+            });
+          }
+        }
+
         const session = await this.subscriptionDAO.startSession();
         try {
           const result = await this.subscriptionDAO.withTransaction(session, async (cxtsession) => {
@@ -1374,16 +1424,27 @@ export class SubscriptionService {
               });
             }
 
-            // Get plan config to update entitlements
-            const planConfig = subscriptionPlanConfig.getConfig(subscription.planName);
+            const newPlanName = (checkoutData.planName as PlanName) || subscription.planName;
+            const planConfig = subscriptionPlanConfig.getConfig(newPlanName);
+            const interval =
+              checkoutData.billingInterval || subscription.billingInterval || 'monthly';
+
+            // Recalculate seat costs with the new plan's pricing
+            const newSeatCost = calcSeatCost(
+              subscription.additionalSeatsCount ?? 0,
+              planConfig.seatPricing.additionalSeatPriceCents
+            );
 
             // Update local DB (endDate will be updated by Stripe webhook)
             const updatedSubscription = await this.subscriptionDAO.update(
               { _id: subscription._id },
               {
                 $set: {
-                  billingInterval: checkoutData.billingInterval,
+                  planName: newPlanName,
+                  billingInterval: interval,
                   entitlements: planConfig.features,
+                  additionalSeatsCost: newSeatCost,
+                  totalMonthlyPrice: planConfig.pricing[interval].priceInCents + newSeatCost,
                   'billing.planId': priceId,
                   'billing.planLookUpKey': checkoutData.lookUpKey,
                 },
@@ -1400,6 +1461,19 @@ export class SubscriptionService {
 
             return updatedSubscription;
           });
+
+          // Deactivate feature-specific resources on downgrade
+          if (subscriptionPlanConfig.isDowngrade(subscription.planName, targetPlanName)) {
+            const targetConfig = subscriptionPlanConfig.getConfig(targetPlanName);
+            if (!targetConfig.features.reportingAnalytics) {
+              this.emitterService.emit(EventTypes.PLAN_DOWNGRADED, {
+                cuid,
+                fromPlan: subscription.planName,
+                toPlan: targetPlanName,
+                disabledFeatures: ['reportingAnalytics'],
+              });
+            }
+          }
 
           // Invalidate cache
           try {
@@ -1438,9 +1512,9 @@ export class SubscriptionService {
     }
   }
 
-  private formatPrice(priceInCents: number): string {
-    if (priceInCents === 0) return '$0';
-    return `$${MoneyUtils.centsToDisplay(priceInCents)}`;
+  private formatPrice(priceInCents: number, currency: string = 'usd'): string {
+    if (priceInCents === 0) return MoneyUtils.formatCurrency(0, currency.toUpperCase());
+    return MoneyUtils.formatCurrency(priceInCents, currency.toUpperCase());
   }
 
   // WEBHOOKS — delegated to SubscriptionWebhookService
@@ -1618,31 +1692,106 @@ export class SubscriptionService {
         });
       }
 
-      const stripeSubscriptionId = subscription.billing?.subscriberId;
-      if (!stripeSubscriptionId) {
+      const customerId = subscription.billing?.customerId;
+      const subscriberId = subscription.billing?.subscriberId;
+      if (!customerId && !subscriberId) {
         throw new BadRequestError({ message: t('subscription.errors.noLinkedSubscription') });
       }
 
-      const stripeResult = await this.paymentGatewayService.getSubscriptionWithItems(
-        IPaymentGatewayProvider.STRIPE,
-        stripeSubscriptionId
-      );
+      // Fetch stored subscription first; if it's canceled, find the customer's current active one
+      let stripeSub: any = null;
 
-      if (!stripeResult.success || !stripeResult.data) {
+      if (subscriberId) {
+        const result = await this.paymentGatewayService.getSubscriptionWithItems(
+          IPaymentGatewayProvider.STRIPE,
+          subscriberId
+        );
+        if (result.success && result.data) {
+          stripeSub = result.data;
+        }
+      }
+
+      // If stored subscription is canceled/inactive, look up the customer's active subscription
+      if ((!stripeSub || stripeSub.status !== 'active') && customerId) {
+        const activeSubscriptions = await this.paymentGatewayService.listCustomerSubscriptions(
+          IPaymentGatewayProvider.STRIPE,
+          customerId,
+          { status: 'active', limit: 1 }
+        );
+        if (activeSubscriptions?.data?.[0]) {
+          stripeSub = activeSubscriptions.data[0];
+        }
+      }
+
+      if (!stripeSub) {
         throw new BadRequestError({
           message: t('common.errors.operationFailed', { action: 'retrieve subscription details' }),
         });
       }
-
-      const stripeSub = stripeResult.data;
       const updateData: Record<string, unknown> = {
         endDate: new Date(stripeSub.current_period_end * 1000),
         startDate: new Date(stripeSub.current_period_start * 1000),
       };
 
+      // Link the new subscriber ID if it changed (e.g. upgrade created a new subscription)
+      if (stripeSub.id && stripeSub.id !== subscriberId) {
+        updateData['billing.subscriberId'] = stripeSub.id;
+      }
+
       if (stripeSub.status === 'active') {
         updateData.status = ISubscriptionStatus.ACTIVE;
       }
+
+      // Sync planName from Stripe price lookup_key
+      let activePlanName = subscription.planName;
+      for (const item of stripeSub.items?.data ?? []) {
+        const lookupKey = item.price?.lookup_key;
+        if (!lookupKey) continue;
+        const resolvedPlan = subscriptionPlanConfig.resolvePlanByLookupKey(lookupKey);
+        if (resolvedPlan) {
+          if (resolvedPlan !== subscription.planName) {
+            updateData.planName = resolvedPlan;
+            updateData.entitlements = subscriptionPlanConfig.getConfig(resolvedPlan).features;
+            if (item.price?.id) updateData['billing.planId'] = item.price.id;
+            this.log.info(
+              { cuid, oldPlan: subscription.planName, newPlan: resolvedPlan },
+              'Plan name synced from Stripe (was out of date)'
+            );
+          }
+          activePlanName = resolvedPlan;
+          break;
+        }
+      }
+
+      // Sync seats from Stripe items and recalculate costs with the active plan's pricing
+      const activeConfig = subscriptionPlanConfig.getConfig(activePlanName);
+      const billingInterval = subscription.billingInterval || 'monthly';
+      const stripeItemsList = stripeSub.items?.data ?? [];
+
+      // Collect seat lookup keys from all plans (seat item may have old plan's key)
+      const allSeatKeys = new Set<string>();
+      for (const pn of [subscription.planName, activePlanName]) {
+        const c = subscriptionPlanConfig.getConfig(pn);
+        if (c.seatPricing.lookUpKeys?.monthly) allSeatKeys.add(c.seatPricing.lookUpKeys.monthly);
+        if (c.seatPricing.lookUpKeys?.annual) allSeatKeys.add(c.seatPricing.lookUpKeys.annual);
+        if (c.seatPricing.lookUpKey) allSeatKeys.add(c.seatPricing.lookUpKey);
+      }
+
+      const seatItem = stripeItemsList.find((item: any) => allSeatKeys.has(item.price?.lookup_key));
+
+      let seatCost = 0;
+      if (seatItem) {
+        const qty = seatItem.quantity || 0;
+        seatCost = calcSeatCost(qty, activeConfig.seatPricing.additionalSeatPriceCents);
+        updateData.additionalSeatsCount = qty;
+        updateData.additionalSeatsCost = seatCost;
+        if (seatItem.id) updateData['billing.seatItemId'] = seatItem.id;
+      } else if (subscription.additionalSeatsCount > 0) {
+        updateData.additionalSeatsCount = 0;
+        updateData.additionalSeatsCost = 0;
+      }
+
+      updateData.totalMonthlyPrice = activeConfig.pricing[billingInterval].priceInCents + seatCost;
 
       const updated = await this.subscriptionDAO.update(
         { _id: subscription._id },
@@ -1655,8 +1804,18 @@ export class SubscriptionService {
         });
       }
 
+      // Invalidate all caches so the UI reflects the updated plan
+      try {
+        await Promise.all([
+          this.authCache.client.DEL(`billing_history:${cuid}`),
+          this.subscriptionCache.invalidate(cuid),
+        ]);
+      } catch (err) {
+        this.log.warn({ err, cuid }, 'Cache invalidation after sync failed');
+      }
+
       this.log.info(
-        { cuid, stripeSubscriptionId, newEndDate: updateData.endDate },
+        { cuid, stripeSubId: stripeSub.id, planName: updateData.planName },
         'Subscription synced from Stripe'
       );
 

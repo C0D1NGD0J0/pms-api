@@ -360,6 +360,8 @@ export class PaymentController {
       // Other
       'expire-guest-passes': ['guestPassService', 'expireStaleGuestPasses'],
       'metrics-snapshot': ['metricsService', 'captureAllSnapshots'],
+      // Report
+      'scheduled-reports': ['reportService', 'processScheduledReports'],
     };
 
     const entry = jobMap[jobName];

@@ -1,8 +1,12 @@
 import express, { Router } from 'express';
+import { EmailQueue } from '@queues/index';
 import { asyncWrapper } from '@utils/index';
+import { QueueFactory } from '@services/queue';
+import { httpStatusCodes } from '@utils/constants';
 import { AuthController } from '@controllers/index';
-import { isAuthenticated, basicLimiter } from '@shared/middlewares';
 import { validateRequest, AuthValidations } from '@shared/validations';
+import { requirePermission, isAuthenticated, basicLimiter } from '@shared/middlewares';
+import { PermissionResource, PermissionAction, MailType } from '@interfaces/utils.interface';
 
 const router: Router = express.Router();
 
@@ -99,12 +103,59 @@ router.patch(
   })
 );
 
+router.patch(
+  '/change_password',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
+  validateRequest({
+    body: AuthValidations.changePassword,
+  }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.changePassword(req, res);
+  })
+);
+
 router.delete(
   '/:cuid/logout',
+  basicLimiter(),
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.logout(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/feedback',
+  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
+  isAuthenticated,
+  requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
+  validateRequest({ body: AuthValidations.feedback }),
+  asyncWrapper(async (req, res) => {
+    const { category, message, rating } = req.body;
+    const currentuser = req.context?.currentuser;
+    const { cuid } = req.params;
+
+    const queueFactory = req.container.resolve<QueueFactory>('queueFactory');
+    const emailQueue = queueFactory.getQueue('emailQueue') as EmailQueue;
+
+    emailQueue.addToEmailQueue(MailType.USER_FEEDBACK, {
+      to: 'support@propertydesk.live',
+      subject: `[Feedback] ${category} — ${currentuser?.fullname || 'Unknown User'}`,
+      emailType: MailType.USER_FEEDBACK,
+      data: {
+        category,
+        message,
+        rating: rating || null,
+        userName: currentuser?.fullname || 'Unknown',
+        userEmail: currentuser?.email || 'N/A',
+        userRole: currentuser?.client?.role || 'N/A',
+        clientName: currentuser?.client?.displayname || cuid,
+      },
+    });
+
+    res.status(httpStatusCodes.OK).json({ success: true, message: 'Feedback submitted' });
   })
 );
 
@@ -168,6 +219,73 @@ router.delete(
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.removePaymentMethod(req, res);
+  })
+);
+
+// ── Passkey Discoverable Login (no email required) ─────────────
+
+router.get(
+  '/passkeys/auth_options',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.getDiscoverablePasskeyOptions(req, res);
+  })
+);
+
+router.post(
+  '/passkeys/auth_verify',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  validateRequest({ body: AuthValidations.passkeyDiscoverableVerify }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.verifyDiscoverablePasskey(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/passkeys',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.listPasskeys(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/passkeys/registration_options',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.getPasskeyRegistrationOptions(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/passkeys/registration_verify',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  validateRequest({ body: AuthValidations.passkeyRegVerify }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.verifyPasskeyRegistration(req, res);
+  })
+);
+
+router.delete(
+  '/:cuid/passkeys',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
+  requirePermission(PermissionResource.USER, PermissionAction.DELETE),
+  validateRequest({ body: AuthValidations.passkeyDelete }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.deletePasskey(req, res);
   })
 );
 

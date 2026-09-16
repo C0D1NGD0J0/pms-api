@@ -1,5 +1,6 @@
 export { MaintenanceRequestDAO } from './maintenanceRequestDAO';
 export { PaymentProcessorDAO } from './paymentProcessorDAO';
+export { ReportScheduleDAO } from './reportScheduleDAO';
 export { PropertyUnitDAO } from './propertyUnitDAO';
 export { SubscriptionDAO } from './subscriptionDAO';
 export { NotificationDAO } from './notificationDAO';
@@ -12,6 +13,7 @@ export { ExpenseDAO } from './expenseDAO';
 export { PaymentDAO } from './paymentDAO';
 export { ProfileDAO } from './profileDAO';
 export { InvoiceDAO } from './invoiceDAO';
+export { ReportDAO } from './reportDAO';
 export { ClientDAO } from './clientDAO';
 export { SMSLogDAO } from './smsLogDAO';
 export { VendorDAO } from './vendorDAO';

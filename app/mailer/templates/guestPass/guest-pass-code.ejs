@@ -1,7 +1,6 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Your Guest Access Code</h2>
       <p>Hi <strong><%= visitorName %></strong>,</p>
       <p>
         You have been granted guest access. Please present this code to security at the entrance gate.
@@ -32,39 +31,17 @@
 
   <tr>
     <td class="content">
-      <table class="detail-table" role="presentation">
-        <tr>
-          <td class="detail-label">Property</td>
-          <td class="detail-value"><%= propertyName %></td>
-        </tr>
-        <% if (unitNumber) { %>
-        <tr>
-          <td class="detail-label">Unit</td>
-          <td class="detail-value"><%= unitNumber %></td>
-        </tr>
-        <% } %>
-        <% if (propertyAddress) { %>
-        <tr>
-          <td class="detail-label">Address</td>
-          <td class="detail-value"><%= propertyAddress %></td>
-        </tr>
-        <% } %>
-        <tr>
-          <td class="detail-label">Your Host</td>
-          <td class="detail-value"><%= hostName %></td>
-        </tr>
-        <% if (hostPhone) { %>
-        <tr>
-          <td class="detail-label">Contact</td>
-          <td class="detail-value"><%= hostPhone %></td>
-        </tr>
-        <% } %>
-      </table>
+      <% var guestRows = [
+        { label: "Property", value: propertyName }
+      ];
+      if (unitNumber) { guestRows.push({ label: "Unit", value: unitNumber }); }
+      if (propertyAddress) { guestRows.push({ label: "Address", value: propertyAddress }); }
+      guestRows.push({ label: "Your Host", value: hostName });
+      if (hostPhone) { guestRows.push({ label: "Contact", value: hostPhone }); }
+      %>
+      <%- include("../shared/html/_detail-table", { rows: guestRows }) %>
 
-      <div class="notice-box warning" style="margin-top: 20px;">
-        <strong>Show this code to security personnel</strong> at the entrance gate.
-        This code will expire automatically after the valid period and can only be used once.
-      </div>
+      <%- include("../shared/html/_notice", { text: '<strong>Show this code to security personnel</strong> at the entrance gate. This code will expire automatically after the valid period and can only be used once.', type: 'warning' }) %>
     </td>
   </tr>
 </table>

@@ -1,0 +1,17 @@
+<%
+  // Params: text (string), type? ('info' | 'warning' | 'expiry' | 'danger')
+  var _type = typeof type !== 'undefined' && type ? type : 'info';
+  var _bg, _border, _color, _prefix, _align;
+
+  if (_type === 'info')    { _bg = '#f0f7fa'; _border = '#b8d8e4'; _color = '#1a5a6a'; _prefix = '&#9432;'; _align = 'left'; }
+  if (_type === 'warning') { _bg = '#fffbeb'; _border = '#fde68a'; _color = '#92400e'; _prefix = '&#9888;'; _align = 'left'; }
+  if (_type === 'danger')  { _bg = '#fef2f2'; _border = '#fecaca'; _color = '#991b1b'; _prefix = '&#9888;'; _align = 'left'; }
+  if (_type === 'expiry')  { _bg = '#fffbf2'; _border = '#f5e6c8'; _color = '#D9952B'; _prefix = '&#9203;'; _align = 'center'; }
+%>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 16px 0;">
+  <tr>
+    <td style="background-color: <%= _bg %>; border: 1px solid <%= _border %>; border-radius: 10px; padding: 14px 20px; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; color: <%= _color %>; text-align: <%= _align %>; line-height: 1.6;">
+      <%- _prefix %>&nbsp; <%- text %>
+    </td>
+  </tr>
+</table>

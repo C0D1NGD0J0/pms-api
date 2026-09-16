@@ -189,7 +189,12 @@ export class ExpenseService implements IExpenseService {
     }
   }
 
-  async getPnLSummary(cuid: string, from: string, to: string): IPromiseReturnedData<IPnLSummary> {
+  async getPnLSummary(
+    cuid: string,
+    from: string,
+    to: string,
+    propertyId?: string
+  ): IPromiseReturnedData<IPnLSummary> {
     try {
       const fromDate = new Date(from);
       const toDate = new Date(to);
@@ -201,10 +206,16 @@ export class ExpenseService implements IExpenseService {
       const dateMatch = { $gte: fromDate, $lte: toDate };
 
       // Income: join Payment → Lease, group by (currency, propertyId)
-      const incomeRaw = await this.paymentDAO.getIncomeByPropertyAndCurrency(cuid, dateMatch);
+      const incomeRaw = await this.paymentDAO.getIncomeByPropertyAndCurrency(
+        cuid,
+        dateMatch,
+        propertyId
+      );
 
       // Expenses: group by (currency, category) and (currency, propertyId)
-      const expMatch = { date: dateMatch };
+      const expMatch: Record<string, any> = { date: dateMatch };
+      if (propertyId) expMatch.propertyId = new Types.ObjectId(propertyId);
+
       const [expByCategory, expByPropertyRaw] = await Promise.all([
         this.expenseDAO.aggregateByCategory(cuid, expMatch),
         this.expenseDAO.aggregateByProperty(cuid, expMatch),

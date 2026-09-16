@@ -18,7 +18,7 @@ class WorkerProcess {
     this.registerShutdownHandlers();
 
     try {
-      this.pidManager.check();
+      await this.pidManager.check();
 
       this.log.info(`🚀 Starting worker process... ${process.env.NODE_ENV}`);
 

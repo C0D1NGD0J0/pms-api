@@ -1,0 +1,41 @@
+<%
+/**
+ * Fallback executive analysis template — rendered when AI analysis is disabled or unavailable.
+ * Generates a deterministic narrative summary from the same report data.
+ *
+ * Expected variables: unitCounts, leaseStats, paymentStats, pnl, maintenanceStats,
+ *                     inspectionStats, trends, period
+ */
+const fc = (cents, currency) => {
+  const val = (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${currency} $${val}`;
+};
+
+const pct = (v) => v != null ? `${v}%` : 'N/A';
+const trendWord = (delta) => delta > 0 ? 'up' : delta < 0 ? 'down' : 'unchanged';
+-%>
+<% if (unitCounts) { -%>
+Occupancy stands at <%= pct(unitCounts.occupancyRate) %> with <%= unitCounts.occupied %> of <%= unitCounts.total %> units occupied and <%= unitCounts.vacant %> vacant.<% if (trends?.occupancyRate?.deltaPercent != null) { %> This is <%= trendWord(trends.occupancyRate.delta) %> <%= Math.abs(trends.occupancyRate.deltaPercent) %>% compared to the previous period.<% } %>
+<% } -%>
+
+<% if (paymentStats?.byCurrency?.length) { -%>
+<% for (const curr of paymentStats.byCurrency) { -%>
+Revenue for <%= curr.currency %> totals <%= fc(curr.totalRevenue, curr.currency) %> with <%= fc(curr.monthRevenue, curr.currency) %> collected this period and <%= fc(curr.pendingAmount, curr.currency) %> pending.<% } %> The on-time payment rate is <%= pct(paymentStats.onTimeRate) %> with <%= paymentStats.overdueCount %> overdue payments and an average payment delay of <%= paymentStats.avgPaymentDelayDays %> days.
+<% } -%>
+
+<% if (leaseStats) { -%>
+There are currently <%= leaseStats.activeLeases %> active leases<% if (leaseStats.expiringIn30Days) { %>, with <%= leaseStats.expiringIn30Days %> expiring in the next 30 days and <%= leaseStats.expiringIn90Days || 0 %> within 90 days<% } %>.<% if (trends?.activeLeases?.deltaPercent != null) { %> Active leases are <%= trendWord(trends.activeLeases.delta) %> <%= Math.abs(trends.activeLeases.deltaPercent) %>% from the prior period.<% } %>
+<% } -%>
+
+<% if (maintenanceStats) { -%>
+The maintenance team has handled <%= maintenanceStats.total %> work orders with <%= maintenanceStats.open || 0 %> currently open and <%= maintenanceStats.completed || 0 %> completed. Average resolution time is <%= maintenanceStats.avgResolutionDays || 'N/A' %> days.<% if (trends?.openWorkOrders?.delta > 0) { %> Open work orders have increased by <%= trends.openWorkOrders.delta %> compared to the previous period.<% } %>
+<% } -%>
+
+<% if (pnl?.byCurrency?.length) { -%>
+<% for (const curr of pnl.byCurrency) { -%>
+Financial summary (<%= curr.currency %>): net income of <%= fc(curr.netIncome, curr.currency) %> on total income of <%= fc(curr.income?.total || 0, curr.currency) %> against expenses of <%= fc(curr.expenses?.total || 0, curr.currency) %>.<% } %>
+<% } -%>
+
+<% if (inspectionStats) { -%>
+<%= inspectionStats.total %> inspections have been conducted with <%= inspectionStats.approved %> approved and <%= inspectionStats.scheduled %> scheduled. Average completion time is <%= inspectionStats.avgCompletionDays || 'N/A' %> days.
+<% } -%>

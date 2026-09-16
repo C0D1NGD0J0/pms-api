@@ -12,8 +12,11 @@ export class AuthCache extends BaseCache {
   private readonly KEY_PREFIXES = {
     TOKEN: 'auth:token',
     USER: 'auth:user',
+    WEBAUTHN_REG: 'auth:webauthn:reg',
+    WEBAUTHN_AUTH: 'auth:webauthn:auth',
   };
 
+  private readonly WEBAUTHN_CHALLENGE_TTL = 300; // 5 minutes
   private readonly ACCESS_TOKEN_TTL: number;
   private readonly REFRESH_TOKEN_TTL: number;
   private readonly USER_CACHE_TTL: number;
@@ -234,6 +237,28 @@ export class AuthCache extends BaseCache {
         error: (error as Error).message,
       };
     }
+  }
+
+  // ── WebAuthn Challenge Storage ─────────────────────────────────
+
+  async saveWebAuthnRegChallenge(userId: string, challenge: string): Promise<ISuccessReturnData> {
+    const key = `${this.KEY_PREFIXES.WEBAUTHN_REG}:${userId}`;
+    return this.setItem(key, challenge, this.WEBAUTHN_CHALLENGE_TTL);
+  }
+
+  async getAndDeleteWebAuthnRegChallenge(userId: string): Promise<string | null> {
+    const key = `${this.KEY_PREFIXES.WEBAUTHN_REG}:${userId}`;
+    return this.client.getDel(key);
+  }
+
+  async saveWebAuthnAuthChallenge(email: string, challenge: string): Promise<ISuccessReturnData> {
+    const key = `${this.KEY_PREFIXES.WEBAUTHN_AUTH}:${email}`;
+    return this.setItem(key, challenge, this.WEBAUTHN_CHALLENGE_TTL);
+  }
+
+  async getAndDeleteWebAuthnAuthChallenge(email: string): Promise<string | null> {
+    const key = `${this.KEY_PREFIXES.WEBAUTHN_AUTH}:${email}`;
+    return this.client.getDel(key);
   }
 
   /**

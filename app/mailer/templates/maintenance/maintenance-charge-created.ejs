@@ -1,7 +1,6 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Maintenance Charge Added to Your Account</h2>
       <p>
         A maintenance charge has been added to your account for work completed at your property.
         You have until <strong><%= new Date(dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %></strong> to pay manually —
@@ -12,42 +11,23 @@
 
   <tr>
     <td class="content" style="padding-top: 0;">
-      <div class="detail-card warning">
-        <h3 style="margin-top: 0;">Charge Details</h3>
-        <table class="detail-table">
-          <tr>
-            <td class="detail-label">Reference #</td>
-            <td class="detail-value"><%= mruid %></td>
-          </tr>
-          <% if (jobTitle) { %>
-          <tr>
-            <td class="detail-label">Job</td>
-            <td class="detail-value"><%= jobTitle %></td>
-          </tr>
-          <% } %>
-          <tr>
-            <td class="detail-label">Amount Due</td>
-            <td class="detail-value" style="font-size: 18px; font-weight: 700; color: #dc2626;">
-              $<%= (amountInCents / 100).toFixed(2) %> <%= (currency || 'USD').toUpperCase() %>
-            </td>
-          </tr>
-          <tr>
-            <td class="detail-label">Due Date</td>
-            <td class="detail-value">
-              <%= new Date(dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %>
-            </td>
-          </tr>
-        </table>
-      </div>
+      <%
+        var _rows = [
+          { label: 'Reference #', value: mruid }
+        ];
+        if (jobTitle) {
+          _rows.push({ label: 'Job', value: jobTitle });
+        }
+        _rows.push({ label: 'Amount Due', value: '$' + (amountInCents / 100).toFixed(2) + ' ' + (currency || 'USD').toUpperCase() });
+        _rows.push({ label: 'Due Date', value: new Date(dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) });
+      %>
+      <%- include("../shared/html/_detail-table", { rows: _rows, variant: 'amber' }) %>
     </td>
   </tr>
 
   <tr>
     <td class="content" style="text-align: center; padding: 24px 32px;">
-      <a href="<%= process.env.APP_URL %>/tenants/<%= cuid %>/<%= pytuid %>/payments"
-         style="display: inline-block; background-color: #124e66; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 15px;">
-        Pay Now
-      </a>
+      <%- include("../shared/html/_button", { url: process.env.APP_URL + '/tenants/' + cuid + '/' + pytuid + '/payments', label: 'Pay Now', colorClass: 'btn-accent' }) %>
     </td>
   </tr>
 

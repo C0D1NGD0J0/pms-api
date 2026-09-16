@@ -10,6 +10,7 @@ import type {
   FeaturesConfig,
   FrontendConfig,
   GeocoderConfig,
+  WebAuthnConfig,
   ClamavConfig,
   ServerConfig,
   StripeConfig,
@@ -39,6 +40,7 @@ class EnvVariables {
   public ANTHROPIC: AnthropicConfig;
   public TWILIO: TwilioConfig;
   public FEATURES: FeaturesConfig;
+  public WEBAUTHN: WebAuthnConfig;
   public APP_NAME: string;
 
   constructor() {
@@ -115,7 +117,7 @@ class EnvVariables {
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
     };
     this.FRONTEND = {
-      URL: process.env.FRONTEND_URL || '',
+      URL: (process.env.FRONTEND_URL || '').split(',')[0].trim(),
     };
     this.STRIPE = {
       SECRET_KEY: process.env.STRIPE_SECRET_KEY || '',
@@ -136,7 +138,7 @@ class EnvVariables {
       DEFAULT_SENDER_EMAIL:
         process.env.BOLDSIGN_DEFAULT_SENDER_EMAIL ||
         process.env.APP_EMAIL_ADDRESS ||
-        'noreply@propertydesk.com',
+        'noreply@propertydesk.live',
     };
     this.GEOCODER = {
       PROVIDER: process.env.GEOCODER_PROVIDER || '',
@@ -162,7 +164,7 @@ class EnvVariables {
     this.VAPID = {
       PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY || '',
       PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY || '',
-      SUBJECT: process.env.VAPID_SUBJECT || 'mailto:support@propertydesk.com',
+      SUBJECT: process.env.VAPID_SUBJECT || 'mailto:support@propertydesk.live',
     };
     this.FEATURES = {
       AI_ENABLED: process.env.FEATURE_AI_ENABLED !== 'false',
@@ -174,12 +176,20 @@ class EnvVariables {
       AI_INVOICE_SCANNING_ENABLED: process.env.FEATURE_AI_INVOICE_SCANNING_ENABLED === 'true',
       // Inspection photo analysis via Claude vision — opt-in only (sends images to Anthropic).
       AI_INSPECTION_ANALYSIS_ENABLED: process.env.FEATURE_AI_INSPECTION_ANALYSIS_ENABLED === 'true',
+      // Text-based AI report analysis — opt-out (no sensitive data sent, just aggregated numbers).
+      AI_REPORT_ANALYSIS_ENABLED: process.env.FEATURE_AI_REPORT_ANALYSIS_ENABLED !== 'false',
       ESIGNATURE_ENABLED: process.env.FEATURE_ESIGNATURE_ENABLED !== 'false',
       SMS_ENABLED: process.env.FEATURE_SMS_ENABLED !== 'false',
       MCP_ENABLED: process.env.FEATURE_MCP_ENABLED !== 'false',
       PUSH_NOTIFICATIONS_ENABLED: process.env.FEATURE_PUSH_NOTIFICATIONS_ENABLED !== 'false',
       INSPECTION_ENABLED: process.env.FEATURE_INSPECTION_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
+    };
+    this.WEBAUTHN = {
+      ENABLED: process.env.WEBAUTHN_ENABLED === 'true',
+      RP_ID: process.env.WEBAUTHN_RP_ID || 'localhost',
+      RP_NAME: process.env.WEBAUTHN_RP_NAME || this.APP_NAME || 'PropertyDesk',
+      RP_ORIGIN: process.env.WEBAUTHN_RP_ORIGIN || this.FRONTEND.URL || 'http://localhost:3000',
     };
     try {
       this.validateSecretValue();

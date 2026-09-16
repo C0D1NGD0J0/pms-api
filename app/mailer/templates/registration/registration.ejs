@@ -1,23 +1,16 @@
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
-      <h2>Activate Your Account</h2>
-      <p>Hi <%= fullname %>,</p>
+      <p>Hi <strong><%= fullname %></strong>,</p>
       <p>
-        Welcome to PropertyDesk. You're one step away from accessing your account — click the button below to complete your setup.
+        Welcome to <strong style="color: #153D4D;">PropertyDesk</strong>. You're one step away from accessing your account — click the button below to complete your setup.
       </p>
-      <p style="font-size: 13px; color: #64748b;">
-        This link expires in <strong>2 hours</strong>. If you didn't create an account, you can safely ignore this email.
-      </p>
+      <%- include("../shared/html/_notice", { text: 'This link expires in <strong>2 hours</strong>. If you didn\'t create an account, you can safely ignore this email.', type: 'expiry' }) %>
     </td>
   </tr>
   <tr>
     <td class="cta">
       <%- include("../shared/html/_button", { url: activationUrl, label: "Activate My Account" }) %>
-      <p class="fallback-link">
-        Button not working? Copy and paste this link into your browser:<br />
-        <%= activationUrl %>
-      </p>
     </td>
   </tr>
 </table>

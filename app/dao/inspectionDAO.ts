@@ -64,9 +64,12 @@ export class InspectionDAO extends BaseDAO<IInspectionDocument> {
     });
   }
 
-  async getStats(cuid: string): Promise<IInspectionStats> {
+  async getStats(cuid: string, opts?: { propertyId?: string }): Promise<IInspectionStats> {
+    const match: Record<string, any> = { cuid, deletedAt: null };
+    if (opts?.propertyId) match.propertyId = new Types.ObjectId(opts.propertyId);
+
     const results = await this.aggregate([
-      { $match: { cuid, deletedAt: null } },
+      { $match: match },
       {
         $facet: {
           byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],

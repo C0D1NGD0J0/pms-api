@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import bunyan from 'bunyan';
 import * as path from 'path';
+import * as fsp from 'fs/promises';
 
 export class PidManager {
   private readonly pidDir: string;
@@ -20,11 +21,11 @@ export class PidManager {
    * In development: kills the old process and takes over (nodemon restarts).
    * In production: exits to prevent duplicate processes.
    */
-  check(): void {
-    this.ensurePidDirectory();
+  async check(): Promise<void> {
+    await this.ensurePidDirectory();
 
     if (fs.existsSync(this.pidFile)) {
-      const existingPid = this.readPidFile();
+      const existingPid = await this.readPidFile();
 
       if (this.isProcessRunning(existingPid)) {
         const isDev = process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'dev';
@@ -41,7 +42,7 @@ export class PidManager {
             }
           }
           // Brief wait for old process to release resources
-          this.waitForProcessExit(existingPid, 3000);
+          await this.waitForProcessExit(existingPid, 3000);
         } else {
           this.log.warn(
             `${this.processName.toUpperCase()} process already running with PID ${existingPid}. Exiting to prevent duplicate processes.`
@@ -53,7 +54,7 @@ export class PidManager {
       this.cleanup();
     }
 
-    this.writePidFile();
+    await this.writePidFile();
     this.log.info(`${this.processName.toUpperCase()} process PID ${process.pid} registered`);
   }
 
@@ -67,7 +68,7 @@ export class PidManager {
       return;
     }
 
-    const pid = this.readPidFile();
+    const pid = this.readPidFileSync();
     if (pid <= 0) {
       this.log.warn('Invalid PID in file, cleaning up');
       this.cleanup();
@@ -138,13 +139,22 @@ export class PidManager {
     }
   }
 
-  private ensurePidDirectory(): void {
-    if (!fs.existsSync(this.pidDir)) {
-      fs.mkdirSync(this.pidDir, { recursive: true });
+  private async ensurePidDirectory(): Promise<void> {
+    await fsp.mkdir(this.pidDir, { recursive: true });
+  }
+
+  private async readPidFile(): Promise<number> {
+    try {
+      const content = await fsp.readFile(this.pidFile, 'utf8');
+      return parseInt(content.trim(), 10);
+    } catch (err) {
+      this.log.warn('Failed to read PID file:', err);
+      return -1;
     }
   }
 
-  private readPidFile(): number {
+  /** Sync variant for killProcess (called from signal handlers where async isn't safe) */
+  private readPidFileSync(): number {
     try {
       return parseInt(fs.readFileSync(this.pidFile, 'utf8').trim(), 10);
     } catch (err) {
@@ -153,27 +163,25 @@ export class PidManager {
     }
   }
 
-  private writePidFile(): void {
+  private async writePidFile(): Promise<void> {
     try {
-      fs.writeFileSync(this.pidFile, process.pid.toString());
+      await fsp.writeFile(this.pidFile, process.pid.toString());
     } catch (err) {
       this.log.error('Failed to write PID file:', err);
       throw err;
     }
   }
 
-  private waitForProcessExit(pid: number, timeoutMs: number): void {
+  private async waitForProcessExit(pid: number, timeoutMs: number): Promise<void> {
     const start = Date.now();
     const interval = 100;
-    // Shared buffer used solely as a blocking target for Atomics.wait (no data written)
-    const sharedBuf = new Int32Array(new SharedArrayBuffer(4));
 
     while (Date.now() - start < timeoutMs) {
       if (!this.isProcessRunning(pid)) {
         return;
       }
-      // Non-spinning synchronous sleep — releases CPU while waiting
-      Atomics.wait(sharedBuf, 0, 0, interval);
+      // Non-blocking async sleep instead of Atomics.wait
+      await new Promise((resolve) => setTimeout(resolve, interval));
     }
 
     // Force kill if still alive

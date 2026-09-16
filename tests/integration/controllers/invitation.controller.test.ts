@@ -119,6 +119,7 @@ describe('InvitationController Integration Tests', () => {
       emitterService: { on: jest.fn(), emit: jest.fn() } as any,
       twilioService: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(false) } as any,
+      webAuthnService: {} as any,
     });
 
     const mockUserService = {

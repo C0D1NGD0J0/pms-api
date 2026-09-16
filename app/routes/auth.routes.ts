@@ -105,8 +105,8 @@ router.patch(
 
 router.patch(
   '/change_password',
-  isAuthenticated,
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  isAuthenticated,
   validateRequest({
     body: AuthValidations.changePassword,
   }),
@@ -118,6 +118,7 @@ router.patch(
 
 router.delete(
   '/:cuid/logout',
+  basicLimiter(),
   isAuthenticated,
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -127,9 +128,9 @@ router.delete(
 
 router.post(
   '/:cuid/feedback',
+  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
   isAuthenticated,
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
-  basicLimiter({ max: 5, windowMs: 60 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.feedback }),
   asyncWrapper(async (req, res) => {
     const { category, message, rating } = req.body;
@@ -244,9 +245,9 @@ router.post(
 
 router.get(
   '/:cuid/passkeys',
+  basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
-  basicLimiter(),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.listPasskeys(req, res);
@@ -255,9 +256,9 @@ router.get(
 
 router.get(
   '/:cuid/passkeys/registration_options',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.READ),
-  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
     return authController.getPasskeyRegistrationOptions(req, res);
@@ -266,9 +267,9 @@ router.get(
 
 router.post(
   '/:cuid/passkeys/registration_verify',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
-  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.passkeyRegVerify }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');
@@ -278,9 +279,9 @@ router.post(
 
 router.delete(
   '/:cuid/passkeys',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   isAuthenticated,
   requirePermission(PermissionResource.USER, PermissionAction.DELETE),
-  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   validateRequest({ body: AuthValidations.passkeyDelete }),
   asyncWrapper((req, res) => {
     const authController = req.container.resolve<AuthController>('authController');

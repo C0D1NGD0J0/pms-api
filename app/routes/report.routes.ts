@@ -16,9 +16,8 @@ import {
 } from '@shared/middlewares';
 
 const router = Router();
-router.use(isAuthenticated, basicLimiter());
+router.use(basicLimiter(), isAuthenticated);
 
-// ─── On-demand generation ───────────────────────────────────────────
 router.post(
   '/:cuid/generate',
   requireNotSuspended,
@@ -103,8 +102,6 @@ router.delete(
     return controller.deactivateSchedule(req, res);
   })
 );
-
-// ─── Individual report operations ──────────────────────────────────
 
 router.delete(
   '/:cuid/:reportId',

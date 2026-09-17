@@ -133,6 +133,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       const queryOptions = {
         new: true,
         upsert: true,
+        runValidators: true,
+        context: 'query' as const,
         ...options,
       };
 
@@ -174,7 +176,12 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     session?: ClientSession
   ): Promise<T | null> {
     try {
-      const options = { returnDocument: 'after' as const, ...opts };
+      const options = {
+        returnDocument: 'after' as const,
+        runValidators: true,
+        context: 'query' as const,
+        ...opts,
+      };
       let query = this.model.findOneAndUpdate(
         { _id: new Types.ObjectId(id) },
         updateOperation,
@@ -198,7 +205,13 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     session?: ClientSession
   ): Promise<T | null> {
     try {
-      const options = { returnDocument: 'after' as const, ...opts, upsert: false };
+      const options = {
+        returnDocument: 'after' as const,
+        runValidators: true,
+        context: 'query' as const,
+        ...opts,
+        upsert: false,
+      };
       let query = this.model.findOneAndUpdate(filter, updateOperation, options);
 
       if (session) {
@@ -477,6 +490,10 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   ): Promise<T> {
     try {
       if (!session || envVariables.SERVER.ENV === 'development') {
+        if (session && envVariables.SERVER.ENV === 'development') {
+          this.logger.warn('Transactions skipped in development mode');
+          await session.endSession();
+        }
         return await operations();
       }
 
@@ -488,16 +505,20 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         error.codeName === 'IllegalOperation' &&
         error.message?.includes('Transaction numbers are only allowed')
       ) {
-        return await operations(); // Try again without transaction
+        this.logger.error(
+          'MongoDB deployment does not support transactions (no replica set). ' +
+            'This operation requires transactional guarantees. ' +
+            'Configure MongoDB as a replica set.'
+        );
+        throw error;
       }
 
-      // Handle specific MongoDB transaction errors
       if (error.hasErrorLabel && error.hasErrorLabel('TransientTransactionError')) {
-        // this.logger.warn('Transient transaction error, operation may be retried');
+        this.logger.warn('Transient transaction error — caller may retry');
       }
 
       if (error.hasErrorLabel && error.hasErrorLabel('UnknownTransactionCommitResult')) {
-        // this.logger.warn('Unknown transaction commit result');
+        this.logger.warn('Unknown transaction commit result');
       }
 
       throw error;

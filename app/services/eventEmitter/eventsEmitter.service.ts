@@ -60,7 +60,10 @@ export class EventEmitterService {
 
     const safeHandler = (payload: EventPayloadMap[T]) => {
       try {
-        handler(payload);
+        // Use Promise.resolve to catch both sync throws and async rejections
+        Promise.resolve(handler(payload)).catch((error) => {
+          this.log.error(`Error in async event handler for ${eventType}:`, error);
+        });
       } catch (error) {
         this.log.error(`Error in event handler for ${eventType}:`, error);
       }
@@ -85,7 +88,9 @@ export class EventEmitterService {
     // Wrap handler to catch errors and clean up
     const safeHandler = (payload: EventPayloadMap[T]) => {
       try {
-        handler(payload);
+        Promise.resolve(handler(payload)).catch((error) => {
+          this.log.error(`Error in async once handler for ${eventType}:`, error);
+        });
       } catch (error) {
         this.log.error(`Error in once handler for ${eventType}:`, error);
       } finally {

@@ -145,3 +145,6 @@ uploads/
 backups/
 scripts/*
 app-documentation/*
+
+# Tenant branding configs (contain per-tenant secrets/settings)
+app/branding/tenants/

@@ -492,7 +492,8 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       if (!session || envVariables.SERVER.ENV === 'development') {
         if (session && envVariables.SERVER.ENV === 'development') {
           this.logger.warn('Transactions skipped in development mode');
-          await session.endSession();
+          // Do NOT end the caller-provided session here — the caller may still need it.
+          // The finally block handles session cleanup.
         }
         return await operations();
       }

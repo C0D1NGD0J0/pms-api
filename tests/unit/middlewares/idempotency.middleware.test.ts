@@ -255,6 +255,28 @@ describe('idempotency middleware', () => {
     });
   });
 
+  // ── Handler crash leaves claim to expire via TTL ────────────────────────
+
+  describe('when the route handler throws (never calls res.json)', () => {
+    it('should have called next() — the claim expires naturally via TTL', async () => {
+      const req = buildMockRequest({
+        headers: { 'idempotency-key': 'idem-crash' },
+      });
+      const cache = req.container!.cradle.idempotencyCache as any;
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      const res = buildMockResponse();
+
+      await idempotency(req as AppRequest, res as Response, next as NextFunction);
+
+      // The middleware called next() — if the handler throws without calling
+      // res.json, the intercepted json wrapper never runs. The processing
+      // claim stays in Redis and expires after ROUTE_PROCESSING_LOCK_TTL (30s).
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(cache.finalizeRouteRequest).not.toHaveBeenCalled();
+      expect(cache.releaseRouteClaim).not.toHaveBeenCalled();
+    });
+  });
+
   // ── userId / cuid fallbacks ───────────────────────────────────────────────
 
   describe('userId and cuid defaults', () => {

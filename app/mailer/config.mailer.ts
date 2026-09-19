@@ -260,6 +260,16 @@ export const TEMPLATE_HERO_CONFIG: Record<string, HeroConfig> = {
     title: 'Renewal Receipt',
     subtitle: 'Subscription renewed successfully',
   },
+  [MailType.SUBSCRIPTION_CANCELED]: {
+    icon: '&#x2B50;',
+    title: 'Subscription Canceled',
+    subtitle: 'Your subscription has been canceled',
+  },
+  [MailType.SUBSCRIPTION_UPDATED]: {
+    icon: '&#x2B50;',
+    title: 'Subscription Updated',
+    subtitle: 'Your subscription has been changed',
+  },
   [MailType.COMPANY_CLOSURE_OWNER]: {
     icon: '&#x2B50;',
     title: 'Account Closure',
@@ -416,46 +426,44 @@ export class MailService {
 
     switch (type) {
       case MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT:
+        emailData._status = 'submitted_tenant';
         template = await this.buildTemplate(
-          'maintenance-work-order-submitted-tenant',
+          'maintenance-work-order-status',
           emailData,
           'maintenance'
         );
         break;
       case MailType.MAINTENANCE_WORK_ORDER_SUBMITTED:
+        emailData._status = 'submitted';
         template = await this.buildTemplate(
-          'maintenance-work-order-submitted',
+          'maintenance-work-order-status',
           emailData,
           'maintenance'
         );
         break;
       case MailType.MAINTENANCE_WORK_ORDER_APPROVED:
+        emailData._status = 'approved';
         template = await this.buildTemplate(
-          'maintenance-work-order-approved',
+          'maintenance-work-order-status',
           emailData,
           'maintenance'
         );
         break;
       case MailType.MAINTENANCE_WORK_ORDER_REJECTED:
+        emailData._status = 'rejected';
         template = await this.buildTemplate(
-          'maintenance-work-order-rejected',
+          'maintenance-work-order-status',
           emailData,
           'maintenance'
         );
         break;
       case MailType.MAINTENANCE_INVOICE_SUBMITTED:
-        template = await this.buildTemplate(
-          'maintenance-invoice-submitted',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'submitted';
+        template = await this.buildTemplate('maintenance-invoice-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_REQUEST_COMPLETED:
-        template = await this.buildTemplate(
-          'maintenance-request-completed',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'completed';
+        template = await this.buildTemplate('maintenance-request-status', emailData, 'maintenance');
         break;
       case MailType.SUBSCRIPTION_RENEWAL_UPCOMING:
         template = await this.buildTemplate('subscription-renewal', emailData, 'subscription');
@@ -468,46 +476,28 @@ export class MailService {
         );
         break;
       case MailType.MAINTENANCE_REQUEST_ASSIGNED:
-        template = await this.buildTemplate(
-          'maintenance-request-assigned',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'assigned';
+        template = await this.buildTemplate('maintenance-request-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_REQUEST_DECLINED:
-        template = await this.buildTemplate(
-          'maintenance-request-declined',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'declined';
+        template = await this.buildTemplate('maintenance-request-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_INVOICE_APPROVED:
-        template = await this.buildTemplate(
-          'maintenance-invoice-approved',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'approved';
+        template = await this.buildTemplate('maintenance-invoice-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_INVOICE_REJECTED:
-        template = await this.buildTemplate(
-          'maintenance-invoice-rejected',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'rejected';
+        template = await this.buildTemplate('maintenance-invoice-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_REQUEST_ACCEPTED:
-        template = await this.buildTemplate(
-          'maintenance-request-accepted',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'accepted';
+        template = await this.buildTemplate('maintenance-request-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_REQUEST_CREATED:
-        template = await this.buildTemplate(
-          'maintenance-request-created',
-          emailData,
-          'maintenance'
-        );
+        emailData._status = 'created';
+        template = await this.buildTemplate('maintenance-request-status', emailData, 'maintenance');
         break;
       case MailType.MAINTENANCE_CHARGE_CREATED:
         template = await this.buildTemplate('maintenance-charge-created', emailData, 'maintenance');
@@ -525,19 +515,27 @@ export class MailService {
         template = await this.buildTemplate('payment-request', emailData, 'payment');
         break;
       case MailType.COMPANY_CLOSURE_VENDOR:
-        template = await this.buildTemplate('company-closure-vendor', emailData, 'subscription');
+        emailData._audience = 'vendor';
+        template = await this.buildTemplate('company-closure', emailData, 'subscription');
         break;
       case MailType.LEASE_PAYMENT_REMINDER:
         template = await this.buildTemplate('payment-reminder', emailData, 'lease');
         break;
       case MailType.COMPANY_CLOSURE_TENANT:
-        template = await this.buildTemplate('company-closure-tenant', emailData, 'subscription');
+        emailData._audience = 'tenant';
+        template = await this.buildTemplate('company-closure', emailData, 'subscription');
         break;
       case MailType.COMPANY_CLOSURE_STAFF:
-        template = await this.buildTemplate('company-closure-staff', emailData, 'subscription');
+        emailData._audience = 'staff';
+        template = await this.buildTemplate('company-closure', emailData, 'subscription');
         break;
       case MailType.COMPANY_CLOSURE_OWNER:
-        template = await this.buildTemplate('company-closure-owner', emailData, 'subscription');
+        emailData._audience = 'owner';
+        template = await this.buildTemplate('company-closure', emailData, 'subscription');
+        break;
+      case MailType.SUBSCRIPTION_CANCELED:
+        emailData._status = 'canceled';
+        template = await this.buildTemplate('subscription-status', emailData, 'subscription');
         break;
       case MailType.ACCOUNT_DISCONNECTED:
         template = await this.buildTemplate(
@@ -547,13 +545,20 @@ export class MailService {
         );
         break;
       case MailType.INSPECTION_SCHEDULED:
-        template = await this.buildTemplate('inspection-scheduled', emailData, 'inspection');
+        emailData._status = 'scheduled';
+        template = await this.buildTemplate('inspection-status', emailData, 'inspection');
         break;
       case MailType.INSPECTION_SUBMITTED:
-        template = await this.buildTemplate('inspection-submitted', emailData, 'inspection');
+        emailData._status = 'submitted';
+        template = await this.buildTemplate('inspection-status', emailData, 'inspection');
         break;
       case MailType.INSPECTION_CANCELLED:
-        template = await this.buildTemplate('inspection-cancelled', emailData, 'inspection');
+        emailData._status = 'cancelled';
+        template = await this.buildTemplate('inspection-status', emailData, 'inspection');
+        break;
+      case MailType.SUBSCRIPTION_UPDATED:
+        emailData._status = 'updated';
+        template = await this.buildTemplate('subscription-status', emailData, 'subscription');
         break;
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
@@ -562,10 +567,12 @@ export class MailService {
         template = await this.buildTemplate('lease-admin-updated', emailData, 'lease');
         break;
       case MailType.INSPECTION_APPROVED:
-        template = await this.buildTemplate('inspection-approved', emailData, 'inspection');
+        emailData._status = 'approved';
+        template = await this.buildTemplate('inspection-status', emailData, 'inspection');
         break;
       case MailType.INSPECTION_REJECTED:
-        template = await this.buildTemplate('inspection-rejected', emailData, 'inspection');
+        emailData._status = 'rejected';
+        template = await this.buildTemplate('inspection-status', emailData, 'inspection');
         break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
@@ -609,22 +616,9 @@ export class MailService {
       case MailType.REPORT_READY:
         template = await this.buildTemplate('report-ready', emailData, 'report');
         break;
-      case MailType.INVITATION: {
-        // Select template based on user role
-        const role = emailData.role;
-        let templateName = 'invitation'; // fallback to generic template
-
-        if (role === ROLES.VENDOR) {
-          templateName = 'invitation-vendor';
-        } else if (role === ROLES.TENANT) {
-          templateName = 'invitation-tenant';
-        } else {
-          templateName = 'invitation-staff';
-        }
-
-        template = await this.buildTemplate(templateName, emailData, 'invitation');
+      case MailType.INVITATION:
+        template = await this.buildTemplate('invitation', emailData, 'invitation');
         break;
-      }
       default:
         throw new Error(`Unsupported mail type: ${type}`);
     }
@@ -703,13 +697,8 @@ export class MailService {
       [MailType.INVITATION_REMINDER]: 'Reminder: Your Invitation is Still Active',
       [MailType.USER_CREATED]: 'Your Account Has Been Created',
       default: defaultText,
-      [MailType.SUBSCRIPTION_UPDATE]: defaultText,
-      [MailType.SUBSCRIPTION_CANCEL]: defaultText,
-      [MailType.USER_REGISTRATION]: defaultText,
       [MailType.PASSWORD_RESET]: 'Password Reset Request',
       [MailType.ACCOUNT_UPDATE]: 'Account recently updated.',
-      [MailType.LEASE_APPLICATION_UPDATE]: 'Lease Application Update',
-      [MailType.LEASE_SIGNOFF_REQUEST]: 'Lease Sign-off Request',
       [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
       [MailType.LEASE_EXPIRED]: 'Your Lease Has Expired',
@@ -738,6 +727,8 @@ export class MailService {
       [MailType.PAD_PRE_DEBIT_NOTIFICATION]: 'Upcoming Pre-Authorized Debit Notification',
       [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
+      [MailType.SUBSCRIPTION_CANCELED]: 'Your Subscription Has Been Canceled',
+      [MailType.SUBSCRIPTION_UPDATED]: 'Your Subscription Has Been Updated',
       [MailType.GUEST_PASS_CODE]: 'Your Visitor Access Code',
       [MailType.INSPECTION_SCHEDULED]: 'Inspection Scheduled',
       [MailType.INSPECTION_SUBMITTED]: 'Inspection Report Submitted',

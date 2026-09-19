@@ -8,6 +8,7 @@ const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24 * 3; // 72 hours — covers Stripe's 
 // In production: 24 h keeps the window wide enough to catch all client retries.
 // In development: 5 min so developers can re-test the same form action without manually clearing Redis.
 const ROUTE_TTL = process.env.NODE_ENV === 'production' ? 60 * 60 * 24 : 60 * 5;
+const ROUTE_PROCESSING_LOCK_TTL = 30; // 30 seconds — enough for one request; expires if handler crashes
 
 export class IdempotencyCache extends BaseCache {
   constructor({ redisService }: { redisService: RedisService }) {
@@ -50,6 +51,77 @@ export class IdempotencyCache extends BaseCache {
   /** Release a webhook claim so Stripe's retry can reclaim it. */
   async releaseWebhookClaim(eventId: string): Promise<void> {
     await this.deleteItems([`idmp:wh:${eventId}`]);
+  }
+
+  /**
+   * Atomically claim a route request for processing. Returns:
+   * - 'claimed': this request won the race and should proceed
+   * - 'processing': another request is still processing (return 409)
+   * - { statusCode, body }: a completed cached response to replay
+   *
+   * Uses a Lua script to make the SET NX + GET atomic — eliminates the
+   * TOCTOU race window that existed when these were two separate calls.
+   */
+  async claimRouteRequest(
+    method: string,
+    routePath: string,
+    userId: string,
+    cuid: string,
+    idempotencyKey: string
+  ): Promise<'claimed' | 'processing' | { statusCode: number; body: unknown }> {
+    const key = this.routeKey(method, routePath, userId, cuid, idempotencyKey);
+    const processingValue = this.serialize('processing');
+
+    // Atomic: SET NX → if won return nil (claimed), else return current value
+    const result = await this.client.sendCommand([
+      'EVAL',
+      `local ok = redis.call('SET', KEYS[1], ARGV[1], 'NX', 'EX', ARGV[2])
+if ok then return nil end
+return redis.call('GET', KEYS[1])`,
+      '1',
+      key,
+      processingValue,
+      String(ROUTE_PROCESSING_LOCK_TTL),
+    ]);
+
+    // nil → we won the claim
+    if (result === null) return 'claimed';
+
+    // Key existed — parse the stored value
+    try {
+      const parsed = JSON.parse(result as string);
+      if (parsed && typeof parsed === 'object' && 'statusCode' in parsed) {
+        return parsed as { statusCode: number; body: unknown };
+      }
+    } catch {
+      // Value is not JSON (e.g. serialized "processing" string) — still processing
+    }
+    return 'processing';
+  }
+
+  /** Store a completed route response, replacing the processing claim with the full TTL. */
+  async finalizeRouteRequest(
+    method: string,
+    routePath: string,
+    userId: string,
+    cuid: string,
+    idempotencyKey: string,
+    statusCode: number,
+    body: unknown
+  ): Promise<void> {
+    const key = this.routeKey(method, routePath, userId, cuid, idempotencyKey);
+    await this.setItem(key, this.serialize({ statusCode, body }), ROUTE_TTL);
+  }
+
+  /** Release a route claim so a retry can reclaim it (e.g. on handler error). */
+  async releaseRouteClaim(
+    method: string,
+    routePath: string,
+    userId: string,
+    cuid: string,
+    idempotencyKey: string
+  ): Promise<void> {
+    await this.deleteItems([this.routeKey(method, routePath, userId, cuid, idempotencyKey)]);
   }
 
   /** Look up a cached route response. Returns null if not found. */

@@ -12,6 +12,7 @@ export interface IVendorDAO {
     businessTypeDistribution: any[];
     servicesDistribution: any[];
     totalVendors: number;
+    activeVendors: number;
   }>;
   getFilteredVendors(
     cuid: string,

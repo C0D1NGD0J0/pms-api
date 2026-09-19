@@ -67,6 +67,8 @@ const setupServices = () => {
         inProgress: 0,
         completed: 0,
       }),
+      getVendorAvgRatingBatch: jest.fn().mockResolvedValue(new Map()),
+      getVendorAvgRating: jest.fn().mockResolvedValue(null),
     } as any,
     queueFactory: mockQueueFactory as any,
     emitterService: {} as any,
@@ -604,6 +606,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect(result.data).toHaveProperty('totalVendors');
+      expect(result.data).toHaveProperty('activeVendors');
       expect(result.data).toHaveProperty('businessTypeDistribution');
       expect(result.data).toHaveProperty('servicesDistribution');
     });

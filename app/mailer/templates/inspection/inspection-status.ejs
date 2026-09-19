@@ -1,0 +1,117 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= currentuser.firstName %></strong>,</p>
+
+      <% if (_status === 'scheduled') { %>
+      <p>
+        A <strong><%= inspectionType %></strong> inspection has been scheduled for your unit.
+        <strong>You are responsible for conducting this inspection</strong> by walking through each room,
+        rating the condition of items, and uploading photos as evidence.
+      </p>
+      <% } else if (_status === 'submitted') { %>
+      <p>
+        A <strong><%= inspectionType %></strong> inspection report has been submitted and is now
+        available for your review. You can view the full report and respond to the findings.
+      </p>
+      <% } else if (_status === 'approved') { %>
+        <% if (hasRefund && refundAmount > 0) { %>
+        <p>
+          Your inspection has been reviewed and approved. A refund of
+          <strong><%= (refundAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> out of your
+          <strong><%= (depositAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> security deposit will be processed.
+        </p>
+        <% } else if (hasRefund) { %>
+        <p>
+          Your inspection has been reviewed and approved. No security deposit refund will be issued.
+        </p>
+        <% } else { %>
+        <p>
+          Your inspection has been reviewed and approved. No further action is required on your part.
+        </p>
+        <% } %>
+      <% } else if (_status === 'rejected') { %>
+        <% if (isFinal) { %>
+        <p>
+          Your inspection has been reviewed and <strong>rejected</strong>.
+          Please review the details below and contact your property manager for next steps.
+        </p>
+        <% } else { %>
+        <p>
+          Your inspection report requires revision before it can be finalized.
+          Please review the feedback below.
+        </p>
+        <% } %>
+      <% } else if (_status === 'cancelled') { %>
+      <p>
+        A previously scheduled inspection has been cancelled. No action is required on your part.
+        If you have questions, please contact your property manager.
+      </p>
+      <% } %>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <% if (_status === 'scheduled') { %>
+      <%- include("../shared/html/_detail-table", { rows: [
+        { label: "Reference #", value: iuid },
+        { label: "Type", value: inspectionType },
+        { label: "Scheduled Date", value: scheduledDate }
+      ]}) %>
+      <% } else if (_status === 'submitted') { %>
+      <%- include("../shared/html/_detail-table", { rows: [
+        { label: "Reference #", value: iuid },
+        { label: "Type", value: inspectionType }
+      ]}) %>
+      <% } else if (_status === 'approved') { %>
+      <%
+        var approvedRows = [
+          { label: "Reference #", value: iuid },
+          { label: "Status", value: "Approved", badge: { bg: "#dcfce7", color: "#16a34a" } }
+        ];
+        if (hasRefund) {
+          approvedRows.push({ label: "Deposit Refund", value: ((refundAmount || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) });
+        }
+      %>
+      <%- include("../shared/html/_detail-table", { rows: approvedRows }) %>
+      <% } else if (_status === 'rejected') { %>
+      <%- include("../shared/html/_detail-table", { rows: [
+        { label: "Reference #", value: iuid },
+        { label: "Status", value: isFinal ? 'Rejected' : 'Revision Required', badge: { bg: "#fef2f2", color: "#dc2626" } },
+        { label: "Reason", value: reason }
+      ]}) %>
+      <% } else if (_status === 'cancelled') { %>
+      <%- include("../shared/html/_detail-table", { rows: [
+        { label: "Reference #", value: iuid },
+        { label: "Status", value: "Cancelled", badge: { bg: "#f1f5f9", color: "#64748b" } }
+      ]}) %>
+      <% } %>
+    </td>
+  </tr>
+
+  <% if (_status === 'scheduled') { %>
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <div style="margin-top: 20px; background-color: #f8fafb; border: 1px solid #e8edf2; border-radius: 10px; padding: 22px 24px;">
+        <h3 style="margin-top: 0; font-family: 'DM Sans', system-ui, sans-serif; font-size: 15px; color: #1e293b;">What You Need To Do</h3>
+        <ol style="margin: 0; padding-left: 20px; line-height: 1.8; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px; color: #1e293b;">
+          <li>Log in to your tenant portal and open this inspection</li>
+          <li>Walk through each room and rate the condition of every item</li>
+          <li>Take <strong>at least 2 photos per room</strong> where you find any damage or issues</li>
+          <li>Add notes describing any problems you observe</li>
+          <li>Submit the inspection when all rooms are complete</li>
+        </ol>
+      </div>
+
+      <%- include("../shared/html/_notice", { text: 'Photos are required for any room with damage. Please ensure images are clear and show the full extent of any issues found.', type: 'info' }) %>
+    </td>
+  </tr>
+  <% } else if (_status === 'submitted') { %>
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <%- include("../shared/html/_notice", { text: 'Please review the report at your earliest convenience. If you have any concerns, you may dispute the findings through the portal.', type: 'info' }) %>
+    </td>
+  </tr>
+  <% } %>
+</table>

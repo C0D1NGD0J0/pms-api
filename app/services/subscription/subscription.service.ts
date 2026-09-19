@@ -29,6 +29,7 @@ import {
   IRequestContext,
   ISubscription,
   EventTypes,
+  MailType,
   PlanName,
 } from '@interfaces/index';
 
@@ -592,6 +593,38 @@ export class SubscriptionService {
         },
         message,
       });
+
+      // Send cancellation confirmation email to account admin
+      try {
+        const adminEmail = ctx.currentuser!.email;
+        const adminName = ctx.currentuser!.displayName || ctx.currentuser!.fullname || adminEmail;
+        const planDisplayName = result.planName.charAt(0).toUpperCase() + result.planName.slice(1);
+
+        this.emailQueue.addToEmailQueue('subscriptionCanceled', {
+          to: adminEmail,
+          emailType: MailType.SUBSCRIPTION_CANCELED,
+          subject: '',
+          data: {
+            adminName,
+            planName: planDisplayName,
+            endDate: result.endDate
+              ? new Date(result.endDate).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : undefined,
+            canceledAt: new Date().toLocaleDateString('en-US', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            }),
+            status: result.status,
+          },
+        });
+      } catch (emailError) {
+        this.log.warn({ emailError }, 'Failed to queue subscription cancellation email');
+      }
 
       return { data: result, success: true, message: t('subscription.success.canceled') };
     } catch (error) {

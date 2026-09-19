@@ -160,8 +160,9 @@ describe('VendorController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toBeDefined();
-      expect(typeof response.body.data.total).toBe('number');
-      expect(response.body.data.total).toBeGreaterThanOrEqual(1);
+      expect(typeof response.body.data.totalVendors).toBe('number');
+      expect(response.body.data.totalVendors).toBeGreaterThanOrEqual(1);
+      expect(typeof response.body.data.activeVendors).toBe('number');
     });
 
     it('should filter stats by status', async () => {
@@ -188,7 +189,8 @@ describe('VendorController Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data.total).toBe(0);
+      expect(response.body.data.totalVendors).toBe(0);
+      expect(response.body.data.activeVendors).toBe(0);
     });
   });
 

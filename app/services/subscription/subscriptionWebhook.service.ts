@@ -585,6 +585,45 @@ export class SubscriptionWebhookService {
         message: notificationMessage,
       });
 
+      // Send subscription update email (skip for first activation — that has its own flow)
+      if (!wasFirstActivation) {
+        try {
+          const accountAdminId = await this.getAccountAdminId(updatedSubscription.cuid);
+          if (accountAdminId) {
+            const adminUser = await this.userDAO.findFirst({
+              _id: new Types.ObjectId(accountAdminId),
+              deletedAt: null,
+            });
+            if (adminUser?.email) {
+              const adminName =
+                adminUser.profile?.personalInfo?.firstName || adminUser.fullname || adminUser.email;
+              this.emailQueue.addToEmailQueue('subscriptionUpdated', {
+                to: adminUser.email,
+                emailType: MailType.SUBSCRIPTION_UPDATED,
+                subject: '',
+                data: {
+                  adminName,
+                  planName:
+                    updatedSubscription.planName.charAt(0).toUpperCase() +
+                    updatedSubscription.planName.slice(1),
+                  status: updatedSubscription.status,
+                  additionalSeats: updatedSubscription.additionalSeatsCount,
+                  endDate: updatedSubscription.endDate
+                    ? new Date(updatedSubscription.endDate).toLocaleDateString('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })
+                    : undefined,
+                },
+              });
+            }
+          }
+        } catch (emailError) {
+          this.log.warn({ emailError }, 'Failed to queue subscription update email');
+        }
+      }
+
       return { data: updatedSubscription, success: true };
     } catch (error) {
       this.log.error({ error, data }, 'Error handling subscription update');
@@ -654,6 +693,45 @@ export class SubscriptionWebhookService {
 
       // Pause payouts immediately — don't wait for the daily cron
       await this.syncPayoutSchedule(result.cuid, ISubscriptionStatus.INACTIVE);
+
+      // Send cancellation confirmation email to account admin
+      try {
+        const accountAdminId = await this.getAccountAdminId(result.cuid);
+        if (accountAdminId) {
+          const adminUser = await this.userDAO.findFirst({
+            _id: new Types.ObjectId(accountAdminId),
+            deletedAt: null,
+          });
+          if (adminUser?.email) {
+            const adminName =
+              adminUser.profile?.personalInfo?.firstName || adminUser.fullname || adminUser.email;
+            this.emailQueue.addToEmailQueue('subscriptionCanceled', {
+              to: adminUser.email,
+              emailType: MailType.SUBSCRIPTION_CANCELED,
+              subject: '',
+              data: {
+                adminName,
+                planName: result.planName.charAt(0).toUpperCase() + result.planName.slice(1),
+                endDate: result.endDate
+                  ? new Date(result.endDate).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                  : undefined,
+                canceledAt: new Date(data.canceledAt * 1000).toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                }),
+                status: result.status,
+              },
+            });
+          }
+        }
+      } catch (emailError) {
+        this.log.warn({ emailError }, 'Failed to queue subscription cancellation email');
+      }
 
       return { data: result, success: true };
     } catch (error) {

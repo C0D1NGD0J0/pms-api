@@ -27,6 +27,7 @@ describe('VendorDAO Integration Tests', () => {
       email: 'user1@example.com',
       password: 'hashed',
       activecuid: testCuid,
+      isActive: true,
       cuids: [{ cuid: testCuid, clientDisplayName: 'Test Client 1', roles: [], isConnected: true }],
     });
 
@@ -1015,6 +1016,7 @@ describe('VendorDAO Integration Tests', () => {
       const stats = await vendorDAO.getClientVendorStats(testCuid, {});
 
       expect(stats.totalVendors).toBe(4);
+      expect(stats.activeVendors).toBe(4);
     });
 
     it('should calculate business type distribution', async () => {
@@ -1068,8 +1070,42 @@ describe('VendorDAO Integration Tests', () => {
       const stats = await vendorDAO.getClientVendorStats('NONEXISTENT_CLIENT', {});
 
       expect(stats.totalVendors).toBe(0);
+      expect(stats.activeVendors).toBe(0);
       expect(stats.businessTypeDistribution.length).toBe(0);
       expect(stats.servicesDistribution.length).toBe(0);
+    });
+
+    it('should count active vendors separately from total', async () => {
+      const inactiveUserId = new Types.ObjectId();
+      await User.create({
+        _id: inactiveUserId,
+        uid: 'user-uid-inactive',
+        email: 'inactive@example.com',
+        password: 'hashed',
+        activecuid: testCuid,
+        isActive: false,
+        cuids: [
+          { cuid: testCuid, clientDisplayName: 'Test Client 1', roles: [], isConnected: true },
+        ],
+      });
+
+      await Vendor.create({
+        companyName: 'Inactive Vendor',
+        businessType: 'General Contractor',
+        registrationNumber: 'REG-INACTIVE',
+        connectedClients: [
+          {
+            cuid: testCuid,
+            isConnected: true,
+            primaryAccountHolderUserId: inactiveUserId,
+          },
+        ],
+      });
+
+      const stats = await vendorDAO.getClientVendorStats(testCuid, {});
+
+      expect(stats.totalVendors).toBe(5);
+      expect(stats.activeVendors).toBe(4);
     });
 
     it('should handle vendors with no services offered', async () => {

@@ -1,0 +1,38 @@
+<% if (_status === 'canceled') { %>
+Subscription Canceled
+======================
+
+Hi <%= adminName %>,
+
+Your <%= planName %> subscription has been canceled.
+<% if (endDate) { %>Your access will remain active until <%= endDate %>.
+<% } else { %>Your account has been set to inactive.
+<% } %>
+
+DETAILS
+-------
+Plan:        <%= planName %>
+Status:      <%= endDate ? 'Canceling at period end' : 'Inactive' %>
+<% if (endDate) { %>Active Until: <%= endDate %>
+<% } %><% if (canceledAt) { %>Canceled On: <%= canceledAt %>
+<% } %>
+
+If this was done in error, you can reactivate your subscription from the account settings before your current billing period ends.
+<% } else if (_status === 'updated') { %>
+Subscription Updated
+=====================
+
+Hi <%= adminName %>,
+
+Your subscription has been updated. Here are the details:
+
+DETAILS
+-------
+Plan:   <%= planName %>
+Status: <%= status || 'Active' %>
+<% if (additionalSeats !== undefined) { %>Additional Seats: <%= additionalSeats %>
+<% } %><% if (endDate) { %>Next Billing Date: <%= endDate %>
+<% } %>
+
+You can review your subscription details in your account settings.
+<% } %>

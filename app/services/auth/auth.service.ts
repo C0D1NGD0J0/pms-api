@@ -158,9 +158,18 @@ export class AuthService {
     const cuid = decoded.data.cuid;
 
     const storedRefreshToken = await this.authCache.getRefreshToken(userId, cuid);
-    if (!storedRefreshToken.success) {
-      this.log.error('RefreshToken does not match stored token or expired');
+    if (!storedRefreshToken.success || !storedRefreshToken.data) {
+      this.log.error('RefreshToken not found or expired');
       throw new UnauthorizedError();
+    }
+
+    if (storedRefreshToken.data !== refreshToken) {
+      this.log.warn(
+        { userId, cuid },
+        'Refresh token mismatch — possible replay. Revoking session.'
+      );
+      await this.authCache.invalidateUserSession(userId, cuid);
+      throw new UnauthorizedError({ message: t('auth.errors.invalidRefreshToken') });
     }
 
     const user = await this.userDAO.getUserById(userId);
@@ -399,24 +408,12 @@ export class AuthService {
         });
       }
 
-      this.emitterService.emit(EventTypes.USER_SIGNUP_INITIATED, {
-        subscriptionId: subscriptionResult.data?._id?.toString() || '',
-        billingInterval:
-          (signupData.accountType.billingInterval as 'monthly' | 'annual') || 'monthly',
-        planLookUpKey: signupData.accountType.planLookUpKey || '',
-        planName: signupData.accountType.planName || '',
-        planId: signupData.accountType.planId || '',
-        clientId: client._id.toString(),
-        cuid: clientUid,
-        userId: _userId.toString(),
-        email: user.email,
-      });
-
       return {
         userId: _userId.toString(),
         clientId: client._id.toString(),
         cuid: clientUid,
         email: user.email,
+        subscriptionId: subscriptionResult.data?._id?.toString() || '',
         planName: signupData.accountType.planName,
         planId: signupData.accountType.planId,
         planLookUpKey: signupData.accountType.planLookUpKey,
@@ -431,6 +428,19 @@ export class AuthService {
           },
         },
       };
+    });
+
+    // Emit after transaction commit so listeners only act on committed data
+    this.emitterService.emit(EventTypes.USER_SIGNUP_INITIATED, {
+      subscriptionId: result.subscriptionId,
+      billingInterval: (result.billingInterval as 'monthly' | 'annual') || 'monthly',
+      planLookUpKey: result.planLookUpKey || '',
+      planName: result.planName || '',
+      planId: result.planId || '',
+      clientId: result.clientId,
+      cuid: result.cuid,
+      userId: result.userId,
+      email: result.email,
     });
 
     const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;

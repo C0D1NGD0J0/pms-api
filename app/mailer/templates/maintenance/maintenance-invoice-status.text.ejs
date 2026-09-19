@@ -1,0 +1,50 @@
+<% if (_status === 'submitted') { %>
+Invoice Submitted — Review Required
+=====================================
+
+A vendor has submitted an invoice for the maintenance request below.
+Please approve or reject at your earliest convenience.
+
+INVOICE SUMMARY
+---------------
+Reference #:    <%= request.mruid %>
+Job Title:      <%= request.title %>
+Invoice Amount: $<%= (amount / 100).toFixed(2) %> <%= (request.invoice && request.invoice.currency) ? request.invoice.currency.toUpperCase() : 'USD' %>
+Submitted:      <%= new Date().toLocaleDateString() %>
+<% if (request.invoice && request.invoice.description) { %>Description:    <%= request.invoice.description %>
+<% } %>
+Log in to the portal to approve or reject this invoice.
+<% } else if (_status === 'approved') { %>
+Invoice Approved
+================
+
+Your invoice for the maintenance job below has been approved.
+Payment will be processed according to the agreed terms.
+
+APPROVAL DETAILS
+----------------
+Reference #:    <%= request.mruid %>
+Job:            <%= request.title %>
+<% if (request.invoice) { %>Approved Amount: $<%= (request.invoice.amount / 100).toFixed(2) %> <%= request.invoice.currency.toUpperCase() %>
+Approved By:    <%= approvedBy.firstName || approvedBy.email %>
+Approved On:    <%= new Date().toLocaleDateString() %>
+<% } %>
+For questions about payment timing, contact the property manager directly.
+<% } else if (_status === 'rejected') { %>
+Invoice Rejected — Resubmission Required
+==========================================
+
+Your invoice for the maintenance job below has been rejected.
+Please review the reason and submit a corrected invoice.
+
+REJECTION DETAILS
+-----------------
+Reference #: <%= request.mruid %>
+Job:         <%= request.title %>
+Rejected By: <%= rejectedBy.firstName || rejectedBy.email %>
+Reason:      <%= rejectionReason %>
+
+Log in to the portal to submit a revised invoice.
+
+If you believe this rejection is in error, contact <%= rejectedBy.firstName || rejectedBy.email %><% if (rejectedBy.email) { %> at <%= rejectedBy.email %><% } %>.
+<% } %>

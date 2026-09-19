@@ -1,0 +1,99 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <% if (_status === 'submitted') { %>
+      <p>
+        A vendor has submitted a work order for maintenance request <strong><%= request.mruid %></strong>. Your approval is required before they can begin work.
+      </p>
+      <% } else if (_status === 'submitted_tenant') { %>
+      <p>
+        The vendor assigned to your maintenance request <strong><%= request.mruid %></strong> has submitted a work order. The property manager is currently reviewing it — no action is required from you at this time.
+      </p>
+      <% } else if (_status === 'approved') { %>
+      <p>
+        Your work order for maintenance request <strong><%= request.mruid %></strong> has been <strong style="color: #16a34a;">approved</strong>. You may now proceed with the work.
+      </p>
+      <% } else if (_status === 'rejected') { %>
+      <p>
+        Your work order for maintenance request <strong><%= request.mruid %></strong> has been <strong style="color: #dc2626;">rejected</strong>. Please review the feedback below and resubmit.
+      </p>
+      <% } %>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <%
+        var _rows = [
+          { label: 'Request #', value: request.mruid },
+          { label: 'Title', value: request.title }
+        ];
+
+        if (_status === 'rejected') {
+          _rows.push({ label: 'Rejected By', value: rejectedBy.firstName || rejectedBy.email });
+          _rows.push({ label: 'Reason', value: rejectionReason });
+        } else {
+          _rows.push({ label: 'Estimated Cost', value: '$' + (workOrder.estimatedCostInCents / 100).toFixed(2) });
+          _rows.push({ label: _status === 'submitted_tenant' ? 'Scope' : 'Scope of Work', value: workOrder.scope });
+          if (_status === 'submitted' && workOrder.notes) {
+            _rows.push({ label: 'Notes', value: workOrder.notes });
+          }
+          if (_status === 'approved') {
+            _rows.push({ label: 'Approved By', value: approvedBy.firstName || approvedBy.email });
+          }
+        }
+      %>
+      <%- include("../shared/html/_detail-table", { rows: _rows, variant: _status === 'submitted' ? 'amber' : undefined }) %>
+    </td>
+  </tr>
+
+  <% if (_status === 'submitted' && workOrder.lineItems && workOrder.lineItems.length > 0) { %>
+  <tr>
+    <td class="content">
+      <h3>Line Items</h3>
+      <table role="presentation" width="100%" style="border-collapse: collapse; font-size: 14px;">
+        <thead>
+          <tr style="background-color: #f8fafc;">
+            <th style="padding: 8px 10px; text-align: left; border-bottom: 2px solid #e2e8f0; color: #475569;">Description</th>
+            <th style="padding: 8px 10px; text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569;">Qty</th>
+            <th style="padding: 8px 10px; text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569;">Unit Price</th>
+            <th style="padding: 8px 10px; text-align: right; border-bottom: 2px solid #e2e8f0; color: #475569;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% workOrder.lineItems.forEach(function(item) { %>
+          <tr>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #e2e8f0;"><%= item.description %></td>
+            <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #e2e8f0;"><%= item.quantity %></td>
+            <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #e2e8f0;">$<%= (item.unitPriceInCents / 100).toFixed(2) %></td>
+            <td style="padding: 8px 10px; text-align: right; border-bottom: 1px solid #e2e8f0; font-weight: 600;">$<%= (item.amountInCents / 100).toFixed(2) %></td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <% if (_status === 'submitted') { %>
+      <p style="font-size: 14px; color: #64748b;">
+        Log in to the portal to approve or reject this work order before the vendor proceeds.
+      </p>
+      <% } else if (_status === 'submitted_tenant') { %>
+      <p style="font-size: 14px; color: #64748b;">
+        You'll receive another update once the work order is reviewed and the vendor is ready to begin.
+      </p>
+      <% } else if (_status === 'approved') { %>
+      <p style="font-size: 14px; color: #64748b;">
+        Once the work is complete, submit your invoice through the portal to initiate payment.
+      </p>
+      <% } else if (_status === 'rejected') { %>
+      <p>
+        Please revise your work order to address the feedback above and resubmit via the portal. You can resubmit as long as the request remains in <strong>Assigned</strong> status.
+      </p>
+      <% } %>
+    </td>
+  </tr>
+</table>

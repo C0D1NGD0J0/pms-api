@@ -1,0 +1,100 @@
+<% if (_status === 'created') { %>
+Maintenance Request Received
+=============================
+
+Hi <%= currentuser.firstName || currentuser.email %>,
+
+We've received your maintenance request and added it to the queue. You'll be notified once a vendor is assigned.
+
+REQUEST DETAILS
+---------------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Category:    <%= request.category.replace(/_/g, ' ') %>
+Priority:    <%= request.priority %>
+Status:      Open
+<% if (request.preferredDate) { %>Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString() %>
+<% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Availability:   <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
+<% } %>
+Keep your reference number for follow-ups: <%= request.mruid %>
+<% } else if (_status === 'assigned') { %>
+New Job Assignment
+==================
+
+Hi <%= vendor.firstName || vendor.email %>,
+
+<%= assignedBy.firstName || assignedBy.email %> has assigned you a maintenance request.
+Please accept or decline within 24 hours.
+
+JOB DETAILS
+-----------
+Reference #:    <%= request.mruid %>
+Title:          <%= request.title %>
+Description:    <%= request.description %>
+Category:       <%= request.category.replace(/_/g, ' ') %>
+Priority:       <%= request.priority.toUpperCase() %>
+Property Entry: <%= request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' %>
+<% if (request.scheduledDate) { %>Scheduled Date: <%= new Date(request.scheduledDate).toLocaleDateString() %>
+<% } %><% if (request.estimatedCost) { %>Estimated Cost: $<%= (request.estimatedCost / 100).toFixed(2) %>
+<% } %><% if (request.preferredDate) { %>Resident Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString() %>
+<% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Resident Availability: <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
+<% } %>
+Log in to the portal to accept or decline this assignment.
+
+Questions? Contact <%= assignedBy.firstName || assignedBy.email %><% if (assignedBy.email) { %> at <%= assignedBy.email %><% } %>.
+<% } else if (_status === 'accepted') { %>
+Your Request is Being Handled
+==============================
+
+Hi <%= tenant && (tenant.firstName || tenant.email) ? (tenant.firstName || tenant.email) : 'Resident' %>,
+
+Good news — a vendor has accepted your maintenance request and will be in touch to schedule the work.
+
+REQUEST DETAILS
+---------------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Category:    <%= request.category.replace(/_/g, ' ') %>
+Priority:    <%= request.priority.toUpperCase() %>
+<% if (request.assignedTechnician && request.assignedTechnician.name) { %>Technician:  <%= request.assignedTechnician.name %><% if (request.assignedTechnician.phone) { %> — <%= request.assignedTechnician.phone %><% } %>
+<% } %><% if (request.scheduledDate) { %>Scheduled:   <%= new Date(request.scheduledDate).toLocaleDateString() %>
+<% } %>
+You will be contacted to confirm the schedule. Please ensure access is available at the agreed time.
+
+Log in to the resident portal to track the status of your request.
+<% } else if (_status === 'declined') { %>
+Vendor Declined — Reassignment Required
+=========================================
+
+A vendor has declined the maintenance request below.
+The request has been returned to Open status and requires reassignment.
+
+DETAILS
+-------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Priority:    <%= request.priority %>
+Status:      Open — awaiting reassignment
+<% if (reason) { %>Vendor Reason: "<%= reason %>"
+<% } %>
+Log in to the portal to assign a new vendor.
+<% } else if (_status === 'completed') { %>
+Maintenance Request Completed
+==============================
+
+Hi <%= tenant && (tenant.firstName || tenant.email) ? (tenant.firstName || tenant.email) : 'Resident' %>,
+
+Your maintenance request has been completed. We hope everything is in order.
+
+REQUEST SUMMARY
+---------------
+Reference #: <%= request.mruid %>
+Title:       <%= request.title %>
+Category:    <%= request.category.replace(/_/g, ' ') %>
+<% if (request.completedAt) { %>Completed:   <%= new Date(request.completedAt).toLocaleDateString() %>
+<% } %><% if (request.completionNotes && request.completionNotes.length > 0) { %>Notes:       <%= request.completionNotes[request.completionNotes.length - 1].note %>
+<% } %>
+If the issue has not been resolved or you have concerns, please contact your property manager.
+
+Log in to the resident portal to view your request history.
+<% } %>

@@ -604,6 +604,7 @@ describe('VendorService Integration Tests - Read Operations', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
       expect(result.data).toHaveProperty('totalVendors');
+      expect(result.data).toHaveProperty('activeVendors');
       expect(result.data).toHaveProperty('businessTypeDistribution');
       expect(result.data).toHaveProperty('servicesDistribution');
     });

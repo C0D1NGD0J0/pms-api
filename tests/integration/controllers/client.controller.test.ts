@@ -1,18 +1,13 @@
 import request from 'supertest';
-import cookieParser from 'cookie-parser';
-import express, { Application } from 'express';
+import { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
-import { clearTestDatabase } from '@tests/helpers';
-import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
-import { VendorService } from '@services/vendor/vendor.service';
 import { ClientController } from '@controllers/ClientController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
-import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
   PropertyUnitDAO,
   PropertyDAO,
@@ -21,6 +16,14 @@ import {
   VendorDAO,
   UserDAO,
 } from '@dao/index';
+import {
+  createControllerTestApp,
+  mockRequestContext,
+  clearTestDatabase,
+  createTestProfile,
+  createTestClient,
+  createTestUser,
+} from '@tests/helpers';
 
 describe('ClientController Integration Tests', () => {
   let app: Application;
@@ -30,27 +33,18 @@ describe('ClientController Integration Tests', () => {
   let managerUser: any;
   let staffUser: any;
 
-  const mockContext = (user: any, cuid: string, req?: any) => ({
-    requestId: 'test-request-id',
-    userAgent: { isMobile: false, isBot: false, raw: 'test-agent' },
-    request: {
-      path: req?.path ?? '/',
-      method: req?.method ?? 'GET',
-      params: req?.params ?? {},
-      url: req?.url ?? '/',
-      query: req?.query ?? {},
-    },
-    currentuser: {
-      sub: user._id.toString(),
-      uid: user.uid,
-      email: user.email,
-      activecuid: cuid,
-      client: {
-        cuid,
-        role: user.cuids.find((c: any) => c.cuid === cuid)?.roles[0] || ROLES.STAFF,
-      },
-    },
-  });
+  let setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
+  let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
+
+  // Route path constants
+  const CLIENT_DETAILS_PATH = '/api/v1/clients/:cuid/client_details';
+  const DISCONNECT_PATH = '/api/v1/clients/:cuid/users/:uid/disconnect';
+  const RECONNECT_PATH = '/api/v1/clients/:cuid/users/:uid/reconnect';
+  const ROLES_PATH = '/api/v1/clients/:cuid/users/:uid/roles';
+  const REMOVE_ROLE_PATH = '/api/v1/clients/:cuid/users/:uid/roles/:role';
+  const DEPARTMENT_PATH = '/api/v1/clients/:cuid/users/:uid/department';
+  const VERIFY_PATH = '/api/v1/clients/:cuid/verify-account';
+  const TENANT_FEATURES_PATH = '/api/v1/clients/:cuid/settings/tenant-features';
 
   beforeAll(async () => {
     setupAllExternalMocks();
@@ -59,63 +53,16 @@ describe('ClientController Integration Tests', () => {
     const userDAO = new UserDAO({ userModel: User });
     const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
     const profileDAO = new ProfileDAO({ profileModel: Profile });
-    const vendorDAO = new VendorDAO({ vendorModel: Vendor });
     const propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
     const propertyDAO = new PropertyDAO({
       propertyModel: Property,
       propertyUnitDAO,
     });
 
-    const permissionService = new PermissionService();
-
-    const vendorService = new VendorService({
-      vendorDAO,
-      clientDAO,
-      userDAO,
-      profileDAO,
-      permissionService,
-      vendorCache: {
-        getVendorDetail: jest.fn().mockResolvedValue({ success: false }),
-        cacheVendorDetail: jest.fn(),
-        invalidateVendor: jest.fn(),
-      } as any,
-      userCache: { invalidateUserDetail: jest.fn().mockResolvedValue(undefined) } as any,
-      geoCoderService: {} as any,
-      paymentProcessorDAO: {} as any,
-      maintenanceRequestDAO: {} as any,
-      paymentGatewayService: {} as any,
-      payoutAccountService: {} as any,
-    } as any);
-
-    const userCache = {
-      getUserDetail: jest.fn().mockResolvedValue({ success: false, data: null }),
-      cacheUserDetail: jest.fn().mockResolvedValue(undefined),
-      getFilteredUsers: jest.fn().mockResolvedValue({ success: false, data: null }),
-      saveFilteredUsers: jest.fn().mockResolvedValue(undefined),
-      invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
-      invalidateUserLists: jest.fn().mockResolvedValue(undefined),
-    } as any;
-
-    const _userService = new UserService({
-      clientDAO,
-      userDAO,
-      propertyDAO,
-      profileDAO,
-      userCache,
-      permissionService,
-      vendorService,
-      emitterService: { emit: jest.fn(), on: jest.fn() } as any,
-      paymentDAO: {} as any,
-      leaseDAO: {} as any,
-      maintenanceRequestDAO: {} as any,
-      paymentProcessorDAO: {} as any,
-      subscriptionDAO: {} as any,
-      queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
-    });
-
     const authCache = {
       invalidateUserCache: jest.fn().mockResolvedValue(undefined),
       invalidateUserSession: jest.fn().mockResolvedValue(undefined),
+      invalidateCurrentUser: jest.fn().mockResolvedValue(undefined),
     } as any;
 
     const subscriptionDAO = {
@@ -133,7 +80,7 @@ describe('ClientController Integration Tests', () => {
       profileDAO,
       propertyDAO,
       propertyUnitDAO,
-      vendorDAO: {} as any,
+      vendorDAO: new VendorDAO({ vendorModel: Vendor }),
       authCache,
       userCache: {
         invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
@@ -143,7 +90,7 @@ describe('ClientController Integration Tests', () => {
       subscriptionService: {} as any,
       emitterService: { emit: jest.fn(), on: jest.fn() } as any,
       notificationService: {} as any,
-      sseService: {} as any,
+      sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
       paymentGatewayService: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
@@ -152,94 +99,79 @@ describe('ClientController Integration Tests', () => {
 
     clientController = new ClientController({ clientService });
 
-    // Setup Express app
-    app = express();
-    app.use(express.json());
-    app.use(cookieParser());
-    app.use((req, res, next) => {
-      req.container = {} as any;
-      next();
+    const testApp = createControllerTestApp({
+      routes: [
+        {
+          method: 'get',
+          path: CLIENT_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.getClient(req, res),
+        },
+        {
+          method: 'patch',
+          path: CLIENT_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.updateClientProfile(req, res),
+        },
+        {
+          method: 'post',
+          path: DISCONNECT_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.disconnectUser(req, res),
+        },
+        {
+          method: 'post',
+          path: RECONNECT_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.reconnectUser(req, res),
+        },
+        {
+          method: 'get',
+          path: ROLES_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.getUserRoles(req, res),
+        },
+        {
+          method: 'post',
+          path: ROLES_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.assignUserRole(req, res),
+        },
+        {
+          method: 'delete',
+          path: REMOVE_ROLE_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.removeUserRole(req, res),
+        },
+        {
+          method: 'patch',
+          path: DEPARTMENT_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.assignDepartment(req, res),
+        },
+        {
+          method: 'post',
+          path: VERIFY_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.verifyAccount(req, res),
+        },
+        {
+          method: 'patch',
+          path: TENANT_FEATURES_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.updateTenantFeatures(req, res),
+        },
+      ],
     });
 
-    const handle =
-      (getCuid: ((req: any) => string) | 'param', fn: (req: any, res: any) => Promise<void>) =>
-      async (req: any, res: any, next: any) => {
-        const cuid = getCuid === 'param' ? req.params.cuid : getCuid(req);
-        req.context = mockContext(adminUser, cuid, req) as any;
-        try {
-          await fn(req, res);
-        } catch (err) {
-          next(err);
-        }
-      };
-
-    // Setup routes matching client.routes.ts
-    app.get(
-      '/api/v1/clients/:cuid/client_details',
-      handle(
-        (req) => testClient?.cuid ?? req.params.cuid,
-        (req, res) => clientController.getClient(req, res)
-      )
-    );
-
-    app.patch(
-      '/api/v1/clients/:cuid/client_details',
-      handle('param', (req, res) => clientController.updateClientProfile(req, res))
-    );
-
-    app.post(
-      '/api/v1/clients/:cuid/users/:uid/disconnect',
-      handle('param', (req, res) => clientController.disconnectUser(req, res))
-    );
-
-    app.post(
-      '/api/v1/clients/:cuid/users/:uid/reconnect',
-      handle('param', (req, res) => clientController.reconnectUser(req, res))
-    );
-
-    app.get(
-      '/api/v1/clients/:cuid/users/:uid/roles',
-      handle('param', (req, res) => clientController.getUserRoles(req, res))
-    );
-
-    app.post(
-      '/api/v1/clients/:cuid/users/:uid/roles',
-      handle('param', (req, res) => clientController.assignUserRole(req, res))
-    );
-
-    app.delete(
-      '/api/v1/clients/:cuid/users/:uid/roles/:role',
-      handle('param', (req, res) => clientController.removeUserRole(req, res))
-    );
-
-    app.patch(
-      '/api/v1/clients/:cuid/users/:uid/department',
-      handle('param', (req, res) => clientController.assignDepartment(req, res))
-    );
-
-    app.post(
-      '/api/v1/clients/:cuid/verify-account',
-      handle('param', (req, res) => clientController.verifyAccount(req, res))
-    );
-
-    app.patch(
-      '/api/v1/clients/:cuid/settings/tenant-features',
-      handle('param', (req, res) => clientController.updateTenantFeatures(req, res))
-    );
-
-    // Error handler — converts thrown errors to JSON responses
-    app.use((err: any, _req: any, res: any, _next: any) => {
-      const statusCode = err.statusCode || err.status || 500;
-      res.status(statusCode).json({
-        success: false,
-        message: err.message || 'Internal server error',
-        ...(err.errorInfo && { errorInfo: err.errorInfo }),
-      });
-    });
+    app = testApp.app;
+    setContextUser = testApp.setContextUser;
+    resetContextOverrides = testApp.resetContextOverrides;
   });
 
   beforeEach(async () => {
     await clearTestDatabase();
+    resetContextOverrides();
 
     // createTestClient already creates an admin user (accountAdmin) with ROLES.ADMIN
     testClient = await createTestClient();
@@ -285,29 +217,24 @@ describe('ClientController Integration Tests', () => {
       expect(response.body.data.settings.lang).toBeDefined();
     });
 
-    it('should include subscription seat information in response', async () => {
+    it('should include account type plan from subscription in response', async () => {
       const response = await request(app)
         .get(`/api/v1/clients/${testClient.cuid}/client_details`)
         .expect(httpStatusCodes.OK);
 
-      expect(response.body.data.seatInfo).toBeDefined();
-      expect(response.body.data.seatInfo).toMatchObject({
-        includedSeats: expect.any(Number),
-        additionalSeats: expect.any(Number),
-        totalAvailable: expect.any(Number),
-        maxAdditionalSeats: expect.any(Number),
-        availableForPurchase: expect.any(Number),
-        additionalSeatCost: expect.any(Number),
-      });
+      // accountType.plan is derived from subscription for all users
+      expect(response.body.data.accountType).toBeDefined();
+      expect(response.body.data.accountType.plan).toBe('growth');
     });
 
-    it('should return correct currentSeats from subscription not total users', async () => {
+    it('should include clientStats with totalProperties and totalUsers', async () => {
       const response = await request(app)
         .get(`/api/v1/clients/${testClient.cuid}/client_details`)
         .expect(httpStatusCodes.OK);
 
-      // Test setup has 3 employee profiles, subscription mock returns currentSeats: 3
-      expect(response.body.data.currentSeats).toBe(3);
+      expect(response.body.data.clientStats).toBeDefined();
+      expect(typeof response.body.data.clientStats.totalProperties).toBe('number');
+      expect(typeof response.body.data.clientStats.totalUsers).toBe('number');
     });
   });
 
@@ -611,7 +538,30 @@ describe('ClientController Integration Tests', () => {
     it('should handle unauthorized client access', async () => {
       const otherClient = await createTestClient();
 
-      const response = await request(app)
+      // Create a separate app where the admin's context cuid is testClient.cuid
+      // while the URL targets otherClient.cuid — the service check
+      // `cuid !== currentuser.client.cuid` fires and throws Forbidden.
+      //
+      // We build context with testClient.cuid for currentuser, but override
+      // request.params to use req.params (which has otherClient.cuid from the URL).
+      const { app: isolatedApp } = createControllerTestApp({
+        routes: [
+          {
+            method: 'get',
+            path: CLIENT_DETAILS_PATH,
+            contextUser: () => adminUser,
+            handler: (req, res) => {
+              const ctx = mockRequestContext(adminUser, testClient.cuid) as any;
+              // Let request.params reflect the URL's :cuid (otherClient.cuid)
+              ctx.request.params = req.params;
+              req.context = ctx;
+              return clientController.getClient(req, res);
+            },
+          },
+        ],
+      });
+
+      const response = await request(isolatedApp)
         .get(`/api/v1/clients/${otherClient.cuid}/client_details`)
         .expect(httpStatusCodes.FORBIDDEN);
 

@@ -9,6 +9,7 @@ import { IRequestContext } from '@interfaces/index';
  * @returns A partial IRequestContext that can be used with `as any` type assertion
  */
 export const mockRequestContext = (user: any, cuid: string): Partial<IRequestContext> => {
+  const clientConn = user.cuids?.find((c: any) => c.cuid === cuid);
   return {
     currentuser: {
       sub: user._id.toString(),
@@ -17,8 +18,17 @@ export const mockRequestContext = (user: any, cuid: string): Partial<IRequestCon
       activecuid: cuid,
       client: {
         cuid,
-        role: user.cuids?.find((c: any) => c.cuid === cuid)?.roles[0] || 'staff',
+        role: clientConn?.roles[0] || 'staff',
+        linkedVendorUid: clientConn?.linkedVendorUid || null,
       },
+      // All client connections — required by PermissionService.canAccessResource()
+      clients:
+        user.cuids?.map((c: any) => ({
+          cuid: c.cuid,
+          clientDisplayName: c.clientDisplayName || '',
+          roles: c.roles,
+          isConnected: c.isConnected ?? true,
+        })) || [],
     },
     request: {
       params: { cuid },

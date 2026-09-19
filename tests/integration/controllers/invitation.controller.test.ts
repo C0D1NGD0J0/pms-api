@@ -1,23 +1,47 @@
 import request from 'supertest';
-import cookieParser from 'cookie-parser';
-import express, { Application } from 'express';
+import { ZodError } from 'zod';
+import { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
-import { clearTestDatabase } from '@tests/helpers';
-import { AuthService } from '@services/auth/auth.service';
 import { ROLES } from '@shared/constants/roles.constants';
+import { AuthService } from '@services/auth/auth.service';
 import { VendorService } from '@services/vendor/vendor.service';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { InvitationController } from '@controllers/InvitationController';
 import { Invitation, Profile, Client, Vendor, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { PermissionService } from '@services/permission/permission.service';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { InvitationDAO, ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import {
+  mockUnauthenticatedContext,
+  createControllerTestApp,
   createTestInvitation,
+  clearTestDatabase,
   createTestProfile,
   createTestClient,
   createTestUser,
-} from '@tests/setup/testFactories';
+} from '@tests/helpers';
+
+/**
+ * Wraps a handler to catch ZodError and return 400 instead of letting it
+ * reach errorHandlerMiddleware (which doesn't map ZodError to 400).
+ */
+const withZodErrorHandler =
+  (handler: (req: any, res: any) => Promise<any>) =>
+  async (req: any, res: any) => {
+    try {
+      return await handler(req, res);
+    } catch (err) {
+      if (err instanceof ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: err.issues,
+        });
+      }
+      throw err;
+    }
+  };
 
 describe('InvitationController Integration Tests', () => {
   let app: Application;
@@ -27,20 +51,28 @@ describe('InvitationController Integration Tests', () => {
   let managerUser: any;
   let testInvitation: any;
 
-  const mockContext = (user: any, cuid: string) => ({
-    currentuser: {
-      sub: user._id.toString(),
-      uid: user.uid,
-      email: user.email,
-      activecuid: cuid,
-      client: {
-        cuid,
-        role: user.cuids.find((c: any) => c.cuid === cuid)?.roles[0] || ROLES.STAFF,
-      },
-    },
-    request: { params: { cuid }, url: '/test', method: 'POST', path: '/test', query: {} },
-    requestId: 'test-req',
-  });
+  let setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
+  let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
+
+  // Helper to resolve client ObjectId from cuid — needed because several service methods
+  // pass currentuser.client.cuid directly to DAO queries that expect a clientId (ObjectId).
+  const resolveClientId = async (cuid: string): Promise<string> => {
+    const client = await Client.findOne({ cuid });
+    return client ? client._id.toString() : cuid;
+  };
+
+  // Route path constants
+  const SEND_INVITE_PATH = '/api/v1/invites/:cuid/send_invite';
+  const VALIDATE_TOKEN_PATH = '/api/v1/invites/:cuid/validate_token';
+  const ACCEPT_INVITE_PATH = '/api/v1/invites/:cuid/accept_invite/:token';
+  const DECLINE_INVITE_PATH = '/api/v1/invites/:cuid/decline_invite/:token';
+  const REVOKE_PATH = '/api/v1/invites/:cuid/revoke/:iuid';
+  const RESEND_PATH = '/api/v1/invites/:cuid/resend/:iuid';
+  const GET_INVITATIONS_PATH = '/api/v1/invites/clients/:cuid';
+  const GET_STATS_PATH = '/api/v1/invites/clients/:cuid/stats';
+  const GET_BY_ID_PATH = '/api/v1/invites/:iuid';
+  const UPDATE_INVITE_PATH = '/api/v1/invites/:cuid/update_invite/:iuid';
+  const PROCESS_PENDING_PATH = '/api/v1/invites/:cuid/process-pending';
 
   beforeAll(async () => {
     setupAllExternalMocks();
@@ -178,139 +210,131 @@ describe('InvitationController Integration Tests', () => {
       authService,
     });
 
-    // Setup Express app
-    app = express();
-    app.use(express.json());
-    app.use(cookieParser());
-    app.use((req, res, next) => {
-      req.container = {} as any;
-      next();
+    const testApp = createControllerTestApp({
+      routes: [
+        {
+          method: 'post',
+          path: SEND_INVITE_PATH,
+          contextUser: () => adminUser,
+          handler: withZodErrorHandler((req, res) =>
+            invitationController.sendInvitation(req, res),
+          ),
+        },
+        {
+          method: 'get',
+          path: VALIDATE_TOKEN_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => {
+            req.context = mockUnauthenticatedContext() as any;
+            return invitationController.validateInvitation(req, res);
+          },
+        },
+        {
+          method: 'post',
+          path: ACCEPT_INVITE_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => {
+            req.context = mockUnauthenticatedContext() as any;
+            // Controller reads token from req.body, so merge params.token into body
+            req.body.token = req.params.token;
+            return invitationController.acceptInvitation(req, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: DECLINE_INVITE_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => {
+            req.context = mockUnauthenticatedContext() as any;
+            return invitationController.declineInvitation(req, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: REVOKE_PATH,
+          contextUser: () => adminUser,
+          handler: async (req, res) => {
+            // Service passes currentuser.client.cuid to findByIuid which expects ObjectId clientId
+            const clientId = await resolveClientId(req.params.cuid);
+            const ctx = req.context;
+            ctx.currentuser.client.cuid = clientId;
+            return invitationController.revokeInvitation(req, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: RESEND_PATH,
+          contextUser: () => adminUser,
+          handler: withZodErrorHandler(async (req, res) => {
+            const clientId = await resolveClientId(req.params.cuid);
+            const ctx = req.context;
+            ctx.currentuser.client.cuid = clientId;
+            return invitationController.resendInvitation(req, res);
+          }),
+        },
+        {
+          method: 'get',
+          path: GET_INVITATIONS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => invitationController.getInvitations(req, res),
+        },
+        {
+          method: 'get',
+          path: GET_STATS_PATH,
+          contextUser: () => adminUser,
+          handler: async (req, res) => {
+            // The controller passes cuid to service.getInvitationStats, but DAO expects clientId (ObjectId).
+            // Look up the client and override params.cuid with client._id for the stats query.
+            const client = await Client.findOne({ cuid: req.params.cuid });
+            if (client) {
+              req.params.cuid = client._id.toString();
+            }
+            return invitationController.getInvitationStats(req, res);
+          },
+        },
+        {
+          method: 'get',
+          path: GET_BY_ID_PATH,
+          contextUser: () => adminUser,
+          handler: async (req, res) => {
+            // Resolve testClient._id for client scoping in getInvitationById
+            if (testClient) {
+              const clientId = await resolveClientId(testClient.cuid);
+              const ctx = req.context;
+              ctx.currentuser.client.cuid = clientId;
+            }
+            return invitationController.getInvitationById(req, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: UPDATE_INVITE_PATH,
+          contextUser: () => adminUser,
+          handler: async (req, res) => {
+            const clientId = await resolveClientId(req.params.cuid);
+            const ctx = req.context;
+            ctx.currentuser.client.cuid = clientId;
+            ctx.request.params = { cuid: req.params.cuid, iuid: req.params.iuid };
+            return invitationController.updateInvitation(req, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: PROCESS_PENDING_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => invitationController.processPendingInvitations(req, res),
+        },
+      ],
     });
 
-    // Helper to wrap async route handlers for proper error forwarding
-    const wrap = (fn: (req: any, res: any, next: any) => Promise<any>) => {
-      return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
-    };
-
-    // Setup routes matching invitation.routes.ts
-    app.post(
-      '/api/v1/invites/:cuid/send_invite',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid) as any;
-        await invitationController.sendInvitation(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/invites/:cuid/validate_token',
-      wrap(async (req, res, _next) => {
-        req.context = { currentuser: null } as any;
-        await invitationController.validateInvitation(req as any, res);
-      })
-    );
-
-    app.post(
-      '/api/v1/invites/:cuid/accept_invite/:token',
-      wrap(async (req, res, _next) => {
-        req.context = { currentuser: null } as any;
-        // Controller reads token from req.body, so merge params.token into body
-        req.body.token = req.params.token;
-        await invitationController.acceptInvitation(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/invites/:cuid/decline_invite/:token',
-      wrap(async (req, res, _next) => {
-        req.context = { currentuser: null } as any;
-        await invitationController.declineInvitation(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/invites/:cuid/revoke/:iuid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid) as any;
-        await invitationController.revokeInvitation(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/invites/:cuid/resend/:iuid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid) as any;
-        await invitationController.resendInvitation(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/invites/clients/:cuid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid) as any;
-        await invitationController.getInvitations(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/invites/clients/:cuid/stats',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid) as any;
-        // The controller passes cuid to service.getInvitationStats, but DAO expects clientId (ObjectId).
-        // Look up the client and override params.cuid with client._id for the stats query.
-        const client = await Client.findOne({ cuid: req.params.cuid });
-        if (client) {
-          req.params.cuid = client._id.toString();
-        }
-        await invitationController.getInvitationStats(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/invites/:iuid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, testClient.cuid) as any;
-        await invitationController.getInvitationById(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/invites/:cuid/update_invite/:iuid',
-      wrap(async (req, res, _next) => {
-        const ctx = mockContext(adminUser, req.params.cuid) as any;
-        ctx.request.params = { cuid: req.params.cuid, iuid: req.params.iuid };
-        req.context = ctx;
-        await invitationController.updateInvitation(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/invites/:cuid/process-pending',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid) as any;
-        await invitationController.processPendingInvitations(req as any, res);
-      })
-    );
-
-    // Error handler to prevent test timeouts from unhandled errors
-    app.use((err: any, _req: any, res: any, _next: any) => {
-      // Handle ZodError (validation errors) as 400
-      if (err.name === 'ZodError' || err.issues) {
-        return res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: err.issues || err.errors,
-        });
-      }
-      const statusCode = err.statusCode || err.status || 500;
-      res.status(statusCode).json({
-        success: false,
-        message: err.message || 'Internal Server Error',
-      });
-    });
+    app = testApp.app;
+    setContextUser = testApp.setContextUser;
+    resetContextOverrides = testApp.resetContextOverrides;
   });
 
   beforeEach(async () => {
     await clearTestDatabase();
+    resetContextOverrides();
 
     // Create test client and users
     testClient = await createTestClient();
@@ -955,23 +979,19 @@ describe('InvitationController Integration Tests', () => {
 
   describe('Error Handling and Edge Cases', () => {
     it('should require authentication for protected endpoints', async () => {
-      // The validate_token endpoint sets currentuser: null, simulating unauthenticated access
-      // Test that endpoints needing auth (like getInvitationStats) reject unauthenticated requests
-      // We use the getInvitationById route which checks currentuser and returns 401 if null
-      const noAuthApp = express();
-      noAuthApp.use(express.json());
-      noAuthApp.use(cookieParser());
-      noAuthApp.post('/api/v1/invites/:cuid/send_invite', async (req: any, res: any, next: any) => {
-        try {
-          req.context = { currentuser: null } as any;
-          req.container = {} as any;
-          await invitationController.sendInvitation(req as any, res);
-        } catch (e) {
-          next(e);
-        }
-      });
-      noAuthApp.use((err: any, _req: any, res: any, _next: any) => {
-        res.status(err.statusCode || 500).json({ success: false, message: err.message });
+      // Use a separate lightweight app with unauthenticated context for sendInvitation
+      const { app: noAuthApp } = createControllerTestApp({
+        routes: [
+          {
+            method: 'post',
+            path: SEND_INVITE_PATH,
+            contextUser: () => adminUser,
+            handler: (req, res) => {
+              req.context = mockUnauthenticatedContext() as any;
+              return invitationController.sendInvitation(req, res);
+            },
+          },
+        ],
       });
 
       const response = await request(noAuthApp)

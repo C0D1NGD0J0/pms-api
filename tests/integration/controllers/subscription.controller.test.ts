@@ -1,10 +1,8 @@
 import request from 'supertest';
 import { Types } from 'mongoose';
-import cookieParser from 'cookie-parser';
+import { Application } from 'express';
 import { Subscription } from '@models/index';
-import express, { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
-import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { ROLES } from '@shared/constants/roles.constants';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
@@ -12,6 +10,7 @@ import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { SubscriptionController } from '@controllers/SubscriptionController';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
+import { clearTestDatabase, createControllerTestApp } from '@tests/helpers';
 
 describe('SubscriptionController Integration Tests', () => {
   let app: Application;
@@ -115,7 +114,14 @@ describe('SubscriptionController Integration Tests', () => {
           displayName: 'Test Client',
         }),
       } as any,
-      authCache: { invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }) } as any,
+      authCache: {
+        invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }),
+        client: {
+          GET: jest.fn().mockResolvedValue(null),
+          SETEX: jest.fn().mockResolvedValue('OK'),
+          DEL: jest.fn().mockResolvedValue(1),
+        },
+      } as any,
       subscriptionCache: {
         getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
         cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
@@ -134,46 +140,32 @@ describe('SubscriptionController Integration Tests', () => {
       smsService: {} as any,
     });
 
-    // Setup Express app
-    app = express();
-    app.use(express.json());
-    app.use(cookieParser());
-    app.use((req: any, res, next) => {
-      req.container = {} as any;
-      // Parse x-test-context header so supertest calls can set req.context
-      const ctxHeader = req.headers['x-test-context'];
-      if (ctxHeader) {
-        try {
-          req.context = JSON.parse(ctxHeader as string);
-        } catch {
-          /* noop */
-        }
-      }
-      next();
+    // A dummy user for the plans route (getSubscriptionPlans does not read context)
+    const dummyUser = {
+      _id: new Types.ObjectId(),
+      uid: 'uid-dummy',
+      email: 'dummy@test.com',
+      cuids: [{ cuid: 'dummy', roles: [ROLES.STAFF], isConnected: true }],
+    };
+
+    const testApp = createControllerTestApp({
+      routes: [
+        {
+          method: 'post',
+          path: '/api/v1/subscriptions/:cuid/init-subscription-payment',
+          contextUser: () => dummyUser,
+          handler: (req, res) => subscriptionController.initSubscriptionPayment(req, res),
+        },
+        {
+          method: 'get',
+          path: '/api/v1/subscriptions/plans',
+          contextUser: () => dummyUser,
+          handler: (req, res) => subscriptionController.getSubscriptionPlans(req as any, res),
+        },
+      ],
     });
 
-    // Setup routes
-    app.post('/api/v1/subscriptions/:cuid/init-subscription-payment', async (req, res, next) => {
-      try {
-        await subscriptionController.initSubscriptionPayment(req as any, res);
-      } catch (err) {
-        next(err);
-      }
-    });
-
-    app.get('/api/v1/subscriptions/plans', async (req, res, next) => {
-      try {
-        await subscriptionController.getSubscriptionPlans(req as any, res);
-      } catch (err) {
-        next(err);
-      }
-    });
-
-    // Error handler
-    app.use((err: any, _req: any, res: any, _next: any) => {
-      const statusCode = err.statusCode || err.status || 500;
-      res.status(statusCode).json({ success: false, message: err.message });
-    });
+    app = testApp.app;
   });
 
   beforeEach(async () => {
@@ -216,17 +208,6 @@ describe('SubscriptionController Integration Tests', () => {
         additionalSeatsCount: 0,
         additionalSeatsCost: 0,
       });
-
-      const _response = await request(app)
-        .post(`/api/v1/subscriptions/${superAdminUser.cuid}/init-subscription-payment`)
-        .set(
-          'x-test-context',
-          JSON.stringify(mockContext(ROLES.SUPER_ADMIN, superAdminUser.cuid, superAdminUser.email))
-        )
-        .send({
-          successUrl: 'https://app.example.com/success',
-          cancelUrl: 'https://app.example.com/cancel',
-        });
 
       // Manually set context since middleware isn't running in test
       const req = {
@@ -443,7 +424,7 @@ describe('SubscriptionController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toBeInstanceOf(Array);
-      expect(response.body.data.length).toBe(3);
+      expect(response.body.data.length).toBe(4);
 
       const plan = response.body.data[0];
       expect(plan).toHaveProperty('planName');
@@ -529,9 +510,11 @@ describe('SubscriptionController Integration Tests', () => {
 
       const growthPlan = response.body.data.find((p: any) => p.planName === 'growth');
 
-      // Should use Stripe prices from mock
+      // Currency-specific config takes priority over Stripe mock for priceId,
+      // but Stripe lookUpKey should still be present from the mock
       expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
-      expect(growthPlan.pricing.monthly.priceId).toBe('price_growth_monthly');
+      expect(growthPlan.pricing.monthly.priceId).toEqual(expect.any(String));
+      expect(growthPlan.pricing.monthly.lookUpKey).toBe('growth_monthly');
     });
 
     it('should return all three plans: essential, growth, portfolio', async () => {

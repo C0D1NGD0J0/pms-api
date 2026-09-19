@@ -1,19 +1,16 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import request from 'supertest';
-import cookieParser from 'cookie-parser';
-import express, { Application } from 'express';
-import { clearTestDatabase } from '@tests/helpers';
+import { Application } from 'express';
 import { ROLES } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import { PaymentController } from '@controllers/PaymentController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
-import { errorHandlerMiddleware } from '@shared/middlewares/error-handler';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
+import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
-import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 import {
   PaymentRecordStatus,
@@ -38,6 +35,13 @@ import {
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
+import {
+  createControllerTestApp,
+  clearTestDatabase,
+  createTestProfile,
+  createTestClient,
+  createTestUser,
+} from '@tests/helpers';
 
 describe('PaymentController Integration Tests', () => {
   let app: Application;
@@ -46,18 +50,16 @@ describe('PaymentController Integration Tests', () => {
   let testProfile: any;
   let testPayment: any;
 
-  const mockContext = (user: any, cuid: string) => ({
-    currentuser: {
-      sub: user._id.toString(),
-      uid: user.uid,
-      email: user.email,
-      activecuid: cuid,
-      client: {
-        cuid,
-        role: ROLES.ADMIN,
-      },
-    },
-  });
+  let setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
+  let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
+
+  // Route path constants
+  const REFUND_PATH = '/api/v1/payments/:cuid/:pytuid/refund';
+  const CANCEL_PATH = '/api/v1/payments/:cuid/:pytuid/cancel';
+  const MAINTENANCE_CHARGE_PATH = '/api/v1/payments/:cuid/maintenance-charge';
+  const STATS_PATH = '/api/v1/payments/:cuid/stats';
+  const MANUAL_ENTRY_PATH = '/api/v1/payments/:cuid/manual_entry';
+  const STATS_AS_TENANT_PATH = '/api/v1/payments/:cuid/stats/as-tenant';
 
   // Mock the gateway service — Stripe/PayPal are external service boundaries
   const mockCreateRefund = jest.fn();
@@ -142,13 +144,17 @@ describe('PaymentController Integration Tests', () => {
       subscriptionPlanConfig,
       paymentGatewayService: mockPaymentGatewayService,
       pdfGeneratorService: {} as any,
+      maintenanceRequestDAO: {} as any,
       paymentProcessorDAO,
+      propertyUnitDAO: {} as any,
+      propertyDAO: {} as any,
       emitterService,
       subscriptionDAO,
       stripeService,
       invoiceDAO,
       paymentDAO,
       profileDAO,
+      vendorDAO: {} as any,
       clientDAO,
       leaseDAO,
       userDAO,
@@ -161,59 +167,68 @@ describe('PaymentController Integration Tests', () => {
       paymentService,
       mediaUploadService: { handleFiles: mockHandleFiles } as any,
       invoiceService: { requestInvoice: mockRequestInvoice } as any,
+      invoiceAIService: {} as any,
       cronService: {} as any,
     });
 
-    app = express();
-    app.use(express.json());
-    app.use(cookieParser());
-
-    app.post('/api/v1/payments/:cuid/:pytuid/refund', (req: any, res: any, next: any) => {
-      req.context = mockContext(adminUser, req.params.cuid);
-      paymentController.refundPayment(req, res).catch(next);
-    });
-
-    app.patch('/api/v1/payments/:cuid/:pytuid/cancel', (req: any, res: any, next: any) => {
-      req.context = mockContext(adminUser, req.params.cuid);
-      paymentController.cancelPayment(req, res).catch(next);
-    });
-
-    app.post('/api/v1/payments/:cuid/maintenance-charge', (req: any, res: any, next: any) => {
-      req.context = mockContext(adminUser, req.params.cuid);
-      paymentController.chargeForMaintenance(req, res).catch(next);
-    });
-
-    app.get('/api/v1/payments/:cuid/stats', (req: any, res: any, next: any) => {
-      req.context = mockContext(adminUser, req.params.cuid);
-      paymentController.getPaymentStats(req, res).catch(next);
-    });
-
-    app.post('/api/v1/payments/:cuid/manual_entry', (req: any, res: any, next: any) => {
-      req.context = mockContext(adminUser, req.params.cuid);
-      // Simulate multer populating req.files (no files in these tests)
-      req.files = [];
-      paymentController.recordManualPayment(req, res).catch(next);
-    });
-
-    app.get('/api/v1/payments/:cuid/stats/as-tenant', (req: any, res: any, next: any) => {
-      // Simulate a tenant calling the stats endpoint
-      req.context = {
-        currentuser: {
-          sub: adminUser._id.toString(),
-          uid: adminUser.uid,
-          email: adminUser.email,
-          client: { cuid: req.params.cuid, role: ROLES.TENANT },
+    const testApp = createControllerTestApp({
+      routes: [
+        {
+          method: 'post',
+          path: REFUND_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => paymentController.refundPayment(req, res),
         },
-      };
-      paymentController.getPaymentStats(req, res).catch(next);
+        {
+          method: 'patch',
+          path: CANCEL_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => paymentController.cancelPayment(req, res),
+        },
+        {
+          method: 'post',
+          path: MAINTENANCE_CHARGE_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => paymentController.chargeForMaintenance(req, res),
+        },
+        {
+          method: 'get',
+          path: STATS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => paymentController.getPaymentStats(req, res),
+        },
+        {
+          method: 'post',
+          path: MANUAL_ENTRY_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => {
+            // Simulate multer populating req.files (no files in these tests)
+            req.files = [];
+            return paymentController.recordManualPayment(req, res);
+          },
+        },
+        {
+          method: 'get',
+          path: STATS_AS_TENANT_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => {
+            // Force tenant role on the context for this route
+            req.context.currentuser.client.role = ROLES.TENANT;
+            return paymentController.getPaymentStats(req, res);
+          },
+        },
+      ],
     });
 
-    app.use(errorHandlerMiddleware as any);
+    app = testApp.app;
+    setContextUser = testApp.setContextUser;
+    resetContextOverrides = testApp.resetContextOverrides;
   });
 
   beforeEach(async () => {
     await clearTestDatabase();
     await Payment.deleteMany({});
+    resetContextOverrides();
     jest.clearAllMocks();
     // Restore default mock implementations cleared above
     mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
@@ -384,6 +399,20 @@ describe('PaymentController Integration Tests', () => {
       localClient = await createTestClient();
       tenantUser = await createTestUser(localClient.cuid, { roles: ['tenant'] });
       tenantProfile = await createTestProfile(tenantUser._id, localClient._id, { type: 'tenant' });
+      // chargeForMaintenance checks for a payment processor with chargesEnabled
+      await PaymentProcessor.findOneAndUpdate(
+        { cuid: localClient.cuid },
+        {
+          cuid: localClient.cuid,
+          accountId: 'acct_local_test',
+          provider: IPaymentGatewayProvider.STRIPE,
+          chargesEnabled: true,
+          payoutsBlocked: false,
+          payoutsPaused: false,
+        },
+        { upsert: true, new: true }
+      );
+
       // chargeForMaintenance checks for an active subscription before creating a charge
       await Subscription.create({
         cuid: localClient.cuid,

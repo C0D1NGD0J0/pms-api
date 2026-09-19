@@ -67,6 +67,8 @@ const setupServices = () => {
         inProgress: 0,
         completed: 0,
       }),
+      getVendorAvgRatingBatch: jest.fn().mockResolvedValue(new Map()),
+      getVendorAvgRating: jest.fn().mockResolvedValue(null),
     } as any,
     queueFactory: mockQueueFactory as any,
     emitterService: {} as any,

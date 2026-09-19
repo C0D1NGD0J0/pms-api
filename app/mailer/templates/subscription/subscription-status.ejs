@@ -1,0 +1,63 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= adminName %></strong>,</p>
+
+      <% if (_status === 'canceled') { %>
+      <p>
+        Your <strong><%= planName %></strong> subscription has been canceled.
+        <% if (endDate) { %>
+        Your access will remain active until <strong><%= endDate %></strong>.
+        <% } else { %>
+        Your account has been set to inactive.
+        <% } %>
+      </p>
+      <% } else if (_status === 'updated') { %>
+      <p>
+        Your subscription has been updated. Here are the details of the change:
+      </p>
+      <% } %>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <%
+        var _rows = [
+          { label: 'Plan', value: planName }
+        ];
+
+        if (_status === 'canceled') {
+          _rows.push({ label: 'Status', value: endDate ? 'Canceling at period end' : 'Inactive', badge: endDate ? { bg: '#fef3c7', color: '#92400e' } : { bg: '#fef2f2', color: '#dc2626' } });
+          if (endDate) {
+            _rows.push({ label: 'Active Until', value: endDate });
+          }
+          if (canceledAt) {
+            _rows.push({ label: 'Canceled On', value: canceledAt });
+          }
+        } else if (_status === 'updated') {
+          _rows.push({ label: 'Status', value: status || 'Active', badge: { bg: '#dcfce7', color: '#16a34a' } });
+          if (additionalSeats !== undefined) {
+            _rows.push({ label: 'Additional Seats', value: String(additionalSeats) });
+          }
+          if (endDate) {
+            _rows.push({ label: 'Next Billing Date', value: endDate });
+          }
+        }
+      %>
+      <%- include("../shared/html/_detail-table", { rows: _rows }) %>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <% if (_status === 'canceled') { %>
+      <%- include("../shared/html/_notice", { text: 'If this was done in error, you can reactivate your subscription from the account settings before your current billing period ends.', type: 'info' }) %>
+      <% } else if (_status === 'updated') { %>
+      <p style="font-size: 14px; color: #64748b;">
+        You can review your subscription details in your account settings.
+      </p>
+      <% } %>
+    </td>
+  </tr>
+</table>

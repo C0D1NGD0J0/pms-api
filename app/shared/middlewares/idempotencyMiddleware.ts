@@ -12,7 +12,12 @@ export const idempotency = async (
   const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
 
   if (!idempotencyKey) {
-    res.status(400).json({ success: false, message: 'Idempotency-Key header is required' });
+    res.status(400).json({ success: false, message: 'Missing required request header' });
+    return;
+  }
+
+  if (idempotencyKey.length > 255) {
+    res.status(400).json({ success: false, message: 'Invalid request key format' });
     return;
   }
 

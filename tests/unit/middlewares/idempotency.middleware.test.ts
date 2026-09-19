@@ -76,7 +76,26 @@ describe('idempotency middleware', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        message: 'Idempotency-Key header is required',
+        message: 'Missing required request header',
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Idempotency-Key length validation ────────────────────────────────────
+
+  describe('when Idempotency-Key exceeds 255 characters', () => {
+    it('should respond with 400', async () => {
+      const longKey = 'x'.repeat(256);
+      const req = buildMockRequest({ headers: { 'idempotency-key': longKey } });
+      const res = buildMockResponse();
+
+      await idempotency(req as AppRequest, res as Response, next as NextFunction);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'Invalid request key format',
       });
       expect(next).not.toHaveBeenCalled();
     });

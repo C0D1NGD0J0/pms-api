@@ -715,6 +715,7 @@ export class ClientService {
       const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
       emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_DISCONNECTED_JOB, {
         to: user.email,
+        requestId: cxt.requestId,
         subject: 'Your Account Connection Has Been Removed',
         emailType: MailType.ACCOUNT_DISCONNECTED,
         client: { cuid: clientId, id: client?._id.toString() || '' },

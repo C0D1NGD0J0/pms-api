@@ -170,6 +170,7 @@ export class GuestPassService {
       if (data.sendViaSms && data.visitorPhone) {
         this.smsQueue.addToSmsQueue('guest-pass-code', {
           to: data.visitorPhone,
+          requestId: ctx.requestId,
           body: `Your access code is: ${guestPass.code}. Valid for ${expiryMinutes} mins. Show to security at the gate.`,
           cuid,
           passId: guestPass._id.toString(),
@@ -180,6 +181,7 @@ export class GuestPassService {
       if (data.sendViaEmail && data.visitorEmail) {
         this.emailQueue.addToEmailQueue('guest-pass-code', {
           to: data.visitorEmail,
+          requestId: ctx.requestId,
           emailType: MailType.GUEST_PASS_CODE,
           subject: 'Your Visitor Access Code',
           data: {

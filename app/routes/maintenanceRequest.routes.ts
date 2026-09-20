@@ -105,7 +105,7 @@ router.get(
 );
 
 router.patch(
-  '/:cuid/:mruid/vendor_assignment',
+  '/:cuid/:mruid/vendor',
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
@@ -162,7 +162,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/update_request',
+  '/:cuid/:mruid',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
@@ -185,7 +185,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/mark_work_done',
+  '/:cuid/:mruid/completion',
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
@@ -217,7 +217,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/tenant_feedback',
+  '/:cuid/:mruid/feedback',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
@@ -237,7 +237,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/ai_suggestion/accept',
+  '/:cuid/:mruid/ai-suggestion/accept',
   basicLimiter(),
   // Manager+ only — vendors/tenants are excluded via service-layer role check.
   // requirePermissionWithContext additionally restricts non-managers to their own resources.
@@ -258,7 +258,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/ai_suggestion/dismiss',
+  '/:cuid/:mruid/ai-suggestion/dismiss',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
@@ -277,7 +277,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/:mruid/cancel_request',
+  '/:cuid/:mruid/cancel',
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   requireActiveTenant('maintenanceRequests'),
@@ -316,7 +316,7 @@ router.post(
 );
 
 router.patch(
-  '/:cuid/:mruid/work_order_review',
+  '/:cuid/:mruid/work-order/review',
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,
@@ -334,7 +334,7 @@ router.patch(
 );
 
 router.post(
-  '/:cuid/:mruid/scan_invoice',
+  '/:cuid/:mruid/invoice-scan',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
@@ -356,7 +356,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/:mruid/create_invoice',
+  '/:cuid/:mruid/invoices',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.MAINTENANCE,
@@ -378,7 +378,7 @@ router.post(
 );
 
 router.patch(
-  '/:cuid/:mruid/invoice_review',
+  '/:cuid/:mruid/invoices/review',
   basicLimiter(),
   requirePermission(PermissionResource.MAINTENANCE, PermissionAction.UPDATE),
   subscriptionEntitlements,

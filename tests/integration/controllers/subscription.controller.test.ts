@@ -7,10 +7,10 @@ import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { ROLES } from '@shared/constants/roles.constants';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
+import { createControllerTestApp, clearTestDatabase } from '@tests/helpers';
 import { SubscriptionController } from '@controllers/SubscriptionController';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
-import { clearTestDatabase, createControllerTestApp } from '@tests/helpers';
 
 describe('SubscriptionController Integration Tests', () => {
   let app: Application;
@@ -152,7 +152,7 @@ describe('SubscriptionController Integration Tests', () => {
       routes: [
         {
           method: 'post',
-          path: '/api/v1/subscriptions/:cuid/init-subscription-payment',
+          path: '/api/v1/subscriptions/:cuid/checkout',
           contextUser: () => dummyUser,
           handler: (req, res) => subscriptionController.initSubscriptionPayment(req, res),
         },
@@ -185,7 +185,7 @@ describe('SubscriptionController Integration Tests', () => {
     };
   });
 
-  describe('POST /subscriptions/:cuid/init-subscription-payment', () => {
+  describe('POST /subscriptions/:cuid/checkout', () => {
     it('should create checkout session for super-admin with pending_payment subscription', async () => {
       const client = new Types.ObjectId();
       await Subscription.create({

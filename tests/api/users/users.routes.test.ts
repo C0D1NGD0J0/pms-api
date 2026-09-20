@@ -296,20 +296,24 @@ describe('Users Routes Integration Tests', () => {
         `${baseUrl}/:cuid/users/:uid/roles/:role`,
         mockClientController.removeUserRole
       );
-      testApp.get(`${baseUrl}/:cuid/property_managers`, mockPropertyController.getAssignableUsers);
-      testApp.get(`${baseUrl}/:cuid/profile_details`, mockUserController.getUserProfile);
-      testApp.get(`${baseUrl}/:cuid/user_details/:uid`, mockUserController.getClientUserInfo);
-      testApp.patch(`${baseUrl}/:cuid/update_profile`, mockUserController.updateUserProfile);
+      testApp.get(`${baseUrl}/:cuid/assignable-users`, mockPropertyController.getAssignableUsers);
+      testApp.get(`${baseUrl}/:cuid/profile`, mockUserController.getUserProfile);
+      testApp.patch(`${baseUrl}/:cuid/profile`, mockUserController.updateUserProfile);
       testApp.get(
         `${baseUrl}/:cuid/notification-preferences`,
         mockUserController.getNotificationPreferences
       );
       testApp.get(`${baseUrl}/:cuid/filtered-tenants`, mockUserController.getFilteredTenants);
       testApp.get(`${baseUrl}/:cuid/stats`, mockUserController.getTenantsStats);
-      testApp.get(`${baseUrl}/:cuid/client_tenant/:uid`, mockUserController.getClientTenantDetails);
-      testApp.get(`${baseUrl}/:cuid/tenant_details/:uid`, mockUserController.getTenantUserInfo);
-      testApp.patch(`${baseUrl}/:cuid/tenant_details/:uid`, mockUserController.updateTenantProfile);
-      testApp.delete(`${baseUrl}/:cuid/tenant_details/:uid`, mockUserController.deactivateTenant);
+      testApp.get(
+        `${baseUrl}/:cuid/tenants/:uid/details`,
+        mockUserController.getClientTenantDetails
+      );
+      testApp.get(`${baseUrl}/:cuid/tenants/:uid`, mockUserController.getTenantUserInfo);
+      testApp.patch(`${baseUrl}/:cuid/tenants/:uid`, mockUserController.updateTenantProfile);
+      testApp.delete(`${baseUrl}/:cuid/tenants/:uid`, mockUserController.deactivateTenant);
+      // Catch-all /:cuid/:uid must come AFTER all literal /:cuid/<segment> routes
+      testApp.get(`${baseUrl}/:cuid/:uid`, mockUserController.getClientUserInfo);
       testApp.delete(`${baseUrl}/:cuid/:uid`, mockUserController.archiveUser);
     });
   });
@@ -488,8 +492,8 @@ describe('Users Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/property_managers (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/property_managers`;
+  describe('GET /:cuid/assignable-users (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/assignable-users`;
 
     it('should get assignable property managers', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -500,8 +504,8 @@ describe('Users Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/profile_details (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/profile_details`;
+  describe('GET /:cuid/profile (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/profile`;
 
     it('should get user profile details', async () => {
       const response = await request(app)
@@ -516,8 +520,8 @@ describe('Users Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/user_details/:uid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/user_details/${mockUid}`;
+  describe('GET /:cuid/:uid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockUid}`;
 
     it('should get detailed user information', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -543,8 +547,8 @@ describe('Users Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/update_profile (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/update_profile`;
+  describe('PATCH /:cuid/profile (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/profile`;
 
     it('should update user profile successfully', async () => {
       const profileData = {
@@ -624,8 +628,8 @@ describe('Users Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/client_tenant/:uid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_tenant/${mockUid}`;
+  describe('GET /:cuid/tenants/:uid/details (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/tenants/${mockUid}/details`;
 
     it('should get detailed tenant information', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -645,8 +649,8 @@ describe('Users Routes Integration Tests', () => {
     });
   });
 
-  describe('Tenant Details Routes - /:cuid/tenant_details/:uid', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/tenant_details/${mockUid}`;
+  describe('Tenant Details Routes - /:cuid/tenants/:uid', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/tenants/${mockUid}`;
 
     describe('GET (protected)', () => {
       it('should get tenant user info', async () => {

@@ -44,16 +44,16 @@ describe('UserController Integration Tests', () => {
   // Route path constants
   const FILTERED_USERS_PATH = '/api/v1/users/:cuid/users';
   const USER_STATS_PATH = '/api/v1/users/:cuid/users/stats';
-  const PROFILE_DETAILS_PATH = '/api/v1/users/:cuid/profile_details';
-  const USER_DETAILS_PATH = '/api/v1/users/:cuid/user_details/:uid';
-  const UPDATE_PROFILE_PATH = '/api/v1/users/:cuid/update_profile';
+  const PROFILE_DETAILS_PATH = '/api/v1/users/:cuid/profile';
+  const USER_DETAILS_PATH = '/api/v1/users/:cuid/:uid';
+  const UPDATE_PROFILE_PATH = '/api/v1/users/:cuid/profile';
   const NOTIF_PREFS_PATH = '/api/v1/users/:cuid/notification-preferences';
   const FILTERED_TENANTS_PATH = '/api/v1/users/:cuid/filtered-tenants';
   const AVAILABLE_TENANTS_PATH = '/api/v1/users/:cuid/available-tenants';
   const TENANTS_STATS_PATH = '/api/v1/users/:cuid/stats';
-  const TENANT_DETAILS_PATH = '/api/v1/users/:cuid/tenant_details/:uid';
+  const TENANT_DETAILS_PATH = '/api/v1/users/:cuid/tenants/:uid';
   const ARCHIVE_USER_PATH = '/api/v1/users/:cuid/:uid';
-  const CLIENT_TENANT_PATH = '/api/v1/users/:cuid/client_tenant/:uid';
+  const CLIENT_TENANT_PATH = '/api/v1/users/:cuid/tenants/:uid/details';
   const USER_ROLES_PATH = '/api/v1/users/:cuid/users/:uid/roles';
   const REMOVE_ROLE_PATH = '/api/v1/users/:cuid/users/:uid/roles/:role';
 
@@ -389,10 +389,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('GET /users/:cuid/user_details/:uid - getClientUserInfo', () => {
+  describe('GET /users/:cuid/:uid - getClientUserInfo', () => {
     it('should return user details by UID', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/user_details/${adminUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/${adminUser.uid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -402,17 +402,17 @@ describe('UserController Integration Tests', () => {
 
     it('should return 404 for non-existent user', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/user_details/nonexistent-uid`)
+        .get(`/api/v1/users/${testClient.cuid}/nonexistent-uid`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /users/:cuid/profile_details - getUserProfile', () => {
+  describe('GET /users/:cuid/profile - getUserProfile', () => {
     it('should return current user profile when no uid provided', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/profile_details`)
+        .get(`/api/v1/users/${testClient.cuid}/profile`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -421,7 +421,7 @@ describe('UserController Integration Tests', () => {
 
     it('should return specific user profile when uid provided', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/profile_details`)
+        .get(`/api/v1/users/${testClient.cuid}/profile`)
         .query({ uid: adminUser.uid })
         .expect(httpStatusCodes.OK);
 
@@ -430,7 +430,7 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /users/:cuid/update_profile - updateUserProfile', () => {
+  describe('PATCH /users/:cuid/profile - updateUserProfile', () => {
     it('should update user profile successfully', async () => {
       const updateData = {
         personalInfo: {
@@ -440,7 +440,7 @@ describe('UserController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/users/${testClient.cuid}/update_profile`)
+        .patch(`/api/v1/users/${testClient.cuid}/profile`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -503,10 +503,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('GET /users/:cuid/tenant_details/:uid - getTenantUserInfo', () => {
+  describe('GET /users/:cuid/tenants/:uid - getTenantUserInfo', () => {
     it('should return tenant user information', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/tenant_details/${tenantUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -514,7 +514,7 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /users/:cuid/tenant_details/:uid - updateTenantProfile', () => {
+  describe('PATCH /users/:cuid/tenants/:uid - updateTenantProfile', () => {
     it('should update tenant profile successfully', async () => {
       const updateData = {
         personalInfo: {
@@ -523,7 +523,7 @@ describe('UserController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/users/${testClient.cuid}/tenant_details/${tenantUser.uid}`)
+        .patch(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -531,10 +531,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('DELETE /users/:cuid/tenant_details/:uid - deactivateTenant', () => {
+  describe('DELETE /users/:cuid/tenants/:uid - deactivateTenant', () => {
     it('should deactivate tenant successfully', async () => {
       const response = await request(app)
-        .delete(`/api/v1/users/${testClient.cuid}/tenant_details/${tenantUser.uid}`)
+        .delete(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -551,10 +551,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('GET /users/:cuid/client_tenant/:uid - getClientTenantDetails', () => {
+  describe('GET /users/:cuid/tenants/:uid/details - getClientTenantDetails', () => {
     it('should return detailed tenant information', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/client_tenant/${tenantUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}/details`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -563,7 +563,7 @@ describe('UserController Integration Tests', () => {
 
     it('should support include parameter for related data', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/client_tenant/${tenantUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}/details`)
         .query({ include: 'leases' })
         .expect(httpStatusCodes.OK);
 

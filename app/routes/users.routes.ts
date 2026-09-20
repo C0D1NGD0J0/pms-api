@@ -131,7 +131,7 @@ router.delete(
 );
 
 router.get(
-  '/:cuid/property_managers',
+  '/:cuid/assignable-users',
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
@@ -159,7 +159,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/profile_details',
+  '/:cuid/profile',
   basicLimiter(),
   isAuthenticated,
   requirePermissionWithContext(
@@ -181,22 +181,8 @@ router.get(
   })
 );
 
-router.get(
-  '/:cuid/user_details/:uid',
-  basicLimiter(),
-  isAuthenticated,
-  requireUserPermission(PermissionAction.READ),
-  validateRequest({
-    params: UserValidations.userUidParam,
-  }),
-  asyncWrapper((req, res) => {
-    const userController = req.container.resolve<UserController>('userController');
-    return userController.getClientUserInfo(req, res);
-  })
-);
-
 router.patch(
-  '/:cuid/update_profile',
+  '/:cuid/profile',
   basicLimiter(),
   isAuthenticated,
   requirePermissionWithContext(
@@ -335,7 +321,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/client_tenant/:uid',
+  '/:cuid/tenants/:uid/details',
   basicLimiter(),
   isAuthenticated,
   requireUserPermission(PermissionAction.READ),
@@ -350,7 +336,7 @@ router.get(
 );
 
 router
-  .route('/:cuid/tenant_details/:uid')
+  .route('/:cuid/tenants/:uid')
   .get(
     basicLimiter(),
     isAuthenticated,
@@ -390,6 +376,21 @@ router
       return userController.deactivateTenant(req, res);
     })
   );
+
+// Catch-all single user — must come AFTER all specific /:cuid/<literal> GET routes
+router.get(
+  '/:cuid/:uid',
+  basicLimiter(),
+  isAuthenticated,
+  requireUserPermission(PermissionAction.READ),
+  validateRequest({
+    params: UserValidations.userUidParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientUserInfo(req, res);
+  })
+);
 
 router.delete(
   '/:cuid/:uid',

@@ -276,6 +276,21 @@ router.patch(
 );
 
 router.patch(
+  '/:cuid/batch-archive',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
+  requireActiveSubscription,
+  idempotency,
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.batchArchiveProperties(req, res);
+  })
+);
+
+router.patch(
   '/:cuid/:pid/archive',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),

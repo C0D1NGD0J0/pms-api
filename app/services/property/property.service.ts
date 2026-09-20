@@ -1710,6 +1710,101 @@ export class PropertyService {
     };
   }
 
+  async batchArchiveProperties(
+    cuid: string,
+    pids: string[],
+    currentUser: ICurrentUser
+  ): Promise<ISuccessReturnData> {
+    if (!cuid || !pids?.length) {
+      throw new BadRequestError({ message: 'Client ID and at least one property ID are required' });
+    }
+
+    // 1. Fetch all target properties in one query
+    const properties = await this.propertyDAO.list(
+      { pid: { $in: pids }, cuid, deletedAt: null },
+      { projection: { _id: 1, pid: 1 } },
+      true
+    );
+
+    if (!properties.items.length) {
+      throw new NotFoundError({ message: 'No matching properties found' });
+    }
+
+    const propertyIds = properties.items.map((p) => p._id);
+
+    // 2. Business rule: check for active/pending leases across all properties in one query
+    const activeLeases = await this.leaseDAO.list(
+      {
+        cuid,
+        'property.id': { $in: propertyIds },
+        status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.PENDING_SIGNATURE] },
+        deletedAt: null,
+      },
+      { projection: { 'property.id': 1 } },
+      true
+    );
+
+    if (activeLeases.items.length > 0) {
+      throw new ValidationRequestError({
+        message: 'Cannot archive properties with active or pending leases',
+        errorInfo: {
+          properties: [
+            'One or more properties have active or pending leases. Terminate or cancel all leases first.',
+          ],
+        },
+      });
+    }
+
+    // 3. Business rule: check for unsettled payments across all properties in one query
+    const allLeases = await this.leaseDAO.list(
+      { cuid, 'property.id': { $in: propertyIds }, deletedAt: null },
+      { projection: { _id: 1 } },
+      true
+    );
+
+    if (allLeases.items.length > 0) {
+      const { items: unsettledPayments } = await this.paymentDAO.list(
+        {
+          cuid,
+          lease: { $in: allLeases.items.map((l) => l._id) },
+          status: {
+            $in: [
+              PaymentRecordStatus.PENDING,
+              PaymentRecordStatus.OVERDUE,
+              PaymentRecordStatus.PROCESSING,
+            ],
+          },
+          deletedAt: null,
+        },
+        { limit: 1 }
+      );
+
+      if (unsettledPayments.length > 0) {
+        throw new ValidationRequestError({
+          message: 'Cannot archive properties with unsettled payments',
+          errorInfo: {
+            properties: ['Resolve or cancel all pending/overdue payments before archiving.'],
+          },
+        });
+      }
+    }
+
+    // 4. Single updateMany — soft-delete all properties at once
+    const result = await this.propertyDAO.updateMany(
+      { _id: { $in: propertyIds } },
+      { $set: { deletedAt: new Date(), lastModifiedBy: currentUser.sub } }
+    );
+
+    // 5. Invalidate cache once
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    return {
+      success: true,
+      data: { archived: result.modifiedCount },
+      message: `${result.modifiedCount} properties archived successfully`,
+    };
+  }
+
   async unarchiveClientProperty(cuid: string, pid: string): Promise<ISuccessReturnData> {
     if (!cuid || !pid) {
       this.log.error('Client ID and Property ID are required');

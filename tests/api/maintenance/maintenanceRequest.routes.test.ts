@@ -214,45 +214,36 @@ describe('Maintenance Request Routes', () => {
       testApp.get(`${baseUrl}/:cuid`, mockMaintenanceController.listRequests);
       testApp.get(`${baseUrl}/:cuid/stats`, mockMaintenanceController.getStats);
       testApp.get(`${baseUrl}/:cuid/:mruid`, mockMaintenanceController.getRequest);
-      testApp.patch(
-        `${baseUrl}/:cuid/:mruid/vendor_assignment`,
-        mockMaintenanceController.assignVendor
-      );
+      testApp.patch(`${baseUrl}/:cuid/:mruid/vendor`, mockMaintenanceController.assignVendor);
       testApp.patch(
         `${baseUrl}/:cuid/:mruid/assignment`,
         mockMaintenanceController.respondToAssignment
       );
       testApp.patch(`${baseUrl}/:cuid/:mruid/status`, mockMaintenanceController.updateStatus);
       testApp.patch(
-        `${baseUrl}/:cuid/:mruid/complete_request`,
+        `${baseUrl}/:cuid/:mruid/completion`,
         mockMaintenanceController.completeRequest
       );
+      testApp.patch(`${baseUrl}/:cuid/:mruid/cancel`, mockMaintenanceController.cancelRequest);
+      testApp.post(`${baseUrl}/:cuid/:mruid/invoices`, mockMaintenanceController.submitInvoice);
       testApp.patch(
-        `${baseUrl}/:cuid/:mruid/cancel_request`,
-        mockMaintenanceController.cancelRequest
-      );
-      testApp.post(
-        `${baseUrl}/:cuid/:mruid/create_invoice`,
-        mockMaintenanceController.submitInvoice
-      );
-      testApp.patch(
-        `${baseUrl}/:cuid/:mruid/invoice_review`,
+        `${baseUrl}/:cuid/:mruid/invoices/review`,
         mockMaintenanceController.reviewInvoice
       );
       testApp.post(`${baseUrl}/:cuid/:mruid/work_order`, mockMaintenanceController.submitWorkOrder);
       testApp.patch(
-        `${baseUrl}/:cuid/:mruid/work_order_review`,
+        `${baseUrl}/:cuid/:mruid/work-order/review`,
         mockMaintenanceController.reviewWorkOrder
       );
       testApp.patch(
-        `${baseUrl}/:cuid/:mruid/ai_suggestion/accept`,
+        `${baseUrl}/:cuid/:mruid/ai-suggestion/accept`,
         mockMaintenanceController.acceptAISuggestion
       );
       testApp.patch(
-        `${baseUrl}/:cuid/:mruid/ai_suggestion/dismiss`,
+        `${baseUrl}/:cuid/:mruid/ai-suggestion/dismiss`,
         mockMaintenanceController.dismissAISuggestion
       );
-      testApp.post(`${baseUrl}/:cuid/:mruid/scan_invoice`, mockMaintenanceController.scanInvoice);
+      testApp.post(`${baseUrl}/:cuid/:mruid/invoice-scan`, mockMaintenanceController.scanInvoice);
     });
   });
 
@@ -464,10 +455,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Assign Vendor ─────────────────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/vendor_assignment', () => {
+  describe('PATCH /:cuid/:mruid/vendor', () => {
     it('should assign a vendor successfully', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/vendor_assignment`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/vendor`)
         .send({ vuid: faker.string.uuid() })
         .expect(httpStatusCodes.CREATED);
 
@@ -486,7 +477,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/vendor_assignment`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/vendor`)
         .send({ vuid: 'VENDOR-NOTFOUND' })
         .expect(httpStatusCodes.NOT_FOUND);
     });
@@ -578,10 +569,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Complete Request ──────────────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/complete_request', () => {
+  describe('PATCH /:cuid/:mruid/completion', () => {
     it('should complete a maintenance request', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/complete_request`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/completion`)
         .send({ completionNotes: 'Faucet replaced', actualCost: 25000 })
         .expect(httpStatusCodes.OK);
 
@@ -593,10 +584,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Cancel Request ────────────────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/cancel_request', () => {
+  describe('PATCH /:cuid/:mruid/cancel', () => {
     it('should cancel a maintenance request', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/cancel_request`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/cancel`)
         .send({ reason: 'Tenant resolved issue independently' })
         .expect(httpStatusCodes.OK);
 
@@ -608,7 +599,7 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Submit Invoice ────────────────────────────────────────────────────────
 
-  describe('POST /:cuid/:mruid/create_invoice', () => {
+  describe('POST /:cuid/:mruid/invoices', () => {
     const validInvoice = {
       amount: 50000,
       currency: 'usd',
@@ -617,7 +608,7 @@ describe('Maintenance Request Routes', () => {
 
     it('should submit an invoice successfully', async () => {
       const response = await request(app)
-        .post(`${baseUrl}/${mockCuid}/${mockMruid}/create_invoice`)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/invoices`)
         .send(validInvoice)
         .expect(httpStatusCodes.OK);
 
@@ -637,7 +628,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .post(`${baseUrl}/${mockCuid}/${mockMruid}/create_invoice`)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/invoices`)
         .send(validInvoice)
         .expect(httpStatusCodes.FORBIDDEN);
     });
@@ -645,10 +636,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Review Invoice ────────────────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/invoice_review', () => {
+  describe('PATCH /:cuid/:mruid/invoices/review', () => {
     it('should approve an invoice and forward full body to controller', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoice_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoices/review`)
         .send({ action: 'approve', isBillable: true })
         .expect(httpStatusCodes.OK);
 
@@ -669,7 +660,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoice_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoices/review`)
         .send({ action: 'reject', rejectionReason: 'Amount does not match estimate' })
         .expect(httpStatusCodes.OK);
 
@@ -689,7 +680,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoice_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/invoices/review`)
         .send({ action: 'approve' })
         .expect(httpStatusCodes.BAD_REQUEST);
     });
@@ -773,10 +764,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Review Work Order ──────────────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/work_order_review', () => {
+  describe('PATCH /:cuid/:mruid/work-order/review', () => {
     it('should approve a work order', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work_order_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work-order/review`)
         .send({ action: 'approve' })
         .expect(httpStatusCodes.OK);
 
@@ -797,7 +788,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work_order_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work-order/review`)
         .send({ action: 'reject', rejectionReason: 'Estimated cost too high, please revise' })
         .expect(httpStatusCodes.OK);
 
@@ -816,7 +807,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work_order_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work-order/review`)
         .send({ action: 'approve' })
         .expect(httpStatusCodes.BAD_REQUEST);
     });
@@ -832,7 +823,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work_order_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work-order/review`)
         .send({ action: 'approve' })
         .expect(httpStatusCodes.BAD_REQUEST);
     });
@@ -848,7 +839,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work_order_review`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/work-order/review`)
         .send({ action: 'approve' })
         .expect(httpStatusCodes.FORBIDDEN);
     });
@@ -856,10 +847,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── AI Suggestion — accept ────────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/ai_suggestion/accept', () => {
+  describe('PATCH /:cuid/:mruid/ai-suggestion/accept', () => {
     it('should accept AI suggestion as a manager and return 200', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/accept`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai-suggestion/accept`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -878,7 +869,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/accept`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai-suggestion/accept`)
         .expect(httpStatusCodes.FORBIDDEN);
 
       expect(response.body.success).toBe(false);
@@ -896,7 +887,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/accept`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai-suggestion/accept`)
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.success).toBe(false);
@@ -913,17 +904,17 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .patch(`${baseUrl}/${mockCuid}/MR-NOTFOUND/ai_suggestion/accept`)
+        .patch(`${baseUrl}/${mockCuid}/MR-NOTFOUND/ai-suggestion/accept`)
         .expect(httpStatusCodes.NOT_FOUND);
     });
   });
 
   // ─── AI Suggestion — dismiss ───────────────────────────────────────────────
 
-  describe('PATCH /:cuid/:mruid/ai_suggestion/dismiss', () => {
+  describe('PATCH /:cuid/:mruid/ai-suggestion/dismiss', () => {
     it('should dismiss AI suggestion as a manager and return 200', async () => {
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/dismiss`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai-suggestion/dismiss`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -942,7 +933,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai_suggestion/dismiss`)
+        .patch(`${baseUrl}/${mockCuid}/${mockMruid}/ai-suggestion/dismiss`)
         .expect(httpStatusCodes.FORBIDDEN);
 
       expect(response.body.success).toBe(false);
@@ -952,10 +943,10 @@ describe('Maintenance Request Routes', () => {
 
   // ─── Scan Invoice (AI) ─────────────────────────────────────────────────────
 
-  describe('POST /:cuid/:mruid/scan_invoice', () => {
+  describe('POST /:cuid/:mruid/invoice-scan', () => {
     it('should return extracted invoice data on success', async () => {
       const response = await request(app)
-        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/invoice-scan`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -975,7 +966,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/invoice-scan`)
         .expect(422);
 
       expect(response.body.success).toBe(false);
@@ -992,7 +983,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       const response = await request(app)
-        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/invoice-scan`)
         .expect(400);
 
       expect(response.body.success).toBe(false);
@@ -1009,7 +1000,7 @@ describe('Maintenance Request Routes', () => {
       );
 
       await request(app)
-        .post(`${baseUrl}/${mockCuid}/${mockMruid}/scan_invoice`)
+        .post(`${baseUrl}/${mockCuid}/${mockMruid}/invoice-scan`)
         .expect(httpStatusCodes.FORBIDDEN);
     });
   });

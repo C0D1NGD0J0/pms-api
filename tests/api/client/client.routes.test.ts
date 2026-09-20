@@ -81,8 +81,8 @@ describe('Client Routes Integration Tests', () => {
       });
 
       // Define client routes
-      testApp.get(`${baseUrl}/:cuid/client_details`, mockClientController.getClient);
-      testApp.patch(`${baseUrl}/:cuid/client_details`, mockClientController.updateClientProfile);
+      testApp.get(`${baseUrl}/:cuid`, mockClientController.getClient);
+      testApp.patch(`${baseUrl}/:cuid`, mockClientController.updateClientProfile);
       testApp.post(`${baseUrl}/:cuid/users/:uid/disconnect`, mockClientController.disconnectUser);
       testApp.post(`${baseUrl}/:cuid/users/:uid/reconnect`, mockClientController.reconnectUser);
     });
@@ -92,8 +92,8 @@ describe('Client Routes Integration Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('GET /:cuid/client_details (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_details`;
+  describe('GET /:cuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}`;
 
     it('should get client details successfully', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -147,8 +147,8 @@ describe('Client Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/client_details (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_details`;
+  describe('PATCH /:cuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}`;
 
     it('should update client profile successfully', async () => {
       const updateData = {
@@ -383,7 +383,7 @@ describe('Client Routes Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/client_details`)
+        .get(`${baseUrl}/${mockCuid}`)
         .expect(httpStatusCodes.INTERNAL_SERVER_ERROR);
 
       expect(response.body.success).toBe(false);
@@ -398,7 +398,7 @@ describe('Client Routes Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/client_details`)
+        .get(`${baseUrl}/${mockCuid}`)
         .expect(httpStatusCodes.UNAUTHORIZED);
 
       expect(response.body.success).toBe(false);
@@ -413,7 +413,7 @@ describe('Client Routes Integration Tests', () => {
       });
 
       const response = await request(app)
-        .get(`${baseUrl}/invalid-cuid/client_details`)
+        .get(`${baseUrl}/invalid-cuid`)
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Invalid');

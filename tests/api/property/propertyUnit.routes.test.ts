@@ -151,23 +151,14 @@ describe('Property Unit Routes Integration Tests', () => {
 
       // Define property unit routes (nested under property)
       // Register specific paths before parameterized /:puid to avoid route conflicts
-      const unitsBase = `${baseUrl}/:cuid/client_properties/:pid/units`;
+      const unitsBase = `${baseUrl}/:cuid/:pid/units`;
       testApp.post(unitsBase, mockPropertyUnitController.addUnit);
       testApp.get(unitsBase, mockPropertyUnitController.getPropertyUnits);
-      testApp.patch(
-        `${unitsBase}/update_status/:puid`,
-        mockPropertyUnitController.updateUnitStatus
-      );
-      testApp.post(
-        `${unitsBase}/setup_inspection/:puid`,
-        mockPropertyUnitController.setupInpection
-      );
-      testApp.patch(
-        `${unitsBase}/upload_media/:puid`,
-        mockPropertyUnitController.addDocumentToUnit
-      );
-      testApp.post(`${unitsBase}/validate_csv`, mockPropertyUnitController.validateUnitsCsv);
-      testApp.post(`${unitsBase}/import_csv`, mockPropertyUnitController.importUnitsFromCsv);
+      testApp.patch(`${unitsBase}/status/:puid`, mockPropertyUnitController.updateUnitStatus);
+      testApp.post(`${unitsBase}/inspection/:puid`, mockPropertyUnitController.setupInpection);
+      testApp.patch(`${unitsBase}/media/:puid`, mockPropertyUnitController.addDocumentToUnit);
+      testApp.post(`${unitsBase}/csv/validate`, mockPropertyUnitController.validateUnitsCsv);
+      testApp.post(`${unitsBase}/csv/import`, mockPropertyUnitController.importUnitsFromCsv);
       testApp.get(`${unitsBase}/:puid`, mockPropertyUnitController.getPropertyUnit);
       testApp.patch(`${unitsBase}/:puid`, mockPropertyUnitController.updateUnit);
       testApp.delete(`${unitsBase}/:puid`, mockPropertyUnitController.archiveUnit);
@@ -178,8 +169,8 @@ describe('Property Unit Routes Integration Tests', () => {
     jest.clearAllMocks();
   });
 
-  describe('POST /:cuid/client_properties/:pid/units (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units`;
+  describe('POST /:cuid/:pid/units (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units`;
 
     it('should create unit successfully', async () => {
       const unitData = {
@@ -232,8 +223,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/client_properties/:pid/units (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units`;
+  describe('GET /:cuid/:pid/units (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units`;
 
     it('should get property units successfully', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -272,8 +263,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/client_properties/:pid/units/:puid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/${mockPuid}`;
+  describe('GET /:cuid/:pid/units/:puid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/${mockPuid}`;
 
     it('should get single unit details', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -300,8 +291,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/client_properties/:pid/units/:puid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/${mockPuid}`;
+  describe('PATCH /:cuid/:pid/units/:puid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/${mockPuid}`;
 
     it('should update unit successfully', async () => {
       const updateData = {
@@ -351,8 +342,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('DELETE /:cuid/client_properties/:pid/units/:puid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/${mockPuid}`;
+  describe('DELETE /:cuid/:pid/units/:puid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/${mockPuid}`;
 
     it('should archive unit successfully', async () => {
       const response = await request(app).delete(endpoint).expect(httpStatusCodes.OK);
@@ -393,8 +384,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/client_properties/:pid/units/update_status/:puid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/update_status/${mockPuid}`;
+  describe('PATCH /:cuid/:pid/units/status/:puid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/status/${mockPuid}`;
 
     it('should update unit status successfully', async () => {
       const response = await request(app)
@@ -426,8 +417,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('POST /:cuid/client_properties/:pid/units/setup_inspection/:puid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/setup_inspection/${mockPuid}`;
+  describe('POST /:cuid/:pid/units/inspection/:puid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/inspection/${mockPuid}`;
 
     it('should schedule inspection successfully', async () => {
       const inspectionData = {
@@ -466,8 +457,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/client_properties/:pid/units/upload_media/:puid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/upload_media/${mockPuid}`;
+  describe('PATCH /:cuid/:pid/units/media/:puid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/media/${mockPuid}`;
 
     it('should upload media successfully', async () => {
       const response = await request(app)
@@ -496,8 +487,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('POST /:cuid/client_properties/:pid/units/validate_csv (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/validate_csv`;
+  describe('POST /:cuid/:pid/units/csv/validate (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/csv/validate`;
 
     it('should validate units CSV successfully', async () => {
       const response = await request(app)
@@ -526,8 +517,8 @@ describe('Property Unit Routes Integration Tests', () => {
     });
   });
 
-  describe('POST /:cuid/client_properties/:pid/units/import_csv (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units/import_csv`;
+  describe('POST /:cuid/:pid/units/csv/import (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units/csv/import`;
 
     it('should import units from CSV successfully', async () => {
       const response = await request(app)
@@ -557,7 +548,7 @@ describe('Property Unit Routes Integration Tests', () => {
   });
 
   describe('Error Handling', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/units`;
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/units`;
 
     it('should handle internal server errors gracefully', async () => {
       mockPropertyUnitController.getPropertyUnits.mockImplementationOnce(
@@ -601,7 +592,7 @@ describe('Property Unit Routes Integration Tests', () => {
         }
       );
 
-      const invalidEndpoint = `${baseUrl}/${mockCuid}/client_properties/invalid-pid/units`;
+      const invalidEndpoint = `${baseUrl}/${mockCuid}/invalid-pid/units`;
       const response = await request(app).get(invalidEndpoint).expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Invalid');

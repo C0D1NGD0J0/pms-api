@@ -19,7 +19,7 @@ const router = Router();
 router.use(basicLimiter(), isAuthenticated);
 
 router.post(
-  '/:cuid/generate',
+  '/:cuid',
   requireNotSuspended,
   requirePermission(PermissionResource.REPORT, PermissionAction.CREATE),
   requireVerifiedClient,

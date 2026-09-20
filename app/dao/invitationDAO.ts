@@ -247,7 +247,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
         updateData.$set.revokeReason = reason;
       }
 
-      return await this.update({ iuid, clientId }, updateData, { session });
+      // Disable validators: $unset of invitationToken conflicts with its conditional
+      // required validator in query context (Mongoose can't see the simultaneous $set on status)
+      return await this.update({ iuid, clientId }, updateData, { session, runValidators: false });
     } catch (error) {
       this.logger.error('Error revoking invitation:', error);
       throw this.throwErrorHandler(error);
@@ -271,7 +273,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           },
           $unset: { invitationToken: 1 },
         },
-        { session }
+        { session, runValidators: false }
       );
     } catch (error) {
       this.logger.error('Error declining invitation:', error);
@@ -297,7 +299,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
             invitationToken: 1,
           },
         },
-        { session }
+        { session, runValidators: false }
       );
     } catch (error) {
       this.logger.error('Error accepting invitation:', error);

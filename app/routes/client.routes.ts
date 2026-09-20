@@ -15,7 +15,7 @@ const router = Router();
 router.use(isAuthenticated);
 
 router.get(
-  '/:cuid/client_details',
+  '/:cuid',
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
@@ -28,7 +28,7 @@ router.get(
 );
 
 router.patch(
-  '/:cuid/client_details',
+  '/:cuid',
   basicLimiter(),
   requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
   idempotency,

@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { Schema, model, Types } from 'mongoose';
 import { ConflictError } from '@shared/customErrors';
 import { IUserRole } from '@shared/constants/roles.constants';
@@ -52,7 +53,7 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     invitationToken: {
       type: String,
       required: function (this: IInvitationDocument) {
-        return this.status !== 'accepted';
+        return !['accepted', 'declined', 'revoked', 'expired'].includes(this.status);
       },
       sparse: true, // Only index non-null values
       index: true,
@@ -60,7 +61,7 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     expiresAt: {
       type: Date,
       required: true,
-      default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      default: () => dayjs().add(12, 'hour').toDate(), // 12 hours from now
     },
     personalInfo: {
       firstName: {

@@ -1,10 +1,8 @@
 import request from 'supertest';
-import cookieParser from 'cookie-parser';
-import express, { Application } from 'express';
+import { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
-import { clearTestDatabase } from '@tests/helpers';
-import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
+import { UserService } from '@services/user/user.service';
 import { UserController } from '@controllers/UserController';
 import { ClientService } from '@services/client/client.service';
 import { VendorService } from '@services/vendor/vendor.service';
@@ -14,7 +12,6 @@ import { ProfileService } from '@services/profile/profile.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
-import { createTestProfile, createTestClient, createTestUser } from '@tests/setup/testFactories';
 import {
   PropertyUnitDAO,
   PropertyDAO,
@@ -23,6 +20,13 @@ import {
   VendorDAO,
   UserDAO,
 } from '@dao/index';
+import {
+  createControllerTestApp,
+  clearTestDatabase,
+  createTestProfile,
+  createTestClient,
+  createTestUser,
+} from '@tests/helpers';
 
 describe('UserController Integration Tests', () => {
   let app: Application;
@@ -34,37 +38,23 @@ describe('UserController Integration Tests', () => {
   let staffUser: any;
   let tenantUser: any;
 
-  const mockContext = (user: any, cuid: string, req?: any) => {
-    const clientEntry = user.cuids.find((c: any) => c.cuid === cuid);
-    const role = clientEntry?.roles[0] || ROLES.STAFF;
-    return {
-      currentuser: {
-        sub: user._id.toString(),
-        uid: user.uid,
-        email: user.email,
-        activecuid: cuid,
-        client: {
-          cuid,
-          role,
-          isConnected: true,
-        },
-        clients: user.cuids.map((c: any) => ({
-          cuid: c.cuid,
-          roles: c.roles,
-          isConnected: c.isConnected !== false,
-          clientDisplayName: c.clientDisplayName,
-        })),
-      },
-      request: {
-        params: req?.params || { cuid },
-        url: req?.url || '',
-        method: req?.method || 'GET',
-        path: req?.path || '',
-        query: req?.query || {},
-      },
-      langSetting: { lang: 'en', t: (key: string) => key },
-    };
-  };
+  let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
+
+  // Route path constants
+  const FILTERED_USERS_PATH = '/api/v1/users/:cuid/users';
+  const USER_STATS_PATH = '/api/v1/users/:cuid/users/stats';
+  const PROFILE_DETAILS_PATH = '/api/v1/users/:cuid/profile';
+  const USER_DETAILS_PATH = '/api/v1/users/:cuid/:uid';
+  const UPDATE_PROFILE_PATH = '/api/v1/users/:cuid/profile';
+  const NOTIF_PREFS_PATH = '/api/v1/users/:cuid/notification-preferences';
+  const FILTERED_TENANTS_PATH = '/api/v1/users/:cuid/filtered-tenants';
+  const AVAILABLE_TENANTS_PATH = '/api/v1/users/:cuid/available-tenants';
+  const TENANTS_STATS_PATH = '/api/v1/users/:cuid/stats';
+  const TENANT_DETAILS_PATH = '/api/v1/users/:cuid/tenants/:uid';
+  const ARCHIVE_USER_PATH = '/api/v1/users/:cuid/:uid';
+  const CLIENT_TENANT_PATH = '/api/v1/users/:cuid/tenants/:uid/details';
+  const USER_ROLES_PATH = '/api/v1/users/:cuid/users/:uid/roles';
+  const REMOVE_ROLE_PATH = '/api/v1/users/:cuid/users/:uid/roles/:role';
 
   beforeAll(async () => {
     setupAllExternalMocks();
@@ -115,6 +105,7 @@ describe('UserController Integration Tests', () => {
       userDAO,
       propertyDAO,
       profileDAO,
+      propertyUnitDAO,
       userCache,
       permissionService,
       vendorService,
@@ -131,6 +122,10 @@ describe('UserController Integration Tests', () => {
       } as any,
       maintenanceRequestDAO: {
         getStats: jest.fn().mockResolvedValue({ total: 0, open: 0, closed: 0, inProgress: 0 }),
+      } as any,
+      inspectionDAO: {
+        getStats: jest.fn().mockResolvedValue({ total: 0, scheduled: 0, completed: 0, overdue: 0 }),
+        countDocuments: jest.fn().mockResolvedValue(0),
       } as any,
       paymentProcessorDAO: {} as any,
       subscriptionDAO: {} as any,
@@ -157,6 +152,7 @@ describe('UserController Integration Tests', () => {
       profileDAO,
       clientDAO,
       userDAO,
+      vendorDAO,
       vendorService,
       userService,
       emitterService: mockEmitterService,
@@ -169,6 +165,12 @@ describe('UserController Integration Tests', () => {
       userCache: {
         invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
         invalidateUserLists: jest.fn().mockResolvedValue(undefined),
+      } as any,
+      paymentProcessorDAO: {} as any,
+      subscriptionDAO: {} as any,
+      leaseDAO: {
+        list: jest.fn().mockResolvedValue({ items: [], pagination: { total: 0 } }),
+        getActiveLeaseByTenant: jest.fn().mockResolvedValue(null),
       } as any,
     });
 
@@ -209,170 +211,121 @@ describe('UserController Integration Tests', () => {
 
     clientController = new ClientController({ clientService });
 
-    // Setup Express app
-    app = express();
-    app.use(express.json());
-    app.use(cookieParser());
-    app.use((req, res, next) => {
-      req.container = {} as any;
-      next();
+    const testApp = createControllerTestApp({
+      routes: [
+        {
+          method: 'get',
+          path: FILTERED_USERS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getFilteredUsers(req, res),
+        },
+        {
+          method: 'get',
+          path: USER_STATS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getUserStats(req, res),
+        },
+        {
+          method: 'get',
+          path: PROFILE_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getUserProfile(req, res),
+        },
+        {
+          method: 'get',
+          path: USER_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getClientUserInfo(req, res),
+        },
+        {
+          method: 'patch',
+          path: UPDATE_PROFILE_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.updateUserProfile(req, res),
+        },
+        {
+          method: 'get',
+          path: NOTIF_PREFS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getNotificationPreferences(req, res),
+        },
+        {
+          method: 'get',
+          path: FILTERED_TENANTS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getFilteredTenants(req, res),
+        },
+        {
+          method: 'get',
+          path: AVAILABLE_TENANTS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getAvailableTenantsForLease(req, res),
+        },
+        {
+          method: 'get',
+          path: TENANTS_STATS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getTenantsStats(req, res),
+        },
+        {
+          method: 'get',
+          path: TENANT_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getTenantUserInfo(req, res),
+        },
+        {
+          method: 'patch',
+          path: TENANT_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.updateTenantProfile(req, res),
+        },
+        {
+          method: 'delete',
+          path: TENANT_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.deactivateTenant(req, res),
+        },
+        {
+          method: 'delete',
+          path: ARCHIVE_USER_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.archiveUser(req, res),
+        },
+        {
+          method: 'get',
+          path: CLIENT_TENANT_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getClientTenantDetails(req, res),
+        },
+        // Client controller routes
+        {
+          method: 'get',
+          path: USER_ROLES_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.getUserRoles(req, res),
+        },
+        {
+          method: 'post',
+          path: USER_ROLES_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.assignUserRole(req, res),
+        },
+        {
+          method: 'delete',
+          path: REMOVE_ROLE_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => clientController.removeUserRole(req, res),
+        },
+      ],
     });
 
-    // Helper to wrap async route handlers for proper error forwarding
-    const wrap = (fn: (req: any, res: any, next: any) => Promise<any>) => {
-      return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
-    };
-
-    // Setup routes matching users.routes.ts
-    app.get(
-      '/api/v1/users/:cuid/users',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getFilteredUsers(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/users/stats',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getUserStats(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/profile_details',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getUserProfile(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/user_details/:uid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getClientUserInfo(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/users/:cuid/update_profile',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.updateUserProfile(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/notification-preferences',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getNotificationPreferences(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/filtered-tenants',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getFilteredTenants(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/available-tenants',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getAvailableTenantsForLease(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/stats',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getTenantsStats(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/tenant_details/:uid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getTenantUserInfo(req as any, res);
-      })
-    );
-
-    app.patch(
-      '/api/v1/users/:cuid/tenant_details/:uid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.updateTenantProfile(req as any, res);
-      })
-    );
-
-    app.delete(
-      '/api/v1/users/:cuid/tenant_details/:uid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.deactivateTenant(req as any, res);
-      })
-    );
-
-    app.delete(
-      '/api/v1/users/:cuid/:uid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.archiveUser(req as any, res);
-      })
-    );
-
-    app.get(
-      '/api/v1/users/:cuid/client_tenant/:uid',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await userController.getClientTenantDetails(req as any, res);
-      })
-    );
-
-    // Client controller routes
-    app.get(
-      '/api/v1/users/:cuid/users/:uid/roles',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await clientController.getUserRoles(req as any, res);
-      })
-    );
-
-    app.post(
-      '/api/v1/users/:cuid/users/:uid/roles',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await clientController.assignUserRole(req as any, res);
-      })
-    );
-
-    app.delete(
-      '/api/v1/users/:cuid/users/:uid/roles/:role',
-      wrap(async (req, res, _next) => {
-        req.context = mockContext(adminUser, req.params.cuid, req) as any;
-        await clientController.removeUserRole(req as any, res);
-      })
-    );
-
-    // Error handler to prevent test timeouts from unhandled errors
-    app.use((err: any, _req: any, res: any, _next: any) => {
-      const statusCode = err.statusCode || err.status || 500;
-      res.status(statusCode).json({
-        success: false,
-        message: err.message || 'Internal Server Error',
-      });
-    });
+    app = testApp.app;
+    resetContextOverrides = testApp.resetContextOverrides;
   });
 
   beforeEach(async () => {
     await clearTestDatabase();
+    resetContextOverrides();
 
     // Create test client and users
     testClient = await createTestClient();
@@ -434,10 +387,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('GET /users/:cuid/user_details/:uid - getClientUserInfo', () => {
+  describe('GET /users/:cuid/:uid - getClientUserInfo', () => {
     it('should return user details by UID', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/user_details/${adminUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/${adminUser.uid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -447,17 +400,17 @@ describe('UserController Integration Tests', () => {
 
     it('should return 404 for non-existent user', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/user_details/nonexistent-uid`)
+        .get(`/api/v1/users/${testClient.cuid}/nonexistent-uid`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /users/:cuid/profile_details - getUserProfile', () => {
+  describe('GET /users/:cuid/profile - getUserProfile', () => {
     it('should return current user profile when no uid provided', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/profile_details`)
+        .get(`/api/v1/users/${testClient.cuid}/profile`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -466,7 +419,7 @@ describe('UserController Integration Tests', () => {
 
     it('should return specific user profile when uid provided', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/profile_details`)
+        .get(`/api/v1/users/${testClient.cuid}/profile`)
         .query({ uid: adminUser.uid })
         .expect(httpStatusCodes.OK);
 
@@ -475,7 +428,7 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /users/:cuid/update_profile - updateUserProfile', () => {
+  describe('PATCH /users/:cuid/profile - updateUserProfile', () => {
     it('should update user profile successfully', async () => {
       const updateData = {
         personalInfo: {
@@ -485,7 +438,7 @@ describe('UserController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/users/${testClient.cuid}/update_profile`)
+        .patch(`/api/v1/users/${testClient.cuid}/profile`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -548,10 +501,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('GET /users/:cuid/tenant_details/:uid - getTenantUserInfo', () => {
+  describe('GET /users/:cuid/tenants/:uid - getTenantUserInfo', () => {
     it('should return tenant user information', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/tenant_details/${tenantUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -559,7 +512,7 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /users/:cuid/tenant_details/:uid - updateTenantProfile', () => {
+  describe('PATCH /users/:cuid/tenants/:uid - updateTenantProfile', () => {
     it('should update tenant profile successfully', async () => {
       const updateData = {
         personalInfo: {
@@ -568,7 +521,7 @@ describe('UserController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/users/${testClient.cuid}/tenant_details/${tenantUser.uid}`)
+        .patch(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -576,10 +529,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('DELETE /users/:cuid/tenant_details/:uid - deactivateTenant', () => {
+  describe('DELETE /users/:cuid/tenants/:uid - deactivateTenant', () => {
     it('should deactivate tenant successfully', async () => {
       const response = await request(app)
-        .delete(`/api/v1/users/${testClient.cuid}/tenant_details/${tenantUser.uid}`)
+        .delete(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -596,10 +549,10 @@ describe('UserController Integration Tests', () => {
     });
   });
 
-  describe('GET /users/:cuid/client_tenant/:uid - getClientTenantDetails', () => {
+  describe('GET /users/:cuid/tenants/:uid/details - getClientTenantDetails', () => {
     it('should return detailed tenant information', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/client_tenant/${tenantUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}/details`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -608,7 +561,7 @@ describe('UserController Integration Tests', () => {
 
     it('should support include parameter for related data', async () => {
       const response = await request(app)
-        .get(`/api/v1/users/${testClient.cuid}/client_tenant/${tenantUser.uid}`)
+        .get(`/api/v1/users/${testClient.cuid}/tenants/${tenantUser.uid}/details`)
         .query({ include: 'leases' })
         .expect(httpStatusCodes.OK);
 

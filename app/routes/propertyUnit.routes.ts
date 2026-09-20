@@ -90,7 +90,7 @@ router.delete(
 );
 
 router.patch(
-  '/update_status/:puid',
+  '/:puid/status',
   requirePropertyPermission(PermissionAction.UPDATE),
   idempotency,
   basicLimiter(),
@@ -105,7 +105,7 @@ router.patch(
 );
 
 router.post(
-  '/setup_inspection/:puid',
+  '/:puid/inspection',
   requirePropertyPermission(PermissionAction.UPDATE),
   idempotency,
   basicLimiter(),
@@ -120,7 +120,7 @@ router.post(
 );
 
 router.patch(
-  '/upload_media/:puid',
+  '/:puid/media',
   requirePropertyPermission(PermissionAction.UPDATE),
   idempotency,
   basicLimiter(),
@@ -137,7 +137,7 @@ router.patch(
 );
 
 router.post(
-  '/validate_csv',
+  '/csv/validate',
   requirePropertyPermission(PermissionAction.CREATE),
   basicLimiter(),
   diskUpload(['csv_file']),
@@ -150,7 +150,7 @@ router.post(
 );
 
 router.post(
-  '/import_csv',
+  '/csv/import',
   requirePropertyPermission(PermissionAction.CREATE),
   idempotency,
   basicLimiter(),

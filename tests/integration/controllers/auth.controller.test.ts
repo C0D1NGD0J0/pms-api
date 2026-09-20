@@ -1,7 +1,6 @@
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
-import cookieParser from 'cookie-parser';
-import express, { Application } from 'express';
+import { Application } from 'express';
 import { Profile, Client, User } from '@models/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { AuthService } from '@services/auth/auth.service';
@@ -10,8 +9,13 @@ import { AuthController } from '@controllers/AuthController';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { VendorService } from '@services/vendor/vendor.service';
 import { AuthTokenService } from '@services/auth/authToken.service';
-import { clearTestDatabase, createTestClient, createTestUser } from '@tests/helpers';
 import { setupAllExternalMocks, mockQueueFactory, mockAuthCache } from '@tests/setup/externalMocks';
+import {
+  createControllerTestApp,
+  clearTestDatabase,
+  createTestClient,
+  createTestUser,
+} from '@tests/helpers';
 
 describe('AuthController Integration Tests', () => {
   let app: Application;
@@ -22,138 +26,58 @@ describe('AuthController Integration Tests', () => {
   let profileDAO: ProfileDAO;
   let tokenService: AuthTokenService;
 
-  const setupTestApp = () => {
-    const testApp = express();
-    testApp.use(express.json());
-    testApp.use(express.urlencoded({ extended: true }));
-    testApp.use(cookieParser());
+  // Route path constants
+  const SIGNUP_PATH = '/api/v1/auth/signup';
+  const LOGIN_PATH = '/api/v1/auth/login';
+  const ME_PATH = '/api/v1/auth/:cuid/me';
+  const ACTIVATION_PATH = '/api/v1/auth/:cuid/account_activation';
+  const RESEND_ACTIVATION_PATH = '/api/v1/auth/resend_activation_link';
+  const SWITCH_ACCOUNT_PATH = '/api/v1/auth/switch_client_account';
+  const FORGOT_PASSWORD_PATH = '/api/v1/auth/forgot_password';
+  const RESET_PASSWORD_PATH = '/api/v1/auth/reset_password';
+  const LOGOUT_PATH = '/api/v1/auth/:cuid/logout';
+  const REFRESH_TOKEN_PATH = '/api/v1/auth/refresh_token';
 
-    // Mock middleware to simulate authentication
-    const mockAuthMiddleware = async (req: any, res: any, next: any) => {
-      if (!req.context) {
-        req.context = { currentuser: null };
-      }
-      const accessToken = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
-      if (accessToken) {
-        try {
-          const rawToken = accessToken.startsWith('Bearer ')
-            ? accessToken.split(' ')[1]
-            : accessToken;
-          const decoded = await tokenService.verifyJwtToken(
-            JWT_KEY_NAMES.ACCESS_TOKEN as any,
-            rawToken
-          );
-          if (decoded.success && decoded.data) {
-            const user = await User.findById(decoded.data.sub);
-            if (user) {
-              req.context.currentuser = {
-                sub: user._id.toString(),
-                uid: user.uid,
-                email: user.email,
-                activecuid: user.activecuid,
-                client: {
-                  cuid: user.activecuid,
-                },
-                clients: user.cuids,
-              };
-            }
+  // Dummy user for routes that don't rely on req.context (satisfies mockRequestContext shape)
+  const dummyUser = { _id: 'anonymous', uid: 'anon', email: 'anon@test.com' };
+
+  /**
+   * Auth-specific middleware: decodes JWT from cookies and populates req.context.
+   * Used inside handler callbacks for routes that require authentication (me, switch, logout).
+   */
+  const applyAuthContext = async (req: any) => {
+    // Always reset context — createControllerTestApp sets it via mockRequestContext,
+    // but auth routes need JWT-based context (or null when unauthenticated).
+    req.context = { currentuser: null };
+    const accessToken = req.cookies?.[JWT_KEY_NAMES.ACCESS_TOKEN];
+    if (accessToken) {
+      try {
+        const rawToken = accessToken.startsWith('Bearer ')
+          ? accessToken.split(' ')[1]
+          : accessToken;
+        const decoded = await tokenService.verifyJwtToken(
+          JWT_KEY_NAMES.ACCESS_TOKEN as any,
+          rawToken
+        );
+        if (decoded.success && decoded.data) {
+          const user = await User.findById(decoded.data.sub);
+          if (user) {
+            req.context.currentuser = {
+              sub: user._id.toString(),
+              uid: user.uid,
+              email: user.email,
+              activecuid: user.activecuid,
+              client: {
+                cuid: user.activecuid,
+              },
+              clients: user.cuids,
+            };
           }
-        } catch (error) {
-          // Token invalid, continue without user
         }
+      } catch (error) {
+        // Token invalid, continue without user
       }
-      next();
-    };
-
-    // Helper to wrap async route handlers for proper error forwarding
-    const wrap = (fn: (req: any, res: any, next: any) => Promise<any>) => {
-      return (req: any, res: any, next: any) => fn(req, res, next).catch(next);
-    };
-
-    // Auth routes
-    testApp.post(
-      '/api/v1/auth/signup',
-      wrap(async (req, res, _next) => {
-        await authController.signup(req, res);
-      })
-    );
-
-    testApp.post(
-      '/api/v1/auth/login',
-      wrap(async (req, res, _next) => {
-        await authController.login(req, res);
-      })
-    );
-
-    testApp.get(
-      '/api/v1/auth/:cuid/me',
-      mockAuthMiddleware,
-      wrap(async (req, res, _next) => {
-        await authController.getCurrentUser(req as any, res);
-      })
-    );
-
-    testApp.patch(
-      '/api/v1/auth/:cuid/account_activation',
-      wrap(async (req, res, _next) => {
-        await authController.accountActivation(req, res);
-      })
-    );
-
-    testApp.patch(
-      '/api/v1/auth/resend_activation_link',
-      wrap(async (req, res, _next) => {
-        await authController.sendActivationLink(req, res);
-      })
-    );
-
-    testApp.patch(
-      '/api/v1/auth/switch_client_account',
-      mockAuthMiddleware,
-      wrap(async (req, res, _next) => {
-        await authController.switchClientAccount(req as any, res);
-      })
-    );
-
-    testApp.patch(
-      '/api/v1/auth/forgot_password',
-      wrap(async (req, res, _next) => {
-        await authController.forgotPassword(req, res);
-      })
-    );
-
-    testApp.patch(
-      '/api/v1/auth/reset_password',
-      wrap(async (req, res, _next) => {
-        await authController.resetPassword(req, res);
-      })
-    );
-
-    testApp.delete(
-      '/api/v1/auth/:cuid/logout',
-      mockAuthMiddleware,
-      wrap(async (req, res, _next) => {
-        await authController.logout(req, res);
-      })
-    );
-
-    testApp.post(
-      '/api/v1/auth/refresh_token',
-      wrap(async (req, res, _next) => {
-        await authController.refreshToken(req, res);
-      })
-    );
-
-    // Error handler to prevent test timeouts from unhandled errors
-    testApp.use((err: any, _req: any, res: any, _next: any) => {
-      const statusCode = err.statusCode || err.status || 500;
-      res.status(statusCode).json({
-        success: false,
-        message: err.message || 'Internal Server Error',
-      });
-    });
-
-    return testApp;
+    }
   };
 
   beforeAll(async () => {
@@ -212,8 +136,81 @@ describe('AuthController Integration Tests', () => {
 
     authController = new AuthController({ authService, webAuthnService: {} as any, userDAO });
 
-    // Setup Express app
-    app = setupTestApp();
+    const testApp = createControllerTestApp({
+      routes: [
+        {
+          method: 'post',
+          path: SIGNUP_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.signup(req, res),
+        },
+        {
+          method: 'post',
+          path: LOGIN_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.login(req, res),
+        },
+        {
+          method: 'get',
+          path: ME_PATH,
+          contextUser: () => dummyUser,
+          handler: async (req, res) => {
+            await applyAuthContext(req);
+            return authController.getCurrentUser(req as any, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: ACTIVATION_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.accountActivation(req, res),
+        },
+        {
+          method: 'patch',
+          path: RESEND_ACTIVATION_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.sendActivationLink(req, res),
+        },
+        {
+          method: 'patch',
+          path: SWITCH_ACCOUNT_PATH,
+          contextUser: () => dummyUser,
+          handler: async (req, res) => {
+            await applyAuthContext(req);
+            return authController.switchClientAccount(req as any, res);
+          },
+        },
+        {
+          method: 'patch',
+          path: FORGOT_PASSWORD_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.forgotPassword(req, res),
+        },
+        {
+          method: 'patch',
+          path: RESET_PASSWORD_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.resetPassword(req, res),
+        },
+        {
+          method: 'delete',
+          path: LOGOUT_PATH,
+          contextUser: () => dummyUser,
+          handler: async (req, res) => {
+            await applyAuthContext(req);
+            return authController.logout(req, res);
+          },
+        },
+        {
+          method: 'post',
+          path: REFRESH_TOKEN_PATH,
+          contextUser: () => dummyUser,
+          handler: (req, res) => authController.refreshToken(req, res),
+        },
+      ],
+    });
+
+    app = testApp.app;
   });
 
   beforeEach(async () => {
@@ -914,18 +911,21 @@ describe('AuthController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
 
-      // Verify reset token was set
-      const updatedUser = await User.findById(user._id);
+      // Verify reset token was set (field has select: false, so must explicitly select it)
+      const updatedUser = await User.findById(user._id).select('+passwordResetToken');
       expect(updatedUser!.passwordResetToken).toBeDefined();
+      expect(updatedUser!.passwordResetToken).not.toBe('');
     });
 
-    it('should return 404 for non-existent email', async () => {
+    it('should return 200 for non-existent email (anti-enumeration)', async () => {
       const response = await request(app)
         .patch('/api/v1/auth/forgot_password')
         .send({ email: 'nonexistent@example.com' })
         .expect('Content-Type', /json/);
 
-      expect(response.status).toBe(httpStatusCodes.NOT_FOUND);
+      // Service always returns 200 to prevent account enumeration
+      expect(response.status).toBe(httpStatusCodes.OK);
+      expect(response.body.success).toBe(true);
     });
   });
 
@@ -957,7 +957,7 @@ describe('AuthController Integration Tests', () => {
       // Trigger forgot password
       await request(app).patch('/api/v1/auth/forgot_password').send({ email });
 
-      const userWithToken = await User.findById(user._id);
+      const userWithToken = await User.findById(user._id).select('+passwordResetToken');
       const resetToken = userWithToken!.passwordResetToken;
 
       // Reset password
@@ -969,8 +969,8 @@ describe('AuthController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
 
-      // Verify password was changed
-      const updatedUser = await User.findById(user._id);
+      // Verify password was changed (both fields have select: false)
+      const updatedUser = await User.findById(user._id).select('+password +passwordResetToken');
       expect(updatedUser!.passwordResetToken).toBeFalsy();
 
       const isNewPasswordValid = await bcrypt.compare(newPassword, updatedUser!.password);
@@ -1095,8 +1095,15 @@ describe('AuthController Integration Tests', () => {
         cookie.startsWith(JWT_KEY_NAMES.REFRESH_TOKEN)
       );
 
-      // Mock authCache to allow refresh
-      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true });
+      // Extract the raw JWT from the cookie value (format: "pms_refresh_token=Bearer%20<jwt>; ...")
+      const cookieValue = refreshTokenCookie!.split(';')[0]; // "pms_refresh_token=Bearer%20<jwt>"
+      const decodedValue = decodeURIComponent(cookieValue.split('=').slice(1).join('='));
+      const rawRefreshToken = decodedValue.replace('Bearer ', '');
+
+      // Mock authCache to return the exact refresh token so the comparison passes
+      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true, data: rawRefreshToken });
+      // Mock saveRefreshToken for the rotated token
+      mockAuthCache.saveRefreshToken.mockResolvedValueOnce({ success: true });
 
       // Refresh token
       const response = await request(app)

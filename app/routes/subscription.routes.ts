@@ -42,7 +42,7 @@ router.get(
 );
 
 router.post(
-  '/:cuid/init-subscription-payment',
+  '/:cuid/checkout',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   idempotency,
@@ -55,7 +55,7 @@ router.post(
 );
 
 router.delete(
-  '/:cuid/cancel-subscription',
+  '/:cuid',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   asyncWrapper((req, res) => {
@@ -78,7 +78,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/sync-from-stripe',
+  '/:cuid/sync',
   isAuthenticated,
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   asyncWrapper((req, res) => {

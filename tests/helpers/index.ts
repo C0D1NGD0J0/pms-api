@@ -16,6 +16,7 @@ export { createMockCurrentUser, createApiTestHelper } from './factories/property
 
 export { mockUnauthenticatedContext, mockRequestContext } from './mockRequestContext';
 export type { SeededTestData } from '../setup/seedTestData';
+export { createControllerTestApp } from '../setup/testApp';
 export { seedTestData } from '../setup/seedTestData';
 
 export * from '../setup/testFactories';

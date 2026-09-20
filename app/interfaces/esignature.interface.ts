@@ -40,6 +40,7 @@ export interface BoldSignJobData {
   };
   resource: ResourceInfo;
   managedBy?: string; // lease-level PM override — takes precedence over property.managedBy
+  requestId?: string;
   leaseId: string;
   cuid: string;
   luid: string;

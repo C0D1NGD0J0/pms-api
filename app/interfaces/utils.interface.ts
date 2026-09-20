@@ -342,6 +342,15 @@ export interface IPaginationQuery {
   skip?: number;
 }
 
+export interface IEmailOptions<T> {
+  client?: { cuid: string; id: string };
+  requestId?: string;
+  emailType: string;
+  subject: string;
+  to: string;
+  data: T;
+}
+
 export interface AppRequest extends Request {
   scannedFiles?: ExtractedMediaFile[];
   container: AwilixContainer;
@@ -356,14 +365,6 @@ export interface UploadedFile {
   mimeType?: string;
   fileName: string;
   path: string;
-}
-
-export interface IEmailOptions<T> {
-  client?: { cuid: string; id: string };
-  emailType: string;
-  subject: string;
-  to: string;
-  data: T;
 }
 
 export type MulterFile =

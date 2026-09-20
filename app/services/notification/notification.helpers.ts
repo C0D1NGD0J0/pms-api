@@ -55,6 +55,7 @@ export async function fetchRequestAndEnqueueEmail(
       };
       ctx.emailQueue.addToEmailQueue(emailTemplate, {
         to: user.email,
+        requestId: ctx.requestId,
         emailType,
         subject: '',
         data: buildData(request, shapedUser),

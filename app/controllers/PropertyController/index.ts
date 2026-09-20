@@ -190,6 +190,22 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(response);
   };
 
+  batchArchiveProperties = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+    const { pids } = req.body;
+
+    if (!currentuser) {
+      return res.status(httpStatusCodes.UNAUTHORIZED).json({
+        success: false,
+        message: 'User not authenticated',
+      });
+    }
+
+    const data = await this.propertyService.batchArchiveProperties(cuid, pids, currentuser);
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
   archiveProperty = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;

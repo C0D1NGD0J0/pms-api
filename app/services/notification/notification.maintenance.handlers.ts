@@ -108,6 +108,7 @@ export async function handleInvoiceApproved(
       if (vendorUser?.email) {
         ctx.emailQueue.addToEmailQueue('maintenanceInvoiceApproved', {
           to: vendorUser.email,
+          requestId: ctx.requestId,
           emailType: MailType.MAINTENANCE_INVOICE_APPROVED,
           subject: '',
           data: {
@@ -235,6 +236,7 @@ export async function handleVendorPaid(
       const invoice = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
       ctx.emailQueue.addToEmailQueue('maintenanceVendorPaid', {
         to: vendorUser.email,
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_VENDOR_PAID,
         subject: '',
         data: {
@@ -321,6 +323,7 @@ export async function handleInvoiceSubmitted(
     if (request) {
       ctx.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
         to: '',
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
         subject: '',
         data: { request, invoice: request.invoice, vendorId, amount },
@@ -403,6 +406,7 @@ export async function handleWorkOrderApproved(
     if (request && vendorUser?.email) {
       ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderApproved', {
         to: vendorUser.email,
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_WORK_ORDER_APPROVED,
         subject: '',
         data: {
@@ -448,6 +452,7 @@ export async function handleWorkOrderSubmitted(
       const workOrder = normalizeWorkOrderForEmail((request as any).workOrder);
       ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmitted', {
         to: '',
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED,
         subject: '',
         data: { request, workOrder, vendorId },
@@ -461,6 +466,7 @@ export async function handleWorkOrderSubmitted(
         if (tenantUser?.email) {
           ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmittedTenant', {
             to: tenantUser.email,
+            requestId: ctx.requestId,
             emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT,
             subject: '',
             data: { request, workOrder },
@@ -546,6 +552,7 @@ export async function handleMRAssigned(
     if (request && vendorUser?.email) {
       ctx.emailQueue.addToEmailQueue('maintenanceRequestAssigned', {
         to: vendorUser.email,
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_REQUEST_ASSIGNED,
         subject: '',
         data: {
@@ -614,6 +621,7 @@ export async function handleWorkOrderRejected(
     if (request && vendorUser?.email) {
       ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderRejected', {
         to: vendorUser.email,
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_WORK_ORDER_REJECTED,
         subject: '',
         data: {
@@ -681,6 +689,7 @@ export async function handleMaintenanceChargeCreated(
     if (tenantUser?.email) {
       ctx.emailQueue.addToEmailQueue('maintenanceChargeCreated', {
         to: tenantUser.email,
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_CHARGE_CREATED,
         subject: '',
         data: { mruid, cuid, pytuid, jobTitle, amountInCents, currency, dueDate },
@@ -731,6 +740,7 @@ export async function handleInvoiceRejected(
     if (request && vendorUser?.email) {
       ctx.emailQueue.addToEmailQueue('maintenanceInvoiceRejected', {
         to: vendorUser.email,
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_INVOICE_REJECTED,
         subject: '',
         data: { request, rejectionReason, rejectedBy: shapeUserForEmail(rejectedByUser) },
@@ -827,6 +837,7 @@ export async function handleMRCreated(
       if (creator?.email) {
         ctx.emailQueue.addToEmailQueue('maintenanceRequestCreated', {
           to: creator.email,
+          requestId: ctx.requestId,
           emailType: MailType.MAINTENANCE_REQUEST_CREATED,
           subject: '',
           data: {
@@ -955,6 +966,7 @@ export async function handleMRDeclined(
     if (request) {
       ctx.emailQueue.addToEmailQueue('maintenanceRequestDeclined', {
         to: '',
+        requestId: ctx.requestId,
         emailType: MailType.MAINTENANCE_REQUEST_DECLINED,
         subject: '',
         data: { request, vendorId, reason },

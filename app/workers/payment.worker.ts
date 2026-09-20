@@ -22,10 +22,12 @@ export class PaymentWorker {
    * Arrow function to preserve `this` binding when passed as callback to processQueueJobs
    */
   handleCreateRentInvoice = async (job: Job<ICreateRentInvoiceJobData>) => {
-    const { cuid, leaseId, tenantId, period, dueDate, paymentType, description } = job.data;
+    const { cuid, leaseId, tenantId, period, dueDate, paymentType, description, requestId } =
+      job.data;
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     const startTime = Date.now();
 
-    this.log.info(
+    log.info(
       { jobId: job.id, cuid, leaseId, period, attempt: job.attemptsMade + 1 },
       'PaymentWorker: processing rent invoice job'
     );
@@ -50,7 +52,7 @@ export class PaymentWorker {
       await job.progress(100);
 
       const duration = Date.now() - startTime;
-      this.log.info(
+      log.info(
         { jobId: job.id, pytuid: result.data?.pytuid, duration },
         'PaymentWorker: rent invoice created successfully'
       );
@@ -58,7 +60,7 @@ export class PaymentWorker {
       return { success: true, pytuid: result.data?.pytuid, duration };
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      this.log.error(
+      log.error(
         {
           jobId: job.id,
           cuid,
@@ -74,7 +76,7 @@ export class PaymentWorker {
       // On final attempt, log a hard alert for ops visibility
       const maxAttempts = job.opts?.attempts ?? 1;
       if (job.attemptsMade + 1 >= maxAttempts) {
-        this.log.error(
+        log.error(
           { jobId: job.id, jobData: job.data },
           'PaymentWorker: ⚠️ ALERT — invoice creation exhausted all retries'
         );
@@ -89,13 +91,11 @@ export class PaymentWorker {
    * Arrow function to preserve `this` binding
    */
   handleCancelPayment = async (job: Job<ICancelPaymentJobData>) => {
-    const { cuid, pytuid, reason } = job.data;
+    const { cuid, pytuid, reason, requestId } = job.data;
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     const startTime = Date.now();
 
-    this.log.info(
-      { jobId: job.id, cuid, pytuid },
-      'PaymentWorker: processing payment cancellation job'
-    );
+    log.info({ jobId: job.id, cuid, pytuid }, 'PaymentWorker: processing payment cancellation job');
 
     try {
       await job.progress(10);
@@ -105,7 +105,7 @@ export class PaymentWorker {
       await job.progress(100);
 
       const duration = Date.now() - startTime;
-      this.log.info(
+      log.info(
         { jobId: job.id, pytuid, duration },
         'PaymentWorker: payment cancelled successfully'
       );
@@ -113,7 +113,7 @@ export class PaymentWorker {
       return { success: true, pytuid, duration };
     } catch (error: any) {
       const duration = Date.now() - startTime;
-      this.log.error(
+      log.error(
         { jobId: job.id, cuid, pytuid, duration, error: error.message },
         'PaymentWorker: payment cancellation job failed'
       );

@@ -24,10 +24,11 @@ export class SmsWorker {
   }
 
   sendSms = async (job: Job) => {
-    const { to, body, cuid, passId } = job.data;
+    const { to, body, cuid, passId, requestId } = job.data;
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     const recipientHint = typeof to === 'string' ? `***${to.slice(-4)}` : undefined;
 
-    this.log.info(
+    log.info(
       { jobId: job.id, jobName: job.name, recipientHint, cuid },
       `Processing SMS job ${job.id} (${job.name})`
     );
@@ -37,7 +38,7 @@ export class SmsWorker {
       if (passId) {
         const pass = await this.guestPassDAO.findFirst({ _id: passId });
         if (pass?.deliveryStatus?.sms === DeliveryStatusEnum.SENT) {
-          this.log.info({ jobId: job.id, passId }, 'SMS already delivered — skipping retry');
+          log.info({ jobId: job.id, passId }, 'SMS already delivered — skipping retry');
           return { success: true, alreadySent: true };
         }
       }
@@ -50,7 +51,7 @@ export class SmsWorker {
       });
 
       if (!result.success) {
-        this.log.warn(
+        log.warn(
           { jobId: job.id, recipientHint, error: result.error },
           'SMS send returned unsuccessful'
         );
@@ -74,14 +75,14 @@ export class SmsWorker {
         );
       }
 
-      this.log.info(
+      log.info(
         { jobId: job.id, recipientHint, twilioSid: result.twilioSid },
         'SMS delivered successfully'
       );
 
       return { success: true, sentAt: new Date().toISOString() };
     } catch (err) {
-      this.log.error({ err, jobId: job.id, recipientHint, cuid }, 'SMS delivery failed');
+      log.error({ err, jobId: job.id, recipientHint, cuid }, 'SMS delivery failed');
 
       if (passId) {
         await this.guestPassDAO.update(

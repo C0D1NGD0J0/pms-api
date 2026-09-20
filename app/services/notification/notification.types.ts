@@ -44,6 +44,7 @@ export interface INotificationContext {
   emailQueue: EmailQueue;
   sseService: SSEService;
   clientDAO: ClientDAO;
+  requestId?: string;
   userDAO: UserDAO;
   log: Logger;
 }

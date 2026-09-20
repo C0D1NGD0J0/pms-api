@@ -5,6 +5,7 @@ import { BaseQueue } from './base.queue';
 
 export interface ISmsJobData {
   messageType?: SMSMessageType;
+  requestId?: string;
   passId?: string;
   body: string;
   cuid: string;

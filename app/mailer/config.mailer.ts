@@ -35,6 +35,7 @@ export const EMAIL_BRAND_DEFAULTS: EmailBrandContext = {
 interface MailOptions extends SendMailOptions {
   client?: { cuid: string; id?: string };
   data: EmailTemplateData;
+  requestId?: string;
 }
 
 interface EmailTemplate {
@@ -341,6 +342,7 @@ export class MailService {
   }
 
   async sendMail(data: MailOptions, mailType: MailType): Promise<void> {
+    const log = data.requestId ? this.log.child({ requestId: data.requestId }) : this.log;
     try {
       const { html, text } = await this.getEmailTemplate(data.data, mailType);
       const brand = await this.resolveBrandContext(data.client?.cuid);
@@ -399,9 +401,9 @@ export class MailService {
         });
       }
 
-      this.log.info(`Email sent: ${mailType} mail.`);
+      log.info(`Email sent: ${mailType} mail.`);
     } catch (error) {
-      this.log.error(
+      log.error(
         {
           error,
           mailType,

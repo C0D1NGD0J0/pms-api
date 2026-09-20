@@ -81,6 +81,7 @@ export async function handleInspectionApproved(
     if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionApprovedJob', {
         to: tenant.email,
+        requestId: ctx.requestId,
         emailType: MailType.INSPECTION_APPROVED,
         subject: '',
         data: {
@@ -147,6 +148,7 @@ export async function handleInspectionRejected(
     if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionRejectedJob', {
         to: tenant.email,
+        requestId: ctx.requestId,
         emailType: MailType.INSPECTION_REJECTED,
         subject: '',
         data: {
@@ -189,6 +191,7 @@ export async function handleInspectionScheduled(
     if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionScheduledJob', {
         to: tenant.email,
+        requestId: ctx.requestId,
         emailType: MailType.INSPECTION_SCHEDULED,
         subject: '',
         data: {
@@ -232,6 +235,7 @@ export async function handleInspectionSubmitted(
     ) {
       ctx.emailQueue.addToEmailQueue('inspectionSubmittedJob', {
         to: inspector.email,
+        requestId: ctx.requestId,
         emailType: MailType.INSPECTION_SUBMITTED,
         subject: '',
         data: {
@@ -273,6 +277,7 @@ export async function handleInspectionCancelled(
     if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
       ctx.emailQueue.addToEmailQueue('inspectionCancelledJob', {
         to: tenant.email,
+        requestId: ctx.requestId,
         emailType: MailType.INSPECTION_CANCELLED,
         subject: '',
         data: { currentuser: tenant, iuid },

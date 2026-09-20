@@ -72,8 +72,13 @@ export class S3Service {
     return `${context.resourceName}/${safeName}|||${context.resourceId}|||_${Date.now()}.${ext}`;
   }
 
-  async uploadFiles(files: UploadedFile[], context: ResourceInfo): Promise<UploadResult[]> {
-    this.log.info(
+  async uploadFiles(
+    files: UploadedFile[],
+    context: ResourceInfo,
+    requestId?: string
+  ): Promise<UploadResult[]> {
+    const log = requestId ? this.log.child({ requestId }) : this.log;
+    log.info(
       {
         fileCount: files.length,
         resourceId: context.resourceId,
@@ -85,7 +90,7 @@ export class S3Service {
 
     for (const file of files) {
       try {
-        this.log.debug(`Uploading file: ${file.fileName}`);
+        log.debug(`Uploading file: ${file.fileName}`);
         const fileStream = fs.createReadStream(file.path);
         const s3Key = this.buildS3Key(file, context);
 
@@ -107,11 +112,11 @@ export class S3Service {
             progress.total && progress.loaded
               ? Math.round((progress.loaded / progress.total) * 100)
               : 0;
-          this.log.debug(`Upload progress for ${file.fileName}: ${percentage}%`);
+          log.debug(`Upload progress for ${file.fileName}: ${percentage}%`);
         });
 
         const result = await upload.done();
-        this.log.info(`Successfully uploaded ${file.fileName} to S3`);
+        log.info(`Successfully uploaded ${file.fileName} to S3`);
 
         const rawMediatype = this.determineMediaType(file.mimeType);
         results.push({
@@ -128,7 +133,7 @@ export class S3Service {
         });
       } catch (error) {
         // Log error but continue with other files
-        this.log.error(`Error uploading ${file.fileName} to S3:`, error);
+        log.error(`Error uploading ${file.fileName} to S3:`, error);
       }
     }
 
@@ -139,10 +144,12 @@ export class S3Service {
     buffer: Buffer,
     s3Key: string,
     contentType: string,
-    resourceId?: string
+    resourceId?: string,
+    requestId?: string
   ): Promise<{ url: string; key: string }> {
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     try {
-      this.log.debug(`Uploading buffer to S3: ${s3Key}`);
+      log.debug(`Uploading buffer to S3: ${s3Key}`);
 
       const params = {
         Bucket: this.bucketName,
@@ -158,14 +165,14 @@ export class S3Service {
       });
 
       const result = await upload.done();
-      this.log.info(`Successfully uploaded buffer to S3: ${s3Key}`);
+      log.info(`Successfully uploaded buffer to S3: ${s3Key}`);
 
       return {
         url: result.Location!,
         key: result.Key!,
       };
     } catch (error) {
-      this.log.error('Error uploading buffer to S3:', error);
+      log.error('Error uploading buffer to S3:', error);
       throw new Error(
         `Failed to upload buffer: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

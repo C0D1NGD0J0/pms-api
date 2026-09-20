@@ -142,6 +142,7 @@ router.post(
 
     emailQueue.addToEmailQueue(MailType.USER_FEEDBACK, {
       to: 'support@propertydesk.live',
+      requestId: req.context.requestId,
       subject: `[Feedback] ${category} — ${currentuser?.fullname || 'Unknown User'}`,
       emailType: MailType.USER_FEEDBACK,
       data: {

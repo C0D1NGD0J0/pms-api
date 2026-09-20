@@ -150,7 +150,11 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async createCheckoutSession(data: ICreateCheckoutInput): Promise<ICheckoutSession> {
+  async createCheckoutSession(
+    data: ICreateCheckoutInput,
+    requestId?: string
+  ): Promise<ICheckoutSession> {
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     try {
       const { customerId, priceId, successUrl, cancelUrl, metadata } = data;
 
@@ -177,7 +181,7 @@ export class StripeService implements IPaymentProvider {
         })
       );
 
-      this.log.info({ sessionId: session.id, customerId }, 'Created checkout session');
+      log.info({ sessionId: session.id, customerId }, 'Created checkout session');
 
       return {
         sessionId: session.id,
@@ -510,7 +514,8 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async createCustomer(data: ICreateCustomerInput): Promise<IPaymentCustomer> {
+  async createCustomer(data: ICreateCustomerInput, requestId?: string): Promise<IPaymentCustomer> {
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     const { email, metadata, name, connectedAccountId } = data;
     try {
       const requestOptions = connectedAccountId ? { stripeAccount: connectedAccountId } : undefined;
@@ -527,7 +532,7 @@ export class StripeService implements IPaymentProvider {
         createdAt: new Date(customer.created * 1000),
       };
     } catch (error) {
-      this.log.error({ error, email: data.email }, 'Error creating Stripe customer');
+      log.error({ error, email: data.email }, 'Error creating Stripe customer');
       throw error;
     }
   }

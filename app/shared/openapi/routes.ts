@@ -1,6 +1,64 @@
-import { z } from 'zod';
+import { type ZodTypeAny, z } from 'zod';
 
 import { StandardSuccessSchema, StandardErrorSchema, openApiRegistry } from './registry';
+import {
+  MaintenanceRequestSummarySchema,
+  MaintenanceRequestDetailSchema,
+  InvitationSummarySchema,
+  InspectionSummarySchema,
+  InspectionDetailSchema,
+  PropertySummarySchema,
+  PaginationMetaSchema,
+  PropertyDetailSchema,
+  PaymentSummarySchema,
+  LeaseSummarySchema,
+  TenantDetailSchema,
+  VendorDetailSchema,
+  LeaseDetailSchema,
+  UserProfileSchema,
+} from './schemas';
+
+// ─── Typed response helpers ───────────────────────────────────────────
+
+function paginatedWith(schema: ZodTypeAny, name: string) {
+  return {
+    200: {
+      description: 'Success',
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              success: z.literal(true),
+              data: z.object({
+                items: z.array(schema),
+                pagination: PaginationMetaSchema,
+              }),
+            })
+            .openapi(`${name}ListResponse`),
+        },
+      },
+    },
+  } as const;
+}
+
+function successWith(schema: ZodTypeAny, name: string) {
+  return {
+    200: {
+      description: 'Success',
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              success: z.literal(true),
+              message: z.string().optional(),
+              data: schema,
+            })
+            .openapi(`${name}Response`),
+        },
+      },
+    },
+  } as const;
+}
 
 // ─── Security scheme ────────────────────────────────────────────────
 openApiRegistry.registerComponent('securitySchemes', 'cookieAuth', {
@@ -484,7 +542,7 @@ openApiRegistry.registerPath({
   summary: 'List properties for a client',
   tags: ['Properties'],
   request: { params: cuidParams, query: paginationQuery },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(PropertySummarySchema, 'Property'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -493,7 +551,7 @@ openApiRegistry.registerPath({
   summary: 'Get a single property by ID',
   tags: ['Properties'],
   request: { params: z.object({ cuid: z.string(), pid: z.string() }) },
-  responses: { ...ok200, ...err404 },
+  responses: { ...successWith(PropertyDetailSchema, 'PropertyDetail'), ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -766,7 +824,7 @@ openApiRegistry.registerPath({
       sortOrder: z.enum(['asc', 'desc']).optional(),
     }),
   },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(LeaseSummarySchema, 'Lease'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -820,7 +878,7 @@ openApiRegistry.registerPath({
   summary: 'Get a single lease',
   tags: ['Leases'],
   request: { params: z.object({ cuid: z.string(), luid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(LeaseDetailSchema, 'LeaseDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -1049,7 +1107,7 @@ openApiRegistry.registerPath({
   summary: 'Get a single payment',
   tags: ['Payments'],
   request: { params: z.object({ cuid: z.string(), pytuid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(PaymentSummarySchema, 'PaymentDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -1067,7 +1125,7 @@ openApiRegistry.registerPath({
       sortOrder: z.enum(['asc', 'desc']).optional(),
     }),
   },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(PaymentSummarySchema, 'Payment'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -1287,7 +1345,7 @@ openApiRegistry.registerPath({
       search: z.string().optional(),
     }),
   },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(UserProfileSchema, 'User'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -1368,7 +1426,7 @@ openApiRegistry.registerPath({
   summary: 'Get details for a specific user',
   tags: ['Users'],
   request: { params: z.object({ cuid: z.string(), uid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(UserProfileSchema, 'UserDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -1467,7 +1525,7 @@ openApiRegistry.registerPath({
   summary: 'Get client tenant details',
   tags: ['Users'],
   request: { params: z.object({ cuid: z.string(), uid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(TenantDetailSchema, 'TenantDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -1561,7 +1619,7 @@ openApiRegistry.registerPath({
   summary: 'List vendors with filters',
   tags: ['Vendors'],
   request: { params: cuidParams, query: paginationQuery },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(VendorDetailSchema, 'Vendor'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -1570,7 +1628,7 @@ openApiRegistry.registerPath({
   summary: 'Get vendor details',
   tags: ['Vendors'],
   request: { params: z.object({ cuid: z.string(), vuid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(VendorDetailSchema, 'VendorDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -1712,7 +1770,7 @@ openApiRegistry.registerPath({
   summary: 'List invitations for a client',
   tags: ['Invitations'],
   request: { params: cuidParams, query: paginationQuery },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(InvitationSummarySchema, 'Invitation'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -1730,7 +1788,7 @@ openApiRegistry.registerPath({
   summary: 'Get a single invitation',
   tags: ['Invitations'],
   request: { params: z.object({ iuid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(InvitationSummarySchema, 'InvitationDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -2086,7 +2144,7 @@ openApiRegistry.registerPath({
   summary: 'List inspections',
   tags: ['Inspections'],
   request: { params: cuidParams, query: paginationQuery },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(InspectionSummarySchema, 'Inspection'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -2131,7 +2189,7 @@ openApiRegistry.registerPath({
   summary: 'Get a single inspection',
   tags: ['Inspections'],
   request: { params: z.object({ cuid: z.string(), iuid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: { ...successWith(InspectionDetailSchema, 'InspectionDetail'), ...err401, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -2234,7 +2292,7 @@ openApiRegistry.registerPath({
   summary: 'List maintenance requests',
   tags: ['MaintenanceRequests'],
   request: { params: cuidParams, query: paginationQuery },
-  responses: { ...ok200, ...err401 },
+  responses: { ...paginatedWith(MaintenanceRequestSummarySchema, 'MaintenanceRequest'), ...err401 },
 });
 
 openApiRegistry.registerPath({
@@ -2252,7 +2310,11 @@ openApiRegistry.registerPath({
   summary: 'Get a single maintenance request',
   tags: ['MaintenanceRequests'],
   request: { params: z.object({ cuid: z.string(), mruid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err404 },
+  responses: {
+    ...successWith(MaintenanceRequestDetailSchema, 'MaintenanceRequestDetail'),
+    ...err401,
+    ...err404,
+  },
 });
 
 openApiRegistry.registerPath({

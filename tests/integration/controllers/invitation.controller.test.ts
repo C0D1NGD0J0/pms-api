@@ -50,7 +50,7 @@ describe('InvitationController Integration Tests', () => {
   let managerUser: any;
   let testInvitation: any;
 
-  let _setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
+  let setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
   // Helper to resolve client ObjectId from cuid — needed because several service methods
@@ -325,7 +325,7 @@ describe('InvitationController Integration Tests', () => {
     });
 
     app = testApp.app;
-    _setContextUser = testApp.setContextUser;
+    setContextUser = testApp.setContextUser;
     resetContextOverrides = testApp.resetContextOverrides;
   });
 

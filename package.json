@@ -42,7 +42,6 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "2.1.170",
     "@anthropic-ai/sdk": "0.92.0",
-    "@asteasolutions/zod-to-openapi": "7.3.4",
     "@aws-sdk/client-s3": "3.1022.0",
     "@aws-sdk/lib-storage": "3.1022.0",
     "@aws-sdk/s3-request-presigner": "3.1022.0",
@@ -113,7 +112,6 @@
     "slugify": "1.6.6",
     "socket.io": "4.8.1",
     "stripe": "17.7.0",
-    "swagger-ui-express": "5.0.1",
     "ttypescript": "1.5.15",
     "twilio": "5.11.2",
     "typescript-transform-paths": "3.5.3",
@@ -149,7 +147,6 @@
     "@types/redis-mock": "0.17.3",
     "@types/sanitize-html": "2.13.0",
     "@types/supertest": "6.0.2",
-    "@types/swagger-ui-express": "4.1.8",
     "@types/twilio": "3.19.2",
     "@types/ua-parser-js": "0.7.39",
     "@types/uuid": "10.0.0",

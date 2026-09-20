@@ -11,11 +11,9 @@ import compression from 'compression';
 import * as Sentry from '@sentry/node';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
-import swaggerUi from 'swagger-ui-express';
 import { envVariables } from '@shared/config';
 import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
-import { generateOpenApiDocument } from '@shared/openapi';
 import { httpStatusCodes, createLogger } from '@utils/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { DatabaseService, RedisService } from '@database/index';
@@ -90,7 +88,9 @@ export class App implements IAppSetup {
   }
 
   private standardMiddleware(app: Application): void {
-    app.use(requestLogger(this.log));
+    if (process.env.NODE_ENV !== 'production') {
+      app.use(requestLogger(this.log));
+    }
     app.use(
       express.json({
         limit: '2mb',
@@ -156,11 +156,6 @@ export class App implements IAppSetup {
         });
       }
     });
-    // Swagger UI — non-production only
-    if (process.env.NODE_ENV !== 'production') {
-      const openApiDoc = generateOpenApiDocument();
-      app.use(`${this.BASE_PATH}/docs`, swaggerUi.serve, swaggerUi.setup(openApiDoc));
-    }
     if (process.env.NODE_ENV === 'development' || process.env.ENABLE_BULL_BOARD === 'true') {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { serverAdapter } = require('@queues/index');

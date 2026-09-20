@@ -1153,7 +1153,6 @@ export class OffboardingService {
       if (user.email && user._id.toString() !== currentUser.sub) {
         this.emailQueue.addToEmailQueue('companyClosure-staff', {
           to: user.email,
-          requestId: ctx.requestId,
           emailType: MailType.COMPANY_CLOSURE_STAFF,
           subject: `${companyName} — Account Closure Notice`,
           data: { companyName, effectiveDate: new Date().toLocaleDateString() },
@@ -1167,7 +1166,6 @@ export class OffboardingService {
       if (vendorEmail) {
         this.emailQueue.addToEmailQueue('companyClosure-vendor', {
           to: vendorEmail,
-          requestId: ctx.requestId,
           emailType: MailType.COMPANY_CLOSURE_VENDOR,
           subject: `${companyName} — Service Disconnection Notice`,
           data: { companyName, effectiveDate: new Date().toLocaleDateString() },
@@ -1185,7 +1183,6 @@ export class OffboardingService {
       if ((tenant as any).email) {
         this.emailQueue.addToEmailQueue('companyClosure-tenant', {
           to: (tenant as any).email,
-          requestId: ctx.requestId,
           emailType: MailType.COMPANY_CLOSURE_TENANT,
           subject: `${companyName} — Account Closure Notice`,
           data: { companyName, effectiveDate: new Date().toLocaleDateString() },
@@ -1196,7 +1193,6 @@ export class OffboardingService {
     // --- 7. Send owner confirmation email ---
     this.emailQueue.addToEmailQueue('companyClosure-owner', {
       to: currentUser.email,
-      requestId: ctx.requestId,
       emailType: MailType.COMPANY_CLOSURE_OWNER,
       subject: `${companyName} — Account Closure Confirmation`,
       data: {

@@ -116,4 +116,5 @@ sleepApplication = true
 [env]
 NODE_ENV = "production"
 PROCESS_TYPE = "api"
+LOG_LEVEL = "info"
 SKIP_REDIS_BINARY_DOWNLOAD = "true"

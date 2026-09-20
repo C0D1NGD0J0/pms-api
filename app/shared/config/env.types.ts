@@ -33,6 +33,15 @@ export interface StripeConfig {
   PUBLIC_KEY: string;
 }
 
+export interface ServerConfig {
+  PROCESS_TYPE: 'api' | 'worker';
+  ENABLE_CONSOLE_LOGS: boolean;
+  CLAMDSCAN_SOCKET: string;
+  LOG_LEVEL: string;
+  PORT: number;
+  ENV: string;
+}
+
 export interface EmailProviderConfig {
   PROVIDER_USERNAME: string;
   PROVIDER_PASSWORD: string;
@@ -54,13 +63,6 @@ export interface TwilioConfig {
   VERIFY_SERVICE_SID: string;
   ACCOUNT_SID: string;
   AUTH_TOKEN: string;
-}
-
-export interface ServerConfig {
-  PROCESS_TYPE: 'api' | 'worker';
-  CLAMDSCAN_SOCKET: string;
-  PORT: number;
-  ENV: string;
 }
 
 export interface RedisConfig {

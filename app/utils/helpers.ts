@@ -108,35 +108,26 @@ export function createLogger(name: string) {
             output = color.grey.bold(output);
         }
 
-        if (envVariables.SERVER.ENV !== 'production' || Boolean(process.env.ENABLE_CONSOLE_LOGS)) {
-          console.log(output);
-        }
+        console.log(output);
       } catch (err) {
         console.error('Logging Error:', err);
       }
     },
   };
 
-  const nullStream = {
-    write: () => {},
-  };
-
   const resolvedEnv = envVariables.SERVER.ENV;
-  const stream =
-    resolvedEnv === 'development' ||
-    resolvedEnv === 'dev' ||
-    Boolean(process.env.ENABLE_CONSOLE_LOGS)
-      ? customStream
-      : nullStream;
+  const isDevLike = resolvedEnv === 'development' || resolvedEnv === 'dev';
+  const forceConsole = envVariables.SERVER.ENABLE_CONSOLE_LOGS;
 
+  // Dev/ENABLE_CONSOLE_LOGS: colorized console output (type: 'raw')
+  // Production: structured JSON to stdout for Railway log drains (type: 'stream')
   const logger = bunyan.createLogger({
     name,
-    level: LOG_LEVELS[(process.env.LOG_LEVEL || 'INFO').toUpperCase()] ?? LOG_LEVELS.INFO,
+    level: LOG_LEVELS[(envVariables.SERVER.LOG_LEVEL || 'info').toUpperCase()] ?? LOG_LEVELS.INFO,
     streams: [
-      {
-        type: 'raw',
-        stream,
-      },
+      isDevLike || forceConsole
+        ? { type: 'raw' as const, stream: customStream }
+        : { type: 'stream' as const, stream: process.stdout },
     ],
   });
   loggerKey = {};

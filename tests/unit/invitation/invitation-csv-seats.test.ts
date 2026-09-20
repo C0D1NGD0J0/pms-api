@@ -105,9 +105,9 @@ describe('Invitation CSV Import — Seat Enforcement', () => {
     ({
       request: {
         params: { cuid },
-        url: `/api/v1/invitations/${cuid}/import_invitations_csv`,
+        url: `/api/v1/invitations/${cuid}/csv/import`,
         method: 'POST',
-        path: `/api/v1/invitations/${cuid}/import_invitations_csv`,
+        path: `/api/v1/invitations/${cuid}/csv/import`,
         query: {},
       },
       currentuser: { sub: testUserId },

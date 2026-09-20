@@ -42,7 +42,7 @@ router.get(
 );
 
 router.post(
-  '/:cuid/accept_invite/:token',
+  '/:cuid/accept/:token',
   basicLimiter({
     max: 5,
     windowMs: 10 * 60 * 1000,
@@ -63,7 +63,7 @@ router.post(
 );
 
 router.patch(
-  '/:cuid/decline_invite/:token',
+  '/:cuid/decline/:token',
   basicLimiter(),
   validateRequest({
     params: InvitationValidations.validateTokenAndCuid,
@@ -76,7 +76,7 @@ router.patch(
 );
 
 router.post(
-  '/:cuid/send_invite',
+  '/:cuid',
   basicLimiter(),
   isAuthenticated,
   requireVerification,
@@ -152,7 +152,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/update_invite/:iuid',
+  '/:cuid/:iuid',
   basicLimiter(),
   isAuthenticated,
   requirePermission(PermissionResource.INVITATION, PermissionAction.UPDATE),
@@ -195,7 +195,7 @@ router.get(
 );
 
 router.post(
-  '/:cuid/validate_csv',
+  '/:cuid/csv/validate',
   basicLimiter(),
   isAuthenticated,
   requireVerification,
@@ -217,7 +217,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/import_invitations_csv',
+  '/:cuid/csv/import',
   basicLimiter(),
   isAuthenticated,
   requireVerification,

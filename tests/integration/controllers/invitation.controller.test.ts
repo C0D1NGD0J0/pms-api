@@ -1,5 +1,5 @@
-import request from 'supertest';
 import { ZodError } from 'zod';
+import request from 'supertest';
 import { Application } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { ROLES } from '@shared/constants/roles.constants';
@@ -27,8 +27,7 @@ import {
  * reach errorHandlerMiddleware (which doesn't map ZodError to 400).
  */
 const withZodErrorHandler =
-  (handler: (req: any, res: any) => Promise<any>) =>
-  async (req: any, res: any) => {
+  (handler: (req: any, res: any) => Promise<any>) => async (req: any, res: any) => {
     try {
       return await handler(req, res);
     } catch (err) {
@@ -62,16 +61,16 @@ describe('InvitationController Integration Tests', () => {
   };
 
   // Route path constants
-  const SEND_INVITE_PATH = '/api/v1/invites/:cuid/send_invite';
+  const SEND_INVITE_PATH = '/api/v1/invites/:cuid';
   const VALIDATE_TOKEN_PATH = '/api/v1/invites/:cuid/validate_token';
-  const ACCEPT_INVITE_PATH = '/api/v1/invites/:cuid/accept_invite/:token';
-  const DECLINE_INVITE_PATH = '/api/v1/invites/:cuid/decline_invite/:token';
+  const ACCEPT_INVITE_PATH = '/api/v1/invites/:cuid/accept/:token';
+  const DECLINE_INVITE_PATH = '/api/v1/invites/:cuid/decline/:token';
   const REVOKE_PATH = '/api/v1/invites/:cuid/revoke/:iuid';
   const RESEND_PATH = '/api/v1/invites/:cuid/resend/:iuid';
   const GET_INVITATIONS_PATH = '/api/v1/invites/clients/:cuid';
   const GET_STATS_PATH = '/api/v1/invites/clients/:cuid/stats';
   const GET_BY_ID_PATH = '/api/v1/invites/:iuid';
-  const UPDATE_INVITE_PATH = '/api/v1/invites/:cuid/update_invite/:iuid';
+  const UPDATE_INVITE_PATH = '/api/v1/invites/:cuid/:iuid';
   const PROCESS_PENDING_PATH = '/api/v1/invites/:cuid/process-pending';
 
   beforeAll(async () => {
@@ -216,9 +215,7 @@ describe('InvitationController Integration Tests', () => {
           method: 'post',
           path: SEND_INVITE_PATH,
           contextUser: () => adminUser,
-          handler: withZodErrorHandler((req, res) =>
-            invitationController.sendInvitation(req, res),
-          ),
+          handler: withZodErrorHandler((req, res) => invitationController.sendInvitation(req, res)),
         },
         {
           method: 'get',
@@ -353,7 +350,7 @@ describe('InvitationController Integration Tests', () => {
     });
   });
 
-  describe('POST /invites/:cuid/send_invite - sendInvitation', () => {
+  describe('POST /invites/:cuid - sendInvitation', () => {
     it('should send invitation successfully', async () => {
       const invitationData = {
         inviteeEmail: `new.invitee.${Date.now()}@test.com`,
@@ -366,7 +363,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send(invitationData)
         .expect(httpStatusCodes.OK);
 
@@ -393,7 +390,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send(invitationData)
         .expect(httpStatusCodes.OK);
 
@@ -416,7 +413,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send(invitationData)
         .expect(httpStatusCodes.OK);
 
@@ -435,7 +432,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send(invitationData);
 
       expect([httpStatusCodes.BAD_REQUEST, 409]).toContain(response.status);
@@ -453,7 +450,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send(invitationData)
         .expect(httpStatusCodes.BAD_REQUEST);
 
@@ -467,7 +464,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send(invitationData)
         .expect(httpStatusCodes.BAD_REQUEST);
 
@@ -529,7 +526,7 @@ describe('InvitationController Integration Tests', () => {
     });
   });
 
-  describe('POST /invites/:cuid/accept_invite/:token - acceptInvitation', () => {
+  describe('POST /invites/:cuid/accept/:token - acceptInvitation', () => {
     it('should accept invitation and create user account', async () => {
       const acceptData = {
         password: 'SecurePassword123!',
@@ -540,7 +537,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/accept_invite/${testInvitation.invitationToken}`)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${testInvitation.invitationToken}`)
         .send(acceptData)
         .expect(httpStatusCodes.OK);
 
@@ -579,9 +576,7 @@ describe('InvitationController Integration Tests', () => {
       // The service will still process it (password validation is in middleware, not service).
       // Just verify the request is handled without a crash.
       const response = await request(app)
-        .post(
-          `/api/v1/invites/${testClient.cuid}/accept_invite/${weakPwInvitation.invitationToken}`
-        )
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${weakPwInvitation.invitationToken}`)
         .send(acceptData);
 
       // With proper mocks, this may succeed (200) since validation is at middleware level
@@ -600,7 +595,7 @@ describe('InvitationController Integration Tests', () => {
 
       // Service throws BadRequestError for invalid/not-found token (invalidOrExpired)
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/accept_invite/invalid-token`)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/invalid-token`)
         .send(acceptData)
         .expect(httpStatusCodes.BAD_REQUEST);
 
@@ -617,7 +612,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/accept_invite/${testInvitation.invitationToken}`)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${testInvitation.invitationToken}`)
         .send(acceptData)
         .expect(httpStatusCodes.OK);
 
@@ -625,16 +620,14 @@ describe('InvitationController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /invites/:cuid/decline_invite/:token - declineInvitation', () => {
+  describe('PATCH /invites/:cuid/decline/:token - declineInvitation', () => {
     it('should decline invitation successfully', async () => {
       const declineData = {
         reason: 'Not interested at this time',
       };
 
       const response = await request(app)
-        .patch(
-          `/api/v1/invites/${testClient.cuid}/decline_invite/${testInvitation.invitationToken}`
-        )
+        .patch(`/api/v1/invites/${testClient.cuid}/decline/${testInvitation.invitationToken}`)
         .send(declineData)
         .expect(httpStatusCodes.OK);
 
@@ -654,9 +647,7 @@ describe('InvitationController Integration Tests', () => {
       });
 
       const response = await request(app)
-        .patch(
-          `/api/v1/invites/${testClient.cuid}/decline_invite/${freshInvitation.invitationToken}`
-        )
+        .patch(`/api/v1/invites/${testClient.cuid}/decline/${freshInvitation.invitationToken}`)
         .send({})
         .expect(httpStatusCodes.OK);
 
@@ -670,9 +661,7 @@ describe('InvitationController Integration Tests', () => {
       });
 
       const response = await request(app)
-        .patch(
-          `/api/v1/invites/${testClient.cuid}/decline_invite/${acceptedInvitation.invitationToken}`
-        )
+        .patch(`/api/v1/invites/${testClient.cuid}/decline/${acceptedInvitation.invitationToken}`)
         .send({})
         .expect(httpStatusCodes.BAD_REQUEST);
 
@@ -874,7 +863,7 @@ describe('InvitationController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /invites/:cuid/update_invite/:iuid - updateInvitation', () => {
+  describe('PATCH /invites/:cuid/:iuid - updateInvitation', () => {
     it('should update invitation details', async () => {
       // Create a draft invitation (only drafts can be updated)
       const draftInvitation = await createTestInvitation(testClient._id, adminUser._id, {
@@ -893,7 +882,7 @@ describe('InvitationController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/invites/${testClient.cuid}/update_invite/${draftInvitation.iuid}`)
+        .patch(`/api/v1/invites/${testClient.cuid}/${draftInvitation.iuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -911,7 +900,7 @@ describe('InvitationController Integration Tests', () => {
       });
 
       const response = await request(app)
-        .patch(`/api/v1/invites/${testClient.cuid}/update_invite/${acceptedInvitation.iuid}`)
+        .patch(`/api/v1/invites/${testClient.cuid}/${acceptedInvitation.iuid}`)
         .send({
           inviteeEmail: acceptedInvitation.inviteeEmail,
           role: ROLES.STAFF,
@@ -995,7 +984,7 @@ describe('InvitationController Integration Tests', () => {
       });
 
       const response = await request(noAuthApp)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send({ inviteeEmail: 'test@test.com', role: ROLES.STAFF })
         .expect(httpStatusCodes.UNAUTHORIZED);
 
@@ -1020,7 +1009,7 @@ describe('InvitationController Integration Tests', () => {
 
     it('should validate email format in invitation', async () => {
       const response = await request(app)
-        .post(`/api/v1/invites/${testClient.cuid}/send_invite`)
+        .post(`/api/v1/invites/${testClient.cuid}`)
         .send({
           inviteeEmail: 'not-an-email',
           role: ROLES.STAFF,

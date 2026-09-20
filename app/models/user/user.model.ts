@@ -95,9 +95,12 @@ UserSchema.pre('save', async function (this: IUserDocument) {
 
 UserSchema.pre<Query<any, IUser>>('findOneAndUpdate', async function () {
   const update = this.getUpdate() as UpdateQuery<IUser>;
-  if (update.password) {
+  const raw = update.$set?.password ?? update.password;
+  if (raw) {
     const salt = await bcrypt.genSalt(10);
-    update.password = await bcrypt.hash(update.password, salt);
+    const hashed = await bcrypt.hash(raw, salt);
+    if (update.$set?.password) update.$set.password = hashed;
+    if (update.password) update.password = hashed;
   }
 });
 

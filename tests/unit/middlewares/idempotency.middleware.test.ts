@@ -45,9 +45,13 @@ function buildMockResponse(): { statusCode: number } & Partial<Response> {
   return res;
 }
 
-/** Build a minimal mock IdempotencyCache */
+/** Build a minimal mock IdempotencyCache with atomic claim methods */
 function buildMockIdempotencyCache() {
   return {
+    claimRouteRequest: jest.fn(),
+    finalizeRouteRequest: jest.fn(),
+    releaseRouteClaim: jest.fn(),
+    // Legacy methods kept for backward compat
     getCachedRouteResponse: jest.fn(),
     cacheRouteResponse: jest.fn(),
   };
@@ -64,95 +68,99 @@ describe('idempotency middleware', () => {
 
   describe('when Idempotency-Key header is missing', () => {
     it('should respond with 400 and not call next()', async () => {
-      // Arrange
       const req = buildMockRequest({ headers: {} });
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        message: 'Idempotency-Key header is required',
+        message: 'Missing required request header',
       });
       expect(next).not.toHaveBeenCalled();
     });
   });
 
-  // ── Cache hit (duplicate request) ────────────────────────────────────────
+  // ── Idempotency-Key length validation ────────────────────────────────────
+
+  describe('when Idempotency-Key exceeds 255 characters', () => {
+    it('should respond with 400', async () => {
+      const longKey = 'x'.repeat(256);
+      const req = buildMockRequest({ headers: { 'idempotency-key': longKey } });
+      const res = buildMockResponse();
+
+      await idempotency(req as AppRequest, res as Response, next as NextFunction);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'Invalid request key format',
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Completed cached response (duplicate request) ───────────────────────
 
   describe('when a cached response exists (duplicate request)', () => {
     it('should replay the cached statusCode and body without calling next()', async () => {
-      // Arrange
       const cachedResponse = { statusCode: 201, body: { success: true, data: { id: 'xyz' } } };
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-key-001' },
       });
-      (req.container!.cradle.idempotencyCache as any).getCachedRouteResponse.mockReturnValue(
-        Promise.resolve(cachedResponse)
-      );
+      const cache = req.container!.cradle.idempotencyCache as any;
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve(cachedResponse));
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith(cachedResponse.body);
       expect(next).not.toHaveBeenCalled();
     });
+  });
 
-    it('should pass method, userId, cuid and key to getCachedRouteResponse', async () => {
-      // Arrange
-      const cachedResponse = { statusCode: 200, body: {} };
+  // ── Concurrent request in progress ──────────────────────────────────────
+
+  describe('when another request with the same key is still processing', () => {
+    it('should respond with 409 Conflict and not call next()', async () => {
       const req = buildMockRequest({
-        method: 'PUT',
-        headers: { 'idempotency-key': 'idem-key-put' },
-        params: { cuid: 'cuid-xyz' },
-        context: { currentuser: { sub: 'user-999' } } as any,
+        headers: { 'idempotency-key': 'idem-key-concurrent' },
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(cachedResponse));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('processing'));
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert
-      expect(cache.getCachedRouteResponse).toHaveBeenCalledWith(
-        'PUT',
-        undefined,
-        'user-999',
-        'cuid-xyz',
-        'idem-key-put'
-      );
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'A request with this idempotency key is already being processed',
+      });
+      expect(next).not.toHaveBeenCalled();
     });
   });
 
-  // ── Cache miss — 2xx response ─────────────────────────────────────────────
+  // ── Claim won — 2xx response ────────────────────────────────────────────
 
-  describe('when there is no cached response (first request)', () => {
-    it('should call next() on a cache miss', async () => {
-      // Arrange
+  describe('when the claim is won (first request)', () => {
+    it('should call next() on a successful claim', async () => {
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-key-new' },
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.finalizeRouteRequest.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should intercept res.json and cache the response when statusCode is 2xx', async () => {
-      // Arrange
+    it('should intercept res.json and finalize the response when statusCode is 2xx', async () => {
       const req = buildMockRequest({
         method: 'POST',
         headers: { 'idempotency-key': 'idem-cache-2xx' },
@@ -160,23 +168,19 @@ describe('idempotency middleware', () => {
         context: { currentuser: { sub: 'user-abc' } } as any,
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.finalizeRouteRequest.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
       res.statusCode = 201;
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Simulate the actual route handler sending a JSON response
       const responseBody = { success: true, data: { id: 'new-resource' } };
       (res as any).json(responseBody);
 
-      // Allow the fire-and-forget .catch chain to settle
       await Promise.resolve();
 
-      // Assert
-      expect(cache.cacheRouteResponse).toHaveBeenCalledWith(
+      expect(cache.finalizeRouteRequest).toHaveBeenCalledWith(
         'POST',
         undefined,
         'user-abc',
@@ -188,93 +192,107 @@ describe('idempotency middleware', () => {
     });
 
     it('should still call the original res.json after intercepting', async () => {
-      // Arrange
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-passthrough' },
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.finalizeRouteRequest.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
       res.statusCode = 200;
       const originalJson = res.json as jest.Mock;
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
       const responseBody = { success: true };
       (res as any).json(responseBody);
 
-      // Assert — original json was called
       expect(originalJson).toHaveBeenCalledWith(responseBody);
     });
   });
 
-  // ── Cache miss — non-2xx response ─────────────────────────────────────────
+  // ── Claim won — non-2xx response releases claim ─────────────────────────
 
   describe('when the route returns a non-2xx status code', () => {
-    it('should NOT cache the response body for 4xx responses', async () => {
-      // Arrange
+    it('should release the claim for 4xx responses', async () => {
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-4xx' },
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.releaseRouteClaim.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
       res.statusCode = 422;
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
       (res as any).json({ success: false, message: 'Validation error' });
 
       await Promise.resolve();
 
-      // Assert
-      expect(cache.cacheRouteResponse).not.toHaveBeenCalled();
+      expect(cache.finalizeRouteRequest).not.toHaveBeenCalled();
+      expect(cache.releaseRouteClaim).toHaveBeenCalled();
     });
 
-    it('should NOT cache 5xx responses', async () => {
-      // Arrange
+    it('should release the claim for 5xx responses', async () => {
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-5xx' },
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.releaseRouteClaim.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
       res.statusCode = 500;
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
       (res as any).json({ success: false, message: 'Internal error' });
 
       await Promise.resolve();
 
-      // Assert
-      expect(cache.cacheRouteResponse).not.toHaveBeenCalled();
+      expect(cache.finalizeRouteRequest).not.toHaveBeenCalled();
+      expect(cache.releaseRouteClaim).toHaveBeenCalled();
     });
   });
 
-  // ── Redis error — fail open ───────────────────────────────────────────────
+  // ── Redis error — fail closed ───────────────────────────────────────────
 
-  describe('when Redis throws during the cache lookup', () => {
-    it('should call next() and not return an error response (fail open)', async () => {
-      // Arrange
+  describe('when Redis throws during the claim', () => {
+    it('should respond with 503 and not call next() (fail closed)', async () => {
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-redis-err' },
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(
-        Promise.reject(new Error('Redis connection lost'))
-      );
+      cache.claimRouteRequest.mockReturnValue(Promise.reject(new Error('Redis connection lost')));
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert — middleware fails open: next() called, no 500 returned
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'Service temporarily unavailable',
+      });
+    });
+  });
+
+  // ── Handler crash leaves claim to expire via TTL ────────────────────────
+
+  describe('when the route handler throws (never calls res.json)', () => {
+    it('should have called next() — the claim expires naturally via TTL', async () => {
+      const req = buildMockRequest({
+        headers: { 'idempotency-key': 'idem-crash' },
+      });
+      const cache = req.container!.cradle.idempotencyCache as any;
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      const res = buildMockResponse();
+
+      await idempotency(req as AppRequest, res as Response, next as NextFunction);
+
+      // The middleware called next() — if the handler throws without calling
+      // res.json, the intercepted json wrapper never runs. The processing
+      // claim stays in Redis and expires after ROUTE_PROCESSING_LOCK_TTL (30s).
       expect(next).toHaveBeenCalledTimes(1);
-      expect(res.status).not.toHaveBeenCalled();
+      expect(cache.finalizeRouteRequest).not.toHaveBeenCalled();
+      expect(cache.releaseRouteClaim).not.toHaveBeenCalled();
     });
   });
 
@@ -282,21 +300,18 @@ describe('idempotency middleware', () => {
 
   describe('userId and cuid defaults', () => {
     it('should default userId to "anonymous" when no authenticated user is present', async () => {
-      // Arrange
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-anon' },
-        context: {} as any, // no currentuser
+        context: {} as any,
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.finalizeRouteRequest.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert
-      expect(cache.getCachedRouteResponse).toHaveBeenCalledWith(
+      expect(cache.claimRouteRequest).toHaveBeenCalledWith(
         expect.any(String),
         undefined,
         'anonymous',
@@ -306,21 +321,18 @@ describe('idempotency middleware', () => {
     });
 
     it('should default cuid to "global" when req.params.cuid is absent', async () => {
-      // Arrange
       const req = buildMockRequest({
         headers: { 'idempotency-key': 'idem-global' },
         params: {},
       });
       const cache = req.container!.cradle.idempotencyCache as any;
-      cache.getCachedRouteResponse.mockReturnValue(Promise.resolve(null));
-      cache.cacheRouteResponse.mockReturnValue(Promise.resolve(undefined));
+      cache.claimRouteRequest.mockReturnValue(Promise.resolve('claimed'));
+      cache.finalizeRouteRequest.mockReturnValue(Promise.resolve(undefined));
       const res = buildMockResponse();
 
-      // Act
       await idempotency(req as AppRequest, res as Response, next as NextFunction);
 
-      // Assert
-      expect(cache.getCachedRouteResponse).toHaveBeenCalledWith(
+      expect(cache.claimRouteRequest).toHaveBeenCalledWith(
         expect.any(String),
         undefined,
         expect.any(String),

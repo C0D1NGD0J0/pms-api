@@ -1,0 +1,57 @@
+<% if (_audience === 'owner') { %>
+Account Closure Confirmation
+<% } else if (_audience === 'vendor') { %>
+Service Disconnection Notice
+<% } else { %>
+Account Closure Notice
+<% } %>
+
+Hello,
+
+<% if (_audience === 'owner') { %>
+This confirms that your account for <%= companyName %> has been closed on <%= effectiveDate %>.
+
+Closure Summary:
+- <%= leasesTerminated %> lease(s) terminated
+- <%= staffDisconnected %> staff account(s) disconnected
+- <%= vendorsDisconnected %> vendor(s) disconnected
+
+What Happens Next:
+- Move-out inspections have been auto-scheduled for all active leases
+- Security deposit refunds will be processed after inspections complete
+- All staff and vendor access has been revoked
+- Your account is now suspended - data is retained but inaccessible
+
+If this was done in error, please contact our support team within 30 days to discuss account reactivation options.
+<% } else if (_audience === 'staff') { %>
+We are writing to inform you that <%= companyName %> has closed their account on our platform, effective <%= effectiveDate %>.
+
+What This Means For You:
+- Your account has been set to read-only mode
+- You will no longer be able to create or modify resources
+- Your existing data will remain accessible for reference
+- No further action is required on your part
+
+If you have any questions about this change, please contact the account administrator or reach out to our support team.
+<% } else if (_audience === 'tenant') { %>
+We are writing to inform you that <%= companyName %> has closed their account on our platform, effective <%= effectiveDate %>.
+
+What This Means For You:
+- Your lease has been terminated as part of this closure
+- Any security deposit refund will be processed after your move-out inspection
+- Outstanding payments prior to closure remain on record
+- You will no longer have access to the tenant portal for this property
+- Your payment and lease history will remain available for reference
+
+If you have any questions about your lease, security deposit, or outstanding payments, please contact your property manager directly or reach out to our support team.
+<% } else if (_audience === 'vendor') { %>
+We are writing to inform you that <%= companyName %> has closed their account on our platform, effective <%= effectiveDate %>.
+
+What This Means For You:
+- Your vendor account has been disconnected from <%= companyName %>
+- Any pending payouts will be processed according to the existing schedule
+- You will no longer receive new service requests from this client
+- Your account on our platform remains active for other clients
+
+If you have questions about pending payouts or this disconnection, please contact our support team.
+<% } %>

@@ -13,14 +13,10 @@ const mockVendorController = {
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: {
-        total: 50,
-        active: 45,
-        inactive: 5,
-        byStatus: {
-          approved: 40,
-          pending: 5,
-          rejected: 5,
-        },
+        totalVendors: 50,
+        activeVendors: 45,
+        businessTypeDistribution: [],
+        servicesDistribution: [],
       },
     });
   }),
@@ -159,16 +155,11 @@ describe('Vendors Routes Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toBeDefined();
-      expect(response.body.data.total).toBeDefined();
-      expect(response.body.data.byStatus).toBeDefined();
+      expect(response.body.data.totalVendors).toBeDefined();
+      expect(response.body.data.activeVendors).toBeDefined();
+      expect(response.body.data.businessTypeDistribution).toBeDefined();
+      expect(response.body.data.servicesDistribution).toBeDefined();
       expect(mockVendorController.getVendorStats).toHaveBeenCalled();
-    });
-
-    it('should return statistics with status breakdown', async () => {
-      const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
-
-      expect(response.body.data.byStatus).toHaveProperty('approved');
-      expect(response.body.data.byStatus).toHaveProperty('pending');
     });
 
     it('should support status filter query parameter', async () => {

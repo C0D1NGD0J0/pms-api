@@ -1066,6 +1066,7 @@ export class VendorService {
           businessTypeDistribution: vendorStats.businessTypeDistribution,
           servicesDistribution: vendorStats.servicesDistribution,
           totalVendors: vendorStats.totalVendors,
+          activeVendors: vendorStats.activeVendors,
         },
         message: t('common.success.retrieved', { resource: 'Vendor statistics' }),
       };

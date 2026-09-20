@@ -121,7 +121,7 @@
           "priceId": "price_growth_monthly",
           "priceInCents": 7999,
           "currencies": {
-            "usd": { "priceId": "price_growth_monthly_usd", "priceInCents": 7999 },
+            "usd": { "priceId": "price_1T3NfDQ578Wn96UMXf06LB06", "priceInCents": 7999 },
             "cad": { "priceId": "price_1UFHpYQ578Wn96UMXQfgHfhy", "priceInCents": 7999 },
             "eur": { "priceId": "price_1UFHwTQ578Wn96UMpLMqJKes", "priceInCents": 7999 }
           }
@@ -131,7 +131,7 @@
           "priceInCents": 76800,
           "savingsPercent": 20,
           "currencies": {
-            "usd": { "priceId": "price_growth_annual_usd", "priceInCents": 76800 },
+            "usd": { "priceId": "price_1T3NfDQ578Wn96UMif8V1fuB", "priceInCents": 76800 },
             "cad": { "priceId": "price_1UFHslQ578Wn96UMCTWrTJ8v", "priceInCents": 76800 },
             "eur": { "priceId": "price_1UFHxEQ578Wn96UMFGJTNBVt", "priceInCents": 76800 }
           }
@@ -198,7 +198,7 @@
           "priceId": "price_portfolio_monthly",
           "priceInCents": 14999,
           "currencies": {
-            "usd": { "priceId": "price_portfolio_monthly_usd", "priceInCents": 14999 },
+            "usd": { "priceId": "price_1T3NkFQ578Wn96UM9Ms9FhHy", "priceInCents": 14999 },
             "cad": { "priceId": "price_1UFI0iQ578Wn96UMdSmRfiOo", "priceInCents": 14999 },
             "eur": { "priceId": "price_1UFI3TQ578Wn96UMJ5KgjntX", "priceInCents": 14999 }
           }
@@ -208,7 +208,7 @@
           "priceInCents": 144000,
           "savingsPercent": 20,
           "currencies": {
-            "usd": { "priceId": "price_portfolio_annual_usd", "priceInCents": 144000 },
+            "usd": { "priceId": "price_1T3NkFQ578Wn96UMs4GhXmWY", "priceInCents": 144000 },
             "cad": { "priceId": "price_1UFI1nQ578Wn96UMMhUFwuMa", "priceInCents": 144000 },
             "eur": { "priceId": "price_1UFI46Q578Wn96UM0ceEYuam", "priceInCents": 144000 }
           }
@@ -275,7 +275,7 @@
           "priceId": "price_enterprise_monthly",
           "priceInCents": 29999,
           "currencies": {
-            "usd": { "priceId": "price_enterprise_monthly_usd", "priceInCents": 29999 },
+            "usd": { "priceId": "price_1T3NntQ578Wn96UM8oJoPK25", "priceInCents": 29999 },
             "cad": { "priceId": "price_1UFI7aQ578Wn96UMnZFJX8Zm", "priceInCents": 29999 },
             "eur": { "priceId": "price_1UFI89Q578Wn96UM9GrBBlOZ", "priceInCents": 29999 }
           }
@@ -285,7 +285,7 @@
           "priceInCents": 288000,
           "savingsPercent": 20,
           "currencies": {
-            "usd": { "priceId": "price_enterprise_annual_usd", "priceInCents": 288000 },
+            "usd": { "priceId": "price_1T3NntQ578Wn96UMfE4s9HFb", "priceInCents": 288000 },
             "cad": { "priceId": "price_1UFI94Q578Wn96UMyuCxzS1B", "priceInCents": 288000 },
             "eur": { "priceId": "price_1UFIA3Q578Wn96UMhkN3QZjd", "priceInCents": 288000 }
           }

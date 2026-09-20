@@ -342,51 +342,56 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
     businessTypeDistribution: any[];
     servicesDistribution: any[];
     totalVendors: number;
+    activeVendors: number;
   }> {
     try {
       const { status } = filterOptions;
 
-      // Build pipeline to get vendor stats - query vendors directly by connectedClients
-      const pipeline: any[] = [
-        {
-          $match: {
-            // Find vendors connected to this client
-            connectedClients: {
-              $elemMatch: {
-                cuid: cuid,
-                isConnected: true,
-              },
+      // Base match: vendors connected to this client
+      const baseMatch = {
+        $match: {
+          connectedClients: {
+            $elemMatch: {
+              cuid: cuid,
+              isConnected: true,
             },
-            deletedAt: null,
           },
+          deletedAt: null,
         },
-      ];
+      };
 
-      // Add user lookup for status filtering if needed
+      // Unwind connectedClients to access the per-client primaryAccountHolderUserId
+      const unwindClients = { $unwind: '$connectedClients' };
+      const matchClient = {
+        $match: {
+          'connectedClients.cuid': cuid,
+          'connectedClients.isConnected': true,
+        },
+      };
+
+      // Lookup user via the correct nested field
+      const lookupUser = {
+        $lookup: {
+          from: 'users',
+          localField: 'connectedClients.primaryAccountHolderUserId',
+          foreignField: '_id',
+          as: 'user',
+        },
+      };
+      const unwindUser = { $unwind: '$user' };
+
+      // Build pipeline with user lookup for active count
+      const pipeline: any[] = [baseMatch, unwindClients, matchClient, lookupUser, unwindUser];
+
+      // If status filter provided, apply it
       if (status) {
-        pipeline.push(
-          {
-            $lookup: {
-              from: 'users',
-              localField: 'primaryAccountHolderUserId',
-              foreignField: '_id',
-              as: 'user',
-            },
-          },
-          {
-            $unwind: '$user',
-          },
-          {
-            $match: {
-              'user.isActive': status === 'active',
-            },
-          }
-        );
+        pipeline.push({ $match: { 'user.isActive': status === 'active' } });
       }
 
-      // Execute pipeline to get all connected vendors
+      // Execute pipeline to get all connected vendors with user data
       const vendors = await this.aggregate(pipeline);
       const totalVendors = vendors.length;
+      const activeVendors = vendors.filter((v: any) => v.user?.isActive === true).length;
 
       // Calculate business type distribution
       const businessTypeMap: Record<string, number> = {};
@@ -429,6 +434,7 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
 
       return {
         totalVendors,
+        activeVendors,
         businessTypeDistribution,
         servicesDistribution,
       };

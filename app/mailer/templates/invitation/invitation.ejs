@@ -2,9 +2,29 @@
   <tr>
     <td class="content">
       <p>Hi <strong><%= inviteeName %></strong>,</p>
+
+      <% if (role === ROLES.TENANT) { %>
       <p>
-        <strong><%= inviterName %></strong> has invited you to join <strong><%= companyName %></strong> on PropertyDesk as a <strong><%= role %></strong>.
+        <strong><%= inviterName %></strong> at <strong><%= companyName %></strong> has set up your resident account on PropertyDesk.
       </p>
+      <p>
+        Your portal gives you 24/7 access to submit maintenance requests, pay rent online, view lease documents, and communicate with your property management team.
+      </p>
+      <% } else if (role === ROLES.VENDOR) { %>
+      <p>
+        <strong><%= inviterName %></strong> at <strong><%= companyName %></strong> has invited you to join their vendor network on PropertyDesk.
+      </p>
+      <p>
+        As a vendor partner, you'll receive work orders, submit invoices, and get paid efficiently — all through a single platform.
+      </p>
+      <% } else { %>
+      <p>
+        <strong><%= inviterName %></strong> has invited you to join <strong><%= companyName %></strong> as a team member on PropertyDesk.
+      </p>
+      <p>
+        Once you accept, you'll have access to the property management platform to manage properties, work with residents and vendors, and collaborate with your colleagues.
+      </p>
+      <% } %>
 
       <% if (customMessage) { %>
       <%- include("../shared/html/_quote", { message: customMessage, author: inviterName }) %>
@@ -15,7 +35,7 @@
   </tr>
   <tr>
     <td class="cta">
-      <%- include("../shared/html/_button", { url: invitationUrl, label: "Accept Invitation" }) %>
+      <%- include("../shared/html/_button", { url: invitationUrl, label: role === ROLES.TENANT ? "Activate My Account" : "Accept Invitation" }) %>
     </td>
   </tr>
 </table>

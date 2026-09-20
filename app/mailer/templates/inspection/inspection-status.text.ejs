@@ -1,0 +1,85 @@
+<% if (_status === 'scheduled') { %>
+Inspection Scheduled
+====================
+
+Hi <%= currentuser.firstName %>,
+
+A <%= inspectionType %> inspection has been scheduled for your unit.
+You are responsible for conducting this inspection by walking through each room, rating the condition of items, and uploading photos as evidence.
+
+DETAILS
+-------
+Reference #:    <%= iuid %>
+Type:           <%= inspectionType %>
+Scheduled Date: <%= scheduledDate %>
+
+WHAT YOU NEED TO DO
+-------------------
+1. Log in to your tenant portal and open this inspection
+2. Walk through each room and rate the condition of every item
+3. Take at least 2 photos per room where you find any damage or issues
+4. Add notes describing any problems you observe
+5. Submit the inspection when all rooms are complete
+
+Photos are required for any room with damage. Please ensure images are clear and show the full extent of any issues found.
+<% } else if (_status === 'submitted') { %>
+Inspection Report Submitted
+============================
+
+Hi <%= currentuser.firstName %>,
+
+A <%= inspectionType %> inspection report has been submitted and is now available for your review.
+
+DETAILS
+-------
+Reference #: <%= iuid %>
+Type:        <%= inspectionType %>
+
+Please review the report at your earliest convenience. If you have any concerns,
+you may dispute the findings through the portal.
+<% } else if (_status === 'approved') { %>
+Inspection Approved
+====================
+
+Hi <%= currentuser.firstName %>,
+
+<% if (hasRefund && refundAmount > 0) { %>Your inspection has been approved. A refund of <%= (refundAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %> out of your <%= (depositAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %> security deposit will be processed.
+<% } else if (hasRefund) { %>Your inspection has been approved. No security deposit refund will be issued.
+<% } else { %>Your inspection has been approved. No further action is required.
+<% } %>
+
+DETAILS
+-------
+Reference #: <%= iuid %>
+Status:      Approved
+<% if (hasRefund) { %>Deposit Refund: <%= ((refundAmount || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %>
+<% } %>
+<% } else if (_status === 'rejected') { %>
+<%= isFinal ? 'Inspection Rejected' : 'Inspection Needs Revision' %>
+============================
+
+Hi <%= currentuser.firstName %>,
+
+<% if (isFinal) { %>Your inspection has been reviewed and rejected. Please contact your property manager for next steps.
+<% } else { %>Your inspection report requires revision before it can be finalized.
+<% } %>
+
+DETAILS
+-------
+Reference #: <%= iuid %>
+Status:      <%= isFinal ? 'Rejected' : 'Revision Required' %>
+Reason:      <%= reason %>
+<% } else if (_status === 'cancelled') { %>
+Inspection Cancelled
+=====================
+
+Hi <%= currentuser.firstName %>,
+
+A previously scheduled inspection has been cancelled. No action is required on your part.
+If you have questions, please contact your property manager.
+
+DETAILS
+-------
+Reference #: <%= iuid %>
+Status:      Cancelled
+<% } %>

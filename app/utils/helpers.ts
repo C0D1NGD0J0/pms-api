@@ -85,7 +85,6 @@ export function createLogger(name: string) {
         const level = parsedRecord?.level || 30;
 
         let output = `${serviceName}: ${message}`;
-        // let output = '';
 
         switch (level) {
           case LOG_LEVELS.TRACE:

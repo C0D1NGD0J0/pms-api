@@ -157,7 +157,7 @@ export class App implements IAppSetup {
       }
     });
     // Swagger UI — non-production only
-    if (process.env.NODE_ENV !== 'production') {
+    if (envVariables.SERVER.ENV !== 'production') {
       const openApiDoc = generateOpenApiDocument();
       app.use(`${this.BASE_PATH}/docs`, swaggerUi.serve, swaggerUi.setup(openApiDoc));
     }

@@ -1,11 +1,9 @@
 import { OpenApiGeneratorV31 } from '@asteasolutions/zod-to-openapi';
 
 import { openApiRegistry } from './registry';
+import './routes'; // Side-effect: registers all paths with the registry
 
 export function generateOpenApiDocument() {
-  // Import route registrations (side-effect: registers paths with the registry)
-  require('./routes');
-
   const generator = new OpenApiGeneratorV31(openApiRegistry.definitions);
 
   return generator.generateDocument({

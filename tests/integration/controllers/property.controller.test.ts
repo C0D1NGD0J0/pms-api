@@ -106,6 +106,16 @@ describe('PropertyController Integration Tests', () => {
             return propertyController.getClientProperties(req, res);
           },
         },
+        // Literal 2-segment GET routes must come before the /:cuid/:pid catch-all
+        {
+          method: 'get',
+          path: LEASEABLE_PATH,
+          contextUser: () => adminUser,
+          handler: (req: any, res: any) => {
+            req.container = container;
+            return propertyController.getLeaseableProperties(req, res);
+          },
+        },
         {
           method: 'get',
           path: CLIENT_PROPERTY_PATH,
@@ -140,15 +150,6 @@ describe('PropertyController Integration Tests', () => {
           handler: (req: any, res: any) => {
             req.container = container;
             return propertyController.rejectProperty(req, res);
-          },
-        },
-        {
-          method: 'get',
-          path: LEASEABLE_PATH,
-          contextUser: () => adminUser,
-          handler: (req: any, res: any) => {
-            req.container = container;
-            return propertyController.getLeaseableProperties(req, res);
           },
         },
         {

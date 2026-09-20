@@ -32,7 +32,6 @@ describe('ClientController Integration Tests', () => {
   let managerUser: any;
   let staffUser: any;
 
-  let _setContextUser: ReturnType<typeof createControllerTestApp>['_setContextUser'];
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
   // Route path constants
@@ -164,7 +163,6 @@ describe('ClientController Integration Tests', () => {
     });
 
     app = testApp.app;
-    _setContextUser = testApp._setContextUser;
     resetContextOverrides = testApp.resetContextOverrides;
   });
 

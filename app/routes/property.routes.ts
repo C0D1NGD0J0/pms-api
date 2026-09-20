@@ -103,6 +103,20 @@ router.get(
   })
 );
 
+// Literal 2-segment GET routes must come BEFORE the /:cuid/:pid catch-all
+router.get(
+  '/:cuid/leaseable',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getLeaseableProperties(req, res);
+  })
+);
+
 router.get(
   '/:cuid/:pid',
   basicLimiter(),
@@ -195,19 +209,6 @@ router.get(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.getMyPropertyRequests(req, res);
-  })
-);
-
-router.get(
-  '/:cuid/leaseable',
-  basicLimiter(),
-  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
-  validateRequest({
-    params: PropertyValidations.validatecuid,
-  }),
-  asyncWrapper((req, res) => {
-    const propertyController = req.container.resolve<PropertyController>('propertyController');
-    return propertyController.getLeaseableProperties(req, res);
   })
 );
 

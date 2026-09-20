@@ -151,6 +151,23 @@ router.patch(
   })
 );
 
+// Literal 2-segment PATCH routes must come BEFORE the /:cuid/:iuid catch-all
+router.patch(
+  '/:cuid/process-pending',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid,
+    query: InvitationValidations.processPending,
+  }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.processPendingInvitations(req, res);
+  })
+);
+
 router.patch(
   '/:cuid/:iuid',
   basicLimiter(),
@@ -236,27 +253,6 @@ router.post(
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.importInvitationsFromCsv(req, res);
-  })
-);
-
-/**
- * @route POST /api/v1/invites/:cuid/process-pending
- * @desc Process pending invitations for a client with optional filters
- * @access Private (Admin/Manager only)
- */
-router.patch(
-  '/:cuid/process-pending',
-  basicLimiter(),
-  isAuthenticated,
-  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
-  idempotency,
-  validateRequest({
-    params: UtilsValidations.cuid,
-    query: InvitationValidations.processPending,
-  }),
-  asyncWrapper((req: AppRequest, res) => {
-    const controller = req.container.resolve<InvitationController>('invitationController');
-    return controller.processPendingInvitations(req, res);
   })
 );
 

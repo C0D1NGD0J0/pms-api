@@ -50,7 +50,6 @@ describe('InvitationController Integration Tests', () => {
   let managerUser: any;
   let testInvitation: any;
 
-  let _setContextUser: ReturnType<typeof createControllerTestApp>['_setContextUser'];
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
   // Helper to resolve client ObjectId from cuid — needed because several service methods
@@ -303,6 +302,13 @@ describe('InvitationController Integration Tests', () => {
             return invitationController.getInvitationById(req, res);
           },
         },
+        // Literal 2-segment PATCH routes must come before the /:cuid/:iuid catch-all
+        {
+          method: 'patch',
+          path: PROCESS_PENDING_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => invitationController.processPendingInvitations(req, res),
+        },
         {
           method: 'patch',
           path: UPDATE_INVITE_PATH,
@@ -315,17 +321,10 @@ describe('InvitationController Integration Tests', () => {
             return invitationController.updateInvitation(req, res);
           },
         },
-        {
-          method: 'patch',
-          path: PROCESS_PENDING_PATH,
-          contextUser: () => adminUser,
-          handler: (req, res) => invitationController.processPendingInvitations(req, res),
-        },
       ],
     });
 
     app = testApp.app;
-    _setContextUser = testApp._setContextUser;
     resetContextOverrides = testApp.resetContextOverrides;
   });
 

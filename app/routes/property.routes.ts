@@ -275,8 +275,8 @@ router.patch(
   })
 );
 
-router.delete(
-  '/:cuid/:pid',
+router.patch(
+  '/:cuid/:pid/archive',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
   requireActiveSubscription,

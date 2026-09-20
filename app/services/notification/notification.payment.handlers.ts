@@ -72,6 +72,7 @@ export async function handlePaymentFailed(
 
           ctx.emailQueue.addToEmailQueue('paymentFailed', {
             to: tenantUser.email,
+            requestId: ctx.requestId,
             emailType: MailType.PAYMENT_FAILED,
             subject: '',
             data: {
@@ -130,6 +131,7 @@ export async function handlePaymentSucceeded(
 
           ctx.emailQueue.addToEmailQueue('paymentReceipt', {
             to: tenantUser.email,
+            requestId: ctx.requestId,
             emailType: MailType.PAYMENT_RECEIPT,
             subject: '',
             data: {
@@ -195,6 +197,7 @@ export async function handleSubscriptionRenewalUpcoming(
         if (adminUser?.email) {
           ctx.emailQueue.addToEmailQueue('subscriptionRenewalUpcoming', {
             to: adminUser.email,
+            requestId: ctx.requestId,
             emailType: MailType.SUBSCRIPTION_RENEWAL_UPCOMING,
             subject: '',
             data: { planName, amount: fmt, renewalDate: renewalDateStr, currentUser: adminUser },
@@ -237,6 +240,7 @@ export async function handlePadMandateConfirmed(
 
     ctx.emailQueue.addToEmailQueue('padMandateConfirmation', {
       to: tenantUser.email,
+      requestId: ctx.requestId,
       emailType: MailType.PAD_MANDATE_CONFIRMATION,
       subject: '',
       data: {
@@ -290,6 +294,7 @@ export async function handlePadPreDebitNotification(
 
     ctx.emailQueue.addToEmailQueue('padPreDebitNotification', {
       to: tenantUser.email,
+      requestId: ctx.requestId,
       emailType: MailType.PAD_PRE_DEBIT_NOTIFICATION,
       subject: '',
       data: {

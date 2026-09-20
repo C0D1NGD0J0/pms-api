@@ -229,14 +229,11 @@ describe('Property Routes Integration Tests', () => {
         `${baseUrl}/property_form_metadata`,
         mockPropertyController.getPropertyFormMetadata
       );
-      testApp.post(`${baseUrl}/:cuid/add_property`, mockPropertyController.create);
-      testApp.post(`${baseUrl}/:cuid/validate_csv`, mockPropertyController.validateCsv);
-      testApp.post(
-        `${baseUrl}/:cuid/import_properties_csv`,
-        mockPropertyController.createPropertiesFromCsv
-      );
-      testApp.get(`${baseUrl}/:cuid/client_properties`, mockPropertyController.getClientProperties);
-      testApp.get(`${baseUrl}/:cuid/client_property/:pid`, mockPropertyController.getProperty);
+      testApp.post(`${baseUrl}/:cuid`, mockPropertyController.create);
+      testApp.post(`${baseUrl}/:cuid/csv/validate`, mockPropertyController.validateCsv);
+      testApp.post(`${baseUrl}/:cuid/csv/import`, mockPropertyController.createPropertiesFromCsv);
+      testApp.get(`${baseUrl}/:cuid`, mockPropertyController.getClientProperties);
+      testApp.get(`${baseUrl}/:cuid/:pid`, mockPropertyController.getProperty);
       testApp.get(
         `${baseUrl}/:cuid/properties/pending`,
         mockPropertyController.getPendingApprovals
@@ -261,18 +258,12 @@ describe('Property Routes Integration Tests', () => {
         `${baseUrl}/:cuid/properties/my-requests`,
         mockPropertyController.getMyPropertyRequests
       );
+      testApp.patch(`${baseUrl}/:cuid/:pid`, mockPropertyController.updateClientProperty);
       testApp.patch(
-        `${baseUrl}/:cuid/client_properties/:pid`,
-        mockPropertyController.updateClientProperty
-      );
-      testApp.patch(
-        `${baseUrl}/:cuid/client_properties/:pid/remove_media`,
+        `${baseUrl}/:cuid/:pid/media/remove`,
         mockPropertyController.deleteMediaFromProperty
       );
-      testApp.delete(
-        `${baseUrl}/:cuid/delete_properties/:pid`,
-        mockPropertyController.archiveProperty
-      );
+      testApp.delete(`${baseUrl}/:cuid/:pid`, mockPropertyController.archiveProperty);
     });
   });
 
@@ -306,8 +297,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('POST /:cuid/add_property (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/add_property`;
+  describe('POST /:cuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}`;
 
     it('should create property successfully', async () => {
       const propertyData = {
@@ -362,8 +353,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('POST /:cuid/validate_csv (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/validate_csv`;
+  describe('POST /:cuid/csv/validate (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/csv/validate`;
 
     it('should validate CSV file successfully', async () => {
       const response = await request(app)
@@ -390,8 +381,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('POST /:cuid/import_properties_csv (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/import_properties_csv`;
+  describe('POST /:cuid/csv/import (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/csv/import`;
 
     it('should import properties from CSV successfully', async () => {
       const response = await request(app)
@@ -405,8 +396,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/client_properties (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties`;
+  describe('GET /:cuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}`;
 
     it('should get client properties successfully', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -436,8 +427,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/client_property/:pid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_property/${mockPid}`;
+  describe('GET /:cuid/:pid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}`;
 
     it('should get single property details', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -558,8 +549,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/client_properties/:pid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}`;
+  describe('PATCH /:cuid/:pid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}`;
 
     it('should update property successfully', async () => {
       const updateData = {
@@ -578,8 +569,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/client_properties/:pid/remove_media (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/client_properties/${mockPid}/remove_media`;
+  describe('PATCH /:cuid/:pid/media/remove (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}/media/remove`;
 
     it('should remove media from property successfully', async () => {
       const response = await request(app)
@@ -593,8 +584,8 @@ describe('Property Routes Integration Tests', () => {
     });
   });
 
-  describe('DELETE /:cuid/delete_properties/:pid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/delete_properties/${mockPid}`;
+  describe('DELETE /:cuid/:pid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockPid}`;
 
     it('should archive property successfully', async () => {
       const response = await request(app).delete(endpoint).expect(httpStatusCodes.OK);
@@ -632,7 +623,7 @@ describe('Property Routes Integration Tests', () => {
       );
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/client_properties`)
+        .get(`${baseUrl}/${mockCuid}`)
         .expect(httpStatusCodes.INTERNAL_SERVER_ERROR);
 
       expect(response.body.success).toBe(false);
@@ -649,7 +640,7 @@ describe('Property Routes Integration Tests', () => {
       );
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/client_properties`)
+        .get(`${baseUrl}/${mockCuid}`)
         .expect(httpStatusCodes.UNAUTHORIZED);
 
       expect(response.body.success).toBe(false);

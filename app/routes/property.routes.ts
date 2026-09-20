@@ -33,7 +33,7 @@ router.get(
 );
 
 router.post(
-  '/:cuid/add_property',
+  '/:cuid',
   basicLimiter(),
   requireNotSuspended,
   requireVerification,
@@ -54,7 +54,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/validate_csv',
+  '/:cuid/csv/validate',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   requireNotSuspended,
@@ -71,7 +71,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/import_properties_csv',
+  '/:cuid/csv/import',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
   requireNotSuspended,
@@ -91,7 +91,7 @@ router.post(
 );
 
 router.get(
-  '/:cuid/client_properties',
+  '/:cuid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.LIST),
   validateRequest({
@@ -104,7 +104,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/client_property/:pid',
+  '/:cuid/:pid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
   validateRequest({
@@ -212,7 +212,7 @@ router.get(
 );
 
 router.post(
-  '/:cuid/client_properties/:pid/assign_staff',
+  '/:cuid/:pid/staff',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   subscriptionEntitlements,
@@ -228,7 +228,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/client_properties/:pid/unassign_staff',
+  '/:cuid/:pid/staff/remove',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   subscriptionEntitlements,
@@ -244,7 +244,7 @@ router.post(
 );
 
 router.patch(
-  '/:cuid/client_properties/:pid',
+  '/:cuid/:pid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   requireActiveSubscription,
@@ -262,7 +262,7 @@ router.patch(
 );
 
 router.patch(
-  '/:cuid/client_properties/:pid/remove_media',
+  '/:cuid/:pid/media/remove',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
   idempotency,
@@ -276,7 +276,7 @@ router.patch(
 );
 
 router.delete(
-  '/:cuid/delete_properties/:pid',
+  '/:cuid/:pid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.DELETE),
   requireActiveSubscription,
@@ -291,6 +291,6 @@ router.delete(
 );
 
 // Mount unit routes for properties
-router.use('/:cuid/client_properties/:pid/units', propertyUnitRoutes);
+router.use('/:cuid/:pid/units', propertyUnitRoutes);
 
 export default router;

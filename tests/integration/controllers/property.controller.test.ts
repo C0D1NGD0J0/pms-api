@@ -70,19 +70,21 @@ describe('PropertyController Integration Tests', () => {
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
   // Route path constants
-  const ADD_PROPERTY_PATH = '/api/v1/properties/:cuid/add_property';
-  const CLIENT_PROPERTIES_PATH = '/api/v1/properties/:cuid/client_properties';
-  const CLIENT_PROPERTY_PATH = '/api/v1/properties/:cuid/client_property/:pid';
-  const UPDATE_PROPERTY_PATH = '/api/v1/properties/:cuid/client_properties/:pid';
+  const ADD_PROPERTY_PATH = '/api/v1/properties/:cuid';
+  const CLIENT_PROPERTIES_PATH = '/api/v1/properties/:cuid';
+  const CLIENT_PROPERTY_PATH = '/api/v1/properties/:cuid/:pid';
+  const UPDATE_PROPERTY_PATH = '/api/v1/properties/:cuid/:pid';
   const APPROVE_PROPERTY_PATH = '/api/v1/properties/:cuid/properties/:pid/approve';
   const REJECT_PROPERTY_PATH = '/api/v1/properties/:cuid/properties/:pid/reject';
   const LEASEABLE_PATH = '/api/v1/properties/:cuid/leaseable';
-  const DELETE_PROPERTY_PATH = '/api/v1/properties/:cuid/delete_properties/:pid';
+  const DELETE_PROPERTY_PATH = '/api/v1/properties/:cuid/:pid';
 
   beforeAll(async () => {
     // Resolve controller from DI container (uses scoped resolution)
     const scope = container.createScope();
-    const propertyController = scope.resolve('propertyController') as InstanceType<typeof PropertyController>;
+    const propertyController = scope.resolve('propertyController') as InstanceType<
+      typeof PropertyController
+    >;
 
     const testApp = createControllerTestApp({
       routes: [
@@ -243,7 +245,7 @@ describe('PropertyController Integration Tests', () => {
     await Lease.deleteMany({});
   });
 
-  describe('POST /api/v1/properties/:cuid/add_property', () => {
+  describe('POST /api/v1/properties/:cuid', () => {
     it('should create property and return 200 (admin user)', async () => {
       const propertyData = {
         name: `Test Property ${Date.now()}`,
@@ -277,7 +279,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/properties/${testClient.cuid}/add_property`)
+        .post(`/api/v1/properties/${testClient.cuid}`)
         .send(propertyData)
         .expect(200);
 
@@ -303,7 +305,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/properties/${testClient.cuid}/add_property`)
+        .post(`/api/v1/properties/${testClient.cuid}`)
         .send(propertyData);
 
       // The controller reads req.context.currentuser — when null, it should error
@@ -312,7 +314,7 @@ describe('PropertyController Integration Tests', () => {
     });
   });
 
-  describe('GET /api/v1/properties/:cuid/client_properties', () => {
+  describe('GET /api/v1/properties/:cuid', () => {
     beforeEach(async () => {
       // Create test properties
       await createTestProperty(testClient.cuid, testClient._id, {
@@ -337,7 +339,7 @@ describe('PropertyController Integration Tests', () => {
 
     it('should return all properties for client', async () => {
       const response = await request(app)
-        .get(`/api/v1/properties/${testClient.cuid}/client_properties`)
+        .get(`/api/v1/properties/${testClient.cuid}`)
         .query({ 'pagination[page]': 1, 'pagination[limit]': 10 })
         .expect(200);
 
@@ -349,7 +351,7 @@ describe('PropertyController Integration Tests', () => {
 
     it('should filter properties by type', async () => {
       const response = await request(app)
-        .get(`/api/v1/properties/${testClient.cuid}/client_properties`)
+        .get(`/api/v1/properties/${testClient.cuid}`)
         .query({
           'pagination[page]': 1,
           'pagination[limit]': 10,
@@ -363,7 +365,7 @@ describe('PropertyController Integration Tests', () => {
     });
   });
 
-  describe('GET /api/v1/properties/:cuid/client_property/:pid', () => {
+  describe('GET /api/v1/properties/:cuid/:pid', () => {
     let testProperty: any;
 
     beforeEach(async () => {
@@ -378,7 +380,7 @@ describe('PropertyController Integration Tests', () => {
 
     it('should return single property with details', async () => {
       const response = await request(app)
-        .get(`/api/v1/properties/${testClient.cuid}/client_property/${testProperty.pid}`)
+        .get(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -389,14 +391,14 @@ describe('PropertyController Integration Tests', () => {
 
     it('should return 404 for non-existent property', async () => {
       const response = await request(app)
-        .get(`/api/v1/properties/${testClient.cuid}/client_property/non-existent-pid`)
+        .get(`/api/v1/properties/${testClient.cuid}/non-existent-pid`)
         .expect(404);
 
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('PATCH /api/v1/properties/:cuid/client_properties/:pid', () => {
+  describe('PATCH /api/v1/properties/:cuid/:pid', () => {
     let testProperty: any;
 
     beforeEach(async () => {
@@ -417,7 +419,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 
@@ -434,7 +436,7 @@ describe('PropertyController Integration Tests', () => {
       const updateData = { name: 'Non-existent Property' };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/non-existent-pid`)
+        .patch(`/api/v1/properties/${testClient.cuid}/non-existent-pid`)
         .send(updateData)
         .expect(404);
 
@@ -466,7 +468,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 
@@ -499,7 +501,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 
@@ -523,7 +525,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 
@@ -563,7 +565,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 
@@ -692,7 +694,7 @@ describe('PropertyController Integration Tests', () => {
     });
   });
 
-  describe('DELETE /api/v1/properties/:cuid/delete_properties/:pid', () => {
+  describe('DELETE /api/v1/properties/:cuid/:pid', () => {
     let testProperty: any;
 
     beforeEach(async () => {
@@ -703,7 +705,7 @@ describe('PropertyController Integration Tests', () => {
 
     it('should archive property without active leases', async () => {
       const response = await request(app)
-        .delete(`/api/v1/properties/${testClient.cuid}/delete_properties/${testProperty.pid}`)
+        .delete(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -734,7 +736,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .post(`/api/v1/properties/${testClient.cuid}/add_property`)
+        .post(`/api/v1/properties/${testClient.cuid}`)
         .send(propertyData);
 
       expect(response.status).toBeGreaterThanOrEqual(400);
@@ -768,7 +770,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 
@@ -795,7 +797,7 @@ describe('PropertyController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/properties/${testClient.cuid}/client_properties/${testProperty.pid}`)
+        .patch(`/api/v1/properties/${testClient.cuid}/${testProperty.pid}`)
         .send(updateData)
         .expect(200);
 

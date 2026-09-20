@@ -5,7 +5,6 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { ClientController } from '@controllers/ClientController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
-import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
@@ -33,7 +32,7 @@ describe('ClientController Integration Tests', () => {
   let managerUser: any;
   let staffUser: any;
 
-  let setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
+  let _setContextUser: ReturnType<typeof createControllerTestApp>['_setContextUser'];
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
   // Route path constants
@@ -165,7 +164,7 @@ describe('ClientController Integration Tests', () => {
     });
 
     app = testApp.app;
-    setContextUser = testApp.setContextUser;
+    _setContextUser = testApp._setContextUser;
     resetContextOverrides = testApp.resetContextOverrides;
   });
 

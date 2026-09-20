@@ -9,6 +9,7 @@ export interface ICreateRentInvoiceJobData {
   paymentType: PaymentRecordType;
   period: IPaymentPeriod;
   description?: string;
+  requestId?: string;
   tenantId: string; // User._id
   leaseId: string;
   dueDate: Date;
@@ -16,6 +17,7 @@ export interface ICreateRentInvoiceJobData {
 }
 
 export interface ICancelPaymentJobData {
+  requestId?: string;
   reason?: string;
   pytuid: string;
   cuid: string;

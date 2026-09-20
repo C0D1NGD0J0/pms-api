@@ -29,18 +29,16 @@ export class EmailWorker {
   }
 
   sendMail = async (job: Job) => {
-    this.log.info(
-      { jobId: job.id, jobName: job.name },
-      `Processing email job ${job.id} (${job.name})`
-    );
-
     const data = job.data as IEmailOptions<any>;
+    const log = data.requestId ? this.log.child({ requestId: data.requestId }) : this.log;
+
+    log.info({ jobId: job.id, jobName: job.name }, `Processing email job ${job.id} (${job.name})`);
 
     try {
       const shouldSend = await this.checkEmailPreferences(data);
 
       if (!shouldSend) {
-        this.log.info('Email skipped due to user preferences', {
+        log.info('Email skipped due to user preferences', {
           to: data.to,
           emailType: data.emailType,
           cuid: data.client?.cuid,
@@ -64,14 +62,14 @@ export class EmailWorker {
       };
 
       this.emitterService.emit(EventTypes.EMAIL_SENT, payload);
-      this.log.info(`Email sent successfully to ${data.to}`);
+      log.info(`Email sent successfully to ${data.to}`);
 
       return {
         success: true,
         sentAt: new Date().toISOString(),
       };
     } catch (error) {
-      this.log.error(`Failed to send email for job ${job.id}:`, error);
+      log.error(`Failed to send email for job ${job.id}:`, error);
 
       try {
         const payload: EmailFailedPayload = {
@@ -86,7 +84,7 @@ export class EmailWorker {
         };
         this.emitterService.emit(EventTypes.EMAIL_FAILED, payload);
       } catch (emitError) {
-        this.log.error(`Failed to emit EMAIL_FAILED event for job ${job.id}:`, emitError);
+        log.error(`Failed to emit EMAIL_FAILED event for job ${job.id}:`, emitError);
       }
 
       throw error;

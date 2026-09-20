@@ -8,6 +8,7 @@ export interface IVendorTeamDisconnectJobData {
   primaryVendorUserId: string;
   /** Human-readable client name for the disconnection email */
   companyName: string;
+  requestId?: string;
   /** Vendor document MongoDB _id — for updating Vendor.connectedClients */
   vendorId: string;
   /** Client MongoDB _id string */

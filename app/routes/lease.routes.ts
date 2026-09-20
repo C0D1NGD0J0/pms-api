@@ -117,6 +117,7 @@ router
     requireNotSuspended,
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireVerifiedClient,
+    subscriptionEntitlements,
     requireActiveSubscription,
     idempotency,
     diskUpload(['document']),
@@ -205,6 +206,7 @@ router
   .patch(
     basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+    subscriptionEntitlements,
     requireActiveSubscription,
     diskUpload(['document']),
     scanFile,
@@ -237,6 +239,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireVerifiedClient,
+  subscriptionEntitlements,
   requireActiveSubscription,
   idempotency,
   validateRequest({
@@ -255,6 +258,7 @@ router.post(
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireActiveTenant(),
+  subscriptionEntitlements,
   requireActiveSubscription,
   idempotency,
   validateRequest({
@@ -411,6 +415,7 @@ router
     requirePermission(PermissionResource.LEASE, PermissionAction.CREATE),
     requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN]),
     requireVerifiedClient,
+    subscriptionEntitlements,
     requireActiveSubscription,
     idempotency,
     validateRequest({
@@ -450,6 +455,7 @@ router.patch(
   '/:cuid/:luid/vacate-request',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  subscriptionEntitlements,
   requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -484,6 +490,7 @@ router.patch(
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
   requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER]),
+  subscriptionEntitlements,
   requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -529,6 +536,7 @@ router.post(
   '/:cuid/:luid/approve',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  subscriptionEntitlements,
   requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -544,6 +552,7 @@ router.post(
   '/:cuid/:luid/reject',
   basicLimiter(),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  subscriptionEntitlements,
   requireActiveSubscription,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),

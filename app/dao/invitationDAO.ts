@@ -261,6 +261,9 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
+      // Disable validators: $unset on invitationToken conflicts with its conditional
+      // `required` validator (required when status !== 'accepted') because Mongoose
+      // query-context validators cannot see the concurrent $set update.
       return await this.update(
         { iuid, clientId },
         {
@@ -271,7 +274,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           },
           $unset: { invitationToken: 1 },
         },
-        { session }
+        { session, runValidators: false }
       );
     } catch (error) {
       this.logger.error('Error declining invitation:', error);
@@ -297,7 +300,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
             invitationToken: 1,
           },
         },
-        { session }
+        { session, runValidators: false }
       );
     } catch (error) {
       this.logger.error('Error accepting invitation:', error);

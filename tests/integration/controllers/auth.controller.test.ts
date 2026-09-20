@@ -9,8 +9,13 @@ import { AuthController } from '@controllers/AuthController';
 import { httpStatusCodes, JWT_KEY_NAMES } from '@utils/index';
 import { VendorService } from '@services/vendor/vendor.service';
 import { AuthTokenService } from '@services/auth/authToken.service';
-import { clearTestDatabase, createTestClient, createTestUser, createControllerTestApp } from '@tests/helpers';
 import { setupAllExternalMocks, mockQueueFactory, mockAuthCache } from '@tests/setup/externalMocks';
+import {
+  createControllerTestApp,
+  clearTestDatabase,
+  createTestClient,
+  createTestUser,
+} from '@tests/helpers';
 
 describe('AuthController Integration Tests', () => {
   let app: Application;

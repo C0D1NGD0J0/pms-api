@@ -602,6 +602,7 @@ export class SubscriptionService {
 
         this.emailQueue.addToEmailQueue('subscriptionCanceled', {
           to: adminEmail,
+          requestId: ctx.requestId,
           emailType: MailType.SUBSCRIPTION_CANCELED,
           subject: '',
           data: {

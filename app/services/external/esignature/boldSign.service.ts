@@ -58,7 +58,11 @@ export class BoldSignService {
   /**
    * Send document for signature via BoldSign
    */
-  async sendDocumentForSignature(params: ISendDocumentParams): Promise<IBoldSignDocumentResponse> {
+  async sendDocumentForSignature(
+    params: ISendDocumentParams,
+    requestId?: string
+  ): Promise<IBoldSignDocumentResponse> {
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     if (!this.featureFlagService.isEnabled(FeatureFlag.ESIGNATURE)) {
       throw new ForbiddenError({ message: 'E-signature feature is currently unavailable.' });
     }
@@ -99,7 +103,7 @@ export class BoldSignService {
         documentId: response.documentId || '',
       };
     } catch (error: any) {
-      this.log.error('Failed to send document to BoldSign', {
+      log.error('Failed to send document to BoldSign', {
         error: error.message,
         title: params.title,
       });
@@ -224,7 +228,8 @@ export class BoldSignService {
     }
   }
 
-  async revokeDocument(documentId: string, reason: string) {
+  async revokeDocument(documentId: string, reason: string, requestId?: string) {
+    const log = requestId ? this.log.child({ requestId }) : this.log;
     try {
       const revokeDocumentRequest = new RevokeDocument();
       revokeDocumentRequest.message = reason;
@@ -234,7 +239,7 @@ export class BoldSignService {
       );
       return result;
     } catch (error: any) {
-      this.log.error('Failed to revoke document', {
+      log.error('Failed to revoke document', {
         error: error.message,
         documentId,
       });

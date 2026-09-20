@@ -30,11 +30,11 @@ describe('VendorController Integration Tests', () => {
 
   // Route path constants
   const STATS_PATH = '/api/v1/vendors/:cuid/vendors/stats';
-  const FILTERED_PATH = '/api/v1/vendors/:cuid/filteredVendors';
-  const DETAILS_PATH = '/api/v1/vendors/:cuid/vendor_details/:vuid';
-  const TEAM_PATH = '/api/v1/vendors/:cuid/team_members/:vuid';
-  const EDIT_PATH = '/api/v1/vendors/:cuid/vendor/:vuid/edit';
-  const PATCH_PATH = '/api/v1/vendors/:cuid/vendor/:vuid';
+  const FILTERED_PATH = '/api/v1/vendors/:cuid';
+  const DETAILS_PATH = '/api/v1/vendors/:cuid/:vuid';
+  const TEAM_PATH = '/api/v1/vendors/:cuid/:vuid/team';
+  const EDIT_PATH = '/api/v1/vendors/:cuid/:vuid/form';
+  const PATCH_PATH = '/api/v1/vendors/:cuid/:vuid';
 
   beforeAll(async () => {
     setupAllExternalMocks();
@@ -243,10 +243,10 @@ describe('VendorController Integration Tests', () => {
     });
   });
 
-  describe('GET /vendors/:cuid/filteredVendors - getFilteredVendors', () => {
+  describe('GET /vendors/:cuid - getFilteredVendors', () => {
     it('should return list of vendors for the client', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -258,7 +258,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should filter vendors by business type', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .query({ businessType: 'Plumber' })
         .expect(httpStatusCodes.OK);
 
@@ -272,7 +272,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should filter vendors by status', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .query({ status: 'active' })
         .expect(httpStatusCodes.OK);
 
@@ -282,7 +282,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should support pagination', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .query({ page: 1, limit: 5 })
         .expect(httpStatusCodes.OK);
 
@@ -294,7 +294,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should support sorting', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .query({ sortBy: 'companyName', sort: 'asc' })
         .expect(httpStatusCodes.OK);
 
@@ -303,10 +303,10 @@ describe('VendorController Integration Tests', () => {
     });
   });
 
-  describe('GET /vendors/:cuid/vendor_details/:vuid - getSingleVendor', () => {
+  describe('GET /vendors/:cuid/:vuid - getSingleVendor', () => {
     it('should return vendor details by vuid', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor_details/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -319,7 +319,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should return 404 for non-existent vendor', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor_details/nonexistent-vuid`)
+        .get(`/api/v1/vendors/${testClient.cuid}/nonexistent-vuid`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
@@ -327,7 +327,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should include vendor contact information', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor_details/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .expect(httpStatusCodes.OK);
 
       // Contact info is nested under vendorInfo
@@ -338,7 +338,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should include services offered', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor_details/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .expect(httpStatusCodes.OK);
 
       // servicesOffered is nested under vendorInfo and stored as an object
@@ -347,7 +347,7 @@ describe('VendorController Integration Tests', () => {
     });
   });
 
-  describe('GET /vendors/:cuid/team_members/:vuid - getVendorTeamMembers', () => {
+  describe('GET /vendors/:cuid/:vuid/team - getVendorTeamMembers', () => {
     beforeEach(async () => {
       // Add a team member to the vendor
       const teamMember = await createTestUser(testClient.cuid, {
@@ -366,7 +366,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should return list of vendor team members', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/team_members/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}/team`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -376,7 +376,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should support pagination for team members', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/team_members/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}/team`)
         .query({ page: 1, limit: 10 })
         .expect(httpStatusCodes.OK);
 
@@ -386,7 +386,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should filter team members by status', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/team_members/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}/team`)
         .query({ status: 'active' })
         .expect(httpStatusCodes.OK);
 
@@ -395,17 +395,17 @@ describe('VendorController Integration Tests', () => {
 
     it('should return 404 for non-existent vendor', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/team_members/nonexistent-vuid`)
+        .get(`/api/v1/vendors/${testClient.cuid}/nonexistent-vuid/team`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
     });
   });
 
-  describe('GET /vendors/:cuid/vendor/:vuid/edit - getVendorForEdit', () => {
+  describe('GET /vendors/:cuid/:vuid/form - getVendorForEdit', () => {
     it('should return vendor data for editing when user is primary account holder', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}/edit`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}/form`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -422,7 +422,7 @@ describe('VendorController Integration Tests', () => {
       setContextUser(EDIT_PATH, otherVendorUser);
 
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}/edit`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}/form`)
         .expect(httpStatusCodes.FORBIDDEN);
 
       expect(response.body.success).toBe(false);
@@ -431,7 +431,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should return 404 for non-existent vendor', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor/nonexistent-vuid/edit`)
+        .get(`/api/v1/vendors/${testClient.cuid}/nonexistent-vuid/form`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
@@ -439,7 +439,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should include all editable vendor fields', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}/edit`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}/form`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.data.taxId).toBeDefined();
@@ -449,7 +449,7 @@ describe('VendorController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /vendors/:cuid/vendor/:vuid - updateVendorDetails', () => {
+  describe('PATCH /vendors/:cuid/:vuid - updateVendorDetails', () => {
     it('should update vendor details when user is primary account holder', async () => {
       const updateData = {
         companyName: 'Updated Plumbing Services Inc',
@@ -459,7 +459,7 @@ describe('VendorController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -479,7 +479,7 @@ describe('VendorController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -503,7 +503,7 @@ describe('VendorController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -524,7 +524,7 @@ describe('VendorController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -541,7 +541,7 @@ describe('VendorController Integration Tests', () => {
       setContextUser(PATCH_PATH, otherVendorUser, 'patch');
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send({ companyName: 'Hacked Name' })
         .expect(httpStatusCodes.FORBIDDEN);
 
@@ -550,7 +550,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should return 404 for non-existent vendor', async () => {
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/nonexistent-vuid`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/nonexistent-vuid`)
         .send({ companyName: 'New Name' })
         .expect(httpStatusCodes.NOT_FOUND);
 
@@ -563,7 +563,7 @@ describe('VendorController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send(invalidData);
 
       // Mongoose validation errors surface as 422 via errorHandlerMiddleware
@@ -580,7 +580,7 @@ describe('VendorController Integration Tests', () => {
 
       // The service accepts partial address updates (no fullAddress → geocoding skipped)
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send(partialAddress)
         .expect(httpStatusCodes.OK);
 
@@ -607,7 +607,7 @@ describe('VendorController Integration Tests', () => {
       });
 
       const response = await request(otherApp)
-        .get(`/api/v1/vendors/${otherClient.cuid}/vendor_details/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${otherClient.cuid}/${testVendor.vuid}`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
@@ -615,7 +615,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should handle malformed vuid', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor_details/invalid-vuid-format`)
+        .get(`/api/v1/vendors/${testClient.cuid}/invalid-vuid-format`)
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
@@ -626,7 +626,7 @@ describe('VendorController Integration Tests', () => {
       await Vendor.deleteMany({});
 
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -636,7 +636,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should handle invalid pagination parameters gracefully', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/filteredVendors`)
+        .get(`/api/v1/vendors/${testClient.cuid}`)
         .query({ page: 0, limit: -5 }); // Invalid pagination
 
       // Without route-level validation middleware, the service/DAO receives raw values
@@ -648,10 +648,10 @@ describe('VendorController Integration Tests', () => {
     it('should handle concurrent vendor updates', async () => {
       const updates = [
         request(app)
-          .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+          .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
           .send({ yearsInBusiness: 8 }),
         request(app)
-          .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+          .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
           .send({ yearsInBusiness: 9 }),
       ];
 
@@ -671,7 +671,7 @@ describe('VendorController Integration Tests', () => {
   describe('Authorization and Permissions', () => {
     it('should allow admin to view vendor details', async () => {
       const response = await request(app)
-        .get(`/api/v1/vendors/${testClient.cuid}/vendor_details/${testVendor.vuid}`)
+        .get(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -679,7 +679,7 @@ describe('VendorController Integration Tests', () => {
 
     it('should allow vendor primary account holder to edit vendor', async () => {
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send({ yearsInBusiness: 6 })
         .expect(httpStatusCodes.OK);
 
@@ -692,7 +692,7 @@ describe('VendorController Integration Tests', () => {
       setContextUser(PATCH_PATH, staffUser, 'patch');
 
       const response = await request(app)
-        .patch(`/api/v1/vendors/${testClient.cuid}/vendor/${testVendor.vuid}`)
+        .patch(`/api/v1/vendors/${testClient.cuid}/${testVendor.vuid}`)
         .send({ companyName: 'Hacked' })
         .expect(httpStatusCodes.FORBIDDEN);
 

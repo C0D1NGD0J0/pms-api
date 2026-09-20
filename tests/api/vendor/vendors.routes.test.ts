@@ -135,11 +135,11 @@ describe('Vendors Routes Integration Tests', () => {
 
       // Define vendor routes
       testApp.get(`${baseUrl}/:cuid/vendors/stats`, mockVendorController.getVendorStats);
-      testApp.get(`${baseUrl}/:cuid/filteredVendors`, mockVendorController.getFilteredVendors);
-      testApp.get(`${baseUrl}/:cuid/vendor_details/:vuid`, mockVendorController.getSingleVendor);
-      testApp.get(`${baseUrl}/:cuid/team_members/:vuid`, mockVendorController.getVendorTeamMembers);
-      testApp.get(`${baseUrl}/:cuid/vendor/:vuid/edit`, mockVendorController.getVendorForEdit);
-      testApp.patch(`${baseUrl}/:cuid/vendor/:vuid`, mockVendorController.updateVendorDetails);
+      testApp.get(`${baseUrl}/:cuid`, mockVendorController.getFilteredVendors);
+      testApp.get(`${baseUrl}/:cuid/:vuid`, mockVendorController.getSingleVendor);
+      testApp.get(`${baseUrl}/:cuid/:vuid/team`, mockVendorController.getVendorTeamMembers);
+      testApp.get(`${baseUrl}/:cuid/:vuid/form`, mockVendorController.getVendorForEdit);
+      testApp.patch(`${baseUrl}/:cuid/:vuid`, mockVendorController.updateVendorDetails);
     });
   });
 
@@ -185,8 +185,8 @@ describe('Vendors Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/filteredVendors (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/filteredVendors`;
+  describe('GET /:cuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}`;
 
     it('should get filtered vendors successfully', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -258,8 +258,8 @@ describe('Vendors Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/vendor_details/:vuid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/vendor_details/${mockVuid}`;
+  describe('GET /:cuid/:vuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockVuid}`;
 
     it('should get single vendor details successfully', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -316,8 +316,8 @@ describe('Vendors Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/team_members/:vuid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/team_members/${mockVuid}`;
+  describe('GET /:cuid/:vuid/team (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockVuid}/team`;
 
     it('should get vendor team members successfully', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -366,8 +366,8 @@ describe('Vendors Routes Integration Tests', () => {
     });
   });
 
-  describe('GET /:cuid/vendor/:vuid/edit (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/vendor/${mockVuid}/edit`;
+  describe('GET /:cuid/:vuid/form (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockVuid}/form`;
 
     it('should get vendor data for editing', async () => {
       const response = await request(app).get(endpoint).expect(httpStatusCodes.OK);
@@ -417,8 +417,8 @@ describe('Vendors Routes Integration Tests', () => {
     });
   });
 
-  describe('PATCH /:cuid/vendor/:vuid (protected)', () => {
-    const endpoint = `${baseUrl}/${mockCuid}/vendor/${mockVuid}`;
+  describe('PATCH /:cuid/:vuid (protected)', () => {
+    const endpoint = `${baseUrl}/${mockCuid}/${mockVuid}`;
 
     it('should update vendor details successfully', async () => {
       const updateData = {
@@ -565,7 +565,7 @@ describe('Vendors Routes Integration Tests', () => {
       );
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/filteredVendors`)
+        .get(`${baseUrl}/${mockCuid}`)
         .expect(httpStatusCodes.INTERNAL_SERVER_ERROR);
 
       expect(response.body.success).toBe(false);
@@ -582,7 +582,7 @@ describe('Vendors Routes Integration Tests', () => {
       );
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/filteredVendors`)
+        .get(`${baseUrl}/${mockCuid}`)
         .expect(httpStatusCodes.UNAUTHORIZED);
 
       expect(response.body.success).toBe(false);
@@ -599,7 +599,7 @@ describe('Vendors Routes Integration Tests', () => {
       );
 
       const response = await request(app)
-        .get(`${baseUrl}/${mockCuid}/vendor_details/invalid-vuid`)
+        .get(`${baseUrl}/${mockCuid}/invalid-vuid`)
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.message).toContain('Invalid');

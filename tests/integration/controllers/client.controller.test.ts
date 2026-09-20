@@ -37,7 +37,7 @@ describe('ClientController Integration Tests', () => {
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
   // Route path constants
-  const CLIENT_DETAILS_PATH = '/api/v1/clients/:cuid/client_details';
+  const CLIENT_DETAILS_PATH = '/api/v1/clients/:cuid';
   const DISCONNECT_PATH = '/api/v1/clients/:cuid/users/:uid/disconnect';
   const RECONNECT_PATH = '/api/v1/clients/:cuid/users/:uid/reconnect';
   const ROLES_PATH = '/api/v1/clients/:cuid/users/:uid/roles';
@@ -186,10 +186,10 @@ describe('ClientController Integration Tests', () => {
     await createTestProfile(staffUser._id, testClient._id, { type: 'employee' });
   });
 
-  describe('GET /clients/:cuid/client_details - getClient', () => {
+  describe('GET /clients/:cuid - getClient', () => {
     it('should return complete client information', async () => {
       const response = await request(app)
-        .get(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .get(`/api/v1/clients/${testClient.cuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
@@ -201,7 +201,7 @@ describe('ClientController Integration Tests', () => {
 
     it('should return 404 for non-existent client', async () => {
       const response = await request(app)
-        .get('/api/v1/clients/nonexistent-cuid/client_details')
+        .get('/api/v1/clients/nonexistent-cuid')
         .expect(httpStatusCodes.NOT_FOUND);
 
       expect(response.body.success).toBe(false);
@@ -209,7 +209,7 @@ describe('ClientController Integration Tests', () => {
 
     it('should include client settings in response', async () => {
       const response = await request(app)
-        .get(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .get(`/api/v1/clients/${testClient.cuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.data.settings).toBeDefined();
@@ -219,7 +219,7 @@ describe('ClientController Integration Tests', () => {
 
     it('should include account type plan from subscription in response', async () => {
       const response = await request(app)
-        .get(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .get(`/api/v1/clients/${testClient.cuid}`)
         .expect(httpStatusCodes.OK);
 
       // accountType.plan is derived from subscription for all users
@@ -229,7 +229,7 @@ describe('ClientController Integration Tests', () => {
 
     it('should include clientStats with totalProperties and totalUsers', async () => {
       const response = await request(app)
-        .get(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .get(`/api/v1/clients/${testClient.cuid}`)
         .expect(httpStatusCodes.OK);
 
       expect(response.body.data.clientStats).toBeDefined();
@@ -238,7 +238,7 @@ describe('ClientController Integration Tests', () => {
     });
   });
 
-  describe('PATCH /clients/:cuid/client_details - updateClientProfile', () => {
+  describe('PATCH /clients/:cuid - updateClientProfile', () => {
     it('should update client profile successfully', async () => {
       const updateData = {
         displayName: 'Updated Company Name',
@@ -248,7 +248,7 @@ describe('ClientController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .patch(`/api/v1/clients/${testClient.cuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -270,7 +270,7 @@ describe('ClientController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .patch(`/api/v1/clients/${testClient.cuid}`)
         .send(updateData)
         .expect(httpStatusCodes.OK);
 
@@ -287,7 +287,7 @@ describe('ClientController Integration Tests', () => {
       };
 
       const response = await request(app)
-        .patch(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .patch(`/api/v1/clients/${testClient.cuid}`)
         .send(invalidData)
         .expect(httpStatusCodes.BAD_REQUEST);
 
@@ -562,7 +562,7 @@ describe('ClientController Integration Tests', () => {
       });
 
       const response = await request(isolatedApp)
-        .get(`/api/v1/clients/${otherClient.cuid}/client_details`)
+        .get(`/api/v1/clients/${otherClient.cuid}`)
         .expect(httpStatusCodes.FORBIDDEN);
 
       expect(response.body.success).toBe(false);
@@ -579,7 +579,7 @@ describe('ClientController Integration Tests', () => {
 
     it('should handle malformed request data', async () => {
       const response = await request(app)
-        .patch(`/api/v1/clients/${testClient.cuid}/client_details`)
+        .patch(`/api/v1/clients/${testClient.cuid}`)
         .send({ settings: 'not-an-object' })
         .expect(httpStatusCodes.BAD_REQUEST);
 

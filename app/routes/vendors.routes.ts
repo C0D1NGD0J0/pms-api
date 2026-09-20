@@ -40,7 +40,7 @@ router.get(
 );
 
 router.get(
-  '/:cuid/filteredVendors',
+  '/:cuid',
   basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.READ),
   subscriptionEntitlements,
@@ -57,7 +57,7 @@ router.get(
 
 // Single vendor details endpoint — vendors read their own record (mine), managers use any
 router.get(
-  '/:cuid/vendor_details/:vuid',
+  '/:cuid/:vuid',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
@@ -80,7 +80,7 @@ router.get(
 
 // Team members — managers use vendor:list:any; primary vendor uses vendor:list:mine
 router.get(
-  '/:cuid/team_members/:vuid',
+  '/:cuid/:vuid/team',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.VENDOR,
@@ -103,7 +103,7 @@ router.get(
 
 // Get vendor business data for editing (primaryAccountHolderUserId only)
 router.get(
-  '/:cuid/vendor/:vuid/edit',
+  '/:cuid/:vuid/form',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
@@ -126,7 +126,7 @@ router.get(
 
 // Update team member profile fields (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
-  '/:cuid/vendor/:vuid/team_members/:uid',
+  '/:cuid/:vuid/team/:uid',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,
@@ -153,7 +153,7 @@ router.patch(
 
 // Toggle team member active status (ADMIN/MANAGER or primaryAccountHolderUserId)
 router.patch(
-  '/:cuid/vendor/:vuid/team_members/:uid/status',
+  '/:cuid/:vuid/team/:uid/status',
   basicLimiter(),
   requirePermissionWithContext(
     PermissionResource.USER,

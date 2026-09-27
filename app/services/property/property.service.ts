@@ -9,10 +9,22 @@ import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
-import { PropertyCsvProcessor, EventEmitterService, MediaUploadService } from '@services/index';
+import { getImportFieldsResponse, isKnownImportField } from '@services/csv/propertyImportFields';
+import {
+  PropertyCsvProcessor,
+  EventEmitterService,
+  MediaUploadService,
+  S3Service,
+} from '@services/index';
+import {
+  NotificationPriorityEnum,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -42,12 +54,14 @@ import {
 } from '@dao/index';
 import {
   PropertyApprovalStatusEnum,
+  VerificationStatusEnum,
   IAssignableUsersFilter,
   IPropertyWithUnitInfo,
   IPropertyFilterQuery,
   IPropertyDocument,
   IAssignableUser,
   NewPropertyType,
+  OwnershipType,
 } from '@interfaces/property.interface';
 import {
   PROPERTY_CREATION_ALLOWED_DEPARTMENTS,
@@ -69,6 +83,7 @@ import {
 import { PropertyStatsService } from './propertyStats.service';
 import { PropertyApprovalService } from './propertyApproval.service';
 import { PropertyValidationService } from './propertyValidation.service';
+import { PropertyVerificationService } from './propertyVerification.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
 import {
   validatePropertyLeaseImmutableFields,
@@ -81,6 +96,7 @@ import {
 } from './propertyHelpers';
 
 interface IConstructor {
+  propertyVerificationService: PropertyVerificationService;
   propertyApprovalService: PropertyApprovalService;
   maintenanceRequestDAO: MaintenanceRequestDAO;
   propertyCsvProcessor: PropertyCsvProcessor;
@@ -98,11 +114,12 @@ interface IConstructor {
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
   clientDAO: ClientDAO;
+  s3Service: S3Service;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
 
-export class PropertyService {
+export class PropertyService implements ICronProvider {
   private readonly log: Logger;
   private readonly queueFactory: QueueFactory;
   private readonly clientDAO: ClientDAO;
@@ -115,6 +132,7 @@ export class PropertyService {
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
   private readonly mediaUploadService: MediaUploadService;
   private readonly propertyApprovalService: PropertyApprovalService;
+  private readonly propertyVerificationService: PropertyVerificationService;
   private readonly propertyStatsService: PropertyStatsService;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
@@ -123,6 +141,7 @@ export class PropertyService {
   private readonly notificationService: NotificationService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentDAO: PaymentDAO;
+  private readonly s3Service: S3Service;
 
   constructor({
     clientDAO,
@@ -136,6 +155,7 @@ export class PropertyService {
     propertyCsvProcessor,
     mediaUploadService,
     propertyApprovalService,
+    propertyVerificationService,
     propertyStatsService,
     userDAO,
     leaseDAO,
@@ -144,6 +164,7 @@ export class PropertyService {
     notificationService,
     subscriptionDAO,
     paymentDAO,
+    s3Service,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -157,6 +178,7 @@ export class PropertyService {
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.mediaUploadService = mediaUploadService;
     this.propertyApprovalService = propertyApprovalService;
+    this.propertyVerificationService = propertyVerificationService;
     this.propertyStatsService = propertyStatsService;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -165,6 +187,7 @@ export class PropertyService {
     this.notificationService = notificationService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentDAO = paymentDAO;
+    this.s3Service = s3Service;
 
     this.setupEventListeners();
   }
@@ -367,6 +390,23 @@ export class PropertyService {
 
     const cleanPropertyData = { ...propertyData };
 
+    // Derive top-level fullAddress from address.fullAddress when not explicitly set
+    // (FormData submissions nest it under address, JSON may send it at top level)
+    if (!cleanPropertyData.fullAddress && cleanPropertyData.address?.fullAddress) {
+      cleanPropertyData.fullAddress = cleanPropertyData.address.fullAddress;
+    }
+
+    // Strip unit-level fields that don't apply at property level for this type
+    // (FormData serializes all fields including zero-value defaults)
+    if (cleanPropertyData.propertyType && cleanPropertyData.specifications) {
+      if (!PropertyTypeManager.allowsBedroomsAtPropertyLevel(cleanPropertyData.propertyType)) {
+        delete cleanPropertyData.specifications.bedrooms;
+      }
+      if (!PropertyTypeManager.allowsBathroomsAtPropertyLevel(cleanPropertyData.propertyType)) {
+        delete cleanPropertyData.specifications.bathrooms;
+      }
+    }
+
     if (cleanPropertyData.fees) {
       cleanPropertyData.fees = MoneyUtils.parseMoneyInput(cleanPropertyData.fees);
     }
@@ -515,12 +555,29 @@ export class PropertyService {
         ) as any;
       }
 
+      // Verification status derived from whether the required document was uploaded.
+      // All ownership types require a verification document — no auto-verify loophole.
+      const ownerType = cleanPropertyData.owner?.type;
+      const requiredDocType: Record<string, string> = {
+        [OwnershipType.COMPANY_OWNED]: 'deed',
+        [OwnershipType.EXTERNAL_OWNER]: 'authorization_letter',
+        [OwnershipType.SELF_OWNED]: 'proof_of_ownership',
+      };
+      const neededDoc = ownerType ? requiredDocType[ownerType] : null;
+      const hasVerificationDoc = neededDoc
+        ? (cleanPropertyData.documents || []).some((doc: any) => doc.documentType === neededDoc)
+        : false;
+      const verificationStatus = hasVerificationDoc
+        ? VerificationStatusEnum.UNVERIFIED // pending admin review even with doc
+        : VerificationStatusEnum.UNVERIFIED;
+
       const property = await this.propertyDAO.createProperty(
         {
           ...cleanPropertyData,
           cuid,
           approvalStatus,
           approvalDetails,
+          verificationStatus,
         },
         txSession
       );
@@ -631,7 +688,8 @@ export class PropertyService {
   async addPropertiesFromCsv(
     cuid: string,
     csvFilePath: string,
-    actorId: string
+    actorId: string,
+    columnMapping?: Record<string, string>
   ): Promise<ISuccessReturnData> {
     if (!csvFilePath || !cuid) {
       throw new BadRequestError({ message: t('property.errors.noCsvFile') });
@@ -664,6 +722,7 @@ export class PropertyService {
       csvFilePath,
       userId: actorId,
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
+      columnMapping: this.sanitizeColumnMapping(columnMapping),
     };
 
     const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
@@ -678,7 +737,8 @@ export class PropertyService {
   async validateCsv(
     cuid: string,
     csvFile: ExtractedMediaFile,
-    currentUser: ICurrentUser
+    currentUser: ICurrentUser,
+    columnMapping?: Record<string, string>
   ): Promise<ISuccessReturnData> {
     if (!csvFile) {
       throw new BadRequestError({ message: t('property.errors.noCsvUploaded') });
@@ -699,6 +759,7 @@ export class PropertyService {
       userId: currentUser.sub,
       csvFilePath: csvFile.path,
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
+      columnMapping: this.sanitizeColumnMapping(columnMapping),
     };
     const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
     const job = await propertyQueue.addCsvValidationJob(jobData);
@@ -707,6 +768,27 @@ export class PropertyService {
       data: { processId: job.id },
       message: t('property.success.csvValidationStarted'),
     };
+  }
+
+  /** Drops any mapping entries pointing at a field key we don't recognize. */
+  private sanitizeColumnMapping(
+    columnMapping?: Record<string, string>
+  ): Record<string, string> | undefined {
+    if (!columnMapping) return undefined;
+    const sanitized = Object.fromEntries(
+      Object.entries(columnMapping).filter(([, fieldKey]) => isKnownImportField(fieldKey))
+    );
+    return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+  }
+
+  /** Field list + optional platform preset for the frontend's column-mapping step. */
+  getCsvImportFields(platform?: string) {
+    return getImportFieldsResponse(platform);
+  }
+
+  /** Built from the processor's own allowed-header list, so it can't drift from what the importer accepts. */
+  getCsvTemplate(): string {
+    return this.propertyCsvProcessor.generateTemplateCsv();
   }
 
   async getClientProperties(
@@ -884,22 +966,29 @@ export class PropertyService {
     const unitCountMap = new Map(unitCounts.map((u) => [u._id.toString(), u.count]));
 
     const department = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
-    const itemsWithPreview = properties.items.map((property) => {
-      const propertyObj = property.toObject ? property.toObject() : property;
-      const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
+    const itemsWithPreview = await Promise.all(
+      properties.items.map(async (property) => {
+        const propertyObj = property.toObject ? property.toObject() : property;
+        const pendingChangesPreview = generatePendingChangesPreview(property, currentuser);
 
-      const enriched = {
-        ...propertyObj,
-        ...(pendingChangesPreview && { pendingChangesPreview }),
-        fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
-        unitInfo: {
-          currentUnits: unitCountMap.get(propertyObj._id.toString()) ?? 0,
-          maxAllowedUnits: propertyObj.maxAllowedUnits ?? 0,
-        },
-      };
+        // Sign S3 URLs for images (list view thumbnails)
+        if (propertyObj.images?.length) {
+          await this.s3Service.signFileUrls(propertyObj.images);
+        }
 
-      return filterPropertyByDepartment(enriched as IPropertyDocument, department);
-    });
+        const enriched = {
+          ...propertyObj,
+          ...(pendingChangesPreview && { pendingChangesPreview }),
+          fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
+          unitInfo: {
+            currentUnits: unitCountMap.get(propertyObj._id.toString()) ?? 0,
+            maxAllowedUnits: propertyObj.maxAllowedUnits ?? 0,
+          },
+        };
+
+        return filterPropertyByDepartment(enriched as IPropertyDocument, department);
+      })
+    );
 
     return {
       success: true,
@@ -1165,6 +1254,17 @@ export class PropertyService {
     const propertyObj = property.toObject ? property.toObject() : property;
     const pendingChangesPreview = generatePendingChangesPreview(property, currentUser);
 
+    // Sign S3 URLs for documents and images
+    if (propertyObj.documents?.length) {
+      await this.s3Service.signFileUrls(propertyObj.documents);
+    }
+    if (propertyObj.images?.length) {
+      await this.s3Service.signFileUrls(propertyObj.images);
+    }
+
+    // Compute authorization status for external/self-owned properties
+    const authorizationStatus = this.computeAuthorizationStatus(propertyObj);
+
     const propertyWithPreview = {
       ...propertyObj,
       ...(pendingChangesPreview && { pendingChangesPreview }),
@@ -1184,6 +1284,7 @@ export class PropertyService {
       success: true,
       data: {
         property: filteredProperty as IPropertyDocument,
+        authorizationStatus,
         hasLeaseHistory,
         unitInfo,
         metrics: hideFinancials ? undefined : metrics,
@@ -1195,6 +1296,51 @@ export class PropertyService {
           inspectionHistory !== undefined && { inspectionHistory }),
       },
     };
+  }
+
+  private computeAuthorizationStatus(property: any): {
+    isAuthorized: boolean;
+    reason?: string;
+    daysUntilExpiry?: number;
+  } {
+    if (property.owner?.type === OwnershipType.COMPANY_OWNED) {
+      return { isAuthorized: true };
+    }
+
+    if (!property.authorization) {
+      return {
+        isAuthorized: false,
+        reason:
+          'No management authorization on file. Upload management agreement to manage this property.',
+      };
+    }
+
+    if (!property.authorization.isActive) {
+      return {
+        isAuthorized: false,
+        reason: 'Management authorization is inactive.',
+      };
+    }
+
+    if (property.authorization.expiresAt) {
+      const expiryDate = new Date(property.authorization.expiresAt);
+      const today = new Date();
+
+      if (expiryDate < today) {
+        return {
+          isAuthorized: false,
+          reason: `Management authorization expired on ${expiryDate.toLocaleDateString()}.`,
+        };
+      }
+
+      const daysUntilExpiry = Math.ceil(
+        (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      return { isAuthorized: true, daysUntilExpiry };
+    }
+
+    return { isAuthorized: true };
   }
 
   async updateClientProperty(
@@ -1565,6 +1711,40 @@ export class PropertyService {
       propertyIds,
       currentuser,
       reason
+    );
+  }
+
+  // ── Verification delegation ──────────────────────────────────────────
+
+  async getPendingVerifications(
+    cuid: string,
+    currentuser: ICurrentUser,
+    pagination: IPaginationQuery
+  ) {
+    return this.propertyVerificationService.getPendingVerifications(cuid, currentuser, pagination);
+  }
+
+  async verifyProperty(cuid: string, pid: string, currentuser: ICurrentUser, notes?: string) {
+    return this.propertyVerificationService.verifyProperty(cuid, pid, currentuser, notes);
+  }
+
+  async rejectVerification(cuid: string, pid: string, currentuser: ICurrentUser, reason: string) {
+    return this.propertyVerificationService.rejectVerification(cuid, pid, currentuser, reason);
+  }
+
+  async grantVerificationGracePeriod(
+    cuid: string,
+    pid: string,
+    currentuser: ICurrentUser,
+    expiresAt: string | Date,
+    notes?: string
+  ) {
+    return this.propertyVerificationService.grantGracePeriod(
+      cuid,
+      pid,
+      currentuser,
+      expiresAt,
+      notes
     );
   }
 
@@ -2588,5 +2768,92 @@ export class PropertyService {
       data: updated,
       message: t('common.success.deleted', { resource: 'Document' }),
     };
+  }
+
+  // ─── Cron Jobs ───────────────────────────────────────────────────────────────
+
+  getCronJobs(): ICronJob[] {
+    return [
+      {
+        name: 'property:authorization-expiry-check',
+        schedule: '0 7 * * *', // Daily at 7 AM UTC
+        handler: this.processExpiringAuthorizations.bind(this),
+        service: 'PropertyService',
+        enabled: true,
+        description:
+          'Notify managers when property management authorizations are expiring or expired',
+        timeout: 60_000,
+      },
+    ];
+  }
+
+  private async processExpiringAuthorizations(): Promise<void> {
+    const now = new Date();
+    const warningDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
+
+    // Find external/self-owned properties with authorization expiring within 30 days or already expired
+    const properties = await this.propertyDAO.list(
+      {
+        deletedAt: null,
+        'owner.type': { $in: [OwnershipType.EXTERNAL_OWNER, OwnershipType.SELF_OWNED] },
+        'authorization.isActive': true,
+        'authorization.expiresAt': { $lte: warningDate, $ne: null },
+      },
+      { projection: 'pid cuid name authorization owner' }
+    );
+
+    for (const property of properties.items) {
+      const expiryDate = new Date(property.authorization!.expiresAt!);
+      const isExpired = expiryDate < now;
+      const daysUntilExpiry = Math.ceil(
+        (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      if (isExpired) {
+        this.log.warn(
+          { pid: property.pid, cuid: property.cuid },
+          `Management authorization expired for property ${property.name}`
+        );
+
+        await this.notificationService.createNotification(
+          property.cuid,
+          NotificationTypeEnum.PROPERTY,
+          {
+            cuid: property.cuid,
+            type: NotificationTypeEnum.PROPERTY,
+            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+            targetRoles: [ROLES.SUPER_ADMIN],
+            priority: NotificationPriorityEnum.HIGH,
+            title: `Authorization Expired — ${property.name}`,
+            message: `Management authorization for "${property.name}" expired on ${expiryDate.toLocaleDateString()}. Lease creation and rent collection are blocked until renewed.`,
+            actionUrl: `/properties/${property.cuid}/${property.pid}/edit`,
+            metadata: { pid: property.pid, type: 'authorization_expired' },
+          }
+        );
+      } else if (daysUntilExpiry <= 30) {
+        this.log.info(
+          { pid: property.pid, daysUntilExpiry },
+          `Management authorization expiring in ${daysUntilExpiry} days for ${property.name}`
+        );
+
+        await this.notificationService.createNotification(
+          property.cuid,
+          NotificationTypeEnum.PROPERTY,
+          {
+            cuid: property.cuid,
+            type: NotificationTypeEnum.PROPERTY,
+            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+            targetRoles: [ROLES.SUPER_ADMIN],
+            priority: NotificationPriorityEnum.MEDIUM,
+            title: `Authorization Expiring — ${property.name}`,
+            message: `Management authorization for "${property.name}" expires in ${daysUntilExpiry} day${daysUntilExpiry !== 1 ? 's' : ''}. Renew to avoid disruption to lease and payment operations.`,
+            actionUrl: `/properties/${property.cuid}/${property.pid}/edit`,
+            metadata: { pid: property.pid, type: 'authorization_expiring', daysUntilExpiry },
+          }
+        );
+      }
+    }
+
+    this.log.info(`Processed ${properties.items.length} properties for authorization expiry`);
   }
 }

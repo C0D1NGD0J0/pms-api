@@ -53,6 +53,36 @@ router.post(
   })
 );
 
+router.get(
+  '/:cuid/csv/template',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  requireNotSuspended,
+  requireVerification,
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getCsvTemplate(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/csv/import-fields',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.CREATE),
+  requireNotSuspended,
+  requireVerification,
+  validateRequest({
+    params: PropertyValidations.validatecuid,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getCsvImportFields(req, res);
+  })
+);
+
 router.post(
   '/:cuid/csv/validate',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
@@ -196,6 +226,55 @@ router.post(
   asyncWrapper((req, res) => {
     const propertyController = req.container.resolve<PropertyController>('propertyController');
     return propertyController.bulkRejectProperties(req, res);
+  })
+);
+
+// ── Verification routes ──────────────────────────────────────────────
+
+router.get(
+  '/:cuid/pending-verifications',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  validateRequest({ params: PropertyValidations.validatecuid }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getPendingVerifications(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/properties/:pid/verify',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
+  validateRequest({ params: PropertyValidations.validatePropertyAndClientIds }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.verifyProperty(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/properties/:pid/reject-verification',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
+  validateRequest({ params: PropertyValidations.validatePropertyAndClientIds }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.rejectVerification(req, res);
+  })
+);
+
+router.patch(
+  '/:cuid/properties/:pid/verification-grace-period',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.UPDATE),
+  idempotency,
+  validateRequest({ params: PropertyValidations.validatePropertyAndClientIds }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.grantVerificationGracePeriod(req, res);
   })
 );
 

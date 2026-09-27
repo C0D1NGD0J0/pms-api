@@ -251,16 +251,15 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
             );
             if (!foundDocument) {
               this.logger.warn(`Document template not found for: ${upload.documentName}`);
-              // Create a basic document entry if template not found
               return {
                 key: upload.key,
                 url: upload.url,
                 status: 'active' as const,
                 uploadedAt: new Date(),
                 externalUrl: upload.url ?? '',
-                documentName: upload.documentName || 'Unknown Document',
+                documentName: upload.documentName || upload.filename || 'Unknown Document',
                 description: 'Uploaded document',
-                documentType: 'other' as const,
+                documentType: (upload.documentType || 'other') as any,
                 uploadedBy: new Types.ObjectId(upload.actorId || userId),
               };
             }

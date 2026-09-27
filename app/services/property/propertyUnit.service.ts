@@ -924,7 +924,7 @@ export class PropertyUnitService {
     if (subscription) {
       const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
       if (maxUnits !== -1) {
-        const currentUnits = subscription.currentUnits;
+        const currentUnits = subscription.resourceTracker.unitCount;
         if (currentUnits >= maxUnits) {
           throw new BadRequestError({
             message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,
@@ -1197,7 +1197,7 @@ export class PropertyUnitService {
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     if (subscription) {
       const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
-      if (maxUnits !== -1 && subscription.currentUnits >= maxUnits) {
+      if (maxUnits !== -1 && subscription.resourceTracker.unitCount >= maxUnits) {
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
         throw new BadRequestError({
           message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,

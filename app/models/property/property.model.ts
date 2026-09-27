@@ -1,6 +1,10 @@
 import { Schema, Types, model } from 'mongoose';
 import { generateShortUID, createLogger } from '@utils/index';
-import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
+import {
+  VerificationStatusEnum,
+  IPropertyDocument,
+  OwnershipType,
+} from '@interfaces/property.interface';
 
 const logger = createLogger('PropertyModel');
 
@@ -235,25 +239,37 @@ const PropertySchema = new Schema<IPropertyDocument>(
       type: {
         type: String,
         enum: ['Point'],
-        default: 'Point',
       },
       coordinates: {
         type: [Number],
-        required: true,
       },
     },
     documents: [
       {
         documentType: {
           type: String,
-          enum: ['deed', 'tax', 'insurance', 'inspection', 'other', 'lease'],
+          enum: [
+            'deed',
+            'tax',
+            'insurance',
+            'inspection',
+            'other',
+            'lease',
+            'authorization_letter',
+            'proof_of_ownership',
+            'management_agreement',
+          ],
         },
         url: {
           type: String,
           validate: {
             validator: function (v: string) {
-              // Basic URL validation
-              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+              try {
+                new URL(v);
+                return true;
+              } catch {
+                return false;
+              }
             },
             message: (props: any) => `${props.value} is not a valid URL!`,
           },
@@ -268,8 +284,12 @@ const PropertySchema = new Schema<IPropertyDocument>(
           type: String,
           validate: {
             validator: function (v: string) {
-              // Basic URL validation
-              return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+              try {
+                new URL(v);
+                return true;
+              } catch {
+                return false;
+              }
             },
             message: (props: any) => `${props.value} is not a valid URL!`,
           },
@@ -287,7 +307,12 @@ const PropertySchema = new Schema<IPropertyDocument>(
             type: String,
             validate: {
               validator: function (v: string) {
-                return /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/.test(v);
+                try {
+                  new URL(v);
+                  return true;
+                } catch {
+                  return false;
+                }
               },
               message: (props: any) => `${props.value} is not a valid URL!`,
             },
@@ -361,6 +386,40 @@ const PropertySchema = new Schema<IPropertyDocument>(
     pendingChanges: {
       type: Schema.Types.Mixed,
       default: null,
+    },
+    verificationStatus: {
+      type: String,
+      enum: Object.values(VerificationStatusEnum),
+      default: VerificationStatusEnum.UNVERIFIED,
+      index: true,
+    },
+    verificationGracePeriod: {
+      type: {
+        expiresAt: { type: Date, required: true },
+        grantedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        notes: { type: String, maxlength: 500 },
+      },
+      select: false,
+      default: undefined,
+      _id: false,
+    },
+    verificationDetails: {
+      type: [
+        {
+          action: {
+            type: String,
+            enum: ['submitted', 'verified', 'rejected', 'grace_granted'],
+            required: true,
+          },
+          actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+          timestamp: { type: Date, default: Date.now },
+          notes: { type: String, maxlength: 500 },
+          rejectionReason: { type: String, maxlength: 500 },
+          _id: false,
+        },
+      ],
+      select: false,
+      default: [],
     },
     deletedAt: {
       type: Date,
@@ -444,6 +503,19 @@ PropertySchema.methods.isManagementAuthorized = function (this: IPropertyDocumen
   }
 
   return true;
+};
+
+/**
+ * Check if property is verified for leasing/payment operations.
+ * Returns true if verified, or if an active grace period covers the current date.
+ */
+PropertySchema.methods.isVerifiedForLeasing = function (this: IPropertyDocument): boolean {
+  if (this.verificationStatus === VerificationStatusEnum.VERIFIED) return true;
+
+  const grace = this.verificationGracePeriod;
+  if (grace?.expiresAt && new Date(grace.expiresAt) > new Date()) return true;
+
+  return false;
 };
 
 /**

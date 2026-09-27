@@ -40,7 +40,7 @@ export interface ILease {
   autoSendInfo?: {
     sent: boolean;
     failedAt: Date;
-    failureReason: 'not_approved' | 'auto_send_disabled';
+    failureReason: 'not_approved' | 'auto_send_disabled' | 'no_provider' | 'original_lease_expired';
   };
   autoScheduleInspection?: { moveIn: boolean; moveOut: boolean };
   pendingChanges?: IPendingLeaseChanges | null;

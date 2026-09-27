@@ -113,13 +113,17 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       cardBrand: { type: String },
     },
     customPriceInCents: { type: Number },
-    additionalSeatsCount: { type: Number, default: 0 },
-    additionalSeatsCost: { type: Number, default: 0 },
+    resourceTracker: {
+      propertyCount: { type: Number, default: 0 },
+      unitCount: { type: Number, default: 0 },
+      seatCount: { type: Number, default: 0 },
+    },
+    seats: {
+      additional: { type: Number, default: 0 },
+      additionalCost: { type: Number, default: 0 },
+    },
     totalMonthlyPrice: { type: Number, required: true },
-    currentSeats: { type: Number, default: 1 },
-    currentProperties: { type: Number, default: 0 },
     pendingDowngradeAt: { type: Date, index: true },
-    currentUnits: { type: Number, default: 0 },
     manualRecords: {
       countThisPeriod: { type: Number, default: 0 },
       periodStart: { type: Date, default: Date.now },

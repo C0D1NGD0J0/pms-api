@@ -1,12 +1,14 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { CronQueue } from '@queues/cron.queue';
+import { envVariables } from '@shared/config/env.configs';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import {
   SubscriptionService,
   NotificationService,
   InspectionService,
   GuestPassService,
+  PropertyService,
   MetricsService,
   PaymentService,
   ReportService,
@@ -22,6 +24,7 @@ interface IConstructor {
   subscriptionService: SubscriptionService;
   inspectionService: InspectionService;
   guestPassService: GuestPassService;
+  propertyService: PropertyService;
   metricsService: MetricsService;
   paymentService: PaymentService;
   reportService: ReportService;
@@ -50,6 +53,7 @@ export class CronService {
     guestPassService,
     subscriptionService,
     inspectionService,
+    propertyService,
     reportService,
     paymentService,
     userService,
@@ -60,6 +64,11 @@ export class CronService {
     this.log = createLogger('CronService');
     this.queueFactory = queueFactory;
 
+    if (!envVariables.SERVER.CRON_ENABLED) {
+      this.log.info('CronService: cron jobs disabled (CRON_ENABLED != true)');
+      return;
+    }
+
     // collects cron jobs from all services that implement ICronProvider
     const services: ICronProvider[] = [
       leaseService,
@@ -67,6 +76,7 @@ export class CronService {
       paymentService,
       guestPassService,
       inspectionService,
+      propertyService,
       reportService,
       userService,
       smsService,

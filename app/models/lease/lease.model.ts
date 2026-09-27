@@ -59,7 +59,7 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
       failureReason: {
         type: String,
-        enum: ['not_approved', 'auto_send_disabled'],
+        enum: ['not_approved', 'auto_send_disabled', 'no_provider', 'original_lease_expired'],
       },
       failedAt: {
         type: Date,

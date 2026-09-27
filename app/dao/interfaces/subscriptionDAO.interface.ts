@@ -15,8 +15,8 @@ export interface ISubscriptionDAO {
   ): Promise<ISubscriptionDocument | null>;
   updateAdditionalSeats(
     clientId: string | Types.ObjectId,
-    additionalSeatsCount: number,
-    additionalSeatsCost: number
+    additional: number,
+    additionalCost: number
   ): Promise<ISubscriptionDocument | null>;
   updatePaymentGateway(
     subscriptionId: string | Types.ObjectId,

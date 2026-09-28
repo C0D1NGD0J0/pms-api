@@ -52,13 +52,6 @@ describe('InvitationController Integration Tests', () => {
 
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
-  // Helper to resolve client ObjectId from cuid — needed because several service methods
-  // pass currentuser.client.cuid directly to DAO queries that expect a clientId (ObjectId).
-  const resolveClientId = async (cuid: string): Promise<string> => {
-    const client = await Client.findOne({ cuid });
-    return client ? client._id.toString() : cuid;
-  };
-
   // Route path constants
   const SEND_INVITE_PATH = '/api/v1/invites/:cuid';
   const VALIDATE_TOKEN_PATH = '/api/v1/invites/:cuid/validate_token';
@@ -249,24 +242,15 @@ describe('InvitationController Integration Tests', () => {
           method: 'patch',
           path: REVOKE_PATH,
           contextUser: () => adminUser,
-          handler: async (req, res) => {
-            // Service passes currentuser.client.cuid to findByIuid which expects ObjectId clientId
-            const clientId = await resolveClientId(req.params.cuid);
-            const ctx = req.context;
-            ctx.currentuser.client.cuid = clientId;
-            return invitationController.revokeInvitation(req, res);
-          },
+          handler: (req, res) => invitationController.revokeInvitation(req, res),
         },
         {
           method: 'patch',
           path: RESEND_PATH,
           contextUser: () => adminUser,
-          handler: withZodErrorHandler(async (req, res) => {
-            const clientId = await resolveClientId(req.params.cuid);
-            const ctx = req.context;
-            ctx.currentuser.client.cuid = clientId;
-            return invitationController.resendInvitation(req, res);
-          }),
+          handler: withZodErrorHandler((req, res) =>
+            invitationController.resendInvitation(req, res)
+          ),
         },
         {
           method: 'get',
@@ -293,12 +277,8 @@ describe('InvitationController Integration Tests', () => {
           path: GET_BY_ID_PATH,
           contextUser: () => adminUser,
           handler: async (req, res) => {
-            // Resolve testClient._id for client scoping in getInvitationById
-            if (testClient) {
-              const clientId = await resolveClientId(testClient.cuid);
-              const ctx = req.context;
-              ctx.currentuser.client.cuid = clientId;
-            }
+            // No :cuid in this route — auth middleware supplies the active client's cuid
+            req.context.currentuser.client.cuid = testClient.cuid;
             return invitationController.getInvitationById(req, res);
           },
         },
@@ -314,10 +294,7 @@ describe('InvitationController Integration Tests', () => {
           path: UPDATE_INVITE_PATH,
           contextUser: () => adminUser,
           handler: async (req, res) => {
-            const clientId = await resolveClientId(req.params.cuid);
-            const ctx = req.context;
-            ctx.currentuser.client.cuid = clientId;
-            ctx.request.params = { cuid: req.params.cuid, iuid: req.params.iuid };
+            req.context.request.params = { cuid: req.params.cuid, iuid: req.params.iuid };
             return invitationController.updateInvitation(req, res);
           },
         },

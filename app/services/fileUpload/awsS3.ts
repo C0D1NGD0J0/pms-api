@@ -99,6 +99,7 @@ export class S3Service {
           Key: s3Key,
           Body: fileStream,
           ContentType: file.mimeType,
+          ServerSideEncryption: 'AES256' as const,
           Tagging: this.generateResourceTag(context.resourceId),
         };
 
@@ -130,6 +131,7 @@ export class S3Service {
           size: file.fileSize,
           mimeType: file.mimeType,
           mediatype: rawMediatype ?? 'document',
+          ...(file.documentType && { documentType: file.documentType }),
         });
       } catch (error) {
         // Log error but continue with other files
@@ -156,6 +158,7 @@ export class S3Service {
         Key: s3Key,
         Body: buffer,
         ContentType: contentType,
+        ServerSideEncryption: 'AES256' as const,
         ...(resourceId && { Tagging: this.generateResourceTag(resourceId) }),
       };
 
@@ -214,6 +217,31 @@ export class S3Service {
         `Failed to generate signed URL: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
+  }
+
+  /**
+   * Replace raw S3 URLs with presigned URLs for an array of file-bearing objects.
+   * Works on any shape that has `url` and `key` fields (documents, images, media).
+   * Mutates in-place and returns the same array for chaining.
+   */
+  async signFileUrls<T extends { url?: string; key?: string }>(
+    items: T[],
+    disposition: 'inline' | 'attachment' = 'inline'
+  ): Promise<T[]> {
+    if (!items?.length) return items;
+
+    await Promise.allSettled(
+      items.map(async (item) => {
+        if (!item.key) return;
+        try {
+          item.url = await this.getSignedUrl(item.key, { disposition });
+        } catch {
+          // Keep the original url if signing fails
+        }
+      })
+    );
+
+    return items;
   }
 
   async getFileBuffer(s3Key: string): Promise<Buffer> {

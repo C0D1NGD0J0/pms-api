@@ -2,6 +2,7 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { PropertyCsvProcessor } from '@services/csv';
+import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionDAO, PropertyDAO, ClientDAO } from '@dao/index';
@@ -13,6 +14,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyDAO: PropertyDAO;
+  sseService: SSEService;
   clientDAO: ClientDAO;
 }
 
@@ -23,6 +25,7 @@ export class PropertyWorker {
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly emitterService: EventEmitterService;
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
+  private readonly sseService: SSEService;
 
   constructor({
     propertyDAO,
@@ -30,6 +33,7 @@ export class PropertyWorker {
     subscriptionDAO,
     emitterService,
     propertyCsvProcessor,
+    sseService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.propertyDAO = propertyDAO;
@@ -37,6 +41,7 @@ export class PropertyWorker {
     this.emitterService = emitterService;
     this.log = createLogger('PropertyWorker');
     this.propertyCsvProcessor = propertyCsvProcessor;
+    this.sseService = sseService;
   }
 
   processCsvValidation = async (job: Job<CsvJobData>) => {
@@ -45,6 +50,7 @@ export class PropertyWorker {
       csvFilePath,
       clientInfo: { cuid },
       userId,
+      columnMapping,
     } = job.data;
     this.log.info(`Processing CSV validation job ${job.id} for client ${cuid}`);
 
@@ -53,19 +59,54 @@ export class PropertyWorker {
       const result = await this.propertyCsvProcessor.validateCsv(csvFilePath, {
         cuid,
         userId,
+        columnMapping,
       });
       job.progress(100);
       this.log.info(`Done processing CSV validation job ${job.id} for client ${cuid}`);
 
+      const errorCount = result.errors ? result.errors.length : 0;
+      await this.sseService.sendToUser(
+        userId,
+        cuid,
+        {
+          jobId: job.id.toString(),
+          jobType: 'csv_property_validation',
+          stage: result.validProperties.length === 0 ? 'failed' : 'completed',
+          progress: 100,
+          totalItems: result.totalRows,
+          validCount: result.validProperties.length,
+          errorCount,
+          errors: result.errors,
+          message:
+            result.validProperties.length === 0
+              ? 'No valid properties found in CSV file provided.'
+              : `Validated ${result.validProperties.length} propert${result.validProperties.length === 1 ? 'y' : 'ies'} successfully${errorCount > 0 ? `, ${errorCount} errors found` : ''}`,
+        },
+        'job-notification'
+      );
+
       return {
         processId: job.id,
         validCount: result.validProperties.length,
-        errorCount: result.errors ? result.errors.length : 0,
+        errorCount,
         errors: result.errors,
         success: true,
       };
     } catch (error) {
       this.log.error(`Error processing CSV validation job ${job.id}:`, error);
+      await this.sseService.sendToUser(
+        userId,
+        cuid,
+        {
+          jobId: job.id.toString(),
+          jobType: 'csv_property_validation',
+          stage: 'failed',
+          progress: 0,
+          message: 'CSV file validation encountered a fatal error',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'job-notification'
+      );
       throw error;
     }
   };
@@ -75,6 +116,7 @@ export class PropertyWorker {
       csvFilePath,
       clientInfo: { cuid },
       userId,
+      columnMapping,
     } = job.data;
 
     job.progress(10);
@@ -84,11 +126,26 @@ export class PropertyWorker {
       const csvResult = await this.propertyCsvProcessor.validateCsv(csvFilePath, {
         cuid,
         userId,
+        columnMapping,
       });
       job.progress(50);
 
       if (!csvResult.validProperties.length) {
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+        await this.sseService.sendToUser(
+          userId,
+          cuid,
+          {
+            jobId: job.id.toString(),
+            jobType: 'csv_property_import',
+            stage: 'failed',
+            progress: 0,
+            message: 'No valid properties found in CSV file provided.',
+            errors: csvResult.errors,
+            totalRows: csvResult.totalRows,
+          },
+          'job-notification'
+        );
         return {
           success: false,
           processId: job.id,
@@ -98,6 +155,10 @@ export class PropertyWorker {
           message: 'No valid properties found in CSV',
         };
       }
+
+      // Row errors accumulated after validation (e.g. rows skipped for quota),
+      // reported alongside csvResult.errors rather than dropped silently.
+      const postValidationErrors: NonNullable<CsvProcessReturnData['errors']> = [];
 
       // Enforce subscription property limit before batch insert
       const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
@@ -109,20 +170,45 @@ export class PropertyWorker {
           const remaining = maxProperties - currentCount;
           if (remaining <= 0) {
             this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
+            const message = `Property limit reached (${maxProperties}). Upgrade your plan to add more properties.`;
+            await this.sseService.sendToUser(
+              userId,
+              cuid,
+              {
+                jobId: job.id.toString(),
+                jobType: 'csv_property_import',
+                stage: 'failed',
+                progress: 0,
+                message,
+              },
+              'job-notification'
+            );
             return {
               success: false,
               processId: job.id,
               data: null,
               finishedAt: new Date(),
               errors: null,
-              message: `Property limit reached (${maxProperties}). Upgrade your plan to add more properties.`,
+              message,
             };
           }
           if (csvResult.validProperties.length > remaining) {
+            const trimmed = csvResult.validProperties.slice(remaining);
             this.log.warn(
               { cuid, requested: csvResult.validProperties.length, remaining },
               'CSV import trimmed to subscription property limit'
             );
+            trimmed.forEach((property) => {
+              postValidationErrors.push({
+                rowNumber: 0,
+                errors: [
+                  {
+                    field: 'quota',
+                    error: `Skipped "${property.name || property.address?.fullAddress || 'property'}" — plan limit of ${maxProperties} properties reached.`,
+                  },
+                ],
+              });
+            });
             csvResult.validProperties = csvResult.validProperties.slice(0, remaining);
           }
         }
@@ -147,15 +233,20 @@ export class PropertyWorker {
         return { totalInserted };
       });
 
+      const combinedErrors: CsvProcessReturnData['errors'] = [
+        ...(csvResult.errors || []),
+        ...postValidationErrors,
+      ];
+
       const returnResult = {
         data: [],
-        errors: null,
-        message: csvResult.errors?.length
+        errors: combinedErrors.length ? combinedErrors : null,
+        message: combinedErrors.length
           ? 'Properties imported with some errors'
           : 'All properties imported successfully',
       } as CsvProcessReturnData & { message: string };
 
-      // Sync subscription.currentProperties so the atomic gate in addProperty() stays accurate
+      // Sync subscription.resourceTracker.propertyCount so the atomic gate in addProperty() stays accurate
       if (propertiesResult.totalInserted > 0 && subscription) {
         await this.subscriptionDAO.updateResourceCount(
           'property',
@@ -166,6 +257,23 @@ export class PropertyWorker {
 
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
       job.progress(100);
+
+      await this.sseService.sendToUser(
+        userId,
+        cuid,
+        {
+          jobId: job.id.toString(),
+          jobType: 'csv_property_import',
+          stage: 'completed',
+          progress: 100,
+          totalItems: csvResult.totalRows,
+          createdCount: propertiesResult.totalInserted,
+          errorCount: combinedErrors.length,
+          errors: returnResult.errors,
+          message: returnResult.message,
+        },
+        'job-notification'
+      );
 
       return {
         success: true,
@@ -180,6 +288,19 @@ export class PropertyWorker {
       };
     } catch (error) {
       this.log.error(`Error processing CSV import job ${job.id}:`, error);
+      await this.sseService.sendToUser(
+        userId,
+        cuid,
+        {
+          jobId: job.id.toString(),
+          jobType: 'csv_property_import',
+          stage: 'failed',
+          progress: 0,
+          message: 'CSV file processing encountered a fatal error',
+          error: error instanceof Error ? error.message : String(error),
+        },
+        'job-notification'
+      );
       throw error;
     }
   };

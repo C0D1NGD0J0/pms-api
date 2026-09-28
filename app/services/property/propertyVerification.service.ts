@@ -6,8 +6,8 @@ import { PropertyCache } from '@caching/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { VerificationStatusEnum, IPropertyDocument } from '@interfaces/property.interface';
 import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
-import { ISuccessReturnData, IPaginationQuery, IPaginateResult } from '@interfaces/utils.interface';
 import { PROPERTY_VERIFICATION_ROLES, convertUserRoleToEnum, createLogger } from '@utils/index';
+import { ISuccessReturnData, IPaginationQuery, IPaginateResult } from '@interfaces/utils.interface';
 
 interface IConstructor {
   propertyCache: PropertyCache;

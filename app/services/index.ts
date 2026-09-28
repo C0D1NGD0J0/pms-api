@@ -1,4 +1,12 @@
 export {
+  PropertyVerificationService,
+  PropertyApprovalService,
+  PropertyMediaService,
+  PropertyStatsService,
+  PropertyUnitService,
+  PropertyService,
+} from './property';
+export {
   MaintenancePaymentService,
   PaymentWebhookService,
   PayoutAccountService,
@@ -14,13 +22,6 @@ export {
   LeasePdfService,
   LeaseService,
 } from './lease';
-export {
-  PropertyApprovalService,
-  PropertyMediaService,
-  PropertyStatsService,
-  PropertyUnitService,
-  PropertyService,
-} from './property';
 export {
   AnthropicService,
   GeoCoderService,

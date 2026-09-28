@@ -109,6 +109,15 @@ export const PROPERTY_CREATION_ALLOWED_DEPARTMENTS: EmployeeDepartment[] = [
 export const PROPERTY_APPROVAL_ROLES = [IUserRole.SUPER_ADMIN, IUserRole.ADMIN, IUserRole.MANAGER];
 
 /**
+ * Roles that can verify property ownership
+ */
+export const PROPERTY_VERIFICATION_ROLES = [
+  IUserRole.SUPER_ADMIN,
+  IUserRole.ADMIN,
+  IUserRole.MANAGER,
+];
+
+/**
  * Roles that require approval for property creation
  */
 export const PROPERTY_STAFF_ROLES = [IUserRole.STAFF];

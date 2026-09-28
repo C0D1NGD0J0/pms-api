@@ -5,9 +5,20 @@ import { mockQueueFactory } from '@tests/setup/externalMocks';
 import { VendorService } from '@services/vendor/vendor.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
-import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
+  MaintenanceRequest,
+  PropertyUnit,
+  Inspection,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  User,
+} from '@models/index';
+import {
+  MaintenanceRequestDAO,
   PropertyUnitDAO,
+  InspectionDAO,
   PropertyDAO,
   ProfileDAO,
   ClientDAO,
@@ -31,6 +42,10 @@ const setupServices = () => {
   const propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
   const propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
   const vendorDAO = new VendorDAO({ vendorModel: Vendor });
+  const inspectionDAO = new InspectionDAO({ inspectionModel: Inspection });
+  const maintenanceRequestDAO = new MaintenanceRequestDAO({
+    maintenanceRequestModel: MaintenanceRequest,
+  });
 
   const userCache = {
     getUserDetail: jest.fn().mockResolvedValue({ success: false, data: null }),
@@ -53,6 +68,8 @@ const setupServices = () => {
   } as any);
 
   const userService = new UserService({
+    propertyUnitDAO,
+    inspectionDAO,
     clientDAO,
     userDAO,
     propertyDAO,
@@ -64,7 +81,7 @@ const setupServices = () => {
     paymentDAO: {} as any,
     subscriptionDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
     paymentProcessorDAO: {} as any,
-    maintenanceRequestDAO: {} as any,
+    maintenanceRequestDAO,
     emitterService: { on: jest.fn(), emit: jest.fn(), off: jest.fn() } as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
   });

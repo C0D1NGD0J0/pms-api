@@ -355,9 +355,8 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       aiInvoiceScanning: true,
     },
     totalMonthlyPrice: 4900,
-    currentSeats: 2,
-    currentProperties: 0,
-    currentUnits: 0,
+    resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 2 },
+    seats: { additional: 0, additionalCost: 0 },
   });
 
   const subscription2 = await Subscription.create({
@@ -385,9 +384,8 @@ export const seedTestData = async (): Promise<SeededTestData> => {
       aiInvoiceScanning: false,
     },
     totalMonthlyPrice: 0,
-    currentSeats: 2,
-    currentProperties: 0,
-    currentUnits: 0,
+    resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 2 },
+    seats: { additional: 0, additionalCost: 0 },
   });
 
   // Update client1 to reference subscription

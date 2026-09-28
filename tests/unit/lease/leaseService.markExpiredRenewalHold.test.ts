@@ -111,6 +111,7 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       paymentDAO: {} as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }) } as any,
+      s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
     });
   });
 

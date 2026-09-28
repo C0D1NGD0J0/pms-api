@@ -141,6 +141,7 @@ describe('LeaseService — Expiry Flow', () => {
       smsService: { sendToUser: jest.fn().mockReturnValue(Promise.resolve({})) } as any,
       paymentDAO: {} as any,
       userCache: mockUserCache as any,
+      s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
     });
   });
 

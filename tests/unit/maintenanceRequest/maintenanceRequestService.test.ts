@@ -58,6 +58,16 @@ const _mockAiService = {
   selectBestVendor: jest.fn(),
 } as any;
 const mockPaymentDAO = { findFirst: jest.fn() } as any;
+const mockS3Service = {
+  getSignedUrl: jest.fn(),
+  uploadFiles: jest.fn(),
+  signFileUrls: jest.fn(async (items: any[]) => {
+    items.forEach((item) => {
+      if (item.key) item.url = `https://signed/${item.key}`;
+    });
+    return items;
+  }),
+} as any;
 const _mockServiceAreaService: jest.Mocked<
   Pick<ServiceAreaService, 'isLocationInVendorServiceArea'>
 > = {
@@ -144,6 +154,7 @@ beforeEach(() => {
       sendSMS: jest.fn(),
       sendToUser: jest.fn().mockReturnValue(Promise.resolve(undefined)),
     } as any,
+    s3Service: mockS3Service,
   });
 });
 
@@ -1205,5 +1216,41 @@ describe('MaintenanceRequestService - updateStatus ownership', () => {
         status: MaintenanceRequestStatus.IN_PROGRESS,
       })
     ).rejects.toThrow(ForbiddenError);
+  });
+});
+
+// ===========================================================================
+// Presigned URLs on getRequest
+// ===========================================================================
+
+describe('MaintenanceRequestService - getRequest presigned URLs', () => {
+  it('signs active media and drops soft-deleted media before signing', async () => {
+    mockDAO.findFirst.mockResolvedValue(
+      makeRequest(MaintenanceRequestStatus.OPEN, {
+        vendorId: undefined,
+        media: [
+          { url: 'https://public/leak.jpg', key: 'maintenance/leak.jpg', status: 'active' },
+          { url: 'https://public/old.jpg', key: 'maintenance/old.jpg', status: 'deleted' },
+        ],
+      })
+    );
+
+    const result: any = await service.getRequest(makeCtx('admin') as IRequestContext, 'MR001');
+
+    expect(result.data.media).toHaveLength(1);
+    expect(result.data.media[0].url).toBe('https://signed/maintenance/leak.jpg');
+    expect(mockS3Service.signFileUrls).toHaveBeenCalledWith([
+      expect.objectContaining({ key: 'maintenance/leak.jpg' }),
+    ]);
+  });
+
+  it('skips signing when the request has no media array', async () => {
+    mockDAO.findFirst.mockResolvedValue(
+      makeRequest(MaintenanceRequestStatus.OPEN, { vendorId: undefined })
+    );
+
+    await service.getRequest(makeCtx('admin') as IRequestContext, 'MR001');
+
+    expect(mockS3Service.signFileUrls).not.toHaveBeenCalled();
   });
 });

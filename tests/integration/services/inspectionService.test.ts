@@ -46,6 +46,10 @@ describe('InspectionService Integration Tests', () => {
     userDAO = new UserDAO({ userModel: User });
 
     inspectionService = new InspectionService({
+      s3Service: {
+        signFileUrls: jest.fn(async (items: any) => items),
+        getSignedUrl: jest.fn(),
+      } as any,
       inspectionDAO,
       propertyUnitDAO,
       leaseDAO,

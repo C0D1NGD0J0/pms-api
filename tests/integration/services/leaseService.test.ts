@@ -88,6 +88,8 @@ const setupServices = () => {
   } as any);
 
   const userService = new UserService({
+    propertyUnitDAO,
+    inspectionDAO: {} as any,
     clientDAO,
     userDAO,
     propertyDAO,
@@ -115,6 +117,7 @@ const setupServices = () => {
     createNotificationFromTemplate: jest.fn().mockResolvedValue(undefined),
     notifyLeaseLifecycleEvent: jest.fn().mockResolvedValue(undefined),
     hasLeaseExpiryNoticeBeenSent: jest.fn().mockResolvedValue(false),
+    notifySystemError: jest.fn().mockResolvedValue(undefined),
   } as any;
 
   const pdfGeneratorService = {
@@ -190,6 +193,15 @@ const setupServices = () => {
   });
 
   const leaseService = new LeaseService({
+    s3Service: {
+      signFileUrls: jest.fn(async (items: any[]) => {
+        items.forEach((item) => {
+          if (item.key) item.url = `https://signed/${item.key}`;
+        });
+        return items;
+      }),
+      getSignedUrl: jest.fn(),
+    } as any,
     leaseDAO,
     userDAO,
     clientDAO,
@@ -213,6 +225,7 @@ const setupServices = () => {
     leaseSignatureService,
     paymentDAO: {
       findByLease: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
     } as any,
   } as any);
 
@@ -791,7 +804,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(result.data.lease.petPolicy.maxPets).toBe(2);
     });
 
-    it('should NOT enqueue email when tenantInfo.email is undefined on active lease update', async () => {
+    it('should enqueue the admin-update email to the tenant on active lease update', async () => {
       const client = await createTestClient();
       const manager = await createTestManagerUser(client.cuid, client._id);
       const tenant = await createTestTenantUser(client.cuid, client._id);
@@ -873,15 +886,19 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any);
 
       expect(result.success).toBe(true);
-      // Email queue should NOT have been called because tenantInfo.email is absent
-      expect(mockEmailQueue.addJobToQueue).not.toHaveBeenCalled();
+      // Tenant email is resolved from the tenant's profile/user, not the tenantInfo virtual
+      expect(mockEmailQueue.addJobToQueue).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          subject: 'Your Lease Has Been Updated',
+          to: tenant.email,
+        })
+      );
     });
 
-    it('should not enqueue email even when tenant has a Profile with email (tenantInfo virtual not populated by findFirst)', async () => {
-      // Note: tenantInfo is a Mongoose virtual populated from Profile.
-      // Since leaseDAO.findFirst does not populate virtuals, lease.tenantInfo?.email
-      // is always undefined in the updateLease code path. This test documents that
-      // the email guard correctly prevents sending when the virtual is absent.
+    it('should resolve the tenant email from Profile even though the tenantInfo virtual is not populated', async () => {
+      // tenantInfo is a Mongoose virtual that leaseDAO.findFirst does not populate,
+      // so updateLease resolves the tenant email via profileDAO instead.
       const client = await createTestClient();
       const manager = await createTestManagerUser(client.cuid, client._id);
       const tenant = await createTestTenantUser(client.cuid, client._id);
@@ -958,8 +975,12 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any);
 
       expect(result.success).toBe(true);
-      // tenantInfo virtual is not populated by findFirst, so email guard prevents sending
-      expect(mockEmailQueue.addJobToQueue).not.toHaveBeenCalled();
+      // lease.tenantInfo is not populated by findFirst — the service looks the email up via profileDAO
+      expect(mockEmailQueue.addJobToQueue).toHaveBeenCalledTimes(1);
+      expect(mockEmailQueue.addJobToQueue).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ to: tenant.email })
+      );
     });
   });
 
@@ -1116,6 +1137,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
         currentuser: {
           uid: admin.uid,
           sub: admin._id.toString(),
+          fullname: 'Admin User',
           client: {
             cuid: client.cuid,
             role: ROLES.ADMIN,
@@ -1642,6 +1664,22 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       expect(result.data.lease.status).toBe(LeaseStatus.ACTIVE);
     });
 
+    it('should return presigned URLs for lease documents', async () => {
+      const mockContext = {
+        request: { params: { cuid: testClient.cuid } },
+        currentuser: {
+          uid: testManager.uid,
+          sub: testManager._id.toString(),
+          client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+        },
+      } as any;
+
+      const result = await leaseService.getLeaseById(mockContext, testLease.luid);
+
+      expect(result.data.documents).toHaveLength(1);
+      expect(result.data.documents[0].url).toBe('https://signed/s3-key-test');
+    });
+
     it('should throw error for non-existent lease', async () => {
       const mockContext = {
         request: {
@@ -1892,8 +1930,9 @@ describe('LeaseService Integration Tests - Read Operations', () => {
             tenantContext
           );
 
-          // tenantUid is the ObjectId stringified from the DAO transformation
-          const returnedTenantIds = result.items.map((l: any) => l.tenantUid);
+          // The service maps the populated tenant to { id, uid, email, fullName }
+          const returnedTenantIds = result.items.map((l: any) => l.tenant?.id);
+          expect(returnedTenantIds.length).toBeGreaterThan(0);
 
           // Should only include leases belonging to testTenant
           returnedTenantIds.forEach((tid: string) => {
@@ -2115,6 +2154,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       // Update lease to have no provider
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
         'renewalOptions.requireApproval': false,
+        'renewalOptions.enableAutoSendForSignature': true,
         eSignature: undefined,
       });
 

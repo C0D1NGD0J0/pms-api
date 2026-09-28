@@ -45,6 +45,8 @@ const mockPropertyCache = {
   saveClientProperties: jest.fn().mockResolvedValue({ success: true }),
   invalidateProperty: jest.fn().mockResolvedValue({ success: true }),
   invalidatePropertyLists: jest.fn().mockResolvedValue({ success: true }),
+  invalidatePropertyDetail: jest.fn().mockResolvedValue({ success: true }),
+  invalidateAllPropertyDetails: jest.fn().mockResolvedValue({ success: true }),
   getLeaseableProperties: jest.fn().mockResolvedValue({ success: false }),
   cacheLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
   invalidateLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
@@ -154,6 +156,11 @@ describe('PropertyService — assignedStaff & department filtering', () => {
     });
 
     propertyService = new PropertyService({
+      s3Service: {
+        signFileUrls: jest.fn(async (items: any) => items),
+        getSignedUrl: jest.fn(),
+      } as any,
+      propertyVerificationService: {} as any,
       propertyDAO,
       propertyUnitDAO,
       clientDAO,

@@ -139,7 +139,9 @@ describe('subscriptionEntitlements middleware', () => {
   });
 
   it('passes a ServiceUnavailableError to next when the entitlements lookup throws', async () => {
-    const getSubscriptionEntitlements = jest.fn().mockReturnValue(Promise.reject(new Error('db down')));
+    const getSubscriptionEntitlements = jest
+      .fn()
+      .mockReturnValue(Promise.reject(new Error('db down')));
     const req = makeReq({
       container: { cradle: { subscriptionService: { getSubscriptionEntitlements } } } as any,
       context: {
@@ -163,7 +165,10 @@ describe('requireActiveSubscription middleware', () => {
   it.each(['tenant', 'vendor'])(
     'bypasses entitlement loading entirely for %s role',
     async (role) => {
-      const getSubscriptionEntitlements = makeGetEntitlements({ success: true, data: entitlementsPayload });
+      const getSubscriptionEntitlements = makeGetEntitlements({
+        success: true,
+        data: entitlementsPayload,
+      });
       const req = makeReq({
         container: { cradle: { subscriptionService: { getSubscriptionEntitlements } } } as any,
         context: { currentuser: { sub: 'u1', client: { cuid: CUID, role } } } as any,
@@ -177,7 +182,10 @@ describe('requireActiveSubscription middleware', () => {
   );
 
   it('reuses entitlements already set on req.context instead of reloading them', async () => {
-    const getSubscriptionEntitlements = makeGetEntitlements({ success: true, data: entitlementsPayload });
+    const getSubscriptionEntitlements = makeGetEntitlements({
+      success: true,
+      data: entitlementsPayload,
+    });
     const req = makeReq({
       container: { cradle: { subscriptionService: { getSubscriptionEntitlements } } } as any,
       context: {
@@ -193,7 +201,10 @@ describe('requireActiveSubscription middleware', () => {
   });
 
   it('loads entitlements on demand when subscriptionEntitlements did not run first', async () => {
-    const getSubscriptionEntitlements = makeGetEntitlements({ success: true, data: entitlementsPayload });
+    const getSubscriptionEntitlements = makeGetEntitlements({
+      success: true,
+      data: entitlementsPayload,
+    });
     const req = makeReq({
       container: { cradle: { subscriptionService: { getSubscriptionEntitlements } } } as any,
       context: { currentuser: { sub: 'u1', client: { cuid: CUID, role: 'admin' } } } as any,

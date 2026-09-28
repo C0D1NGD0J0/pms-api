@@ -72,9 +72,7 @@ describe('DiskStorage', () => {
     it('resolves the new "propertyUnit.media" field to its configured maxCount/maxSize', () => {
       invoke(['propertyUnit.media']);
 
-      expect(mockUpload.fields).toHaveBeenCalledWith([
-        { name: 'propertyUnit.media', maxCount: 5 },
-      ]);
+      expect(mockUpload.fields).toHaveBeenCalledWith([{ name: 'propertyUnit.media', maxCount: 5 }]);
       expect(mockMulterFactory).toHaveBeenCalledWith(
         expect.objectContaining({ limits: { fileSize: 5 * 1024 * 1024 } })
       );

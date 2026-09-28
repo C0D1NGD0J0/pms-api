@@ -480,36 +480,28 @@ export class PropertyCsvProcessor {
     'owner_bankDetails_bankName',
   ];
 
+  // The downloadable template only carries what every row must have. Any other
+  // allowedHeaders column can be added by the user — the importer accepts them all.
+  private readonly templateHeaders: string[] = ['name', 'propertyType', 'fullAddress'];
+
   getTemplateHeaders(): string[] {
+    return [...this.templateHeaders];
+  }
+
+  getAcceptedHeaders(): string[] {
     return [...this.allowedHeaders];
   }
 
-  /** Builds a downloadable CSV template with one filled-in example row. */
+  /** Builds a downloadable CSV template with the required columns and one example row. */
   generateTemplateCsv(): string {
     const exampleRow: Record<string, string> = {
       name: 'Kensington Terrace',
       propertyType: 'apartment',
-      fullAddress: '',
-      address_street: '88 Kensington Avenue',
-      address_city: 'Toronto',
-      address_state: 'ON',
-      address_postCode: 'M5T 2K2',
-      address_country: 'Canada',
-      address_unitNumber: '',
-      status: 'available',
-      occupancyStatus: 'vacant',
-      maxAllowedUnits: '1',
-      yearBuilt: '2018',
-      managedBy: '',
-      specifications_totalArea: '1200',
-      fees_rentalAmount: '2500',
-      fees_managementFees: '0',
-      fees_securityDeposit: '2500',
-      fees_currency: 'CAD',
+      fullAddress: '88 Kensington Avenue, Toronto, ON M5T 2K2, Canada',
     };
 
-    const headerRow = this.allowedHeaders.join(',');
-    const dataRow = this.allowedHeaders
+    const headerRow = this.templateHeaders.join(',');
+    const dataRow = this.templateHeaders
       .map((header) => this.csvEscape(exampleRow[header] ?? ''))
       .join(',');
     return `${headerRow}\n${dataRow}\n`;

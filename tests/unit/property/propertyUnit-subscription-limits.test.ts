@@ -114,7 +114,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           _id: new Types.ObjectId(),
           cuid: testCuid,
           planName: 'essential',
-          currentUnits: 10,
+          resourceTracker: { propertyCount: 0, unitCount: 10, seatCount: 0 },
         })
       );
 
@@ -139,7 +139,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           _id: new Types.ObjectId(),
           cuid: testCuid,
           planName: 'essential',
-          currentUnits: 3, // 3 of 5 used
+          resourceTracker: { propertyCount: 0, unitCount: 3, seatCount: 0 }, // 3 of 5 used
         })
       );
 
@@ -165,7 +165,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           _id: new Types.ObjectId(),
           cuid: testCuid,
           planName: 'growth',
-          currentUnits: 10, // 10 of 50 used
+          resourceTracker: { propertyCount: 0, unitCount: 10, seatCount: 0 }, // 10 of 50 used
         })
       );
 
@@ -203,7 +203,7 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
           _id: new Types.ObjectId(),
           cuid: testCuid,
           planName: 'essential',
-          currentUnits: 10,
+          resourceTracker: { propertyCount: 0, unitCount: 10, seatCount: 0 },
         })
       );
 

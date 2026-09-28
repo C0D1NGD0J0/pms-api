@@ -518,6 +518,60 @@ describe('PropertyDAO Integration Tests', () => {
         propertyDAO.updatePropertyDocument(property!.pid, [], testUserId.toString())
       ).rejects.toThrow();
     });
+
+    it('should preserve documentType from upload result', async () => {
+      const property = await Property.findById(testPropertyId);
+      const uploadData = [
+        {
+          fieldName: 'documents',
+          documentType: 'insurance',
+          key: 's3-key-doctype-test',
+          url: 'https://example.com/insurance.pdf',
+          actorId: testUserId.toString(),
+          filename: 'insurance.pdf',
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-doctype',
+        },
+      ];
+
+      const result = await propertyDAO.updatePropertyDocument(
+        property!.pid,
+        uploadData,
+        testUserId.toString()
+      );
+
+      expect(result).not.toBeNull();
+      const addedDoc = result?.documents?.find((d) => d.key === 's3-key-doctype-test');
+      expect(addedDoc).toBeDefined();
+      expect(addedDoc?.documentType).toBe('insurance');
+    });
+
+    it('should accept S3-style URLs with long domain names', async () => {
+      const property = await Property.findById(testPropertyId);
+      const s3Url = 'https://my-bucket.s3.us-east-1.amazonaws.com/properties/img.png';
+      const uploadData = [
+        {
+          fieldName: 'images',
+          key: 'properties/img.png',
+          url: s3Url,
+          filename: 'img.png',
+          actorId: testUserId.toString(),
+          resourceId: testPropertyId.toString(),
+          publicuid: 'pub-uid-s3-url',
+        },
+      ];
+
+      const result = await propertyDAO.updatePropertyDocument(
+        property!.pid,
+        uploadData,
+        testUserId.toString()
+      );
+
+      expect(result).not.toBeNull();
+      const addedImg = result?.images?.find((i) => i.key === 'properties/img.png');
+      expect(addedImg).toBeDefined();
+      expect(addedImg?.url).toBe(s3Url);
+    });
   });
 
   describe('findPropertiesNearby', () => {

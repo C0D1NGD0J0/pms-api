@@ -50,6 +50,8 @@ const mockPropertyCache = {
   saveClientProperties: jest.fn().mockResolvedValue({ success: true }),
   invalidateProperty: jest.fn().mockResolvedValue({ success: true }),
   invalidatePropertyLists: jest.fn().mockResolvedValue({ success: true }),
+  invalidatePropertyDetail: jest.fn().mockResolvedValue({ success: true }),
+  invalidateAllPropertyDetails: jest.fn().mockResolvedValue({ success: true }),
   invalidateLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
   getLeaseableProperties: jest.fn().mockResolvedValue({ success: false }),
   cacheLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
@@ -131,6 +133,11 @@ describe('PropertyService Integration Tests', () => {
 
     // Initialize PropertyService with real DAOs and real extracted services
     propertyService = new PropertyService({
+      s3Service: {
+        signFileUrls: jest.fn(async (items: any) => items),
+        getSignedUrl: jest.fn(),
+      } as any,
+      propertyVerificationService: {} as any,
       propertyDAO,
       propertyUnitDAO,
       clientDAO,
@@ -150,7 +157,7 @@ describe('PropertyService Integration Tests', () => {
         findFirst: jest.fn().mockResolvedValue({
           planName: 'growth',
           client: new Types.ObjectId(),
-          currentProperties: 0,
+          resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
         }),
         updateResourceCount: jest.fn().mockResolvedValue(true),
       } as any,

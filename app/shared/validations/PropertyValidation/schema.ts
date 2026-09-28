@@ -42,14 +42,33 @@ const PropertyStatusEnum = z.enum(['available', 'maintenance', 'construction', '
 
 const OccupancyStatusEnum = z.enum(['vacant', 'occupied', 'partially_occupied']);
 
+// Use z.coerce for all numeric/boolean fields — FormData sends everything as strings.
+// Empty strings from blank form fields must become undefined so .optional() works.
+const optionalNum = z.preprocess(
+  (v) => (v === '' || v === undefined || v === null ? undefined : v),
+  z.coerce.number().optional()
+);
+
 const SpecificationsSchema = z.object({
-  totalArea: z.number().positive('Total area must be a positive number').optional(),
-  lotSize: z.number().positive('Lot size must be a positive number').optional(),
-  bedrooms: z.number().int().min(0, 'Bedrooms must be a non-negative integer').optional(),
-  bathrooms: z.number().min(0, 'Bathrooms must be a non-negative number').optional(),
-  floors: z.number().int().min(1, 'Floors must be at least 1').optional(),
-  garageSpaces: z.number().int().min(0, 'Garage spaces must be a non-negative integer').optional(),
-  maxOccupants: z.number().int().min(1, 'Maximum occupants must be at least 1').optional(),
+  totalArea: optionalNum.pipe(
+    z.number().positive('Total area must be a positive number').optional()
+  ),
+  lotSize: optionalNum.pipe(
+    z.number().int().min(0, 'Lot size must be a positive number').optional()
+  ),
+  bedrooms: optionalNum.pipe(
+    z.number().int().min(0, 'Bedrooms must be a non-negative integer').optional()
+  ),
+  bathrooms: optionalNum.pipe(
+    z.number().min(0, 'Bathrooms must be a non-negative number').optional()
+  ),
+  floors: optionalNum.pipe(z.number().int().min(1, 'Floors must be at least 1').optional()),
+  garageSpaces: optionalNum.pipe(
+    z.number().int().min(0, 'Garage spaces must be a non-negative integer').optional()
+  ),
+  maxOccupants: optionalNum.pipe(
+    z.number().int().min(1, 'Maximum occupants must be at least 1').optional()
+  ),
 });
 
 const FinancialDetailsSchema = z.object({
@@ -106,45 +125,69 @@ const FinancialDetailsSchema = z.object({
     }),
 });
 
+const defaultNum = (fallback: number) =>
+  z.preprocess(
+    (v) => (v === '' || v === undefined || v === null ? fallback : v),
+    z.coerce.number()
+  );
+
 const FeesSchema = z.object({
   currency: z.nativeEnum(CURRENCIES).default(CURRENCIES.USD),
-  rentAmount: z.number().min(0, 'Rental amount must be a non-negative number').default(0),
-  managementFees: z.number().min(0, 'Management fees must be a non-negative number').default(0),
-  securityDeposit: z.number().min(0, 'Security deposit must be a non-negative number').default(0),
+  rentAmount: defaultNum(0).pipe(z.number().min(0, 'Rental amount must be a non-negative number')),
+  managementFees: defaultNum(0).pipe(
+    z.number().min(0, 'Management fees must be a non-negative number')
+  ),
+  securityDeposit: defaultNum(0).pipe(
+    z.number().min(0, 'Security deposit must be a non-negative number')
+  ),
 });
 
+const coerceBool = z.union([z.boolean(), z.string().transform((v) => v === 'true')]);
+
 const UtilitiesSchema = z.object({
-  water: z.boolean().default(false),
-  gas: z.boolean().default(false),
-  electricity: z.boolean().default(false),
-  internet: z.boolean().default(false),
-  trash: z.boolean().default(false),
-  cableTV: z.boolean().default(false),
+  water: coerceBool.default(false),
+  gas: coerceBool.default(false),
+  electricity: coerceBool.default(false),
+  internet: coerceBool.default(false),
+  trash: coerceBool.default(false),
+  cableTV: coerceBool.default(false),
 });
 
 const InteriorAmenitiesSchema = z.object({
-  airConditioning: z.boolean().default(false),
-  heating: z.boolean().default(false),
-  washerDryer: z.boolean().default(false),
-  dishwasher: z.boolean().default(false),
-  fridge: z.boolean().default(false),
-  furnished: z.boolean().default(false),
-  storageSpace: z.boolean().default(false),
+  airConditioning: coerceBool.default(false),
+  heating: coerceBool.default(false),
+  washerDryer: coerceBool.default(false),
+  dishwasher: coerceBool.default(false),
+  fridge: coerceBool.default(false),
+  furnished: coerceBool.default(false),
+  storageSpace: coerceBool.default(false),
 });
 
 const CommunityAmenitiesSchema = z.object({
-  petFriendly: z.boolean().default(false),
-  swimmingPool: z.boolean().default(false),
-  fitnessCenter: z.boolean().default(false),
-  elevator: z.boolean().default(false),
-  parking: z.boolean().default(false),
-  securitySystem: z.boolean().default(false),
-  laundryFacility: z.boolean().default(false),
-  doorman: z.boolean().default(false),
+  petFriendly: coerceBool.default(false),
+  swimmingPool: coerceBool.default(false),
+  fitnessCenter: coerceBool.default(false),
+  elevator: coerceBool.default(false),
+  parking: coerceBool.default(false),
+  securitySystem: coerceBool.default(false),
+  laundryFacility: coerceBool.default(false),
+  doorman: coerceBool.default(false),
 });
 
 const PropertyMediaDocumentSchema = z.object({
-  documentType: z.enum(['deed', 'tax', 'insurance', 'inspection', 'other', 'lease']).optional(),
+  documentType: z
+    .enum([
+      'deed',
+      'tax',
+      'insurance',
+      'inspection',
+      'other',
+      'lease',
+      'authorization_letter',
+      'proof_of_ownership',
+      'management_agreement',
+    ])
+    .optional(),
   url: z.string().url('Invalid URL format for document'),
   key: z.string().optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
@@ -191,14 +234,14 @@ const DescriptionSchema = z.object({
 const OwnerSchema = z.object({
   type: z.enum(['company_owned', 'external_owner', 'self_owned']).default('company_owned'),
   name: z.string().trim().max(200, 'Owner name must be at most 200 characters').optional(),
-  email: z.string().trim().email('Invalid owner email format').optional(),
+  email: z.string().trim().email('Invalid owner email format').or(z.literal('')).optional(),
   phone: z.string().trim().max(20, 'Phone number must be at most 20 characters').optional(),
   taxId: z.string().trim().max(50, 'Tax ID must be at most 50 characters').optional(),
   notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),
 });
 
 const AuthorizationSchema = z.object({
-  isActive: z.boolean().default(true),
+  isActive: coerceBool.default(true),
   expiresAt: z.union([z.string(), z.date(), z.null()]).optional().nullable(),
   notes: z
     .string()
@@ -215,7 +258,7 @@ const CreatePropertySchema = z.object({
   propertyType: PropertyTypeEnum,
   operationalStatus: PropertyStatusEnum.default('available'),
   managedBy: z.string(),
-  yearBuilt: z
+  yearBuilt: z.coerce
     .number()
     .int()
     .min(1800, 'Year built must be at least 1800')
@@ -224,11 +267,14 @@ const CreatePropertySchema = z.object({
       `Year built must be at most ${new Date().getFullYear() + 10}`
     )
     .optional(),
-  fullAddress: z.string().min(5, 'Address must be at least 5 characters'),
+  // fullAddress is derived from address.fullAddress in the service layer;
+  // accept it if sent but don't require it from the client.
+  fullAddress: z.string().min(5, 'Address must be at least 5 characters').optional(),
   description: DescriptionSchema,
   cuid: z.string(),
   occupancyStatus: OccupancyStatusEnum.default('vacant'),
-  maxAllowedUnits: z.number().int().min(0).max(250).default(0),
+  maxAllowedUnits: z.coerce.number().int().min(0).max(250).default(0),
+  verificationStatus: z.enum(['unverified', 'verified', 'rejected']).default('unverified'),
   specifications: SpecificationsSchema,
   financialDetails: FinancialDetailsSchema.optional(),
   fees: FeesSchema,
@@ -277,8 +323,10 @@ const CreatePropertySchema = z.object({
 
 export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefine(
   async (data, ctx) => {
-    if (data.fullAddress && data.cuid) {
-      const isUnique = await isUniqueAddress(data.fullAddress, data.cuid);
+    // fullAddress may be sent explicitly or derived from address.fullAddress
+    const addressToCheck = data.fullAddress || data.address?.fullAddress;
+    if (addressToCheck && data.cuid) {
+      const isUnique = await isUniqueAddress(addressToCheck, data.cuid);
       if (!isUnique) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -354,12 +402,22 @@ export const PropertyClientRelationshipSchema = PropertyClientRelationship.super
   }
 );
 
-export const PropertyCsvSchema = z.object({
+const PropertyCsvSchemaBase = z.object({
   name: z
     .string()
     .min(3, 'Property name must be at least 3 characters')
     .max(100, 'Property name must be at most 100 characters'),
-  fullAddress: z.string().min(5, 'Address must be at least 5 characters'),
+  // fullAddress is never stored as-is — it's only ever the query string sent to
+  // the geocoder. It's optional here because the split address_* columns below
+  // can serve as that query instead; the either/or requirement is enforced by
+  // the superRefine below, and the geocoder's own result is what's persisted.
+  fullAddress: z.string().min(5, 'Address must be at least 5 characters').optional(),
+  address_street: z.string().optional(),
+  address_city: z.string().optional(),
+  address_state: z.string().optional(),
+  address_postCode: z.string().optional(),
+  address_country: z.string().optional(),
+  address_unitNumber: z.string().optional(),
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
   occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
@@ -378,7 +436,10 @@ export const PropertyCsvSchema = z.object({
   description_html: z.string().max(2000, 'Description must be at most 2000 characters').optional(),
 
   // Specifications
-  specifications_totalArea: z.coerce.number().positive('Total area must be a positive number'),
+  specifications_totalArea: z.coerce
+    .number()
+    .positive('Total area must be a positive number')
+    .optional(),
   specifications_bedrooms: z.coerce
     .number()
     .int()
@@ -533,6 +594,18 @@ export const PropertyCsvSchema = z.object({
     .trim()
     .max(200, 'Bank name must be at most 200 characters')
     .optional(),
+});
+
+export const PropertyCsvSchema = PropertyCsvSchemaBase.superRefine((data, ctx) => {
+  const hasFullAddress = !!data.fullAddress && data.fullAddress.trim().length >= 5;
+  const hasSplitAddress = !!data.address_street && !!data.address_city;
+  if (!hasFullAddress && !hasSplitAddress) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Provide either fullAddress or both address_street and address_city.',
+      path: ['fullAddress'],
+    });
+  }
 });
 
 export const AddressValidationSchema = z.object({

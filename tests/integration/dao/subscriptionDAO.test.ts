@@ -21,9 +21,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       cuid: 'TEST_CLIENT',
       planName: 'growth',
       status: ISubscriptionStatus.ACTIVE,
-      currentProperties: 2,
-      currentUnits: 5,
-      currentSeats: 1,
+      resourceTracker: { propertyCount: 2, unitCount: 5, seatCount: 1 },
       startDate: new Date(),
       billingInterval: 'monthly',
       totalMonthlyPrice: 0,
@@ -40,7 +38,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       const result = await subscriptionDAO.updateResourceCount('property', testClientId, 1, 3);
 
       expect(result).not.toBeNull();
-      expect(result?.currentProperties).toBe(3);
+      expect(result?.resourceTracker.propertyCount).toBe(3);
     });
 
     it('should return null when property limit reached', async () => {
@@ -49,7 +47,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       expect(result).toBeNull();
 
       const subscription = await Subscription.findOne({ client: testClientId });
-      expect(subscription?.currentProperties).toBe(2); // Should remain unchanged
+      expect(subscription?.resourceTracker.propertyCount).toBe(2); // Should remain unchanged
     });
 
     it('should prevent race condition with concurrent property additions', async () => {
@@ -68,7 +66,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       expect(successCount).toBe(1);
 
       const subscription = await Subscription.findOne({ client: testClientId });
-      expect(subscription?.currentProperties).toBe(3); // Should be exactly at limit
+      expect(subscription?.resourceTracker.propertyCount).toBe(3); // Should be exactly at limit
     });
   });
 
@@ -77,7 +75,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       const result = await subscriptionDAO.updateResourceCount('propertyUnit', testClientId, 1, 10);
 
       expect(result).not.toBeNull();
-      expect(result?.currentUnits).toBe(6);
+      expect(result?.resourceTracker.unitCount).toBe(6);
     });
 
     it('should return null when unit limit reached', async () => {
@@ -86,7 +84,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       expect(result).toBeNull();
 
       const subscription = await Subscription.findOne({ client: testClientId });
-      expect(subscription?.currentUnits).toBe(5); // Should remain unchanged
+      expect(subscription?.resourceTracker.unitCount).toBe(5); // Should remain unchanged
     });
 
     it('should prevent race condition with concurrent unit additions', async () => {
@@ -105,7 +103,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       expect(successCount).toBe(2);
 
       const subscription = await Subscription.findOne({ client: testClientId });
-      expect(subscription?.currentUnits).toBe(7); // Should be exactly at limit
+      expect(subscription?.resourceTracker.unitCount).toBe(7); // Should be exactly at limit
     });
   });
 
@@ -127,7 +125,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
         });
 
         const subscription = await Subscription.findOne({ client: testClientId });
-        expect(subscription?.currentProperties).toBe(3);
+        expect(subscription?.resourceTracker.propertyCount).toBe(3);
       } finally {
         await session.endSession();
       }
@@ -150,7 +148,7 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       }
 
       const subscription = await Subscription.findOne({ client: testClientId });
-      expect(subscription?.currentProperties).toBe(2); // Should be unchanged due to rollback
+      expect(subscription?.resourceTracker.propertyCount).toBe(2); // Should be unchanged due to rollback
     });
   });
 
@@ -159,8 +157,8 @@ describe('SubscriptionDAO - updateResourceCount', () => {
       const result = await subscriptionDAO.updateAdditionalSeats(testClientId, 5, 3995);
 
       expect(result).not.toBeNull();
-      expect(result?.additionalSeatsCount).toBe(5);
-      expect(result?.additionalSeatsCost).toBe(3995);
+      expect(result?.seats.additional).toBe(5);
+      expect(result?.seats.additionalCost).toBe(3995);
     });
 
     it('should update to zero seats when removing all', async () => {
@@ -168,8 +166,8 @@ describe('SubscriptionDAO - updateResourceCount', () => {
 
       const result = await subscriptionDAO.updateAdditionalSeats(testClientId, 0, 0);
 
-      expect(result?.additionalSeatsCount).toBe(0);
-      expect(result?.additionalSeatsCost).toBe(0);
+      expect(result?.seats.additional).toBe(0);
+      expect(result?.seats.additionalCost).toBe(0);
     });
   });
 

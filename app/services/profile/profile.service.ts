@@ -1090,8 +1090,8 @@ export class ProfileService {
 
       accountData = {
         subscriptionActive: subscription?.status === 'active',
-        propertyCount: subscription?.currentProperties ?? 0,
-        unitCount: subscription?.currentUnits ?? 0,
+        propertyCount: subscription?.resourceTracker?.propertyCount ?? 0,
+        unitCount: subscription?.resourceTracker?.unitCount ?? 0,
         hasPaymentProcessor: !!processor?.accountId,
         payoutsEnabled: !!processor?.payoutsEnabled,
         staffCount: Math.max(0, (userStats?.staff ?? 0) - 1), // exclude the account holder

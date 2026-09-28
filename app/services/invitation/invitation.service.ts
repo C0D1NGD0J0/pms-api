@@ -557,12 +557,25 @@ export class InvitationService {
     };
   }
 
+  /**
+   * Invitations store the client's ObjectId, but callers receive the public cuid
+   * from the route — resolve it before scoping the lookup.
+   */
+  private async findClientInvitation(
+    iuid: string,
+    cuid: string
+  ): Promise<IInvitationDocument | null> {
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) return null;
+    return this.invitationDAO.findByIuid(iuid, client.id);
+  }
+
   async getInvitationByIuid(
     iuid: string,
-    clientId: string
+    cuid: string
   ): Promise<ISuccessReturnData<IInvitationDocument | null>> {
     try {
-      const invitation = await this.invitationDAO.findByIuid(iuid, clientId);
+      const invitation = await this.findClientInvitation(iuid, cuid);
       return {
         success: true,
         data: invitation,
@@ -626,10 +639,10 @@ export class InvitationService {
   async revokeInvitation(
     iuid: string,
     revokerUserId: string,
-    clientId: string,
+    cuid: string,
     reason?: string
   ): Promise<ISuccessReturnData<IInvitationDocument>> {
-    const invitation = await this.invitationDAO.findByIuid(iuid, clientId);
+    const invitation = await this.findClientInvitation(iuid, cuid);
     if (!invitation) {
       throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }
@@ -698,14 +711,14 @@ export class InvitationService {
   async resendInvitation(
     data: IResendInvitationData,
     resenderUserId: string,
-    clientId: string
+    cuid: string
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
       const validatedData = InvitationValidations.resendInvitation.parse(
         data
       ) as IResendInvitationData;
 
-      let invitation = await this.invitationDAO.findByIuid(data.iuid, clientId);
+      let invitation = await this.findClientInvitation(data.iuid, cuid);
       if (!invitation) {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }

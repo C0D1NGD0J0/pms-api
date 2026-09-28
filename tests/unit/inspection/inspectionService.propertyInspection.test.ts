@@ -104,6 +104,7 @@ beforeEach(() => {
     userDAO: mockUserDAO as any,
     emitterService: mockEmitterService as any,
     emailQueue: mockEmailQueue,
+    s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
   });
 });
 

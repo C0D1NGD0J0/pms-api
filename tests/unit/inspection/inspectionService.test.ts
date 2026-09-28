@@ -50,6 +50,17 @@ const mockEmailQueue = {
   addToEmailQueue: jest.fn() as any,
 } as any;
 
+const mockS3Service = {
+  getSignedUrl: jest.fn() as any,
+  uploadFiles: jest.fn() as any,
+  signFileUrls: jest.fn(async (items: any[]) => {
+    items.forEach((item) => {
+      if (item.key) item.url = `https://signed/${item.key}`;
+    });
+    return items;
+  }) as any,
+};
+
 const CUID = 'test-client-cuid';
 const USER_ID = new Types.ObjectId().toString();
 const APPROVER_ID = new Types.ObjectId().toString();
@@ -97,6 +108,7 @@ beforeEach(() => {
     userDAO: mockUserDAO as any,
     emitterService: mockEmitterService as any,
     emailQueue: mockEmailQueue,
+    s3Service: mockS3Service as any,
   });
 });
 
@@ -809,6 +821,42 @@ describe('InspectionService', () => {
       // Should NOT have iuid in the payload
       const emitPayload = mockEmitterService.emit.mock.calls[0]?.[1];
       expect(emitPayload).not.toHaveProperty('iuid');
+    });
+  });
+
+  // ─── Presigned URLs ────────────────────────────────────────────────────────
+
+  describe('getInspection — presigned URLs', () => {
+    it('signs inspection media, room media and the report document', async () => {
+      const inspection = makeInspection({
+        media: [{ url: 'https://public/overview.jpg', key: 'inspection/overview.jpg' }],
+        rooms: [
+          {
+            name: 'Kitchen',
+            items: [],
+            media: [{ url: 'https://public/kitchen.jpg', key: 'inspection/kitchen.jpg' }],
+          },
+          { name: 'Bath', items: [], media: [] },
+        ],
+        reportDocument: { url: 'https://public/report.pdf', key: 'inspection/report.pdf' },
+      });
+      mockInspectionDAO.getByIuid.mockResolvedValue(inspection);
+
+      const result: any = await service.getInspection(CUID, USER_ID, 'admin', IUID);
+
+      expect(result.data.media[0].url).toBe('https://signed/inspection/overview.jpg');
+      expect(result.data.rooms[0].media[0].url).toBe('https://signed/inspection/kitchen.jpg');
+      expect(result.data.reportDocument.url).toBe('https://signed/inspection/report.pdf');
+      // Rooms without media are not sent for signing
+      expect(mockS3Service.signFileUrls).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not call S3 when there are no files', async () => {
+      mockInspectionDAO.getByIuid.mockResolvedValue(makeInspection());
+
+      await service.getInspection(CUID, USER_ID, 'admin', IUID);
+
+      expect(mockS3Service.signFileUrls).not.toHaveBeenCalled();
     });
   });
 });

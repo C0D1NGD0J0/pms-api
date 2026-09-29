@@ -12,6 +12,13 @@ jest.mock('@aws-sdk/lib-storage', () => ({
   })),
 }));
 
+// A real S3Client throws "Region is missing" when AWS_REGION is unset (as in CI);
+// uploads and signing are mocked below, so the client itself is never used.
+jest.mock('@aws-sdk/client-s3', () => ({
+  ...jest.requireActual('@aws-sdk/client-s3'),
+  S3Client: jest.fn().mockImplementation(() => ({ send: jest.fn() })),
+}));
+
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: jest.fn(),
 }));

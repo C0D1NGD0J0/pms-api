@@ -8,8 +8,13 @@ import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import { PropertyApprovalService } from '@services/property/propertyApproval.service';
-import { ValidationRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  ValidationRequestError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   createTestPropertyUnit,
   createTestProperty,
@@ -750,6 +755,39 @@ describe('PropertyService Integration Tests', () => {
         ).rejects.toThrow(ValidationRequestError);
 
         // Verify property was not archived
+        const propertyCheck = await Property.findById(property._id);
+        expect(propertyCheck!.deletedAt).toBeNull();
+      });
+
+      // Managers only hold delete:mine — the route allows them through on that grant alone,
+      // so the service must enforce actual ownership using the property it already loaded.
+      it('lets a manager archive a property they created', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Manager Owned Property',
+        });
+        await Property.findByIdAndUpdate(property._id, { createdBy: adminUser._id });
+
+        const result = await propertyService.archiveClientProperty(testClient.cuid, property.pid, {
+          sub: adminUser._id.toString(),
+          client: { cuid: testClient.cuid, role: ROLES.MANAGER },
+        } as any);
+
+        expect(result.success).toBe(true);
+      });
+
+      it("denies a manager archiving another manager's property", async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Someone Else Owned Property',
+        });
+        await Property.findByIdAndUpdate(property._id, { createdBy: new Types.ObjectId() });
+
+        await expect(
+          propertyService.archiveClientProperty(testClient.cuid, property.pid, {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.MANAGER },
+          } as any)
+        ).rejects.toThrow(ForbiddenError);
+
         const propertyCheck = await Property.findById(property._id);
         expect(propertyCheck!.deletedAt).toBeNull();
       });

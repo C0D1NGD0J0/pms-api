@@ -556,9 +556,31 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
  * check if user has specific permission
  * Includes client context validation for client-specific resources
  */
+/**
+ * Checks whether the role holds \`<action>:mine\` on the resource. Used as an opt-in fallback
+ * for roles that only hold the \`:mine\` grant (e.g. manager on property create) — there is no
+ * existing record to check ownership against yet, so holding the grant is enough.
+ */
+async function hasMineScopeGrant(
+  currentuser: ICurrentUser,
+  resource: PermissionResource | string,
+  action: PermissionAction | string,
+  permissionService: PermissionService
+) {
+  return permissionService.checkPermission({
+    role: currentuser.client.role,
+    resource: resource as PermissionResource,
+    action: action as string,
+    scope: PermissionScope.MINE,
+    department: currentuser.employeeInfo?.department,
+    context: { clientId: currentuser.client.cuid, userId: currentuser.sub },
+  });
+}
+
 export const requirePermission = (
   resource: PermissionResource | string,
-  action: PermissionAction | string
+  action: PermissionAction | string,
+  allowMineFallback?: boolean
 ) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
@@ -586,11 +608,15 @@ export const requirePermission = (
       }
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
-      const hasPermission = await permissionService.checkUserPermission(
+      let hasPermission = await permissionService.checkUserPermission(
         currentuser,
         resource as PermissionResource,
         action as string
       );
+
+      if (!hasPermission.granted && allowMineFallback) {
+        hasPermission = await hasMineScopeGrant(currentuser, resource, action, permissionService);
+      }
 
       if (!hasPermission.granted) {
         logger.warn('Permission denied:', {

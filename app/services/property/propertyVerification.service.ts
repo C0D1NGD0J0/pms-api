@@ -69,7 +69,11 @@ export class PropertyVerificationService {
       {
         cuid,
         deletedAt: null,
-        verificationStatus: VerificationStatusEnum.UNVERIFIED,
+        // Rejected properties stay in the queue: nothing moves them back to unverified,
+        // so this is the only place an admin can find them for re-review.
+        verificationStatus: {
+          $in: [VerificationStatusEnum.UNVERIFIED, VerificationStatusEnum.REJECTED],
+        },
       },
       opts
     );
@@ -200,6 +204,13 @@ export class PropertyVerificationService {
     if (property.verificationStatus === VerificationStatusEnum.VERIFIED) {
       throw new InvalidRequestError({
         message: 'Property is already verified. Grace period not needed.',
+      });
+    }
+
+    if (property.verificationStatus === VerificationStatusEnum.REJECTED) {
+      throw new InvalidRequestError({
+        message:
+          'Property verification was rejected. Verify the property instead of granting a grace period.',
       });
     }
 

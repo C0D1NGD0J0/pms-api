@@ -555,21 +555,9 @@ export class PropertyService implements ICronProvider {
         ) as any;
       }
 
-      // Verification status derived from whether the required document was uploaded.
-      // All ownership types require a verification document — no auto-verify loophole.
-      const ownerType = cleanPropertyData.owner?.type;
-      const requiredDocType: Record<string, string> = {
-        [OwnershipType.COMPANY_OWNED]: 'deed',
-        [OwnershipType.EXTERNAL_OWNER]: 'authorization_letter',
-        [OwnershipType.SELF_OWNED]: 'proof_of_ownership',
-      };
-      const neededDoc = ownerType ? requiredDocType[ownerType] : null;
-      const hasVerificationDoc = neededDoc
-        ? (cleanPropertyData.documents || []).some((doc: any) => doc.documentType === neededDoc)
-        : false;
-      const verificationStatus = hasVerificationDoc
-        ? VerificationStatusEnum.UNVERIFIED // pending admin review even with doc
-        : VerificationStatusEnum.UNVERIFIED;
+      // Every new property starts unverified, regardless of ownership type or uploaded
+      // documents — only an admin review (PropertyVerificationService) can verify it.
+      const verificationStatus = VerificationStatusEnum.UNVERIFIED;
 
       const property = await this.propertyDAO.createProperty(
         {
@@ -1817,6 +1805,15 @@ export class PropertyService implements ICronProvider {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
+    // Manager only holds delete:mine — the route lets them through on that grant alone,
+    // so enforce ownership here using the property already loaded above.
+    if (
+      currentUser.client.role === ROLES.MANAGER &&
+      property.createdBy?.toString() !== currentUser.sub
+    ) {
+      throw new ForbiddenError({ message: t('property.errors.notPropertyOwner') });
+    }
+
     // Business Rule: Cannot archive property with active leases
     const activeLeases = await this.leaseDAO.list(
       {
@@ -1902,12 +1899,21 @@ export class PropertyService implements ICronProvider {
     // 1. Fetch all target properties in one query
     const properties = await this.propertyDAO.list(
       { pid: { $in: pids }, cuid, deletedAt: null },
-      { projection: { _id: 1, pid: 1 } },
+      { projection: { _id: 1, pid: 1, createdBy: 1 } },
       true
     );
 
     if (!properties.items.length) {
       throw new NotFoundError({ message: 'No matching properties found' });
+    }
+
+    // Manager only holds delete:mine — the route lets them through on that grant alone,
+    // so enforce ownership here for every property in the batch using the records already loaded.
+    if (currentUser.client.role === ROLES.MANAGER) {
+      const notOwned = properties.items.some((p) => p.createdBy?.toString() !== currentUser.sub);
+      if (notOwned) {
+        throw new ForbiddenError({ message: t('property.errors.notPropertyOwner') });
+      }
     }
 
     const propertyIds = properties.items.map((p) => p._id);

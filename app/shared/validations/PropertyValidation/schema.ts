@@ -53,9 +53,7 @@ const SpecificationsSchema = z.object({
   totalArea: optionalNum.pipe(
     z.number().positive('Total area must be a positive number').optional()
   ),
-  lotSize: optionalNum.pipe(
-    z.number().int().min(0, 'Lot size must be a positive number').optional()
-  ),
+  lotSize: optionalNum.pipe(z.number().min(0, 'Lot size must be a positive number').optional()),
   bedrooms: optionalNum.pipe(
     z.number().int().min(0, 'Bedrooms must be a non-negative integer').optional()
   ),

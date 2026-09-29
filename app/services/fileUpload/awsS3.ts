@@ -235,8 +235,9 @@ export class S3Service {
         if (!item.key) return;
         try {
           item.url = await this.getSignedUrl(item.key, { disposition });
-        } catch {
+        } catch (error) {
           // Keep the original url if signing fails
+          this.log.warn({ key: item.key, error }, 'Failed to sign file URL');
         }
       })
     );

@@ -8,16 +8,17 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import {
+  ICsvHeaderValidationResult,
+  ICsvValidationResult,
+  IInvalidCsvProperty,
+} from '@interfaces/csv.interface';
+import {
+  VerificationStatusEnum,
   OccupancyStatus,
   NewPropertyType,
   PropertyStatus,
   IProperty,
 } from '@interfaces/property.interface';
-import {
-  ICsvHeaderValidationResult,
-  ICsvValidationResult,
-  IInvalidCsvProperty,
-} from '@interfaces/csv.interface';
 
 import { BaseCSVProcessorService } from './base';
 
@@ -295,9 +296,8 @@ export class PropertyCsvProcessor {
             type: 'company_owned',
           },
 
-      // Auto-set verification: company_owned = verified, others = unverified
-      verificationStatus:
-        (row.owner_type || 'company_owned') === 'company_owned' ? 'verified' : 'unverified',
+      // Imported properties start unverified, same as single creation — admin review verifies them
+      verificationStatus: VerificationStatusEnum.UNVERIFIED,
 
       managedBy,
       cuid: context.cuid,

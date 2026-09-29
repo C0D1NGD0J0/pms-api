@@ -29,6 +29,17 @@ describe('PropertyValidation schema — FormData coercion', () => {
       }
     });
 
+    it('accepts a fractional lot size (e.g. 0.25 acres)', () => {
+      const result = UpdatePropertySchema.safeParse({
+        specifications: { lotSize: '0.25' },
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.specifications?.lotSize).toBe(0.25);
+      }
+    });
+
     it('still rejects values that violate field constraints once coerced', () => {
       const result = UpdatePropertySchema.safeParse({
         specifications: { bedrooms: '-1' },

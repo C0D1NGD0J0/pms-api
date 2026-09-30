@@ -121,6 +121,30 @@ export class DiskStorage {
       maxSize: 10 * 1024 * 1024, // 10MB
       fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'pdf'],
     },
+    {
+      name: 'receipt', // Payment receipt scan
+      maxCount: 1,
+      maxSize: 10 * 1024 * 1024, // 10MB
+      fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'pdf'],
+    },
+    {
+      name: 'receipt.file', // Manual payment entry receipt
+      maxCount: 1,
+      maxSize: 10 * 1024 * 1024, // 10MB
+      fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'pdf'],
+    },
+    {
+      name: 'document', // Lease document upload
+      maxCount: 1,
+      maxSize: 20 * 1024 * 1024, // 20MB
+      fileTypes: ['pdf'],
+    },
+    {
+      name: 'propertyUnit.media', // Property unit images
+      maxCount: 5,
+      maxSize: 5 * 1024 * 1024, // 5MB
+      fileTypes: ['jpeg', 'jpg', 'png'],
+    },
   ];
 
   constructor() {

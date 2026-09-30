@@ -9,6 +9,7 @@ import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { S3Service } from '@services/fileUpload';
 import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -68,6 +69,7 @@ interface IConstructor {
   paymentDAO: PaymentDAO;
   smsService: SMSService;
   vendorDAO: VendorDAO;
+  s3Service: S3Service;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
@@ -86,6 +88,7 @@ export class MaintenanceRequestService {
   private readonly vendorSuggestionService: VendorSuggestionService;
   private readonly maintenanceInvoiceService: MaintenanceInvoiceService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly s3Service: S3Service;
 
   constructor({
     userDAO,
@@ -100,6 +103,7 @@ export class MaintenanceRequestService {
     maintenanceRequestDAO,
     vendorSuggestionService,
     maintenanceInvoiceService,
+    s3Service,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -113,6 +117,7 @@ export class MaintenanceRequestService {
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.vendorSuggestionService = vendorSuggestionService;
     this.maintenanceInvoiceService = maintenanceInvoiceService;
+    this.s3Service = s3Service;
     this.log = createLogger('MaintenanceRequestService');
 
     this.emitterService.on(EventTypes.MAINTENANCE_VENDOR_PAID, this.handleVendorPaid.bind(this));
@@ -732,6 +737,7 @@ export class MaintenanceRequestService {
     // Filter out soft-deleted media items before sending to client
     if (Array.isArray(plain.media)) {
       plain.media = plain.media.filter((m: any) => m.status !== 'deleted');
+      await this.s3Service.signFileUrls(plain.media);
     }
 
     // Strip internal-only fields not consumed by any frontend view

@@ -245,8 +245,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         planName: 'growth',
-        currentSeats: 8,
-        additionalSeatsCount: 2,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 8 },
+        seats: { additional: 2, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -268,7 +268,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         'seat',
         mockClientId,
         1,
-        12 // includedSeats (10) + additionalSeatsCount (2)
+        12 // includedSeats (10) + seats.additional (2)
       );
     });
 
@@ -276,8 +276,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         planName: 'growth',
-        currentSeats: 12,
-        additionalSeatsCount: 2,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 12 },
+        seats: { additional: 2, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -300,8 +300,8 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         planName: 'portfolio',
-        currentSeats: 30,
-        additionalSeatsCount: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 30 },
+        seats: { additional: 10, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);

@@ -68,6 +68,17 @@ describe('InvitationService Integration Tests', () => {
     leaseDAO = new LeaseDAO({ leaseModel: Lease });
 
     userService = new UserService({
+      maintenanceRequestDAO: {} as any,
+      paymentProcessorDAO: {} as any,
+      permissionService: {} as any,
+      subscriptionDAO: {} as any,
+      propertyUnitDAO: {} as any,
+      inspectionDAO: {} as any,
+      vendorService,
+      propertyDAO: {} as any,
+      paymentDAO: {} as any,
+      userCache: {} as any,
+      leaseDAO,
       userDAO,
       clientDAO,
       profileDAO,
@@ -84,6 +95,10 @@ describe('InvitationService Integration Tests', () => {
     } as any);
 
     profileService = new ProfileService({
+      paymentProcessorDAO: {} as any,
+      subscriptionDAO: {} as any,
+      vendorDAO: {} as any,
+      leaseDAO,
       profileDAO,
       userDAO,
       clientDAO,

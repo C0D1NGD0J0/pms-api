@@ -239,13 +239,10 @@ describe('SubscriptionService Integration Tests', () => {
           planId: 'none',
         },
         totalMonthlyPrice: 0,
-        currentSeats: 1,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentProperties: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       expect(subscription._id).toBeDefined();
@@ -273,20 +270,17 @@ describe('SubscriptionService Integration Tests', () => {
           planId: 'price_starter',
         },
         totalMonthlyPrice: 2900,
-        currentSeats: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentProperties: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       // Increment seats
       await subscriptionDAO.updateResourceCount('seat', clientId, 5);
 
       const updated = await Subscription.findById(subscription._id);
-      expect(updated?.currentSeats).toBe(15);
+      expect(updated?.resourceTracker.seatCount).toBe(15);
     });
 
     it('should update property count using DAO', async () => {
@@ -305,26 +299,23 @@ describe('SubscriptionService Integration Tests', () => {
           planId: 'price_starter',
         },
         totalMonthlyPrice: 2900,
-        currentSeats: 10,
-        currentProperties: 5,
+        resourceTracker: { propertyCount: 5, unitCount: 0, seatCount: 10 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       // Increment properties
       await subscriptionDAO.updateResourceCount('property', clientId, 3);
 
       const updated = await Subscription.findById(subscription._id);
-      expect(updated?.currentProperties).toBe(8);
+      expect(updated?.resourceTracker.propertyCount).toBe(8);
 
       // Decrement properties
       await subscriptionDAO.updateResourceCount('property', clientId, -2);
 
       const updated2 = await Subscription.findById(subscription._id);
-      expect(updated2?.currentProperties).toBe(6);
+      expect(updated2?.resourceTracker.propertyCount).toBe(6);
     });
   });
 
@@ -342,13 +333,10 @@ describe('SubscriptionService Integration Tests', () => {
           planId: 'plan_starter',
         },
         totalMonthlyPrice: 0,
-        currentSeats: 1,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: undefined,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentProperties: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       expect(subscription.endDate).toBeUndefined();
@@ -371,13 +359,10 @@ describe('SubscriptionService Integration Tests', () => {
           planId: 'price_growth',
         },
         totalMonthlyPrice: 2900,
-        currentSeats: 5,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 5 },
         startDate: new Date(),
         endDate: undefined,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentProperties: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       expect(subscription._id).toBeDefined();
@@ -398,13 +383,10 @@ describe('SubscriptionService Integration Tests', () => {
           planId: 'price_basic',
         },
         totalMonthlyPrice: 6500,
-        currentSeats: 5,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 5 },
         startDate: new Date(),
         endDate: undefined,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentProperties: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       expect(subscription.endDate).toBeUndefined();
@@ -427,13 +409,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 2900,
         billingInterval: 'annual',
-        currentSeats: 5,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 5 },
         startDate: new Date(),
         endDate: undefined,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
-        currentProperties: 0,
-        currentUnits: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       expect(subscription.totalMonthlyPrice).toBe(2900);
@@ -457,13 +436,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
-        currentSeats: 3,
-        currentProperties: 5,
-        currentUnits: 20,
+        resourceTracker: { propertyCount: 5, unitCount: 20, seatCount: 3 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const result = await subscriptionService.getSubscriptionEntitlements(
@@ -501,14 +477,11 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: undefined,
         pendingDowngradeAt,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const result = await subscriptionService.getSubscriptionEntitlements(
@@ -540,14 +513,11 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: undefined,
         pendingDowngradeAt,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const result = await subscriptionService.getSubscriptionEntitlements('client-admin', 'admin');
@@ -574,14 +544,11 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: undefined,
         pendingDowngradeAt,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const result = await subscriptionService.getSubscriptionEntitlements(
@@ -613,13 +580,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
-        currentSeats: 5,
-        currentProperties: 10,
-        currentUnits: 50,
+        resourceTracker: { propertyCount: 10, unitCount: 50, seatCount: 5 },
         startDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000),
         endDate: expiredDate,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const result = await subscriptionService.getSubscriptionEntitlements(
@@ -648,13 +612,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 0,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 2,
-        currentUnits: 5,
+        resourceTracker: { propertyCount: 2, unitCount: 5, seatCount: 1 },
         startDate: new Date(),
         endDate: undefined,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const result = await subscriptionService.getSubscriptionEntitlements(
@@ -694,13 +655,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 1,
-        currentUnits: 2,
+        resourceTracker: { propertyCount: 1, unitCount: 2, seatCount: 1 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const ctx = {
@@ -747,13 +705,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 6500,
         billingInterval: 'monthly',
-        currentSeats: 3,
-        currentProperties: 3,
-        currentUnits: 10,
+        resourceTracker: { propertyCount: 3, unitCount: 10, seatCount: 3 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const ctx = {
@@ -786,12 +741,9 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const ctx = {
@@ -839,12 +791,9 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'annual',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const ctx = {
@@ -887,13 +836,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const ctx = {
@@ -957,13 +903,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 7999,
         billingInterval: 'monthly',
-        currentSeats: 10, // Using all included seats
-        currentProperties: 5,
-        currentUnits: 20,
+        resourceTracker: { propertyCount: 5, unitCount: 20, seatCount: 10 }, // Using all included seats
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         entitlements: {
           eSignature: true,
           maintenanceRequestService: true,
@@ -979,8 +922,8 @@ describe('SubscriptionService Integration Tests', () => {
 
       // Verify database was updated
       const updated = await Subscription.findById(subscription._id);
-      expect(updated?.additionalSeatsCount).toBe(5);
-      expect(updated?.additionalSeatsCost).toBe(3995); // 5 * 799 cents
+      expect(updated?.seats.additional).toBe(5);
+      expect(updated?.seats.additionalCost).toBe(3995); // 5 * 799 cents
     });
 
     it('should allow removing seats when it would not exceed current usage', async () => {
@@ -999,13 +942,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 7999,
         billingInterval: 'monthly',
-        currentSeats: 8, // Using 8 out of 15 total seats
-        currentProperties: 5,
-        currentUnits: 20,
+        resourceTracker: { propertyCount: 5, unitCount: 20, seatCount: 8 }, // Using 8 out of 15 total seats
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 5, // 10 included + 5 purchased = 15 total
-        additionalSeatsCost: 3995,
+        seats: { additional: 5, additionalCost: 3995 }, // 10 included + 5 purchased = 15 total
         entitlements: {
           eSignature: true,
           maintenanceRequestService: true,
@@ -1020,8 +960,8 @@ describe('SubscriptionService Integration Tests', () => {
 
       // Verify database was updated
       const updated = await Subscription.findById(subscription._id);
-      expect(updated?.additionalSeatsCount).toBe(2); // 5 - 3 = 2
-      expect(updated?.additionalSeatsCost).toBe(1598); // 2 * 799 cents
+      expect(updated?.seats.additional).toBe(2); // 5 - 3 = 2
+      expect(updated?.seats.additionalCost).toBe(1598); // 2 * 799 cents
     });
 
     it('should prevent removing seats when it would exceed current usage', async () => {
@@ -1040,13 +980,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 7999,
         billingInterval: 'monthly',
-        currentSeats: 21, // Using 21 seats (OVER by 9)
-        currentProperties: 5,
-        currentUnits: 20,
+        resourceTracker: { propertyCount: 5, unitCount: 20, seatCount: 21 }, // Using 21 seats (OVER by 9)
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 2, // 10 included + 2 purchased = 12 total
-        additionalSeatsCost: 1598,
+        seats: { additional: 2, additionalCost: 1598 }, // 10 included + 2 purchased = 12 total
         entitlements: {
           eSignature: true,
           maintenanceRequestService: true,
@@ -1076,13 +1013,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 7999,
         billingInterval: 'monthly',
-        currentSeats: 20,
-        currentProperties: 5,
-        currentUnits: 20,
+        resourceTracker: { propertyCount: 5, unitCount: 20, seatCount: 20 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 20, // 10 included + 20 purchased = 30 total
-        additionalSeatsCost: 15980,
+        seats: { additional: 20, additionalCost: 15980 }, // 10 included + 20 purchased = 30 total
         entitlements: {
           eSignature: true,
           maintenanceRequestService: true,
@@ -1112,13 +1046,10 @@ describe('SubscriptionService Integration Tests', () => {
         },
         totalMonthlyPrice: 0,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       // Essential plan does not support additional seats

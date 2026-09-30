@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { Types } from 'mongoose';
 import { NotFoundError } from '@shared/customErrors';
 import { Profile, Client, User } from '@models/index';
 import { AuthService } from '@services/auth/auth.service';
@@ -36,6 +37,7 @@ describe('AuthService Integration Tests', () => {
     };
 
     authService = new AuthService({
+      webAuthnService: {} as any,
       userDAO,
       clientDAO,
       profileDAO,
@@ -86,7 +88,7 @@ describe('AuthService Integration Tests', () => {
       expect(result.success).toBe(true);
       expect(result.data).toBeNull();
 
-      const savedUser = await User.findOne({ email: signupData.email });
+      const savedUser = await User.findOne({ email: signupData.email }).select('+activationToken');
       expect(savedUser).not.toBeNull();
       expect(savedUser!.email).toBe(signupData.email);
       expect(savedUser!.isActive).toBe(false);
@@ -164,7 +166,7 @@ describe('AuthService Integration Tests', () => {
 
       await authService.signup(signupData);
 
-      const savedUser = await User.findOne({ email: signupData.email });
+      const savedUser = await User.findOne({ email: signupData.email }).select('+password');
       expect(savedUser!.password).not.toBe(plainPassword);
       expect(savedUser!.password.length).toBeGreaterThan(20); // Bcrypt hash length
 
@@ -445,7 +447,8 @@ describe('AuthService Integration Tests', () => {
         success: true,
         data: { sub: userId, rememberMe: false, cuid: client.cuid },
       });
-      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true });
+      // Stored token must match the presented one (replay detection)
+      mockAuthCache.getRefreshToken.mockResolvedValueOnce({ success: true, data: refreshToken });
       mockAuthCache.saveRefreshToken.mockResolvedValueOnce({ success: true });
 
       const result = await authService.refreshToken({ refreshToken });
@@ -454,6 +457,21 @@ describe('AuthService Integration Tests', () => {
       expect(result.data.accessToken).toBe('mock-access-token');
       expect(result.data.refreshToken).toBe('mock-refresh-token');
       expect(mockTokenService.createJwtTokens).toHaveBeenCalled();
+    });
+
+    it('should revoke the session when a stale refresh token is replayed', async () => {
+      const userId = new Types.ObjectId().toString();
+      mockTokenService.verifyJwtToken.mockResolvedValueOnce({
+        success: true,
+        data: { sub: userId, rememberMe: false, cuid: 'cuid-1' },
+      });
+      mockAuthCache.getRefreshToken.mockResolvedValueOnce({
+        success: true,
+        data: 'newer-rotated-token',
+      });
+
+      await expect(authService.refreshToken({ refreshToken: 'stale-token' })).rejects.toThrow();
+      expect(mockAuthCache.invalidateUserSession).toHaveBeenCalledWith(userId, 'cuid-1');
     });
 
     it('should reject invalid refresh token', async () => {
@@ -727,12 +745,15 @@ describe('AuthService Integration Tests', () => {
 
       expect(result.success).toBe(true);
 
-      const updatedUser = await User.findById(user._id);
+      const updatedUser = await User.findById(user._id).select('+passwordResetToken');
       expect(updatedUser!.passwordResetToken).toBeDefined();
     });
 
-    it('should reject for non-existent email', async () => {
-      await expect(authService.forgotPassword('nonexistent@example.com')).rejects.toThrow();
+    it('should return a generic success for a non-existent email (no account enumeration)', async () => {
+      const result = await authService.forgotPassword('nonexistent@example.com');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toBeNull();
     });
   });
 
@@ -757,7 +778,7 @@ describe('AuthService Integration Tests', () => {
 
       await authService.forgotPassword(user.email);
 
-      const userWithToken = await User.findById(user._id);
+      const userWithToken = await User.findById(user._id).select('+passwordResetToken');
       const resetToken = userWithToken!.passwordResetToken;
 
       const newPassword = 'NewPassword123!';
@@ -765,7 +786,7 @@ describe('AuthService Integration Tests', () => {
 
       expect(result.success).toBe(true);
 
-      const updatedUser = await User.findById(user._id);
+      const updatedUser = await User.findById(user._id).select('+password +passwordResetToken');
       expect(updatedUser!.password).not.toBe(user.password);
       expect(updatedUser!.passwordResetToken).toBeFalsy();
 
@@ -921,7 +942,7 @@ describe('AuthService Integration Tests', () => {
         newPassword,
       });
 
-      const updatedUser = await User.findById(user._id);
+      const updatedUser = await User.findById(user._id).select('+password');
       const { default: bcrypt } = await import('bcryptjs');
       const isValid = await bcrypt.compare(newPassword, updatedUser!.password);
       expect(isValid).toBe(true);

@@ -35,6 +35,7 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
 
     mockClientDAO = {
       findFirst: jest.fn(),
+      getClientByCuid: jest.fn(),
     } as any;
 
     subscriptionService = new SubscriptionService({
@@ -74,14 +75,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: {
-          maxProperties: 10,
-          maxUsers: 5,
-          maxUnits: 50,
-        },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
 
       mockClientDAO.findFirst.mockResolvedValue(mockClient as IClientDocument);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
@@ -108,14 +111,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: {
-          maxProperties: 10,
-          maxUsers: 5,
-          maxUnits: 50,
-        },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
 
       mockClientDAO.findFirst.mockResolvedValue(mockClient as IClientDocument);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
@@ -142,14 +147,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: {
-          maxProperties: 10,
-          maxUsers: 5,
-          maxUnits: 50,
-        },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
 
       mockClientDAO.findFirst.mockResolvedValue(mockClient as IClientDocument);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
@@ -176,14 +183,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: {
-          maxProperties: 10,
-          maxUsers: 5,
-          maxUnits: 50,
-        },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
 
       mockClientDAO.findFirst.mockResolvedValue(mockClient as IClientDocument);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
@@ -209,14 +218,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: {
-          maxProperties: 10,
-          maxUsers: 5,
-          maxUnits: 50,
-        },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
 
       mockClientDAO.findFirst.mockResolvedValue(mockClient as IClientDocument);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);
@@ -243,9 +254,15 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: { maxProperties: 10, maxUsers: 5, maxUnits: 50 },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+      mockClientDAO.getClientByCuid.mockResolvedValue(null);
       mockClientDAO.findFirst.mockResolvedValue(null);
 
       await expect(subscriptionService.getSubscriptionPlanUsage(mockContext)).rejects.toThrow(
@@ -270,14 +287,16 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
         _id: new Types.ObjectId(),
         cuid: 'TEST123',
         planName: 'growth',
-        limits: {
-          maxProperties: 10,
-          maxUsers: 5,
-          maxUnits: 50,
-        },
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
+        billingInterval: 'monthly',
+        status: 'active',
+        startDate: new Date(),
+        endDate: new Date(),
       };
 
       mockClientDAO.findFirst.mockResolvedValue(mockClient as IClientDocument);
+      mockClientDAO.getClientByCuid.mockResolvedValue(mockClient as IClientDocument);
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       const result = await subscriptionService.getSubscriptionPlanUsage(mockContext);

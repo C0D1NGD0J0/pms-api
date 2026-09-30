@@ -134,6 +134,7 @@
     },
     "errors": {
       "noCsvFileUploaded": "No CSV file uploaded",
+      "notPropertyOwner": "You can only archive properties you created",
       "invalidFormType": "Invalid form type: {{formType}}",
       "duplicateAddress": "A property with this address already exists for this client",
       "minUnitsRequired": "{{propertyType}} properties require at least {{minUnits}} units",

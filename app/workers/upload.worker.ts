@@ -6,10 +6,12 @@ import { SSEService } from '@services/sse/sse.service';
 import { DiskStorage, S3Service } from '@services/fileUpload';
 import { UploadJobData, EventTypes } from '@interfaces/index';
 import { InspectionService } from '@services/inspection/inspection.service';
+import { PropertyMediaService } from '@services/property/propertyMedia.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 
 interface IConstructor {
   maintenanceRequestService: MaintenanceRequestService;
+  propertyMediaService: PropertyMediaService;
   inspectionService: InspectionService;
   emitterService: EventEmitterService;
   sseService: SSEService;
@@ -20,6 +22,7 @@ export class UploadWorker {
   private readonly awsS3Service: S3Service;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestService: MaintenanceRequestService;
+  private readonly propertyMediaService: PropertyMediaService;
   private readonly inspectionService: InspectionService;
   private readonly sseService: SSEService;
   private diskStorage: DiskStorage;
@@ -29,6 +32,7 @@ export class UploadWorker {
     s3Service,
     emitterService,
     maintenanceRequestService,
+    propertyMediaService,
     inspectionService,
     sseService,
   }: IConstructor) {
@@ -37,6 +41,7 @@ export class UploadWorker {
     this.sseService = sseService;
     this.emitterService = emitterService;
     this.maintenanceRequestService = maintenanceRequestService;
+    this.propertyMediaService = propertyMediaService;
     this.inspectionService = inspectionService;
   }
 
@@ -62,6 +67,7 @@ export class UploadWorker {
       // Map ExtractedMediaFile[] to UploadedFile[] format
       const uploadFiles = files.map((file) => ({
         originalFileName: file.originalFileName,
+        documentType: file.documentType,
         fileSize: file.fileSize,
         fieldName: file.fieldName,
         mimeType: file.mimeType,
@@ -118,6 +124,23 @@ export class UploadWorker {
             this.log.warn({ err }, '[UploadWorker] SSE notify failed (non-fatal)');
           }
         }
+      }
+
+      // Direct dispatch for property — same cross-process issue as maintenance.
+      if (resource.resourceName === 'property' && result.length > 0) {
+        this.log.info(
+          { pid: resource.resourceId, fileCount: result.length },
+          '[UploadWorker] persisting property media to DB'
+        );
+        await this.propertyMediaService.updatePropertyDocuments(
+          resource.resourceId,
+          result,
+          resource.actorId
+        );
+        this.log.info(
+          { pid: resource.resourceId },
+          '[UploadWorker] property media persisted successfully'
+        );
       }
 
       // Inspection report document — update DB and notify PM

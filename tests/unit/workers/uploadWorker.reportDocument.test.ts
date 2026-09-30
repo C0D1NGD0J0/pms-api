@@ -19,6 +19,10 @@ const mockInspectionService = {
   persistUploadedMedia: jest.fn() as any,
 };
 
+const mockPropertyMediaService = {
+  updatePropertyDocuments: jest.fn() as any,
+};
+
 const mockSseService = {
   broadcastToClient: jest.fn() as any,
   sendToUser: jest.fn() as any,
@@ -84,6 +88,7 @@ beforeEach(() => {
     s3Service: mockS3Service as any,
     emitterService: mockEmitterService as any,
     maintenanceRequestService: mockMaintenanceRequestService as any,
+    propertyMediaService: mockPropertyMediaService as any,
     inspectionService: mockInspectionService as any,
     sseService: mockSseService as any,
   });
@@ -219,5 +224,104 @@ describe('UploadWorker — inspection report document dispatch', () => {
 
     expect(mockInspectionService.updateReportDocument).toHaveBeenCalled();
     expect(mockSseService.broadcastToClient).not.toHaveBeenCalled();
+  });
+});
+
+describe('UploadWorker — property media dispatch', () => {
+  const PROPERTY_PID = 'prop-pid-123';
+
+  const makePropertyJob = (overrides: Record<string, any> = {}) =>
+    makeJob({
+      resource: {
+        resourceName: 'property',
+        resourceId: PROPERTY_PID,
+        fieldName: 'images',
+        ...overrides,
+      },
+      files: [
+        {
+          originalFileName: 'photo.jpg',
+          fieldName: 'images',
+          mimeType: 'image/jpeg',
+          path: '/tmp/photo.jpg',
+          filename: 'photo.jpg',
+          fileSize: 1024000,
+          status: 'pending' as const,
+          uploadedAt: new Date(),
+        },
+      ],
+    });
+
+  const makePropertyUploadResult = (overrides: Record<string, any> = {}) =>
+    makeUploadResult({
+      mediatype: 'image',
+      resourceName: 'property',
+      resourceId: PROPERTY_PID,
+      fieldName: 'images',
+      filename: 'photo.jpg',
+      mimeType: 'image/jpeg',
+      key: 'property/photo_123.jpg',
+      url: 'https://s3.example.com/photo.jpg',
+      ...overrides,
+    });
+
+  it('should call updatePropertyDocuments on successful property image upload', async () => {
+    const job = makePropertyJob();
+    const uploadResult = makePropertyUploadResult();
+    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    mockPropertyMediaService.updatePropertyDocuments.mockReturnValue(
+      Promise.resolve({ success: true })
+    );
+
+    await worker.uploadAsset(job as any);
+
+    expect(mockPropertyMediaService.updatePropertyDocuments).toHaveBeenCalledWith(
+      PROPERTY_PID,
+      [uploadResult],
+      ACTOR_ID
+    );
+  });
+
+  it('should not call property persistence for non-property resources', async () => {
+    const job = makeJob({ resource: { resourceName: 'maintenance' } });
+    const uploadResult = makeUploadResult();
+    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    mockMaintenanceRequestService.persistUploadedMedia.mockReturnValue(Promise.resolve(CUID));
+    mockSseService.sendToUser.mockReturnValue(Promise.resolve());
+
+    await worker.uploadAsset(job as any);
+
+    expect(mockPropertyMediaService.updatePropertyDocuments).not.toHaveBeenCalled();
+  });
+
+  it('should skip property persistence when no files were uploaded', async () => {
+    const job = makePropertyJob();
+    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([]));
+
+    await worker.uploadAsset(job as any);
+
+    expect(mockPropertyMediaService.updatePropertyDocuments).not.toHaveBeenCalled();
+  });
+
+  it('should handle property document uploads', async () => {
+    const job = makePropertyJob({ fieldName: 'documents' });
+    const uploadResult = makePropertyUploadResult({
+      fieldName: 'documents',
+      mediatype: 'document',
+      mimeType: 'application/pdf',
+      filename: 'deed.pdf',
+    });
+    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    mockPropertyMediaService.updatePropertyDocuments.mockReturnValue(
+      Promise.resolve({ success: true })
+    );
+
+    await worker.uploadAsset(job as any);
+
+    expect(mockPropertyMediaService.updatePropertyDocuments).toHaveBeenCalledWith(
+      PROPERTY_PID,
+      [uploadResult],
+      ACTOR_ID
+    );
   });
 });

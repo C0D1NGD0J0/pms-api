@@ -17,19 +17,29 @@ export enum OwnershipType {
   SELF_OWNED = 'self_owned',
 }
 
+export enum VerificationStatusEnum {
+  UNVERIFIED = 'unverified',
+  VERIFIED = 'verified',
+  REJECTED = 'rejected',
+}
+
 export interface IProperty {
   fees: {
     currency: CURRENCIES;
     managementFees: number | string;
     rentAmount: number | string;
+    securityDeposit?: number | string;
   };
   description?: {
     html?: string;
     text?: string;
   };
+  verificationGracePeriod?: IVerificationGracePeriod;
+  verificationDetails?: IVerificationDetailEntry[];
   ownershipHistory?: IOwnershipHistoryEntry[];
   approvalDetails?: PropertyApprovalEntry[];
   approvalStatus?: PropertyApprovalStatus;
+  verificationStatus?: VerificationStatus;
   communityAmenities?: CommunityAmenities;
   pendingChanges?: IPendingChanges | null;
   specifications: PropertySpecifications;
@@ -115,6 +125,22 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
+export type IPropertyWithUnitInfo = {
+  unitInfo?: UnitInfo;
+  hasLeaseHistory?: boolean;
+  authorizationStatus?: any;
+  leaseHistory?: any[];
+  inspectionHistory?: any[];
+  metrics?: {
+    rentAmount: number;
+    annualRevenue: number;
+    occupancyRate: number;
+    monthlyNetIncome: number;
+  };
+  paymentHistory?: any[];
+  maintenanceHistory?: any[];
+} & Partial<{ property: IPropertyDocument }>;
+
 export interface IPropertyDocument extends IProperty, Document {
   getAuthorizationStatus(): {
     isAuthorized: boolean;
@@ -122,6 +148,7 @@ export interface IPropertyDocument extends IProperty, Document {
     daysUntilExpiry?: number;
   };
   isManagementAuthorized(): boolean;
+  isVerifiedForLeasing(): boolean;
   lastModifiedBy?: Types.ObjectId;
   _id: Types.ObjectId;
   deletedAt?: Date;
@@ -141,18 +168,18 @@ export interface IPropertyAuthorization {
   notes?: string; // Internal notes
 }
 
-export type IPropertyWithUnitInfo = {
-  unitInfo?: UnitInfo;
-  hasLeaseHistory?: boolean;
-  metrics?: {
-    rentAmount: number;
-    annualRevenue: number;
-    occupancyRate: number;
-    monthlyNetIncome: number;
+export interface CsvJobData {
+  bulkCreateOptions?: {
+    passwordLength?: number;
+    sendNotifications?: boolean;
   };
-  paymentHistory?: any[];
-  maintenanceHistory?: any[];
-} & Partial<{ property: IPropertyDocument }>;
+  // User-confirmed header → field key mapping from the frontend's mapping step.
+  columnMapping?: Record<string, string>;
+  clientInfo: IClientInfo;
+  csvFilePath: string;
+  jobId?: string;
+  userId: string;
+}
 
 export interface FinancialDetails {
   lastAssessmentDate?: Date;
@@ -263,6 +290,19 @@ export interface PropertyImageItem {
   url: string;
 }
 
+export type PropertyDocumentType =
+  | 'deed'
+  | 'tax'
+  | 'insurance'
+  | 'inspection'
+  | 'other'
+  | 'lease'
+  | 'unknown'
+  | 'legal'
+  | 'authorization_letter'
+  | 'proof_of_ownership'
+  | 'management_agreement';
+
 export interface IAssignableUsersFilter {
   role?: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER | 'all';
   department?: string;
@@ -272,15 +312,12 @@ export interface IAssignableUsersFilter {
   page?: number;
 }
 
-export interface CsvJobData {
-  bulkCreateOptions?: {
-    passwordLength?: number;
-    sendNotifications?: boolean;
-  };
-  clientInfo: IClientInfo;
-  csvFilePath: string;
-  jobId?: string;
-  userId: string;
+export interface IVerificationDetailEntry {
+  action: 'submitted' | 'verified' | 'rejected' | 'grace_granted';
+  rejectionReason?: string;
+  actor: Types.ObjectId;
+  timestamp: Date;
+  notes?: string;
 }
 
 export interface AddressDetails {
@@ -349,16 +386,6 @@ export interface UnitStats {
   vacant: number;
 }
 
-export type PropertyDocumentType =
-  | 'deed'
-  | 'tax'
-  | 'insurance'
-  | 'inspection'
-  | 'other'
-  | 'lease'
-  | 'unknown'
-  | 'legal';
-
 export type PropertyType =
   | 'apartment'
   | 'house'
@@ -366,6 +393,12 @@ export type PropertyType =
   | 'townhouse'
   | 'commercial'
   | 'industrial';
+
+export interface IVerificationGracePeriod {
+  grantedBy: Types.ObjectId;
+  expiresAt: Date;
+  notes?: string;
+}
 
 export type MediaDocumentStatus = 'pending' | 'processing' | 'active' | 'inactive' | 'deleted';
 
@@ -383,6 +416,8 @@ export type NewProperty = {
 } & Omit<IProperty, 'pid'>;
 
 export type OccupancyStatus = 'vacant' | 'occupied' | 'partially_occupied';
+
+export type VerificationStatus = 'unverified' | 'verified' | 'rejected';
 
 export type PropertyTypeRules = Record<string, PropertyTypeRule>;
 

@@ -447,17 +447,17 @@ export class ClientService {
         nextBillingDate: subscription.endDate,
         canceledAt: subscription.canceledAt || null,
         pendingDowngradeAt: subscription.pendingDowngradeAt || null,
-        currentSeats: subscription.currentSeats,
+        currentSeats: subscription.resourceTracker.seatCount,
         currentProperties: propertiesResult,
         currentUnits: unitCount,
         seatInfo: {
           includedSeats: config.seatPricing.includedSeats,
-          additionalSeats: subscription.additionalSeatsCount,
-          totalAvailable: config.seatPricing.includedSeats + subscription.additionalSeatsCount,
+          additionalSeats: subscription.seats.additional,
+          totalAvailable: config.seatPricing.includedSeats + subscription.seats.additional,
           maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
           availableForPurchase:
-            config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
-          additionalSeatCost: subscription.additionalSeatsCost,
+            config.seatPricing.maxAdditionalSeats - subscription.seats.additional,
+          additionalSeatCost: subscription.seats.additionalCost,
         },
         paymentMethod: subscription.billing?.cardLast4
           ? {

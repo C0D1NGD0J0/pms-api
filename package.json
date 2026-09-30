@@ -29,6 +29,7 @@
     "test:integration": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts",
     "test:integration:watch": "cross-env NODE_ENV=test JEST_USE_DB=true jest --config test.config.integration.ts --watch",
     "migrate": "ts-node -r tsconfig-paths/register",
+    "db:migrate": "ts-node -r tsconfig-paths/register scripts/migrate.ts",
     "seed:region": "ts-node -r tsconfig-paths/register scripts/seeds/seed-regional-data.ts"
   },
   "keywords": [

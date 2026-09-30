@@ -201,12 +201,9 @@ describe('SubscriptionController Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       // Manually set context since middleware isn't running in test
@@ -252,12 +249,9 @@ describe('SubscriptionController Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const req = {
@@ -293,12 +287,9 @@ describe('SubscriptionController Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const req = {
@@ -334,13 +325,10 @@ describe('SubscriptionController Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'monthly',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const req = {
@@ -385,12 +373,9 @@ describe('SubscriptionController Integration Tests', () => {
         },
         totalMonthlyPrice: 9900,
         billingInterval: 'annual',
-        currentSeats: 1,
-        currentProperties: 0,
-        currentUnits: 0,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
         startDate: new Date(),
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
       });
 
       const req = {

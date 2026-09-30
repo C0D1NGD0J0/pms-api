@@ -60,6 +60,7 @@ export const ROLE_GROUPS = {
   EMPLOYEE_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF],
   MANAGEMENT_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
   PROPERTY_APPROVAL_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
+  PROPERTY_VERIFICATION_ROLES: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.MANAGER],
   PROPERTY_STAFF_ROLES: [ROLES.STAFF],
   BILLING_ROLES: [ROLES.ROOT_ADMIN, ROLES.SUPER_ADMIN],
   EXTERNAL_ROLES: [ROLES.TENANT, ROLES.VENDOR],
@@ -88,6 +89,13 @@ export const RoleHelpers = {
    */
   canApproveProperty: (role: string): boolean => {
     return ROLE_GROUPS.PROPERTY_APPROVAL_ROLES.includes(role as any);
+  },
+
+  /**
+   * Check if a role can verify property ownership
+   */
+  canVerifyProperty: (role: string): boolean => {
+    return ROLE_GROUPS.PROPERTY_VERIFICATION_ROLES.includes(role as any);
   },
 
   /**

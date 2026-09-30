@@ -14,14 +14,12 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
   });
 
   describe('updateResourceCount - Decrement Protection', () => {
-    it('should prevent currentSeats from going negative', async () => {
+    it('should prevent resourceTracker.seatCount from going negative', async () => {
       // Mock a subscription with 3 current seats
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentSeats: 3,
-        currentProperties: 5,
-        currentUnits: 10,
+        resourceTracker: { propertyCount: 5, unitCount: 10, seatCount: 3 },
       };
 
       // Mock the update method to simulate MongoDB query behavior
@@ -29,12 +27,16 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
           // Simulate MongoDB's behavior: only update if filter matches
-          if (filter.currentSeats && filter.currentSeats.$gte) {
-            const required = filter.currentSeats.$gte;
-            if (mockSubscription.currentSeats >= required) {
+          const seatFilter = filter['resourceTracker.seatCount'];
+          if (seatFilter && seatFilter.$gte) {
+            const required = seatFilter.$gte;
+            if (mockSubscription.resourceTracker.seatCount >= required) {
               return {
                 ...mockSubscription,
-                currentSeats: mockSubscription.currentSeats - required,
+                resourceTracker: {
+                  ...mockSubscription.resourceTracker,
+                  seatCount: mockSubscription.resourceTracker.seatCount - required,
+                },
               } as any;
             }
             return null; // No document matched
@@ -49,10 +51,10 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       expect(_updateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           client: mockClientId,
-          currentSeats: { $gte: 5 }, // Ensures currentSeats >= 5 before decrementing
+          'resourceTracker.seatCount': { $gte: 5 },
         }),
         expect.objectContaining({
-          $inc: { currentSeats: -5 },
+          $inc: { 'resourceTracker.seatCount': -5 },
         }),
         expect.any(Object),
         undefined
@@ -63,18 +65,22 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentSeats: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 },
       };
 
       const _updateSpy = jest
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
-          if (filter.currentSeats && filter.currentSeats.$gte) {
-            const required = filter.currentSeats.$gte;
-            if (mockSubscription.currentSeats >= required) {
+          const seatFilter = filter['resourceTracker.seatCount'];
+          if (seatFilter && seatFilter.$gte) {
+            const required = seatFilter.$gte;
+            if (mockSubscription.resourceTracker.seatCount >= required) {
               return {
                 ...mockSubscription,
-                currentSeats: mockSubscription.currentSeats - required,
+                resourceTracker: {
+                  ...mockSubscription.resourceTracker,
+                  seatCount: mockSubscription.resourceTracker.seatCount - required,
+                },
               } as any;
             }
             return null;
@@ -85,25 +91,29 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const result = await subscriptionDAO.updateResourceCount('seat', mockClientId, -3);
 
       expect(result).not.toBeNull();
-      expect(result?.currentSeats).toBe(7);
+      expect(result?.resourceTracker.seatCount).toBe(7);
     });
 
-    it('should prevent currentProperties from going negative', async () => {
+    it('should prevent resourceTracker.propertyCount from going negative', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentProperties: 2,
+        resourceTracker: { propertyCount: 2, unitCount: 0, seatCount: 0 },
       };
 
       const _updateSpy = jest
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
-          if (filter.currentProperties && filter.currentProperties.$gte) {
-            const required = filter.currentProperties.$gte;
-            if (mockSubscription.currentProperties >= required) {
+          const propFilter = filter['resourceTracker.propertyCount'];
+          if (propFilter && propFilter.$gte) {
+            const required = propFilter.$gte;
+            if (mockSubscription.resourceTracker.propertyCount >= required) {
               return {
                 ...mockSubscription,
-                currentProperties: mockSubscription.currentProperties - required,
+                resourceTracker: {
+                  ...mockSubscription.resourceTracker,
+                  propertyCount: mockSubscription.resourceTracker.propertyCount - required,
+                },
               } as any;
             }
             return null;
@@ -116,22 +126,26 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       expect(result).toBeNull();
     });
 
-    it('should prevent currentUnits from going negative', async () => {
+    it('should prevent resourceTracker.unitCount from going negative', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentUnits: 8,
+        resourceTracker: { propertyCount: 0, unitCount: 8, seatCount: 0 },
       };
 
       const _updateSpy = jest
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
-          if (filter.currentUnits && filter.currentUnits.$gte) {
-            const required = filter.currentUnits.$gte;
-            if (mockSubscription.currentUnits >= required) {
+          const unitFilter = filter['resourceTracker.unitCount'];
+          if (unitFilter && unitFilter.$gte) {
+            const required = unitFilter.$gte;
+            if (mockSubscription.resourceTracker.unitCount >= required) {
               return {
                 ...mockSubscription,
-                currentUnits: mockSubscription.currentUnits - required,
+                resourceTracker: {
+                  ...mockSubscription.resourceTracker,
+                  unitCount: mockSubscription.resourceTracker.unitCount - required,
+                },
               } as any;
             }
             return null;
@@ -148,12 +162,12 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentSeats: 5,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 5 },
       };
 
       const _updateSpy = jest.spyOn(subscriptionDAO, 'update').mockResolvedValue({
         ...mockSubscription,
-        currentSeats: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 },
       } as any);
 
       const result = await subscriptionDAO.updateResourceCount('seat', mockClientId, 5);
@@ -161,7 +175,7 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       expect(result).not.toBeNull();
       expect(_updateSpy).toHaveBeenCalledWith(
         { client: mockClientId },
-        { $inc: { currentSeats: 5 } },
+        { $inc: { 'resourceTracker.seatCount': 5 } },
         { returnDocument: 'after' },
         undefined
       );
@@ -171,16 +185,20 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentSeats: 5,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 5 },
       };
 
       const _updateSpy = jest
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
-          if (filter.currentSeats && filter.currentSeats.$gte) {
-            const required = filter.currentSeats.$gte;
-            if (mockSubscription.currentSeats >= required) {
-              return { ...mockSubscription, currentSeats: 0 } as any;
+          const seatFilter = filter['resourceTracker.seatCount'];
+          if (seatFilter && seatFilter.$gte) {
+            const required = seatFilter.$gte;
+            if (mockSubscription.resourceTracker.seatCount >= required) {
+              return {
+                ...mockSubscription,
+                resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+              } as any;
             }
             return null;
           }
@@ -191,7 +209,7 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const result = await subscriptionDAO.updateResourceCount('seat', mockClientId, -5);
 
       expect(result).not.toBeNull();
-      expect(result?.currentSeats).toBe(0);
+      expect(result?.resourceTracker.seatCount).toBe(0);
     });
   });
 
@@ -200,18 +218,22 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentSeats: 12,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 12 },
       };
 
       const _updateSpy = jest
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
-          if (filter.currentSeats && filter.currentSeats.$lt) {
-            const maxLimit = filter.currentSeats.$lt;
-            if (mockSubscription.currentSeats < maxLimit) {
+          const seatFilter = filter['resourceTracker.seatCount'];
+          if (seatFilter && seatFilter.$lt) {
+            const maxLimit = seatFilter.$lt;
+            if (mockSubscription.resourceTracker.seatCount < maxLimit) {
               return {
                 ...mockSubscription,
-                currentSeats: mockSubscription.currentSeats + 1,
+                resourceTracker: {
+                  ...mockSubscription.resourceTracker,
+                  seatCount: mockSubscription.resourceTracker.seatCount + 1,
+                },
               } as any;
             }
             return null; // Limit reached
@@ -229,18 +251,22 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         client: mockClientId,
-        currentSeats: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 },
       };
 
       const _updateSpy = jest
         .spyOn(subscriptionDAO, 'update')
         .mockImplementation(async (filter: any) => {
-          if (filter.currentSeats && filter.currentSeats.$lt) {
-            const maxLimit = filter.currentSeats.$lt;
-            if (mockSubscription.currentSeats < maxLimit) {
+          const seatFilter = filter['resourceTracker.seatCount'];
+          if (seatFilter && seatFilter.$lt) {
+            const maxLimit = seatFilter.$lt;
+            if (mockSubscription.resourceTracker.seatCount < maxLimit) {
               return {
                 ...mockSubscription,
-                currentSeats: mockSubscription.currentSeats + 1,
+                resourceTracker: {
+                  ...mockSubscription.resourceTracker,
+                  seatCount: mockSubscription.resourceTracker.seatCount + 1,
+                },
               } as any;
             }
             return null;
@@ -251,7 +277,7 @@ describe('SubscriptionDAO - Negative Value Protection', () => {
       const result = await subscriptionDAO.updateResourceCount('seat', mockClientId, 1, 12);
 
       expect(result).not.toBeNull();
-      expect(result?.currentSeats).toBe(11);
+      expect(result?.resourceTracker.seatCount).toBe(11);
     });
   });
 });

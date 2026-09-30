@@ -8,8 +8,13 @@ import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import { PropertyApprovalService } from '@services/property/propertyApproval.service';
-import { ValidationRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  ValidationRequestError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   createTestPropertyUnit,
   createTestProperty,
@@ -50,6 +55,8 @@ const mockPropertyCache = {
   saveClientProperties: jest.fn().mockResolvedValue({ success: true }),
   invalidateProperty: jest.fn().mockResolvedValue({ success: true }),
   invalidatePropertyLists: jest.fn().mockResolvedValue({ success: true }),
+  invalidatePropertyDetail: jest.fn().mockResolvedValue({ success: true }),
+  invalidateAllPropertyDetails: jest.fn().mockResolvedValue({ success: true }),
   invalidateLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
   getLeaseableProperties: jest.fn().mockResolvedValue({ success: false }),
   cacheLeaseableProperties: jest.fn().mockResolvedValue({ success: true }),
@@ -131,6 +138,11 @@ describe('PropertyService Integration Tests', () => {
 
     // Initialize PropertyService with real DAOs and real extracted services
     propertyService = new PropertyService({
+      s3Service: {
+        signFileUrls: jest.fn(async (items: any) => items),
+        getSignedUrl: jest.fn(),
+      } as any,
+      propertyVerificationService: {} as any,
       propertyDAO,
       propertyUnitDAO,
       clientDAO,
@@ -150,7 +162,7 @@ describe('PropertyService Integration Tests', () => {
         findFirst: jest.fn().mockResolvedValue({
           planName: 'growth',
           client: new Types.ObjectId(),
-          currentProperties: 0,
+          resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
         }),
         updateResourceCount: jest.fn().mockResolvedValue(true),
       } as any,
@@ -743,6 +755,39 @@ describe('PropertyService Integration Tests', () => {
         ).rejects.toThrow(ValidationRequestError);
 
         // Verify property was not archived
+        const propertyCheck = await Property.findById(property._id);
+        expect(propertyCheck!.deletedAt).toBeNull();
+      });
+
+      // Managers only hold delete:mine — the route allows them through on that grant alone,
+      // so the service must enforce actual ownership using the property it already loaded.
+      it('lets a manager archive a property they created', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Manager Owned Property',
+        });
+        await Property.findByIdAndUpdate(property._id, { createdBy: adminUser._id });
+
+        const result = await propertyService.archiveClientProperty(testClient.cuid, property.pid, {
+          sub: adminUser._id.toString(),
+          client: { cuid: testClient.cuid, role: ROLES.MANAGER },
+        } as any);
+
+        expect(result.success).toBe(true);
+      });
+
+      it("denies a manager archiving another manager's property", async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Someone Else Owned Property',
+        });
+        await Property.findByIdAndUpdate(property._id, { createdBy: new Types.ObjectId() });
+
+        await expect(
+          propertyService.archiveClientProperty(testClient.cuid, property.pid, {
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.MANAGER },
+          } as any)
+        ).rejects.toThrow(ForbiddenError);
+
         const propertyCheck = await Property.findById(property._id);
         expect(propertyCheck!.deletedAt).toBeNull();
       });

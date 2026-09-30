@@ -140,6 +140,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       paymentDAO: {} as any,
       userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }) } as any,
+      s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
     });
   });
 
@@ -151,6 +152,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         approvalStatus: 'approved',
         cuid: testCuid,
         isManagementAuthorized: () => true,
+        isVerifiedForLeasing: () => true,
         owner: { type: 'company_owned' },
         propertyType: 'residential',
       };
@@ -199,6 +201,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         approvalStatus: 'approved',
         cuid: testCuid,
         isManagementAuthorized: () => true,
+        isVerifiedForLeasing: () => true,
         owner: { type: 'company_owned' },
         propertyType: 'residential',
       };
@@ -253,6 +256,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         approvalStatus: 'approved',
         cuid: testCuid,
         isManagementAuthorized: () => true,
+        isVerifiedForLeasing: () => true,
         owner: { type: 'company_owned' },
         propertyType: 'residential',
       };
@@ -464,6 +468,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         approvalStatus: 'approved',
         cuid: testCuid,
         isManagementAuthorized: () => true,
+        isVerifiedForLeasing: () => true,
         owner: { type: 'company_owned' },
         propertyType: 'residential',
       };
@@ -558,6 +563,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
         paymentDAO: {} as any,
         userCache: { invalidateUserDetail: jest.fn().mockResolvedValue({ success: true }) } as any,
+        s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
       });
 
       (mockLeaseDAO as any).getFilteredLeases = jest.fn().mockResolvedValue({

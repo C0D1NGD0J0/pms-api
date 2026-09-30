@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Decimal from 'decimal.js';
+import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { ClientSession } from 'mongodb';
@@ -123,7 +124,7 @@ export class SubscriptionService {
         additionalSeats?: number;
         totalMonthlyCost?: number;
       };
-      message: string;
+      message?: string;
     }
   ): Promise<void> {
     try {
@@ -351,7 +352,8 @@ export class SubscriptionService {
           planLookUpKey: planLookUpKey,
         },
         totalMonthlyPrice,
-        currentSeats: config.seatPricing.includedSeats,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 0 },
+        seats: { additional: 0, additionalCost: 0 },
         pendingDowngradeAt,
       };
 
@@ -731,6 +733,11 @@ export class SubscriptionService {
     subscription: ISubscriptionDocument,
     cuid: string
   ): Promise<void> {
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    const accountAdminId = client?.accountAdmin
+      ? new Types.ObjectId(client.accountAdmin.toString())
+      : null;
+
     const [actualProperties, actualUnits, actualEmployees] = await Promise.all([
       this.propertyDAO.countDocuments({ cuid, deletedAt: null }),
       this.propertyUnitDAO.countDocuments({ cuid, deletedAt: null }),
@@ -739,15 +746,17 @@ export class SubscriptionService {
         'cuids.isConnected': true,
         'cuids.roles': { $in: ['super-admin', 'admin', 'manager', 'staff'] },
         deletedAt: null,
+        // Account owner doesn't count as a seat — they're free
+        ...(accountAdminId && { _id: { $ne: accountAdminId } }),
       }),
     ]);
 
     const actualSeats = actualEmployees.items?.length || 0;
 
     const drift = {
-      properties: actualProperties !== subscription.currentProperties,
-      units: actualUnits !== subscription.currentUnits,
-      seats: actualSeats !== subscription.currentSeats,
+      properties: actualProperties !== subscription.resourceTracker.propertyCount,
+      units: actualUnits !== subscription.resourceTracker.unitCount,
+      seats: actualSeats !== subscription.resourceTracker.seatCount,
     };
 
     if (drift.properties || drift.units || drift.seats) {
@@ -755,9 +764,9 @@ export class SubscriptionService {
         {
           cuid,
           stored: {
-            properties: subscription.currentProperties,
-            units: subscription.currentUnits,
-            seats: subscription.currentSeats,
+            properties: subscription.resourceTracker.propertyCount,
+            units: subscription.resourceTracker.unitCount,
+            seats: subscription.resourceTracker.seatCount,
           },
           actual: { properties: actualProperties, units: actualUnits, seats: actualSeats },
         },
@@ -765,21 +774,20 @@ export class SubscriptionService {
       );
 
       const $set: Record<string, number> = {};
-      if (drift.properties) $set.currentProperties = actualProperties;
-      if (drift.units) $set.currentUnits = actualUnits;
-      if (drift.seats) $set.currentSeats = actualSeats;
+      if (drift.properties) $set['resourceTracker.propertyCount'] = actualProperties;
+      if (drift.units) $set['resourceTracker.unitCount'] = actualUnits;
+      if (drift.seats) $set['resourceTracker.seatCount'] = actualSeats;
 
       await this.subscriptionDAO.update({ _id: subscription._id }, { $set });
 
-      subscription.currentProperties = actualProperties;
-      subscription.currentUnits = actualUnits;
-      subscription.currentSeats = actualSeats;
+      subscription.resourceTracker.propertyCount = actualProperties;
+      subscription.resourceTracker.unitCount = actualUnits;
+      subscription.resourceTracker.seatCount = actualSeats;
 
-      // Bust the currentUser cache so the frontend picks up corrected counters
+      // Silent SSE to trigger frontend refetch without displaying a notification
       await this.notifyAccountAdminViaSSE(cuid, {
         type: 'subscription_updated',
         subscription: { plan: subscription.planName, status: subscription.status },
-        message: t('subscription.success.usageCountersUpdated'),
       });
     }
   }
@@ -813,11 +821,11 @@ export class SubscriptionService {
       const daysRemaining = client.isVerified ? null : Math.max(0, 5 - daysSinceCreation);
 
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
-      const maxAllowedSeats = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
+      const maxAllowedSeats = config.seatPricing.includedSeats + subscription.seats.additional;
       const isLimitReached = {
-        properties: subscription.currentProperties >= config.limits.maxProperties,
-        units: subscription.currentUnits >= config.limits.maxUnits,
-        seats: subscription.currentSeats >= maxAllowedSeats,
+        properties: subscription.resourceTracker.propertyCount >= config.limits.maxProperties,
+        units: subscription.resourceTracker.unitCount >= config.limits.maxUnits,
+        seats: subscription.resourceTracker.seatCount >= maxAllowedSeats,
       };
 
       const planUsage: ISubscriptionPlanUsage = {
@@ -834,19 +842,19 @@ export class SubscriptionService {
           seats: maxAllowedSeats,
         },
         usage: {
-          properties: subscription.currentProperties,
-          units: subscription.currentUnits,
-          seats: subscription.currentSeats,
+          properties: subscription.resourceTracker.propertyCount,
+          units: subscription.resourceTracker.unitCount,
+          seats: subscription.resourceTracker.seatCount,
         },
         isLimitReached,
         seatInfo: {
           includedSeats: config.seatPricing.includedSeats,
-          additionalSeats: subscription.additionalSeatsCount,
+          additionalSeats: subscription.seats.additional,
           totalAllowed: maxAllowedSeats,
           maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
           additionalSeatPriceCents: config.seatPricing.additionalSeatPriceCents,
           availableForPurchase:
-            config.seatPricing.maxAdditionalSeats - subscription.additionalSeatsCount,
+            config.seatPricing.maxAdditionalSeats - subscription.seats.additional,
         },
         verification: {
           isVerified: client.isVerified,
@@ -974,17 +982,16 @@ export class SubscriptionService {
     }
 
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
-    const totalAllowed = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
-    const availableSeats = totalAllowed - subscription.currentSeats;
-    const canPurchaseMore =
-      subscription.additionalSeatsCount < config.seatPricing.maxAdditionalSeats;
+    const totalAllowed = config.seatPricing.includedSeats + subscription.seats.additional;
+    const availableSeats = totalAllowed - subscription.resourceTracker.seatCount;
+    const canPurchaseMore = subscription.seats.additional < config.seatPricing.maxAdditionalSeats;
 
     return {
       availableSeats: Math.max(0, availableSeats),
-      currentSeats: subscription.currentSeats,
+      currentSeats: subscription.resourceTracker.seatCount,
       totalAllowed,
       includedSeats: config.seatPricing.includedSeats,
-      additionalSeats: subscription.additionalSeatsCount,
+      additionalSeats: subscription.seats.additional,
       canPurchaseMore,
       maxAdditionalSeats: config.seatPricing.maxAdditionalSeats,
     };
@@ -1042,7 +1049,7 @@ export class SubscriptionService {
         }
 
         const config = subscriptionPlanConfig.getConfig(subscription.planName);
-        const newAdditionalCount = subscription.additionalSeatsCount + seatDelta;
+        const newAdditionalCount = subscription.seats.additional + seatDelta;
 
         // Validate new count is within allowed range
         if (newAdditionalCount < 0) {
@@ -1060,8 +1067,8 @@ export class SubscriptionService {
         // If removing seats, check current usage won't exceed new limit
         if (seatDelta < 0) {
           const maxAllowedAfterRemoval = config.seatPricing.includedSeats + newAdditionalCount;
-          if (subscription.currentSeats > maxAllowedAfterRemoval) {
-            const _needToArchive = subscription.currentSeats - maxAllowedAfterRemoval;
+          if (subscription.resourceTracker.seatCount > maxAllowedAfterRemoval) {
+            const _needToArchive = subscription.resourceTracker.seatCount - maxAllowedAfterRemoval;
             throw new BadRequestError({
               message: t('subscription.errors.cannotRemoveSeatsActiveUsers'),
             });
@@ -1254,9 +1261,9 @@ export class SubscriptionService {
         const currentMonthlyPrice = subscription.totalMonthlyPrice ?? 0;
 
         const updateFields: any = {
-          $inc: { additionalSeatsCount: seatDelta },
+          $inc: { 'seats.additional': seatDelta },
           $set: {
-            additionalSeatsCost: newAdditionalCost,
+            'seats.additionalCost': newAdditionalCost,
             totalMonthlyPrice: new Decimal(currentMonthlyPrice).plus(monthlyCostChange).toNumber(),
           },
         };
@@ -1302,7 +1309,7 @@ export class SubscriptionService {
         type: 'seats_purchased',
         subscription: {
           plan: result.planName,
-          additionalSeats: result.additionalSeatsCount,
+          additionalSeats: result.seats.additional,
           totalMonthlyCost: result.totalMonthlyPrice,
         },
         message: t('common.success.updated', { resource: 'Seats' }),
@@ -1428,9 +1435,9 @@ export class SubscriptionService {
         const targetPlanName = (checkoutData.planName as PlanName) || subscription.planName;
         if (subscriptionPlanConfig.isDowngrade(subscription.planName, targetPlanName)) {
           const violations = subscriptionPlanConfig.validateDowngradeLimits(targetPlanName, {
-            seats: subscription.currentSeats,
-            properties: subscription.currentProperties,
-            units: subscription.currentUnits,
+            seats: subscription.resourceTracker.seatCount,
+            properties: subscription.resourceTracker.propertyCount,
+            units: subscription.resourceTracker.unitCount,
           });
 
           if (violations.length > 0) {
@@ -1465,7 +1472,7 @@ export class SubscriptionService {
 
             // Recalculate seat costs with the new plan's pricing
             const newSeatCost = calcSeatCost(
-              subscription.additionalSeatsCount ?? 0,
+              subscription.seats.additional ?? 0,
               planConfig.seatPricing.additionalSeatPriceCents
             );
 
@@ -1477,7 +1484,7 @@ export class SubscriptionService {
                   planName: newPlanName,
                   billingInterval: interval,
                   entitlements: planConfig.features,
-                  additionalSeatsCost: newSeatCost,
+                  'seats.additionalCost': newSeatCost,
                   totalMonthlyPrice: planConfig.pricing[interval].priceInCents + newSeatCost,
                   'billing.planId': priceId,
                   'billing.planLookUpKey': checkoutData.lookUpKey,
@@ -1817,12 +1824,12 @@ export class SubscriptionService {
       if (seatItem) {
         const qty = seatItem.quantity || 0;
         seatCost = calcSeatCost(qty, activeConfig.seatPricing.additionalSeatPriceCents);
-        updateData.additionalSeatsCount = qty;
-        updateData.additionalSeatsCost = seatCost;
+        updateData['seats.additional'] = qty;
+        updateData['seats.additionalCost'] = seatCost;
         if (seatItem.id) updateData['billing.seatItemId'] = seatItem.id;
-      } else if (subscription.additionalSeatsCount > 0) {
-        updateData.additionalSeatsCount = 0;
-        updateData.additionalSeatsCost = 0;
+      } else if (subscription.seats.additional > 0) {
+        updateData['seats.additional'] = 0;
+        updateData['seats.additionalCost'] = 0;
       }
 
       updateData.totalMonthlyPrice = activeConfig.pricing[billingInterval].priceInCents + seatCost;
@@ -1941,7 +1948,7 @@ export class SubscriptionService {
       }
 
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
-      const maxAllowedSeats = config.seatPricing.includedSeats + subscription.additionalSeatsCount;
+      const maxAllowedSeats = config.seatPricing.includedSeats + subscription.seats.additional;
 
       const result = await this.subscriptionDAO.updateResourceCount(
         'seat',
@@ -1952,7 +1959,7 @@ export class SubscriptionService {
 
       if (!result) {
         this.log.error(
-          { cuid, currentSeats: subscription.currentSeats, maxAllowedSeats },
+          { cuid, currentSeats: subscription.resourceTracker.seatCount, maxAllowedSeats },
           'Seat limit reached - invitation should have been blocked'
         );
         throw new BadRequestError({

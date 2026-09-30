@@ -197,9 +197,7 @@ describe('PropertyController Integration Tests', () => {
         aiInvoiceScanning: false,
       },
       totalMonthlyPrice: 4900,
-      currentProperties: 0,
-      currentUnits: 0,
-      currentSeats: 1,
+      resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 1 },
     });
 
     // Create admin user

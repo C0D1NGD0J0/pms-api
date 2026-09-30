@@ -8,8 +8,12 @@ import { IProfileDocument } from '@interfaces/profile.interface';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
-import { IPropertyDocument, OwnershipType } from '@interfaces/property.interface';
 import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import {
+  VerificationStatusEnum,
+  IPropertyDocument,
+  OwnershipType,
+} from '@interfaces/property.interface';
 import {
   PropertyUnit,
   Invitation,
@@ -242,6 +246,7 @@ export const createTestProperty = async (
     authorization: {
       isActive: true, // Required for lease validation
     },
+    verificationStatus: VerificationStatusEnum.VERIFIED, // Required for lease validation
   });
 };
 

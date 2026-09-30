@@ -66,9 +66,8 @@ describe('ClientController Integration Tests', () => {
     const subscriptionDAO = {
       findFirst: jest.fn().mockResolvedValue({
         planName: 'growth',
-        currentSeats: 3,
-        additionalSeatsCount: 2,
-        additionalSeatsCost: 799,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 3 },
+        seats: { additional: 2, additionalCost: 799 },
       }),
     } as any;
 

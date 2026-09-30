@@ -20,9 +20,9 @@ import { IUserRole } from '@shared/constants/roles.constants';
 import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
-import { MediaUploadService, UserService, SMSService } from '@services/index';
 import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
+import { MediaUploadService, UserService, SMSService, S3Service } from '@services/index';
 import { InvitationDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import {
   EventEmitterService,
@@ -120,6 +120,7 @@ interface IConstructor {
   authCache?: AuthCache;
   userCache: UserCache;
   clientDAO: ClientDAO;
+  s3Service: S3Service;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
@@ -151,6 +152,7 @@ export class LeaseService {
   private readonly paymentDAO: PaymentDAO;
   private readonly userCache: UserCache;
   private readonly authCache?: AuthCache;
+  private readonly s3Service: S3Service;
 
   constructor({
     boldSignService,
@@ -178,6 +180,7 @@ export class LeaseService {
     authCache,
     userDAO,
     userService,
+    s3Service,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -205,6 +208,7 @@ export class LeaseService {
     this.paymentDAO = paymentDAO;
     this.userCache = userCache;
     this.authCache = authCache;
+    this.s3Service = s3Service;
     this.setupEventListeners();
   }
 
@@ -233,7 +237,7 @@ export class LeaseService {
         deletedAt: null,
       },
       {
-        select: '+owner +authorization',
+        select: '+owner +authorization +verificationGracePeriod',
       }
     );
 
@@ -254,6 +258,13 @@ export class LeaseService {
         `Property with id ${data.property.id} is not authorized for management by client ${cuid}`
       );
       throw new BadRequestError({ message: t('property.errors.managementNotAuthorized') });
+    }
+
+    if (!property.isVerifiedForLeasing()) {
+      throw new BadRequestError({
+        message:
+          'Property ownership verification is required before creating leases. Upload verification documents or request a grace period from your administrator.',
+      });
     }
 
     const { hasErrors, errors, tenantInfo, propertyInfo } = await this.validateLeaseData(
@@ -655,6 +666,9 @@ export class LeaseService {
       );
       response.payments = leasePayments || [];
       response.documents = filterDocumentsByRole(lease.leaseDocuments || [], userRole);
+      if (response.documents?.length) {
+        await this.s3Service.signFileUrls(response.documents as any[]);
+      }
       response.activity = constructActivityFeed(lease);
       response.timeline = buildLeaseTimeline(lease);
       response.permissions = getUserPermissions(lease, cxt.currentuser!);

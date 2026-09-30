@@ -45,6 +45,8 @@ const setupServices = () => {
   } as any;
 
   const userService = new UserService({
+    propertyUnitDAO: {} as any,
+    inspectionDAO: {} as any,
     clientDAO,
     userDAO,
     propertyDAO: {} as any,
@@ -77,6 +79,10 @@ const setupServices = () => {
   } as any;
 
   const profileService = new ProfileService({
+    paymentProcessorDAO: {} as any,
+    subscriptionDAO: {} as any,
+    vendorDAO,
+    leaseDAO: {} as any,
     profileDAO,
     clientDAO,
     userDAO,

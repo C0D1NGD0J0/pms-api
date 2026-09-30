@@ -51,6 +51,7 @@ class EnvVariables {
       LOG_LEVEL: process.env.LOG_LEVEL || 'info',
       ENABLE_CONSOLE_LOGS: process.env.ENABLE_CONSOLE_LOGS === 'true',
       PROCESS_TYPE: (process.env.PROCESS_TYPE as 'api' | 'worker') || 'api',
+      CRON_ENABLED: process.env.CRON_ENABLED === 'true',
       CLAMDSCAN_SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
     };
     this.AUTH_COOKIE = {

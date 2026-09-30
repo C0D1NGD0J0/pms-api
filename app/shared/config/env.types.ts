@@ -24,6 +24,16 @@ export interface JwtConfig {
   SECRET: string;
 }
 
+export interface ServerConfig {
+  PROCESS_TYPE: 'api' | 'worker';
+  ENABLE_CONSOLE_LOGS: boolean;
+  CLAMDSCAN_SOCKET: string;
+  CRON_ENABLED: boolean;
+  LOG_LEVEL: string;
+  PORT: number;
+  ENV: string;
+}
+
 export interface StripeConfig {
   CONNECT_WEBHOOK_SECRET: string;
   ACSS_PER_TXN_LIMIT: number;
@@ -31,15 +41,6 @@ export interface StripeConfig {
   REDIRECT_URL: string;
   SECRET_KEY: string;
   PUBLIC_KEY: string;
-}
-
-export interface ServerConfig {
-  PROCESS_TYPE: 'api' | 'worker';
-  ENABLE_CONSOLE_LOGS: boolean;
-  CLAMDSCAN_SOCKET: string;
-  LOG_LEVEL: string;
-  PORT: number;
-  ENV: string;
 }
 
 export interface EmailProviderConfig {

@@ -103,6 +103,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
           customerId: 'cus_stripe123',
           planId: 'price_growth_monthly',
         },
+        seats: { additional: 0, additionalCost: 0 },
+        resourceTracker: { propertyCount: 1, unitCount: 2, seatCount: 1 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -138,7 +140,7 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
             planName: 'growth',
             billingInterval: 'annual',
             entitlements: expect.any(Object),
-            additionalSeatsCost: expect.any(Number),
+            'seats.additionalCost': expect.any(Number),
             totalMonthlyPrice: expect.any(Number),
             'billing.planId': 'price_growth_annual',
             'billing.planLookUpKey': 'growth_annual',
@@ -161,6 +163,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
           subscriberId: 'sub_stripe123',
           planId: 'price_growth_monthly',
         },
+        seats: { additional: 0, additionalCost: 0 },
+        resourceTracker: { propertyCount: 1, unitCount: 2, seatCount: 1 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -252,6 +256,8 @@ describe('SubscriptionService - Subscription Updates (Active → Billing/Plan Ch
         billing: {
           subscriberId: 'sub_stripe123',
         },
+        seats: { additional: 0, additionalCost: 0 },
+        resourceTracker: { propertyCount: 1, unitCount: 2, seatCount: 1 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);

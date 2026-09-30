@@ -436,29 +436,30 @@ export const setUserLanguage = async (req: Request, _res: Response, next: NextFu
  * Runs after isAuthenticated, provides feature flags and payment status
  * All users (owner, staff, vendors, tenants) get the client's subscription
  */
+async function loadEntitlements(req: Request): Promise<void> {
+  if (req.context?.entitlements) return;
+
+  const currentUser = req.context?.currentuser;
+  if (!currentUser || !currentUser.client?.cuid) return;
+
+  const { subscriptionService }: DIServices = req.container.cradle;
+  if (!subscriptionService) return;
+
+  const cuid = currentUser.client.cuid;
+  const userRole = currentUser.client.role;
+  const result = await subscriptionService.getSubscriptionEntitlements(cuid, userRole);
+  if (result.success && result.data) {
+    req.context.entitlements = result.data;
+  }
+}
+
 export const subscriptionEntitlements = async (
   req: Request,
   _res: Response,
   next: NextFunction
 ) => {
   try {
-    const currentUser = req.context?.currentuser;
-    if (!currentUser || !currentUser.client?.cuid) {
-      return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
-    }
-
-    const { subscriptionService }: DIServices = req.container.cradle;
-    if (!subscriptionService) {
-      return next(new UnauthorizedError({ message: 'Unauthorized action.' }));
-    }
-
-    const cuid = currentUser.client.cuid;
-    const userRole = currentUser.client.role;
-    const result = await subscriptionService.getSubscriptionEntitlements(cuid, userRole);
-    if (result.success && result.data) {
-      req.context.entitlements = result.data;
-    }
-
+    await loadEntitlements(req);
     next();
   } catch (error) {
     logger.error('Error in subscriptionEntitlements middleware:', error);
@@ -555,9 +556,31 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
  * check if user has specific permission
  * Includes client context validation for client-specific resources
  */
+/**
+ * Checks whether the role holds \`<action>:mine\` on the resource. Used as an opt-in fallback
+ * for roles that only hold the \`:mine\` grant (e.g. manager on property create) — there is no
+ * existing record to check ownership against yet, so holding the grant is enough.
+ */
+async function hasMineScopeGrant(
+  currentuser: ICurrentUser,
+  resource: PermissionResource | string,
+  action: PermissionAction | string,
+  permissionService: PermissionService
+) {
+  return permissionService.checkPermission({
+    role: currentuser.client.role,
+    resource: resource as PermissionResource,
+    action: action as string,
+    scope: PermissionScope.MINE,
+    department: currentuser.employeeInfo?.department,
+    context: { clientId: currentuser.client.cuid, userId: currentuser.sub },
+  });
+}
+
 export const requirePermission = (
   resource: PermissionResource | string,
-  action: PermissionAction | string
+  action: PermissionAction | string,
+  allowMineFallback?: boolean
 ) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
@@ -585,11 +608,15 @@ export const requirePermission = (
       }
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
-      const hasPermission = await permissionService.checkUserPermission(
+      let hasPermission = await permissionService.checkUserPermission(
         currentuser,
         resource as PermissionResource,
         action as string
       );
+
+      if (!hasPermission.granted && allowMineFallback) {
+        hasPermission = await hasMineScopeGrant(currentuser, resource, action, permissionService);
+      }
 
       if (!hasPermission.granted) {
         logger.warn('Permission denied:', {
@@ -660,13 +687,20 @@ export const requireFeature = (featureName: keyof ISubscriptionEntitlements['ent
  * Fails open (allows request) when entitlements could not be loaded, so a
  * subscription service outage does not break the application.
  */
-export const requireActiveSubscription = (req: Request, _res: Response, next: NextFunction) => {
+export const requireActiveSubscription = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+) => {
   // Tenants and vendors are not gated by PM subscription status — they have
   // their own access controlled by lease/connection status, not the PM's SaaS bill.
   const role = req.context?.currentuser?.client?.role;
   if (role === 'tenant' || role === 'vendor') {
     return next();
   }
+
+  // Load entitlements if not already set by subscriptionEntitlements middleware
+  await loadEntitlements(req);
 
   const entitlements = req.context?.entitlements;
   if (!entitlements) {

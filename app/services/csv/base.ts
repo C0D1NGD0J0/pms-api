@@ -104,16 +104,26 @@ export class BaseCSVProcessorService {
     }
 
     const chunkSize = 500;
+    // Build a fresh array rather than splicing in place — postProcess can drop
+    // items (e.g. geocoding/duplicate failures), and a variable-length splice at
+    // a fixed index would silently skip or reprocess rows in later chunks once
+    // the array has shrunk.
+    const finalResults: T[] = [];
     for (let i = 0; i < state.results.length; i += chunkSize) {
       const chunk = state.results.slice(i, i + chunkSize);
       const processed = await options.postProcess(chunk, options.context);
-      state.results.splice(i, chunk.length, ...processed.validItems);
+      finalResults.push(...processed.validItems);
+
+      if (processed.invalidItems && processed.invalidItems.length > 0) {
+        state.invalidItems.push(...processed.invalidItems);
+      }
 
       if (global.gc) {
         global.gc();
       }
     }
 
+    state.results = finalResults;
     return state.results;
   }
 

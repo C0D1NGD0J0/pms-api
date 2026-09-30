@@ -486,8 +486,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         cuid: 'client123',
         planName: 'growth',
         status: ISubscriptionStatus.INACTIVE,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 29,
         endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // future endDate so guard doesn't fire
         billing: {
@@ -628,8 +627,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         planName: 'growth',
         billingInterval: 'annual',
         status: ISubscriptionStatus.ACTIVE,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 768,
         billing: {
           subscriberId: 'sub_test123',
@@ -639,8 +637,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 2,
-        additionalSeatsCost: 1598, // 2 * 799¢
+        seats: { additional: 2, additionalCost: 1598 }, // 2 * 799¢
         totalMonthlyPrice: 2366, // 768¢ + 1598¢
         billing: {
           subscriberId: 'sub_test123',
@@ -666,8 +663,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
         { _id: mockSubscription._id },
         expect.objectContaining({
           $set: expect.objectContaining({
-            additionalSeatsCount: 2,
-            additionalSeatsCost: 1598,
+            'seats.additional': 2,
+            'seats.additionalCost': 1598,
             totalMonthlyPrice: 78398,
             'billing.seatItemId': 'si_seat123',
           }),
@@ -682,8 +679,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         planName: 'growth',
         billingInterval: 'monthly',
         status: ISubscriptionStatus.ACTIVE,
-        additionalSeatsCount: 5,
-        additionalSeatsCost: 25,
+        seats: { additional: 5, additionalCost: 25 },
         totalMonthlyPrice: 54,
         billing: {
           subscriberId: 'sub_test123',
@@ -694,8 +690,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 29,
       } as any);
 
@@ -714,8 +709,8 @@ describe('SubscriptionService - Webhook Handlers', () => {
         { _id: mockSubscription._id },
         expect.objectContaining({
           $set: expect.objectContaining({
-            additionalSeatsCount: 0,
-            additionalSeatsCost: 0,
+            'seats.additional': 0,
+            'seats.additionalCost': 0,
             totalMonthlyPrice: 7999,
           }),
         })
@@ -727,7 +722,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         _id: new Types.ObjectId(),
         cuid: 'client123',
         planName: 'growth',
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
         billing: { subscriberId: 'sub_test123' },
       };
 
@@ -914,8 +909,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         status: 'active',
         billingInterval: 'monthly',
         billing: { subscriberId: 'sub_test123', customerId: 'cus_test' },
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 7999,
         endDate: new Date('2026-10-01'),
       };
@@ -951,8 +945,7 @@ describe('SubscriptionService - Webhook Handlers', () => {
         status: 'active',
         billingInterval: 'monthly',
         billing: { subscriberId: 'sub_test123', customerId: 'cus_test' },
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 7999,
         endDate: new Date('2026-10-01'),
       };

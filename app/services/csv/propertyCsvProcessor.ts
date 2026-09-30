@@ -8,18 +8,28 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
 import {
+  ICsvHeaderValidationResult,
+  ICsvValidationResult,
+  IInvalidCsvProperty,
+} from '@interfaces/csv.interface';
+import {
+  VerificationStatusEnum,
   OccupancyStatus,
   NewPropertyType,
   PropertyStatus,
   IProperty,
 } from '@interfaces/property.interface';
-import {
-  ICsvHeaderValidationResult,
-  ICsvValidationResult,
-  IInvalidCsvProperty,
-} from '@interfaces/csv.interface';
 
 import { BaseCSVProcessorService } from './base';
+
+interface PropertyProcessingContext {
+  // User-confirmed header → field key mapping from the frontend's mapping step.
+  // Keyed by the literal file header text, checked before the exact-match fallback.
+  columnMapping?: Record<string, string>;
+  userId: ICurrentUser['sub'];
+  propertyId?: string;
+  cuid: string;
+}
 
 interface IConstructor {
   geoCoderService: GeoCoderService;
@@ -28,12 +38,15 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-interface PropertyProcessingContext {
-  userId: ICurrentUser['sub'];
-  propertyId?: string;
-  cuid: string;
-}
-
+// Transient fields threaded through the pipeline for error attribution and the
+// unitNumber-survives-geocoding fix; stripped before the property reaches the DB.
+type PropertyRowTransform = {
+  _csvRowNumber?: number;
+  _addressUnitNumber?: string;
+} & NewPropertyType;
+// Matches the ICsvProcessorOptions#postProcess contract (T = IProperty); the
+// actual runtime shape passed in is always PropertyRowTransform, produced by
+// transformPropertyRow, hence the cast where postProcessProperties hands off.
 type TempPropertiesArray = Array<NewPropertyType | IProperty>;
 export class PropertyCsvProcessor {
   private readonly log = createLogger('PropertyCsvProcessor');
@@ -68,7 +81,7 @@ export class PropertyCsvProcessor {
       PropertyProcessingContext
     >(filePath, {
       context,
-      headerTransformer: this.createPropertyHeaderTransformer(),
+      headerTransformer: this.createPropertyHeaderTransformer(context.columnMapping),
       validateHeaders: this.validateRequiredHeaders.bind(this),
       validateRow: this.validatePropertyRow,
       transformRow: this.transformPropertyRow,
@@ -132,8 +145,9 @@ export class PropertyCsvProcessor {
 
   private transformPropertyRow = async (
     row: any,
-    context: PropertyProcessingContext
-  ): Promise<NewPropertyType> => {
+    context: PropertyProcessingContext,
+    rowNumber?: number
+  ): Promise<PropertyRowTransform> => {
     let managedBy;
     if (row.managedBy && row.managedBy.includes('@')) {
       const managerResolution = await this.validateAndResolveManagedBy(row.managedBy, context.cuid);
@@ -143,13 +157,36 @@ export class PropertyCsvProcessor {
     }
 
     const documents = this.extractDocumentsFromRow(row, context);
+    // fullAddress is never taken from user input as-is — it's only ever the query
+    // string sent to the geocoder. Either the raw `fullAddress` column or the
+    // joined split address columns serve as that query; postProcessProperties
+    // replaces this with the geocoder's normalised result.
+    const addressQuery =
+      row.fullAddress?.trim() ||
+      [
+        row.address_street,
+        row.address_city,
+        row.address_state,
+        row.address_postCode,
+        row.address_country,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
     return {
+      // transient — used by postProcessProperties to attribute geocoding/quota
+      // errors back to the original CSV row; stripped before DB insert.
+      _csvRowNumber: rowNumber,
+      // transient — the single-property form stores unitNumber on the address
+      // object separately from the geocoder result; carried the same way here,
+      // applied by postProcessProperties after the geocoder assigns `address`.
+      _addressUnitNumber: row.address_unitNumber?.trim(),
       address: {},
       name: row.name?.trim(),
-      fullAddress: row.fullAddress?.trim(),
+      fullAddress: addressQuery,
       propertyType: row.propertyType,
       ...(documents.length > 0 && { documents }),
-      operationalStatus: (row.operationalStatus || 'available') as PropertyStatus,
+      operationalStatus: (row.status || 'available') as PropertyStatus,
       occupancyStatus: (row.occupancyStatus || 'vacant') as OccupancyStatus,
       maxAllowedUnits: row.maxAllowedUnits ? Number(row.maxAllowedUnits) : 0,
       yearBuilt: row.yearBuilt ? Number(row.yearBuilt) : undefined,
@@ -160,14 +197,16 @@ export class PropertyCsvProcessor {
       },
 
       specifications: {
-        totalArea: BaseCSVProcessorService.parseNumber(row.specifications_totalArea, 0),
-        bedrooms: row.bedrooms
+        totalArea: row.specifications_totalArea
+          ? BaseCSVProcessorService.parseNumber(row.specifications_totalArea)
+          : undefined,
+        bedrooms: row.specifications_bedrooms
           ? BaseCSVProcessorService.parseNumber(row.specifications_bedrooms)
           : undefined,
-        bathrooms: row.bathrooms
+        bathrooms: row.specifications_bathrooms
           ? BaseCSVProcessorService.parseNumber(row.specifications_bathrooms)
           : undefined,
-        floors: row.floors
+        floors: row.specifications_floors
           ? BaseCSVProcessorService.parseNumber(row.specifications_floors)
           : undefined,
         garageSpaces: row.specifications_garageSpaces
@@ -182,8 +221,9 @@ export class PropertyCsvProcessor {
       },
 
       fees: {
-        rentAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalamount, 0),
-        managementFees: BaseCSVProcessorService.parseNumber(row.fees_managementfees, 0),
+        rentAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalAmount, 0),
+        managementFees: BaseCSVProcessorService.parseNumber(row.fees_managementFees, 0),
+        securityDeposit: BaseCSVProcessorService.parseNumber(row.fees_securityDeposit, 0),
         currency: (row.fees_currency || 'USD') as CURRENCIES,
       },
 
@@ -256,6 +296,9 @@ export class PropertyCsvProcessor {
             type: 'company_owned',
           },
 
+      // Imported properties start unverified, same as single creation — admin review verifies them
+      verificationStatus: VerificationStatusEnum.UNVERIFIED,
+
       managedBy,
       cuid: context.cuid,
       createdBy: new Types.ObjectId(context.userId),
@@ -264,10 +307,11 @@ export class PropertyCsvProcessor {
 
   private postProcessProperties = async (
     properties: TempPropertiesArray,
-    _ctx: PropertyProcessingContext
-  ): Promise<{ validItems: IProperty[]; invalidItems: any[] }> => {
+    ctx: PropertyProcessingContext
+  ): Promise<{ validItems: IProperty[]; invalidItems: IInvalidCsvProperty[] }> => {
     const { validProperties, invalidProperties } = await this.processGeocodingForProperties(
-      properties as NewPropertyType[]
+      properties as PropertyRowTransform[],
+      ctx
     );
 
     return {
@@ -276,22 +320,30 @@ export class PropertyCsvProcessor {
     };
   };
 
-  private async processGeocodingForProperties(properties: NewPropertyType[]): Promise<{
+  private async processGeocodingForProperties(
+    properties: PropertyRowTransform[],
+    ctx: PropertyProcessingContext
+  ): Promise<{
     validProperties: IProperty[];
-    invalidProperties: { field: string; error: string }[];
+    invalidProperties: IInvalidCsvProperty[];
   }> {
     const validProperties: IProperty[] = [];
-    const invalidProperties: { field: string; error: string }[] = [];
+    const invalidProperties: IInvalidCsvProperty[] = [];
+    // Addresses repeated within this same file, compared post-geocode so
+    // spelling differences between rows of the same building still group.
+    const seenAddresses = new Set<string>();
+
+    const rowError = (rowNumber: number | undefined, field: string, error: string) => {
+      invalidProperties.push({ rowNumber: rowNumber ?? 0, errors: [{ field, error }] });
+    };
 
     for (const property of properties) {
+      const rowNumber = property._csvRowNumber;
       try {
         const geoCode = await this.geoCoderService.parseLocation(property.fullAddress);
 
         if (!geoCode.success) {
-          invalidProperties.push({
-            field: 'address',
-            error: `Invalid address: ${property.fullAddress}`,
-          });
+          rowError(rowNumber, 'address', `Invalid address: ${property.fullAddress}`);
           continue;
         }
 
@@ -308,100 +360,172 @@ export class PropertyCsvProcessor {
           latAndlon: geoCode.data?.latAndlon,
           fullAddress: geoCode.data?.fullAddress,
           streetNumber: geoCode.data?.streetNumber,
+          // Applied after the geocoder result, same as the single-property form —
+          // otherwise this assignment above would drop it.
+          ...(property._addressUnitNumber && { unitNumber: property._addressUnitNumber }),
         };
-        validProperties.push(property);
+
+        const geocodedAddress = geoCode.data?.fullAddress?.trim().toLowerCase();
+        if (geocodedAddress) {
+          if (seenAddresses.has(geocodedAddress)) {
+            rowError(
+              rowNumber,
+              'address',
+              `A property with this address already exists in the file: ${geoCode.data?.fullAddress}`
+            );
+            continue;
+          }
+
+          const existingProperty = await this.propertyDAO.findPropertyByAddress(
+            geoCode.data!.fullAddress!,
+            ctx.cuid
+          );
+          if (existingProperty) {
+            rowError(
+              rowNumber,
+              'address',
+              `A property with this address already exists: ${geoCode.data?.fullAddress}`
+            );
+            continue;
+          }
+
+          seenAddresses.add(geocodedAddress);
+        }
+
+        property.fullAddress = geoCode.data?.fullAddress;
+        delete property._csvRowNumber;
+        delete property._addressUnitNumber;
+        validProperties.push(property as IProperty);
       } catch (error) {
-        invalidProperties.push({
-          field: 'address',
-          error: `Error during geocoding: ${error.message}`,
-        });
+        rowError(rowNumber, 'address', `Error during geocoding: ${error.message}`);
       }
     }
 
     return { validProperties, invalidProperties };
   }
 
-  private getRequiredCsvHeaders(): string[] {
-    // Dynamically extract required headers from NewProperty interface mapping
-    // These correspond to the minimum required fields for CSV import
-    return [
-      'name', // from NewProperty.name (required)
-      'fullAddress', // from NewProperty.fullAddress (required)
-      'propertyType', // from NewProperty.propertyType (required)
-    ];
+  // Every header the importer accepts. Shared by the header transformer (matching
+  // incoming CSV headers) and the template endpoint (so the template can't drift
+  // from what's actually accepted).
+  private readonly allowedHeaders: string[] = [
+    // Required headers
+    'name',
+    'propertyType',
+    // Address — either fullAddress, or the split columns joined as the geocoder
+    // query. Both are only ever a query string; the stored address always comes
+    // from the geocoder's result. See validateRequiredHeaders.
+    'fullAddress',
+    'address_street',
+    'address_city',
+    'address_state',
+    'address_postCode',
+    'address_country',
+    'address_unitNumber',
+    // Optional basic fields
+    'status',
+    'occupancyStatus',
+    'maxAllowedUnits',
+    'yearBuilt',
+    'managedBy',
+    // Description fields
+    'description_text',
+    'description_html',
+    // Specification fields
+    'specifications_totalArea',
+    'specifications_bedrooms',
+    'specifications_bathrooms',
+    'specifications_floors',
+    'specifications_garageSpaces',
+    'specifications_maxOccupants',
+    'specifications_lotSize',
+    // Fee fields
+    'fees_rentalAmount',
+    'fees_managementFees',
+    'fees_securityDeposit',
+    'fees_currency',
+    // Utility fields
+    'utilities_water',
+    'utilities_gas',
+    'utilities_electricity',
+    'utilities_internet',
+    'utilities_trash',
+    'utilities_cabletv',
+    // Interior amenity fields
+    'interiorAmenities_airConditioning',
+    'interiorAmenities_heating',
+    'interiorAmenities_washerDryer',
+    'interiorAmenities_dishwasher',
+    'interiorAmenities_fridge',
+    'interiorAmenities_furnished',
+    'interiorAmenities_storageSpace',
+    // Community amenity fields
+    'communityAmenities_petFriendly',
+    'communityAmenities_swimmingPool',
+    'communityAmenities_fitnessCenter',
+    'communityAmenities_elevator',
+    'communityAmenities_parking',
+    'communityAmenities_securitySystem',
+    'communityAmenities_laundryFacility',
+    'communityAmenities_doorman',
+    // Owner fields
+    'owner_type',
+    'owner_name',
+    'owner_email',
+    'owner_phone',
+    'owner_taxId',
+    'owner_notes',
+    'owner_bankDetails_accountName',
+    'owner_bankDetails_accountNumber',
+    'owner_bankDetails_routingNumber',
+    'owner_bankDetails_bankName',
+  ];
+
+  // The downloadable template only carries what every row must have. Any other
+  // allowedHeaders column can be added by the user — the importer accepts them all.
+  private readonly templateHeaders: string[] = ['name', 'propertyType', 'fullAddress'];
+
+  getTemplateHeaders(): string[] {
+    return [...this.templateHeaders];
   }
 
-  private createPropertyHeaderTransformer() {
-    // Get all possible headers from the transform method analysis
-    const allowedHeaders = [
-      // Required headers
-      'name',
-      'fullAddress',
-      'propertyType',
-      // Optional basic fields
-      'status',
-      'occupancyStatus',
-      'maxAllowedUnits',
-      'yearBuilt',
-      'managedBy',
-      // Description fields
-      'description_text',
-      'description_html',
-      // Specification fields
-      'specifications_totalArea',
-      'specifications_bedrooms',
-      'specifications_bathrooms',
-      'specifications_floors',
-      'specifications_garageSpaces',
-      'specifications_maxOccupants',
-      'specifications_lotSize',
-      // Fee fields
-      'fees_taxamount',
-      'fees_rentalamount',
-      'fees_managementfees',
-      'fees_currency',
-      // Utility fields
-      'utilities_water',
-      'utilities_gas',
-      'utilities_electricity',
-      'utilities_internet',
-      'utilities_trash',
-      'utilities_cabletv',
-      // Interior amenity fields
-      'interiorAmenities_airConditioning',
-      'interiorAmenities_heating',
-      'interiorAmenities_washerDryer',
-      'interiorAmenities_dishwasher',
-      'interiorAmenities_fridge',
-      'interiorAmenities_furnished',
-      'interiorAmenities_storageSpace',
-      // Community amenity fields
-      'communityAmenities_petFriendly',
-      'communityAmenities_swimmingPool',
-      'communityAmenities_fitnessCenter',
-      'communityAmenities_elevator',
-      'communityAmenities_parking',
-      'communityAmenities_securitySystem',
-      'communityAmenities_laundryFacility',
-      'communityAmenities_doorman',
-      // Owner fields
-      'owner_type',
-      'owner_name',
-      'owner_email',
-      'owner_phone',
-      'owner_taxId',
-      'owner_notes',
-      'owner_bankDetails_accountName',
-      'owner_bankDetails_accountNumber',
-      'owner_bankDetails_routingNumber',
-      'owner_bankDetails_bankName',
-    ];
+  getAcceptedHeaders(): string[] {
+    return [...this.allowedHeaders];
+  }
 
+  /** Builds a downloadable CSV template with the required columns and one example row. */
+  generateTemplateCsv(): string {
+    const exampleRow: Record<string, string> = {
+      name: 'Kensington Terrace',
+      propertyType: 'apartment',
+      fullAddress: '88 Kensington Avenue, Toronto, ON M5T 2K2, Canada',
+    };
+
+    const headerRow = this.templateHeaders.join(',');
+    const dataRow = this.templateHeaders
+      .map((header) => this.csvEscape(exampleRow[header] ?? ''))
+      .join(',');
+    return `${headerRow}\n${dataRow}\n`;
+  }
+
+  private csvEscape(value: string): string {
+    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  }
+
+  private createPropertyHeaderTransformer(columnMapping?: Record<string, string>) {
     return ({ header }: { header: string }) => {
+      // User-confirmed mapping from the frontend's mapping step takes precedence,
+      // matched on the literal file header text. A mapping to an unrecognized
+      // field key is rejected (falls through to the normal matching below)
+      // rather than silently accepted.
+      const mappedKey = columnMapping?.[header];
+      if (mappedKey && this.allowedHeaders.includes(mappedKey)) {
+        return mappedKey;
+      }
+
       const normalizedHeader = header.toLowerCase().trim();
 
       // Check if this header matches any of our allowed headers (case insensitive)
-      const matchingHeader = allowedHeaders.find(
+      const matchingHeader = this.allowedHeaders.find(
         (allowed) => allowed.toLowerCase() === normalizedHeader
       );
 
@@ -421,10 +545,18 @@ export class PropertyCsvProcessor {
   }
 
   private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
-    const requiredHeaders = this.getRequiredCsvHeaders();
-    const foundHeaders = headers.filter((header) => requiredHeaders.includes(header));
-    const missingHeaders = requiredHeaders.filter((required) => !headers.includes(required));
+    const alwaysRequired = ['name', 'propertyType'];
+    const missingHeaders = alwaysRequired.filter((required) => !headers.includes(required));
 
+    const hasFullAddress = headers.includes('fullAddress');
+    const hasSplitAddress = headers.includes('address_street') && headers.includes('address_city');
+    if (!hasFullAddress && !hasSplitAddress) {
+      missingHeaders.push('fullAddress (or address_street + address_city)');
+    }
+
+    const foundHeaders = headers.filter(
+      (header) => alwaysRequired.includes(header) || header === 'fullAddress'
+    );
     const isValid = missingHeaders.length === 0;
 
     return {
@@ -433,32 +565,32 @@ export class PropertyCsvProcessor {
       foundHeaders,
       errorMessage: isValid
         ? undefined
-        : `Invalid CSV format. Missing required columns: ${missingHeaders.join(', ')}. Expected headers: ${requiredHeaders.join(', ')}`,
+        : `Invalid CSV format. Missing required columns: ${missingHeaders.join(', ')}.`,
     };
   }
 
   private hasAnyInteriorAmenity(data: any): boolean {
     return [
-      'interiorAmenities_airconditioning',
+      'interiorAmenities_airConditioning',
       'interiorAmenities_heating',
-      'interiorAmenities_washerdryer',
+      'interiorAmenities_washerDryer',
       'interiorAmenities_dishwasher',
       'interiorAmenities_fridge',
       'interiorAmenities_furnished',
-      'interiorAmenities_storagespace',
+      'interiorAmenities_storageSpace',
     ].some((field) => data[field] !== undefined);
   }
 
   private hasAnyCommunityAmenity(data: any): boolean {
     return [
-      'communityAmenity_swimmingpool',
-      'communityAmenity_fitnesscenter',
-      'communityAmenity_elevator',
-      'communityAmenity_parking',
-      'communityAmenity_securitysystem',
-      'communityAmenity_petfriendly',
-      'communityAmenity_laundryfacility',
-      'communityAmenity_doorman',
+      'communityAmenities_swimmingPool',
+      'communityAmenities_fitnessCenter',
+      'communityAmenities_elevator',
+      'communityAmenities_parking',
+      'communityAmenities_securitySystem',
+      'communityAmenities_petFriendly',
+      'communityAmenities_laundryFacility',
+      'communityAmenities_doorman',
     ].some((field) => data[field] !== undefined);
   }
 
@@ -468,21 +600,21 @@ export class PropertyCsvProcessor {
       'owner_name',
       'owner_email',
       'owner_phone',
-      'owner_taxid',
+      'owner_taxId',
       'owner_notes',
-      'owner_bankdetails_accountname',
-      'owner_bankdetails_accountnumber',
-      'owner_bankdetails_routingnumber',
-      'owner_bankdetails_bankname',
+      'owner_bankDetails_accountName',
+      'owner_bankDetails_accountNumber',
+      'owner_bankDetails_routingNumber',
+      'owner_bankDetails_bankName',
     ].some((field) => data[field] !== undefined);
   }
 
   private hasAnyBankDetails(data: any): boolean {
     return [
-      'owner_bankdetails_accountname',
-      'owner_bankdetails_accountnumber',
-      'owner_bankdetails_routingnumber',
-      'owner_bankdetails_bankname',
+      'owner_bankDetails_accountName',
+      'owner_bankDetails_accountNumber',
+      'owner_bankDetails_routingNumber',
+      'owner_bankDetails_bankName',
     ].some((field) => data[field] !== undefined);
   }
 

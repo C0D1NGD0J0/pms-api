@@ -606,6 +606,29 @@ export const convertTimeToSecondsAndMilliseconds = (
  * Middleware to parse stringified JSON, booleans, and numbers in req.body
  * Useful for multipart/form-data where nested fields are sent as strings
  */
+/**
+ * Expands flat dot-notation keys into nested objects, preserving values as-is.
+ * "address.city": "Toronto"  →  { address: { city: "Toronto" } }
+ * Bracket keys (e.g. "images[0]") pass through unchanged.
+ */
+const unflattenBody = (body: Record<string, any>): Record<string, any> => {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(body)) {
+    if (!key.includes('.') || key.includes('[')) {
+      out[key] = value;
+      continue;
+    }
+    const parts = key.split('.');
+    let cur = out;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (!(parts[i] in cur) || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+      cur = cur[parts[i]];
+    }
+    cur[parts[parts.length - 1]] = value;
+  }
+  return out;
+};
+
 export const parseJsonFields = (req: Request) => {
   if (!req.body || typeof req.body !== 'object') return req.body;
 
@@ -646,6 +669,10 @@ export const parseJsonFields = (req: Request) => {
   };
 
   try {
+    // 1. Unflatten dot-notation keys from FormData before type conversion
+    req.body = unflattenBody(req.body);
+
+    // 2. Convert string booleans, JSON strings, etc.
     req.body = convertValue(req.body);
   } catch (error) {
     console.error('Error in parseJsonFields middleware:', error);

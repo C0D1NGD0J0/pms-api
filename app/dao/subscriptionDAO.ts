@@ -237,8 +237,8 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
         { _id: new Types.ObjectId(subscriptionId) },
         {
           $set: {
-            currentProperties: properties,
-            currentUnits: units,
+            'resourceTracker.propertyCount': properties,
+            'resourceTracker.unitCount': units,
           },
         }
       );
@@ -279,9 +279,9 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   ): Promise<ISubscriptionDocument | null> {
     try {
       const fieldName = {
-        property: 'currentProperties',
-        propertyUnit: 'currentUnits',
-        seat: 'currentSeats',
+        property: 'resourceTracker.propertyCount',
+        propertyUnit: 'resourceTracker.unitCount',
+        seat: 'resourceTracker.seatCount',
       }[resourceName];
 
       if (maxLimit !== undefined && delta > 0) {
@@ -354,22 +354,22 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
 
   async updateAdditionalSeats(
     clientId: string | Types.ObjectId,
-    additionalSeatsCount: number,
-    additionalSeatsCost: number
+    additional: number,
+    additionalCost: number
   ): Promise<ISubscriptionDocument | null> {
     try {
       return await this.update(
         { client: new Types.ObjectId(clientId) },
         {
           $set: {
-            additionalSeatsCount,
-            additionalSeatsCost,
+            'seats.additional': additional,
+            'seats.additionalCost': additionalCost,
           },
         }
       );
     } catch (error) {
       this.logger.error(
-        { error, clientId, additionalSeatsCount, additionalSeatsCost },
+        { error, clientId, additional, additionalCost },
         'Error updating additional seats'
       );
       this.throwErrorHandler(error);

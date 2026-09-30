@@ -11,7 +11,16 @@
     ],
     "propertyStatuses": ["available", "maintenance", "construction", "inactive"],
     "occupancyStatuses": ["vacant", "occupied", "partially_occupied"],
-    "documentTypes": ["deed", "tax", "insurance", "inspection", "other", "lease"],
+    "documentTypes": [
+      "deed",
+      "tax",
+      "insurance",
+      "inspection",
+      "other",
+      "lease",
+      "authorization_letter",
+      "proof_of_ownership"
+    ],
     "currencies": [
       {
         "value": "USD",

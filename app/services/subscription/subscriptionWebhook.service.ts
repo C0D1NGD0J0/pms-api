@@ -485,7 +485,7 @@ export class SubscriptionWebhookService {
             if (item.price?.id) updateData['billing.planId'] = item.price.id;
             updateData.totalMonthlyPrice =
               newConfig.pricing[subscription.billingInterval || 'monthly'].priceInCents +
-              (subscription.additionalSeatsCost ?? 0);
+              (subscription.seats?.additionalCost ?? 0);
             currentPlanName = resolvedPlan;
             break;
           }
@@ -516,12 +516,12 @@ export class SubscriptionWebhookService {
             activeConfig.seatPricing.additionalSeatPriceCents
           );
 
-          updateData.additionalSeatsCount = newSeatQuantity;
-          updateData.additionalSeatsCost = newAdditionalCost;
+          updateData['seats.additional'] = newSeatQuantity;
+          updateData['seats.additionalCost'] = newAdditionalCost;
           if (seatItem.id) updateData['billing.seatItemId'] = seatItem.id;
-        } else if (subscription.additionalSeatsCount > 0) {
-          updateData.additionalSeatsCount = 0;
-          updateData.additionalSeatsCost = 0;
+        } else if (subscription.seats?.additional > 0) {
+          updateData['seats.additional'] = 0;
+          updateData['seats.additionalCost'] = 0;
         }
 
         // Recalculate totalMonthlyPrice from scratch (avoids drift from incremental diffs)
@@ -529,7 +529,9 @@ export class SubscriptionWebhookService {
           activeConfig.pricing[subscription.billingInterval || 'monthly'].priceInCents;
         updateData.totalMonthlyPrice =
           basePriceCents +
-          ((updateData.additionalSeatsCost as number) ?? subscription.additionalSeatsCost ?? 0);
+          ((updateData['seats.additionalCost'] as number) ??
+            subscription.seats?.additionalCost ??
+            0);
       }
 
       const updatedSubscription = await this.subscriptionDAO.update(
@@ -551,7 +553,7 @@ export class SubscriptionWebhookService {
           subscriptionId: subscription._id,
           stripeSubscriptionId,
           newStatus: status,
-          seatsUpdated: updateData.additionalSeatsCount !== undefined,
+          seatsUpdated: updateData['seats.additional'] !== undefined,
         },
         'Subscription updated from Stripe'
       );
@@ -566,8 +568,8 @@ export class SubscriptionWebhookService {
 
       // Notify user with appropriate message
       const notificationMessage =
-        updateData.additionalSeatsCount !== undefined
-          ? `Your subscription has been updated. Seats: ${updateData.additionalSeatsCount}`
+        updateData['seats.additional'] !== undefined
+          ? `Your subscription has been updated. Seats: ${updateData['seats.additional']}`
           : `Your subscription status has been updated to ${status}`;
 
       await this.notifyAccountAdminViaSSE(updatedSubscription.cuid, {
@@ -579,7 +581,7 @@ export class SubscriptionWebhookService {
           plan: updatedSubscription.planName,
           status: updatedSubscription.status,
           endDate: updatedSubscription.endDate,
-          additionalSeats: updatedSubscription.additionalSeatsCount,
+          additionalSeats: updatedSubscription.seats?.additional,
           totalMonthlyCost: updatedSubscription.totalMonthlyPrice,
         },
         message: notificationMessage,
@@ -607,7 +609,7 @@ export class SubscriptionWebhookService {
                     updatedSubscription.planName.charAt(0).toUpperCase() +
                     updatedSubscription.planName.slice(1),
                   status: updatedSubscription.status,
-                  additionalSeats: updatedSubscription.additionalSeatsCount,
+                  additionalSeats: updatedSubscription.seats?.additional,
                   endDate: updatedSubscription.endDate
                     ? new Date(updatedSubscription.endDate).toLocaleDateString('en-US', {
                         month: 'long',

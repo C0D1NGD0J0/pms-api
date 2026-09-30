@@ -180,6 +180,11 @@ export interface ISubscription {
     notifiedAt80: boolean;
     notifiedAt100: boolean;
   };
+  resourceTracker: {
+    propertyCount: number;
+    unitCount: number;
+    seatCount: number;
+  };
   reportGenerationUsage?: {
     countThisPeriod: number;
     periodStart: Date;
@@ -188,18 +193,17 @@ export interface ISubscription {
     countThisPeriod: number;
     periodStart: Date;
   };
+  seats: {
+    additional: number;
+    additionalCost: number;
+  };
   billingInterval: 'monthly' | 'annual';
   billing: ISubscriptionBilling;
-  additionalSeatsCount: number;
   status: ISubscriptionStatus;
   customPriceInCents?: number;
-  additionalSeatsCost: number;
   totalMonthlyPrice: number;
-  currentProperties: number;
   pendingDowngradeAt?: Date;
   client: Types.ObjectId;
-  currentSeats: number;
-  currentUnits: number;
   planName: PlanName;
   canceledAt?: Date;
   startDate: Date;
@@ -257,13 +261,15 @@ export type ISubscriptionPlanResponse = {
 } & Omit<ISubscriptionPlansConfig, 'pricing' | 'features'>;
 
 export interface ISubscriptionSummary {
+  resourceTracker: {
+    propertyCount: number;
+    unitCount: number;
+    seatCount: number;
+  };
   billingInterval: 'monthly' | 'annual';
   status: ISubscriptionStatus;
-  currentProperties: number;
   subscriptionId: string;
   nextBillingDate?: Date;
-  currentSeats: number;
-  currentUnits: number;
   planName: PlanName;
   amount: number;
   suid: string;

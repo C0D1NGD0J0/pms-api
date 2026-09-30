@@ -57,7 +57,7 @@ export class PropertyUnitWorker {
       if (subscription) {
         const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
         if (maxUnits !== -1) {
-          const remaining = maxUnits - subscription.currentUnits;
+          const remaining = maxUnits - subscription.resourceTracker.unitCount;
           if (remaining <= 0) {
             throw new Error(
               `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`

@@ -4,6 +4,7 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { EmailQueue } from '@queues/index';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { S3Service } from '@services/fileUpload';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
@@ -42,6 +43,7 @@ interface IConstructor {
   inspectionDAO: InspectionDAO;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
+  s3Service: S3Service;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
@@ -55,6 +57,7 @@ export class InspectionService implements ICronProvider {
   private readonly userDAO: UserDAO;
   private readonly emitterService: EventEmitterService;
   private readonly emailQueue: EmailQueue;
+  private readonly s3Service: S3Service;
   private readonly log: Logger;
 
   constructor({
@@ -65,6 +68,7 @@ export class InspectionService implements ICronProvider {
     userDAO,
     emitterService,
     emailQueue,
+    s3Service,
   }: IConstructor) {
     this.inspectionDAO = inspectionDAO;
     this.propertyUnitDAO = propertyUnitDAO;
@@ -73,6 +77,7 @@ export class InspectionService implements ICronProvider {
     this.userDAO = userDAO;
     this.emitterService = emitterService;
     this.emailQueue = emailQueue;
+    this.s3Service = s3Service;
     this.log = createLogger('InspectionService');
 
     this.setupEventListeners();
@@ -510,6 +515,21 @@ export class InspectionService implements ICronProvider {
     // Tenants should only see the PM's final assessment (overallNotes), not the raw AI analysis
     if (userRole === 'tenant') {
       delete (doc as any).aiAnalysis;
+    }
+
+    // Sign S3 URLs for all media
+    if (doc.media?.length) {
+      await this.s3Service.signFileUrls(doc.media as any[]);
+    }
+    if (doc.reportDocument?.key) {
+      await this.s3Service.signFileUrls([doc.reportDocument] as any[]);
+    }
+    if (doc.rooms?.length) {
+      for (const room of doc.rooms) {
+        if (room.media?.length) {
+          await this.s3Service.signFileUrls(room.media as any[]);
+        }
+      }
     }
 
     return { success: true, data: doc };

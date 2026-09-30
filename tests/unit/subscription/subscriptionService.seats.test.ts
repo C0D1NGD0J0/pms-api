@@ -109,10 +109,9 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'monthly',
         status: ISubscriptionStatus.ACTIVE,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 2900, // $29.00 in cents
-        currentSeats: 8,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 8 },
         billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
@@ -147,8 +146,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 5,
-        additionalSeatsCost: 3995, // 5 * 799¢
+        seats: { additional: 5, additionalCost: 3995 }, // 5 * 799¢
         totalMonthlyPrice: 6895, // 2900¢ + 3995¢
         billing: {
           ...mockSubscription.billing,
@@ -173,9 +171,9 @@ describe('SubscriptionService - Additional Seat Management', () => {
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         {
-          $inc: { additionalSeatsCount: 5 },
+          $inc: { 'seats.additional': 5 },
           $set: {
-            additionalSeatsCost: 3995, // 5 * 799¢
+            'seats.additionalCost': 3995, // 5 * 799¢
             totalMonthlyPrice: 6895, // 2900¢ + 3995¢
             'billing.seatItemId': 'si_new123',
           },
@@ -191,11 +189,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'portfolio',
         billingInterval: 'monthly',
-        additionalSeatsCount: 10,
-        additionalSeatsCost: 7990, // 10 * 799¢
+        seats: { additional: 10, additionalCost: 7990 }, // 10 * 799¢
         totalMonthlyPrice: 12990, // 5000¢ base + 7990¢
 
-        currentSeats: 30,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 30 },
         billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
@@ -235,7 +232,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 15,
+        seats: { additional: 15, additionalCost: 0 },
       } as any);
 
       await subscriptionService.updateAdditionalSeats(testCuid, 5);
@@ -256,7 +253,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
-        additionalSeatsCount: 20,
+        seats: { additional: 20, additionalCost: 0 },
         billing: {},
       };
 
@@ -278,10 +275,9 @@ describe('SubscriptionService - Additional Seat Management', () => {
         planName: 'growth',
         billingInterval: 'annual',
         status: ISubscriptionStatus.ACTIVE,
-        additionalSeatsCount: 0,
-        additionalSeatsCost: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 768,
-        currentSeats: 8,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 8 },
         billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
@@ -310,7 +306,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 2,
+        seats: { additional: 2, additionalCost: 0 },
       } as any);
 
       await subscriptionService.updateAdditionalSeats(testCuid, 2);
@@ -333,7 +329,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'annual',
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
         billing: { subscriberId: 'sub_stripe123', provider: 'stripe' },
       };
 
@@ -353,7 +349,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
         billing: { subscriberId: 'sub_stripe123', provider: 'stripe' },
       };
 
@@ -372,7 +368,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'essential',
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -390,10 +386,9 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 10,
-        additionalSeatsCost: 5000, // 10 * 500¢
+        seats: { additional: 10, additionalCost: 5000 }, // 10 * 500¢
         totalMonthlyPrice: 7900, // 2900¢ base + 5000¢
-        currentSeats: 15, // 10 included + 5 in use from additional
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 15 }, // 10 included + 5 in use from additional
         billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
@@ -426,7 +421,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 7,
+        seats: { additional: 7, additionalCost: 0 },
       } as any);
 
       await subscriptionService.updateAdditionalSeats(testCuid, -3);
@@ -443,8 +438,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
-        additionalSeatsCount: 5,
-        currentSeats: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 },
+        seats: { additional: 5, additionalCost: 0 },
         billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
@@ -470,7 +465,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
       } as any);
 
       await subscriptionService.updateAdditionalSeats(testCuid, -5);
@@ -495,7 +490,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
-        additionalSeatsCount: 3,
+        seats: { additional: 3, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -510,27 +505,27 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
-        additionalSeatsCount: 10,
-        currentSeats: 18, // 10 included + 8 additional in use
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 18 }, // 10 included + 8 additional in use
+        seats: { additional: 10, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
 
       // Trying to remove 6 seats would leave total = 10 included + 4 additional = 14
-      // But currentSeats = 18, so 4 users would exceed the limit
+      // But seatCount = 18, so 4 users would exceed the limit
       await expect(subscriptionService.updateAdditionalSeats(testCuid, -6)).rejects.toThrow(
         /subscription\.errors\.cannotRemoveSeatsActiveUsers/
       );
     });
 
-    it('should calculate maxCanRemove correctly when currentSeats > includedSeats', async () => {
+    it('should calculate maxCanRemove correctly when seatCount > includedSeats', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 10,
-        currentSeats: 15, // 10 included + 5 additional in use
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 15 }, // 10 included + 5 additional in use
+        seats: { additional: 10, additionalCost: 0 },
         billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
@@ -563,10 +558,10 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 5,
+        seats: { additional: 5, additionalCost: 0 },
       } as any);
 
-      // maxCanRemove = additionalSeatsCount - (currentSeats - includedSeats)
+      // maxCanRemove = seats.additional - (seatCount - includedSeats)
       // = 10 - (15 - 10) = 10 - 5 = 5
       // So we can remove 5 seats maximum
       const result = await subscriptionService.updateAdditionalSeats(testCuid, -5);
@@ -584,8 +579,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'portfolio',
-        additionalSeatsCount: 15,
-        currentSeats: 35, // 25 included + 10 additional in use
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 35 }, // 25 included + 10 additional in use
+        seats: { additional: 15, additionalCost: 0 },
       };
 
       mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
@@ -593,7 +588,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
       // maxCanRemove = 15 - (35 - 25) = 15 - 10 = 5
       // Trying to remove 8 seats
       // totalAllowed after removal = 25 + (15 - 8) = 32
-      // currentSeats = 35
+      // seatCount = 35
       // usersToArchive = 35 - 32 = 3
 
       await expect(subscriptionService.updateAdditionalSeats(testCuid, -8)).rejects.toThrow(
@@ -610,8 +605,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 10,
-        currentSeats: 12, // 10 included + 2 additional in use
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 12 }, // 10 included + 2 additional in use
+        seats: { additional: 10, additionalCost: 0 },
         billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
@@ -644,12 +639,12 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 3,
+        seats: { additional: 3, additionalCost: 0 },
       } as any);
 
       // Removing 7 seats: 10 - 7 = 3 additional seats remaining
       // Total allowed = 10 included + 3 = 13 seats
-      // currentSeats = 12, so it's within limit
+      // seatCount = 12, so it's within limit
       const result = await subscriptionService.updateAdditionalSeats(testCuid, -7);
 
       expect(result.success).toBe(true);
@@ -660,14 +655,14 @@ describe('SubscriptionService - Additional Seat Management', () => {
       );
     });
 
-    it('should validate seat removal when currentSeats equals includedSeats', async () => {
+    it('should validate seat removal when seatCount equals includedSeats', async () => {
       const mockSubscription = {
         _id: new Types.ObjectId(),
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 5,
-        currentSeats: 10, // Exactly at included seats, all additional seats unused
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 }, // Exactly at included seats, all additional seats unused
+        seats: { additional: 5, additionalCost: 0 },
         billing: {
           subscriberId: 'sub_stripe123',
           provider: 'stripe',
@@ -700,7 +695,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
       } as any);
 
       // Can remove all 5 additional seats since none are in use
@@ -738,9 +733,9 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 0,
+        seats: { additional: 0, additionalCost: 0 },
         totalMonthlyPrice: 29,
-        currentSeats: 8,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 8 },
         billing: {
           subscriberId: 'sub_stripe123',
           customerId: 'cus_stripe123',
@@ -780,7 +775,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 3,
+        seats: { additional: 3, additionalCost: 0 },
         totalMonthlyPrice: 44,
         billing: {
           seatItemId: 'si_new123',
@@ -808,8 +803,8 @@ describe('SubscriptionService - Additional Seat Management', () => {
         cuid: testCuid,
         planName: 'growth',
         billingInterval: 'monthly',
-        additionalSeatsCount: 5,
-        currentSeats: 10,
+        resourceTracker: { propertyCount: 0, unitCount: 0, seatCount: 10 },
+        seats: { additional: 5, additionalCost: 0 },
         totalMonthlyPrice: 54,
         billing: {
           subscriberId: 'sub_stripe123',
@@ -857,7 +852,7 @@ describe('SubscriptionService - Additional Seat Management', () => {
 
       mockSubscriptionDAO.update.mockResolvedValue({
         ...mockSubscription,
-        additionalSeatsCount: 3,
+        seats: { additional: 3, additionalCost: 0 },
       } as any);
 
       await subscriptionService.updateAdditionalSeats(testCuid, -2);

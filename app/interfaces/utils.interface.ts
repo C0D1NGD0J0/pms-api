@@ -250,6 +250,7 @@ export interface IAWSFileUploadResponse {
 export interface UploadResult {
   mediatype?: 'image' | 'video' | 'document';
   documentName?: string;
+  documentType?: string;
   resourceName?: string;
   resourceId: string;
   fieldName: string;
@@ -261,6 +262,21 @@ export interface UploadResult {
   key?: string;
   url: string;
 }
+
+export type ExtractedMediaFile = {
+  originalFileName: string;
+  fieldName: string;
+  mimeType: string;
+  path: string;
+  url?: string;
+  key?: string;
+  status: 'pending' | 'active' | 'inactive' | 'deleted';
+  filename: string;
+  fileSize: number;
+  uploadedAt: Date;
+  uploadedBy: string;
+  documentType?: string;
+};
 
 export interface IPermissionCheck {
   context?: {
@@ -276,20 +292,6 @@ export interface IPermissionCheck {
   scope?: string;
   role: string;
 }
-
-export type ExtractedMediaFile = {
-  originalFileName: string;
-  fieldName: string;
-  mimeType: string;
-  path: string;
-  url?: string;
-  key?: string;
-  status: 'pending' | 'active' | 'inactive' | 'deleted';
-  filename: string;
-  fileSize: number;
-  uploadedAt: Date;
-  uploadedBy: string;
-};
 
 export interface IPermissionConfig {
   resources: Record<
@@ -334,6 +336,16 @@ export type ISuccessReturnData<T = any> = {
   data: T;
 };
 
+export interface UploadedFile {
+  originalFileName?: string;
+  documentType?: string;
+  fileSize?: number;
+  fieldName: string;
+  mimeType?: string;
+  fileName: string;
+  path: string;
+}
+
 export interface IPaginationQuery {
   sort?: string | Record<string, 1 | -1 | { $meta: 'textScore' }>;
   sortBy?: string;
@@ -356,15 +368,6 @@ export interface AppRequest extends Request {
   container: AwilixContainer;
   context: IRequestContext;
   rawBody: Buffer;
-}
-
-export interface UploadedFile {
-  originalFileName?: string;
-  fileSize?: number;
-  fieldName: string;
-  mimeType?: string;
-  fileName: string;
-  path: string;
 }
 
 export type MulterFile =

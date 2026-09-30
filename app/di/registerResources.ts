@@ -130,6 +130,7 @@ import {
   DSARController,
 } from '@controllers/index';
 import {
+  PropertyVerificationService,
   SubscriptionWebhookService,
   MaintenanceRequestService,
   MaintenanceInvoiceService,
@@ -304,6 +305,7 @@ const ServiceResources = {
   invitationCsvProcessor: asClass(InvitationCsvProcessor).singleton(),
   invoiceTemplateRenderer: asClass(InvoiceTemplateRenderer).singleton(),
   propertyApprovalService: asClass(PropertyApprovalService).singleton(),
+  propertyVerificationService: asClass(PropertyVerificationService).singleton(),
   vendorSuggestionService: asClass(VendorSuggestionService).singleton(),
   maintenanceRequestService: asClass(MaintenanceRequestService).singleton(),
   maintenancePaymentService: asClass(MaintenancePaymentService).singleton(),

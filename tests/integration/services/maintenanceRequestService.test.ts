@@ -78,6 +78,10 @@ const setupService = () => {
   });
 
   return new MaintenanceRequestService({
+    s3Service: {
+      signFileUrls: jest.fn(async (items: any) => items),
+      getSignedUrl: jest.fn(),
+    } as any,
     maintenanceRequestDAO,
     propertyDAO,
     propertyUnitDAO,

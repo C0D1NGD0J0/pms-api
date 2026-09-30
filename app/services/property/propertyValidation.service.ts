@@ -256,7 +256,8 @@ export class PropertyValidationService {
         });
       }
 
-      if (!propertyData.fullAddress || propertyData.fullAddress.trim().length < 5) {
+      const fullAddr = propertyData.fullAddress || propertyData.address?.fullAddress;
+      if (!fullAddr || fullAddr.trim().length < 5) {
         errors.push({
           field: 'fullAddress',
           message: 'Property address must be at least 5 characters',
@@ -275,10 +276,8 @@ export class PropertyValidationService {
         });
       }
 
-      if (
-        propertyData.fullAddress !== undefined &&
-        (!propertyData.fullAddress || propertyData.fullAddress.trim().length < 5)
-      ) {
+      const fullAddrUpdate = propertyData.fullAddress || propertyData.address?.fullAddress;
+      if (fullAddrUpdate !== undefined && (!fullAddrUpdate || fullAddrUpdate.trim().length < 5)) {
         errors.push({
           field: 'fullAddress',
           message: 'Property address must be at least 5 characters',

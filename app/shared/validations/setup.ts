@@ -29,7 +29,9 @@ export const validateRequest = (schema: {
       }
       // parse nested JSON fields in the body if multipart/form-data
       req.body = parseJsonFields(req);
-      schema.body && (await schema.body.parseAsync(req.body));
+      if (schema.body) {
+        req.body = await schema.body.parseAsync(req.body);
+      }
       next();
     } catch (error) {
       if (req.files) {

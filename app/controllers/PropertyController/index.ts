@@ -26,7 +26,7 @@ export class PropertyController {
     const newProperty = await this.propertyService.addProperty(req.context, req.body);
 
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: newProperty.data.id,
+      primaryResourceId: newProperty.data.pid,
       uploadedBy: req.context.currentuser!.sub,
       resourceContext: ResourceContext.PROPERTY,
     });
@@ -60,8 +60,27 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-    const result = await this.propertyService.validateCsv(cuid, csvFile, currentuser);
+    const columnMapping = this.parseColumnMapping(req.body?.columnMapping);
+    const result = await this.propertyService.validateCsv(
+      cuid,
+      csvFile,
+      currentuser,
+      columnMapping
+    );
     res.status(httpStatusCodes.OK).json(result);
+  };
+
+  getCsvTemplate = async (_req: AppRequest, res: Response) => {
+    const csv = this.propertyService.getCsvTemplate();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="property-import-template.csv"');
+    res.status(httpStatusCodes.OK).send(csv);
+  };
+
+  getCsvImportFields = async (req: AppRequest, res: Response) => {
+    const platform = typeof req.query.platform === 'string' ? req.query.platform : undefined;
+    const result = this.propertyService.getCsvImportFields(platform);
+    res.status(httpStatusCodes.OK).json({ success: true, data: result });
   };
 
   createPropertiesFromCsv = async (req: AppRequest, res: Response) => {
@@ -80,10 +99,12 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
+    const columnMapping = this.parseColumnMapping(req.body?.columnMapping);
     const result = await this.propertyService.addPropertiesFromCsv(
       cuid,
       csvFile.path,
-      currentuser.sub
+      currentuser.sub,
+      columnMapping
     );
     res.status(httpStatusCodes.OK).json(result);
   };
@@ -166,6 +187,20 @@ export class PropertyController {
         success: false,
         message: 'User not authenticated',
       });
+    }
+
+    // Enrich document files with documentType from the form body
+    if (req.scannedFiles && req.body?.documents) {
+      const bodyDocs = Array.isArray(req.body.documents) ? req.body.documents : [];
+      for (const file of req.scannedFiles) {
+        const match = file.fieldName.match(/^documents\[(\d+)\]/);
+        if (match) {
+          const idx = parseInt(match[1], 10);
+          if (bodyDocs[idx]?.documentType) {
+            file.documentType = bodyDocs[idx].documentType;
+          }
+        }
+      }
     }
 
     const hardDelete = req.query['hard-delete'] === 'true';
@@ -413,4 +448,90 @@ export class PropertyController {
     const result = await this.propertyService.getLeaseableProperties(cuid, currentuser, fetchUnits);
     res.status(httpStatusCodes.OK).json(result);
   };
+
+  // ── Verification endpoints ──────────────────────────────────────────
+
+  getPendingVerifications = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const { currentuser } = req.context;
+    if (!currentuser) {
+      return res
+        .status(httpStatusCodes.UNAUTHORIZED)
+        .json({ success: false, message: 'User not authenticated' });
+    }
+    const { page = 1, limit = 10, sort = '-createdAt' } = req.query as any;
+    const result = await this.propertyService.getPendingVerifications(cuid, currentuser, {
+      page,
+      limit,
+      sort,
+    });
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  verifyProperty = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    if (!currentuser) {
+      return res
+        .status(httpStatusCodes.UNAUTHORIZED)
+        .json({ success: false, message: 'User not authenticated' });
+    }
+    const result = await this.propertyService.verifyProperty(
+      cuid,
+      pid,
+      currentuser,
+      req.body.notes
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  rejectVerification = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    if (!currentuser) {
+      return res
+        .status(httpStatusCodes.UNAUTHORIZED)
+        .json({ success: false, message: 'User not authenticated' });
+    }
+    const result = await this.propertyService.rejectVerification(
+      cuid,
+      pid,
+      currentuser,
+      req.body.reason
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  grantVerificationGracePeriod = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const { currentuser } = req.context;
+    if (!currentuser) {
+      return res
+        .status(httpStatusCodes.UNAUTHORIZED)
+        .json({ success: false, message: 'User not authenticated' });
+    }
+    const { expiresAt, notes } = req.body;
+    const result = await this.propertyService.grantVerificationGracePeriod(
+      cuid,
+      pid,
+      currentuser,
+      expiresAt,
+      notes
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  /** columnMapping arrives as a JSON string form field alongside the CSV file. */
+  private parseColumnMapping(raw: unknown): Record<string, string> | undefined {
+    if (typeof raw !== 'string' || !raw.trim()) return undefined;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, string>;
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
 }

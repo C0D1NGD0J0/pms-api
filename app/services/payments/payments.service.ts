@@ -220,7 +220,11 @@ export class PaymentService implements ICronProvider {
   async createRentPayment(
     cuid: string,
     data: IPaymentFormData,
-    options?: { createStripeInvoice?: boolean; paymentSource?: PaymentSource }
+    options?: {
+      createStripeInvoice?: boolean;
+      paymentSource?: PaymentSource;
+      idempotencyKey?: string;
+    }
   ): IPromiseReturnedData<IPaymentDocument> {
     return this.rentPaymentService.createRentPayment(cuid, data, options);
   }
@@ -1262,7 +1266,8 @@ export class PaymentService implements ICronProvider {
         {
           chargeId: payment.gatewayChargeId,
           amountInCents: data.amount,
-          reason: data.reason,
+          reason: 'requested_by_customer',
+          note: data.reason,
         }
       );
 
@@ -1345,7 +1350,9 @@ export class PaymentService implements ICronProvider {
         {
           chargeId: payment.gatewayChargeId,
           amountInCents: refundAmount,
-          reason: data?.reason || 'Security deposit refund released by PM',
+          reason: 'requested_by_customer',
+          note: data?.reason || 'Security deposit refund released by PM',
+          idempotencyKey: `deposit-refund:${payment.pytuid}`,
         }
       );
 
@@ -1580,6 +1587,10 @@ export class PaymentService implements ICronProvider {
       // charges (e.g., automatic ACSS-to-card retry when bank debit fails).
       const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
 
+      // Card checkout charges through its own PaymentIntent. Void the open Stripe invoice(s)
+      // first so the auto-charge cron can't also pay them while the tenant is checking out.
+      await this.voidInvoicesBeforeCardCheckout(payment);
+
       const session = await this.stripeService.createPaymentCheckoutSession({
         customerEmail,
         customerId: tenantCustomerId,
@@ -1616,6 +1627,44 @@ export class PaymentService implements ICronProvider {
       this.log.error({ pytuid, cuid, error }, 'Error creating card payment checkout session');
       throw error;
     }
+  }
+
+  /**
+   * Voids every Stripe invoice still attached to a payment (including ACSS split invoices)
+   * and detaches them. Refuses when one can't be voided — e.g. it is already paid or a bank
+   * debit is in flight — because charging the card as well would charge the tenant twice.
+   * If the tenant then abandons checkout, the payment stays payable: a new invoice is created
+   * when they pay, and the overdue cron tracks it like any invoice-less payment.
+   */
+  private async voidInvoicesBeforeCardCheckout(payment: IPaymentDocument): Promise<void> {
+    const invoiceIds = [
+      ...new Set(
+        [payment.gatewayPaymentId, ...(payment.splitInvoices ?? []).map((s) => s.invoiceId)].filter(
+          (id): id is string => !!id && id.startsWith('in_')
+        )
+      ),
+    ];
+    if (invoiceIds.length === 0) return;
+
+    for (const invoiceId of invoiceIds) {
+      const voidResult = await this.paymentGatewayService.voidInvoice(
+        IPaymentGatewayProvider.STRIPE,
+        invoiceId
+      );
+      if (!voidResult.success) {
+        this.log.warn(
+          { pytuid: payment.pytuid, invoiceId, message: voidResult.message },
+          'Could not void invoice before card checkout'
+        );
+        throw new BadRequestError({
+          message: 'This payment is already being processed and cannot be paid by card right now.',
+        });
+      }
+    }
+
+    await this.paymentDAO.updateById(payment._id.toString(), {
+      $unset: { gatewayPaymentId: 1, splitInvoices: 1 },
+    });
   }
 
   async generateTenantReceipt(

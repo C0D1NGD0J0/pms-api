@@ -20,6 +20,7 @@ import {
   IPaymentCustomer,
   ICheckoutSession,
   IPayoutSchedule,
+  IRefundParams,
 } from '@interfaces/paymentGateway.interface';
 
 export class StripeService implements IPaymentProvider {
@@ -424,18 +425,27 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async createRefund(params: {
-    chargeId: string;
-    amountInCents?: number;
-    reason?: string;
-  }): Promise<{ refundId: string; status: string; amount: number; currency: string }> {
-    const { chargeId, amountInCents, reason } = params;
+  async createRefund(
+    params: IRefundParams
+  ): Promise<{ refundId: string; status: string; amount: number; currency: string }> {
+    const { chargeId, amountInCents, reason, note, idempotencyKey } = params;
     try {
-      const refundParams: Stripe.RefundCreateParams = { charge: chargeId };
-      if (amountInCents) refundParams.amount = amountInCents;
-      if (reason) refundParams.reason = reason as Stripe.RefundCreateParams.Reason;
+      // Destination charges transferred the money to the connected account. Without
+      // reverse_transfer the platform balance funds the refund and the connected account keeps
+      // the money, so pull it back whenever the charge has a transfer. The application fee is
+      // kept (Stripe's default). Charges without a transfer (e.g. maintenance) can't reverse one.
+      const charge = await this.stripe.charges.retrieve(chargeId);
+      const refundParams: Stripe.RefundCreateParams = {
+        charge: chargeId,
+        ...(amountInCents && { amount: amountInCents }),
+        ...(reason && { reason }),
+        ...(note && { metadata: { note: note.slice(0, 500) } }),
+        ...(charge.transfer && { reverse_transfer: true }),
+      };
 
-      const refund = await this.withBreaker(() => this.stripe.refunds.create(refundParams));
+      const refund = await this.withBreaker(() =>
+        this.stripe.refunds.create(refundParams, idempotencyKey ? { idempotencyKey } : undefined)
+      );
       this.log.info({ chargeId, refundId: refund.id, amount: refund.amount }, 'Refund created');
       return {
         refundId: refund.id,
@@ -451,13 +461,18 @@ export class StripeService implements IPaymentProvider {
 
   async createTransferReversal(
     transferId: string,
-    amountInCents?: number
+    amountInCents?: number,
+    opts?: { metadata?: Record<string, string>; idempotencyKey?: string }
   ): Promise<{ reversalId: string; amount: number }> {
     try {
       const reversal = await this.withBreaker(() =>
         this.stripe.transfers.createReversal(
           transferId,
-          amountInCents ? { amount: amountInCents } : undefined
+          {
+            ...(amountInCents && { amount: amountInCents }),
+            ...(opts?.metadata && { metadata: opts.metadata }),
+          },
+          opts?.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined
         )
       );
       this.log.info(
@@ -471,22 +486,33 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async getDisputeReversedAmount(transferId: string, disputeId: string): Promise<number> {
+    const reversals = await this.stripe.transfers.listReversals(transferId, { limit: 100 });
+    return reversals.data
+      .filter((reversal) => reversal.metadata?.disputeId === disputeId)
+      .reduce((total, reversal) => total + reversal.amount, 0);
+  }
+
   async createTransfer(params: {
     amountInCents: number;
     currency: string;
     destination: string;
     sourceTransaction?: string;
     metadata?: Record<string, string>;
+    idempotencyKey?: string;
   }): Promise<{ transferId: string; amount: number }> {
     try {
       const transfer = await this.withBreaker(() =>
-        this.stripe.transfers.create({
-          amount: params.amountInCents,
-          currency: params.currency,
-          destination: params.destination,
-          ...(params.sourceTransaction && { source_transaction: params.sourceTransaction }),
-          ...(params.metadata && { metadata: params.metadata }),
-        })
+        this.stripe.transfers.create(
+          {
+            amount: params.amountInCents,
+            currency: params.currency,
+            destination: params.destination,
+            ...(params.sourceTransaction && { source_transaction: params.sourceTransaction }),
+            ...(params.metadata && { metadata: params.metadata }),
+          },
+          params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined
+        )
       );
       this.log.info(
         { transferId: transfer.id, amount: transfer.amount, destination: params.destination },
@@ -763,7 +789,10 @@ export class StripeService implements IPaymentProvider {
         paymentMethodId,
         cuid,
         leaseUid,
+        idempotencyKey,
       } = input;
+      const keyed = (suffix: string) =>
+        idempotencyKey ? { idempotencyKey: `${idempotencyKey}:${suffix}` } : undefined;
 
       // Destination charges (rent): application_fee_amount is all-inclusive — Stripe takes
       // its processing fee from it, platform keeps the rest.
@@ -786,17 +815,20 @@ export class StripeService implements IPaymentProvider {
         }),
       };
 
-      const invoice = await this.stripe.invoices.create(invoiceParams);
+      const invoice = await this.stripe.invoices.create(invoiceParams, keyed('create'));
 
       const itemResults = await Promise.allSettled(
-        lineItems.map((item) =>
-          this.stripe.invoiceItems.create({
-            customer: tenantCustomerId,
-            invoice: invoice.id,
-            amount: item.amountInCents,
-            currency,
-            description: item.description,
-          })
+        lineItems.map((item, index) =>
+          this.stripe.invoiceItems.create(
+            {
+              customer: tenantCustomerId,
+              invoice: invoice.id,
+              amount: item.amountInCents,
+              currency,
+              description: item.description,
+            },
+            keyed(`item:${index}`)
+          )
         )
       );
 
@@ -904,9 +936,16 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse> {
+  async finalizeInvoice(
+    invoiceId: string,
+    idempotencyKey?: string
+  ): Promise<IFinalizeInvoiceResponse> {
     try {
-      const invoice = await this.stripe.invoices.finalizeInvoice(invoiceId);
+      const invoice = await this.stripe.invoices.finalizeInvoice(
+        invoiceId,
+        {},
+        idempotencyKey ? { idempotencyKey } : undefined
+      );
 
       return {
         invoiceId: invoice.id,
@@ -1021,6 +1060,9 @@ export class StripeService implements IPaymentProvider {
           mandate_options: {
             default_for: ['invoice', 'subscription'],
             transaction_type: 'personal',
+            // No payment_schedule / interval_description: Stripe rejects them alongside
+            // default_for (verified in test mode 2026-10-03) — invoice mandates are scheduled
+            // by the invoices themselves.
           },
           verification_method: 'automatic',
         };

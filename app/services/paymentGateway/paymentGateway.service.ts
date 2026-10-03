@@ -20,6 +20,7 @@ import {
   IPaymentCustomer,
   ICheckoutSession,
   IPayoutSchedule,
+  IRefundParams,
 } from '@interfaces/paymentGateway.interface';
 
 interface IConstructor {
@@ -697,7 +698,8 @@ export class PaymentGatewayService {
 
   async finalizeInvoice(
     provider: IPaymentGatewayProvider,
-    invoiceId: string
+    invoiceId: string,
+    idempotencyKey?: string
   ): IPromiseReturnedData<IFinalizeInvoiceResponse | null> {
     try {
       const providerInstance = this.getProvider(provider);
@@ -705,7 +707,7 @@ export class PaymentGatewayService {
         throw new Error(`Provider ${provider} does not support invoice finalization`);
       }
 
-      const result = await providerInstance.finalizeInvoice!(invoiceId);
+      const result = await providerInstance.finalizeInvoice!(invoiceId, idempotencyKey);
       return { success: true, data: result };
     } catch (error) {
       this.log.error({ error, provider }, 'Error finalizing invoice');
@@ -782,11 +784,12 @@ export class PaymentGatewayService {
   async createTransferReversal(
     provider: IPaymentGatewayProvider,
     transferId: string,
-    amountInCents?: number
+    amountInCents?: number,
+    opts?: { metadata?: Record<string, string>; idempotencyKey?: string }
   ): IPromiseReturnedData<{ reversalId: string; amount: number } | null> {
     try {
       const providerInstance = this.getProvider(provider);
-      const result = await providerInstance.createTransferReversal(transferId, amountInCents);
+      const result = await providerInstance.createTransferReversal(transferId, amountInCents, opts);
       return { success: true, data: result };
     } catch (error) {
       this.log.error({ error, provider, transferId }, 'Error creating transfer reversal');
@@ -806,6 +809,7 @@ export class PaymentGatewayService {
       destination: string;
       sourceTransaction?: string;
       metadata?: Record<string, string>;
+      idempotencyKey?: string;
     }
   ): IPromiseReturnedData<{ transferId: string; amount: number } | null> {
     try {
@@ -821,6 +825,25 @@ export class PaymentGatewayService {
         success: false,
         data: null,
         message: error instanceof Error ? error.message : 'Failed to create transfer',
+      };
+    }
+  }
+
+  async getDisputeReversedAmount(
+    provider: IPaymentGatewayProvider,
+    transferId: string,
+    disputeId: string
+  ): IPromiseReturnedData<number | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const amount = await providerInstance.getDisputeReversedAmount(transferId, disputeId);
+      return { success: true, data: amount };
+    } catch (error) {
+      this.log.error({ error, provider, transferId, disputeId }, 'Error reading dispute reversals');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to read transfer reversals',
       };
     }
   }
@@ -874,11 +897,7 @@ export class PaymentGatewayService {
 
   async createRefund(
     provider: IPaymentGatewayProvider,
-    params: {
-      chargeId: string;
-      amountInCents?: number;
-      reason?: string;
-    }
+    params: IRefundParams
   ): IPromiseReturnedData<{
     refundId: string;
     status: string;

@@ -11,6 +11,9 @@ export class EventEmitterService {
   private readonly MAX_LISTENERS_PER_EVENT = 10;
   private memoryLeakDetectionInterval?: NodeJS.Timeout;
   private handlerMappings = new Map<(...args: any[]) => void, (...args: any[]) => void>();
+  // Event types waiting to be written to the Redis registry in one batch
+  private pendingRegistrations = new Set<string>();
+  private registrationFlushScheduled = false;
 
   constructor({ eventsRegistry }: { eventsRegistry: EventsRegistryCache }) {
     this.emitter = new EventEmitter();
@@ -75,10 +78,32 @@ export class EventEmitterService {
     this.emitter.on(eventType, safeHandler);
     this.listenerCounts.set(eventType, currentCount + 1);
 
-    this.eventsRegistry.registerEvent(eventType).catch((error) => {
-      this.log.error(error, `Failed to register event: ${eventType}`);
-    });
+    // Mirrors off(): the registry tracks event types, so only the first listener registers it
+    if (currentCount === 0) {
+      this.queueRegistration(eventType);
+    }
     return this;
+  }
+
+  /**
+   * Start-up registers well over 100 listeners in one tick. Writing each to Redis separately
+   * overflows the client's command queue (commandsQueueMaxLength), so new event types are
+   * collected and written in a single batch on the next tick.
+   */
+  private queueRegistration(eventType: string): void {
+    this.pendingRegistrations.add(eventType);
+    if (this.registrationFlushScheduled) return;
+
+    this.registrationFlushScheduled = true;
+    setImmediate(() => {
+      const eventTypes = [...this.pendingRegistrations];
+      this.pendingRegistrations.clear();
+      this.registrationFlushScheduled = false;
+
+      this.eventsRegistry.registerEvents(eventTypes).catch((error) => {
+        this.log.error(error, `Failed to register ${eventTypes.length} events`);
+      });
+    });
   }
 
   once<T extends keyof EventPayloadMap>(
@@ -148,13 +173,9 @@ export class EventEmitterService {
     if (!eventType) {
       this.eventsRegistry.getRegisteredEvents().then((events) => {
         if (events.success && events.data) {
-          Promise.all(
-            events.data.map((event) =>
-              this.eventsRegistry.unregisteEvent(event).catch((error) => {
-                this.log.error(error, `Failed to unregister event: ${event}`);
-              })
-            )
-          );
+          this.eventsRegistry.unregisterEvents(events.data).catch((error) => {
+            this.log.error(error, 'Failed to unregister events');
+          });
         }
       });
     } else {

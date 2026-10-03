@@ -205,13 +205,30 @@ export class MediaUploadService {
   }
 
   /**
-   * Find media items that should be deleted based on status field
+   * Find media items to delete: anything flagged `status: 'deleted'` in the new
+   * list, plus anything in the current list that the new list no longer contains
+   * (the client removed it). Items are matched by key, falling back to _id.
    */
   private findMediaToDelete<T extends { key?: string; _id?: string | object; status?: string }>(
     currentMedia: T[],
     newMedia: T[]
   ): T[] {
-    return newMedia.filter((item) => item.status === 'deleted' && (item.key || item._id));
+    const identity = (item: T) => item.key || item._id?.toString();
+
+    const flagged = newMedia.filter((item) => item.status === 'deleted' && identity(item));
+    const kept = new Set(
+      newMedia
+        .filter((item) => item.status !== 'deleted')
+        .map(identity)
+        .filter(Boolean)
+    );
+    const flaggedIds = new Set(flagged.map(identity));
+    const removed = currentMedia.filter((item) => {
+      const id = identity(item);
+      return id && !kept.has(id) && !flaggedIds.has(id);
+    });
+
+    return [...flagged, ...removed];
   }
 
   /**

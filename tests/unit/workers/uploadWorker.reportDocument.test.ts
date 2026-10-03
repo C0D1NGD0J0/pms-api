@@ -1,8 +1,11 @@
 import { jest } from '@jest/globals';
+import { EventTypes } from '@interfaces/index';
 import { UploadWorker } from '@workers/upload.worker';
+import { PropertyMediaService } from '@services/property/propertyMedia.service';
 
 const mockS3Service = {
   uploadFiles: jest.fn() as any,
+  deleteFiles: jest.fn() as any,
 };
 
 const mockEmitterService = {
@@ -322,6 +325,50 @@ describe('UploadWorker — property media dispatch', () => {
       PROPERTY_PID,
       [uploadResult],
       ACTOR_ID
+    );
+  });
+});
+
+describe('PropertyMediaService — upload event listeners', () => {
+  it('should not persist on UPLOAD_COMPLETED, since the worker already persists directly', () => {
+    const emitterService = { on: jest.fn() as any, off: jest.fn() as any };
+
+    new PropertyMediaService({
+      propertyDAO: {} as any,
+      mediaUploadService: {} as any,
+      emitterService: emitterService as any,
+    }).registerEventListeners();
+
+    const registeredEvents = emitterService.on.mock.calls.map((call: any[]) => call[0]);
+    expect(registeredEvents).not.toContain(EventTypes.UPLOAD_COMPLETED);
+    expect(registeredEvents).toContain(EventTypes.UPLOAD_FAILED);
+  });
+});
+
+describe('UploadWorker — remote asset removal', () => {
+  const makeRemovalJob = (data: unknown) => ({ data: { data } });
+
+  it('should delete every queued key in one bulk call', async () => {
+    const s3Keys = ['property/a_1.jpg', 'property/b_2.jpg'];
+    mockS3Service.deleteFiles.mockReturnValue(Promise.resolve(true));
+
+    await worker.deleteAsset(makeRemovalJob(s3Keys) as any);
+
+    expect(mockS3Service.deleteFiles).toHaveBeenCalledWith(s3Keys);
+  });
+
+  it('should reject when there are no keys to delete', async () => {
+    await expect(worker.deleteAsset(makeRemovalJob([]) as any)).rejects.toThrow(
+      'No remote data-asset to delete.'
+    );
+    expect(mockS3Service.deleteFiles).not.toHaveBeenCalled();
+  });
+
+  it('should reject when S3 reports a failed deletion so the job is retried', async () => {
+    mockS3Service.deleteFiles.mockReturnValue(Promise.resolve(false));
+
+    await expect(worker.deleteAsset(makeRemovalJob(['property/a_1.jpg']) as any)).rejects.toThrow(
+      'Remote asset deletion failed'
     );
   });
 });

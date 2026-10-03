@@ -89,10 +89,9 @@ export class UploadWorker {
         fieldName: resource.fieldName,
       });
 
-      // Direct dispatch for maintenance — the event-based listener in
-      // MaintenanceRequestService is never registered in the worker process
-      // (the service isn't in any queue's dependency chain), so we call it
-      // directly here, mirroring the PropertyMediaWorker pattern.
+      // Upload results are persisted by calling each resource's service directly
+      // (maintenance, property, inspection below), so the job only completes once
+      // the DB write succeeds.
       if (resource.resourceName === 'maintenance' && result.length > 0) {
         this.log.info(
           { mruid: resource.resourceId, fileCount: result.length },
@@ -126,7 +125,6 @@ export class UploadWorker {
         }
       }
 
-      // Direct dispatch for property — same cross-process issue as maintenance.
       if (resource.resourceName === 'property' && result.length > 0) {
         this.log.info(
           { pid: resource.resourceId, fileCount: result.length },
@@ -238,6 +236,7 @@ export class UploadWorker {
           stack: error.stack,
         },
         resourceType: resource.resourceType || 'document',
+        resourceName: resource.resourceName,
         resourceId: resource.resourceId,
       });
 

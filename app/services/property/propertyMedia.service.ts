@@ -35,19 +35,16 @@ export class PropertyMediaService {
     this.mediaUploadService = mediaUploadService;
     this.emitterService = emitterService;
     this.log = createLogger('PropertyMediaService');
-
-    this.setupEventListeners();
   }
 
   private readonly onUploadFailed = this.handleUploadFailed.bind(this);
 
   /**
-   * Setup event listeners for media upload events.
+   * Subscribe to media upload events.
    * Completed uploads are persisted by UploadWorker calling updatePropertyDocuments
    * directly, so UPLOAD_COMPLETED is deliberately not handled here.
-   * @private
    */
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.onUploadFailed);
   }
 
@@ -144,7 +141,8 @@ export class PropertyMediaService {
    * Processes failed upload events and marks property documents as failed
    */
   private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
-    const { error, resourceType, resourceId } = payload;
+    const { error, resourceType, resourceId, resourceName } = payload;
+    if (resourceName !== 'property') return;
 
     this.log.info(t('property.logging.receivedUploadFailedEvent'), {
       resourceType,

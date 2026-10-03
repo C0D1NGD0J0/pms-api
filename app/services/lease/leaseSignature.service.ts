@@ -98,7 +98,6 @@ export class LeaseSignatureService {
     this.log = createLogger('LeaseSignatureService');
     this.notificationService = notificationService;
     this.sseService = sseService;
-    this.setupEventListeners();
   }
 
   private readonly onESignatureSent = this.handleESignatureSent.bind(this);
@@ -107,7 +106,7 @@ export class LeaseSignatureService {
   /**
    * Setup event listeners for signature-related events
    */
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_SENT, this.onESignatureSent);
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_FAILED, this.onESignatureFailed);
   }

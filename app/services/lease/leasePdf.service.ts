@@ -85,7 +85,6 @@ export class LeasePdfService {
     this.pdfGeneratorService = pdfGeneratorService;
     this.notificationService = notificationService;
     this.leaseTemplateService = leaseTemplateService;
-    this.setupEventListeners();
   }
 
   /**
@@ -418,14 +417,10 @@ export class LeasePdfService {
   }
 
   /**
-   * Setup event listeners for PDF-related events.
-   * Only registered in the worker process — Puppeteer must not run in the API process.
+   * Subscribe to PDF-related events. Registered in the worker process only (see
+   * SERVICE_EVENT_LISTENERS) — Puppeteer must not run in the API process.
    */
-  private setupEventListeners(): void {
-    if (process.env.PROCESS_TYPE !== 'worker') {
-      return;
-    }
-
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.handleUploadFailed.bind(this));
 
@@ -447,6 +442,7 @@ export class LeasePdfService {
   ): Promise<void> => {
     try {
       const { jobId, resource, templateType, cuid, senderInfo } = payload;
+      if (resource.resourceName !== 'lease') return; // invoice PDFs are handled by InvoiceService
 
       this.log.info('Handling PDF generation request', { jobId, resourceId: resource.resourceId });
 
@@ -633,7 +629,8 @@ export class LeasePdfService {
    * Handle upload failed event
    */
   private async handleUploadFailed(payload: UploadFailedPayload): Promise<void> {
-    const { error, resourceId } = payload;
+    const { error, resourceId, resourceName } = payload;
+    if (resourceName !== 'lease') return;
 
     this.log.error('Received upload failed event for lease', {
       resourceId,

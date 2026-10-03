@@ -96,7 +96,6 @@ export class InvoiceService {
     this.sseService = sseService;
     this.queueFactory = queueFactory;
     this.paymentDAO = paymentDAO;
-    this.setupEventListeners();
   }
 
   /**
@@ -213,9 +212,8 @@ export class InvoiceService {
    * Register event handlers. Only activates in the worker process — Puppeteer
    * must not run inside the main API process.
    */
-  private setupEventListeners(): void {
-    if (process.env.PROCESS_TYPE !== 'worker') return;
-
+  /** Registered in the worker process only (see SERVICE_EVENT_LISTENERS). */
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.PDF_GENERATION_REQUESTED,
       this.handlePdfGenerationRequest.bind(this)
@@ -382,7 +380,7 @@ export class InvoiceService {
   };
 
   private handleUploadFailed = (payload: UploadFailedPayload): void => {
-    if (payload.resourceType !== RESOURCE_NAME) return;
+    if (payload.resourceName !== RESOURCE_NAME) return;
     this.log.error('Invoice PDF upload failed', { resourceId: payload.resourceId });
   };
 }

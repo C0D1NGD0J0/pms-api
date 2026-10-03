@@ -209,7 +209,6 @@ export class LeaseService {
     this.userCache = userCache;
     this.authCache = authCache;
     this.s3Service = s3Service;
-    this.setupEventListeners();
   }
 
   async createLease(
@@ -1285,10 +1284,10 @@ export class LeaseService {
   async uploadLeaseDocument(
     cuid: string,
     leaseId: string,
-    file: any,
+    document: UploadResult | undefined,
     uploadedBy: string
   ): IPromiseReturnedData<ILeaseDocument> {
-    return this.leaseDocumentService.uploadLeaseDocument(cuid, leaseId, file, uploadedBy);
+    return this.leaseDocumentService.uploadLeaseDocument(cuid, leaseId, document, uploadedBy);
   }
 
   async getLeaseDocumentUrl(cuid: string, leaseId: string): IPromiseReturnedData<string> {
@@ -1837,7 +1836,7 @@ export class LeaseService {
     };
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivatedEmail.bind(this)

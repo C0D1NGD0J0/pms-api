@@ -3,9 +3,9 @@ import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
 import { BadRequestError } from '@shared/customErrors';
+import { UploadFailedPayload, EventTypes } from '@interfaces/index';
 import { EventEmitterService, MediaUploadService } from '@services/index';
 import { ISuccessReturnData, UploadResult } from '@interfaces/utils.interface';
-import { UploadCompletedPayload, UploadFailedPayload, EventTypes } from '@interfaces/index';
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
@@ -19,7 +19,7 @@ interface IConstructor {
  * Handles all media and document operations for properties including:
  * - Document uploads and updates
  * - Media file management
- * - Upload success/failure event handling
+ * - Upload failure event handling
  * - Document status tracking
  *
  * Extracted from PropertyService to improve separation of concerns and maintainability.
@@ -39,15 +39,15 @@ export class PropertyMediaService {
     this.setupEventListeners();
   }
 
-  private readonly onUploadCompleted = this.handleUploadCompleted.bind(this);
   private readonly onUploadFailed = this.handleUploadFailed.bind(this);
 
   /**
-   * Setup event listeners for media upload events
+   * Setup event listeners for media upload events.
+   * Completed uploads are persisted by UploadWorker calling updatePropertyDocuments
+   * directly, so UPLOAD_COMPLETED is deliberately not handled here.
    * @private
    */
   private setupEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.onUploadFailed);
   }
 
@@ -136,62 +136,6 @@ export class PropertyMediaService {
   }
 
   /**
-   * Handle UPLOAD_COMPLETED event
-   *
-   * @param payload - Upload completed event payload
-   * @private
-   *
-   * Processes completed upload events for property documents and updates property records
-   */
-  private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
-    const { results, resourceName, resourceId, actorId } = payload;
-
-    if (resourceName !== 'property') {
-      this.log.debug(t('property.logging.ignoringUploadEvent'), {
-        resourceName,
-      });
-      return;
-    }
-
-    try {
-      await this.updatePropertyDocuments(resourceId, results, actorId);
-
-      this.log.info(
-        {
-          propertyId: resourceId,
-        },
-        'Successfully processed upload completed event'
-      );
-    } catch (error) {
-      this.log.error(
-        {
-          error: error instanceof Error ? error.message : 'Unknown error',
-          propertyId: resourceId,
-        },
-        'Error processing upload completed event'
-      );
-
-      try {
-        await this.markDocumentsAsFailed(
-          resourceId,
-          `Failed to process completed upload: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-      } catch (markFailedError) {
-        this.log.error(
-          {
-            error:
-              markFailedError instanceof Error
-                ? markFailedError.message
-                : t('property.errors.unknownError'),
-            propertyId: resourceId,
-          },
-          'Failed to mark documents as failed after upload processing error'
-        );
-      }
-    }
-  }
-
-  /**
    * Handle UPLOAD_FAILED event
    *
    * @param payload - Upload failed event payload
@@ -233,7 +177,6 @@ export class PropertyMediaService {
     this.log.info('Cleaning up PropertyMediaService');
 
     // Remove all event listeners
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
     this.emitterService.off(EventTypes.UPLOAD_FAILED, this.onUploadFailed);
 
     this.log.info('PropertyMediaService event listeners removed');

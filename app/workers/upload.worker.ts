@@ -246,25 +246,20 @@ export class UploadWorker {
   };
 
   deleteAsset = async (job: Job): Promise<void> => {
-    const { data } = job.data;
+    const { data: s3Keys } = job.data as { data?: string[] };
 
-    if (!data || data.length === 0) {
+    if (!s3Keys?.length) {
       this.log.error('No remote data-asset to delete.');
       return Promise.reject(new Error('No remote data-asset to delete.'));
     }
 
-    try {
-      const result = await this.awsS3Service.deleteFile(data);
-      if (result) {
-        this.log.info('Remote asset deleted successfully');
-        Promise.resolve('Remote asset deleted successfully');
-      } else {
-        return Promise.reject(new Error('Remote asset deletion failed'));
-      }
-    } catch (error: any) {
-      this.log.error(`Error uploading image: ${error.message}`);
-      return Promise.reject(new Error(error.message));
+    this.log.info({ count: s3Keys.length }, 'Deleting remote assets');
+    const deleted = await this.awsS3Service.deleteFiles(s3Keys);
+    if (!deleted) {
+      this.log.error({ s3Keys }, 'Remote asset deletion failed');
+      return Promise.reject(new Error('Remote asset deletion failed'));
     }
-    this.log.info('Deleting remote asset');
+
+    this.log.info({ count: s3Keys.length }, 'Remote assets deleted successfully');
   };
 }

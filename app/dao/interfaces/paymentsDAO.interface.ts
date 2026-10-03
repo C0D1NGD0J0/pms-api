@@ -29,6 +29,11 @@ export interface IPaymentDAO {
     opts?: IFindOptions
   ): ListResultWithPagination<IPaymentDocument[]>;
 
+  findOverduePayments(
+    extraFilter?: Record<string, any>,
+    pagination?: { limit?: number; skip?: number }
+  ): ListResultWithPagination<IPaymentDocument[]>;
+
   /** Critical for duplicate rent prevention — finds existing payment for a specific month/year. */
   findByPeriod(
     cuid: string,
@@ -56,10 +61,6 @@ export interface IPaymentDAO {
     leaseId: string,
     cuid: string,
     opts?: IFindOptions
-  ): ListResultWithPagination<IPaymentDocument[]>;
-
-  findOverduePayments(
-    extraFilter?: Record<string, any>
   ): ListResultWithPagination<IPaymentDocument[]>;
 
   findByPid(pid: string, cuid: string, opts?: IFindOptions): Promise<IPaymentDocument | null>;

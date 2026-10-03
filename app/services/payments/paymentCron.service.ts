@@ -327,45 +327,173 @@ export class PaymentCronService implements ICronProvider {
     const today = dayjs().startOf('day');
     const sevenDaysLater = today.add(7, 'day');
 
-    const { items: leases } = await this.leaseDAO.list(
-      { status: LeaseStatus.ACTIVE, deletedAt: null },
-      { limit: 5000 }
-    );
-
+    // Page through every active lease — list() caps a single query at 1000 rows.
+    // This cron only writes payments, never leases, so the pages stay stable.
+    const BATCH_SIZE = 500;
+    let page = 1;
+    let hasMore = true;
+    let totalLeases = 0;
     let queued = 0;
     const onlinePaymentsEnabled = new Map<string, boolean>();
-    for (const lease of leases) {
-      try {
-        const leaseStart = dayjs(lease.duration.startDate).startOf('day');
-        const leaseEnd = (
-          lease.duration.terminationDate
-            ? dayjs(lease.duration.terminationDate)
-            : dayjs(lease.duration.endDate)
-        ).endOf('day');
-        const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
-        const nextMonthDue = today.add(1, 'month').date(lease.fees.rentDueDay).startOf('day');
 
-        const candidates: dayjs.Dayjs[] = [];
-        if (
-          !thisMonthDue.isBefore(today) &&
-          !thisMonthDue.isBefore(leaseStart) &&
-          !thisMonthDue.isAfter(sevenDaysLater) &&
-          !thisMonthDue.isAfter(leaseEnd)
-        ) {
-          candidates.push(thisMonthDue);
-        }
-        if (
-          !nextMonthDue.isBefore(today) &&
-          !nextMonthDue.isBefore(leaseStart) &&
-          !nextMonthDue.isAfter(sevenDaysLater) &&
-          !nextMonthDue.isAfter(leaseEnd)
-        ) {
-          candidates.push(nextMonthDue);
-        }
+    while (hasMore) {
+      const { items: leases } = await this.leaseDAO.list(
+        { status: LeaseStatus.ACTIVE, deletedAt: null },
+        { limit: BATCH_SIZE, skip: (page - 1) * BATCH_SIZE }
+      );
 
-        for (const dueDayjs of candidates) {
-          const dueDate = dueDayjs.toDate();
-          const period = { month: dueDayjs.month() + 1, year: dueDayjs.year() };
+      for (const lease of leases) {
+        try {
+          const leaseStart = dayjs(lease.duration.startDate).startOf('day');
+          const leaseEnd = (
+            lease.duration.terminationDate
+              ? dayjs(lease.duration.terminationDate)
+              : dayjs(lease.duration.endDate)
+          ).endOf('day');
+          const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
+          const nextMonthDue = today.add(1, 'month').date(lease.fees.rentDueDay).startOf('day');
+
+          const candidates: dayjs.Dayjs[] = [];
+          if (
+            !thisMonthDue.isBefore(today) &&
+            !thisMonthDue.isBefore(leaseStart) &&
+            !thisMonthDue.isAfter(sevenDaysLater) &&
+            !thisMonthDue.isAfter(leaseEnd)
+          ) {
+            candidates.push(thisMonthDue);
+          }
+          if (
+            !nextMonthDue.isBefore(today) &&
+            !nextMonthDue.isBefore(leaseStart) &&
+            !nextMonthDue.isAfter(sevenDaysLater) &&
+            !nextMonthDue.isAfter(leaseEnd)
+          ) {
+            candidates.push(nextMonthDue);
+          }
+
+          for (const dueDayjs of candidates) {
+            const dueDate = dueDayjs.toDate();
+            const period = { month: dueDayjs.month() + 1, year: dueDayjs.year() };
+            const existing = await this.paymentDAO.findByPeriod(
+              lease.cuid,
+              lease._id.toString(),
+              period.month,
+              period.year
+            );
+            if (existing) {
+              const activeStatuses = [
+                PaymentRecordStatus.PENDING,
+                PaymentRecordStatus.OVERDUE,
+                PaymentRecordStatus.PAID,
+                PaymentRecordStatus.PROCESSING,
+              ];
+              if (activeStatuses.includes(existing.status as PaymentRecordStatus)) continue;
+              if (lease.fees?.acceptedPaymentMethod !== 'auto-debit') {
+                await this.paymentDAO.updateById(existing._id.toString(), {
+                  deletedAt: dayjs().toDate(),
+                });
+              }
+            }
+
+            if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
+              if (!onlinePaymentsEnabled.has(lease.cuid)) {
+                const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
+                onlinePaymentsEnabled.set(
+                  lease.cuid,
+                  lClient?.settings?.tenantFeatures?.onlinePayments !== false
+                );
+              }
+              if (!onlinePaymentsEnabled.get(lease.cuid)) {
+                this.log.info(
+                  { leaseId: lease._id, cuid: lease.cuid },
+                  'Weekly rent invoice skipped: online payments disabled for client'
+                );
+                continue;
+              }
+
+              const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+              await paymentQueue.addCreateRentInvoiceJob({
+                cuid: lease.cuid,
+                leaseId: lease.luid,
+                tenantId: lease.tenantId.toString(),
+                period,
+                dueDate,
+                paymentType: PaymentRecordType.RENT,
+              });
+            } else {
+              const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+              await this.createManualTrackingPayment({
+                cuid: lease.cuid,
+                tenantId: lease.tenantId.toString(),
+                dueDate,
+                baseAmount: totalMonthlyRent,
+                paymentType: PaymentRecordType.RENT,
+                paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
+                leaseId: lease._id.toString(),
+                period,
+                currency: lease.fees?.currency,
+                paymentSource: 'cron',
+              });
+            }
+            queued++;
+          }
+        } catch (error) {
+          this.log.error(
+            { error, leaseId: lease._id },
+            'Weekly rent invoice: error processing lease'
+          );
+        }
+      }
+
+      totalLeases += leases.length;
+      hasMore = leases.length === BATCH_SIZE;
+      page++;
+    }
+
+    this.log.info({ queued, total: totalLeases }, 'Weekly rent invoice queue complete');
+  }
+
+  /**
+   * Daily cron (9 AM): safety net ensuring every active lease has a rent payment
+   * for the current month once its due date has arrived.
+   */
+  private async queueDailySafetyNetInvoices(): Promise<void> {
+    const today = dayjs().startOf('day');
+    const tomorrow = today.add(1, 'day');
+
+    // Page through every active lease — list() caps a single query at 1000 rows.
+    // This cron only writes payments, never leases, so the pages stay stable.
+    const BATCH_SIZE = 500;
+    let page = 1;
+    let hasMore = true;
+    let totalLeases = 0;
+    let queued = 0;
+    const onlinePaymentsEnabled = new Map<string, boolean>();
+
+    while (hasMore) {
+      const { items: leases } = await this.leaseDAO.list(
+        { status: LeaseStatus.ACTIVE, deletedAt: null },
+        { limit: BATCH_SIZE, skip: (page - 1) * BATCH_SIZE }
+      );
+
+      for (const lease of leases) {
+        try {
+          const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
+          const leaseStart = dayjs(lease.duration.startDate).startOf('day');
+          const leaseEnd = (
+            lease.duration.terminationDate
+              ? dayjs(lease.duration.terminationDate)
+              : dayjs(lease.duration.endDate)
+          ).endOf('day');
+
+          if (
+            thisMonthDue.isAfter(tomorrow) ||
+            thisMonthDue.isBefore(leaseStart) ||
+            thisMonthDue.isAfter(leaseEnd)
+          )
+            continue;
+
+          const period = { month: thisMonthDue.month() + 1, year: thisMonthDue.year() };
           const existing = await this.paymentDAO.findByPeriod(
             lease.cuid,
             lease._id.toString(),
@@ -380,6 +508,20 @@ export class PaymentCronService implements ICronProvider {
               PaymentRecordStatus.PROCESSING,
             ];
             if (activeStatuses.includes(existing.status as PaymentRecordStatus)) continue;
+            if (existing.status === PaymentRecordStatus.CANCELLED) continue;
+            if (!existing.failure?.pmNotifiedAt) {
+              this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
+                cuid: existing.cuid,
+                pytuid: existing.pytuid,
+                invoiceId: existing.gatewayPaymentId ?? existing.pytuid,
+                amount: existing.baseAmount,
+                tenantId: existing.tenant?.toString(),
+                hostedInvoiceUrl: existing.receipt?.url,
+              });
+              await this.paymentDAO.updateById(existing._id.toString(), {
+                'failure.pmNotifiedAt': dayjs().toDate(),
+              });
+            }
             if (lease.fees?.acceptedPaymentMethod !== 'auto-debit') {
               await this.paymentDAO.updateById(existing._id.toString(), {
                 deletedAt: dayjs().toDate(),
@@ -398,7 +540,7 @@ export class PaymentCronService implements ICronProvider {
             if (!onlinePaymentsEnabled.get(lease.cuid)) {
               this.log.info(
                 { leaseId: lease._id, cuid: lease.cuid },
-                'Weekly rent invoice skipped: online payments disabled for client'
+                'Daily safety net skipped: online payments disabled for client'
               );
               continue;
             }
@@ -409,7 +551,7 @@ export class PaymentCronService implements ICronProvider {
               leaseId: lease.luid,
               tenantId: lease.tenantId.toString(),
               period,
-              dueDate,
+              dueDate: thisMonthDue.toDate(),
               paymentType: PaymentRecordType.RENT,
             });
           } else {
@@ -417,7 +559,7 @@ export class PaymentCronService implements ICronProvider {
             await this.createManualTrackingPayment({
               cuid: lease.cuid,
               tenantId: lease.tenantId.toString(),
-              dueDate,
+              dueDate: thisMonthDue.toDate(),
               baseAmount: totalMonthlyRent,
               paymentType: PaymentRecordType.RENT,
               paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
@@ -428,133 +570,17 @@ export class PaymentCronService implements ICronProvider {
             });
           }
           queued++;
+        } catch (error) {
+          this.log.error({ error, leaseId: lease._id }, 'Daily safety net: error processing lease');
         }
-      } catch (error) {
-        this.log.error(
-          { error, leaseId: lease._id },
-          'Weekly rent invoice: error processing lease'
-        );
       }
+
+      totalLeases += leases.length;
+      hasMore = leases.length === BATCH_SIZE;
+      page++;
     }
 
-    this.log.info({ queued, total: leases.length }, 'Weekly rent invoice queue complete');
-  }
-
-  /**
-   * Daily cron (9 AM): safety net ensuring every active lease has a rent payment
-   * for the current month once its due date has arrived.
-   */
-  private async queueDailySafetyNetInvoices(): Promise<void> {
-    const today = dayjs().startOf('day');
-    const tomorrow = today.add(1, 'day');
-
-    const { items: leases } = await this.leaseDAO.list(
-      { status: LeaseStatus.ACTIVE, deletedAt: null },
-      { limit: 5000 }
-    );
-
-    let queued = 0;
-    const onlinePaymentsEnabled = new Map<string, boolean>();
-    for (const lease of leases) {
-      try {
-        const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
-        const leaseStart = dayjs(lease.duration.startDate).startOf('day');
-        const leaseEnd = (
-          lease.duration.terminationDate
-            ? dayjs(lease.duration.terminationDate)
-            : dayjs(lease.duration.endDate)
-        ).endOf('day');
-
-        if (
-          thisMonthDue.isAfter(tomorrow) ||
-          thisMonthDue.isBefore(leaseStart) ||
-          thisMonthDue.isAfter(leaseEnd)
-        )
-          continue;
-
-        const period = { month: thisMonthDue.month() + 1, year: thisMonthDue.year() };
-        const existing = await this.paymentDAO.findByPeriod(
-          lease.cuid,
-          lease._id.toString(),
-          period.month,
-          period.year
-        );
-        if (existing) {
-          const activeStatuses = [
-            PaymentRecordStatus.PENDING,
-            PaymentRecordStatus.OVERDUE,
-            PaymentRecordStatus.PAID,
-            PaymentRecordStatus.PROCESSING,
-          ];
-          if (activeStatuses.includes(existing.status as PaymentRecordStatus)) continue;
-          if (existing.status === PaymentRecordStatus.CANCELLED) continue;
-          if (!existing.failure?.pmNotifiedAt) {
-            this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
-              cuid: existing.cuid,
-              pytuid: existing.pytuid,
-              invoiceId: existing.gatewayPaymentId ?? existing.pytuid,
-              amount: existing.baseAmount,
-              tenantId: existing.tenant?.toString(),
-              hostedInvoiceUrl: existing.receipt?.url,
-            });
-            await this.paymentDAO.updateById(existing._id.toString(), {
-              'failure.pmNotifiedAt': dayjs().toDate(),
-            });
-          }
-          if (lease.fees?.acceptedPaymentMethod !== 'auto-debit') {
-            await this.paymentDAO.updateById(existing._id.toString(), {
-              deletedAt: dayjs().toDate(),
-            });
-          }
-        }
-
-        if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
-          if (!onlinePaymentsEnabled.has(lease.cuid)) {
-            const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
-            onlinePaymentsEnabled.set(
-              lease.cuid,
-              lClient?.settings?.tenantFeatures?.onlinePayments !== false
-            );
-          }
-          if (!onlinePaymentsEnabled.get(lease.cuid)) {
-            this.log.info(
-              { leaseId: lease._id, cuid: lease.cuid },
-              'Daily safety net skipped: online payments disabled for client'
-            );
-            continue;
-          }
-
-          const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
-          await paymentQueue.addCreateRentInvoiceJob({
-            cuid: lease.cuid,
-            leaseId: lease.luid,
-            tenantId: lease.tenantId.toString(),
-            period,
-            dueDate: thisMonthDue.toDate(),
-            paymentType: PaymentRecordType.RENT,
-          });
-        } else {
-          const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
-          await this.createManualTrackingPayment({
-            cuid: lease.cuid,
-            tenantId: lease.tenantId.toString(),
-            dueDate: thisMonthDue.toDate(),
-            baseAmount: totalMonthlyRent,
-            paymentType: PaymentRecordType.RENT,
-            paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
-            leaseId: lease._id.toString(),
-            period,
-            currency: lease.fees?.currency,
-            paymentSource: 'cron',
-          });
-        }
-        queued++;
-      } catch (error) {
-        this.log.error({ error, leaseId: lease._id }, 'Daily safety net: error processing lease');
-      }
-    }
-
-    this.log.info({ queued, total: leases.length }, 'Daily rent invoice safety net complete');
+    this.log.info({ queued, total: totalLeases }, 'Daily rent invoice safety net complete');
   }
 
   /**
@@ -564,95 +590,173 @@ export class PaymentCronService implements ICronProvider {
   private async markOverduePayments(timezone?: string): Promise<void> {
     try {
       const cuidFilter = await this.buildCuidFilter(timezone);
-      const { items: pastDuePayments } = await this.paymentDAO.findOverduePayments(cuidFilter);
+      const BATCH_SIZE = 500;
+      let page = 1;
+      let hasMore = true;
+      let lateFeesAdded = 0;
+      let markedOverdue = 0;
+      const lateAutoDebitRent: IPaymentDocument[] = [];
 
-      if (pastDuePayments.length === 0) {
-        this.log.info('[Cron] No payments to mark overdue');
-        return;
-      }
-
-      const pendingPayments = pastDuePayments.filter(
-        (p) => p.status === PaymentRecordStatus.PENDING && !(p.gatewayPaymentId && !p.isManualEntry)
-      );
-
-      if (pendingPayments.length === 0) {
-        this.log.info('[Cron] All past-due payments already marked overdue');
-        return;
-      }
-
-      // Add late fees to rent payments that have crossed the lease's grace period
-      for (const payment of pendingPayments) {
-        if (
-          payment.paymentType === PaymentRecordType.RENT &&
-          payment.lease &&
-          payment.dueDate &&
-          !payment.lineItems?.some((li: { description: string }) =>
-            li.description.toLowerCase().includes('late fee')
-          )
-        ) {
-          try {
-            const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
-            if (lease) {
-              const daysLate = Math.max(0, dayjs().diff(dayjs(payment.dueDate), 'day'));
-              const fees = lease.calculateFees({ daysLate });
-              if (fees.late.fee > 0) {
-                await this.paymentDAO.updateById(payment._id.toString(), {
-                  $push: { lineItems: { description: 'Late Fee', amountInCents: fees.late.fee } },
-                  $inc: { baseAmount: fees.late.fee },
-                });
-                this.log.info(
-                  { pytuid: payment.pytuid, lateFee: fees.late.fee, daysLate },
-                  '[Cron] Late fee added to rent payment'
-                );
-              }
-            }
-          } catch (err) {
-            this.log.warn({ err, pytuid: payment.pytuid }, '[Cron] Failed to add late fee');
-          }
-        }
-      }
-
-      for (const payment of pendingPayments) {
-        await this.paymentDAO.updateById(payment._id.toString(), {
-          $set: {
-            status: PaymentRecordStatus.OVERDUE,
-            overdueAt: new Date(),
-          },
-        });
-      }
-
-      for (const payment of pendingPayments) {
-        this.emitterService.emit(EventTypes.PAYMENT_OVERDUE, {
-          cuid: payment.cuid,
-          pytuid: payment.pytuid,
-          dueDate: payment.dueDate,
-          amount: payment.baseAmount,
-          paymentType: payment.paymentType,
-          tenantId: payment.tenant?.toString(),
+      // Page through every past-due payment — list() returns 20 rows unless given a limit.
+      // Statuses only move between PENDING and OVERDUE here, so the result set stays stable.
+      while (hasMore) {
+        const { items: batch } = await this.paymentDAO.findOverduePayments(cuidFilter, {
+          limit: BATCH_SIZE,
+          skip: (page - 1) * BATCH_SIZE,
         });
 
-        // SMS notification to tenant
-        if (payment.tenant) {
-          this.smsService
-            .sendToUser(
-              payment.cuid,
-              payment.tenant.toString(),
-              'Your payment is overdue. Please make payment as soon as possible.',
-              SMSMessageType.SYSTEM
-            )
-            .catch((err: any) => {
-              this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
-            });
-        }
+        // Stripe-invoiced auto-debit payments are charged by the auto-charge cron; their late
+        // fee is a separate charge, queued after paging so new records don't shift the pages.
+        const isStripeInvoiced = (p: IPaymentDocument) => !!p.gatewayPaymentId && !p.isManualEntry;
+        const trackedPayments = batch.filter((p) => !isStripeInvoiced(p));
+        lateAutoDebitRent.push(
+          ...batch.filter((p) => isStripeInvoiced(p) && p.paymentType === PaymentRecordType.RENT)
+        );
+        lateFeesAdded += await this.addDueLateFees(trackedPayments);
+        markedOverdue += await this.markPendingAsOverdue(trackedPayments);
+
+        hasMore = batch.length === BATCH_SIZE;
+        page++;
       }
 
-      this.log.info(
-        { marked: pendingPayments.length, total: pastDuePayments.length },
-        '[Cron] Marked overdue payments complete'
-      );
+      lateFeesAdded += await this.queueAutoDebitLateFees(lateAutoDebitRent);
+
+      this.log.info({ markedOverdue, lateFeesAdded }, '[Cron] Marked overdue payments complete');
     } catch (error: any) {
       this.log.error({ error: error.message }, '[Cron] Failed to mark overdue payments');
     }
+  }
+
+  /**
+   * Adds the lease's late fee to past-due rent once it is late enough. Checked on every run —
+   * not only the run that first marks the payment overdue — because the lease's late-fee
+   * threshold (lateFeeDays, default 5) is usually reached days after the due date.
+   */
+  private async addDueLateFees(payments: IPaymentDocument[]): Promise<number> {
+    let added = 0;
+    for (const payment of payments) {
+      if (
+        payment.paymentType !== PaymentRecordType.RENT ||
+        !payment.lease ||
+        !payment.dueDate ||
+        payment.lineItems?.some((li: { description: string }) =>
+          li.description.toLowerCase().includes('late fee')
+        )
+      ) {
+        continue;
+      }
+
+      try {
+        const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
+        if (!lease) continue;
+
+        const daysLate = Math.max(0, dayjs().diff(dayjs(payment.dueDate), 'day'));
+        const fees = lease.calculateFees({ daysLate });
+        if (fees.late.fee > 0) {
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            $push: { lineItems: { description: 'Late Fee', amountInCents: fees.late.fee } },
+            $inc: { baseAmount: fees.late.fee },
+          });
+          added++;
+          this.log.info(
+            { pytuid: payment.pytuid, lateFee: fees.late.fee, daysLate },
+            '[Cron] Late fee added to rent payment'
+          );
+        }
+      } catch (err) {
+        this.log.warn({ err, pytuid: payment.pytuid }, '[Cron] Failed to add late fee');
+      }
+    }
+    return added;
+  }
+
+  /**
+   * Auto-debit rent is a finalized Stripe invoice, so its late fee can't be added as a line item.
+   * Once the lease's late-fee threshold is reached, queue a separate LATE_FEE payment for the
+   * same period through the rent invoice job (the worker creates it via createRentPayment, which
+   * builds the late-fee invoice). The auto-charge-overdue-maintenance cron then charges it.
+   */
+  private async queueAutoDebitLateFees(rentPayments: IPaymentDocument[]): Promise<number> {
+    let queued = 0;
+    for (const payment of rentPayments) {
+      if (!payment.lease || !payment.dueDate || !payment.period) continue;
+
+      try {
+        const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
+        if (!lease) continue;
+
+        const daysLate = Math.max(0, dayjs().diff(dayjs(payment.dueDate), 'day'));
+        if (lease.calculateFees({ daysLate }).late.fee <= 0) continue;
+
+        // createRentPayment allows one late fee per lease and period — don't queue a job it rejects
+        const existingLateFee = await this.paymentDAO.findFirst({
+          lease: lease._id,
+          paymentType: PaymentRecordType.LATE_FEE,
+          'period.month': payment.period.month,
+          'period.year': payment.period.year,
+          deletedAt: null,
+        });
+        if (existingLateFee) continue;
+
+        const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+        await paymentQueue.addCreateRentInvoiceJob({
+          cuid: payment.cuid,
+          leaseId: lease.luid,
+          tenantId: lease.tenantId.toString(),
+          period: payment.period,
+          // The rent's due date, so the fee is calculated on (and charged as) days past it
+          dueDate: payment.dueDate,
+          paymentType: PaymentRecordType.LATE_FEE,
+          description: `Late fee for ${payment.period.month}/${payment.period.year}`,
+        });
+        queued++;
+        this.log.info(
+          { pytuid: payment.pytuid, daysLate },
+          '[Cron] Late fee queued for auto-debit rent payment'
+        );
+      } catch (err) {
+        this.log.warn({ err, pytuid: payment.pytuid }, '[Cron] Failed to queue late fee');
+      }
+    }
+    return queued;
+  }
+
+  /** Flips PENDING past-due payments to OVERDUE and notifies the tenant. */
+  private async markPendingAsOverdue(payments: IPaymentDocument[]): Promise<number> {
+    const pendingPayments = payments.filter((p) => p.status === PaymentRecordStatus.PENDING);
+
+    for (const payment of pendingPayments) {
+      await this.paymentDAO.updateById(payment._id.toString(), {
+        $set: {
+          status: PaymentRecordStatus.OVERDUE,
+          overdueAt: new Date(),
+        },
+      });
+
+      this.emitterService.emit(EventTypes.PAYMENT_OVERDUE, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        dueDate: payment.dueDate,
+        amount: payment.baseAmount,
+        paymentType: payment.paymentType,
+        tenantId: payment.tenant?.toString(),
+      });
+
+      // SMS notification to tenant
+      if (payment.tenant) {
+        this.smsService
+          .sendToUser(
+            payment.cuid,
+            payment.tenant.toString(),
+            'Your payment is overdue. Please make payment as soon as possible.',
+            SMSMessageType.SYSTEM
+          )
+          .catch((err: any) => {
+            this.log.warn({ err }, 'SMS send failed (fire-and-forget)');
+          });
+      }
+    }
+    return pendingPayments.length;
   }
 
   /**
@@ -761,10 +865,15 @@ export class PaymentCronService implements ICronProvider {
           processorAccountIds.set(payment.cuid, processor.accountId);
         }
 
-        await this.paymentGatewayService.payInvoice(
+        const payResult = await this.paymentGatewayService.payInvoice(
           IPaymentGatewayProvider.STRIPE,
           payment.gatewayPaymentId!
         );
+        if (!payResult.success) {
+          // The gateway returns failures instead of throwing; rethrow so the shared loop
+          // applies its retry / FAILED / ACSS-limit handling.
+          throw new Error(payResult.message || 'Failed to pay invoice');
+        }
         await this.paymentDAO.updateById(payment._id.toString(), {
           status: PaymentRecordStatus.PROCESSING,
           chargedAt: new Date(),

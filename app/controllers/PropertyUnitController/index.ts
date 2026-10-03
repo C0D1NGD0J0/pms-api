@@ -2,18 +2,22 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
+import { MediaUploadService } from '@services/mediaUpload';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   propertyUnitService: PropertyUnitService;
+  mediaUploadService: MediaUploadService;
 }
 
 export class PropertyUnitController {
   private readonly propertyUnitService: PropertyUnitService;
+  private readonly mediaUploadService: MediaUploadService;
 
-  constructor({ propertyUnitService }: IConstructor) {
+  constructor({ propertyUnitService, mediaUploadService }: IConstructor) {
     this.propertyUnitService = propertyUnitService;
+    this.mediaUploadService = mediaUploadService;
   }
 
   addUnit = async (req: AppRequest, res: Response) => {
@@ -69,13 +73,19 @@ export class PropertyUnitController {
   };
 
   addDocumentToUnit = async (req: AppRequest, res: Response) => {
-    if (!req.scannedFiles) {
+    const photos = await this.mediaUploadService.uploadRequestFiles(req, {
+      resourceName: 'property-unit',
+      resourceId: req.params.puid,
+      fieldName: 'photos',
+      actorId: req.context.currentuser!.sub,
+    });
+    if (photos.length === 0) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: t('propertyUnit.errors.noDocumentFileUploaded'),
       });
     }
-    const result = await this.propertyUnitService.addDocumentToUnit(req.context, req.scannedFiles);
+    const result = await this.propertyUnitService.addDocumentToUnit(req.context, photos);
     res.status(httpStatusCodes.OK).json(result);
   };
 

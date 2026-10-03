@@ -160,7 +160,14 @@ export class LeaseController {
   uploadLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, luid } = req.params;
     const userId = req.context.currentuser!.sub;
-    const result = await this.leaseService.uploadLeaseDocument(cuid, luid, req.file, userId);
+    // diskUpload fills req.files / req.scannedFiles (never req.file); upload to S3 here
+    const [document] = await this.mediaUploadService.uploadRequestFiles(req, {
+      resourceName: 'lease',
+      resourceId: luid,
+      fieldName: 'leaseDocument',
+      actorId: userId,
+    });
+    const result = await this.leaseService.uploadLeaseDocument(cuid, luid, document, userId);
     res.status(httpStatusCodes.OK).json(result);
   };
 

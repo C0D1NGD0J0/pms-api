@@ -2,12 +2,12 @@ import fs from 'fs';
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import ROLES from '@shared/constants/roles.constants';
+import { AppRequest } from '@interfaces/utils.interface';
 import { CronService } from '@services/cron/cron.service';
 import { MediaUploadService } from '@services/mediaUpload';
 import { PaymentService, InvoiceService } from '@services/index';
 import { InvoiceAIService } from '@services/ai/invoiceAI.service';
 import { BadRequestError, ForbiddenError } from '@shared/customErrors';
-import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
@@ -109,19 +109,38 @@ export class PaymentController {
 
     const role = req.context?.currentuser?.client?.role;
     const paymentSource = role === 'staff' ? 'staff_initiated' : 'pm_initiated';
-    const result = await this.paymentService.recordManualPayment(
-      cuid,
-      userId,
-      userId,
-      req.body,
-      paymentSource
-    );
 
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: (result.data as any).pytuid,
-      uploadedBy: userId,
-      resourceContext: ResourceContext.PAYMENT,
+    // Upload the receipt first so the payment is saved with it in one write
+    const [receipt] = await this.mediaUploadService.uploadRequestFiles(req, {
+      resourceName: 'payment',
+      resourceId: cuid,
+      fieldName: 'receipt',
+      actorId: userId,
     });
+    const paymentData = receipt
+      ? {
+          ...req.body,
+          receipt: { url: receipt.url, filename: receipt.filename, key: receipt.key ?? '' },
+        }
+      : req.body;
+
+    let result;
+    try {
+      result = await this.paymentService.recordManualPayment(
+        cuid,
+        userId,
+        userId,
+        paymentData,
+        paymentSource
+      );
+    } catch (error) {
+      if (receipt) {
+        await this.mediaUploadService.removeUploadedFiles([receipt]).catch((err) => {
+          this.log.warn({ err, cuid }, 'Could not remove receipt of a failed manual payment');
+        });
+      }
+      throw error;
+    }
 
     // Fire-and-forget: queue receipt PDF generation in the background
     const pytuid = (result.data as any).pytuid;
@@ -131,15 +150,7 @@ export class PaymentController {
       });
     }
 
-    const response = uploadResult.hasFiles
-      ? {
-          ...result,
-          fileUpload: uploadResult.message,
-          processedFiles: uploadResult.processedFiles,
-        }
-      : result;
-
-    return res.status(201).json(response);
+    return res.status(201).json(result);
   }
 
   async createConnectAccount(req: AppRequest, res: Response) {

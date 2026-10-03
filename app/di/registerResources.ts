@@ -32,7 +32,6 @@ import {
   UserCache,
 } from '@caching/index';
 import {
-  PropertyMediaWorker,
   PropertyUnitWorker,
   InvitationWorker,
   ESignatureWorker,
@@ -47,7 +46,6 @@ import {
   PdfWorker,
 } from '@workers/index';
 import {
-  PropertyMediaQueue,
   PropertyUnitQueue,
   InvitationQueue,
   ESignatureQueue,
@@ -361,7 +359,6 @@ const WorkerResources = {
   eSignatureWorker: asClass(ESignatureWorker).singleton(),
   invitationWorker: asClass(InvitationWorker).singleton(),
   propertyUnitWorker: asClass(PropertyUnitWorker).singleton(),
-  propertyMediaWorker: asClass(PropertyMediaWorker).singleton(),
   reportWorker: asClass(ReportWorker).singleton(),
   paymentWorker: asClass(PaymentWorker).singleton(),
   userWorker: asClass(UserWorker).singleton(),
@@ -378,7 +375,6 @@ const QueuesResources = {
   eSignatureQueue: asClass(ESignatureQueue).singleton(),
   invitationQueue: asClass(InvitationQueue).singleton(),
   propertyUnitQueue: asClass(PropertyUnitQueue).singleton(),
-  propertyMediaQueue: asClass(PropertyMediaQueue).singleton(),
   reportQueue: asClass(ReportQueue).singleton(),
   paymentQueue: asClass(PaymentQueue).singleton(),
   userQueue: asClass(UserQueue).singleton(),

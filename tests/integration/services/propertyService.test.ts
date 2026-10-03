@@ -127,6 +127,7 @@ describe('PropertyService Integration Tests', () => {
     // Initialize real extracted services
     propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      mediaUploadService: mockMediaUploadService as any,
       propertyCache,
       notificationService: mockNotificationService,
     });
@@ -499,6 +500,126 @@ describe('PropertyService Integration Tests', () => {
         expect(updatedProperty!.pendingChanges).toBeDefined();
         expect((updatedProperty!.pendingChanges as any).name).toBe('Staff Updated Name');
         expect(updatedProperty!.approvalStatus).toBe(PropertyApprovalStatusEnum.PENDING);
+      });
+
+      describe('image removal', () => {
+        const seedImages = (uploadedBy: any) => [
+          {
+            url: 'https://cdn.example.com/property/a.png',
+            key: 'property/a.png',
+            filename: 'a.png',
+            uploadedBy,
+          },
+          {
+            url: 'https://cdn.example.com/property/b.png',
+            key: 'property/b.png',
+            filename: 'b.png',
+            uploadedBy,
+          },
+        ];
+
+        const asUser = (user: any, role: string) =>
+          ({
+            sub: user._id.toString(),
+            displayName: user.firstName,
+            fullname: `${user.firstName} ${user.lastName}`,
+            client: { cuid: testClient.cuid, role },
+          }) as any;
+
+        const createPropertyWithImages = async () => {
+          const property = await createTestProperty(testClient.cuid, testClient._id, {
+            name: 'Property With Images',
+            operationalStatus: 'available',
+          });
+          await Property.findByIdAndUpdate(property._id, {
+            images: seedImages(adminUser._id),
+            approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+          });
+          return (await Property.findById(property._id).lean())!;
+        };
+
+        beforeEach(() => {
+          mockMediaUploadService.handleMediaDeletion.mockClear();
+        });
+
+        it('clears every image when an admin removes all of them (empty array)', async () => {
+          const property = await createPropertyWithImages();
+
+          const result = await propertyService.updateClientProperty(
+            {
+              cuid: testClient.cuid,
+              pid: property.pid,
+              currentuser: asUser(adminUser, ROLES.ADMIN),
+            },
+            { images: [] } as any
+          );
+
+          expect(result.success).toBe(true);
+          const updated = await Property.findById(property._id).lean();
+          expect(updated!.images).toHaveLength(0);
+          expect(mockMediaUploadService.handleMediaDeletion).toHaveBeenCalledWith(
+            expect.arrayContaining([
+              expect.objectContaining({ key: 'property/a.png' }),
+              expect.objectContaining({ key: 'property/b.png' }),
+            ]),
+            [],
+            adminUser._id.toString(),
+            false
+          );
+        });
+
+        it('keeps the remaining images when an admin removes one', async () => {
+          const property = await createPropertyWithImages();
+          const remaining = [property.images![1]];
+
+          await propertyService.updateClientProperty(
+            {
+              cuid: testClient.cuid,
+              pid: property.pid,
+              currentuser: asUser(adminUser, ROLES.ADMIN),
+            },
+            { images: remaining } as any
+          );
+
+          const updated = await Property.findById(property._id).lean();
+          expect(updated!.images!.map((img: any) => img.key)).toEqual(['property/b.png']);
+          expect(mockMediaUploadService.handleMediaDeletion).toHaveBeenCalledTimes(1);
+        });
+
+        it('leaves images untouched when the update does not include them', async () => {
+          const property = await createPropertyWithImages();
+
+          await propertyService.updateClientProperty(
+            {
+              cuid: testClient.cuid,
+              pid: property.pid,
+              currentuser: asUser(adminUser, ROLES.ADMIN),
+            },
+            { name: 'Renamed Only' } as any
+          );
+
+          const updated = await Property.findById(property._id).lean();
+          expect(updated!.images).toHaveLength(2);
+          expect(mockMediaUploadService.handleMediaDeletion).not.toHaveBeenCalled();
+        });
+
+        it('stages a staff removal for approval without deleting anything yet', async () => {
+          const property = await createPropertyWithImages();
+
+          await propertyService.updateClientProperty(
+            {
+              cuid: testClient.cuid,
+              pid: property.pid,
+              currentuser: asUser(staffUser, ROLES.STAFF),
+            },
+            { images: [] } as any
+          );
+
+          const updated = await Property.findById(property._id).lean();
+          expect(updated!.images).toHaveLength(2);
+          expect((updated!.pendingChanges as any).images).toEqual([]);
+          expect(mockMediaUploadService.handleMediaDeletion).not.toHaveBeenCalled();
+        });
       });
 
       it('should throw error when property not found', async () => {

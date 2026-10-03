@@ -95,6 +95,7 @@ describe('PropertyService — currency guard on country update', () => {
 
     const propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      mediaUploadService: mockMediaUploadService as any,
       propertyCache: mockPropertyCache,
       notificationService: mockNotificationService,
     });

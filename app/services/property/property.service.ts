@@ -89,6 +89,7 @@ import {
   validatePropertyLeaseImmutableFields,
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
+  cleanUpRemovedPropertyMedia,
   filterPropertyByDepartment,
   isFinancialRestricted,
   canViewInspections,
@@ -188,8 +189,6 @@ export class PropertyService implements ICronProvider {
     this.subscriptionDAO = subscriptionDAO;
     this.paymentDAO = paymentDAO;
     this.s3Service = s3Service;
-
-    this.setupEventListeners();
   }
 
   private readonly onUnitChanged = this.handleUnitChanged.bind(this);
@@ -198,7 +197,7 @@ export class PropertyService implements ICronProvider {
   private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
   private readonly onInspectionChanged = this.handleInspectionChanged.bind(this);
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.UNIT_CREATED, this.onUnitChanged);
     this.emitterService.on(EventTypes.UNIT_UPDATED, this.onUnitChanged);
     this.emitterService.on(EventTypes.UNIT_ARCHIVED, this.onUnitChanged);
@@ -1410,27 +1409,15 @@ export class PropertyService implements ICronProvider {
       };
     }
 
-    // Handle media deletion
-    if (images?.length || documents?.length) {
-      const deletionTasks = [];
-      if (images?.length) {
-        deletionTasks.push(
-          this.mediaUploadService.handleMediaDeletion([], images, ctx.currentuser.sub, hardDelete)
-        );
-        cleanUpdateData.images = images;
-      }
-      if (documents?.length) {
-        deletionTasks.push(
-          this.mediaUploadService.handleMediaDeletion(
-            [],
-            documents,
-            ctx.currentuser.sub,
-            hardDelete
-          )
-        );
-        cleanUpdateData.documents = documents;
-      }
-      await Promise.all(deletionTasks);
+    // A media array present in the payload — even an empty one, meaning "all
+    // removed" — replaces the stored list. Items flagged as deleted are dropped.
+    // Asset cleanup runs only once the change is actually applied (below for
+    // direct updates, on approval for staff edits).
+    if (images !== undefined) {
+      cleanUpdateData.images = images.filter((item) => item.status !== 'deleted');
+    }
+    if (documents !== undefined) {
+      cleanUpdateData.documents = documents.filter((item) => item.status !== 'deleted');
     }
 
     // Validate occupancy status change
@@ -1565,6 +1552,19 @@ export class PropertyService implements ICronProvider {
         throw new BadRequestError({
           message: t('common.errors.operationFailed', { action: 'update property' }),
         });
+      }
+
+      // The update is already applied — a cleanup failure is logged, not thrown.
+      try {
+        await cleanUpRemovedPropertyMedia(
+          this.mediaUploadService,
+          property,
+          { images: cleanUpdateData.images, documents: cleanUpdateData.documents },
+          ctx.currentuser.sub,
+          hardDelete
+        );
+      } catch (error) {
+        this.log.error('Failed to clean up removed property media', { pid, error });
       }
 
       // If managedBy changed, remove new manager from assignedStaff (can't be both)

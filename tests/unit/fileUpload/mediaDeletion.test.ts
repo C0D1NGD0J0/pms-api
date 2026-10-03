@@ -9,6 +9,7 @@ describe('MediaUploadService.handleMediaDeletion', () => {
     assetService: assetService as any,
     queueFactory: queueFactory as any,
     s3Service: {} as any,
+    emitterService: {} as any,
   });
 
   const a = { _id: 'id-a', key: 'property/a.png' };

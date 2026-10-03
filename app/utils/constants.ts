@@ -328,6 +328,8 @@ export const LEASE_CONSTANTS = {
     { days: 7, name: '7_day_notice' },
   ],
   GRACE_PERIOD_DAYS: 3,
+  // How long after an expired/terminated lease ends a move-out inspection can still be scheduled
+  MOVE_OUT_WINDOW_AFTER_END_DAYS: 30,
   DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY: 30,
   DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
   MINIMUM_ACTIVE_DURATION_DAYS: 30,

@@ -46,10 +46,10 @@ export class UploadWorker {
   }
 
   uploadAsset = async (job: Job): Promise<void> => {
-    const { files, resource } = job.data as UploadJobData;
-    if (!files || files.length === 0) {
-      this.log.error('No files to upload');
-      return Promise.reject(new Error('No files to upload'));
+    const { results: result, resource } = job.data as UploadJobData;
+    if (!result || result.length === 0) {
+      this.log.error('No upload results to persist');
+      return Promise.reject(new Error('No upload results to persist'));
     }
 
     if (!resource.resourceName || !resource.resourceId) {
@@ -58,27 +58,13 @@ export class UploadWorker {
     }
 
     try {
+      // The files are already in S3 (uploaded by the process that received them);
+      // this job only persists the results and notifies.
       job.progress(20);
-      this.log.info(`Starting S3 upload for ${files.length} files`, {
+      this.log.info(`Persisting ${result.length} uploaded file(s)`, {
         resourceName: resource.resourceName,
         resourceId: resource.resourceId,
       });
-
-      // Map ExtractedMediaFile[] to UploadedFile[] format
-      const uploadFiles = files.map((file) => ({
-        originalFileName: file.originalFileName,
-        documentType: file.documentType,
-        fileSize: file.fileSize,
-        fieldName: file.fieldName,
-        mimeType: file.mimeType,
-        fileName: file.filename, // Map filename to fileName
-        path: file.path,
-      }));
-
-      const result = await this.awsS3Service.uploadFiles(uploadFiles, resource);
-
-      job.progress(70);
-      this.log.info('S3 upload completed, emitting UPLOAD_COMPLETED event');
 
       this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
         results: result,
@@ -209,11 +195,6 @@ export class UploadWorker {
           }
         }
       }
-
-      job.progress(90);
-
-      const filesNames = result.map((file) => file.filename);
-      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesNames);
 
       job.progress(100);
       this.log.info('Document upload process completed successfully');

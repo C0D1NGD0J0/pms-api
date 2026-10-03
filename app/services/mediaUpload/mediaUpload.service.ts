@@ -5,11 +5,14 @@ import { QueueFactory } from '@services/queue';
 import { UploadQueue } from '@queues/upload.queue';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { S3Service } from '@services/fileUpload/awsS3';
+import { EventTypes } from '@interfaces/events.interface';
+import { EventEmitterService } from '@services/eventEmitter';
 import { AssetService } from '@services/asset/asset.service';
 import {
   ExtractedMediaFile,
   ResourceContext,
   ResourceInfo,
+  UploadResult,
   AppRequest,
 } from '@interfaces/utils.interface';
 
@@ -21,6 +24,7 @@ interface MediaOperationResult {
 }
 
 interface IConstructor {
+  emitterService: EventEmitterService;
   assetService: AssetService;
   queueFactory: QueueFactory;
   s3Service: S3Service;
@@ -30,9 +34,11 @@ export class MediaUploadService {
   private readonly assetService: AssetService;
   private readonly queueFactory: QueueFactory;
   private readonly s3Service: S3Service;
+  private readonly emitterService: EventEmitterService;
   private readonly logger: Logger;
 
-  constructor({ assetService, queueFactory, s3Service }: IConstructor) {
+  constructor({ assetService, queueFactory, s3Service, emitterService }: IConstructor) {
+    this.emitterService = emitterService;
     this.assetService = assetService;
     this.queueFactory = queueFactory;
     this.s3Service = s3Service;
@@ -70,33 +76,7 @@ export class MediaUploadService {
       }
 
       const groupedFiles = this.groupFilesByResource(files, context);
-
-      const processedFiles: Record<string, { queuedCount: number; message: string }> = {};
-      let totalQueued = 0;
-
-      for (const [resourceKey, { resourceInfo, fileGroup }] of Object.entries(groupedFiles)) {
-        if (fileGroup.length > 0) {
-          const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
-          uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
-            resource: resourceInfo,
-            files: fileGroup,
-          });
-
-          processedFiles[resourceKey] = {
-            queuedCount: fileGroup.length,
-            message: `${fileGroup.length} ${resourceKey} file(s) queued for processing`,
-          };
-
-          totalQueued += fileGroup.length;
-
-          this.logger.info(`Queued ${fileGroup.length} ${resourceKey} files for processing`, {
-            resourceName: resourceInfo.resourceName,
-            resourceId: resourceInfo.resourceId,
-            fieldName: resourceInfo.fieldName,
-            fileCount: fileGroup.length,
-          });
-        }
-      }
+      const { processedFiles, totalQueued } = await this.uploadAndQueue(groupedFiles);
 
       return {
         hasFiles: true,
@@ -229,6 +209,125 @@ export class MediaUploadService {
     });
 
     return [...flagged, ...removed];
+  }
+
+  /**
+   * Uploads files to S3 from the process that received them, then removes the temp files.
+   *
+   * The API and worker run as separate services with separate disks, so a local file path
+   * must never be handed to the worker. Only S3 results cross into queue jobs.
+   * Throws if any file fails to upload; temp files are removed either way.
+   */
+  async uploadFilesToS3(
+    files: ExtractedMediaFile[],
+    resource: ResourceInfo
+  ): Promise<UploadResult[]> {
+    try {
+      const results = await this.s3Service.uploadFiles(
+        files.map((file) => ({
+          originalFileName: file.originalFileName,
+          documentType: file.documentType,
+          fileSize: file.fileSize,
+          fieldName: file.fieldName,
+          mimeType: file.mimeType,
+          fileName: file.filename,
+          path: file.path,
+        })),
+        resource
+      );
+
+      // S3Service.uploadFiles logs and skips files that fail, so check nothing was dropped
+      if (results.length !== files.length) {
+        throw new Error(
+          `Uploaded ${results.length} of ${files.length} file(s) for ${resource.resourceName} ${resource.resourceId}`
+        );
+      }
+      return results;
+    } finally {
+      await Promise.allSettled(files.map((file) => fs.promises.unlink(file.path)));
+    }
+  }
+
+  /**
+   * Uploads the request's scanned files straight to S3, for flows that save the result
+   * themselves during the request (receipts, lease documents, unit photos). Returns []
+   * when the request has no files.
+   */
+  async uploadRequestFiles(
+    req: AppRequest,
+    resource: Pick<ResourceInfo, 'resourceName' | 'resourceId' | 'fieldName' | 'actorId'>
+  ): Promise<UploadResult[]> {
+    const files = req.scannedFiles;
+    if (!files || files.length === 0) return [];
+
+    return this.uploadFilesToS3(files, {
+      ...resource,
+      resourceType: this.determineMediaType(files[0].mimeType),
+    });
+  }
+
+  /** Deletes uploaded files from S3 — used when the record they belong to failed to save. */
+  async removeUploadedFiles(results: UploadResult[]): Promise<void> {
+    const keys = results.map((result) => result.key).filter((key): key is string => !!key);
+    if (keys.length > 0) await this.s3Service.deleteFiles(keys);
+  }
+
+  /**
+   * Uploads each group to S3, then queues the worker job that persists the results.
+   * A group that fails to upload emits UPLOAD_FAILED (its listeners mark records failed)
+   * instead of failing the whole request.
+   */
+  private async uploadAndQueue(
+    groupedFiles: Record<string, { resourceInfo: ResourceInfo; fileGroup: ExtractedMediaFile[] }>
+  ): Promise<{
+    processedFiles: Record<string, { queuedCount: number; message: string }>;
+    totalQueued: number;
+  }> {
+    const processedFiles: Record<string, { queuedCount: number; message: string }> = {};
+    let totalQueued = 0;
+
+    for (const [resourceKey, { resourceInfo, fileGroup }] of Object.entries(groupedFiles)) {
+      if (fileGroup.length === 0) continue;
+
+      try {
+        const results = await this.uploadFilesToS3(fileGroup, resourceInfo);
+        const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
+        uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
+          resource: resourceInfo,
+          results,
+        });
+
+        processedFiles[resourceKey] = {
+          queuedCount: fileGroup.length,
+          message: `${fileGroup.length} ${resourceKey} file(s) uploaded and queued for processing`,
+        };
+        totalQueued += fileGroup.length;
+
+        this.logger.info(
+          `Uploaded ${fileGroup.length} ${resourceKey} file(s) and queued persistence`,
+          {
+            resourceName: resourceInfo.resourceName,
+            resourceId: resourceInfo.resourceId,
+            fieldName: resourceInfo.fieldName,
+          }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Upload failed';
+        this.logger.error({ error, resourceKey }, `Failed to upload ${resourceKey} file(s)`);
+        this.emitterService.emit(EventTypes.UPLOAD_FAILED, {
+          error: { message },
+          resourceType: resourceInfo.resourceType || 'document',
+          resourceName: resourceInfo.resourceName,
+          resourceId: resourceInfo.resourceId,
+        });
+        processedFiles[resourceKey] = {
+          queuedCount: 0,
+          message: `${fileGroup.length} ${resourceKey} file(s) failed to upload`,
+        };
+      }
+    }
+
+    return { processedFiles, totalQueued };
   }
 
   /**
@@ -411,7 +510,7 @@ export class MediaUploadService {
 
   /**
    * Handle buffer uploads (e.g., generated PDFs)
-   * Saves buffer to temp file and queues for S3 upload
+   * Saves the buffer to a temp file, uploads it to S3, and queues persistence
    */
   async handleBuffer(
     buffer: Buffer,
@@ -459,36 +558,7 @@ export class MediaUploadService {
 
       // Use existing grouping logic to determine resource routing
       const groupedFiles = this.groupFilesByResource([file], context);
-
-      const processedFiles: Record<string, { queuedCount: number; message: string }> = {};
-      let totalQueued = 0;
-
-      // Queue upload using existing logic
-      for (const [resourceKey, { resourceInfo, fileGroup }] of Object.entries(groupedFiles)) {
-        if (fileGroup.length > 0) {
-          const uploadQueue = this.queueFactory.getQueue('uploadQueue') as UploadQueue;
-          uploadQueue.addToUploadQueue(JOB_NAME.MEDIA_UPLOAD_JOB, {
-            resource: resourceInfo,
-            files: fileGroup,
-          });
-
-          processedFiles[resourceKey] = {
-            queuedCount: fileGroup.length,
-            message: `${fileGroup.length} ${resourceKey} file(s) queued for processing`,
-          };
-
-          totalQueued += fileGroup.length;
-
-          this.logger.info(
-            `Queued ${fileGroup.length} ${resourceKey} buffer file(s) for processing`,
-            {
-              resourceName: resourceInfo.resourceName,
-              resourceId: resourceInfo.resourceId,
-              fileName,
-            }
-          );
-        }
-      }
+      const { processedFiles, totalQueued } = await this.uploadAndQueue(groupedFiles);
 
       return {
         hasFiles: true,

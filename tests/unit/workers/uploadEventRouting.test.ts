@@ -26,9 +26,11 @@ describe('UploadWorker — UPLOAD_FAILED payload', () => {
   it('includes resourceName so listeners can tell whose upload failed', async () => {
     const emitterService = makeEmitter();
     const worker = new UploadWorker({
-      s3Service: { uploadFiles: jest.fn().mockRejectedValue(new Error('S3 down')) } as any,
+      s3Service: {} as any,
       emitterService: emitterService as any,
-      maintenanceRequestService: {} as any,
+      maintenanceRequestService: {
+        persistUploadedMedia: jest.fn().mockRejectedValue(new Error('DB down')),
+      } as any,
       propertyMediaService: {} as any,
       inspectionService: {} as any,
       sseService: {} as any,
@@ -37,16 +39,16 @@ describe('UploadWorker — UPLOAD_FAILED payload', () => {
     await expect(
       worker.uploadAsset({
         data: {
-          resource: { resourceName: 'lease', resourceId: 'L1', actorId: 'A1' },
-          files: [{ filename: 'lease.pdf', path: '/tmp/lease.pdf' }],
+          resource: { resourceName: 'maintenance', resourceId: 'MR1', actorId: 'A1' },
+          results: [{ key: 'maintenance/a.jpg', url: 'https://s3/a.jpg', filename: 'a.jpg' }],
         },
         progress: jest.fn(),
       } as any)
-    ).rejects.toThrow('S3 down');
+    ).rejects.toThrow('DB down');
 
     expect(emitterService.emit).toHaveBeenCalledWith(
       EventTypes.UPLOAD_FAILED,
-      expect.objectContaining({ resourceName: 'lease', resourceId: 'L1' })
+      expect.objectContaining({ resourceName: 'maintenance', resourceId: 'MR1' })
     );
   });
 });

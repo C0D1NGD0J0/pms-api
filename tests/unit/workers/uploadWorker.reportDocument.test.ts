@@ -45,23 +45,11 @@ const makeJob = (overrides: Record<string, any> = {}) => {
     ...overrides.resource,
   };
 
-  const baseFiles = overrides.files ?? [
-    {
-      originalFileName: 'report.pdf',
-      fieldName: 'reportDocument',
-      mimeType: 'application/pdf',
-      path: '/tmp/report.pdf',
-      filename: 'report.pdf',
-      fileSize: 204800,
-      status: 'pending' as const,
-      uploadedAt: new Date(),
-    },
-  ];
-
+  // Upload jobs carry S3 results only (UploadJobData); each test sets job.data.results
   return {
     data: {
       resource: baseResource,
-      files: baseFiles,
+      results: (overrides.results ?? []) as any[],
     },
     progress: jest.fn() as any,
   };
@@ -101,7 +89,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
   it('should call updateReportDocument and broadcast SSE on successful report upload', async () => {
     const job = makeJob();
     const uploadResult = makeUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockInspectionService.updateReportDocument.mockReturnValue(Promise.resolve(CUID));
     mockSseService.broadcastToClient.mockReturnValue(Promise.resolve());
 
@@ -127,7 +115,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
   it('should skip inspection report dispatch when resourceName is not "inspection"', async () => {
     const job = makeJob({ resource: { resourceName: 'maintenance' } });
     const uploadResult = makeUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockMaintenanceRequestService.persistUploadedMedia.mockReturnValue(Promise.resolve(CUID));
     mockSseService.sendToUser.mockReturnValue(Promise.resolve());
 
@@ -139,7 +127,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
   it('should skip inspection report dispatch when fieldName is not "reportDocument"', async () => {
     const job = makeJob({ resource: { fieldName: 'roomMedia' } });
     const uploadResult = makeUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockInspectionService.persistUploadedMedia.mockReturnValue(Promise.resolve(CUID));
     mockSseService.sendToUser.mockReturnValue(Promise.resolve());
 
@@ -153,7 +141,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
   it('should skip when no upload result has both key and url', async () => {
     const job = makeJob();
     const uploadResult = makeUploadResult({ key: undefined });
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
 
     await worker.uploadAsset(job as any);
 
@@ -164,7 +152,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
   it('should not throw when SSE broadcast fails (non-fatal)', async () => {
     const job = makeJob();
     const uploadResult = makeUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockInspectionService.updateReportDocument.mockReturnValue(Promise.resolve(CUID));
     mockSseService.broadcastToClient.mockReturnValue(
       Promise.reject(new Error('SSE connection lost'))
@@ -185,7 +173,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
       resource: { fieldName: 'roomMedia', roomIndex: 2 },
     });
     const uploadResult = makeUploadResult({ fieldName: 'roomMedia' });
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockInspectionService.persistUploadedMedia.mockReturnValue(Promise.resolve(CUID));
     mockSseService.sendToUser.mockReturnValue(Promise.resolve());
 
@@ -220,7 +208,7 @@ describe('UploadWorker — inspection report document dispatch', () => {
   it('should skip SSE broadcast when updateReportDocument returns null', async () => {
     const job = makeJob();
     const uploadResult = makeUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockInspectionService.updateReportDocument.mockReturnValue(Promise.resolve(null));
 
     await worker.uploadAsset(job as any);
@@ -241,18 +229,6 @@ describe('UploadWorker — property media dispatch', () => {
         fieldName: 'images',
         ...overrides,
       },
-      files: [
-        {
-          originalFileName: 'photo.jpg',
-          fieldName: 'images',
-          mimeType: 'image/jpeg',
-          path: '/tmp/photo.jpg',
-          filename: 'photo.jpg',
-          fileSize: 1024000,
-          status: 'pending' as const,
-          uploadedAt: new Date(),
-        },
-      ],
     });
 
   const makePropertyUploadResult = (overrides: Record<string, any> = {}) =>
@@ -271,7 +247,7 @@ describe('UploadWorker — property media dispatch', () => {
   it('should call updatePropertyDocuments on successful property image upload', async () => {
     const job = makePropertyJob();
     const uploadResult = makePropertyUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockPropertyMediaService.updatePropertyDocuments.mockReturnValue(
       Promise.resolve({ success: true })
     );
@@ -288,7 +264,7 @@ describe('UploadWorker — property media dispatch', () => {
   it('should not call property persistence for non-property resources', async () => {
     const job = makeJob({ resource: { resourceName: 'maintenance' } });
     const uploadResult = makeUploadResult();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockMaintenanceRequestService.persistUploadedMedia.mockReturnValue(Promise.resolve(CUID));
     mockSseService.sendToUser.mockReturnValue(Promise.resolve());
 
@@ -297,13 +273,25 @@ describe('UploadWorker — property media dispatch', () => {
     expect(mockPropertyMediaService.updatePropertyDocuments).not.toHaveBeenCalled();
   });
 
-  it('should skip property persistence when no files were uploaded', async () => {
+  it('should reject a job with no upload results and persist nothing', async () => {
     const job = makePropertyJob();
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([]));
+    job.data.results = [];
+
+    await expect(worker.uploadAsset(job as any)).rejects.toThrow('No upload results to persist');
+
+    expect(mockPropertyMediaService.updatePropertyDocuments).not.toHaveBeenCalled();
+  });
+
+  it('never uploads to S3 itself — the files arrive already uploaded', async () => {
+    const job = makePropertyJob();
+    job.data.results = [makePropertyUploadResult()];
+    mockPropertyMediaService.updatePropertyDocuments.mockReturnValue(
+      Promise.resolve({ success: true })
+    );
 
     await worker.uploadAsset(job as any);
 
-    expect(mockPropertyMediaService.updatePropertyDocuments).not.toHaveBeenCalled();
+    expect(mockS3Service.uploadFiles).not.toHaveBeenCalled();
   });
 
   it('should handle property document uploads', async () => {
@@ -314,7 +302,7 @@ describe('UploadWorker — property media dispatch', () => {
       mimeType: 'application/pdf',
       filename: 'deed.pdf',
     });
-    mockS3Service.uploadFiles.mockReturnValue(Promise.resolve([uploadResult]));
+    job.data.results = [uploadResult];
     mockPropertyMediaService.updatePropertyDocuments.mockReturnValue(
       Promise.resolve({ success: true })
     );

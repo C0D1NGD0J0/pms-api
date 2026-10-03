@@ -94,6 +94,9 @@ export class MaintenancePaymentService {
     this.vendorDAO = vendorDAO;
     this.leaseDAO = leaseDAO;
     this.userDAO = userDAO;
+  }
+
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.MAINTENANCE_INVOICE_APPROVED,
       this.handleMaintenanceInvoiceApproved

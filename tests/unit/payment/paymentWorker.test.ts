@@ -79,7 +79,12 @@ describe('PaymentWorker', () => {
           period: data.period,
           description: data.description,
         }),
-        { createStripeInvoice: true, paymentSource: 'cron' }
+        {
+          createStripeInvoice: true,
+          paymentSource: 'cron',
+          // Stable across retries of the same job, so Stripe replays rather than re-creates
+          idempotencyKey: 'rent-invoice-job:job-001',
+        }
       );
       expect(job.progress).toHaveBeenCalledWith(10);
       expect(job.progress).toHaveBeenCalledWith(100);

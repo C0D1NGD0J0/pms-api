@@ -101,6 +101,9 @@ export class RentPaymentService {
     this.userCache = userCache;
     this.clientDAO = clientDAO;
     this.leaseDAO = leaseDAO;
+  }
+
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
@@ -188,7 +191,9 @@ export class RentPaymentService {
         {
           chargeId: depositPayment.gatewayChargeId,
           amountInCents: payload.refundAmount,
-          reason: 'Move-out inspection — security deposit refund',
+          reason: 'requested_by_customer',
+          note: 'Move-out inspection — security deposit refund',
+          idempotencyKey: `deposit-refund:${depositPayment.pytuid}`,
         }
       );
 
@@ -255,7 +260,12 @@ export class RentPaymentService {
   async createRentPayment(
     cuid: string,
     data: IPaymentFormData,
-    options?: { createStripeInvoice?: boolean; paymentSource?: PaymentSource }
+    options?: {
+      createStripeInvoice?: boolean;
+      paymentSource?: PaymentSource;
+      /** Prefix for Stripe idempotency keys — stable across retries of the same job. */
+      idempotencyKey?: string;
+    }
   ): IPromiseReturnedData<IPaymentDocument> {
     try {
       if (!data.leaseId) {
@@ -576,6 +586,8 @@ export class RentPaymentService {
         paymentMethodId,
         leaseUid: lease.luid,
       };
+      const invoiceKey = (part: string) =>
+        options?.idempotencyKey ? `${options.idempotencyKey}:${part}` : undefined;
 
       if (needsSplit) {
         const rentInvoice = await this.createAndFinalizeInvoice({
@@ -583,6 +595,7 @@ export class RentPaymentService {
           applicationFee: 0,
           description: `Rent for ${data.period?.month}/${data.period?.year}`,
           lineItems: rentItems,
+          idempotencyKey: invoiceKey('rent'),
         });
 
         const feesInvoice = await this.createAndFinalizeInvoice({
@@ -590,6 +603,7 @@ export class RentPaymentService {
           applicationFee: feeBreakdown.applicationFee,
           description: `Fees for ${data.period?.month}/${data.period?.year}`,
           lineItems: feeItems,
+          idempotencyKey: invoiceKey('fees'),
         });
 
         invoiceId = rentInvoice.invoiceId;
@@ -614,6 +628,7 @@ export class RentPaymentService {
           applicationFee: feeBreakdown.applicationFee,
           description: data.description || `Rent for ${data.period?.month}/${data.period?.year}`,
           lineItems,
+          idempotencyKey: invoiceKey('full'),
         });
         invoiceId = result.invoiceId;
         hostedInvoiceUrl = result.hostedInvoiceUrl;
@@ -661,6 +676,7 @@ export class RentPaymentService {
             leaseId: lease._id.toString(),
             tenantId: data.tenantId,
             deposits: leaseFees.deposits,
+            idempotencyKey: invoiceKey('deposit'),
           });
         } catch (depositError) {
           this.log.error(
@@ -1124,6 +1140,7 @@ export class RentPaymentService {
     paymentMethodId?: string;
     leaseUid?: string;
     deposits: { security: number; pet: number; total: number };
+    idempotencyKey?: string;
   }): Promise<void> {
     const depositLineItems: { description: string; amountInCents: number }[] = [];
 
@@ -1154,6 +1171,7 @@ export class RentPaymentService {
       cuid: opts.cuid,
       paymentMethodId: opts.paymentMethodId,
       leaseUid: opts.leaseUid,
+      idempotencyKey: opts.idempotencyKey,
     });
 
     await this.paymentDAO.insert({
@@ -1194,6 +1212,7 @@ export class RentPaymentService {
     paymentMethodId?: string;
     leaseUid?: string;
     skipDestinationTransfer?: boolean;
+    idempotencyKey?: string;
   }): Promise<{ invoiceId: string; hostedInvoiceUrl?: string }> {
     const invoiceResult = await this.paymentGatewayService.createInvoice(
       IPaymentGatewayProvider.STRIPE,
@@ -1209,6 +1228,7 @@ export class RentPaymentService {
         paymentMethodId: opts.paymentMethodId,
         leaseUid: opts.leaseUid,
         skipDestinationTransfer: opts.skipDestinationTransfer,
+        idempotencyKey: opts.idempotencyKey,
       }
     );
     if (!invoiceResult.success || !invoiceResult.data) {
@@ -1217,7 +1237,8 @@ export class RentPaymentService {
 
     const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
       IPaymentGatewayProvider.STRIPE,
-      invoiceResult.data.invoiceId
+      invoiceResult.data.invoiceId,
+      opts.idempotencyKey && `${opts.idempotencyKey}:finalize`
     );
     if (!finalizeResult.success) {
       throw new Error(finalizeResult.message || 'Failed to finalize invoice');

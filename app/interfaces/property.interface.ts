@@ -125,6 +125,21 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
+export interface CsvJobData {
+  bulkCreateOptions?: {
+    passwordLength?: number;
+    sendNotifications?: boolean;
+  };
+  // User-confirmed header → field key mapping from the frontend's mapping step.
+  columnMapping?: Record<string, string>;
+  clientInfo: IClientInfo;
+  csvFilePath: string;
+  /** Where the API staged the CSV in S3; the worker downloads it to csvFilePath. */
+  csvS3Key?: string;
+  jobId?: string;
+  userId: string;
+}
+
 export type IPropertyWithUnitInfo = {
   unitInfo?: UnitInfo;
   hasLeaseHistory?: boolean;
@@ -166,19 +181,6 @@ export interface IPropertyAuthorization {
   isActive: boolean; // Simple on/off switch
   expiresAt?: Date; // When authorization expires (optional)
   notes?: string; // Internal notes
-}
-
-export interface CsvJobData {
-  bulkCreateOptions?: {
-    passwordLength?: number;
-    sendNotifications?: boolean;
-  };
-  // User-confirmed header → field key mapping from the frontend's mapping step.
-  columnMapping?: Record<string, string>;
-  clientInfo: IClientInfo;
-  csvFilePath: string;
-  jobId?: string;
-  userId: string;
 }
 
 export interface FinancialDetails {

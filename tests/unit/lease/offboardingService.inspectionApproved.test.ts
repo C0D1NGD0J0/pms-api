@@ -144,7 +144,7 @@ describe('OffboardingService - INSPECTION_APPROVED Listener', () => {
       vendorDAO: { disconnectClient: jest.fn() } as any,
       clientDAO: { findFirst: jest.fn() } as any,
       emailQueue: { addToEmailQueue: jest.fn() } as any,
-    });
+    }).registerEventListeners();
   });
 
   it('should mark lease as completed with audit trail', async () => {
@@ -563,7 +563,7 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
       vendorDAO: { disconnectClient: jest.fn() } as any,
       clientDAO: { findFirst: jest.fn() } as any,
       emailQueue: { addToEmailQueue: jest.fn() } as any,
-    });
+    }).registerEventListeners();
   });
 
   it('should skip offboarding if lease is already completed', async () => {
@@ -612,7 +612,7 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
     expect(mockLeaseDAO.findFirst).not.toHaveBeenCalled();
   });
 
-  it('should re-emit INSPECTION_APPROVED when a pre-approved inspection exists', async () => {
+  it('should finalize offboarding directly when a pre-approved inspection exists', async () => {
     const handler = registeredListeners[EventTypes.LEASE_EXPIRED];
     const leaseId = new Types.ObjectId();
 
@@ -641,10 +641,15 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
 
     await handler({ luid: 'LEASE123', cuid: testCuid, reason: 'expired' });
 
-    // Should re-emit INSPECTION_APPROVED instead of scheduling a new inspection
-    expect(mockEmitterService.emit).toHaveBeenCalledWith(
+    // Completes the lease itself — re-emitting INSPECTION_APPROVED would re-run every
+    // approval listener (tenant notification, metrics) for an approval that already happened
+    expect(mockLeaseDAO.updateById).toHaveBeenCalledWith(
+      leaseId.toString(),
+      expect.objectContaining({ status: 'completed' })
+    );
+    expect(mockEmitterService.emit).not.toHaveBeenCalledWith(
       EventTypes.INSPECTION_APPROVED,
-      expect.objectContaining({ iuid: 'INSP_APPROVED', cuid: testCuid })
+      expect.anything()
     );
   });
 });

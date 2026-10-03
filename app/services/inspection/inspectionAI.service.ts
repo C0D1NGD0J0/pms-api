@@ -74,10 +74,9 @@ export class InspectionAIService {
     this.featureFlagService = featureFlagService;
     this.costService = aiCostService;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
-    this.setupEventListeners();
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.INSPECTION_SUBMITTED,
       this.handleInspectionSubmitted.bind(this)

@@ -79,11 +79,9 @@ export class InspectionService implements ICronProvider {
     this.emailQueue = emailQueue;
     this.s3Service = s3Service;
     this.log = createLogger('InspectionService');
-
-    this.setupEventListeners();
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.handleLeaseTerminated.bind(this));
     this.emitterService.on(
       EventTypes.LEASE_ESIGNATURE_COMPLETED,

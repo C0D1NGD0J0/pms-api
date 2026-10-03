@@ -110,6 +110,7 @@ beforeEach(() => {
     emailQueue: mockEmailQueue,
     s3Service: mockS3Service as any,
   });
+  service.registerEventListeners();
 });
 
 describe('InspectionService', () => {

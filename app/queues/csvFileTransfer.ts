@@ -2,6 +2,7 @@ import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { Job } from 'bull';
+import crypto from 'crypto';
 import { CsvJobData } from '@interfaces/index';
 import { S3Service } from '@services/fileUpload/awsS3';
 
@@ -14,7 +15,7 @@ import { S3Service } from '@services/fileUpload/awsS3';
 /** API side: uploads the local CSV to S3, removes the local copy, and returns job data carrying the key. */
 export const stageCsvInS3 = async (s3Service: S3Service, data: CsvJobData): Promise<CsvJobData> => {
   const buffer = await fs.promises.readFile(data.csvFilePath);
-  const csvS3Key = `csv-imports/${Date.now()}_${path.basename(data.csvFilePath)}`;
+  const csvS3Key = `csv-imports/${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${path.basename(data.csvFilePath)}`;
   await s3Service.uploadBuffer(buffer, csvS3Key, 'text/csv');
   await fs.promises.unlink(data.csvFilePath).catch(() => undefined);
   return { ...data, csvS3Key };

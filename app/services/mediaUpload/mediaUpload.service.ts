@@ -188,6 +188,7 @@ export class MediaUploadService {
    * Find media items to delete: anything flagged `status: 'deleted'` in the new
    * list, plus anything in the current list that the new list no longer contains
    * (the client removed it). Items are matched by key, falling back to _id.
+   * Callers must pass the complete replacement list as newMedia, not a delta.
    */
   private findMediaToDelete<T extends { key?: string; _id?: string | object; status?: string }>(
     currentMedia: T[],

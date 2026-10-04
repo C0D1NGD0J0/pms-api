@@ -428,19 +428,19 @@ export class StripeService implements IPaymentProvider {
   async createRefund(
     params: IRefundParams
   ): Promise<{ refundId: string; status: string; amount: number; currency: string }> {
-    const { chargeId, amountInCents, reason, note, idempotencyKey } = params;
+    const { chargeId, amountInCents, reason, note, idempotencyKey, transferId } = params;
     try {
       // Destination charges transferred the money to the connected account. Without
       // reverse_transfer the platform balance funds the refund and the connected account keeps
       // the money, so pull it back whenever the charge has a transfer. The application fee is
       // kept (Stripe's default). Charges without a transfer (e.g. maintenance) can't reverse one.
-      const charge = await this.stripe.charges.retrieve(chargeId);
+      const hasTransfer = transferId ?? (await this.stripe.charges.retrieve(chargeId)).transfer;
       const refundParams: Stripe.RefundCreateParams = {
         charge: chargeId,
         ...(amountInCents && { amount: amountInCents }),
         ...(reason && { reason }),
         ...(note && { metadata: { note: note.slice(0, 500) } }),
-        ...(charge.transfer && { reverse_transfer: true }),
+        ...(hasTransfer && { reverse_transfer: true }),
       };
 
       const refund = await this.withBreaker(() =>
@@ -486,6 +486,7 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  // Capped at 100 reversals per transfer — more than enough for PMS rent disputes.
   async getDisputeReversedAmount(transferId: string, disputeId: string): Promise<number> {
     const reversals = await this.stripe.transfers.listReversals(transferId, { limit: 100 });
     return reversals.data

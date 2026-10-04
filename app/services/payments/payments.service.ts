@@ -1646,6 +1646,7 @@ export class PaymentService implements ICronProvider {
     ];
     if (invoiceIds.length === 0) return;
 
+    const voided: string[] = [];
     for (const invoiceId of invoiceIds) {
       const voidResult = await this.paymentGatewayService.voidInvoice(
         IPaymentGatewayProvider.STRIPE,
@@ -1653,13 +1654,21 @@ export class PaymentService implements ICronProvider {
       );
       if (!voidResult.success) {
         this.log.warn(
-          { pytuid: payment.pytuid, invoiceId, message: voidResult.message },
+          { pytuid: payment.pytuid, invoiceId, voided, message: voidResult.message },
           'Could not void invoice before card checkout'
         );
+        if (voided.length > 0) {
+          // Some invoices were already voided at the gateway — detach them so the DB stays consistent
+          await this.paymentDAO.updateById(payment._id.toString(), {
+            $unset: { gatewayPaymentId: 1 },
+            $pull: { splitInvoices: { invoiceId: { $in: voided } } },
+          });
+        }
         throw new BadRequestError({
           message: 'This payment is already being processed and cannot be paid by card right now.',
         });
       }
+      voided.push(invoiceId);
     }
 
     await this.paymentDAO.updateById(payment._id.toString(), {

@@ -143,6 +143,8 @@ export interface IRefundParams {
   idempotencyKey?: string;
   amountInCents?: number;
   reason?: RefundReason;
+  /** When the caller already knows the charge's transfer ID, pass it to skip an extra Stripe API call. */
+  transferId?: string;
   chargeId: string;
   /** Free-text explanation, stored in the refund's metadata. */
   note?: string;

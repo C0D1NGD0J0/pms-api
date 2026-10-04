@@ -35,7 +35,7 @@ describe('stageCsvInS3 (API side)', () => {
 
     expect(s3.uploadBuffer).toHaveBeenCalledWith(
       Buffer.from(CSV),
-      expect.stringMatching(/^csv-imports\/\d+_upload_\d+\.csv$/),
+      expect.stringMatching(/^csv-imports\/\d+_[a-f0-9]{8}_upload_\d+\.csv$/),
       'text/csv'
     );
     expect(data.csvS3Key).toBe(s3.uploadBuffer.mock.calls[0][1]);

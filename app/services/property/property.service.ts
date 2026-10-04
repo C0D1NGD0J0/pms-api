@@ -1088,9 +1088,12 @@ export class PropertyService implements ICronProvider {
       assignedStaffList = staffProfiles.items.map((profile: any) => ({
         uid: profile.user?.uid,
         email: profile.user?.email,
+        // Real name first — displayName can be a business name used for emails
         fullName:
+          `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim() ||
           profile.personalInfo?.displayName ||
-          `${profile.personalInfo?.firstName || ''} ${profile.personalInfo?.lastName || ''}`.trim(),
+          profile.user?.email,
+        displayName: profile.personalInfo?.displayName,
         department: profile.employeeInfo?.department,
       }));
     }
@@ -2330,6 +2333,18 @@ export class PropertyService implements ICronProvider {
           puid: '$profile.puid',
           email: 1,
           displayName: '$profile.personalInfo.displayName',
+          // Personal name for assignment pickers; displayName can be a business name
+          fullName: {
+            $trim: {
+              input: {
+                $concat: [
+                  { $ifNull: ['$profile.personalInfo.firstName', ''] },
+                  ' ',
+                  { $ifNull: ['$profile.personalInfo.lastName', ''] },
+                ],
+              },
+            },
+          },
           role: {
             $arrayElemAt: [
               {
@@ -2357,8 +2372,9 @@ export class PropertyService implements ICronProvider {
         },
       });
 
-      // Sort for deterministic pagination
-      pipeline.push({ $sort: { 'profile.personalInfo.displayName': 1, email: 1 } });
+      // Sort for deterministic pagination. Runs after $project, so it must use
+      // projected fields — `profile` no longer exists at this stage.
+      pipeline.push({ $sort: { fullName: 1, email: 1 } });
 
       // Execute aggregation with pagination
       const page = filters.page || 1;

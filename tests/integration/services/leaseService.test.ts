@@ -12,7 +12,11 @@ import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PropertyUnit, Property, Profile, Client, Vendor, Lease, User } from '@models/index';
 import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
-import { mockSubscriptionService, mockQueueFactory, mockEmailQueue } from '@tests/setup/externalMocks';
+import {
+  mockSubscriptionService,
+  mockQueueFactory,
+  mockEmailQueue,
+} from '@tests/setup/externalMocks';
 import {
   PropertyUnitDAO,
   InvitationDAO,

@@ -1,6 +1,7 @@
 import { EventTypes } from '@interfaces/index';
 import { UploadWorker } from '@workers/upload.worker';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
+import { mockSubscriptionService } from '@tests/setup/externalMocks';
 import { PropertyMediaService } from '@services/property/propertyMedia.service';
 
 /** Emitter mock that keeps the last handler registered per event, so tests can fire it. */
@@ -57,6 +58,7 @@ describe('LeasePdfService — event routing', () => {
   const makeService = () => {
     const emitterService = makeEmitter();
     const service = new LeasePdfService({
+      subscriptionService: mockSubscriptionService as any,
       clientDAO: {} as any,
       emitterService: emitterService as any,
       leaseTemplateService: {} as any,

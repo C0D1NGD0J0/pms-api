@@ -125,6 +125,22 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
+export interface IAssignableUser {
+  employeeInfo?: {
+    department?: string;
+    employeeId?: string;
+    jobTitle?: string;
+  };
+  role: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER;
+  department?: string;
+  // Public-facing name (emails/correspondence) — may be a business name
+  displayName: string;
+  // Personal "First Last" name — use this when picking a person to assign
+  fullName: string;
+  email: string;
+  id: string;
+}
+
 export interface CsvJobData {
   bulkCreateOptions?: {
     passwordLength?: number;
@@ -222,19 +238,6 @@ export interface IPropertyOwner {
   taxId?: string;
   notes?: string;
   name?: string;
-}
-
-export interface IAssignableUser {
-  employeeInfo?: {
-    department?: string;
-    employeeId?: string;
-    jobTitle?: string;
-  };
-  role: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER;
-  department?: string;
-  displayName: string;
-  email: string;
-  id: string;
 }
 
 export interface PropertySpecifications {

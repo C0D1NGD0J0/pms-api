@@ -36,6 +36,7 @@ const setupService = () => {
     trackEvent: jest.fn().mockResolvedValue(undefined),
     getEventLog: jest.fn().mockResolvedValue([]),
     registerEvent: jest.fn().mockResolvedValue(undefined),
+    registerEvents: jest.fn().mockResolvedValue(undefined),
   } as any;
   const emitterService = new EventEmitterService({ eventsRegistry });
   jest.spyOn(emitterService, 'emit');

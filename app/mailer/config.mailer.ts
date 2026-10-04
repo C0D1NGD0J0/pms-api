@@ -753,6 +753,11 @@ export class MailService {
    * @returns Nodemailer transporter
    */
   private buildMailTransporter(): Transporter {
+    // Tests never send real email: jsonTransport builds and validates each message without
+    // any network call, so no test can reach the dev SMTP inbox however it is wired.
+    if (envVariables.SERVER.ENV === 'test') {
+      return nodemailer.createTransport({ jsonTransport: true });
+    }
     return nodemailer.createTransport(this.getEnvironmentTransportOptions());
   }
 

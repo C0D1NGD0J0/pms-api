@@ -1,4 +1,4 @@
-import { Schema, model } from 'mongoose';
+import { Schema, Query, model } from 'mongoose';
 import { generateShortUID } from '@utils/helpers';
 import { IVendorDocument } from '@interfaces/vendor.interface';
 
@@ -92,11 +92,14 @@ const VendorSchema = new Schema<IVendorDocument>(
           default: [0, 0],
           validate: {
             validator: function (this: any, v: number[]) {
-              const addressDoc = this.parent();
-              if (!addressDoc || !addressDoc.fullAddress) {
+              if (!v || v.length === 0) {
                 return true;
               }
-              if (!v || v.length === 0) {
+              // On save `this` is the vendor document (address is a nested path,
+              // not a subdocument). In update validators it is the Query, which
+              // has no address to inspect, so only the range is checked there.
+              const address = this instanceof Query ? null : this?.address;
+              if (address && !address.fullAddress) {
                 return true;
               }
               return v.length === 2 && v[0] >= -180 && v[0] <= 180 && v[1] >= -90 && v[1] <= 90;

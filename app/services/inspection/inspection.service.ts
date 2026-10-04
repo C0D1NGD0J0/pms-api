@@ -6,6 +6,7 @@ import { EmailQueue } from '@queues/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { S3Service } from '@services/fileUpload';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -140,9 +141,16 @@ export class InspectionService implements ICronProvider {
       if (!lease) {
         throw new NotFoundError({ message: 'Lease not found' });
       }
-      if (lease.status !== 'active') {
+      // A move-out inspection is still needed after the lease has ended — it drives the
+      // deposit refund and offboarding. Every other inspection needs an active lease.
+      const isMoveOut = data.type === InspectionType.MOVE_OUT;
+      const hasEnded =
+        lease.status === LeaseStatus.EXPIRED || lease.status === LeaseStatus.TERMINATED;
+      if (lease.status !== LeaseStatus.ACTIVE && !(isMoveOut && hasEnded)) {
         throw new BadRequestError({
-          message: 'Inspections can only be created for active leases',
+          message: isMoveOut
+            ? 'Move-out inspections can only be created for active, expired or terminated leases'
+            : 'Inspections can only be created for active leases',
         });
       }
 
@@ -163,7 +171,17 @@ export class InspectionService implements ICronProvider {
       if (lease.duration?.endDate) {
         const daysUntilExpiry = dayjs(lease.duration.endDate).diff(dayjs(), 'day', true);
 
-        if (data.type === InspectionType.MOVE_OUT) {
+        if (isMoveOut && hasEnded) {
+          // Ended leases: allow up to MOVE_OUT_WINDOW_AFTER_END_DAYS after they ended
+          const endedOn = lease.duration.terminationDate || lease.duration.endDate;
+          const daysSinceEnd = dayjs().diff(dayjs(endedOn), 'day', true);
+          if (daysSinceEnd > LEASE_CONSTANTS.MOVE_OUT_WINDOW_AFTER_END_DAYS) {
+            throw new ValidationRequestError({
+              message: `Move-out inspections must be scheduled within ${LEASE_CONSTANTS.MOVE_OUT_WINDOW_AFTER_END_DAYS} days of the lease ending`,
+              errorInfo: { type: ['The move-out window for this lease has closed'] },
+            });
+          }
+        } else if (isMoveOut) {
           const leaseGracePeriodDays = LEASE_CONSTANTS.GRACE_PERIOD_DAYS;
           if (daysUntilExpiry > 30) {
             throw new ValidationRequestError({
@@ -1083,10 +1101,13 @@ export class InspectionService implements ICronProvider {
     try {
       const terminalStatuses = [InspectionStatus.APPROVED, InspectionStatus.CANCELLED];
 
+      // Move-out inspections are kept: the terminated lease still needs one for the deposit
+      // refund and offboarding (OffboardingService schedules it on this same event).
       const openInspections = await this.inspectionDAO.list(
         {
           leaseId: payload.leaseId,
           cuid: payload.cuid,
+          type: { $ne: InspectionType.MOVE_OUT },
           status: { $nin: terminalStatuses },
           deletedAt: null,
         } as any,
@@ -1312,16 +1333,21 @@ export class InspectionService implements ICronProvider {
             updateFields['refundInfo.isRefunded'] = false;
           }
 
+          // notes.authorId must be a user ObjectId, so the system bot authors the note;
+          // without a seeded bot the inspection still closes, just without the note.
+          const systemBotId = await getSystemBotUserId();
           await this.inspectionDAO.updateById(inspection._id.toString(), {
             $set: updateFields,
-            $push: {
-              notes: {
-                note: 'Auto-closed: tenant did not respond within 7 days of submission. Security deposit forfeited.',
-                author: 'System',
-                authorId: inspection.inspectorUid,
-                timestamp: new Date(),
+            ...(systemBotId && {
+              $push: {
+                notes: {
+                  note: 'Auto-closed: tenant did not respond within 7 days of submission. Security deposit forfeited.',
+                  author: 'System',
+                  authorId: systemBotId,
+                  timestamp: new Date(),
+                },
               },
-            },
+            }),
           });
 
           // Revert property/unit operational status if set during scheduling

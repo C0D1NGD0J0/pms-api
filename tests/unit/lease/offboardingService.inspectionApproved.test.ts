@@ -511,6 +511,8 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
   let mockInspectionDAO: { findFirst: jest.Mock };
   let mockEmitterService: { emit: jest.Mock; on: jest.Mock; off: jest.Mock };
   let registeredListeners: Record<string, (...args: any[]) => any>;
+  let mockPropertyDAO: { updateById: jest.Mock; findFirst: jest.Mock };
+  let mockInspectionService: { scheduleInspection: jest.Mock };
 
   const testCuid = 'TESTCLIENT123';
 
@@ -540,15 +542,18 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
       off: jest.fn(),
     };
 
+    mockPropertyDAO = { updateById: jest.fn(), findFirst: jest.fn() };
+    mockInspectionService = { scheduleInspection: jest.fn() };
+
     new OffboardingService({
       userDAO: { findFirst: jest.fn(), update: jest.fn() } as any,
       leaseDAO: mockLeaseDAO,
-      propertyDAO: { updateById: jest.fn() } as any,
+      propertyDAO: mockPropertyDAO as any,
       propertyUnitDAO: { updateById: jest.fn() } as any,
       paymentDAO: { countDocuments: jest.fn() } as any,
       leaseService: { terminateLease: jest.fn() } as any,
       inspectionDAO: mockInspectionDAO as any,
-      inspectionService: { scheduleInspection: jest.fn() } as any,
+      inspectionService: mockInspectionService as any,
       leaseRenewalService: { createDraftLeaseRenewal: jest.fn() } as any,
       emitterService: mockEmitterService as any,
       userCache: { invalidateUserDetail: jest.fn().mockReturnValue(Promise.resolve(true)) } as any,
@@ -601,6 +606,78 @@ describe('OffboardingService - LEASE_EXPIRED Completed Guard', () => {
 
     // Should have attempted to look up the lease (offboarding proceeded)
     expect(mockLeaseDAO.findFirst).toHaveBeenCalled();
+  });
+
+  describe('auto-scheduling the move-out inspection', () => {
+    const managerId = new Types.ObjectId();
+    const creatorId = new Types.ObjectId();
+    const expiredLease = () => ({
+      _id: new Types.ObjectId(),
+      status: 'expired',
+      luid: 'LEASE123',
+      cuid: testCuid,
+      tenantId: new Types.ObjectId(),
+      createdBy: creatorId,
+      property: { id: new Types.ObjectId() },
+    });
+
+    beforeEach(() => {
+      mockLeaseDAO.findFirst.mockReturnValue(Promise.resolve(expiredLease() as any));
+      mockInspectionDAO.findFirst.mockReturnValue(Promise.resolve(null));
+    });
+
+    it('schedules it on behalf of the property manager, never as "system"', async () => {
+      mockPropertyDAO.findFirst.mockReturnValue(Promise.resolve({ managedBy: managerId }));
+
+      await registeredListeners[EventTypes.LEASE_EXPIRED]({
+        luid: 'LEASE123',
+        cuid: testCuid,
+        reason: 'expired',
+      });
+
+      expect(mockInspectionService.scheduleInspection).toHaveBeenCalledWith(
+        testCuid,
+        managerId.toString(),
+        expect.objectContaining({
+          leaseId: 'LEASE123',
+          type: InspectionType.MOVE_OUT,
+          refundDeposit: true,
+        })
+      );
+    });
+
+    it('falls back to the lease creator when the property has no manager', async () => {
+      mockPropertyDAO.findFirst.mockReturnValue(Promise.resolve({ managedBy: null }));
+
+      await registeredListeners[EventTypes.LEASE_EXPIRED]({
+        luid: 'LEASE123',
+        cuid: testCuid,
+        reason: 'expired',
+      });
+
+      expect(mockInspectionService.scheduleInspection).toHaveBeenCalledWith(
+        testCuid,
+        creatorId.toString(),
+        expect.anything()
+      );
+    });
+
+    it('ignores cancelled move-outs when checking for an existing one', async () => {
+      mockPropertyDAO.findFirst.mockReturnValue(Promise.resolve({ managedBy: managerId }));
+
+      await registeredListeners[EventTypes.LEASE_EXPIRED]({
+        luid: 'LEASE123',
+        cuid: testCuid,
+        reason: 'expired',
+      });
+
+      expect(mockInspectionDAO.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: InspectionType.MOVE_OUT,
+          status: { $ne: 'cancelled' },
+        })
+      );
+    });
   });
 
   it('should skip offboarding if reason is not expired', async () => {

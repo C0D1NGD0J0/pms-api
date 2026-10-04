@@ -16,10 +16,10 @@ import { EmailQueue } from '@queues/email.queue';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
-import { LEASE_CONSTANTS, createLogger } from '@utils/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { LEASE_CONSTANTS, createLogger, toId } from '@utils/index';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
@@ -141,7 +141,6 @@ export class OffboardingService {
       await this.autoScheduleMoveOutInspection(
         payload.cuid,
         payload.luid,
-        payload.terminatedBy,
         payload.moveOutDate || payload.terminationDate
       );
 
@@ -205,12 +204,7 @@ export class OffboardingService {
             tenantId: existingLease!.tenantId.toString(),
           });
         } else {
-          await this.autoScheduleMoveOutInspection(
-            payload.cuid,
-            payload.luid,
-            'system',
-            new Date()
-          );
+          await this.autoScheduleMoveOutInspection(payload.cuid, payload.luid, new Date());
         }
 
         // Also close open service requests
@@ -365,10 +359,14 @@ export class OffboardingService {
     }
   }
 
+  /**
+   * Schedules the move-out inspection for a lease that has ended. It is created on behalf of
+   * the property's manager (falling back to the lease creator) — the same actor
+   * InspectionService.checkUpcomingLeaseExpirations uses — who becomes the inspector.
+   */
   private async autoScheduleMoveOutInspection(
     cuid: string,
     luid: string,
-    userId: string,
     scheduledDate: Date
   ): Promise<void> {
     try {
@@ -378,9 +376,11 @@ export class OffboardingService {
         return;
       }
 
+      // Cancelled move-outs don't count — scheduleInspection's duplicate guard ignores them too
       const existing = await this.inspectionDAO.findFirst({
         leaseId: lease._id,
         type: InspectionType.MOVE_OUT,
+        status: { $ne: InspectionStatus.CANCELLED },
         cuid,
         deletedAt: null,
       });
@@ -389,7 +389,14 @@ export class OffboardingService {
         return;
       }
 
-      await this.inspectionService.scheduleInspection(cuid, userId, {
+      const property = await this.propertyDAO.findFirst({ _id: lease.property.id, cuid });
+      const actorId = toId(property?.managedBy) || toId(lease.createdBy);
+      if (!actorId) {
+        this.log.warn({ luid, cuid }, 'No property manager or lease creator to schedule move-out');
+        return;
+      }
+
+      await this.inspectionService.scheduleInspection(cuid, actorId, {
         leaseId: luid,
         type: InspectionType.MOVE_OUT,
         scheduledDate,

@@ -6,15 +6,17 @@ import { type QueryFilter, Types } from 'mongoose';
 import { createSafeMongoUpdate } from '@utils/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
+import type { MediaUploadService } from '@services/mediaUpload';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PROPERTY_APPROVAL_ROLES, convertUserRoleToEnum, createLogger } from '@utils/index';
 import { ISuccessReturnData, IPaginationQuery, IPaginateResult } from '@interfaces/utils.interface';
 
-import { getOriginalRequesterId } from './propertyHelpers';
+import { cleanUpRemovedPropertyMedia, getOriginalRequesterId } from './propertyHelpers';
 
 interface IConstructor {
   notificationService: NotificationService;
+  mediaUploadService: MediaUploadService;
   propertyCache: PropertyCache;
   propertyDAO: PropertyDAO;
 }
@@ -24,8 +26,15 @@ export class PropertyApprovalService {
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyCache: PropertyCache;
   private readonly notificationService: NotificationService;
+  private readonly mediaUploadService: MediaUploadService;
 
-  constructor({ propertyDAO, propertyCache, notificationService }: IConstructor) {
+  constructor({
+    propertyDAO,
+    propertyCache,
+    notificationService,
+    mediaUploadService,
+  }: IConstructor) {
+    this.mediaUploadService = mediaUploadService;
     this.propertyDAO = propertyDAO;
     this.propertyCache = propertyCache;
     this.notificationService = notificationService;
@@ -168,6 +177,21 @@ export class PropertyApprovalService {
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
     await this.propertyCache.invalidatePropertyLists(cuid);
+
+    // Approved staff edits can remove images/documents — clean up their assets
+    // now that the change is applied. Logged, not thrown: approval succeeded.
+    if (property.pendingChanges) {
+      try {
+        await cleanUpRemovedPropertyMedia(
+          this.mediaUploadService,
+          property,
+          property.pendingChanges as any,
+          currentuser.sub
+        );
+      } catch (error) {
+        this.log.error('Failed to clean up media removed by approved changes', { pid, error });
+      }
+    }
 
     this.log.info('Property approved', {
       propertyId: property.id,

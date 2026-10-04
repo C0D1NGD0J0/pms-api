@@ -161,8 +161,6 @@ export class NotificationService {
     this.notificationCache = notificationCache;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.log = createLogger('NotificationService');
-
-    this.setupEventListeners();
   }
 
   async createNotification(
@@ -1517,7 +1515,7 @@ export class NotificationService {
     }
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     const ctx = this.buildContext();
 
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, (p) =>

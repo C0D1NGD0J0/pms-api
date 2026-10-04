@@ -1195,7 +1195,8 @@ describe('PaymentService - refundPayment', () => {
       expect.objectContaining({
         chargeId: 'ch_test_abc123',
         amountInCents: 50000,
-        reason: 'Partial refund',
+        reason: 'requested_by_customer',
+        note: 'Partial refund',
       })
     );
   });
@@ -1363,7 +1364,8 @@ describe('PaymentService - handleDisputeCreated', () => {
     expect(mockPaymentGatewayService.createTransferReversal).toHaveBeenCalledWith(
       'stripe',
       TRANSFER_ID,
-      150000
+      150000,
+      { metadata: { disputeId: DISPUTE_ID }, idempotencyKey: `dispute-reversal:${DISPUTE_ID}` }
     );
     expect(mockPaymentDAO.update).toHaveBeenCalledWith(
       expect.objectContaining({ _id: payment._id }),
@@ -1440,6 +1442,34 @@ describe('PaymentService - handleDisputeCreated', () => {
       deletedAt: null,
     });
   });
+
+  it('should block payouts and emit an event when the transfer reversal fails', async () => {
+    const payment = makePaymentRecord();
+    mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+    mockPaymentGatewayService.getCharge.mockResolvedValue({
+      success: true,
+      data: { transfer: TRANSFER_ID },
+    } as any);
+    // The gateway reports failures as success:false rather than throwing
+    mockPaymentGatewayService.createTransferReversal.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'insufficient funds',
+    } as any);
+    mockPaymentDAO.update.mockResolvedValue(payment as any);
+    mockPaymentProcessorDAO.update.mockResolvedValue({} as any);
+
+    await paymentService.handleDisputeCreated(DISPUTE_ID, makeDisputeData());
+
+    expect(mockPaymentProcessorDAO.update).toHaveBeenCalledWith(
+      { cuid: CUID },
+      { $set: expect.objectContaining({ payoutsBlocked: true }) }
+    );
+    expect(mockEmitterService.emit).toHaveBeenCalledWith(
+      'payment:dispute:reversal:failed',
+      expect.objectContaining({ disputeId: DISPUTE_ID, transferId: TRANSFER_ID })
+    );
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1493,6 +1523,8 @@ describe('PaymentService - handleDisputeWon', () => {
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
       createTransfer: jest.fn(),
+      getCharge: jest.fn().mockResolvedValue({ success: true, data: { transfer: 'tr_orig_1' } }),
+      getDisputeReversedAmount: jest.fn().mockResolvedValue({ success: true, data: 150000 }),
     } as unknown as jest.Mocked<PaymentGatewayService>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
     paymentService = makeServiceWithMocks({
@@ -1526,7 +1558,13 @@ describe('PaymentService - handleDisputeWon', () => {
         currency: 'usd',
         destination: ACCOUNT_ID,
         metadata: expect.objectContaining({ disputeId: DISPUTE_ID, reason: 'dispute_won' }),
+        idempotencyKey: `dispute-won:${DISPUTE_ID}`,
       })
+    );
+    expect(mockPaymentGatewayService.getDisputeReversedAmount).toHaveBeenCalledWith(
+      'stripe',
+      'tr_orig_1',
+      DISPUTE_ID
     );
     expect(mockEmitterService.emit).toHaveBeenCalledWith(
       'payment:dispute:won',
@@ -1542,6 +1580,53 @@ describe('PaymentService - handleDisputeWon', () => {
     expect(result.success).toBe(false);
     expect(result.message).toBe('No charge ID or payment record not found');
     expect(mockPaymentGatewayService.createTransfer).not.toHaveBeenCalled();
+  });
+
+  it('should re-transfer only the amount that was reversed for this dispute', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(makePaymentRecord() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    (mockPaymentGatewayService.getDisputeReversedAmount as jest.Mock).mockResolvedValue({
+      success: true,
+      data: 40000,
+    });
+    mockPaymentGatewayService.createTransfer.mockResolvedValue({ success: true, data: {} } as any);
+
+    await paymentService.handleDisputeWon(DISPUTE_ID, makeDisputeWonData());
+
+    expect(mockPaymentGatewayService.createTransfer).toHaveBeenCalledWith(
+      'stripe',
+      expect.objectContaining({ amountInCents: 40000 })
+    );
+  });
+
+  it('should not pay the PM again when nothing was reversed (reversal had failed)', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(makePaymentRecord() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    (mockPaymentGatewayService.getDisputeReversedAmount as jest.Mock).mockResolvedValue({
+      success: true,
+      data: 0,
+    });
+
+    const result = await paymentService.handleDisputeWon(DISPUTE_ID, makeDisputeWonData());
+
+    expect(result.success).toBe(true);
+    expect(mockPaymentGatewayService.createTransfer).not.toHaveBeenCalled();
+  });
+
+  it('should throw (so Stripe redelivers) and not mark the dispute won when the re-transfer fails', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(makePaymentRecord() as any);
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.createTransfer.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'balance insufficient',
+    } as any);
+
+    await expect(paymentService.handleDisputeWon(DISPUTE_ID, makeDisputeWonData())).rejects.toThrow(
+      'Re-transfer to PM failed'
+    );
+    expect(mockPaymentDAO.update).not.toHaveBeenCalled();
+    expect(mockEmitterService.emit).not.toHaveBeenCalled();
   });
 
   it('should return success:false when payment processor is not found', async () => {
@@ -4172,7 +4257,11 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
         paymentMethodId: 'pm_xyz',
       })
     );
-    expect(mockGateway.finalizeInvoice).toHaveBeenCalledWith(expect.anything(), INVOICE_ID);
+    expect(mockGateway.finalizeInvoice).toHaveBeenCalledWith(
+      expect.anything(),
+      INVOICE_ID,
+      undefined
+    );
     expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), INVOICE_ID, {
       paymentMethod: 'pm_xyz',
       mandate: 'mandate_abc',
@@ -4231,7 +4320,11 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
         lineItems: [{ description: 'Late fee for April', amountInCents: 15000 }],
       })
     );
-    expect(mockGateway.finalizeInvoice).toHaveBeenCalledWith(expect.anything(), INVOICE_ID);
+    expect(mockGateway.finalizeInvoice).toHaveBeenCalledWith(
+      expect.anything(),
+      INVOICE_ID,
+      undefined
+    );
     expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
       gatewayPaymentId: INVOICE_ID,
     });
@@ -5326,6 +5419,67 @@ describe('PaymentService - createCardPaymentSession', () => {
         metadata: expect.objectContaining({ pytuid: PYTUID, cuid: CUID }),
       })
     );
+  });
+
+  it('voids the open invoices (including split ones) before creating the checkout session', async () => {
+    const d = makeDefaults();
+    const payment = {
+      ...d.payment,
+      gatewayPaymentId: 'in_rent_1',
+      splitInvoices: [{ invoiceId: 'in_rent_1' }, { invoiceId: 'in_fees_1' }],
+    };
+    const mockStripe = {
+      createPaymentCheckoutSession: jest.fn().mockResolvedValue(d.stripeSession),
+    };
+    const mockGateway = { voidInvoice: jest.fn().mockResolvedValue({ success: true }) };
+    const paymentDAO = {
+      findFirst: jest.fn().mockResolvedValue(payment),
+      updateById: jest.fn().mockResolvedValue({}),
+    };
+    const svc = makeServiceWithMocks({
+      paymentDAO: paymentDAO as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(d.processor) } as any,
+      profileDAO: { findFirst: jest.fn().mockResolvedValue(d.profile) } as any,
+      userDAO: { findFirst: jest.fn().mockResolvedValue(d.tenantUser) } as any,
+      paymentGatewayService: mockGateway as any,
+      stripeService: mockStripe,
+    });
+
+    await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID);
+
+    expect(mockGateway.voidInvoice.mock.calls.map((call: any[]) => call[1])).toEqual([
+      'in_rent_1',
+      'in_fees_1',
+    ]);
+    expect(paymentDAO.updateById).toHaveBeenCalledWith(payment._id.toString(), {
+      $unset: { gatewayPaymentId: 1, splitInvoices: 1 },
+    });
+    expect(mockGateway.voidInvoice.mock.invocationCallOrder[0]).toBeLessThan(
+      mockStripe.createPaymentCheckoutSession.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('refuses card checkout when the invoice cannot be voided (already paid or debit in flight)', async () => {
+    const d = makeDefaults();
+    const mockStripe = { createPaymentCheckoutSession: jest.fn() };
+    const svc = makeServiceWithMocks({
+      paymentDAO: {
+        findFirst: jest.fn().mockResolvedValue({ ...d.payment, gatewayPaymentId: 'in_rent_1' }),
+        updateById: jest.fn(),
+      } as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(d.processor) } as any,
+      profileDAO: { findFirst: jest.fn().mockResolvedValue(d.profile) } as any,
+      userDAO: { findFirst: jest.fn().mockResolvedValue(d.tenantUser) } as any,
+      paymentGatewayService: {
+        voidInvoice: jest.fn().mockResolvedValue({ success: false, message: 'invoice is paid' }),
+      } as any,
+      stripeService: mockStripe,
+    });
+
+    await expect(svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID)).rejects.toThrow(
+      'already being processed'
+    );
+    expect(mockStripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
   });
 
   it('throws NotFoundError when payment does not exist', async () => {

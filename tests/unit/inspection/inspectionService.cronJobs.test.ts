@@ -1,7 +1,12 @@
 import { Types } from 'mongoose';
 import { jest } from '@jest/globals';
+import { getSystemBotUserId } from '@utils/systemBot';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
+
+// The auto-close note is authored by the system bot (notes.authorId must be a user ObjectId)
+jest.mock('@utils/systemBot', () => ({ getSystemBotUserId: jest.fn() }));
+const SYSTEM_BOT_ID = new Types.ObjectId();
 
 // ─── Mock DAOs & External Services ──────────────────────────────────────────
 
@@ -128,6 +133,12 @@ beforeEach(() => {
 
 describe('InspectionService Cron Jobs', () => {
   describe('autoCloseUnresponsiveInspections', () => {
+    beforeEach(() => {
+      (getSystemBotUserId as unknown as jest.Mock<any>).mockReturnValue(
+        Promise.resolve(SYSTEM_BOT_ID)
+      );
+    });
+
     it('should do nothing when no stale inspections are found', async () => {
       mockInspectionDAO.list.mockResolvedValue({ items: [], total: 0 });
 
@@ -169,11 +180,23 @@ describe('InspectionService Cron Jobs', () => {
           notes: expect.objectContaining({
             note: expect.stringContaining('Auto-closed'),
             author: 'System',
-            authorId: inspection.inspectorUid,
+            authorId: SYSTEM_BOT_ID,
             timestamp: expect.any(Date),
           }),
         },
       });
+    });
+
+    it('should still close the inspection, without a note, when the system bot is not seeded', async () => {
+      (getSystemBotUserId as unknown as jest.Mock<any>).mockReturnValue(Promise.resolve(null));
+      const inspection = makeStaleInspection();
+      mockInspectionDAO.list.mockResolvedValue({ items: [inspection], total: 1 });
+
+      await autoCloseHandler();
+
+      const update = (mockInspectionDAO.updateById as any).mock.calls[0][1];
+      expect(update.$set).toEqual(expect.objectContaining({ status: InspectionStatus.APPROVED }));
+      expect(update).not.toHaveProperty('$push');
     });
 
     it('should forfeit deposit (isRefunded=false) when refundInfo exists', async () => {

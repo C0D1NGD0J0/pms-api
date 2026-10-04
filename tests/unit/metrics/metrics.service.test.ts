@@ -120,7 +120,7 @@ const mockEmitterService = {
 // ---------------------------------------------------------------------------
 
 function makeService(): MetricsService {
-  return new MetricsService({
+  const service = new MetricsService({
     maintenanceRequestDAO: mockMaintenanceRequestDAO,
     inspectionDAO: mockInspectionDAO,
     propertyUnitDAO: mockPropertyUnitDAO,
@@ -138,6 +138,8 @@ function makeService(): MetricsService {
         .mockReturnValue(Promise.resolve({ byCurrency: [], totalCount: 0 })),
     } as any,
   });
+  service.registerEventListeners();
+  return service;
 }
 
 // ---------------------------------------------------------------------------

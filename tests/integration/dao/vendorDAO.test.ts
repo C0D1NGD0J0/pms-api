@@ -1128,4 +1128,82 @@ describe('VendorDAO Integration Tests', () => {
       expect(stats.businessTypeDistribution.length).toBeGreaterThan(0);
     });
   });
+
+  describe('address coordinates validation', () => {
+    const baseVendor = () => ({
+      companyName: 'Geo Vendor',
+      businessType: 'Plumbing',
+      registrationNumber: `REG-GEO-${new Types.ObjectId().toString()}`,
+      connectedClients: [
+        { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+      ],
+    });
+
+    it('should accept valid coordinates when the address is updated through updateVendor', async () => {
+      const created = await Vendor.create(baseVendor());
+
+      const updated = await vendorDAO.updateVendor(created._id, {
+        address: {
+          fullAddress: '100 Queen St W, Toronto, ON',
+          computedLocation: { type: 'Point', coordinates: [-79.3832, 43.6532] },
+        } as any,
+      });
+
+      expect(updated?.address?.computedLocation.coordinates).toEqual([-79.3832, 43.6532]);
+    });
+
+    it('should reject out-of-range coordinates when the address is updated through updateVendor', async () => {
+      const created = await Vendor.create(baseVendor());
+
+      await expect(
+        vendorDAO.updateVendor(created._id, {
+          address: {
+            fullAddress: '100 Queen St W, Toronto, ON',
+            computedLocation: { type: 'Point', coordinates: [-200, 43.6532] },
+          } as any,
+        })
+      ).rejects.toMatchObject({
+        errorInfo: {
+          'address.computedLocation.coordinates': [
+            'Coordinates must be [longitude, latitude] with valid ranges',
+          ],
+        },
+      });
+    });
+
+    it('should reject out-of-range coordinates on create when the address has a fullAddress', async () => {
+      const vendor = new Vendor({
+        ...baseVendor(),
+        address: {
+          fullAddress: '100 Queen St W, Toronto, ON',
+          computedLocation: { type: 'Point', coordinates: [-79.3832, 95] },
+        },
+      });
+
+      await expect(vendor.validate()).rejects.toThrow(
+        'Coordinates must be [longitude, latitude] with valid ranges'
+      );
+    });
+
+    it('should accept valid coordinates on create when the address has a fullAddress', async () => {
+      const vendor = await Vendor.create({
+        ...baseVendor(),
+        address: {
+          fullAddress: '100 Queen St W, Toronto, ON',
+          computedLocation: { type: 'Point', coordinates: [-79.3832, 43.6532] },
+        },
+      });
+
+      expect(vendor.address?.computedLocation.coordinates).toEqual([-79.3832, 43.6532]);
+    });
+
+    it('should skip the range check on create when the address has no fullAddress', async () => {
+      const vendor = new Vendor({
+        ...baseVendor(),
+        address: { city: 'Toronto', computedLocation: { type: 'Point', coordinates: [-200, 95] } },
+      });
+
+      await expect(vendor.validate()).resolves.toBeUndefined();
+    });
+  });
 });

@@ -9,12 +9,12 @@ import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { MoneyUtils } from '@utils/money.utils';
 import { EmailQueue } from '@queues/email.queue';
-import { createLogger, msToDays } from '@utils/index';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionCache, AuthCache } from '@caching/index';
+import { calcDaysRemaining, createLogger } from '@utils/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
 import { calcAnnualToMonthly, calcSeatCost } from '@utils/financial.utils';
@@ -98,7 +98,6 @@ export class SubscriptionService {
     this.paymentGatewayService = paymentGatewayService;
     this.subscriptionWebhookService = subscriptionWebhookService;
     this.log = createLogger('SubscriptionService');
-    this.setupEventListeners();
   }
 
   /**
@@ -671,8 +670,9 @@ export class SubscriptionService {
         gracePeriodEndsAt = subscription.pendingDowngradeAt || null;
 
         if (subscription.pendingDowngradeAt) {
-          const msUntilDowngrade = subscription.pendingDowngradeAt.getTime() - now.getTime();
-          daysUntilDowngrade = msToDays(msUntilDowngrade);
+          // Days *remaining* round up — flooring turned 47.9h into "1 day" and
+          // tipped clients into grace_period a day early.
+          daysUntilDowngrade = calcDaysRemaining(subscription.pendingDowngradeAt, now);
 
           if (daysUntilDowngrade <= 1) {
             reason = 'grace_period';
@@ -686,8 +686,9 @@ export class SubscriptionService {
         gracePeriodEndsAt = subscription.pendingDowngradeAt || null;
 
         if (subscription.pendingDowngradeAt) {
-          const msUntilDowngrade = subscription.pendingDowngradeAt.getTime() - now.getTime();
-          daysUntilDowngrade = msToDays(msUntilDowngrade);
+          // Days *remaining* round up — flooring turned 47.9h into "1 day" and
+          // tipped clients into grace_period a day early.
+          daysUntilDowngrade = calcDaysRemaining(subscription.pendingDowngradeAt, now);
         }
       }
 
@@ -1881,7 +1882,7 @@ export class SubscriptionService {
     ];
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.UNIT_BATCH_CREATED, (p) => this.handleUnitBatchCreated(p));
     this.emitterService.on(EventTypes.INVITATION_SENT, (p) => this.handleInvitationSent(p));
     this.emitterService.on(EventTypes.INVITATION_ACCEPTED, (p) => this.handleInvitationAccepted(p));

@@ -4,6 +4,7 @@ import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { ProfileDAO } from '@dao/profileDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
+import { mockSubscriptionService } from '@tests/setup/externalMocks';
 
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
@@ -116,6 +117,7 @@ describe('LeaseService — Expiry Flow', () => {
     };
 
     leaseService = new LeaseService({
+      subscriptionService: mockSubscriptionService as any,
       leaseDAO: mockLeaseDAO,
       userDAO: mockUserDAO as any,
       clientDAO: {} as any,

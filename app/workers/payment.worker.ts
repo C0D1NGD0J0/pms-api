@@ -46,7 +46,12 @@ export class PaymentWorker {
           description,
           notifyByEmail: true,
         },
-        { createStripeInvoice: true, paymentSource: 'cron' }
+        {
+          createStripeInvoice: true,
+          paymentSource: 'cron',
+          // Same key on every retry of this job, so Stripe replays instead of re-creating.
+          idempotencyKey: `rent-invoice-job:${job.id}`,
+        }
       );
 
       await job.progress(100);

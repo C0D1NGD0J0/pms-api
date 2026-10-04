@@ -2,6 +2,7 @@ import { t } from '@shared/languages';
 import { LeaseDAO } from '@dao/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ValidationRequestError } from '@shared/customErrors';
+import type { MediaUploadService } from '@services/mediaUpload';
 import { IPropertyDocument } from '@interfaces/property.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import {
@@ -11,6 +12,42 @@ import {
   PROPERTY_STAFF_ROLES,
   MoneyUtils,
 } from '@utils/index';
+
+/**
+ * Soft-delete (or hard-delete) the assets for any images / documents that an
+ * applied property update removed. Only media arrays present in `applied` are
+ * compared — an absent array means that list wasn't touched.
+ */
+export const cleanUpRemovedPropertyMedia = async (
+  mediaUploadService: MediaUploadService,
+  previous: Pick<IPropertyDocument, 'images' | 'documents'>,
+  applied: Partial<Pick<IPropertyDocument, 'images' | 'documents'>>,
+  actorId: string,
+  hardDelete = false
+): Promise<void> => {
+  const tasks: Promise<void>[] = [];
+  if (applied.images !== undefined) {
+    tasks.push(
+      mediaUploadService.handleMediaDeletion(
+        (previous.images || []) as any[],
+        applied.images as any[],
+        actorId,
+        hardDelete
+      )
+    );
+  }
+  if (applied.documents !== undefined) {
+    tasks.push(
+      mediaUploadService.handleMediaDeletion(
+        (previous.documents || []) as any[],
+        applied.documents as any[],
+        actorId,
+        hardDelete
+      )
+    );
+  }
+  await Promise.all(tasks);
+};
 
 /**
  * Get the original requester ID from approval details

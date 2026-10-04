@@ -74,7 +74,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
       profileDAO: {} as any,
       userCache: {} as any,
       leaseDAO: {} as any,
-    });
+    }).registerEventListeners();
   });
 
   it('should register INSPECTION_APPROVED listener', () => {
@@ -97,7 +97,9 @@ describe('RentPaymentService — handleDepositRefund', () => {
         {
           chargeId: 'ch_stripe_123',
           amountInCents: 100000,
-          reason: 'Move-out inspection — security deposit refund',
+          reason: 'requested_by_customer',
+          note: 'Move-out inspection — security deposit refund',
+          idempotencyKey: 'deposit-refund:PYT-DEP-001',
         }
       );
 

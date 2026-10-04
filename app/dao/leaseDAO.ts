@@ -236,6 +236,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,
           endDate: leaseObj.duration?.endDate,
+          terminationDate: leaseObj.duration?.terminationDate ?? null,
           status: leaseObj.status,
           sentForSignature:
             leaseObj.signingMethod === 'electronic' && leaseObj.eSignature?.status === 'sent',
@@ -920,18 +921,17 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         );
       }
 
-      // Now push the new documents
+      // Push the new documents and append (not overwrite) a modification
+      // entry — the schema requires name + action on every entry.
       const updateOperation: any = {
         $push: {
           leaseDocuments: { $each: processedDocuments },
-        },
-        $set: {
-          lastModifiedBy: [
-            {
-              userId: new Types.ObjectId(userId),
-              timestamp: new Date(),
-            },
-          ],
+          lastModifiedBy: {
+            userId: new Types.ObjectId(userId),
+            name: 'Document upload',
+            date: new Date(),
+            action: 'updated',
+          },
         },
       };
 

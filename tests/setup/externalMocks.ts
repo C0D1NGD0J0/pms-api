@@ -208,6 +208,15 @@ export const resetTokenServiceMocks = () => {
 // Event Emitter Mock
 // =============================================================================
 
+// Subscription entitlements — entitled to e-signature by default so existing
+// tests keep their behaviour; tests opt into a plan without it explicitly.
+export const mockSubscriptionService = {
+  getSubscriptionEntitlements: (jest.fn() as any).mockResolvedValue({
+    success: true,
+    data: { entitlements: { eSignature: true } },
+  }),
+};
+
 export const mockEventEmitter = {
   emit: jest.fn() as any,
   on: jest.fn() as any,

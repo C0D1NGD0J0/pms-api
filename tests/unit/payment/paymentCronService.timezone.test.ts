@@ -121,9 +121,12 @@ describe('PaymentCronService — timezone-scoped jobs', () => {
       await markOverdueToronto!.handler();
 
       expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('America/Toronto');
-      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith({
-        cuid: { $in: [CUID_TORONTO] },
-      });
+      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
+        {
+          cuid: { $in: [CUID_TORONTO] },
+        },
+        { limit: 500, skip: 0 }
+      );
     });
 
     it('should skip processing when no clients exist in timezone', async () => {
@@ -136,9 +139,12 @@ describe('PaymentCronService — timezone-scoped jobs', () => {
       await markOverdue!.handler();
 
       // Should pass empty $in filter — matches nothing
-      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith({
-        cuid: { $in: [] },
-      });
+      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
+        {
+          cuid: { $in: [] },
+        },
+        { limit: 500, skip: 0 }
+      );
     });
   });
 
@@ -192,9 +198,12 @@ describe('PaymentCronService — timezone-scoped jobs', () => {
 
       await markOverdueUtc!.handler();
 
-      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith({
-        cuid: { $in: [CUID_UTC] },
-      });
+      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
+        {
+          cuid: { $in: [CUID_UTC] },
+        },
+        { limit: 500, skip: 0 }
+      );
     });
   });
 });

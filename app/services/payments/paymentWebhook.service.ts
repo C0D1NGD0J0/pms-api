@@ -1081,18 +1081,20 @@ export class PaymentWebhookService {
       );
 
       if (transferId) {
-        try {
-          await this.paymentGatewayService.createTransferReversal(
-            IPaymentGatewayProvider.STRIPE,
-            transferId,
-            amount
-          );
+        // Tagged with the dispute ID so a won dispute re-transfers exactly what was reversed.
+        const reversal = await this.paymentGatewayService.createTransferReversal(
+          IPaymentGatewayProvider.STRIPE,
+          transferId,
+          amount,
+          { metadata: { disputeId }, idempotencyKey: `dispute-reversal:${disputeId}` }
+        );
+        if (reversal.success) {
           this.log.info('Transfer reversed for dispute', { disputeId, transferId, amount });
-        } catch (reversalError: any) {
+        } else {
           this.log.error('Transfer reversal failed — blocking payouts', {
             disputeId,
             transferId,
-            error: reversalError,
+            error: reversal.message,
           });
           await this.paymentProcessorDAO.update(
             { cuid: payment.cuid },
@@ -1168,6 +1170,28 @@ export class PaymentWebhookService {
     }
   }
 
+  /** Amount reversed from the charge's transfer for this dispute (0 if none). Throws on lookup failure. */
+  private async getDisputeReversedAmount(chargeId: string, disputeId: string): Promise<number> {
+    const chargeResult = await this.paymentGatewayService.getCharge(
+      IPaymentGatewayProvider.STRIPE,
+      chargeId
+    );
+    const transferId = this.extractStripeId(
+      chargeResult.data?.transfer as string | { id?: string } | undefined
+    );
+    if (!transferId) return 0;
+
+    const reversed = await this.paymentGatewayService.getDisputeReversedAmount(
+      IPaymentGatewayProvider.STRIPE,
+      transferId,
+      disputeId
+    );
+    if (!reversed.success) {
+      throw new Error(`Could not read transfer reversals for dispute ${disputeId}`);
+    }
+    return reversed.data ?? 0;
+  }
+
   async handleDisputeWon(
     disputeId: string,
     disputeData: IStripeDisputeWebhookData
@@ -1197,12 +1221,32 @@ export class PaymentWebhookService {
         return { success: false, data: undefined, message: 'Payment processor not found' };
       }
 
-      await this.paymentGatewayService.createTransfer(IPaymentGatewayProvider.STRIPE, {
-        amountInCents: amount,
-        currency,
-        destination: paymentProcessor.accountId,
-        metadata: { disputeId, reason: 'dispute_won', invoiceNumber: payment.invoiceNumber },
-      });
+      // Return only what was actually pulled back from the PM for this dispute. If the
+      // reversal failed when the dispute opened, the PM kept the funds and is owed nothing.
+      const reversedAmount = await this.getDisputeReversedAmount(chargeId, disputeId);
+      if (reversedAmount > 0) {
+        const transfer = await this.paymentGatewayService.createTransfer(
+          IPaymentGatewayProvider.STRIPE,
+          {
+            amountInCents: reversedAmount,
+            currency,
+            destination: paymentProcessor.accountId,
+            metadata: { disputeId, reason: 'dispute_won', invoiceNumber: payment.invoiceNumber },
+            idempotencyKey: `dispute-won:${disputeId}`,
+          }
+        );
+        if (!transfer.success) {
+          // Throw so the webhook is released and Stripe redelivers it.
+          throw new Error(
+            `Re-transfer to PM failed for won dispute ${disputeId}: ${transfer.message}`
+          );
+        }
+      } else {
+        this.log.warn('Won dispute had no reversal to return — skipping re-transfer', {
+          disputeId,
+          chargeId,
+        });
+      }
 
       const session = await this.paymentDAO.startSession();
       await this.paymentDAO.withTransaction(session, async (txSession) => {

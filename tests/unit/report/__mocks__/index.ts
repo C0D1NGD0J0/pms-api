@@ -101,7 +101,7 @@ export const mockRedisService = {
 const { ReportService } = require('@services/report/report.service');
 
 export function createReportService() {
-  return new ReportService({
+  const service = new ReportService({
     reportDAO: mockReportDAO as any,
     reportScheduleDAO: mockReportScheduleDAO as any,
     queueFactory: mockQueueFactory as any,
@@ -126,4 +126,6 @@ export function createReportService() {
     s3Service: mockS3Service as any,
     sseService: mockSseService as any,
   });
+  service.registerEventListeners();
+  return service;
 }

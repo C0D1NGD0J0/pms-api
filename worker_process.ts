@@ -25,7 +25,8 @@ class WorkerProcess {
       const { dbService } = container.cradle;
       await dbService.connect();
       initQueues(container);
-      EventListenerSetup.registerQueueListeners(container);
+      // Listeners must be in place before queues start processing jobs that emit events.
+      EventListenerSetup.registerAll(container, 'worker');
       const { queueFactory } = container.cradle;
       const result = await queueFactory.initializeAllQueues();
       this.log.info(

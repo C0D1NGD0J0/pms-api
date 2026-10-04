@@ -7,6 +7,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { ForbiddenError } from '@shared/customErrors';
 import { IRequestContext } from '@interfaces/utils.interface';
+import { mockSubscriptionService } from '@tests/setup/externalMocks';
 import { ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 
 // Break the circular import chain: lease.service → @shared/middlewares → @di/index → registerResources → lease.service (undefined)
@@ -113,6 +114,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
     } as any;
 
     leaseService = new LeaseService({
+      subscriptionService: mockSubscriptionService as any,
       leaseDAO: mockLeaseDAO,
       userDAO: mockUserDAO,
       clientDAO: mockClientDAO,
@@ -534,6 +536,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
     beforeEach(() => {
       // Provide full leaseCache mock required by getFilteredLeases
       leaseService = new LeaseService({
+        subscriptionService: mockSubscriptionService as any,
         leaseDAO: mockLeaseDAO,
         userDAO: mockUserDAO,
         clientDAO: mockClientDAO,

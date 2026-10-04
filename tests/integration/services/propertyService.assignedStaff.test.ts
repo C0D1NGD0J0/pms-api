@@ -146,6 +146,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
     const propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      mediaUploadService: mockMediaUploadService as any,
       propertyCache: mockPropertyCache,
       notificationService: mockNotificationService,
     });
@@ -570,6 +571,85 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       // Should be the same object reference (no filtering)
       expect(filtered).toBe(property);
+    });
+  });
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Person names for assignment — real "First Last", not the public displayName
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('person names for assignment', () => {
+    const setNames = async (
+      profileId: Types.ObjectId | string,
+      firstName: string,
+      lastName: string,
+      displayName: string
+    ) =>
+      Profile.findByIdAndUpdate(profileId, {
+        $set: {
+          'personalInfo.firstName': firstName,
+          'personalInfo.lastName': lastName,
+          'personalInfo.displayName': displayName,
+        },
+      });
+
+    const createNamedStaff = async (
+      client: any,
+      firstName: string,
+      lastName: string,
+      displayName: string
+    ) => {
+      const user = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      const profile = await createTestProfile(user._id, client._id, { type: 'employee' });
+      await setNames(profile._id, firstName, lastName, displayName);
+      return user;
+    };
+
+    it('getAssignableUsers returns the real fullName alongside the displayName', async () => {
+      const client = await createTestClient();
+      const staff = await createNamedStaff(client, 'Sam', 'Douglas', 'Nacho Reality Inc.');
+
+      const result = await propertyService.getAssignableUsers(
+        client.cuid,
+        buildCurrentUser(staff._id.toString(), client.cuid),
+        {}
+      );
+
+      const item = result.data.items.find((u: any) => u.email === staff.email) as any;
+      expect(item.fullName).toBe('Sam Douglas');
+      expect(item.displayName).toBe('Nacho Reality Inc.');
+    });
+
+    it('getAssignableUsers sorts by real name, not displayName', async () => {
+      const client = await createTestClient();
+      await createNamedStaff(client, 'Sam', 'Douglas', 'Nacho Reality Inc.');
+      await createNamedStaff(client, 'Aaron', 'Zimmer', 'Zed Holdings');
+
+      const result = await propertyService.getAssignableUsers(
+        client.cuid,
+        buildCurrentUser(new Types.ObjectId().toString(), client.cuid),
+        {}
+      );
+
+      const names = (result.data.items as any[])
+        .map((u) => u.fullName)
+        .filter((n) => n === 'Aaron Zimmer' || n === 'Sam Douglas');
+      expect(names).toEqual(['Aaron Zimmer', 'Sam Douglas']);
+    });
+
+    it('property detail lists assigned staff by real name, keeping displayName separately', async () => {
+      const client = await createTestClient();
+      const staff = await createNamedStaff(client, 'Sam', 'Douglas', 'Nacho Reality Inc.');
+      const property = await createTestProperty(client.cuid, client._id);
+      await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
+
+      const result = await propertyService.getClientProperty(
+        client.cuid,
+        property.pid,
+        buildCurrentUser(new Types.ObjectId().toString(), client.cuid)
+      );
+
+      const [assigned] = (result.data.property as any).assignedStaff;
+      expect(assigned.fullName).toBe('Sam Douglas');
+      expect(assigned.displayName).toBe('Nacho Reality Inc.');
     });
   });
 });

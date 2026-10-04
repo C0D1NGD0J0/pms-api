@@ -1546,6 +1546,53 @@ describe('LeaseDAO Integration Tests', () => {
       expect(updated).not.toBeNull();
       expect(updated?.leaseDocuments).toHaveLength(2);
     });
+
+    it('should append a valid lastModifiedBy entry without overwriting earlier ones', async () => {
+      const lease = await Lease.create({
+        cuid: testCuid,
+        type: LeaseType.FIXED_TERM,
+        templateType: 'residential-apartment',
+        tenantId: testTenantId,
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
+        duration: { startDate: new Date('2024-01-01'), endDate: new Date('2024-12-31') },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        signingMethod: 'pending',
+        createdBy: testCreatorId,
+        lastModifiedBy: [
+          { userId: testCreatorId, name: 'Lease created', date: new Date(), action: 'created' },
+        ],
+      });
+      const uploaderId = new Types.ObjectId();
+
+      const updated = await leaseDAO.updateLeaseDocuments(
+        lease._id.toString(),
+        [
+          {
+            url: 'https://example.com/addendum.pdf',
+            key: 'leases/addendum.pdf',
+            filename: 'addendum.pdf',
+            size: 1024,
+            documentType: 'other',
+          },
+        ] as any,
+        uploaderId.toString()
+      );
+
+      expect(updated?.lastModifiedBy).toHaveLength(2);
+      expect(updated?.lastModifiedBy?.[0].action).toBe('created');
+      expect(updated?.lastModifiedBy?.[1]).toMatchObject({
+        name: 'Document upload',
+        action: 'updated',
+      });
+      expect(updated?.lastModifiedBy?.[1].userId.toString()).toBe(uploaderId.toString());
+      expect(updated?.lastModifiedBy?.[1].date).toBeInstanceOf(Date);
+    });
   });
 
   describe('updateLeaseDocumentStatus', () => {

@@ -1,8 +1,8 @@
 import { Types } from 'mongoose';
 import { Response } from 'express';
 import { httpStatusCodes } from '@utils/constants';
+import { AppRequest } from '@interfaces/utils.interface';
 import { ExpenseService } from '@services/expense/expense.service';
-import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
 export class ExpenseController {
@@ -62,38 +62,34 @@ export class ExpenseController {
     const { cuid, expuid } = req.params;
     const userId = req.context.currentuser!.sub;
 
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: expuid,
-      uploadedBy: userId,
-      resourceContext: ResourceContext.EXPENSE,
+    const [receipt] = await this.mediaUploadService.uploadRequestFiles(req, {
+      resourceName: 'expense',
+      resourceId: expuid,
+      fieldName: 'receipt',
+      actorId: userId,
     });
 
-    if (!uploadResult.hasFiles) {
+    if (!receipt) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
         message: 'No file provided',
       });
     }
 
-    // Persist receipt metadata to the expense document
-    const file = req.scannedFiles?.[0];
-    if (file) {
-      await this.expenseService.updateExpense(expuid, cuid, {
-        receipt: {
-          url: file.url || '',
-          filename: file.originalFileName || file.filename || '',
-          key: file.key || '',
-          uploadedAt: new Date(),
-          uploadedBy: new Types.ObjectId(userId),
-        },
-      });
-    }
+    // Persist the uploaded receipt on the expense document
+    await this.expenseService.updateExpense(expuid, cuid, {
+      receipt: {
+        url: receipt.url,
+        filename: receipt.filename,
+        key: receipt.key ?? '',
+        uploadedAt: new Date(),
+        uploadedBy: new Types.ObjectId(userId),
+      },
+    });
 
     return res.status(httpStatusCodes.OK).json({
       success: true,
       message: 'Receipt uploaded',
-      fileUpload: uploadResult.message,
-      processedFiles: uploadResult.processedFiles,
     });
   }
 }

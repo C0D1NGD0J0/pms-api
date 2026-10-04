@@ -110,6 +110,7 @@ beforeEach(() => {
     emailQueue: mockEmailQueue,
     s3Service: mockS3Service as any,
   });
+  service.registerEventListeners();
 });
 
 describe('InspectionService', () => {
@@ -560,12 +561,106 @@ describe('InspectionService', () => {
         })
       ).rejects.toThrow(/Inspector not found/);
     });
+
+    describe('move-out on a lease that has ended', () => {
+      const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const makeEndedLease = (overrides: Record<string, any>) => ({
+        ...makeActiveLease(),
+        ...overrides,
+      });
+      const scheduleMoveOut = () =>
+        service.scheduleInspection(CUID, USER_ID, {
+          type: InspectionType.MOVE_OUT,
+          leaseId: 'lease-123',
+          scheduledDate: new Date().toISOString(),
+          refundDeposit: true,
+        });
+
+      beforeEach(() => {
+        mockInspectionDAO.findFirst.mockResolvedValue(null);
+        mockPropertyDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(), cuid: CUID });
+        mockInspectionDAO.insert.mockImplementation((data: any) =>
+          Promise.resolve({ ...data, iuid: IUID })
+        );
+      });
+
+      it('allows a move-out on an expired lease within 30 days of its end date', async () => {
+        mockLeaseDAO.findFirst.mockResolvedValue(
+          makeEndedLease({ status: 'expired', duration: { endDate: daysAgo(10) } })
+        );
+
+        const result = await scheduleMoveOut();
+
+        expect(result.success).toBe(true);
+        expect(mockInspectionDAO.insert).toHaveBeenCalledWith(
+          expect.objectContaining({ type: InspectionType.MOVE_OUT })
+        );
+      });
+
+      it('measures a terminated lease from its termination date, not its original end date', async () => {
+        mockLeaseDAO.findFirst.mockResolvedValue(
+          makeEndedLease({
+            status: 'terminated',
+            duration: { endDate: daysAgo(-200), terminationDate: daysAgo(5) },
+          })
+        );
+
+        const result = await scheduleMoveOut();
+
+        expect(result.success).toBe(true);
+      });
+
+      it('rejects a move-out more than 30 days after the lease ended', async () => {
+        mockLeaseDAO.findFirst.mockResolvedValue(
+          makeEndedLease({ status: 'expired', duration: { endDate: daysAgo(40) } })
+        );
+
+        await expect(scheduleMoveOut()).rejects.toThrow(/within 30 days of the lease ending/);
+        expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+      });
+
+      it('still rejects other inspection types on an ended lease', async () => {
+        mockLeaseDAO.findFirst.mockResolvedValue(
+          makeEndedLease({ status: 'expired', duration: { endDate: daysAgo(2) } })
+        );
+
+        await expect(
+          service.scheduleInspection(CUID, USER_ID, {
+            type: InspectionType.ROUTINE,
+            leaseId: 'lease-123',
+            scheduledDate: new Date().toISOString(),
+          })
+        ).rejects.toThrow(/only be created for active leases/);
+      });
+
+      it('rejects a move-out on a lease that was cancelled rather than ended', async () => {
+        mockLeaseDAO.findFirst.mockResolvedValue(
+          makeEndedLease({ status: 'cancelled', duration: { endDate: daysAgo(2) } })
+        );
+
+        await expect(scheduleMoveOut()).rejects.toThrow(/active, expired or terminated leases/);
+      });
+    });
   });
 
   // ─── Lease Termination Handler Tests ──────────────────────────────────────
 
   describe('handleLeaseTerminated', () => {
     const leaseId = new Types.ObjectId().toString();
+
+    it('leaves move-out inspections alone — the ended lease still needs one', async () => {
+      mockInspectionDAO.list.mockResolvedValue({ items: [], pagination: { total: 0 } });
+
+      const handler = mockEmitterService.on.mock.calls.find(
+        (call: any[]) => call[0] === 'lease:terminated'
+      )?.[1];
+      await handler({ leaseId, cuid: CUID, luid: 'lease-123', terminatedBy: USER_ID });
+
+      expect(mockInspectionDAO.list).toHaveBeenCalledWith(
+        expect.objectContaining({ type: { $ne: InspectionType.MOVE_OUT } }),
+        expect.anything()
+      );
+    });
 
     it('should cancel all open inspections when a lease is terminated', async () => {
       const openInspections = [

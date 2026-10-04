@@ -46,10 +46,10 @@ export class UploadWorker {
   }
 
   uploadAsset = async (job: Job): Promise<void> => {
-    const { files, resource } = job.data as UploadJobData;
-    if (!files || files.length === 0) {
-      this.log.error('No files to upload');
-      return Promise.reject(new Error('No files to upload'));
+    const { results: result, resource } = job.data as UploadJobData;
+    if (!result || result.length === 0) {
+      this.log.error('No upload results to persist');
+      return Promise.reject(new Error('No upload results to persist'));
     }
 
     if (!resource.resourceName || !resource.resourceId) {
@@ -58,27 +58,13 @@ export class UploadWorker {
     }
 
     try {
+      // The files are already in S3 (uploaded by the process that received them);
+      // this job only persists the results and notifies.
       job.progress(20);
-      this.log.info(`Starting S3 upload for ${files.length} files`, {
+      this.log.info(`Persisting ${result.length} uploaded file(s)`, {
         resourceName: resource.resourceName,
         resourceId: resource.resourceId,
       });
-
-      // Map ExtractedMediaFile[] to UploadedFile[] format
-      const uploadFiles = files.map((file) => ({
-        originalFileName: file.originalFileName,
-        documentType: file.documentType,
-        fileSize: file.fileSize,
-        fieldName: file.fieldName,
-        mimeType: file.mimeType,
-        fileName: file.filename, // Map filename to fileName
-        path: file.path,
-      }));
-
-      const result = await this.awsS3Service.uploadFiles(uploadFiles, resource);
-
-      job.progress(70);
-      this.log.info('S3 upload completed, emitting UPLOAD_COMPLETED event');
 
       this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
         results: result,
@@ -89,10 +75,9 @@ export class UploadWorker {
         fieldName: resource.fieldName,
       });
 
-      // Direct dispatch for maintenance — the event-based listener in
-      // MaintenanceRequestService is never registered in the worker process
-      // (the service isn't in any queue's dependency chain), so we call it
-      // directly here, mirroring the PropertyMediaWorker pattern.
+      // Upload results are persisted by calling each resource's service directly
+      // (maintenance, property, inspection below), so the job only completes once
+      // the DB write succeeds.
       if (resource.resourceName === 'maintenance' && result.length > 0) {
         this.log.info(
           { mruid: resource.resourceId, fileCount: result.length },
@@ -126,7 +111,6 @@ export class UploadWorker {
         }
       }
 
-      // Direct dispatch for property — same cross-process issue as maintenance.
       if (resource.resourceName === 'property' && result.length > 0) {
         this.log.info(
           { pid: resource.resourceId, fileCount: result.length },
@@ -212,11 +196,6 @@ export class UploadWorker {
         }
       }
 
-      job.progress(90);
-
-      const filesNames = result.map((file) => file.filename);
-      this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, filesNames);
-
       job.progress(100);
       this.log.info('Document upload process completed successfully');
 
@@ -238,6 +217,7 @@ export class UploadWorker {
           stack: error.stack,
         },
         resourceType: resource.resourceType || 'document',
+        resourceName: resource.resourceName,
         resourceId: resource.resourceId,
       });
 
@@ -246,25 +226,20 @@ export class UploadWorker {
   };
 
   deleteAsset = async (job: Job): Promise<void> => {
-    const { data } = job.data;
+    const { data: s3Keys } = job.data as { data?: string[] };
 
-    if (!data || data.length === 0) {
+    if (!s3Keys?.length) {
       this.log.error('No remote data-asset to delete.');
       return Promise.reject(new Error('No remote data-asset to delete.'));
     }
 
-    try {
-      const result = await this.awsS3Service.deleteFile(data);
-      if (result) {
-        this.log.info('Remote asset deleted successfully');
-        Promise.resolve('Remote asset deleted successfully');
-      } else {
-        return Promise.reject(new Error('Remote asset deletion failed'));
-      }
-    } catch (error: any) {
-      this.log.error(`Error uploading image: ${error.message}`);
-      return Promise.reject(new Error(error.message));
+    this.log.info({ count: s3Keys.length }, 'Deleting remote assets');
+    const deleted = await this.awsS3Service.deleteFiles(s3Keys);
+    if (!deleted) {
+      this.log.error({ s3Keys }, 'Remote asset deletion failed');
+      return Promise.reject(new Error('Remote asset deletion failed'));
     }
-    this.log.info('Deleting remote asset');
+
+    this.log.info({ count: s3Keys.length }, 'Remote assets deleted successfully');
   };
 }

@@ -28,32 +28,22 @@ export class LeaseDocumentService {
     this.log = createLogger('LeaseDocumentService');
   }
 
+  /** Attaches a document the controller has already uploaded to S3. */
   async uploadLeaseDocument(
     cuid: string,
     leaseId: string,
-    file: any,
+    document: UploadResult | undefined,
     uploadedBy: string
   ): IPromiseReturnedData<ILeaseDocument> {
-    if (!file) {
+    if (!document) {
       throw new BadRequestError({ message: 'No file provided' });
     }
 
     const lease = await this._findLease(leaseId, cuid);
 
-    const uploadResult: UploadResult = {
-      key: file.key || file.location,
-      url: file.location || file.path,
-      size: file.size,
-      mimeType: file.mimetype,
-      filename: file.originalname || file.filename || 'document',
-      resourceId: lease._id.toString(),
-      fieldName: 'leaseDocument',
-      publicuid: leaseId,
-    };
-
     const updated = await this.leaseDAO.updateLeaseDocuments(
       lease._id.toString(),
-      [uploadResult],
+      [{ ...document, resourceId: lease._id.toString(), publicuid: leaseId }],
       uploadedBy
     );
 

@@ -247,6 +247,108 @@ describe('PaymentGatewayService Integration Tests', () => {
     });
   });
 
+  describe('dispute transfers', () => {
+    it('passes dispute metadata and the idempotency key through to the reversal', async () => {
+      mockStripeService.createTransferReversal = jest
+        .fn()
+        .mockResolvedValue({ reversalId: 'trr_1', amount: 1500 });
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+      const opts = { metadata: { disputeId: 'dp_1' }, idempotencyKey: 'dispute-reversal:dp_1' };
+
+      const result = await paymentGatewayService.createTransferReversal(
+        IPaymentGatewayProvider.STRIPE,
+        'tr_1',
+        1500,
+        opts
+      );
+
+      expect(result).toEqual({ success: true, data: { reversalId: 'trr_1', amount: 1500 } });
+      expect(mockStripeService.createTransferReversal).toHaveBeenCalledWith('tr_1', 1500, opts);
+    });
+
+    it('reports a failed reversal as success:false rather than throwing', async () => {
+      mockStripeService.createTransferReversal = jest
+        .fn()
+        .mockRejectedValue(new Error('Insufficient funds in connected account'));
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.createTransferReversal(
+        IPaymentGatewayProvider.STRIPE,
+        'tr_1',
+        1500
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.message).toBe('Insufficient funds in connected account');
+    });
+
+    it('returns the amount reversed for a dispute', async () => {
+      mockStripeService.getDisputeReversedAmount = jest.fn().mockResolvedValue(1500);
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.getDisputeReversedAmount(
+        IPaymentGatewayProvider.STRIPE,
+        'tr_1',
+        'dp_1'
+      );
+
+      expect(result).toEqual({ success: true, data: 1500 });
+      expect(mockStripeService.getDisputeReversedAmount).toHaveBeenCalledWith('tr_1', 'dp_1');
+    });
+
+    it('reports a failed reversal lookup as success:false', async () => {
+      mockStripeService.getDisputeReversedAmount = jest
+        .fn()
+        .mockRejectedValue(new Error('No such transfer'));
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      const result = await paymentGatewayService.getDisputeReversedAmount(
+        IPaymentGatewayProvider.STRIPE,
+        'tr_1',
+        'dp_1'
+      );
+
+      expect(result).toEqual({ success: false, data: null, message: 'No such transfer' });
+    });
+
+    it('passes the idempotency key through to the transfer', async () => {
+      mockStripeService.createTransfer = jest
+        .fn()
+        .mockResolvedValue({ transferId: 'tr_2', amount: 1500 });
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+      const params = {
+        amountInCents: 1500,
+        currency: 'cad',
+        destination: 'acct_pm',
+        idempotencyKey: 'dispute-won:dp_1',
+      };
+
+      await paymentGatewayService.createTransfer(IPaymentGatewayProvider.STRIPE, params);
+
+      expect(mockStripeService.createTransfer).toHaveBeenCalledWith(params);
+    });
+  });
+
+  describe('finalizeInvoice', () => {
+    it('passes the idempotency key through to Stripe', async () => {
+      mockStripeService.finalizeInvoice = jest
+        .fn()
+        .mockResolvedValue({ invoiceId: 'in_1', status: 'open' });
+      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
+
+      await paymentGatewayService.finalizeInvoice(
+        IPaymentGatewayProvider.STRIPE,
+        'in_1',
+        'rent-invoice-job:42:full:finalize'
+      );
+
+      expect(mockStripeService.finalizeInvoice).toHaveBeenCalledWith(
+        'in_1',
+        'rent-invoice-job:42:full:finalize'
+      );
+    });
+  });
+
   describe('getConnectBalance', () => {
     it('should return balance data from StripeService', async () => {
       const mockBalance = {

@@ -133,8 +133,6 @@ export class UserService implements ICronProvider {
     this.log = createLogger('UserService');
     this.permissionService = permissionService;
     this.queueFactory = queueFactory;
-
-    this.setupEventListeners();
   }
 
   getCronJobs(): ICronJob[] {
@@ -2613,7 +2611,7 @@ export class UserService implements ICronProvider {
     }
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.LEASE_EXPIRED, this.handleLeaseExpired.bind(this));
   }
 

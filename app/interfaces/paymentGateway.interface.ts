@@ -14,6 +14,14 @@ export interface IPaymentProvider {
     };
     paymentMethodType?: string;
   }>;
+  createTransfer(params: {
+    amountInCents: number;
+    currency: string;
+    destination: string;
+    sourceTransaction?: string;
+    metadata?: Record<string, string>;
+    idempotencyKey?: string;
+  }): Promise<{ transferId: string; amount: number }>;
   getProductsWithPrices(): Promise<
     Map<
       string,
@@ -23,13 +31,6 @@ export interface IPaymentProvider {
       }
     >
   >;
-  createTransfer(params: {
-    amountInCents: number;
-    currency: string;
-    destination: string;
-    sourceTransaction?: string;
-    metadata?: Record<string, string>;
-  }): Promise<{ transferId: string; amount: number }>;
   createCustomer(data: {
     email: string;
     name?: string;
@@ -37,6 +38,11 @@ export interface IPaymentProvider {
     connectedAccountId?: string;
     metadata?: Record<string, string>;
   }): Promise<IPaymentCustomer>;
+  createTransferReversal(
+    transferId: string,
+    amountInCents?: number,
+    opts?: { metadata?: Record<string, string>; idempotencyKey?: string }
+  ): Promise<{ reversalId: string; amount: number }>;
   createCheckoutSession(data: {
     customerId: string;
     priceId: string;
@@ -44,11 +50,6 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
-  createRefund(params: {
-    chargeId: string;
-    amountInCents?: number;
-    reason?: string;
-  }): Promise<{ refundId: string; status: string; amount: number; currency: string }>;
   updatePayoutSchedule(
     accountId: string,
     interval: 'manual' | 'daily' | 'weekly' | 'monthly',
@@ -64,24 +65,28 @@ export interface IPaymentProvider {
     refreshUrl: string;
     returnUrl: string;
   }): Promise<IOnboardingLinkResponse>;
-  createTransferReversal(
-    transferId: string,
-    amountInCents?: number
-  ): Promise<{ reversalId: string; amount: number }>;
+  createRefund(params: IRefundParams): Promise<{
+    refundId: string;
+    status: string;
+    amount: number;
+    currency: string;
+  }>;
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
   payInvoice(invoiceId: string, opts?: { paymentMethod?: string; mandate?: string }): Promise<void>;
   updateCustomerDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void>;
+  finalizeInvoice(invoiceId: string, idempotencyKey?: string): Promise<IFinalizeInvoiceResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
+  /** Total reversed from a transfer by reversals tagged with this dispute ID. */
+  getDisputeReversedAmount(transferId: string, disputeId: string): Promise<number>;
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
   createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
-  finalizeInvoice(invoiceId: string): Promise<IFinalizeInvoiceResponse>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getPayoutSchedule(accountId: string): Promise<IPayoutSchedule>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
@@ -90,6 +95,25 @@ export interface IPaymentProvider {
   voidInvoice(invoiceId: string): Promise<void>;
   getInvoice(invoiceId: string): Promise<any>;
   getProducts(): Promise<Stripe.Product[]>;
+}
+
+export interface ICreateInvoiceInput {
+  lineItems: Array<{
+    description: string;
+    amountInCents: number;
+  }>;
+  applicationFeeAmountInCents: number;
+  skipDestinationTransfer?: boolean;
+  connectedAccountId: string;
+  tenantCustomerId: string;
+  paymentMethodId?: string;
+  autoChargeDueDate: Date;
+  /** Stable across retries of the same job, so a retry can't create a second invoice. */
+  idempotencyKey?: string;
+  description: string;
+  leaseUid?: string;
+  currency: string;
+  cuid: string;
 }
 
 export interface ICreateConnectAccountInput {
@@ -114,21 +138,16 @@ export interface ICreateConnectAccountInput {
   cuid: string;
 }
 
-export interface ICreateInvoiceInput {
-  lineItems: Array<{
-    description: string;
-    amountInCents: number;
-  }>;
-  applicationFeeAmountInCents: number;
-  skipDestinationTransfer?: boolean;
-  connectedAccountId: string;
-  tenantCustomerId: string;
-  paymentMethodId?: string;
-  autoChargeDueDate: Date;
-  description: string;
-  leaseUid?: string;
-  currency: string;
-  cuid: string;
+export interface IRefundParams {
+  /** Stable per refund intent, so a retried request can't refund twice. */
+  idempotencyKey?: string;
+  amountInCents?: number;
+  reason?: RefundReason;
+  /** When the caller already knows the charge's transfer ID, pass it to skip an extra Stripe API call. */
+  transferId?: string;
+  chargeId: string;
+  /** Free-text explanation, stored in the refund's metadata. */
+  note?: string;
 }
 
 export interface IConnectAccountResponse {
@@ -164,6 +183,7 @@ export interface ICreateIdentitySessionInput {
   returnUrl: string;
   email?: string;
 }
+
 export interface ICreateCustomerInput {
   metadata?: Record<string, string>;
   provider: IPaymentGatewayProvider;
@@ -171,7 +191,6 @@ export interface ICreateCustomerInput {
   email: string;
   name?: string;
 }
-
 export interface ICheckoutSession {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -218,6 +237,9 @@ export interface IIdentitySessionResponse {
   sessionId: string;
   url: string;
 }
+
+/** The only refund reasons Stripe accepts; anything else is rejected. */
+export type RefundReason = 'duplicate' | 'fraudulent' | 'requested_by_customer';
 
 export interface IOnboardingLinkResponse {
   url: string;

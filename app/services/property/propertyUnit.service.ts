@@ -32,6 +32,7 @@ import {
   ISuccessReturnData,
   IPaginationQuery,
   IRequestContext,
+  UploadResult,
 } from '@interfaces/utils.interface';
 import {
   PROPERTY_APPROVAL_ROLES,
@@ -102,11 +103,9 @@ export class PropertyUnitService {
     this.propertyUnitDAO = propertyUnitDAO;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
-
-    this.initializeEventListeners();
   }
 
-  private initializeEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
@@ -894,13 +893,54 @@ export class PropertyUnitService {
     return this.updatePropertyUnit(cxt, updateData);
   }
 
-  async addDocumentToUnit(cxt: IRequestContext, documentData: any) {
+  /** Adds photos (already uploaded to S3) to the unit's media.photos. */
+  async addDocumentToUnit(cxt: IRequestContext, photos: UploadResult[]) {
     const currentuser = cxt.currentuser!;
-    const updateData = {
-      documents: [documentData],
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    const { cuid, pid, puid: unitId } = cxt.request.params;
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+
+    const uploadedBy = new Types.ObjectId(currentuser.sub);
+    const updatedUnit = await this.propertyUnitDAO.update(
+      { puid: unitId, propertyId: property._id, deletedAt: null },
+      {
+        $push: {
+          'media.photos': {
+            $each: photos.map((photo) => ({
+              url: photo.url,
+              key: photo.key,
+              filename: photo.filename,
+              uploadedAt: new Date(),
+              uploadedBy,
+            })),
+          },
+        },
+        $set: { lastModifiedBy: uploadedBy },
+      }
+    );
+    if (!updatedUnit) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
+    }
+
+    this.emitterService.emit(EventTypes.UNIT_UPDATED, {
+      propertyId: property.id,
+      propertyPid: pid,
+      cuid,
+      unitId,
+      userId: currentuser.sub,
+      changeType: 'updated',
+    });
+    await this.propertyCache.invalidateProperty(cuid, pid);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    return {
+      success: true,
+      data: updatedUnit,
+      message: t('common.success.updated', { resource: 'Unit' }),
     };
-    return this.updatePropertyUnit(cxt, updateData);
   }
 
   async deleteDocumentFromUnit(_cxt: IRequestContext) {

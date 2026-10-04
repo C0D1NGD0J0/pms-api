@@ -8,11 +8,15 @@ import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { LeaseDocumentService } from '@services/lease/leaseDocument.service';
-import { mockQueueFactory, mockEmailQueue } from '@tests/setup/externalMocks';
 import { LeaseSignatureService } from '@services/lease/leaseSignature.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { PropertyUnit, Property, Profile, Client, Vendor, Lease, User } from '@models/index';
 import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import {
+  mockSubscriptionService,
+  mockQueueFactory,
+  mockEmailQueue,
+} from '@tests/setup/externalMocks';
 import {
   PropertyUnitDAO,
   InvitationDAO,
@@ -73,6 +77,7 @@ const setupServices = () => {
     trackEvent: jest.fn().mockResolvedValue(undefined),
     getEventLog: jest.fn().mockResolvedValue([]),
     registerEvent: jest.fn().mockResolvedValue(undefined),
+    registerEvents: jest.fn().mockResolvedValue(undefined),
   } as any;
 
   const emitterService = new EventEmitterService({ eventsRegistry });
@@ -166,6 +171,7 @@ const setupServices = () => {
   } as any);
 
   const leasePdfService = new LeasePdfService({
+    subscriptionService: mockSubscriptionService as any,
     leaseDAO,
     clientDAO,
     profileDAO,
@@ -193,6 +199,7 @@ const setupServices = () => {
   });
 
   const leaseService = new LeaseService({
+    subscriptionService: mockSubscriptionService as any,
     s3Service: {
       signFileUrls: jest.fn(async (items: any[]) => {
         items.forEach((item) => {

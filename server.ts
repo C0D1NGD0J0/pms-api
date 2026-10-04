@@ -4,7 +4,6 @@ process.env.PROCESS_TYPE = 'api';
 import http from 'http';
 import { asValue } from 'awilix';
 import { createClient } from 'redis';
-import { container } from '@di/index';
 import * as Sentry from '@sentry/node';
 import { IAppSetup, App } from '@root/app';
 import { createLogger } from '@utils/index';
@@ -15,6 +14,7 @@ import { PidManager } from '@utils/pid-manager';
 import { Server as SocketIOServer } from 'socket.io';
 import { runSchemaSync } from '@database/schema-sync';
 import { createAdapter } from '@socket.io/redis-adapter';
+import { EventListenerSetup, container } from '@di/index';
 import { DatabaseService, RedisService, Environments } from '@database/index';
 import { SERVICE_RESOURCE_NAMES, QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
@@ -61,6 +61,9 @@ class Server {
 
     // Backfill missing fields on existing documents (idempotent, no-op when in sync)
     await runSchemaSync();
+
+    // Subscribe every in-process event listener before the first request can emit an event.
+    EventListenerSetup.registerAll(container, 'api');
 
     // Queues/workers run in separate worker_process.ts
     // Only load Bull Board UI (readonly) for monitoring via /admin/queues
@@ -112,7 +115,10 @@ class Server {
       const io = await this.setupSocketIO(this.httpServer);
       io && this.socketConnections(io);
     } catch (error: any) {
-      this.log.error({ err: error.message, stack: error.stack }, `Server startup failed: ${error.message}`);
+      this.log.error(
+        { err: error.message, stack: error.stack },
+        `Server startup failed: ${error.message}`
+      );
     }
   }
 

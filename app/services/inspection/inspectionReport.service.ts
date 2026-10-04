@@ -4,12 +4,10 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger, toId } from '@utils/index';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { SSEService } from '@services/sse/sse.service';
-import { EventEmitterService } from '@services/eventEmitter';
 import { InspectionStatus } from '@interfaces/inspection.interface';
 import { RoleHelpers, IUserRole } from '@shared/constants/roles.constants';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { PdfGeneratorService } from '@services/pdfGenerator/pdfGenerator.service';
-import { UploadCompletedPayload, EventTypes } from '@interfaces/events.interface';
 import { IPromiseReturnedData, ResourceContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 
@@ -18,7 +16,6 @@ import { buildInspectionReportHtml, InspectionReportData } from './inspectionRep
 interface IConstructor {
   pdfGeneratorService: PdfGeneratorService;
   mediaUploadService: MediaUploadService;
-  emitterService: EventEmitterService;
   inspectionDAO: InspectionDAO;
   sseService: SSEService;
   clientDAO: ClientDAO;
@@ -33,7 +30,6 @@ export class InspectionReportService {
   private readonly sseService: SSEService;
   private readonly pdfGeneratorService: PdfGeneratorService;
   private readonly mediaUploadService: MediaUploadService;
-  private readonly emitterService: EventEmitterService;
 
   constructor({
     inspectionDAO,
@@ -42,7 +38,6 @@ export class InspectionReportService {
     sseService,
     pdfGeneratorService,
     mediaUploadService,
-    emitterService,
   }: IConstructor) {
     this.inspectionDAO = inspectionDAO;
     this.clientDAO = clientDAO;
@@ -50,9 +45,7 @@ export class InspectionReportService {
     this.sseService = sseService;
     this.pdfGeneratorService = pdfGeneratorService;
     this.mediaUploadService = mediaUploadService;
-    this.emitterService = emitterService;
     this.log = createLogger('InspectionReportService');
-    this.setupEventListeners();
   }
 
   async generateReport(
@@ -241,69 +234,6 @@ export class InspectionReportService {
         fileSize: pdfResult.metadata?.fileSize,
       },
     };
-  }
-
-  private setupEventListeners(): void {
-    if (process.env.PROCESS_TYPE !== 'worker') {
-      return;
-    }
-
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.handleUploadCompleted.bind(this));
-  }
-
-  private async handleUploadCompleted(payload: UploadCompletedPayload): Promise<void> {
-    const { results, resourceName, resourceId } = payload;
-
-    if (resourceName !== 'inspection') {
-      return;
-    }
-
-    try {
-      const pdfResult = results.find((r) => r.key && r.url);
-      if (!pdfResult) {
-        this.log.warn('No PDF result found in inspection upload results', { resourceId });
-        return;
-      }
-
-      await this.inspectionDAO.updateById(resourceId, {
-        $set: {
-          'reportDocument.url': pdfResult.url,
-          'reportDocument.key': pdfResult.key,
-          'reportDocument.size': pdfResult.size,
-          'reportDocument.status': 'active',
-        },
-      });
-
-      this.log.info({ resourceId, url: pdfResult.url }, 'Inspection report document updated');
-
-      // Notify the PM that the report is ready for download
-      const inspection = await this.inspectionDAO.findFirst({ _id: resourceId });
-      if (inspection?.cuid) {
-        try {
-          await this.sseService.broadcastToClient(
-            inspection.cuid,
-            { resource: 'inspection', action: 'report-ready', iuid: inspection.iuid },
-            'resource-event'
-          );
-        } catch {
-          // Non-critical — PM can still refresh manually
-        }
-      }
-    } catch (error) {
-      this.log.error({ error, resourceId }, 'Error processing inspection upload completed event');
-
-      try {
-        await this.inspectionDAO.updateById(resourceId, {
-          $set: {
-            'reportDocument.status': 'failed',
-            'reportDocument.error':
-              error instanceof Error ? error.message : 'Upload processing failed',
-          },
-        });
-      } catch (markError) {
-        this.log.error({ markError, resourceId }, 'Failed to mark report document as failed');
-      }
-    }
   }
 }
 

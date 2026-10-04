@@ -104,7 +104,6 @@ export class InvitationService {
     this.userCache = userCache;
     this.leaseDAO = leaseDAO;
     this.log = createLogger('InvitationService');
-    this.setupEventListeners();
   }
 
   async sendInvitation(
@@ -1255,7 +1254,7 @@ export class InvitationService {
   private readonly onEmailSent = this.handleEmailSent.bind(this);
   private readonly onEmailFailed = this.handleEmailFailed.bind(this);
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.EMAIL_SENT, this.onEmailSent);
     this.emitterService.on(EventTypes.EMAIL_FAILED, this.onEmailFailed);
   }

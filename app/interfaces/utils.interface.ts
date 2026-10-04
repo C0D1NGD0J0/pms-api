@@ -219,7 +219,10 @@ export interface ResourceInfo {
     | 'maintenance'
     | 'payment-invoice'
     | 'guest-pass'
-    | 'inspection'; //name of the resource
+    | 'inspection'
+    | 'expense'
+    | 'payment'
+    | 'property-unit'; //name of the resource
   resourceType: 'image' | 'video' | 'document' | 'unknown'; //type of the file
   resourceId: string; //id of the resource
   roomIndex?: number; // room index for inspection room-targeted media
@@ -411,9 +414,13 @@ export interface IUploadFileInterface {
   url: string;
 }
 
+/**
+ * Upload jobs carry S3 results only. Files are uploaded by the process that received them
+ * (MediaUploadService.uploadFilesToS3) because the API and worker don't share a disk.
+ */
 export type UploadJobData = {
   resource: ResourceInfo;
-  files: ExtractedMediaFile[];
+  results: UploadResult[];
 };
 
 export type IPromiseReturnedData<T = object> = Promise<ISuccessReturnData<T>>;

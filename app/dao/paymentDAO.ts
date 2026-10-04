@@ -142,18 +142,22 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /** @internal Cron method — returns overdue payments, optionally scoped to specific clients. */
+  /** @internal Cron method — returns past-due payments, optionally scoped to specific clients. */
   async findOverduePayments(
-    extraFilter?: Record<string, any>
+    extraFilter?: Record<string, any>,
+    pagination?: { limit?: number; skip?: number }
   ): ListResultWithPagination<IPaymentDocument[]> {
     try {
-      return await this.list({
-        status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
-        dueDate: { $lt: dayjs().toDate() },
-        'dispute.status': { $nin: ['open', 'needs_response'] },
-        deletedAt: null,
-        ...extraFilter,
-      });
+      return await this.list(
+        {
+          status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
+          dueDate: { $lt: dayjs().toDate() },
+          'dispute.status': { $nin: ['open', 'needs_response'] },
+          deletedAt: null,
+          ...extraFilter,
+        },
+        pagination
+      );
     } catch (error: any) {
       this.log.error('Error finding overdue payments:', error);
       throw this.throwErrorHandler(error);

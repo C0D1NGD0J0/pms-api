@@ -125,6 +125,37 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
+export interface IAssignableUser {
+  employeeInfo?: {
+    department?: string;
+    employeeId?: string;
+    jobTitle?: string;
+  };
+  role: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER;
+  department?: string;
+  // Public-facing name (emails/correspondence) — may be a business name
+  displayName: string;
+  // Personal "First Last" name — use this when picking a person to assign
+  fullName: string;
+  email: string;
+  id: string;
+}
+
+export interface CsvJobData {
+  bulkCreateOptions?: {
+    passwordLength?: number;
+    sendNotifications?: boolean;
+  };
+  // User-confirmed header → field key mapping from the frontend's mapping step.
+  columnMapping?: Record<string, string>;
+  clientInfo: IClientInfo;
+  csvFilePath: string;
+  /** Where the API staged the CSV in S3; the worker downloads it to csvFilePath. */
+  csvS3Key?: string;
+  jobId?: string;
+  userId: string;
+}
+
 export type IPropertyWithUnitInfo = {
   unitInfo?: UnitInfo;
   hasLeaseHistory?: boolean;
@@ -168,19 +199,6 @@ export interface IPropertyAuthorization {
   notes?: string; // Internal notes
 }
 
-export interface CsvJobData {
-  bulkCreateOptions?: {
-    passwordLength?: number;
-    sendNotifications?: boolean;
-  };
-  // User-confirmed header → field key mapping from the frontend's mapping step.
-  columnMapping?: Record<string, string>;
-  clientInfo: IClientInfo;
-  csvFilePath: string;
-  jobId?: string;
-  userId: string;
-}
-
 export interface FinancialDetails {
   lastAssessmentDate?: Date;
   maintenanceCost?: number;
@@ -220,19 +238,6 @@ export interface IPropertyOwner {
   taxId?: string;
   notes?: string;
   name?: string;
-}
-
-export interface IAssignableUser {
-  employeeInfo?: {
-    department?: string;
-    employeeId?: string;
-    jobTitle?: string;
-  };
-  role: IUserRole.ADMIN | IUserRole.STAFF | IUserRole.MANAGER;
-  department?: string;
-  displayName: string;
-  email: string;
-  id: string;
 }
 
 export interface PropertySpecifications {

@@ -22,7 +22,6 @@ export class AssetService {
     this.assetDAO = assetDAO;
     this.emitterService = emitterService;
     this.logger = createLogger('AssetService');
-    this.setupEventListeners();
   }
 
   /**
@@ -326,7 +325,7 @@ export class AssetService {
   /**
    * Setup event listeners for asset-related events
    */
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
   }
 

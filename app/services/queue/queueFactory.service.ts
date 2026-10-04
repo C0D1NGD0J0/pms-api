@@ -1,6 +1,7 @@
 import { container } from '@di/index';
 import { createLogger } from '@utils/helpers';
 import { BaseQueue } from '@queues/base.queue';
+import { QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
 export class QueueFactory {
   private initializedQueues: Set<string> = new Set();
@@ -64,25 +65,13 @@ export class QueueFactory {
   }
 
   /**
-   * Force initialize all queues (for worker process)
-   * Workers are automatically injected into queue constructors, no need to resolve separately
+   * Force initialize every registered queue (for worker process).
+   * The list is every key in QueuesResources, so a newly registered queue is started
+   * automatically. Workers are injected into queue constructors, no need to resolve separately.
    * Returns list of successfully initialized queues
    */
   public async initializeAllQueues(): Promise<{ queues: string[]; failed: string[] }> {
-    const queueNames = [
-      'propertyMediaQueue',
-      'emailQueue',
-      'eventBusQueue',
-      'propertyQueue',
-      'propertyUnitQueue',
-      'uploadQueue',
-      'invitationQueue',
-      'eSignatureQueue',
-      'pdfGeneratorQueue',
-      'cronQueue',
-      'paymentQueue',
-      'reportQueue',
-    ];
+    const queueNames = QUEUE_RESOURCE_NAMES;
 
     const processType = process.env.PROCESS_TYPE ?? 'unknown';
     this.log.debug(`Force initializing all queues [${processType}] (workers auto-injected via DI)`);

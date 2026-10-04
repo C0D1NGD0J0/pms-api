@@ -64,7 +64,8 @@ describe('PaymentController Integration Tests', () => {
   // Mock the gateway service — Stripe/PayPal are external service boundaries
   const mockCreateRefund = jest.fn();
   const mockRequestInvoice = jest.fn();
-  const mockHandleFiles = jest.fn();
+  // The manual-entry receipt is uploaded during the request (uploadRequestFiles)
+  const mockUploadRequestFiles = jest.fn();
   const mockPaymentGatewayService = {
     createRefund: mockCreateRefund,
     createCustomer: jest.fn(),
@@ -160,12 +161,15 @@ describe('PaymentController Integration Tests', () => {
       userDAO,
     });
 
-    mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
+    mockUploadRequestFiles.mockReturnValue(Promise.resolve([]));
     mockRequestInvoice.mockReturnValue(Promise.resolve({ status: 'queued', jobId: 'job-123' }));
 
     const paymentController = new PaymentController({
       paymentService,
-      mediaUploadService: { handleFiles: mockHandleFiles } as any,
+      mediaUploadService: {
+        uploadRequestFiles: mockUploadRequestFiles,
+        removeUploadedFiles: jest.fn(),
+      } as any,
       invoiceService: { requestInvoice: mockRequestInvoice } as any,
       invoiceAIService: {} as any,
       cronService: {} as any,
@@ -231,7 +235,7 @@ describe('PaymentController Integration Tests', () => {
     resetContextOverrides();
     jest.clearAllMocks();
     // Restore default mock implementations cleared above
-    mockHandleFiles.mockReturnValue(Promise.resolve({ hasFiles: false }));
+    mockUploadRequestFiles.mockReturnValue(Promise.resolve([]));
     mockRequestInvoice.mockReturnValue(Promise.resolve({ status: 'queued', jobId: 'job-123' }));
 
     testPayment = await Payment.create({

@@ -15,7 +15,13 @@ jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
 }));
 jest.mock('@di/index', () => ({ container: {} }));
+const SYSTEM_BOT_ID = new Types.ObjectId();
+jest.mock('@utils/systemBot', () => ({
+  ...jest.requireActual('@utils/systemBot'),
+  getSystemBotUserId: jest.fn(),
+}));
 
+import { getSystemBotUserId } from '@utils/systemBot';
 import { OffboardingService } from '@services/offboarding/offboarding.service';
 
 describe('OffboardingService - Vacate Requests', () => {
@@ -90,6 +96,7 @@ describe('OffboardingService - Vacate Requests', () => {
   });
 
   beforeEach(() => {
+    (getSystemBotUserId as jest.Mock).mockResolvedValue(SYSTEM_BOT_ID);
     mockLeaseDAO = {
       findFirst: jest.fn(),
       list: jest.fn(),
@@ -162,6 +169,7 @@ describe('OffboardingService - Vacate Requests', () => {
       clientDAO: { findFirst: jest.fn() } as any,
       emailQueue: { addToEmailQueue: jest.fn() } as any,
     });
+    offboardingService.registerEventListeners();
   });
 
   describe('submitVacateRequest', () => {
@@ -613,10 +621,10 @@ describe('OffboardingService - Vacate Requests', () => {
         moveOutDate: dayjs().add(30, 'days').toDate(),
       });
 
-      // Verify auto-charge was attempted for billable SR
+      // Verify auto-charge was attempted for billable SR, recorded by the system bot
       expect(mockMaintenancePaymentService.chargeForMaintenance).toHaveBeenCalledWith(
         testCuid,
-        'system',
+        SYSTEM_BOT_ID.toString(),
         expect.objectContaining({
           mruid: 'SR001',
           tenantId: mockTenantId.toString(),
@@ -657,7 +665,7 @@ describe('OffboardingService - Vacate Requests', () => {
       expect(mockMaintenanceRequestDAO.updateMany).not.toHaveBeenCalled();
     });
 
-    it('should continue cancelling SRs even if auto-charge fails', async () => {
+    it('should leave a billable SR open when its auto-charge fails', async () => {
       const lease = makeActiveLease({ status: LeaseStatus.TERMINATED });
       mockLeaseDAO.findFirst.mockResolvedValue(lease as any);
       mockInspectionDAO.findFirst.mockResolvedValue(null);
@@ -685,14 +693,42 @@ describe('OffboardingService - Vacate Requests', () => {
       // Charge was attempted but failed
       expect(mockMaintenancePaymentService.chargeForMaintenance).toHaveBeenCalled();
 
-      // SRs should still be cancelled despite charge failure
+      // The approved work hasn't been billed, so the SR stays open for the PM
+      expect(mockMaintenanceRequestDAO.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should leave a billable SR open, uncharged, when the system bot user is missing', async () => {
+      (getSystemBotUserId as jest.Mock).mockResolvedValue(null);
+      const lease = makeActiveLease({ status: LeaseStatus.TERMINATED });
+      mockLeaseDAO.findFirst.mockResolvedValue(lease as any);
+      mockInspectionDAO.findFirst.mockResolvedValue(null);
+
+      const billableSR = {
+        _id: new Types.ObjectId(),
+        mruid: 'SR001',
+        isBillable: true,
+        invoiceId: { status: InvoiceStatus.APPROVED, amountInCents: 5000 },
+      };
+      const nonBillableSR = {
+        _id: new Types.ObjectId(),
+        mruid: 'SR002',
+        isBillable: false,
+        invoiceId: null,
+      };
+      mockMaintenanceRequestDAO.list.mockResolvedValue({ items: [billableSR, nonBillableSR] });
+
+      await terminatedEventHandler({
+        leaseId: mockLeaseId.toString(),
+        luid: testLuid,
+        cuid: testCuid,
+        terminatedBy: 'system',
+        moveOutDate: new Date(),
+      });
+
+      expect(mockMaintenancePaymentService.chargeForMaintenance).not.toHaveBeenCalled();
       expect(mockMaintenanceRequestDAO.updateMany).toHaveBeenCalledWith(
-        { _id: { $in: [billableSR._id] } },
-        expect.objectContaining({
-          $set: expect.objectContaining({
-            status: MaintenanceRequestStatus.CANCELLED,
-          }),
-        })
+        { _id: { $in: [nonBillableSR._id] } },
+        expect.anything()
       );
     });
 

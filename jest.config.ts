@@ -33,6 +33,7 @@ const config: JestConfigWithTsJest = {
   forceExit: false,
   detectOpenHandles: false,
   testPathIgnorePatterns: ['<rootDir>/tests/integration/'],
+  setupFiles: ['<rootDir>/tests/setup/testEnv.ts'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup/jest.setup.ts'],
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
   testTimeout: 30000,

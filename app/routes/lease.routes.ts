@@ -3,7 +3,6 @@ import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseController } from '@controllers/LeaseController';
-import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { OffboardingController } from '@controllers/OffboardingController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import { UtilsValidations, LeaseValidations, validateRequest } from '@shared/validations/index';
@@ -13,7 +12,6 @@ import {
   requireVerifiedClient,
   requireNotSuspended,
   requireActiveTenant,
-  requireFeatureFlag,
   requirePermission,
   isAuthenticated,
   requireFeature,
@@ -318,10 +316,10 @@ router
     basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     requireActiveTenant(),
-    requireFeatureFlag(FeatureFlag.ESIGNATURE),
     subscriptionEntitlements,
     requireActiveSubscription,
-    requireFeature('eSignature'),
+    // No eSignature gate here: 'manual' and 'cancel' work on every plan.
+    // 'send' checks the plan in LeaseService.sendLeaseForSignature.
     idempotency,
     validateRequest({
       params: UtilsValidations.cuid.merge(UtilsValidations.luid),

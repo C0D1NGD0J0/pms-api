@@ -47,7 +47,6 @@ export const QUEUE_NAMES = {
   PDF_GENERATION_QUEUE: 'pdfGenerationQueue',
   ACCOUNT_ACTIVATION_QUEUE: 'accountActivationQueue',
   LEASE_SIGNATURE_REQUEST_QUEUE: 'leaseSignatureRequestQueue',
-  PROPERTY_MEDIA_PROCESSING_QUEUE: 'propertyMediaProcessingQueue',
 };
 
 export const JOB_NAME = {
@@ -61,9 +60,7 @@ export const JOB_NAME = {
   REQUEST_SIGNATURE: 'request_signature',
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
-  DOCUMENT_UPDATE_JOB: 'documentUpdateJob',
   PROPERTY_CREATE_JOB: 'propertyCreateJob',
-  DOCUMENT_FAILURE_JOB: 'documentFailureJob',
   UNIT_BATCH_CREATION_JOB: 'unitBatchCreation',
   ACCOUNT_ACTIVATION_JOB: 'accountActivationJob',
   INVITATION_REMINDER_JOB: 'invitationReminderJob',
@@ -331,6 +328,8 @@ export const LEASE_CONSTANTS = {
     { days: 7, name: '7_day_notice' },
   ],
   GRACE_PERIOD_DAYS: 3,
+  // How long after an expired/terminated lease ends a move-out inspection can still be scheduled
+  MOVE_OUT_WINDOW_AFTER_END_DAYS: 30,
   DEFAULT_RENEWAL_DAYS_BEFORE_EXPIRY: 30,
   DEFAULT_SEND_FOR_SIGNATURE_DAYS: 14,
   MINIMUM_ACTIVE_DURATION_DAYS: 30,

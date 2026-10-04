@@ -293,6 +293,18 @@ export interface UnitBatchChangedPayload {
   cuid: string; // Client ID
 }
 
+export interface UploadFailedPayload {
+  error: {
+    message: string;
+    code?: string;
+    stack?: string;
+  };
+  resourceType: string;
+  /** Which resource the upload belonged to (e.g. 'lease', 'property') — listeners filter on it. */
+  resourceName: string;
+  resourceId: string;
+}
+
 export interface LeaseRenewedPayload {
   originalLeaseId: string;
   propertyUnitId?: string;
@@ -524,7 +536,6 @@ export type JobType =
   | 'document_processing'
   | 'report_generation'
   | 'bulk_operation';
-
 export interface MaintenanceRequestAssignedPayload {
   scheduledDate?: Date;
   assignedBy: string;
@@ -534,6 +545,7 @@ export interface MaintenanceRequestAssignedPayload {
   mruid: string;
   cuid: string;
 }
+
 export interface MaintenanceRequestCancelledPayload {
   technicianId?: string;
   requestId: string;
@@ -709,16 +721,6 @@ export interface VacateRequestEventPayload {
   reason: string;
   luid: string;
   cuid: string;
-}
-
-export interface UploadFailedPayload {
-  error: {
-    message: string;
-    code?: string;
-    stack?: string;
-  };
-  resourceType: string;
-  resourceId: string;
 }
 
 export interface PayoutPaidPayload {

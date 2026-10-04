@@ -495,7 +495,7 @@ describe('ClientService Integration Tests - Read Operations', () => {
       expect(subscription.planName).toBeDefined();
       expect(subscription.status).toBeDefined();
       expect(subscription.billingInterval).toBeDefined();
-      expect(subscription.amount).toBeDefined();
+      expect(subscription.totalMonthlyPrice).toBeDefined();
       expect(subscription.currentSeats).toBeDefined();
       expect(subscription.currentProperties).toBeDefined();
       expect(subscription.currentUnits).toBeDefined();

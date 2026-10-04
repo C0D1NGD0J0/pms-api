@@ -128,7 +128,6 @@ export class ClientService {
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.featureFlagService = featureFlagService;
     this.queueFactory = queueFactory;
-    this.setupEventListeners();
   }
 
   async updateClientDetails(
@@ -1060,7 +1059,7 @@ export class ClientService {
     }
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(
       EventTypes.PAYMENT_PROCESSOR_VERIFIED,
       this.handlePaymentProcessorVerified.bind(this)

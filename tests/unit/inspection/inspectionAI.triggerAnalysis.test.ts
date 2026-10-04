@@ -92,8 +92,8 @@ const makeAnthropicResult = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const makeService = () =>
-  new InspectionAIService({
+const makeService = () => {
+  const service = new InspectionAIService({
     inspectionDAO: mockInspectionDAO as any,
     subscriptionDAO: mockSubscriptionDAO as any,
     anthropicService: mockAnthropicService as any,
@@ -102,6 +102,9 @@ const makeService = () =>
     aiCostService: mockAiCostService as any,
     subscriptionPlanConfig: mockSubscriptionPlanConfig as any,
   });
+  service.registerEventListeners();
+  return service;
+};
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 

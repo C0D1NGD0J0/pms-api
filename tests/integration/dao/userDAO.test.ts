@@ -119,7 +119,14 @@ describe('UserDAO Integration Tests', () => {
         password: 'hashed',
         isActive: true,
         activecuid: testCuid,
-        cuids: [{ cuid: testCuid, roles: ['tenant'], isConnected: true }],
+        cuids: [
+          {
+            cuid: testCuid,
+            roles: ['tenant'],
+            isConnected: true,
+            clientDisplayName: 'Test Client',
+          },
+        ],
       });
 
       // Create test profile
@@ -142,78 +149,10 @@ describe('UserDAO Integration Tests', () => {
       });
     });
 
-    it('should fetch tenant details with payment metrics', async () => {
-      // Create test payments
-      const payments = [
-        {
-          cuid: testCuid,
-          tenant: testTenantId,
-          pytuid: 'PAY_001',
-          invoiceNumber: 'INV-001',
-          baseAmount: 200000, // $2000 in cents
-          processingFee: 1000, // $10 in cents
-          status: PaymentRecordStatus.PAID,
-          paymentMethod: PaymentMethod.ONLINE,
-          paymentType: PaymentRecordType.RENT,
-          dueDate: new Date('2024-01-01'),
-          paidAt: new Date('2024-01-01'), // Paid on time
-          description: 'Rent payment',
-          period: { month: 1, year: 2024 },
-        },
-        {
-          cuid: testCuid,
-          tenant: testTenantId,
-          pytuid: 'PAY_002',
-          invoiceNumber: 'INV-002',
-          baseAmount: 200000,
-          processingFee: 1000,
-          status: PaymentRecordStatus.PAID,
-          paymentMethod: PaymentMethod.ONLINE,
-          paymentType: PaymentRecordType.RENT,
-          dueDate: new Date('2024-02-01'),
-          paidAt: new Date('2024-02-05'), // Paid 4 days late
-          description: 'Rent payment',
-          period: { month: 2, year: 2024 },
-        },
-        {
-          cuid: testCuid,
-          tenant: testTenantId,
-          pytuid: 'PAY_003',
-          invoiceNumber: 'INV-003',
-          baseAmount: 200000,
-          processingFee: 1000,
-          status: PaymentRecordStatus.PENDING,
-          paymentMethod: PaymentMethod.ONLINE,
-          paymentType: PaymentRecordType.RENT,
-          dueDate: new Date('2024-03-01'),
-          description: 'Rent payment',
-          period: { month: 3, year: 2024 },
-        },
-      ];
-
-      await Payment.insertMany(payments);
-
-      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
-
-      expect(tenant).not.toBeNull();
-      expect(tenant?.tenantMetrics).toBeDefined();
-
-      // Total paid should be 2 payments x (200000 + 1000) = 402000 cents = $4020
-      expect(tenant?.tenantMetrics?.totalRentPaid).toBe(402000);
-
-      // On-time rate should be 50% (1 out of 2 paid payments)
-      expect(tenant?.tenantMetrics?.onTimePaymentRate).toBe(50);
-
-      // Average delay should be 2 days ((0 + 4) / 2)
-      expect(tenant?.tenantMetrics?.averagePaymentDelay).toBe(2);
-
-      // Payment history should include all 3 payments (limited to 50)
-      expect(tenant?.tenantInfo?.paymentHistory).toHaveLength(3);
-      expect(tenant?.tenantInfo?.paymentHistory?.[0]?.amount).toBe(201000);
-    });
-
-    it('should populate payment history regardless of include parameter', async () => {
-      // Create one payment
+    // Payment history and metrics are filled in by UserService via
+    // PaymentDAO.getTenantPaymentMetrics (see paymentDAO.tenantMetrics.test.ts);
+    // the DAO returns placeholders only.
+    it('returns placeholder payment metrics regardless of stored payments', async () => {
       await Payment.create({
         cuid: testCuid,
         tenant: testTenantId,
@@ -230,24 +169,25 @@ describe('UserDAO Integration Tests', () => {
         period: { month: 1, year: 2024 },
       });
 
-      const tenant = await userDAO.getClientTenantDetails(
-        testCuid,
-        testTenantUid,
-        [] // Not requesting payment history explicitly
-      );
+      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, ['all']);
 
       expect(tenant).not.toBeNull();
-      expect(tenant?.tenantInfo?.paymentHistory).toBeDefined();
-      expect(tenant?.tenantInfo?.paymentHistory).toHaveLength(1);
+      expect(tenant?.tenantMetrics?.totalRentPaid).toBe(0);
+      expect(tenant?.tenantMetrics?.averagePaymentDelay).toBe(0);
+      expect(tenant?.tenantInfo?.paymentHistory).toEqual([]);
     });
 
-    it('should handle tenants with no payments', async () => {
-      const tenant = await userDAO.getClientTenantDetails(testCuid, testTenantUid, []);
+    it('includes the paymentHistory placeholder only when payments are requested', async () => {
+      const withPayments = await userDAO.getClientTenantDetails(testCuid, testTenantUid, [
+        'payments',
+      ]);
+      expect(withPayments?.tenantInfo?.paymentHistory).toEqual([]);
 
-      expect(tenant).not.toBeNull();
-      expect(tenant?.tenantInfo?.paymentHistory).toEqual([]);
-      // Metrics should remain at default values
-      expect(tenant?.tenantMetrics?.totalRentPaid).toBe(0);
+      const withoutPayments = await userDAO.getClientTenantDetails(testCuid, testTenantUid, [
+        'lease',
+      ]);
+      expect(withoutPayments).not.toBeNull();
+      expect(withoutPayments?.tenantInfo?.paymentHistory).toBeUndefined();
     });
 
     it('should fetch lease history when requested', async () => {

@@ -56,6 +56,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
       emailQueue: {} as any,
       subscriptionWebhookService: {} as any,
     });
+    subscriptionService.registerEventListeners();
   });
 
   describe('Event Listener Setup', () => {
@@ -239,6 +240,7 @@ describe('SubscriptionService - Usage Counter Event Handlers', () => {
         emailQueue: {} as any,
         subscriptionWebhookService: {} as any,
       });
+      subscriptionService.registerEventListeners();
     });
 
     it('should allow invitation when seats available', async () => {

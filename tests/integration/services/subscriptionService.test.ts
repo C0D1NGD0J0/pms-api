@@ -4,6 +4,7 @@ import { clearTestDatabase } from '@tests/helpers';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { BadRequestError } from '@shared/customErrors';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 describe('SubscriptionService Integration Tests', () => {
@@ -144,12 +145,13 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionPlans();
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(3);
+      // Every configured plan is offered (essential, growth, portfolio, enterprise)
+      expect(result.data).toHaveLength(subscriptionPlanConfig.getAllPlans().length);
 
       const personalPlan = result.data.find((p) => p.planName === 'essential');
       expect(personalPlan).toBeDefined();
       expect(personalPlan?.pricing.monthly.priceInCents).toBe(0);
-      expect(personalPlan?.pricing.monthly.displayPrice).toBe('$0');
+      expect(personalPlan?.pricing.monthly.displayPrice).toBe('$0.00');
 
       const growthPlan = result.data.find((p) => p.planName === 'growth');
       expect(growthPlan).toBeDefined();
@@ -201,7 +203,8 @@ describe('SubscriptionService Integration Tests', () => {
       const result = await subscriptionService.getSubscriptionPlans();
 
       expect(result.success).toBe(true);
-      expect(result.data).toHaveLength(3);
+      // Every configured plan is offered (essential, growth, portfolio, enterprise)
+      expect(result.data).toHaveLength(subscriptionPlanConfig.getAllPlans().length);
 
       // Should still return plans with config prices
       const growthPlan = result.data.find((p) => p.planName === 'growth');
@@ -217,9 +220,15 @@ describe('SubscriptionService Integration Tests', () => {
       expect(growthPlan?.description).toBe('For growing property managers');
       expect(growthPlan?.isFeatured).toBe(true);
       expect(growthPlan?.featuredBadge).toBe('Most Popular');
-      expect(growthPlan?.limits.maxProperties).toBe(15);
+      const growthLimits = {
+        properties: subscriptionPlanConfig.getPropertyLimit('growth'),
+        units: subscriptionPlanConfig.getUnitLimit('growth'),
+      };
+      expect(growthPlan?.limits.maxProperties).toBe(growthLimits.properties);
       expect(growthPlan?.seatPricing.includedSeats).toBe(10);
-      expect(growthPlan?.featureList).toContain('Up to 15 properties & 50 units');
+      expect(growthPlan?.featureList).toContain(
+        `Up to ${growthLimits.properties} properties & ${growthLimits.units} units`
+      );
     });
   });
 
@@ -669,15 +678,20 @@ describe('SubscriptionService Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.data?.plan.name).toBe('essential');
-      // Essential plan limits: maxProperties=3, maxUnits=10, includedSeats=3
+      // Limits come from the essential plan config
       expect(result.data?.usage.properties).toBe(1);
       expect(result.data?.usage.units).toBe(2);
       expect(result.data?.usage.seats).toBe(1);
-      expect(result.data?.limits.properties).toBe(3);
-      expect(result.data?.limits.units).toBe(10);
+      expect(result.data?.limits.properties).toBe(
+        subscriptionPlanConfig.getPropertyLimit('essential')
+      );
+      expect(result.data?.limits.units).toBe(subscriptionPlanConfig.getUnitLimit('essential'));
       expect(result.data?.isLimitReached.properties).toBe(false);
       expect(result.data?.isLimitReached.units).toBe(false);
-      expect(result.data?.isLimitReached.seats).toBe(false);
+      // 1 seat in use: reached when the plan includes no more than that
+      expect(result.data?.isLimitReached.seats).toBe(
+        subscriptionPlanConfig.getIncludedSeats('essential') <= 1
+      );
     });
 
     it('should correctly identify when limits are reached', async () => {

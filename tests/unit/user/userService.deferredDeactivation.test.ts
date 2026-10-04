@@ -70,6 +70,7 @@ describe('UserService - Deferred Deactivation', () => {
           .mockReturnValue({ addToEmailQueue: jest.fn(), addVendorTeamDisconnectJob: jest.fn() }),
       } as any,
     });
+    _userService.registerEventListeners();
   });
 
   describe('handleLeaseExpired', () => {

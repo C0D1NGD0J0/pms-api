@@ -100,6 +100,7 @@ describe('NotificationService - New Methods', () => {
       sseService: mockSSEService,
       profileService: mockProfileService,
     } as any);
+    notificationService.registerEventListeners();
 
     // Mock createNotification to avoid database calls
     jest.spyOn(notificationService, 'createNotification').mockReturnValue(
@@ -550,6 +551,7 @@ describe('NotificationService — Announcement Read Tracking', () => {
       sseService: mockSSEService,
       profileService: mockProfileService,
     } as any);
+    notificationService.registerEventListeners();
 
     jest.spyOn(notificationService['log'], 'error').mockImplementation(() => undefined);
     jest.spyOn(notificationService['log'], 'info').mockImplementation(() => undefined);
@@ -711,6 +713,7 @@ describe('NotificationService - MR event handlers', () => {
       sseService: { sendToUser: jest.fn(), broadcastToClient: jest.fn() } as any,
       profileService: { getProfile: jest.fn() } as any,
     } as any);
+    service.registerEventListeners();
 
     jest
       .spyOn(service, 'createNotification')

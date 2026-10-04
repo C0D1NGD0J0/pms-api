@@ -232,12 +232,6 @@ describe('UserController Integration Tests', () => {
           handler: (req, res) => userController.getUserProfile(req, res),
         },
         {
-          method: 'get',
-          path: USER_DETAILS_PATH,
-          contextUser: () => adminUser,
-          handler: (req, res) => userController.getClientUserInfo(req, res),
-        },
-        {
           method: 'patch',
           path: UPDATE_PROFILE_PATH,
           contextUser: () => adminUser,
@@ -284,6 +278,14 @@ describe('UserController Integration Tests', () => {
           path: TENANT_DETAILS_PATH,
           contextUser: () => adminUser,
           handler: (req, res) => userController.deactivateTenant(req, res),
+        },
+        // Catch-all /:cuid/:uid routes go after every specific /:cuid/<segment>
+        // route — same order as users.routes.ts — or they swallow those paths.
+        {
+          method: 'get',
+          path: USER_DETAILS_PATH,
+          contextUser: () => adminUser,
+          handler: (req, res) => userController.getClientUserInfo(req, res),
         },
         {
           method: 'delete',

@@ -127,7 +127,6 @@ export class AuthService {
     this.featureFlagService = featureFlagService;
     this.webAuthnService = webAuthnService;
     this.log = createLogger('AuthService');
-    this.setupEventListeners();
   }
 
   async refreshToken(data: { refreshToken: string }): Promise<
@@ -1458,7 +1457,7 @@ export class AuthService {
     };
   }
 
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.USER_DISCONNECTED, this.handleUserDisconnected.bind(this));
   }
 

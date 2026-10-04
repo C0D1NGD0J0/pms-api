@@ -154,10 +154,9 @@ export class ReportService implements ICronProvider {
     this.s3Service = s3Service;
     this.sseService = sseService;
     this.log = createLogger('ReportService');
-    this._setupEventListeners();
   }
 
-  private _setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.PLAN_DOWNGRADED, (payload) => {
       if (payload.disabledFeatures.includes('reportingAnalytics')) {
         this.reportScheduleDAO

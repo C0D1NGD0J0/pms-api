@@ -92,7 +92,6 @@ export class ProfileService {
     this.emitterService = emitterService;
     this.mediaUploadService = mediaUploadService;
     this.logger = createLogger('ProfileService');
-    this.setupEventListeners();
   }
 
   async completeTour(userId: string, tourId: string): Promise<void> {
@@ -875,7 +874,7 @@ export class ProfileService {
   /**
    * Setup event listeners for profile-related events
    */
-  private setupEventListeners(): void {
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);

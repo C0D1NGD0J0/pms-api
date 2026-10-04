@@ -1,3 +1,7 @@
+jest.mock('resend', () => ({
+  Resend: jest.fn().mockImplementation(() => ({ emails: { send: jest.fn() } })),
+}));
+
 import { MailService } from '@mailer/config.mailer';
 
 describe('MailService transport under tests', () => {

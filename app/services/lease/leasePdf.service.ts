@@ -12,6 +12,7 @@ import { determineTemplateType, createLogger } from '@utils/index';
 import { PdfGeneratorService, MediaUploadService } from '@services/index';
 import { EventEmitterService, NotificationService } from '@services/index';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
+import { SubscriptionService } from '@services/subscription/subscription.service';
 import { ILeaseDocument, SigningMethod, LeaseStatus } from '@interfaces/lease.interface';
 import { IRequestContext, ResourceContext, UploadResult } from '@interfaces/utils.interface';
 import { NotificationPriorityEnum, NotificationTypeEnum } from '@interfaces/notification.interface';
@@ -25,9 +26,11 @@ import {
 
 import { buildLandlordInfo } from './leaseHelpers';
 import { LeaseTemplateService } from './leaseTemplateService';
+import { hasESignatureEntitlement } from './leaseEntitlements';
 
 interface IConstructor {
   leaseTemplateService: LeaseTemplateService;
+  subscriptionService: SubscriptionService;
   notificationService: NotificationService;
   pdfGeneratorService: PdfGeneratorService;
   mediaUploadService: MediaUploadService;
@@ -43,6 +46,7 @@ interface IConstructor {
 
 export class LeasePdfService {
   private readonly log: Logger;
+  private readonly subscriptionService: SubscriptionService;
   private readonly leaseDAO: LeaseDAO;
   private readonly clientDAO: ClientDAO;
   private readonly profileDAO: ProfileDAO;
@@ -70,7 +74,9 @@ export class LeasePdfService {
     profileDAO,
     propertyDAO,
     queueFactory,
+    subscriptionService,
   }: IConstructor) {
+    this.subscriptionService = subscriptionService;
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
     this.profileDAO = profileDAO;
@@ -526,6 +532,16 @@ export class LeasePdfService {
           leaseId,
           signingMethod: lease.signingMethod,
           status: lease.status,
+        });
+        return;
+      }
+
+      // A lease can reach READY_FOR_SIGNATURE via approval (not just the gated
+      // send route), so check the plan before anything is sent for e-signature.
+      if (!(await hasESignatureEntitlement(this.subscriptionService, lease.cuid))) {
+        this.log.warn('Client plan does not include e-signature, skipping e-signature request', {
+          leaseId,
+          cuid: lease.cuid,
         });
         return;
       }

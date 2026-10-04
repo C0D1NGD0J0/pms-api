@@ -21,6 +21,7 @@ import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
+import { SubscriptionService } from '@services/subscription/subscription.service';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { MediaUploadService, UserService, SMSService, S3Service } from '@services/index';
 import { InvitationDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
@@ -75,6 +76,7 @@ import { LeaseRenewalService } from './leaseRenewal.service';
 import { LeaseTemplateService } from './leaseTemplateService';
 import { LeaseDocumentService } from './leaseDocument.service';
 import { LeaseSignatureService } from './leaseSignature.service';
+import { assertESignatureEntitlement } from './leaseEntitlements';
 import {
   enforceLeaseApprovalRequirement,
   validateLeaseReadyForActivation,
@@ -100,6 +102,7 @@ interface IConstructor {
   leaseSignatureService: LeaseSignatureService;
   leaseDocumentService: LeaseDocumentService;
   leaseTemplateService: LeaseTemplateService;
+  subscriptionService: SubscriptionService;
   leaseRenewalService: LeaseRenewalService;
   notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
@@ -127,6 +130,7 @@ interface IConstructor {
 
 export class LeaseService {
   private readonly log: Logger;
+  private readonly subscriptionService: SubscriptionService;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
   private readonly clientDAO: ClientDAO;
@@ -181,7 +185,9 @@ export class LeaseService {
     userDAO,
     userService,
     s3Service,
+    subscriptionService,
   }: IConstructor) {
+    this.subscriptionService = subscriptionService;
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
     this.clientDAO = clientDAO;
@@ -226,6 +232,10 @@ export class LeaseService {
     if (!client) {
       this.log.error(`Client with cuid ${cuid} not found`);
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+
+    if (data.signingMethod === SigningMethod.ELECTRONIC) {
+      await assertESignatureEntitlement(this.subscriptionService, cuid);
     }
 
     const property = await this.propertyDAO.findFirst(
@@ -717,6 +727,15 @@ export class LeaseService {
         throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
       }
 
+      // Only switching TO electronic needs the plan feature — leases that are
+      // already electronic stay editable after a plan downgrade.
+      if (
+        updateData.signingMethod === SigningMethod.ELECTRONIC &&
+        lease.signingMethod !== SigningMethod.ELECTRONIC
+      ) {
+        await assertESignatureEntitlement(this.subscriptionService, cuid);
+      }
+
       // Prevent conflict of interest: cannot update a lease where you are the tenant
       preventTenantConflict(
         currentUser.sub,
@@ -904,9 +923,11 @@ export class LeaseService {
   }
 
   /**
-   * Delegate to LeaseSignatureService
+   * Delegate to LeaseSignatureService. Plan check lives here so it covers both
+   * the signature route and the renewal auto-send cron.
    */
   async sendLeaseForSignature(cxt: IRequestContext): Promise<ISuccessReturnData> {
+    await assertESignatureEntitlement(this.subscriptionService, cxt.request.params.cuid);
     return this.leaseSignatureService.sendLeaseForSignature(cxt);
   }
 

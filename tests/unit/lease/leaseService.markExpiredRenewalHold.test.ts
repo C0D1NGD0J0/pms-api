@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
+import { mockSubscriptionService } from '@tests/setup/externalMocks';
 
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
@@ -82,6 +83,7 @@ describe('LeaseService - markExpiredLeases renewal hold', () => {
     };
 
     leaseService = new LeaseService({
+      subscriptionService: mockSubscriptionService as any,
       leaseDAO: mockLeaseDAO,
       userDAO: {} as any,
       clientDAO: {} as any,

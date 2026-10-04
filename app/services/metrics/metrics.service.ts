@@ -102,7 +102,9 @@ export class MetricsService implements ICronProvider {
     this.expenseDAO = deps.expenseDAO;
     this.emitterService = deps.emitterService;
     this.sseService = deps.sseService;
+  }
 
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.PAYMENT_SUCCEEDED, this.onPaymentSucceeded);
     this.emitterService.on(EventTypes.PAYMENT_OVERDUE, this.onPaymentOverdue);
     this.emitterService.on(EventTypes.PAYMENT_REFUNDED, this.onPaymentRefunded);

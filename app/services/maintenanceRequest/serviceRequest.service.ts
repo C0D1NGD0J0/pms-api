@@ -119,7 +119,9 @@ export class MaintenanceRequestService {
     this.maintenanceInvoiceService = maintenanceInvoiceService;
     this.s3Service = s3Service;
     this.log = createLogger('MaintenanceRequestService');
+  }
 
+  registerEventListeners(): void {
     this.emitterService.on(EventTypes.MAINTENANCE_VENDOR_PAID, this.handleVendorPaid.bind(this));
     this.emitterService.on(EventTypes.MAINTENANCE_CHARGE_PAID, this.handleChargePaid.bind(this));
   }

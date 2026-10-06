@@ -2,9 +2,9 @@ import { Response } from 'express';
 import { t } from '@shared/languages';
 import { UnauthorizedError } from '@shared/customErrors';
 import { ROLES } from '@shared/constants/roles.constants';
-import { httpStatusCodes, setAuthCookies } from '@utils/index';
 import { InvitationService, AuthService } from '@services/index';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
+import { parseColumnMappingField, httpStatusCodes, setAuthCookies } from '@utils/index';
 
 interface IConstructor {
   invitationService: InvitationService;
@@ -298,9 +298,20 @@ export class InvitationController {
     });
   };
 
+  getCsvTemplate = async (_req: AppRequest, res: Response) => {
+    const csv = this.invitationService.getCsvTemplate();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="user-invitation-template.csv"');
+    res.status(httpStatusCodes.OK).send(csv);
+  };
+
+  getCsvImportFields = async (_req: AppRequest, res: Response) => {
+    const result = this.invitationService.getCsvImportFields();
+    res.status(httpStatusCodes.OK).json({ success: true, data: result });
+  };
+
   validateInvitationCsv = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const { mode, send_notifications, password_length } = req.query;
     const { currentuser } = req.context;
 
     if (!currentuser) {
@@ -318,22 +329,16 @@ export class InvitationController {
     }
 
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-
-    if (mode === 'bulk_create') {
-      const result = await this.invitationService.validateBulkUserCsv(cuid, csvFile, currentuser, {
-        sendNotifications: Boolean(send_notifications),
-        passwordLength: Number(password_length) || 12,
-      });
-      res.status(httpStatusCodes.OK).json(result);
-    } else {
-      const result = await this.invitationService.validateInvitationCsv(cuid, csvFile, currentuser);
-      res.status(httpStatusCodes.OK).json(result);
-    }
+    const result = await this.invitationService.validateInvitationCsv(
+      cuid,
+      csvFile,
+      currentuser,
+      parseColumnMappingField(req.body?.columnMapping)
+    );
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   importInvitationsFromCsv = async (req: AppRequest, res: Response) => {
-    const { mode, send_notifications, password_length } = req.query;
-
     if (!req.scannedFiles) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
         success: false,
@@ -342,24 +347,12 @@ export class InvitationController {
     }
 
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-
-    if (mode === 'bulk_create') {
-      const result = await this.invitationService.importBulkUsersFromCsv(
-        req.context,
-        csvFile.path,
-        {
-          sendNotifications: Boolean(send_notifications),
-          passwordLength: Number(password_length) || 12,
-        }
-      );
-      res.status(httpStatusCodes.OK).json(result);
-    } else {
-      const result = await this.invitationService.importInvitationsFromCsv(
-        req.context,
-        csvFile.path
-      );
-      res.status(httpStatusCodes.OK).json(result);
-    }
+    const result = await this.invitationService.importInvitationsFromCsv(
+      req.context,
+      csvFile.path,
+      parseColumnMappingField(req.body?.columnMapping)
+    );
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   processPendingInvitations = async (req: AppRequest, res: Response) => {

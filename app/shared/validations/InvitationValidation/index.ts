@@ -2,7 +2,6 @@ import {
   validateTokenAndCuidSchema,
   getInvitationsQuerySchema,
   processPendingQuerySchema,
-  bulkCreationQuerySchema,
   acceptInvitationSchema,
   resendInvitationSchema,
   revokeInvitationSchema,
@@ -15,7 +14,6 @@ import {
 
 export class InvitationValidations {
   static acceptInvitation = acceptInvitationSchema;
-  static bulkCreationQuery = bulkCreationQuerySchema;
   static getInvitations = getInvitationsQuerySchema;
   static invitationCsv = invitationCsvSchema;
   static invitationToken = invitationTokenSchema;

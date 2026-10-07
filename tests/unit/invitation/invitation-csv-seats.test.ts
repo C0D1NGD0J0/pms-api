@@ -6,7 +6,7 @@ import { InvitationService } from '@services/invitation/invitation.service';
 import { ProfileService as _ProfileService } from '@services/profile/profile.service';
 import { InvitationQueue as _InvitationQueue, EmailQueue as _EmailQueue } from '@queues/index';
 
-describe('Invitation CSV Import — Seat Enforcement', () => {
+describe('Invitation CSV — queueing', () => {
   let invitationService: InvitationService;
   let mockDAOs: {
     invitationDAO: InvitationDAO;
@@ -80,6 +80,7 @@ describe('Invitation CSV Import — Seat Enforcement', () => {
     };
 
     invitationService = new InvitationService({
+      invitationCsvProcessor: {} as any,
       ...mockDAOs,
       queueFactory: mockQueueFactory,
       emitterService: mockEmitterService,
@@ -115,71 +116,83 @@ describe('Invitation CSV Import — Seat Enforcement', () => {
       timestamp: new Date(),
     }) as any;
 
-  describe('importInvitationsFromCsv — pre-queue seat check', () => {
-    it('should reject immediately when no seats available and cannot purchase more', async () => {
-      mockSubscriptionService.getAvailableSeats.mockReturnValue(
-        Promise.resolve({
-          availableSeats: 0,
-          currentSeats: 3,
-          totalAllowed: 3,
-          includedSeats: 3,
-          additionalSeats: 0,
-          canPurchaseMore: false,
-          maxAdditionalSeats: 0,
-        })
+  describe('importInvitationsFromCsv — queueing', () => {
+    it('queues even when no seats are left — tenant/vendor rows need none, the worker trims employees per row', async () => {
+      mockSubscriptionService.getAvailableSeats.mockResolvedValue({
+        availableSeats: 0,
+        totalAllowed: 3,
+        canPurchaseMore: false,
+      });
+
+      const result = await invitationService.importInvitationsFromCsv(
+        createMockContext(testCuid),
+        '/tmp/test.csv'
       );
-
-      const cxt = createMockContext(testCuid);
-
-      await expect(
-        invitationService.importInvitationsFromCsv(cxt, '/tmp/test.csv')
-      ).rejects.toThrow(/Seat limit reached/);
-
-      // Should clean up the CSV file
-      expect(mockEmitterService.emit).toHaveBeenCalled();
-      // Should NOT queue the job
-      expect(mockInvitationQueue.addCsvImportJob).not.toHaveBeenCalled();
-    });
-
-    it('should allow queueing when seats available', async () => {
-      mockSubscriptionService.getAvailableSeats.mockReturnValue(
-        Promise.resolve({
-          availableSeats: 5,
-          currentSeats: 3,
-          totalAllowed: 8,
-          includedSeats: 3,
-          additionalSeats: 5,
-          canPurchaseMore: true,
-          maxAdditionalSeats: 25,
-        })
-      );
-
-      const cxt = createMockContext(testCuid);
-      const result = await invitationService.importInvitationsFromCsv(cxt, '/tmp/test.csv');
 
       expect(result.success).toBe(true);
       expect(result.data.processId).toBe('mock-job-id');
       expect(mockInvitationQueue.addCsvImportJob).toHaveBeenCalled();
+      expect(mockSubscriptionService.getAvailableSeats).not.toHaveBeenCalled();
     });
 
-    it('should allow queueing when no seats but can purchase more', async () => {
-      mockSubscriptionService.getAvailableSeats.mockReturnValue(
-        Promise.resolve({
-          availableSeats: 0,
-          currentSeats: 10,
-          totalAllowed: 10,
-          includedSeats: 10,
-          additionalSeats: 0,
-          canPurchaseMore: true,
-          maxAdditionalSeats: 25,
-        })
+    it('passes only known import fields from the column mapping to the job', async () => {
+      await invitationService.importInvitationsFromCsv(
+        createMockContext(testCuid),
+        '/tmp/test.csv',
+        {
+          'E-mail': 'inviteeEmail',
+          'Given name': 'firstName',
+          Hacked: 'password',
+        }
       );
 
-      const cxt = createMockContext(testCuid);
-      const result = await invitationService.importInvitationsFromCsv(cxt, '/tmp/test.csv');
+      expect(mockInvitationQueue.addCsvImportJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          columnMapping: { 'E-mail': 'inviteeEmail', 'Given name': 'firstName' },
+        })
+      );
+    });
 
-      expect(result.success).toBe(true);
-      expect(mockInvitationQueue.addCsvImportJob).toHaveBeenCalled();
+    it('drops the mapping entirely when nothing in it is a known field', async () => {
+      await invitationService.importInvitationsFromCsv(
+        createMockContext(testCuid),
+        '/tmp/test.csv',
+        {
+          Hacked: 'password',
+        }
+      );
+
+      expect(mockInvitationQueue.addCsvImportJob).toHaveBeenCalledWith(
+        expect.objectContaining({ columnMapping: undefined })
+      );
+    });
+  });
+
+  describe('validateInvitationCsv', () => {
+    it('forwards the sanitized column mapping to the validation job', async () => {
+      await invitationService.validateInvitationCsv(
+        testCuid,
+        { path: '/tmp/test.csv', fileSize: 1024 } as any,
+        { sub: testUserId } as any,
+        { 'Work email': 'inviteeEmail', Notes: 'notAField' }
+      );
+
+      expect(mockInvitationQueue.addCsvValidationJob).toHaveBeenCalledWith(
+        expect.objectContaining({ columnMapping: { 'Work email': 'inviteeEmail' } })
+      );
+    });
+
+    it('rejects files over 10 MB and cleans up the upload', async () => {
+      await expect(
+        invitationService.validateInvitationCsv(
+          testCuid,
+          { path: '/tmp/big.csv', fileSize: 11 * 1024 * 1024 } as any,
+          { sub: testUserId } as any
+        )
+      ).rejects.toThrow();
+
+      expect(mockEmitterService.emit).toHaveBeenCalled();
+      expect(mockInvitationQueue.addCsvValidationJob).not.toHaveBeenCalled();
     });
   });
 });

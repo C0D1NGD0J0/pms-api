@@ -5,6 +5,9 @@ import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
 import { safeString } from '../UtilsValidation';
 
+// Letters in any script (é, ñ, ü, …) plus spaces, hyphens, apostrophes and dots
+const PERSON_NAME_REGEX = /^[\p{L}\s\-'.]+$/u;
+
 const employeeInfoSchema = z
   .object({
     permissions: z.array(z.string()).optional(),
@@ -204,7 +207,7 @@ export const invitationDataSchema = z.object({
     .email('Please provide a valid email address')
     .max(255, 'Email must be less than 255 characters'),
 
-  role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
+  role: z.enum(ROLE_VALIDATION.INVITABLE_ROLES, {
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
@@ -228,13 +231,13 @@ export const invitationDataSchema = z.object({
       .string()
       .min(2, 'First name must be at least 2 characters')
       .max(50, 'First name must be less than 50 characters')
-      .regex(/^[a-zA-Z\s\-']+$/, 'First name contains invalid characters'),
+      .regex(PERSON_NAME_REGEX, 'First name contains invalid characters'),
 
     lastName: z
       .string()
       .min(2, 'Last name must be at least 2 characters')
       .max(50, 'Last name must be less than 50 characters')
-      .regex(/^[a-zA-Z\s\-']+$/, 'Last name contains invalid characters'),
+      .regex(PERSON_NAME_REGEX, 'Last name contains invalid characters'),
 
     phoneNumber: z
       .string()
@@ -415,13 +418,13 @@ export const invitationCsvSchema = z
       .email('Please provide a valid email address')
       .max(255, 'Email must be less than 255 characters'),
 
-    role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
+    role: z.enum(ROLE_VALIDATION.INVITABLE_ROLES, {
       errorMap: () => ({ message: 'Please provide a valid role' }),
     }),
 
     linkedVendorUid: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         // Handle empty strings
         if (!str || str.trim() === '') {
           return undefined;
@@ -429,9 +432,12 @@ export const invitationCsvSchema = z
         const trimmed = str.trim();
         // Check if valid vendor UID (12 chars with letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex chars)
         if (!/^[A-Z0-9_-]{12}$/.test(trimmed) && !/^[0-9a-fA-F]{24}$/.test(trimmed)) {
-          throw new Error(
-            'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex characters)'
-          );
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message:
+              'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex characters)',
+          });
+          return z.NEVER;
         }
         return trimmed;
       })
@@ -441,13 +447,13 @@ export const invitationCsvSchema = z
       .string()
       .min(2, 'First name must be at least 2 characters')
       .max(50, 'First name must be less than 50 characters')
-      .regex(/^[a-zA-Z\s\-']+$/, 'First name contains invalid characters'),
+      .regex(PERSON_NAME_REGEX, 'First name contains invalid characters'),
 
     lastName: z
       .string()
       .min(2, 'Last name must be at least 2 characters')
       .max(50, 'Last name must be less than 50 characters')
-      .regex(/^[a-zA-Z\s\-']+$/, 'Last name contains invalid characters'),
+      .regex(PERSON_NAME_REGEX, 'Last name contains invalid characters'),
 
     phoneNumber: z
       .string()
@@ -473,7 +479,7 @@ export const invitationCsvSchema = z
 
     expectedStartDate: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') {
           return undefined;
         }
@@ -490,7 +496,11 @@ export const invitationCsvSchema = z
         }
 
         if (isNaN(parsedDate.getTime())) {
-          throw new Error('Please provide a valid date (formats: YYYY-MM-DD, MM/DD/YYYY)');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please provide a valid date (formats: YYYY-MM-DD, MM/DD/YYYY)',
+          });
+          return z.NEVER;
         }
 
         return parsedDate;
@@ -499,7 +509,7 @@ export const invitationCsvSchema = z
 
     employeeInfo_department: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') {
           return undefined;
         }
@@ -516,9 +526,11 @@ export const invitationCsvSchema = z
 
         const department = departmentMap[trimmed];
         if (!department) {
-          throw new Error(
-            `Invalid department. Must be one of: ${Object.keys(departmentMap).join(', ')}`
-          );
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Invalid department. Must be one of: ${Object.keys(departmentMap).join(', ')}`,
+          });
+          return z.NEVER;
         }
         return department;
       })
@@ -537,13 +549,17 @@ export const invitationCsvSchema = z
       .optional(),
     employeeInfo_startDate: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') {
           return undefined;
         }
         const date = new Date(str);
         if (isNaN(date.getTime())) {
-          throw new Error('Please provide a valid start date');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please provide a valid start date',
+          });
+          return z.NEVER;
         }
         return date;
       })
@@ -568,11 +584,15 @@ export const invitationCsvSchema = z
       .optional(),
     vendorInfo_yearsInBusiness: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') return undefined;
         const num = parseInt(str, 10);
         if (isNaN(num) || num < 0 || num > 150) {
-          throw new Error('Years in business must be between 0 and 150');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Years in business must be between 0 and 150',
+          });
+          return z.NEVER;
         }
         return num;
       })
@@ -587,7 +607,7 @@ export const invitationCsvSchema = z
       .optional(),
     vendorInfo_contactPerson_email: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') {
           return undefined;
         }
@@ -596,7 +616,11 @@ export const invitationCsvSchema = z
         const emailSchema = z.string().email();
         const result = emailSchema.safeParse(trimmed);
         if (!result.success) {
-          throw new Error('Please provide a valid contact person email');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please provide a valid contact person email',
+          });
+          return z.NEVER;
         }
         return trimmed;
       })
@@ -623,11 +647,15 @@ export const invitationCsvSchema = z
       .optional(),
     tenantInfo_employerMonthlyIncome: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') return undefined;
         const num = parseFloat(str);
         if (isNaN(num) || num < 0) {
-          throw new Error('Monthly income must be a positive number');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Monthly income must be a positive number',
+          });
+          return z.NEVER;
         }
         return num;
       })
@@ -642,7 +670,7 @@ export const invitationCsvSchema = z
       .optional(),
     tenantInfo_employerContactEmail: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') {
           return undefined;
         }
@@ -650,7 +678,11 @@ export const invitationCsvSchema = z
         const emailSchema = z.string().email();
         const result = emailSchema.safeParse(trimmed);
         if (!result.success) {
-          throw new Error('Please provide a valid employer contact email');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please provide a valid employer contact email',
+          });
+          return z.NEVER;
         }
         return trimmed;
       })
@@ -661,15 +693,18 @@ export const invitationCsvSchema = z
       .optional(),
     tenantInfo_emergencyContactPhone: z
       .string()
-      .transform((str) => (str && str.trim() !== '' ? str : undefined))
-      .optional(),
+      .optional()
+      .refine((val) => !val || val.trim() === '' || isValidPhoneNumber(val), {
+        message: 'Invalid emergency contact phone number',
+      })
+      .transform((val) => (val && val.trim() !== '' ? val : undefined)),
     tenantInfo_emergencyContactRelationship: z
       .string()
       .transform((str) => (str && str.trim() !== '' ? str : undefined))
       .optional(),
     tenantInfo_emergencyContactEmail: z
       .string()
-      .transform((str) => {
+      .transform((str, ctx) => {
         if (!str || str.trim() === '') {
           return undefined;
         }
@@ -677,7 +712,11 @@ export const invitationCsvSchema = z
         const emailSchema = z.string().email();
         const result = emailSchema.safeParse(trimmed);
         if (!result.success) {
-          throw new Error('Please provide a valid emergency contact email');
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Please provide a valid emergency contact email',
+          });
+          return z.NEVER;
         }
         return trimmed;
       })
@@ -841,26 +880,4 @@ export const processPendingQuerySchema = z.object({
     .string()
     .transform((str) => str.toLowerCase() === 'true')
     .optional(),
-});
-
-export const bulkCreationQuerySchema = z.object({
-  mode: z
-    .enum(['invite', 'bulk_create'], {
-      errorMap: () => ({ message: 'Mode must be either invite or bulk_create' }),
-    })
-    .default('invite'),
-
-  send_notifications: z
-    .string()
-    .optional()
-    .default('false')
-    .transform((str) => str.toLowerCase() === 'true'),
-
-  password_length: z
-    .string()
-    .regex(/^\d+$/, 'Password length must be a positive number')
-    .optional()
-    .default('12')
-    .transform((str) => parseInt(str, 10))
-    .refine((num) => num >= 8 && num <= 20, 'Password length must be between 8 and 20'),
 });

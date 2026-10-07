@@ -34,7 +34,6 @@ export interface INotificationContext {
     type: NotificationTypeEnum,
     data: ICreateNotificationRequest
   ) => Promise<ISuccessReturnData<INotificationDocument>>;
-  shouldSendEmail: (userId: string, cuid: string, type: NotificationTypeEnum) => Promise<boolean>;
   isSelfNotification: (actorUserId: string, recipientUserId: string) => boolean;
   getUserDisplayName: (userId: string, cuid: string) => Promise<string>;
   findApprovers: (userId: string, cuid: string) => Promise<string[]>;

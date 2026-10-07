@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import {
   NotificationPriorityEnum,
+  NOTIFICATION_CATEGORIES,
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
@@ -48,6 +49,10 @@ export const CreateNotificationSchema = z.object({
   targetRoles: z.array(z.string()).optional(),
   targetDepartments: z.array(z.string()).optional(),
   targetVendor: z.string().optional(),
+  // Preference category (defaults from the notification type) and whether the
+  // notice must reach the user regardless of their preferences.
+  category: z.enum(NOTIFICATION_CATEGORIES).optional(),
+  required: z.boolean().optional(),
 });
 
 export const UpdateNotificationSchema = z.object({

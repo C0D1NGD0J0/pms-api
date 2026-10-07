@@ -32,6 +32,7 @@ import {
 import { INotificationContext } from './notification.types';
 import { handleLeaseActivated } from './notification.lease.handlers';
 import { getFormattedNotification, NotificationMessageKey } from './notificationMessages';
+import { NotificationCategory, getCategoryForType, shouldDeliver } from './notificationPolicy';
 import {
   handleGuestPassValidated,
   handleGuestPassCreated,
@@ -266,6 +267,8 @@ export class NotificationService {
         targetRoles: validatedData.targetRoles,
         targetDepartments: validatedData.targetDepartments,
         targetVendor: validatedData.targetVendor,
+        category: validatedData.category ?? getCategoryForType(notificationType),
+        required: validatedData.required ?? false,
         cuid,
         isRead: false,
       };
@@ -1103,7 +1106,8 @@ export class NotificationService {
       resourceUid: string;
       resourceId: string;
       metadata?: Record<string, any>;
-    }
+    },
+    required = false
   ): Promise<void> {
     const { title, message } = getFormattedNotification(messageKey, variables);
 
@@ -1117,6 +1121,7 @@ export class NotificationService {
       cuid,
       metadata: resourceInfo?.metadata,
       author: authorId,
+      required,
     };
 
     if (resourceInfo) {
@@ -1372,6 +1377,16 @@ export class NotificationService {
     }
   }
 
+  /** Preferences an announcement stream applies when announcements are pushed live. */
+  async getAnnouncementStreamPreferences(userId: string, cuid: string) {
+    const targeting = await this.userService.getUserAnnouncementFilters(userId, cuid);
+    return {
+      seesAllDepartments: targeting.seesAllDepartments,
+      disabledCategories: targeting.disabledCategories,
+      inAppDisabled: targeting.inAppDisabled,
+    };
+  }
+
   private async publishToSSE(notification: INotificationDocument): Promise<void> {
     try {
       if (notification.recipientType === 'individual' && notification.recipient) {
@@ -1425,7 +1440,8 @@ export class NotificationService {
           'announcements',
           eventId,
           notification.targetRoles,
-          notification.targetDepartments
+          notification.targetDepartments,
+          { category: notification.category, required: notification.required }
         );
       }
     } catch (error) {
@@ -1441,69 +1457,20 @@ export class NotificationService {
     userId: string,
     cuid: string,
     notificationType: NotificationTypeEnum,
-    _notificationData: any
+    notificationData: { category?: NotificationCategory | null; required?: boolean } = {}
   ): Promise<boolean> {
+    if (notificationData.required) return true;
     try {
       const preferencesResult = await this.profileService.getUserNotificationPreferences(
         userId,
         cuid
       );
 
-      if (!preferencesResult.success || !preferencesResult.data) {
-        this.log.warn('Could not get user preferences, allowing notification', { userId, cuid });
-        return true; // Allow by default if preferences can't be retrieved
-      }
-
-      const preferences = preferencesResult.data;
-
-      if (!preferences.inAppNotifications) {
-        this.log.debug('In-app notifications disabled for user', { userId, cuid });
-        return false;
-      }
-
-      const typeToPreferenceMap: Record<NotificationTypeEnum, keyof typeof preferences> = {
-        [NotificationTypeEnum.ANNOUNCEMENT]: 'announcements',
-        [NotificationTypeEnum.MAINTENANCE]: 'maintenance',
-        [NotificationTypeEnum.LEASE]: 'system', // Map LEASE to system notifications
-        [NotificationTypeEnum.PROPERTY]: 'propertyUpdates',
-        [NotificationTypeEnum.MESSAGE]: 'messages',
-        [NotificationTypeEnum.COMMENT]: 'comments',
-        [NotificationTypeEnum.PAYMENT]: 'payments',
-        [NotificationTypeEnum.SYSTEM]: 'system',
-        [NotificationTypeEnum.TASK]: 'system', // Map TASK to system notifications
-        [NotificationTypeEnum.USER]: 'system', // Map USER to system notifications
-        [NotificationTypeEnum.SUCCESS]: 'system', // Map SUCCESS to system notifications
-        [NotificationTypeEnum.ERROR]: 'system', // Map ERROR to system notifications
-        [NotificationTypeEnum.INFO]: 'system', // Map INFO to system notifications
-        [NotificationTypeEnum.GUESTPASS]: 'system', // Map GUESTPASS to system notifications
-        [NotificationTypeEnum.INSPECTION]: 'maintenance', // Inspections follow maintenance preference
-      };
-
-      const preferenceField = typeToPreferenceMap[notificationType];
-
-      if (!preferenceField) {
-        this.log.warn('Unknown notification type, allowing by default', {
-          notificationType,
-          userId,
-          cuid,
-        });
-        return true; // Allow unknown types by default
-      }
-
-      // Treat undefined as true — field may be absent on profiles created before
-      // the preference was added to the schema, and the schema default is true.
-      const rawValue = preferences[preferenceField];
-      const isAllowed = rawValue === undefined ? true : (rawValue as boolean);
-
-      this.log.debug('User preference check completed', {
-        userId,
-        cuid,
-        notificationType,
-        preferenceField,
-        isAllowed,
+      return shouldDeliver({
+        prefs: preferencesResult.success ? preferencesResult.data : null,
+        channel: 'inApp',
+        category: notificationData.category ?? getCategoryForType(notificationType),
       });
-
-      return isAllowed;
     } catch (error) {
       this.log.error('Error checking user notification preferences, allowing by default', {
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -1511,7 +1478,7 @@ export class NotificationService {
         cuid,
         notificationType,
       });
-      return true; // Allow by default on error
+      return true; // A lookup failure must never swallow a notification
     }
   }
 
@@ -1632,27 +1599,6 @@ export class NotificationService {
     );
   }
 
-  private static CRITICAL_EMAIL_TYPES = new Set([
-    NotificationTypeEnum.PAYMENT,
-    NotificationTypeEnum.SYSTEM,
-    NotificationTypeEnum.LEASE,
-  ]);
-
-  async shouldSendEmail(
-    userId: string,
-    cuid: string,
-    type: NotificationTypeEnum
-  ): Promise<boolean> {
-    if (NotificationService.CRITICAL_EMAIL_TYPES.has(type)) return true;
-    try {
-      const prefs = await this.profileService.getUserNotificationPreferences(userId, cuid);
-      if (!prefs.success || !prefs.data) return true;
-      return prefs.data.emailNotifications !== false;
-    } catch {
-      return true;
-    }
-  }
-
   private buildContext(): INotificationContext {
     return {
       createNotification: (...args) => this.createNotification(...args),
@@ -1660,7 +1606,6 @@ export class NotificationService {
       findApprovers: (...args) => this.findApprovers(...args),
       getUserDisplayName: (...args) => this.getUserDisplayName(...args),
       isSelfNotification: (...args) => this.isSelfNotification(...args),
-      shouldSendEmail: (...args) => this.shouldSendEmail(...args),
       emailQueue: this.emailQueue,
       userDAO: this.userDAO,
       clientDAO: this.clientDAO,

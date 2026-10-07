@@ -1191,6 +1191,7 @@ export class ClientService {
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        required: true,
         priority: NotificationPriorityEnum.HIGH,
         title: 'Payment Dispute Opened',
         message: `A dispute of ${amountFormatted} was filed for invoice ${invoiceNumber}. The transfer has been reversed pending resolution.`,
@@ -1241,6 +1242,7 @@ export class ClientService {
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        required: true,
         priority: NotificationPriorityEnum.HIGH,
         title: 'Dispute Lost — Payouts Blocked',
         message: `The dispute for invoice ${invoiceNumber} was lost. ${amountFormatted} has been debited from the platform account. Payouts have been blocked pending review.`,
@@ -1329,6 +1331,7 @@ export class ClientService {
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+        required: true,
         priority: NotificationPriorityEnum.HIGH,
         title: 'Dispute Transfer Reversal Failed — Payouts Blocked',
         message: `The transfer reversal for dispute ${disputeId} failed (${amountFormatted}). Payouts have been blocked automatically. Manual review required.`,

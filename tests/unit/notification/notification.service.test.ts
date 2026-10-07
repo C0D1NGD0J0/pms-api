@@ -658,6 +658,7 @@ describe('NotificationService - MR event handlers', () => {
         category: 'plumbing',
         priority: 'high',
         tenantId: 'tid1',
+        propertyId: new Types.ObjectId(),
         invoice: { amount: 50000, currency: 'USD' },
         workOrder: {
           estimatedCostInCents: 20000,
@@ -708,6 +709,10 @@ describe('NotificationService - MR event handlers', () => {
       emailQueue: mockEmailQueue,
       profileDAO: { findFirst: jest.fn() } as any,
       clientDAO: { findByCuid: jest.fn() } as any,
+      // The property's manager receives invoice / work order / declined emails
+      propertyDAO: {
+        findFirst: jest.fn().mockResolvedValue({ managedBy: new Types.ObjectId() }),
+      } as any,
       userDAO: mockUserDAOMR,
       userService: { getUsersByRole: jest.fn() } as any,
       sseService: { sendToUser: jest.fn(), broadcastToClient: jest.fn() } as any,
@@ -789,7 +794,7 @@ describe('NotificationService - MR event handlers', () => {
 
     expect(mockEmailQueue.addToEmailQueue).toHaveBeenCalledWith(
       'maintenanceRequestDeclined',
-      expect.objectContaining({ to: '' })
+      expect.objectContaining({ to: 'user@test.com' })
     );
   });
 

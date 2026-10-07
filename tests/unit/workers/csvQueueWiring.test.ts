@@ -59,25 +59,21 @@ describe('InvitationQueue CSV staging', () => {
   const invitationWorker = {
     processCsvValidation: jest.fn(),
     processCsvImport: jest.fn(),
-    processCsvBulkUserValidation: jest.fn(),
-    processCsvBulkUserImport: jest.fn(),
   };
 
-  it('wraps all four CSV processors and stages the CSV for every add method', async () => {
+  it('wraps both CSV processors and stages the CSV for every add method', async () => {
     const queue = new InvitationQueue({ invitationWorker: invitationWorker as any, s3Service });
 
-    expect((queue as any).processQueueJobs).toHaveBeenCalledTimes(4);
+    expect((queue as any).processQueueJobs).toHaveBeenCalledTimes(2);
     for (const [, , handler] of (queue as any).processQueueJobs.mock.calls) {
       expect(handler).toHaveProperty('wrapped');
     }
 
     await queue.addCsvValidationJob(jobData);
     await queue.addCsvImportJob(jobData);
-    await queue.addCsvBulkUserValidationJob(jobData);
-    await queue.addCsvBulkUserImportJob(jobData);
 
     const added = (queue as any).addJobToQueue.mock.calls;
-    expect(added).toHaveLength(4);
+    expect(added).toHaveLength(2);
     for (const [, data] of added) expect(data.csvS3Key).toBe('csv-imports/x.csv');
   });
 });

@@ -89,6 +89,7 @@ const makeService = (mocks: Record<string, Record<string, jest.Mock>> = {}) => {
 
   const profileDAO = {
     findFirst: jest.fn().mockResolvedValue({
+      _id: 'profile-1',
       personalInfo: { firstName: 'Test', lastName: 'User' },
       settings: { loginType: 'password' },
     }),
@@ -182,6 +183,14 @@ describe('WebAuthnService', () => {
 
   describe('verifyRegistration', () => {
     const mockRegResponse = { id: 'new-cred', response: {}, type: 'public-key' };
+    const verifiedRegistration = {
+      verified: true,
+      registrationInfo: {
+        credential: { id: 'new-cred-id', publicKey: new Uint8Array([1]), counter: 0 },
+        credentialDeviceType: 'singleDevice',
+        credentialBackedUp: false,
+      },
+    };
 
     it('verifies registration and saves passkey to DB', async () => {
       mockVerifyRegResponse.mockResolvedValue({
@@ -223,6 +232,35 @@ describe('WebAuthnService', () => {
           backedUp: false,
         })
       );
+    });
+
+    it('sets loginType to passkey when the first passkey is registered', async () => {
+      mockVerifyRegResponse.mockResolvedValue(verifiedRegistration);
+      const { service, profileDAO } = makeService({
+        authCache: {
+          getAndDeleteWebAuthnRegChallenge: jest.fn().mockResolvedValue('stored-challenge'),
+        } as any,
+      });
+
+      await service.verifyRegistration('user-123', mockRegResponse as any, 'MacBook Touch ID');
+
+      expect(profileDAO.updateById).toHaveBeenCalledWith('profile-1', {
+        'settings.loginType': 'passkey',
+      });
+    });
+
+    it('keeps the chosen loginType when adding another passkey', async () => {
+      mockVerifyRegResponse.mockResolvedValue(verifiedRegistration);
+      const { service, profileDAO } = makeService({
+        userDAO: { getUserPasskeys: jest.fn().mockResolvedValue([makePasskey()]) } as any,
+        authCache: {
+          getAndDeleteWebAuthnRegChallenge: jest.fn().mockResolvedValue('stored-challenge'),
+        } as any,
+      });
+
+      await service.verifyRegistration('user-123', mockRegResponse as any, 'iPhone');
+
+      expect(profileDAO.updateById).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestError if challenge expired', async () => {

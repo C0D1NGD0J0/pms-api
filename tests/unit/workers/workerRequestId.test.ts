@@ -103,6 +103,7 @@ describe('EmailWorker — requestId child logger', () => {
       mailerService: mockMailer,
       emitterService: mockEmitter as any,
       profileService: mockProfileService as any,
+      userDAO: {} as any,
     });
 
     childLogSpy = jest.fn().mockReturnValue({

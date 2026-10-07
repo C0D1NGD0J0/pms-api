@@ -91,7 +91,10 @@ const makeService = (mocks: Record<string, any> = {}) => {
     paymentGatewayService: {} as any,
     subscriptionService: {} as any,
     paymentService: {} as any,
-    webAuthnService: {} as any,
+    webAuthnService: {
+      generateAuthenticationOptions: jest.fn().mockResolvedValue({ challenge: 'ch' }),
+      ...mocks.webAuthnService,
+    } as any,
   } as any);
 };
 
@@ -173,6 +176,54 @@ describe('AuthService.login', () => {
 
       expect(result.data.step).toBe('password_required');
       expect(result.data.loginType).toBe('password');
+    });
+
+    it('offers passkey first when loginType is passkey and passkeys exist', async () => {
+      const service = makeService({
+        userDAO: {
+          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
+          hasPasskeys: jest.fn().mockResolvedValue(true),
+        },
+        profileDAO: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(makeProfile({ settings: { loginType: 'passkey' } })),
+        },
+      });
+
+      const result = await service.login({ email: 'test@example.com' });
+
+      expect(result.data.step).toBe('passkey_available');
+      expect(result.data.fallbackLoginType).toBe('password');
+    });
+
+    it('respects password loginType even when passkeys are registered', async () => {
+      const service = makeService({
+        userDAO: {
+          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
+          hasPasskeys: jest.fn().mockResolvedValue(true),
+        },
+        profileDAO: { findFirst: jest.fn().mockResolvedValue(makeProfile()) },
+      });
+
+      const result = await service.login({ email: 'test@example.com' });
+
+      expect(result.data.step).toBe('password_required');
+    });
+
+    it('falls back to password when loginType is passkey but none are registered', async () => {
+      const service = makeService({
+        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()) },
+        profileDAO: {
+          findFirst: jest
+            .fn()
+            .mockResolvedValue(makeProfile({ settings: { loginType: 'passkey' } })),
+        },
+      });
+
+      const result = await service.login({ email: 'test@example.com' });
+
+      expect(result.data.step).toBe('password_required');
     });
 
     it('throws NotFoundError for unknown email', async () => {

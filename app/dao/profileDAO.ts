@@ -72,20 +72,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     }
   }
 
-  async updateLoginType(
-    profileId: string,
-    loginType: 'otp' | 'password'
-  ): Promise<IProfileDocument | null> {
-    try {
-      return await this.updateById(profileId, {
-        $set: { 'settings.loginType': loginType },
-      });
-    } catch (error) {
-      this.logger.error(`Error updating login type for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
-  }
-
   async addCompletedTour(userId: string, tourId: string): Promise<void> {
     await this.update(
       { user: userId } as any,
@@ -114,55 +100,6 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
     tenantInfo: Partial<IProfileDocument['tenantInfo']>
   ): Promise<IProfileDocument | null> {
     return this.updateNestedFields(profileId, 'tenantInfo', tenantInfo ?? {}, 'tenant info');
-  }
-
-  async updateNotificationPreferences(
-    profileId: string,
-    preferences: {
-      messages?: boolean;
-      comments?: boolean;
-      announcements?: boolean;
-      maintenance?: boolean;
-      payments?: boolean;
-      system?: boolean;
-      propertyUpdates?: boolean;
-      emailNotifications?: boolean;
-      inAppNotifications?: boolean;
-      emailFrequency?: 'immediate' | 'daily';
-    }
-  ): Promise<IProfileDocument | null> {
-    try {
-      const updateFields: Record<string, boolean | string> = {};
-
-      const booleanFields = [
-        'messages',
-        'comments',
-        'announcements',
-        'maintenance',
-        'payments',
-        'system',
-        'propertyUpdates',
-        'emailNotifications',
-        'inAppNotifications',
-      ];
-
-      for (const field of booleanFields) {
-        if (preferences[field as keyof typeof preferences] !== undefined) {
-          updateFields[`settings.notifications.${field}`] = preferences[
-            field as keyof typeof preferences
-          ] as boolean;
-        }
-      }
-
-      if (preferences.emailFrequency !== undefined) {
-        updateFields['settings.notifications.emailFrequency'] = preferences.emailFrequency;
-      }
-
-      return await this.updateById(profileId, { $set: updateFields });
-    } catch (error) {
-      this.logger.error(`Error updating notification preferences for profile ${profileId}:`, error);
-      throw this.throwErrorHandler(error);
-    }
   }
 
   /**

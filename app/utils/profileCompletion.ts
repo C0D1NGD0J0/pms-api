@@ -152,6 +152,13 @@ export function computeProfileCompletion(
           value: accountData.subscriptionActive ? 'active' : null,
         },
         {
+          // Unverified accounts are capped (e.g. 5 pending tenant invites) and get
+          // locked once the grace period ends — surface it early in the checklist.
+          key: 'identityVerification',
+          label: 'Verify your identity',
+          value: client.isVerified ? 'verified' : null,
+        },
+        {
           key: 'property',
           label: 'Add your first property',
           value: accountData.propertyCount > 0 ? 'done' : null,

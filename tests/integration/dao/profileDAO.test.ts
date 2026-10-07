@@ -170,21 +170,6 @@ describe('ProfileDAO Integration Tests', () => {
     });
   });
 
-  describe('updateLoginType', () => {
-    it('should update login type to otp', async () => {
-      const result = await profileDAO.updateLoginType(testProfileId.toString(), 'otp');
-
-      expect(result?.settings.loginType).toBe('otp');
-    });
-
-    it('should update login type to password', async () => {
-      await profileDAO.updateLoginType(testProfileId.toString(), 'otp');
-      const result = await profileDAO.updateLoginType(testProfileId.toString(), 'password');
-
-      expect(result?.settings.loginType).toBe('password');
-    });
-  });
-
   describe('updateGDPRSettings', () => {
     it('should update GDPR consent', async () => {
       const result = await profileDAO.updateGDPRSettings(testProfileId.toString(), {
@@ -221,64 +206,13 @@ describe('ProfileDAO Integration Tests', () => {
     });
   });
 
-  describe('updateNotificationPreferences', () => {
-    it('should update boolean notification preferences', async () => {
-      const result = await profileDAO.updateNotificationPreferences(testProfileId.toString(), {
-        messages: true,
-        comments: true,
-        payments: false,
-      });
-
-      expect(result?.settings.notifications?.messages).toBe(true);
-      expect(result?.settings.notifications?.comments).toBe(true);
-      expect(result?.settings.notifications?.payments).toBe(false);
-    });
-
-    it('should update email frequency', async () => {
-      const result = await profileDAO.updateNotificationPreferences(testProfileId.toString(), {
-        emailFrequency: 'daily',
-      });
-
-      expect(result?.settings.notifications?.emailFrequency).toBe('daily');
-    });
-
-    it('should update all notification preferences', async () => {
-      const result = await profileDAO.updateNotificationPreferences(testProfileId.toString(), {
-        messages: true,
-        comments: true,
-        announcements: false,
-        maintenance: false,
-        payments: false,
-        system: false,
-        propertyUpdates: false,
-        emailNotifications: false,
-        inAppNotifications: false,
-        emailFrequency: 'daily',
-      });
-
-      expect(result?.settings.notifications?.messages).toBe(true);
-      expect(result?.settings.notifications?.emailFrequency).toBe('daily');
-      expect(result?.settings.notifications?.announcements).toBe(false);
-    });
-
-    it('should preserve unmodified preferences', async () => {
-      const result = await profileDAO.updateNotificationPreferences(testProfileId.toString(), {
-        messages: true,
-      });
-
-      expect(result?.settings.notifications?.messages).toBe(true);
-      expect(result?.settings.notifications?.announcements).toBe(true); // unchanged
-      expect(result?.settings.notifications?.maintenance).toBe(true); // unchanged
-    });
-  });
-
   describe('getNotificationPreferences', () => {
     it('should retrieve notification preferences by user ID', async () => {
       const result = await profileDAO.getNotificationPreferences(testUserId.toString());
 
       expect(result).not.toBeNull();
-      expect(result?.emailFrequency).toBe('immediate');
       expect(result?.announcements).toBe(true);
+      expect(result?.leases).toBe(true);
     });
 
     it('should return null for non-existent user', async () => {
@@ -289,15 +223,13 @@ describe('ProfileDAO Integration Tests', () => {
     });
 
     it('should return updated preferences', async () => {
-      await profileDAO.updateNotificationPreferences(testProfileId.toString(), {
-        emailFrequency: 'daily',
-        messages: true,
+      await profileDAO.updateById(testProfileId.toString(), {
+        $set: { 'settings.notifications.payments': false },
       });
 
       const result = await profileDAO.getNotificationPreferences(testUserId.toString());
 
-      expect(result?.emailFrequency).toBe('daily');
-      expect(result?.messages).toBe(true);
+      expect(result?.payments).toBe(false);
     });
   });
 

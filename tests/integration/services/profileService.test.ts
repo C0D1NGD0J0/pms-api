@@ -7,6 +7,7 @@ import { ProfileService } from '@services/profile/profile.service';
 import { ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { ProfileBackgroundCheckStatus } from '@interfaces/profile.interface';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@services/notification/notificationPolicy';
 
 import {
   setupAllExternalMocks,
@@ -572,9 +573,10 @@ describe('ProfileService Integration Tests - Read Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(result.data).toHaveProperty('messages');
       expect(result.data).toHaveProperty('announcements');
+      expect(result.data).toHaveProperty('leases');
       expect(result.data).toHaveProperty('emailNotifications');
+      expect(result.data).not.toHaveProperty('system');
     });
 
     it('should return default preferences when user profile not found', async () => {
@@ -587,20 +589,7 @@ describe('ProfileService Integration Tests - Read Operations', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.message).toMatch(/Default notification preferences retrieved/);
-      expect(result.data).toEqual({
-        messages: false,
-        comments: false,
-        announcements: true,
-        maintenance: true,
-        payments: true,
-        system: true,
-        propertyUpdates: true,
-        emailNotifications: true,
-        inAppNotifications: true,
-        smsNotifications: false,
-        emailFrequency: 'immediate',
-      });
+      expect(result.data).toEqual(DEFAULT_NOTIFICATION_SETTINGS);
     });
   });
 

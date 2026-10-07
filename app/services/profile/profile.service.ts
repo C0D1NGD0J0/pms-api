@@ -5,6 +5,7 @@ import { AuthCache } from '@caching/auth.cache';
 import { UserCache } from '@caching/user.cache';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
+import { NotificationCategory } from '@interfaces/notification.interface';
 import { ProfileValidations } from '@shared/validations/ProfileValidation';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { EventEmitterService, VendorService, UserService } from '@services/index';
@@ -19,6 +20,11 @@ import {
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  sanitizeNotificationUpdate,
+  getCategoriesForRole,
+} from '@services/notification/notificationPolicy';
 import {
   IProfileUpdateData,
   ISuccessReturnData,
@@ -590,6 +596,33 @@ export class ProfileService {
   /**
    * Process and validate profile data updates
    */
+  /**
+   * Users own their notification preferences: an admin editing someone else's
+   * profile can't change them. Categories the user's role/department isn't offered
+   * are dropped, and email + in-app can't both be switched off.
+   */
+  private async cleanNotificationUpdate(
+    notifications: Record<string, unknown>,
+    profileId: string,
+    userId: string,
+    userRole: IUserRoleType,
+    currentuser: ICurrentUser
+  ): Promise<Record<string, unknown> | undefined> {
+    if (currentuser.sub !== userId) return undefined;
+
+    const profile = await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) });
+    const result = sanitizeNotificationUpdate({
+      update: notifications,
+      current: profile?.settings?.notifications,
+      role: userRole,
+      department: profile?.employeeInfo?.department,
+    });
+    if ('error' in result) {
+      throw new BadRequestError({ message: result.error });
+    }
+    return result.update;
+  }
+
   private async processProfileUpdates(
     profileData: IProfileUpdateData,
     profileId: string,
@@ -643,6 +676,31 @@ export class ProfileService {
         });
       }
       validatedData.settings = settingsValidation.data;
+
+      // Sign-in method and GDPR choices belong to the account owner — never changeable by an admin
+      if (currentuser.sub !== userId) {
+        delete validatedData.settings.loginType;
+        delete validatedData.settings.gdprSettings;
+      }
+
+      if (validatedData.settings.loginType === 'passkey') {
+        const passkeys = await this.userDAO.getUserPasskeys(userId);
+        if (passkeys.length === 0) {
+          throw new BadRequestError({
+            message: 'Register a passkey before choosing it as your login type.',
+          });
+        }
+      }
+
+      if (validatedData.settings.notifications) {
+        validatedData.settings.notifications = await this.cleanNotificationUpdate(
+          validatedData.settings.notifications,
+          profileId,
+          userId,
+          userRole,
+          currentuser
+        );
+      }
       hasUpdates = true;
     }
 
@@ -999,6 +1057,42 @@ export class ProfileService {
    * Get user notification preferences by user ID
    * Returns default preferences if user profile doesn't exist
    */
+  /**
+   * Preferences plus the categories this user may change (by role in this account
+   * and, for staff, department) — the frontend renders exactly these.
+   */
+  async getNotificationSettingsView(
+    userId: string,
+    cuid: string
+  ): Promise<
+    ISuccessReturnData<{
+      preferences: IProfileDocument['settings']['notifications'];
+      categories: NotificationCategory[];
+      sms: { phoneVerified: boolean; consented: boolean };
+    }>
+  > {
+    const [preferences, user, profile] = await Promise.all([
+      this.getUserNotificationPreferences(userId, cuid),
+      this.userDAO.getUserById(userId),
+      this.profileDAO.findFirst({ user: new Types.ObjectId(userId) }),
+    ]);
+    const connection = user?.cuids?.find((c) => c.cuid === cuid);
+    const role = connection?.primaryRole ?? connection?.roles?.[0];
+
+    return {
+      success: true,
+      message: t('common.success.retrieved', { resource: 'Notification preferences' }),
+      data: {
+        preferences: preferences.data,
+        categories: getCategoriesForRole(role, profile?.employeeInfo?.department),
+        sms: {
+          phoneVerified: !!profile?.settings?.phoneVerification?.verified,
+          consented: !!profile?.settings?.smsConsent?.consented,
+        },
+      },
+    };
+  }
+
   async getUserNotificationPreferences(
     userId: string,
     cuid: string
@@ -1013,17 +1107,7 @@ export class ProfileService {
           `No notification preferences found for user ${userId}, returning defaults`
         );
         const defaultPreferences: IProfileDocument['settings']['notifications'] = {
-          messages: false,
-          comments: false,
-          announcements: true,
-          maintenance: true,
-          payments: true,
-          system: true,
-          propertyUpdates: true,
-          emailNotifications: true,
-          inAppNotifications: true,
-          smsNotifications: false,
-          emailFrequency: 'immediate' as const,
+          ...DEFAULT_NOTIFICATION_SETTINGS,
         };
 
         return {

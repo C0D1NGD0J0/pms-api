@@ -12,19 +12,6 @@ import {
 import { IFindOptions, dynamic } from './baseDAO.interface';
 
 export interface IUserDAO {
-  createBulkUserWithDefaults(
-    client: { cuid: string; displayName?: string; id: string },
-    userData: {
-      email: string;
-      firstName: string;
-      lastName: string;
-      phoneNumber?: string;
-      role: IUserRoleType;
-      defaultPassword: string;
-    },
-    linkedVendorUid?: string,
-    session?: any
-  ): Promise<IUserDocument>;
   createUserFromInvitation(
     client: { cuid: string; displayName?: string },
     invitationData: IInvitationDocument,

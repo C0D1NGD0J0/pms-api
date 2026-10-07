@@ -1784,6 +1784,10 @@ export class SubscriptionService {
         updateData.status = ISubscriptionStatus.ACTIVE;
       }
 
+      // Card on file is otherwise only captured by the invoice.paid webhook — if that
+      // was missed (or raced the subscription link), the UI shows no payment method.
+      Object.assign(updateData, await this.getCardDetailsUpdate(stripeSub));
+
       // Sync planName from Stripe price lookup_key
       let activePlanName = subscription.planName;
       for (const item of stripeSub.items?.data ?? []) {
@@ -1866,6 +1870,26 @@ export class SubscriptionService {
       this.log.error({ error, cuid }, 'syncFromStripe failed');
       throw error;
     }
+  }
+
+  /** billing.cardLast4/cardBrand from the Stripe subscription's default payment method. */
+  private async getCardDetailsUpdate(stripeSub: any): Promise<Record<string, string>> {
+    const defaultPm = stripeSub?.default_payment_method;
+    const paymentMethodId = typeof defaultPm === 'string' ? defaultPm : defaultPm?.id;
+    if (!paymentMethodId) return {};
+
+    const result = await this.paymentGatewayService.retrievePaymentMethod(
+      IPaymentGatewayProvider.STRIPE,
+      paymentMethodId
+    );
+    const pm = result.success ? result.data : null;
+    if (!pm?.last4) return {};
+
+    // For cards, retrievePaymentMethod puts the card brand (visa, mastercard…) in bankName
+    return {
+      'billing.cardLast4': pm.last4,
+      'billing.cardBrand': pm.bankName || pm.type,
+    };
   }
 
   getCronJobs() {

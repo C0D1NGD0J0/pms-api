@@ -111,6 +111,7 @@ describe('InvitationService Integration Tests', () => {
     });
 
     invitationService = new InvitationService({
+      invitationCsvProcessor: {} as any,
       invitationDAO,
       userDAO,
       clientDAO,

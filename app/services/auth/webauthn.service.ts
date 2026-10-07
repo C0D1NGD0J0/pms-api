@@ -124,7 +124,18 @@ export class WebAuthnService {
       lastUsedAt: null,
     };
 
+    const existingPasskeys = await this.userDAO.getUserPasskeys(userId);
     await this.userDAO.addPasskey(userId, passkeyCredential);
+
+    // First passkey becomes the default login type; deletePasskey reverts it
+    if (existingPasskeys.length === 0) {
+      const profile = await this.profileDAO.findFirst({ user: userId });
+      if (profile) {
+        await this.profileDAO.updateById(profile._id.toString(), {
+          'settings.loginType': 'passkey',
+        });
+      }
+    }
 
     this.log.info({ userId, credentialId: credential.id }, 'Passkey registered');
 

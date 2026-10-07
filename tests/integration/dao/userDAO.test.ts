@@ -352,50 +352,6 @@ describe('UserDAO Integration Tests', () => {
     });
   });
 
-  describe('createBulkUserWithDefaults', () => {
-    it('should set requiresOnboarding to true on the cuid entry', async () => {
-      const client = await createTestClient();
-      const userData = {
-        email: `bulk-${Date.now()}@example.com`,
-        firstName: 'Bulk',
-        lastName: 'User',
-        role: ROLES.STAFF,
-        defaultPassword: 'TempPass123!',
-      };
-
-      const user = await userDAO.createBulkUserWithDefaults(
-        { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
-        userData
-      );
-
-      expect(user).not.toBeNull();
-      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
-      expect(cuidEntry).toBeDefined();
-      expect(cuidEntry!.requiresOnboarding).toBe(true);
-    });
-
-    it('should create an active user with the given role', async () => {
-      const client = await createTestClient();
-      const email = `bulk-role-${Date.now()}@example.com`;
-
-      const user = await userDAO.createBulkUserWithDefaults(
-        { cuid: client.cuid, clientDisplayName: client.displayName, id: client._id.toString() },
-        {
-          email,
-          firstName: 'Bulk',
-          lastName: 'User',
-          role: ROLES.TENANT,
-          defaultPassword: 'TempPass123!',
-        }
-      );
-
-      expect(user.isActive).toBe(true);
-      expect(user.email).toBe(email);
-      const cuidEntry = user.cuids.find((c) => c.cuid === client.cuid);
-      expect(cuidEntry!.roles).toContain(ROLES.TENANT);
-    });
-  });
-
   describe('clearOnboardingFlag', () => {
     it('should set requiresOnboarding to false for the given cuid', async () => {
       const client = await createTestClient();

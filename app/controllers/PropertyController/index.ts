@@ -1,9 +1,9 @@
 import { Response } from 'express';
 import { t } from '@shared/languages';
-import { httpStatusCodes } from '@utils/index';
 import { PropertyService } from '@services/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import propertyFormMeta from '@shared/constants/fromStaticData.json';
+import { parseColumnMappingField, httpStatusCodes } from '@utils/index';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
 import { ExtractedMediaFile, ResourceContext, AppRequest } from '@interfaces/utils.interface';
@@ -60,7 +60,7 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-    const columnMapping = this.parseColumnMapping(req.body?.columnMapping);
+    const columnMapping = parseColumnMappingField(req.body?.columnMapping);
     const result = await this.propertyService.validateCsv(
       cuid,
       csvFile,
@@ -99,7 +99,7 @@ export class PropertyController {
       });
     }
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-    const columnMapping = this.parseColumnMapping(req.body?.columnMapping);
+    const columnMapping = parseColumnMappingField(req.body?.columnMapping);
     const result = await this.propertyService.addPropertiesFromCsv(
       cuid,
       csvFile.path,
@@ -520,18 +520,4 @@ export class PropertyController {
     );
     res.status(httpStatusCodes.OK).json(result);
   };
-
-  /** columnMapping arrives as a JSON string form field alongside the CSV file. */
-  private parseColumnMapping(raw: unknown): Record<string, string> | undefined {
-    if (typeof raw !== 'string' || !raw.trim()) return undefined;
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed as Record<string, string>;
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  }
 }

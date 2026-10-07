@@ -448,7 +448,30 @@
       "cannotResend": "Impossible de renvoyer cette invitation",
       "expired": "L'invitation a expiré",
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé. Veuillez sélectionner un fichier pour continuer.",
-      "pendingInvitationExists": "Une invitation active existe déjà pour cette adresse email"
+      "pendingInvitationExists": "Une invitation active existe déjà pour cette adresse email",
+      "cannotInviteYourself": "Vous ne pouvez pas vous envoyer une invitation",
+      "userAlreadyHasAccess": "Cet utilisateur a déjà accès à ce compte",
+      "fileTooLarge": "Le fichier est trop volumineux. La taille maximale est de 10 Mo.",
+      "clientNotFound": "Compte introuvable",
+      "insufficientPermissions": "Vous n'avez pas la permission d'envoyer des invitations",
+      "roleNotInvitable": "Le rôle {{role}} ne peut pas être attribué par invitation",
+      "adminInviteRequiresAdmin": "Seuls les administrateurs peuvent inviter d'autres administrateurs",
+      "unverifiedTenantLimit": "Les comptes non vérifiés sont limités à 5 invitations de locataires en attente. Vérifiez votre compte pour en inviter davantage.",
+      "seatLimitReached": "Limite de places atteinte. Votre forfait permet {{total}} places."
+    },
+    "csv": {
+      "noValidRows": "Aucune ligne valide trouvée dans le fichier CSV",
+      "validationFailed": "Le fichier CSV n'a pas pu être validé : {{error}}",
+      "importFailed": "L'importation CSV n'a pas pu être terminée : {{error}}",
+      "seatCheckFailed": "Impossible de vérifier les places disponibles. Veuillez réessayer.",
+      "missingColumns": "Colonnes obligatoires manquantes : {{columns}}",
+      "duplicateEmailInFile": "Ce courriel figure aussi à la ligne {{row}}",
+      "duplicateRegistrationNumber": "Numéro d'enregistrement en double dans ce fichier : {{value}}",
+      "vendorNotFound": "Le fournisseur {{vuid}} est introuvable",
+      "vendorNotConnected": "Le fournisseur {{vuid}} n'est pas connecté à ce compte",
+      "vendorCompanyRequired": "Le nom de l'entreprise est obligatoire pour un nouveau fournisseur",
+      "validationCompleted": "{{valid}} lignes sur {{total}} sont prêtes à être invitées",
+      "importCompleted": "{{created}} invitations créées"
     }
   },
   "profile": {
@@ -617,7 +640,6 @@
       "feedbackSubmitted": "[FR] Thank you for your feedback"
     }
   },
-
   "notifications": {
     "property": {
       "approvalRequired": {

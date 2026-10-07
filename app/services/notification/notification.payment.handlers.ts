@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { MoneyUtils } from '@utils/money.utils';
 import { MailType } from '@interfaces/utils.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
@@ -53,6 +54,7 @@ export async function handlePaymentFailed(
         type: NotificationTypeEnum.PAYMENT,
         recipient: tenantId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
+        required: true,
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
@@ -347,6 +349,7 @@ export async function handlePaymentOverdue(
         type: NotificationTypeEnum.PAYMENT,
         recipient: tenantId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
+        required: true,
         priority: NotificationPriorityEnum.HIGH,
         title,
         message,
@@ -379,6 +382,7 @@ export async function handlePaymentRequestCreated(
       type: NotificationTypeEnum.PAYMENT,
       recipient: tenantUserId,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
+      required: true,
       priority: NotificationPriorityEnum.HIGH,
       title,
       message,
@@ -401,7 +405,7 @@ export async function handlePaymentRefunded(
       cuid,
       type: NotificationTypeEnum.PAYMENT,
       recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-      targetRoles: [MGMT_ROLES[1]], // SUPER_ADMIN only
+      targetRoles: [ROLES.SUPER_ADMIN], // account owner only
       priority: NotificationPriorityEnum.MEDIUM,
       title,
       message,
@@ -451,7 +455,8 @@ export async function handlePayoutFailed(
       MGMT_ROLES,
       { payoutId: payload.payoutId, accountId: payload.accountId },
       NotificationPriorityEnum.HIGH,
-      FINANCE_DEPARTMENTS
+      FINANCE_DEPARTMENTS,
+      true
     );
   } catch (error) {
     ctx.log.error('Error sending payout failed notification', { error, payload });
@@ -474,7 +479,8 @@ export async function handleInvoiceOverdue(
       MGMT_ROLES,
       { pytuid: payload.pytuid, invoiceId: payload.invoiceId, tenantId: payload.tenantId },
       NotificationPriorityEnum.HIGH,
-      FINANCE_DEPARTMENTS
+      FINANCE_DEPARTMENTS,
+      true
     );
   } catch (error) {
     ctx.log.error('Error sending invoice overdue notification', { error, payload });

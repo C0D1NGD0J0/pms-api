@@ -197,7 +197,7 @@ export class UserController {
       return;
     }
 
-    const result = await this.profileService.getUserNotificationPreferences(targetUserId, cuid);
+    const result = await this.profileService.getNotificationSettingsView(targetUserId, cuid);
     res.status(httpStatusCodes.OK).json(result);
   };
 

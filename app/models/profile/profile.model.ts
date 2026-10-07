@@ -98,22 +98,19 @@ const ProfileSchema = new Schema<IProfileDocument>(
         processingConsentDate: Date,
       },
       notifications: {
-        messages: { type: Boolean, default: false },
-        comments: { type: Boolean, default: false },
-        announcements: { type: Boolean, default: true },
-        maintenance: { type: Boolean, default: true },
-        payments: { type: Boolean, default: true },
-        system: { type: Boolean, default: true },
-        propertyUpdates: { type: Boolean, default: true },
+        // Channels
         emailNotifications: { type: Boolean, default: true },
         inAppNotifications: { type: Boolean, default: true },
         pushNotifications: { type: Boolean, default: false },
         smsNotifications: { type: Boolean, default: false },
-        emailFrequency: {
-          type: String,
-          enum: ['immediate', 'daily'],
-          default: 'immediate',
-        },
+        // Categories — apply to every channel (see notificationPolicy)
+        announcements: { type: Boolean, default: true },
+        propertyUpdates: { type: Boolean, default: true },
+        maintenance: { type: Boolean, default: true },
+        guestPasses: { type: Boolean, default: true },
+        approvals: { type: Boolean, default: true },
+        payments: { type: Boolean, default: true },
+        leases: { type: Boolean, default: true },
       },
       phoneVerification: {
         verified: { type: Boolean, default: false },

@@ -22,6 +22,7 @@ const makeProfile = (overrides: Record<string, any> = {}): IProfileDocument =>
 const makeClient = (overrides: Record<string, any> = {}): IClientDocument =>
   ({
     accountType: { category: 'business', isEnterpriseAccount: false },
+    isVerified: true,
     ...overrides,
   }) as any;
 
@@ -91,6 +92,33 @@ describe('computeProfileCompletion — account setup sections', () => {
       .find((s) => s.key === 'accountSetup')!
       .fields.find((f) => f.key === 'property');
     expect(field!.filled).toBe(false);
+  });
+
+  it('should list identity verification in account setup, right after the subscription', () => {
+    const fields = computeProfileCompletion(
+      makeProfile(),
+      makeClient(),
+      ['admin'],
+      makeAccountData()
+    )
+      .sections.find((s) => s.key === 'accountSetup')!
+      .fields.map((f) => f.key);
+    expect(fields.slice(0, 2)).toEqual(['subscription', 'identityVerification']);
+  });
+
+  it('should mark identity verification incomplete until the account is verified', () => {
+    const fieldFor = (isVerified: boolean) =>
+      computeProfileCompletion(
+        makeProfile(),
+        makeClient({ isVerified }),
+        ['super-admin'],
+        makeAccountData()
+      )
+        .sections.find((s) => s.key === 'accountSetup')!
+        .fields.find((f) => f.key === 'identityVerification')!;
+
+    expect(fieldFor(false).filled).toBe(false);
+    expect(fieldFor(true).filled).toBe(true);
   });
 
   it('should mark payoutBank as incomplete when payoutsEnabled is false', () => {

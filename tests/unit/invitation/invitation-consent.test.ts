@@ -110,6 +110,7 @@ describe('Invitation Acceptance — Consent Recording', () => {
     });
 
     invitationService = new InvitationService({
+      invitationCsvProcessor: {} as any,
       ...mockDAOs,
       queueFactory: {
         getQueue: jest.fn((queueName: string) => {

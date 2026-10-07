@@ -19,7 +19,7 @@ export class InvitationQueue extends BaseQueue {
     super({ queueName: QUEUE_NAMES.INVITATION_QUEUE });
     this.invitationWorker = invitationWorker;
     this.s3Service = s3Service;
-    // CSV/bulk operations are heavy — low concurrency prevents BRPOPLPUSH
+    // CSV operations are heavy — low concurrency prevents BRPOPLPUSH
     // contention on the shared bclient and avoids overwhelming the system.
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_VALIDATION_JOB,
@@ -30,16 +30,6 @@ export class InvitationQueue extends BaseQueue {
       JOB_NAME.INVITATION_CSV_IMPORT_JOB,
       1,
       withStagedCsv(s3Service, this.invitationWorker.processCsvImport)
-    );
-    this.processQueueJobs(
-      JOB_NAME.INVITATION_BULK_USER_VALIDATION_JOB,
-      2,
-      withStagedCsv(s3Service, this.invitationWorker.processCsvBulkUserValidation)
-    );
-    this.processQueueJobs(
-      JOB_NAME.INVITATION_BULK_USER_IMPORT_JOB,
-      1,
-      withStagedCsv(s3Service, this.invitationWorker.processCsvBulkUserImport)
     );
   }
 
@@ -62,31 +52,16 @@ export class InvitationQueue extends BaseQueue {
   async addCsvImportJob(data: CsvJobData) {
     const jobId = await this.addJobToQueue(
       JOB_NAME.INVITATION_CSV_IMPORT_JOB,
-      await stageCsvInS3(this.s3Service, data)
-    );
-    return jobId;
-  }
-
-  async addCsvBulkUserValidationJob(data: CsvJobData) {
-    const jobId = await this.addJobToQueue(
-      JOB_NAME.INVITATION_BULK_USER_VALIDATION_JOB,
       await stageCsvInS3(this.s3Service, data),
       {
-        attempts: 1, // no retries for CSV validation
-        timeout: 60000,
-        backoff: { type: 'fixed', delay: 10000 },
+        // A retry would re-send invites already dispatched, and Bull's timeout doesn't
+        // cancel the running handler — so run once, with room for large files.
+        attempts: 1,
+        timeout: 15 * 60 * 1000,
         removeOnComplete: 100,
         removeOnFail: 500,
         delay: 5000,
       }
-    );
-    return jobId;
-  }
-
-  async addCsvBulkUserImportJob(data: CsvJobData) {
-    const jobId = await this.addJobToQueue(
-      JOB_NAME.INVITATION_BULK_USER_IMPORT_JOB,
-      await stageCsvInS3(this.s3Service, data)
     );
     return jobId;
   }

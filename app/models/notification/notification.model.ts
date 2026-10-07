@@ -3,6 +3,7 @@ import { generateShortUID, createLogger } from '@utils/index';
 import { ResourceContext } from '@interfaces/utils.interface';
 import {
   NotificationPriorityEnum,
+  NOTIFICATION_CATEGORIES,
   INotificationDocument,
   NotificationTypeEnum,
   RecipientTypeEnum,
@@ -112,6 +113,17 @@ const NotificationSchema = new Schema<INotificationDocument>(
     targetVendor: {
       type: String,
       trim: true,
+    },
+    // Preference category — lets users filter role/department announcements
+    category: {
+      type: String,
+      enum: [...NOTIFICATION_CATEGORIES, null],
+      default: null,
+    },
+    // Always delivered regardless of the recipient's preferences
+    required: {
+      type: Boolean,
+      default: false,
     },
     readBy: {
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],

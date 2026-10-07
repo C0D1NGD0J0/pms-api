@@ -5,22 +5,6 @@ import { ListResultWithPagination, ICurrentUser } from '@interfaces/index';
 import { IFindOptions, IBaseDAO } from './baseDAO.interface';
 
 export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
-  updateNotificationPreferences(
-    profileId: string,
-    preferences: {
-      messages?: boolean;
-      comments?: boolean;
-      announcements?: boolean;
-      maintenance?: boolean;
-      payments?: boolean;
-      system?: boolean;
-      propertyUpdates?: boolean;
-      emailNotifications?: boolean;
-      inAppNotifications?: boolean;
-      emailFrequency?: 'immediate' | 'daily';
-    }
-  ): Promise<IProfileDocument | null>;
-
   /** Updates vendor reference fields only — vendor business data lives in the vendor collection. */
   updateVendorReference(
     profileId: string,
@@ -97,11 +81,6 @@ export interface IProfileDAO extends IBaseDAO<IProfileDocument> {
   getNotificationPreferences(
     userId: string
   ): Promise<IProfileDocument['settings']['notifications'] | null>;
-
-  updateLoginType(
-    profileId: string,
-    loginType: 'otp' | 'password'
-  ): Promise<IProfileDocument | null>;
 
   updateTheme(profileId: string, theme: 'light' | 'dark'): Promise<IProfileDocument | null>;
 

@@ -188,6 +188,10 @@ export class NotificationController {
 
       const userRole = req.context?.currentuser?.client?.role;
       const userDepartment = req.context?.currentuser?.employeeInfo?.department;
+      const preferences = await this.notificationService.getAnnouncementStreamPreferences(
+        userId,
+        cuid
+      );
       const session = await this.sseService.connect(
         req,
         res,
@@ -195,7 +199,8 @@ export class NotificationController {
         cuid,
         'announcement',
         userRole,
-        userDepartment
+        userDepartment,
+        preferences
       );
 
       if (missedData?.success && missedData.data?.notifications?.length) {

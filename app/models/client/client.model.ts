@@ -203,7 +203,7 @@ const ClientSchema = new Schema<IClientDocument>(
         tenantPortalActive: { type: Boolean, default: true },
         onlinePayments: { type: Boolean, default: true },
         maintenanceRequests: { type: Boolean, default: true },
-        smsNotifications: { type: Boolean, default: true },
+        smsNotifications: { type: Boolean, default: false }, // paid add-on — opt in
         inspections: { type: Boolean, default: true },
         guestPass: { type: Boolean, default: false },
       },

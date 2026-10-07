@@ -17,6 +17,7 @@ import type {
   InspectionReminderPayload,
 } from '@interfaces/events.interface';
 
+import { ALL_STAFF_ROLES } from './notification.helpers';
 import { INotificationContext } from './notification.types';
 
 const formatType = (type: string) => type.replace(/_/g, '-');
@@ -78,7 +79,7 @@ export async function handleInspectionApproved(
       actionUrl,
     });
 
-    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
+    if (tenant) {
       ctx.emailQueue.addToEmailQueue('inspectionApprovedJob', {
         to: tenant.email,
         requestId: ctx.requestId,
@@ -145,7 +146,7 @@ export async function handleInspectionRejected(
     }
 
     // Email the tenant about rejection
-    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
+    if (tenant) {
       ctx.emailQueue.addToEmailQueue('inspectionRejectedJob', {
         to: tenant.email,
         requestId: ctx.requestId,
@@ -183,12 +184,13 @@ export async function handleInspectionScheduled(
       title: 'Inspection Scheduled',
       message: `A ${formatType(type)} inspection has been scheduled for ${formatDate(scheduledDate)}`,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
+      required: true,
       recipient: tenantId,
       priority: NotificationPriorityEnum.MEDIUM,
       actionUrl,
     });
 
-    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
+    if (tenant) {
       ctx.emailQueue.addToEmailQueue('inspectionScheduledJob', {
         to: tenant.email,
         requestId: ctx.requestId,
@@ -229,10 +231,7 @@ export async function handleInspectionSubmitted(
     });
 
     const inspector = await lookupUser(ctx, inspectorUid);
-    if (
-      inspector &&
-      (await ctx.shouldSendEmail(inspector._id, cuid, NotificationTypeEnum.INSPECTION))
-    ) {
+    if (inspector) {
       ctx.emailQueue.addToEmailQueue('inspectionSubmittedJob', {
         to: inspector.email,
         requestId: ctx.requestId,
@@ -274,7 +273,7 @@ export async function handleInspectionCancelled(
       actionUrl,
     });
 
-    if (tenant && (await ctx.shouldSendEmail(tenant._id, cuid, NotificationTypeEnum.INSPECTION))) {
+    if (tenant) {
       ctx.emailQueue.addToEmailQueue('inspectionCancelledJob', {
         to: tenant.email,
         requestId: ctx.requestId,
@@ -322,6 +321,34 @@ export async function handleInspectionReminder(
   }
 }
 
+export async function handleInspectionAIAnalyzed(
+  ctx: INotificationContext,
+  payload: InspectionAIAnalyzedPayload
+): Promise<void> {
+  const { cuid, iuid, riskFlagCount } = payload;
+
+  try {
+    const riskNote =
+      riskFlagCount > 0
+        ? ` ${riskFlagCount} risk flag${riskFlagCount > 1 ? 's' : ''} detected.`
+        : '';
+
+    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
+      cuid,
+      type: NotificationTypeEnum.INSPECTION,
+      title: 'AI Analysis Complete',
+      message: `AI analysis for inspection is ready.${riskNote}`,
+      recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+      // Internal review — never tenants or vendors
+      targetRoles: [...ALL_STAFF_ROLES],
+      priority: riskFlagCount > 0 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.LOW,
+      actionUrl: `/inspections/${cuid}/${iuid}`,
+    });
+  } catch (err) {
+    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection AI analyzed notification');
+  }
+}
+
 export async function handleInspectionReviewed(
   ctx: INotificationContext,
   payload: InspectionReviewedPayload
@@ -347,32 +374,6 @@ export async function handleInspectionReviewed(
     });
   } catch (err) {
     ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection reviewed notification');
-  }
-}
-
-export async function handleInspectionAIAnalyzed(
-  ctx: INotificationContext,
-  payload: InspectionAIAnalyzedPayload
-): Promise<void> {
-  const { cuid, iuid, riskFlagCount } = payload;
-
-  try {
-    const riskNote =
-      riskFlagCount > 0
-        ? ` ${riskFlagCount} risk flag${riskFlagCount > 1 ? 's' : ''} detected.`
-        : '';
-
-    await ctx.createNotification(cuid, NotificationTypeEnum.INSPECTION, {
-      cuid,
-      type: NotificationTypeEnum.INSPECTION,
-      title: 'AI Analysis Complete',
-      message: `AI analysis for inspection is ready.${riskNote}`,
-      recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-      priority: riskFlagCount > 0 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.LOW,
-      actionUrl: `/inspections/${cuid}/${iuid}`,
-    });
-  } catch (err) {
-    ctx.log.error({ err, iuid, cuid }, 'Failed to handle inspection AI analyzed notification');
   }
 }
 

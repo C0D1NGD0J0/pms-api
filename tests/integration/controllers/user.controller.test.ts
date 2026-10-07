@@ -465,7 +465,19 @@ describe('UserController Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
-      expect(response.body.data).toBeDefined();
+      expect(response.body.data.preferences).toEqual(
+        expect.objectContaining({ emailNotifications: expect.any(Boolean) })
+      );
+      // Account admins can change every category
+      expect(response.body.data.categories).toEqual([
+        'payments',
+        'maintenance',
+        'leases',
+        'propertyUpdates',
+        'approvals',
+        'guestPasses',
+        'announcements',
+      ]);
     });
   });
 

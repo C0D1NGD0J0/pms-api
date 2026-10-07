@@ -211,9 +211,33 @@ router.get(
   })
 );
 
+router.get(
+  '/:cuid/csv/template',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.getCsvTemplate(req, res);
+  })
+);
+
+router.get(
+  '/:cuid/csv/import-fields',
+  basicLimiter(),
+  isAuthenticated,
+  requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req: AppRequest, res) => {
+    const controller = req.container.resolve<InvitationController>('invitationController');
+    return controller.getCsvImportFields(req, res);
+  })
+);
+
 router.post(
   '/:cuid/csv/validate',
-  basicLimiter(),
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   isAuthenticated,
   requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
@@ -223,10 +247,7 @@ router.post(
   requireActiveSubscription,
   diskUpload(['csv_file']),
   scanFile,
-  validateRequest({
-    params: UtilsValidations.cuid,
-    query: InvitationValidations.bulkCreationQuery,
-  }),
+  validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.validateInvitationCsv(req, res);
@@ -235,7 +256,7 @@ router.post(
 
 router.post(
   '/:cuid/csv/import',
-  basicLimiter(),
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   isAuthenticated,
   requireVerification,
   requirePermission(PermissionResource.INVITATION, PermissionAction.SEND),
@@ -246,10 +267,7 @@ router.post(
   requireActiveSubscription,
   diskUpload(['csv_file']),
   scanFile,
-  validateRequest({
-    params: UtilsValidations.cuid,
-    query: InvitationValidations.bulkCreationQuery,
-  }),
+  validateRequest({ params: UtilsValidations.cuid }),
   asyncWrapper((req: AppRequest, res) => {
     const controller = req.container.resolve<InvitationController>('invitationController');
     return controller.importInvitationsFromCsv(req, res);

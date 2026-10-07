@@ -503,9 +503,7 @@ export class AuthService {
       profile?.settings?.phoneVerification?.verified &&
       profile?.settings?.phoneVerification?.verifiedPhone;
 
-    // Check for registered passkeys
-    const hasPasskeys = await this.userDAO.hasPasskeys(email);
-    if (hasPasskeys) {
+    if (loginType === 'passkey' && (await this.userDAO.hasPasskeys(email))) {
       const passkeyOptions = await this.webAuthnService.generateAuthenticationOptions(email);
       const phone = profile?.settings?.phoneVerification?.verifiedPhone;
       return {

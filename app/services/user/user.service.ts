@@ -6,6 +6,7 @@ import { UserCache } from '@caching/user.cache';
 import { EmailQueue, UserQueue } from '@queues/index';
 import { IVendor } from '@interfaces/vendor.interface';
 import { LeaseStatus } from '@interfaces/lease.interface';
+import { IAnnouncementTargeting } from '@dao/notificationDAO';
 import { IFindOptions } from '@dao/interfaces/baseDAO.interface';
 import { PaymentRecordType } from '@interfaces/payments.interface';
 import { InspectionStatus } from '@interfaces/inspection.interface';
@@ -24,6 +25,10 @@ import {
   JOB_NAME,
   daysInMs,
 } from '@utils/index';
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  getDisabledCategories,
+} from '@services/notification/notificationPolicy';
 import {
   ISuccessReturnData,
   PermissionResource,
@@ -1157,18 +1162,7 @@ export class UserService implements ICronProvider {
         timeZone: userData.timeZone || 'UTC',
         theme: 'light',
         loginType: 'password',
-        notifications: {
-          emailNotifications: true,
-          inAppNotifications: true,
-          emailFrequency: 'daily',
-          propertyUpdates: true,
-          announcements: true,
-          maintenance: true,
-          comments: true,
-          messages: true,
-          payments: true,
-          system: true,
-        },
+        notifications: { ...DEFAULT_NOTIFICATION_SETTINGS },
         gdprSettings: {
           dataRetentionPolicy: 'standard',
           dataProcessingConsent: false,
@@ -1296,10 +1290,7 @@ export class UserService implements ICronProvider {
     }
   }
 
-  async getUserAnnouncementFilters(
-    userId: string,
-    cuid: string
-  ): Promise<{ roles: string[]; vendorId?: string; department?: string }> {
+  async getUserAnnouncementFilters(userId: string, cuid: string): Promise<IAnnouncementTargeting> {
     try {
       const user = await this.getUserWithClientContext(userId, cuid, {
         populate: 'profile',
@@ -1342,7 +1333,17 @@ export class UserService implements ICronProvider {
         vendorId = user.profile.vendorInfo.linkedVendorUid;
       }
 
-      return { roles, vendorId, department };
+      const notificationPrefs = user.profile?.settings?.notifications;
+      return {
+        roles,
+        vendorId,
+        department,
+        seesAllDepartments: roles.some((role: string) =>
+          (ROLE_GROUPS.MANAGEMENT_ROLES as readonly string[]).includes(role)
+        ),
+        disabledCategories: getDisabledCategories(notificationPrefs),
+        inAppDisabled: notificationPrefs?.inAppNotifications === false,
+      };
     } catch (error) {
       this.log.error('Error getting user announcement filters', { userId, cuid, error });
       return { roles: [] };
@@ -2001,12 +2002,6 @@ export class UserService implements ICronProvider {
         const { activeLease, ...allowedTenantInfo } = updateData.tenantInfo;
         for (const [key, value] of Object.entries(allowedTenantInfo)) {
           profileUpdateFields[`tenantInfo.${key}`] = value;
-        }
-      }
-
-      if (updateData.settings?.notifications) {
-        for (const [key, value] of Object.entries(updateData.settings.notifications)) {
-          profileUpdateFields[`settings.notifications.${key}`] = value;
         }
       }
 

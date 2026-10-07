@@ -874,7 +874,8 @@ export class LeaseService {
                   resourceUid: lease.luid,
                   resourceId: lease._id.toString(),
                   metadata: { leaseUrl },
-                }
+                },
+                true // changes to an active lease are a legal notice
               );
             } catch (error) {
               this.log.error(
@@ -2454,6 +2455,7 @@ export class LeaseService {
             {
               type: NotificationTypeEnum.LEASE,
               recipientType: RecipientTypeEnum.INDIVIDUAL,
+              required: true,
               recipient: lease.tenantId.toString(),
               priority: NotificationPriorityEnum.HIGH,
               title: 'Lease Ended — Grace Period Active',
@@ -2556,6 +2558,7 @@ export class LeaseService {
       await this.notificationService.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
         type: NotificationTypeEnum.LEASE,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
+        required: true,
         recipient: lease.tenantId.toString(),
         priority:
           daysRemaining <= 7 ? NotificationPriorityEnum.HIGH : NotificationPriorityEnum.MEDIUM,

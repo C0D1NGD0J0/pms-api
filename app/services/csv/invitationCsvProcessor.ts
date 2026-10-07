@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { t } from '@shared/languages';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IInvitationData } from '@interfaces/invitation.interface';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -11,9 +11,14 @@ import {
 } from '@interfaces/csv.interface';
 
 import { BaseCSVProcessorService } from './base';
+import {
+  INVITATION_REQUIRED_FIELD_KEYS,
+  INVITATION_IMPORTABLE_FIELDS,
+} from './invitationImportFields';
 
-// Extended interface for CSV processing with vendor-specific metadata
-interface IInvitationCsvData extends IInvitationData {
+// Validated CSV row, plus vendor grouping metadata and the source row number
+// (used to point per-row send failures back at the file).
+export interface IInvitationCsvData extends IInvitationData {
   metadata?: {
     isPrimaryVendor?: boolean;
     isVendorTeamMember?: boolean;
@@ -32,6 +37,20 @@ interface IInvitationCsvData extends IInvitationData {
       };
     };
   } & IInvitationData['metadata'];
+  csvRowNumber?: number;
+}
+
+interface InvitationProcessingContext {
+  // User-confirmed "file header → field key" map from the frontend mapping step
+  columnMapping?: Record<string, string>;
+  userId: ICurrentUser['sub'];
+  cuid: string;
+}
+
+interface InvitationRunState extends InvitationProcessingContext {
+  // Lowercased email → first row it appeared on, to flag duplicates within the file
+  seenEmails: Map<string, number>;
+  clientId: string;
 }
 
 interface IConstructor {
@@ -41,12 +60,62 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-interface InvitationProcessingContext {
-  userId: ICurrentUser['sub'];
-  cuid: string;
-}
+const UNVERIFIED_PENDING_TENANT_LIMIT = 5;
 
-type InvitationCsvInputType = z.input<typeof InvitationValidations.invitationCsv>;
+const ACCEPTED_HEADERS = INVITATION_IMPORTABLE_FIELDS.map((field) => field.key);
+
+const TEMPLATE_HEADERS = [
+  'inviteeEmail',
+  'firstName',
+  'lastName',
+  'role',
+  'phoneNumber',
+  'status',
+  'inviteMessage',
+  'employeeInfo_department',
+  'employeeInfo_jobTitle',
+  'vendorInfo_companyName',
+  'vendorInfo_businessType',
+  'tenantInfo_employerCompanyName',
+  'tenantInfo_emergencyContactName',
+  'tenantInfo_emergencyContactPhone',
+];
+
+const TEMPLATE_EXAMPLE_ROWS: Record<string, string>[] = [
+  {
+    inviteeEmail: 'jane.doe@example.com',
+    firstName: 'Jane',
+    lastName: 'Doe',
+    role: 'staff',
+    status: 'pending',
+    employeeInfo_department: 'maintenance',
+    employeeInfo_jobTitle: 'Maintenance Technician',
+  },
+  {
+    inviteeEmail: 'amelie.cote@example.com',
+    firstName: 'Amélie',
+    lastName: 'Côté',
+    role: 'tenant',
+    phoneNumber: '+15145550123',
+    status: 'pending',
+    inviteMessage: 'Welcome to the building!',
+    tenantInfo_employerCompanyName: 'Acme Inc.',
+    tenantInfo_emergencyContactName: 'Marc Côté',
+    tenantInfo_emergencyContactPhone: '+15145550199',
+  },
+  {
+    inviteeEmail: 'owner@brightplumbing.example',
+    firstName: 'Sam',
+    lastName: 'Rivera',
+    role: 'vendor',
+    status: 'draft',
+    vendorInfo_companyName: 'Bright Plumbing',
+    vendorInfo_businessType: 'plumbing',
+  },
+];
+
+const csvEscape = (value: string) =>
+  /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
 export class InvitationCsvProcessor {
   private readonly invitationDAO: InvitationDAO;
@@ -72,15 +141,21 @@ export class InvitationCsvProcessor {
   }> {
     const client = await this.clientDAO.getClientByCuid(context.cuid);
     if (!client) {
-      throw new Error(`Client with ID ${context.cuid} not found`);
+      throw new Error(t('invitation.errors.clientNotFound'));
     }
+
+    const runState: InvitationRunState = {
+      ...context,
+      clientId: client.id,
+      seenEmails: new Map(),
+    };
 
     const result = await BaseCSVProcessorService.processCsvFile<
       IInvitationCsvData,
-      InvitationProcessingContext
+      InvitationRunState
     >(filePath, {
-      context,
-      headerTransformer: this.createInvitationHeaderTransformer(),
+      context: runState,
+      headerTransformer: this.createInvitationHeaderTransformer(context.columnMapping),
       validateHeaders: this.validateRequiredHeaders.bind(this),
       validateRow: this.validateInvitationRow,
       transformRow: this.transformInvitationRow,
@@ -95,368 +170,216 @@ export class InvitationCsvProcessor {
     };
   }
 
+  generateTemplateCsv(): string {
+    const lines = [
+      TEMPLATE_HEADERS.join(','),
+      ...TEMPLATE_EXAMPLE_ROWS.map((row) =>
+        TEMPLATE_HEADERS.map((header) => csvEscape(row[header] ?? '')).join(',')
+      ),
+    ];
+    return lines.join('\n') + '\n';
+  }
+
+  getTemplateHeaders(): string[] {
+    return [...TEMPLATE_HEADERS];
+  }
+
+  getAcceptedHeaders(): string[] {
+    return [...ACCEPTED_HEADERS];
+  }
+
   private validateInvitationRow = async (
-    row: any,
-    context: InvitationProcessingContext,
-    _rowNumber: number
+    row: Record<string, unknown>,
+    context: InvitationRunState,
+    rowNumber: number
   ): Promise<ICsvValidationResult> => {
-    const rowWithContext = {
-      ...row,
+    const validationResult = await InvitationValidations.invitationCsv.safeParseAsync({
+      ...this.withoutBlankCells(row),
       cuid: context.cuid,
-      role: row.role?.toString().toLowerCase(),
-    };
+    });
 
-    const validationResult =
-      await InvitationValidations.invitationCsv.safeParseAsync(rowWithContext);
-
-    if (validationResult.success) {
-      const transformedData = validationResult.data;
-
-      // check if user already exists and has access to this client
-      const existingUser = await this.userDAO.getUserWithClientAccess(
-        transformedData.inviteeEmail,
-        context.cuid
-      );
-
-      if (existingUser) {
-        return {
-          isValid: false,
-          errors: [
-            {
-              field: 'inviteeEmail',
-              error: 'User already has access to this client',
-            },
-          ],
-        };
-      }
-
-      const client = await this.clientDAO.getClientByCuid(context.cuid);
-      if (!client) {
-        return {
-          isValid: false,
-          errors: [{ field: 'cuid', error: `Client with ID ${context.cuid} not found` }],
-        };
-      }
-
-      // Check if there's already a pending invitation for this email and client
-      const existingInvitation = await this.invitationDAO.findPendingInvitation(
-        transformedData.inviteeEmail,
-        client.id
-      );
-
-      if (existingInvitation) {
-        return {
-          isValid: false,
-          errors: [
-            {
-              field: 'inviteeEmail',
-              error: 'A pending invitation already exists for this email',
-            },
-          ],
-        };
-      }
-
-      // Validate vendor linkage for vendor role
-      if (transformedData.role === ROLES.VENDOR && transformedData.linkedVendorUid) {
-        // Check if the linkedVendorUid refers to an existing vendor
-        const existingVendor = await this.vendorDAO.getVendorByVuid(
-          transformedData.linkedVendorUid
-        );
-
-        if (!existingVendor) {
-          return {
-            isValid: false,
-            errors: [
-              {
-                field: 'linkedVendorUid',
-                error: `Vendor with ID ${transformedData.linkedVendorUid} not found in the system`,
-              },
-            ],
-          };
-        }
-
-        // Check if vendor is connected to this client
-        const vendorConnection = existingVendor.connectedClients?.find(
-          (cc: any) => cc.cuid === context.cuid
-        );
-
-        if (!vendorConnection || !vendorConnection.isConnected) {
-          return {
-            isValid: false,
-            errors: [
-              {
-                field: 'linkedVendorUid',
-                error: `Vendor ${transformedData.linkedVendorUid} is not connected to this client`,
-              },
-            ],
-          };
-        }
-      }
-
-      // Validate that vendor role with no linkedVendorUid has required vendor fields
-      if (transformedData.role === ROLES.VENDOR && !transformedData.linkedVendorUid) {
-        if (!transformedData.metadata?.vendorEntityData?.companyName) {
-          return {
-            isValid: false,
-            errors: [
-              {
-                field: 'vendorInfo_companyName',
-                error: 'Company name is required for primary vendor creation',
-              },
-            ],
-          };
-        }
-      }
-
-      // Validation successful - pass the transformed data through
-      return {
-        isValid: true,
-        errors: [],
-        transformedData, // Pass the transformed data to the transform step
-      };
-    } else {
-      const formattedErrors = validationResult.error.errors.map((err) => ({
-        field: err.path.join('.'),
-        error: err.message,
-      }));
-
+    if (!validationResult.success) {
       return {
         isValid: false,
-        errors: formattedErrors,
+        errors: validationResult.error.errors.map((err) => ({
+          field: err.path.join('.') || 'unknown',
+          error: err.message,
+        })),
       };
     }
+
+    const transformedData = validationResult.data;
+    const emailKey = transformedData.inviteeEmail.toLowerCase();
+    const firstSeenOnRow = context.seenEmails.get(emailKey);
+    if (firstSeenOnRow !== undefined) {
+      return this.rowError(
+        'inviteeEmail',
+        t('invitation.csv.duplicateEmailInFile', { row: firstSeenOnRow })
+      );
+    }
+    context.seenEmails.set(emailKey, rowNumber);
+
+    const existingUser = await this.userDAO.getUserWithClientAccess(
+      transformedData.inviteeEmail,
+      context.cuid
+    );
+    if (existingUser) {
+      return this.rowError('inviteeEmail', t('invitation.errors.userAlreadyHasAccess'));
+    }
+
+    const existingInvitation = await this.invitationDAO.findPendingInvitation(
+      transformedData.inviteeEmail,
+      context.clientId
+    );
+    if (existingInvitation) {
+      return this.rowError('inviteeEmail', t('invitation.errors.pendingInvitationExists'));
+    }
+
+    if (transformedData.role === ROLES.VENDOR && transformedData.linkedVendorUid) {
+      // linkedVendorUid is the vendor organisation's vuid (team member joining it)
+      const vuid = transformedData.linkedVendorUid;
+      const existingVendor = await this.vendorDAO.getVendorByVuid(vuid);
+      if (!existingVendor) {
+        return this.rowError('linkedVendorUid', t('invitation.csv.vendorNotFound', { vuid }));
+      }
+
+      const vendorConnection = existingVendor.connectedClients?.find(
+        (cc: any) => cc.cuid === context.cuid
+      );
+      if (!vendorConnection || !vendorConnection.isConnected) {
+        return this.rowError('linkedVendorUid', t('invitation.csv.vendorNotConnected', { vuid }));
+      }
+    }
+
+    if (
+      transformedData.role === ROLES.VENDOR &&
+      !transformedData.linkedVendorUid &&
+      !transformedData.metadata?.vendorEntityData?.companyName
+    ) {
+      return this.rowError('vendorInfo_companyName', t('invitation.csv.vendorCompanyRequired'));
+    }
+
+    return { isValid: true, errors: [], transformedData };
   };
 
   private transformInvitationRow = async (
-    _row: any,
-    _context: InvitationProcessingContext,
-    _rowNumber: number,
-    validatedData?: any
+    _row: unknown,
+    _context: InvitationRunState,
+    rowNumber: number,
+    validatedData?: IInvitationCsvData
   ): Promise<IInvitationCsvData> => {
-    // Simply return the validated/transformed data passed from the validation step
     if (!validatedData) {
-      throw new Error(
-        'No validated data provided to transformInvitationRow. This indicates a validation/transform flow issue.'
-      );
+      throw new Error('No validated data provided to transformInvitationRow');
     }
-
-    return validatedData as IInvitationCsvData;
+    return { ...validatedData, csvRowNumber: rowNumber };
   };
 
-  private getRequiredCsvHeaders(): string[] {
-    return this.getKeysFromInvitationType();
-  }
-
-  private getKeysFromInvitationType(): string[] {
-    // Extract keys from the CSV input schema (flattened fields before transformation)
-    const allKeys = this.extractKeysFromCsvSchema();
-
-    // Filter out internal fields that shouldn't be user-facing
-    return allKeys.filter((key) => key !== 'cuid');
-  }
-
-  private extractKeysFromCsvSchema(): string[] {
-    try {
-      const schema = InvitationValidations.invitationCsv;
-
-      // Get the inner schema (before transformation) if it's wrapped in ZodEffects
-      const innerSchema = schema._def?.schema || schema;
-
-      if (innerSchema.shape) {
-        // Extract field names from the schema shape - these are the CSV column names
-        return Object.keys(innerSchema.shape);
-      }
-
-      throw new Error('Cannot extract schema shape');
-    } catch (error) {
-      // Type-safe fallback using the input type
-      const knownKeys: (keyof InvitationCsvInputType)[] = [
-        'inviteeEmail',
-        'role',
-        'status',
-        'firstName',
-        'lastName',
-        'phoneNumber',
-        'inviteMessage',
-        'expectedStartDate',
-        'employeeInfo_department',
-        'employeeInfo_jobTitle',
-        'employeeInfo_employeeId',
-        'employeeInfo_reportsTo',
-        'employeeInfo_startDate',
-        'vendorInfo_companyName',
-        'vendorInfo_businessType',
-        'vendorInfo_taxId',
-        'vendorInfo_registrationNumber',
-        'vendorInfo_yearsInBusiness',
-        'vendorInfo_contactPerson_name',
-        'vendorInfo_contactPerson_jobTitle',
-        'vendorInfo_contactPerson_email',
-        'vendorInfo_contactPerson_phone',
-        'tenantInfo_employerCompanyName',
-        'tenantInfo_employerPosition',
-        'tenantInfo_employerMonthlyIncome',
-        'tenantInfo_employerContactPerson',
-        'tenantInfo_employerCompanyAddress',
-        'tenantInfo_employerContactEmail',
-        'tenantInfo_emergencyContactName',
-        'tenantInfo_emergencyContactPhone',
-        'tenantInfo_emergencyContactRelationship',
-        'tenantInfo_emergencyContactEmail',
-      ];
-      return knownKeys as string[];
+  // Missing columns arrive as null and empty cells as "" — treat both as "not provided"
+  // so optional fields stay optional and required ones report "Required".
+  private withoutBlankCells(row: Record<string, unknown>): Record<string, string> {
+    const cleaned: Record<string, string> = {};
+    for (const [key, value] of Object.entries(row)) {
+      if (value === null || value === undefined) continue;
+      const text = String(value).trim();
+      if (text !== '') cleaned[key] = text;
     }
+    return cleaned;
   }
 
-  private createInvitationHeaderTransformer() {
-    const requiredHeaders = this.getRequiredCsvHeaders();
+  private rowError(field: string, error: string): ICsvValidationResult {
+    return { isValid: false, errors: [{ field, error }] };
+  }
 
+  private createInvitationHeaderTransformer(columnMapping?: Record<string, string>) {
     return ({ header }: { header: string }) => {
-      const normalizedHeader = header.toLowerCase().trim();
-      const matchingRequired = requiredHeaders.find(
-        (required) => required.toLowerCase() === normalizedHeader
-      );
-
-      if (matchingRequired) {
-        return matchingRequired;
+      const mappedKey = columnMapping?.[header];
+      if (mappedKey && ACCEPTED_HEADERS.includes(mappedKey)) {
+        return mappedKey;
       }
 
-      return null; // return null for headers that are not required
+      const normalizedHeader = header.toLowerCase().trim();
+      const matchingHeader = ACCEPTED_HEADERS.find(
+        (accepted) => accepted.toLowerCase() === normalizedHeader
+      );
+      return matchingHeader ?? null; // csv-parser drops unmapped columns
     };
   }
 
   private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
-    // Only these fields are truly required for invitation processing
-    const actuallyRequiredHeaders = ['inviteeEmail', 'role', 'firstName', 'lastName', 'status'];
-    const allValidHeaders = this.getRequiredCsvHeaders();
-
-    const foundHeaders = headers.filter((header) => allValidHeaders.includes(header));
-    const missingRequiredHeaders = actuallyRequiredHeaders.filter(
+    const missingHeaders = INVITATION_REQUIRED_FIELD_KEYS.filter(
       (required) => !headers.includes(required)
     );
-
-    const isValid = missingRequiredHeaders.length === 0;
+    const isValid = missingHeaders.length === 0;
 
     return {
       isValid,
-      missingHeaders: missingRequiredHeaders,
-      foundHeaders,
+      missingHeaders,
+      foundHeaders: headers.filter((header) => ACCEPTED_HEADERS.includes(header)),
       errorMessage: isValid
         ? undefined
-        : `Invalid CSV format. Missing required columns: ${missingRequiredHeaders.join(', ')}. Available optional columns: ${allValidHeaders.filter((h) => !actuallyRequiredHeaders.includes(h)).join(', ')}`,
+        : t('invitation.csv.missingColumns', { columns: missingHeaders.join(', ') }),
     };
   }
 
   private postProcessInvitations = async (
     invitations: IInvitationCsvData[],
-    context: InvitationProcessingContext
-  ): Promise<{ validItems: IInvitationCsvData[]; invalidItems: any[] }> => {
-    const validItems: IInvitationCsvData[] = [];
-    const invalidItems: any[] = [];
+    context: InvitationRunState
+  ): Promise<{ validItems: IInvitationCsvData[]; invalidItems: IInvalidCsvProperty[] }> => {
+    const invalidItems: IInvalidCsvProperty[] = [];
+    const rejected = new Set<IInvitationCsvData>();
+    const reject = (invitation: IInvitationCsvData, field: string, error: string) => {
+      rejected.add(invitation);
+      invalidItems.push({ rowNumber: invitation.csvRowNumber ?? 0, errors: [{ field, error }] });
+    };
 
-    // Separate vendors by type
-    const primaryVendors = invitations.filter(
-      (inv) => inv.role === ROLES.VENDOR && inv.metadata?.isPrimaryVendor
-    );
-    const vendorTeamMembers = invitations.filter(
-      (inv) => inv.role === ROLES.VENDOR && inv.metadata?.isVendorTeamMember
-    );
-    const nonVendors = invitations.filter((inv) => inv.role !== ROLES.VENDOR);
-
-    // Process vendor team members (already validated against database in validateInvitationRow)
-    validItems.push(...vendorTeamMembers);
-
-    // Validate unique registration numbers within the CSV
-    const registrationNumbers = new Map<string, IInvitationCsvData>();
-    const duplicateRegNums = new Set<string>();
-
-    for (const vendor of primaryVendors) {
-      const regNum = vendor.metadata?.vendorEntityData?.registrationNumber;
-      if (regNum && regNum.trim() !== '') {
-        const normalizedRegNum = regNum.trim().toLowerCase();
-        if (registrationNumbers.has(normalizedRegNum)) {
-          duplicateRegNums.add(normalizedRegNum);
-          // Mark both vendors as invalid
-          const existingVendor = registrationNumbers.get(normalizedRegNum);
-          if (existingVendor) {
-            invalidItems.push({
-              email: existingVendor.inviteeEmail,
-              error: `Duplicate registration number: ${regNum}`,
-              row: existingVendor,
-            });
-          }
-          invalidItems.push({
-            email: vendor.inviteeEmail,
-            error: `Duplicate registration number: ${regNum}`,
-            row: vendor,
-          });
-        } else {
-          registrationNumbers.set(normalizedRegNum, vendor);
-        }
-      }
+    // A registration number may only appear once among new vendors in the file
+    const vendorsByRegistration = new Map<string, IInvitationCsvData[]>();
+    for (const invitation of invitations) {
+      const regNum = invitation.metadata?.isPrimaryVendor
+        ? invitation.metadata?.vendorEntityData?.registrationNumber?.trim().toLowerCase()
+        : undefined;
+      if (!regNum) continue;
+      vendorsByRegistration.set(regNum, [...(vendorsByRegistration.get(regNum) ?? []), invitation]);
+    }
+    for (const vendors of vendorsByRegistration.values()) {
+      if (vendors.length < 2) continue;
+      vendors.forEach((vendor) =>
+        reject(
+          vendor,
+          'vendorInfo_registrationNumber',
+          t('invitation.csv.duplicateRegistrationNumber', {
+            value: vendor.metadata?.vendorEntityData?.registrationNumber ?? '',
+          })
+        )
+      );
     }
 
-    // Filter out vendors with duplicate registration numbers
-    const validPrimaryVendors = primaryVendors.filter((vendor) => {
-      const regNum = vendor.metadata?.vendorEntityData?.registrationNumber;
-      if (!regNum || regNum.trim() === '') return true; // Allow vendors without registration numbers
-      return !duplicateRegNums.has(regNum.trim().toLowerCase());
-    });
-
-    // Process non-vendor invitations (no special handling needed)
-    validItems.push(...nonVendors);
-
-    // Process valid primary vendors (duplicates already filtered out)
-    validItems.push(...validPrimaryVendors);
-
-    // Sort to ensure primary vendors are processed before their team members
-    validItems.sort((a, b) => {
-      // Primary vendors first
-      if (a.metadata?.isPrimaryVendor && !b.metadata?.isPrimaryVendor) return -1;
-      if (!a.metadata?.isPrimaryVendor && b.metadata?.isPrimaryVendor) return 1;
-
-      // Then team members, but group them by their CSV group ID
-      if (a.metadata?.isVendorTeamMember && b.metadata?.isVendorTeamMember) {
-        return (a.metadata?.csvGroupId || '').localeCompare(b.metadata?.csvGroupId || '');
-      }
-
-      // Team members after primary vendors
-      if (a.metadata?.isVendorTeamMember && !b.metadata?.isVendorTeamMember) return 1;
-      if (!a.metadata?.isVendorTeamMember && b.metadata?.isVendorTeamMember) return -1;
-
-      // Others maintain original order
-      return 0;
-    });
-
-    // Tenant invitation cap: unverified accounts may have at most 5 pending tenant invitations
+    // Unverified accounts may hold at most 5 pending tenant invitations
     const client = await this.clientDAO.getClientByCuid(context.cuid);
     if (client && !client.isVerified) {
-      const tenantRowsInBatch = validItems.filter((inv) => inv.role === ROLES.TENANT);
-      if (tenantRowsInBatch.length > 0) {
+      const tenantRows = invitations.filter(
+        (inv) => inv.role === ROLES.TENANT && !rejected.has(inv)
+      );
+      if (tenantRows.length > 0) {
         const pendingCount = await this.invitationDAO.countDocuments({
           client: client._id,
           role: IUserRole.TENANT,
           status: 'pending',
         });
-        const allowed = Math.max(0, 5 - pendingCount);
-        if (tenantRowsInBatch.length > allowed) {
-          const toReject = tenantRowsInBatch.slice(allowed);
-          toReject.forEach((inv) => {
-            const idx = validItems.indexOf(inv);
-            if (idx !== -1) validItems.splice(idx, 1);
-            invalidItems.push({
-              email: inv.inviteeEmail,
-              error:
-                'Unverified account limit: max 5 pending tenant invitations. Verify your account to invite more.',
-            });
-          });
-        }
+        const allowed = Math.max(0, UNVERIFIED_PENDING_TENANT_LIMIT - pendingCount);
+        tenantRows
+          .slice(allowed)
+          .forEach((inv) => reject(inv, 'role', t('invitation.errors.unverifiedTenantLimit')));
       }
     }
 
-    return {
-      validItems,
-      invalidItems,
-    };
+    const validItems = invitations.filter((inv) => !rejected.has(inv));
+
+    // New vendors must exist before team members that join them
+    const order = (inv: IInvitationCsvData) =>
+      inv.metadata?.isPrimaryVendor ? 0 : inv.metadata?.isVendorTeamMember ? 2 : 1;
+    validItems.sort((a, b) => order(a) - order(b));
+
+    return { validItems, invalidItems };
   };
 }

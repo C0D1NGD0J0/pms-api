@@ -7,12 +7,26 @@ import {
   INotificationDocument,
   INotificationFilters,
   NotificationTypeEnum,
+  NotificationCategory,
   RecipientTypeEnum,
   INotification,
 } from '@interfaces/notification.interface';
 
 import { BaseDAO } from './baseDAO';
 import { INotificationDAO } from './interfaces/notificationDAO.interface';
+
+/** Who an announcement can reach, plus the viewer's preference filters. */
+export interface IAnnouncementTargeting {
+  /** Categories the user switched off — hidden unless the announcement is required. */
+  disabledCategories?: NotificationCategory[];
+  /** Management roles see department-targeted announcements for every department. */
+  seesAllDepartments?: boolean;
+  /** In-app switched off — only required announcements remain. */
+  inAppDisabled?: boolean;
+  department?: string;
+  vendorId?: string;
+  roles: string[];
+}
 
 export class NotificationDAO extends BaseDAO<INotificationDocument> implements INotificationDAO {
   protected logger: Logger;
@@ -62,94 +76,28 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
   async findForUser(
     userId: string,
     cuid: string,
-    targetingInfo: { roles: string[]; vendorId?: string; department?: string },
+    targetingInfo: IAnnouncementTargeting,
     filters?: INotificationFilters,
     pagination?: IPaginationQuery,
     extraFilter?: QueryFilter<INotificationDocument>
   ): Promise<{ data: INotificationDocument[]; total: number }> {
     try {
-      // Build $or conditions based on recipientType filter
-      let orConditions: QueryFilter<INotificationDocument>[] = [];
-
-      if (filters?.recipientType) {
-        // Filter by specific recipientType
-        if (filters.recipientType === 'individual') {
-          // Only individual notifications for this user
-          orConditions = [
-            { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
-          ];
-        } else if (filters.recipientType === 'announcement') {
-          // Only announcement notifications
-          orConditions = [
-            {
-              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-              targetRoles: { $exists: false },
-              targetVendor: { $exists: false },
-            },
-            ...(targetingInfo.roles.length > 0
-              ? [
-                  {
-                    recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-                    targetRoles: { $in: targetingInfo.roles },
-                    $or: [
-                      { targetDepartments: { $exists: false } },
-                      { targetDepartments: { $size: 0 } },
-                      ...(targetingInfo.department
-                        ? [{ targetDepartments: targetingInfo.department }]
-                        : []),
-                    ],
-                  } as QueryFilter<INotificationDocument>,
-                ]
-              : []),
-            ...(targetingInfo.vendorId
-              ? [
-                  {
-                    recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-                    targetVendor: targetingInfo.vendorId,
-                  } as QueryFilter<INotificationDocument>,
-                ]
-              : []),
-          ];
-        }
-      } else {
-        // No recipientType filter - include both individual and announcements (existing behavior)
-        orConditions = [
-          // Individual notifications for this user
-          { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
-          {
-            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-            targetRoles: { $exists: false },
-            targetVendor: { $exists: false },
-          },
-          ...(targetingInfo.roles.length > 0
-            ? [
-                {
-                  recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-                  targetRoles: { $in: targetingInfo.roles },
-                  $or: [
-                    { targetDepartments: { $exists: false } },
-                    { targetDepartments: { $size: 0 } },
-                    ...(targetingInfo.department
-                      ? [{ targetDepartments: targetingInfo.department }]
-                      : []),
-                  ],
-                } as QueryFilter<INotificationDocument>,
-              ]
-            : []),
-          ...(targetingInfo.vendorId
-            ? [
-                {
-                  recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-                  targetVendor: targetingInfo.vendorId,
-                } as QueryFilter<INotificationDocument>,
-              ]
-            : []),
-        ];
-      }
+      const individual: QueryFilter<INotificationDocument> = {
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: new Types.ObjectId(userId),
+      };
+      const orConditions: QueryFilter<INotificationDocument>[] =
+        filters?.recipientType === 'individual'
+          ? [individual]
+          : filters?.recipientType === 'announcement'
+            ? announcementConditions(targetingInfo)
+            : [individual, ...announcementConditions(targetingInfo)];
+      const excluded = preferenceExclusion(targetingInfo);
 
       const filter: QueryFilter<INotificationDocument> = {
         cuid,
         $or: orConditions,
+        ...(excluded.length ? { $nor: excluded } : {}),
         deletedAt: null,
         ...extraFilter,
       };
@@ -216,39 +164,21 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
     userId: string,
     cuid: string,
     filters?: INotificationFilters,
-    targetingInfo?: { roles: string[]; department?: string }
+    targetingInfo?: IAnnouncementTargeting
   ): Promise<number> {
     try {
-      const announcementConditions: QueryFilter<INotificationDocument>[] = targetingInfo?.roles
-        ?.length
-        ? [
-            // role-matched announcements with department check
-            {
-              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-              targetRoles: { $in: targetingInfo.roles },
-              $or: [
-                { targetDepartments: { $exists: false } },
-                { targetDepartments: { $size: 0 } },
-                ...(targetingInfo.department
-                  ? [{ targetDepartments: targetingInfo.department }]
-                  : []),
-              ],
-            } as QueryFilter<INotificationDocument>,
-            // untargeted announcements (no roles, no vendor)
-            {
-              recipientType: RecipientTypeEnum.ANNOUNCEMENT,
-              targetRoles: { $exists: false },
-              targetVendor: { $exists: false },
-            },
-          ]
+      const announcements: QueryFilter<INotificationDocument>[] = targetingInfo?.roles?.length
+        ? announcementConditions(targetingInfo)
         : [{ recipientType: RecipientTypeEnum.ANNOUNCEMENT }];
+      const excluded = preferenceExclusion(targetingInfo);
 
       const filter: QueryFilter<INotificationDocument> = {
         cuid,
         $or: [
           { recipientType: RecipientTypeEnum.INDIVIDUAL, recipient: new Types.ObjectId(userId) },
-          ...announcementConditions,
+          ...announcements,
         ],
+        ...(excluded.length ? { $nor: excluded } : {}),
         isRead: false,
         deletedAt: null,
       };
@@ -281,29 +211,13 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
   async getUnreadCountByType(
     userId: string,
     cuid: string,
-    targetingInfo?: { roles: string[]; department?: string }
+    targetingInfo?: IAnnouncementTargeting
   ): Promise<Record<string, number>> {
     try {
-      const announcementConditions = targetingInfo?.roles?.length
-        ? [
-            {
-              recipientType: 'announcement' as const,
-              targetRoles: { $in: targetingInfo.roles },
-              $or: [
-                { targetDepartments: { $exists: false } },
-                { targetDepartments: { $size: 0 } },
-                ...(targetingInfo.department
-                  ? [{ targetDepartments: targetingInfo.department }]
-                  : []),
-              ],
-            },
-            {
-              recipientType: 'announcement' as const,
-              targetRoles: { $exists: false },
-              targetVendor: { $exists: false },
-            },
-          ]
-        : [{ recipientType: 'announcement' as const }];
+      const announcements: QueryFilter<INotificationDocument>[] = targetingInfo?.roles?.length
+        ? announcementConditions(targetingInfo)
+        : [{ recipientType: RecipientTypeEnum.ANNOUNCEMENT }];
+      const excluded = preferenceExclusion(targetingInfo);
 
       const pipeline: PipelineStage[] = [
         {
@@ -311,8 +225,9 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
             cuid,
             $or: [
               { recipientType: 'individual', recipient: new Types.ObjectId(userId) },
-              ...announcementConditions,
+              ...announcements,
             ],
+            ...(excluded.length ? { $nor: excluded } : {}),
             isRead: false,
             deletedAt: null,
           },
@@ -438,4 +353,55 @@ export class NotificationDAO extends BaseDAO<INotificationDocument> implements I
       throw this.throwErrorHandler(error);
     }
   }
+}
+
+function announcementConditions(
+  targeting: IAnnouncementTargeting
+): QueryFilter<INotificationDocument>[] {
+  const departmentMatch: QueryFilter<INotificationDocument> = targeting.seesAllDepartments
+    ? {}
+    : {
+        $or: [
+          { targetDepartments: { $exists: false } },
+          { targetDepartments: { $size: 0 } },
+          ...(targeting.department ? [{ targetDepartments: targeting.department }] : []),
+        ],
+      };
+
+  return [
+    {
+      recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+      targetRoles: { $exists: false },
+      targetVendor: { $exists: false },
+    },
+    ...(targeting.roles.length > 0
+      ? [
+          {
+            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+            targetRoles: { $in: targeting.roles },
+            ...departmentMatch,
+          } as QueryFilter<INotificationDocument>,
+        ]
+      : []),
+    ...(targeting.vendorId
+      ? [
+          {
+            recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+            targetVendor: targeting.vendorId,
+          } as QueryFilter<INotificationDocument>,
+        ]
+      : []),
+  ];
+}
+
+/** `$nor` clauses hiding announcements the user opted out of (required ones always show). */
+function preferenceExclusion(
+  targeting: IAnnouncementTargeting | undefined
+): QueryFilter<INotificationDocument>[] {
+  const notRequired = { recipientType: RecipientTypeEnum.ANNOUNCEMENT, required: { $ne: true } };
+  if (targeting?.inAppDisabled) return [notRequired];
+  if (targeting?.disabledCategories?.length) {
+    return [{ ...notRequired, category: { $in: targeting.disabledCategories } }];
+  }
+  return [];
 }

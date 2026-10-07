@@ -235,6 +235,29 @@ describe('SMSService', () => {
       expect(result.error).toBe('opted_out');
     });
 
+    it('should return opted_out when the recipient switched the message category off', async () => {
+      const { service } = makeService({
+        profileDAO: {
+          findFirst: jest.fn().mockResolvedValue({
+            personalInfo: { phoneNumber: PHONE },
+            settings: {
+              phoneVerification: { verified: true, verifiedPhone: PHONE },
+              smsConsent: { consented: true },
+              notifications: { maintenance: false },
+            },
+          }),
+          update: jest.fn(),
+        },
+      });
+
+      const result = await service.sendSMS(
+        makeSendInput({ messageType: SMSMessageType.MAINTENANCE_UPDATE })
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('opted_out');
+    });
+
     it('should return unverified_phone for non-transactional SMS when phone is not verified', async () => {
       const { service } = makeService({
         profileDAO: {
@@ -549,6 +572,8 @@ describe('SMSService', () => {
           $set: {
             'settings.smsConsent.consented': true,
             'settings.smsConsent.consentedAt': expect.any(Date),
+            // The preferences screen's SMS switch mirrors consent
+            'settings.notifications.smsNotifications': true,
           },
           $unset: { 'settings.smsConsent.revokedAt': '' },
         }
@@ -568,6 +593,7 @@ describe('SMSService', () => {
           $set: {
             'settings.smsConsent.consented': false,
             'settings.smsConsent.revokedAt': expect.any(Date),
+            'settings.notifications.smsNotifications': false,
           },
         }
       );

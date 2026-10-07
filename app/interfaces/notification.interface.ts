@@ -1,6 +1,5 @@
 import { Document, Types } from 'mongoose';
 
-import { EmailFrequencyType } from './profile.interface';
 import {
   ISuccessReturnData,
   IPaginationQuery,
@@ -28,6 +27,17 @@ export enum NotificationTypeEnum {
   USER = 'user',
   INFO = 'info',
 }
+
+/** User-controllable notification categories (who sees which: notificationPolicy). */
+export const NOTIFICATION_CATEGORIES = [
+  'payments',
+  'maintenance',
+  'leases',
+  'propertyUpdates',
+  'approvals',
+  'guestPasses',
+  'announcements',
+] as const;
 
 export enum NotificationPriorityEnum {
   URGENT = 'urgent',
@@ -92,10 +102,38 @@ export interface INotificationService {
   deliverNotification(notification: INotificationDocument): Promise<void>;
 }
 
+export interface ICreateNotificationRequest {
+  resourceInfo?: {
+    resourceName: ResourceContext;
+    resourceUid: string;
+    resourceId: string | Types.ObjectId;
+    displayName?: string;
+  };
+  priority?: NotificationPriorityEnum;
+  recipient?: string | Types.ObjectId; // Optional - only required for individual
+  recipientType: RecipientTypeEnum;
+  author?: string | Types.ObjectId; // User who created the notification
+  /** Preference category; defaults from `type` (see notificationPolicy). */
+  category?: NotificationCategory;
+  metadata?: Record<string, any>;
+  targetDepartments?: string[];
+  type: NotificationTypeEnum;
+  targetRoles?: string[];
+  targetVendor?: string;
+  /** Always delivered, regardless of the recipient's preferences. */
+  required?: boolean;
+  actionUrl?: string;
+  expiresAt?: Date;
+  message: string;
+  title: string;
+  cuid: string;
+}
+
 /**
  * Core Notification Interface
  */
 export interface INotification {
+  category?: NotificationCategory | null;
   resourceInfo?: INotificationResource;
   priority: NotificationPriorityEnum;
   recipientType: RecipientTypeEnum;
@@ -110,6 +148,7 @@ export interface INotification {
   author?: Types.ObjectId; // User who created the notification
   targetRoles?: string[];
   targetVendor?: string;
+  required?: boolean;
   actionUrl?: string;
   expiresAt?: Date;
   deletedAt?: Date;
@@ -123,29 +162,6 @@ export interface INotification {
   nuid: string;
 }
 
-export interface ICreateNotificationRequest {
-  resourceInfo?: {
-    resourceName: ResourceContext;
-    resourceUid: string;
-    resourceId: string | Types.ObjectId;
-    displayName?: string;
-  };
-  priority?: NotificationPriorityEnum;
-  recipient?: string | Types.ObjectId; // Optional - only required for individual
-  recipientType: RecipientTypeEnum;
-  author?: string | Types.ObjectId; // User who created the notification
-  metadata?: Record<string, any>;
-  targetDepartments?: string[];
-  type: NotificationTypeEnum;
-  targetRoles?: string[];
-  targetVendor?: string;
-  actionUrl?: string;
-  expiresAt?: Date;
-  message: string;
-  title: string;
-  cuid: string;
-}
-
 export interface INotificationFilters {
   priority?: NotificationPriorityEnum | NotificationPriorityEnum[];
   type?: NotificationTypeEnum | NotificationTypeEnum[];
@@ -157,6 +173,7 @@ export interface INotificationFilters {
   isRead?: boolean;
   since?: string; // ISO timestamp — return only notifications created after this point (used for missed-message recovery on SSE reconnect)
 }
+
 export interface INotificationResponse {
   resourceInfo?: INotificationResource;
   priority: NotificationPriorityEnum;
@@ -176,23 +193,23 @@ export interface INotificationResponse {
   nuid: string;
   id: string;
 }
-
 /**
  * Notification Settings Interface
  */
 export interface INotificationSettings {
-  emailFrequency: EmailFrequencyType;
+  // Channels
   emailNotifications: boolean;
   inAppNotifications: boolean;
   pushNotifications?: boolean;
   smsNotifications: boolean;
+  // Categories (which ones a user can change depends on role — see notificationPolicy)
   propertyUpdates: boolean;
   announcements: boolean;
   maintenance: boolean;
-  comments: boolean;
-  messages: boolean;
+  guestPasses: boolean;
+  approvals: boolean;
   payments: boolean;
-  system: boolean;
+  leases: boolean;
 }
 
 /**
@@ -323,6 +340,8 @@ export interface ISocketJoinNotificationsData {
   userId: string;
   cuid: string;
 }
+
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
 /**
  * Notification Model Static Methods

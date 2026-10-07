@@ -602,6 +602,59 @@ describe('NotificationDAO Integration Tests', () => {
     });
   });
 
+  describe('findForUser — announcement preferences', () => {
+    const titles = (result: { data: { title: string }[] }) =>
+      result.data.map((n) => n.title).sort();
+
+    beforeEach(async () => {
+      const announce = (title: string, extra: Record<string, unknown> = {}) =>
+        notificationDAO.create({
+          cuid: testCuid,
+          recipientType: RecipientTypeEnum.ANNOUNCEMENT,
+          title,
+          message: title,
+          type: NotificationTypeEnum.PAYMENT,
+          targetRoles: ['manager'],
+          ...extra,
+        });
+
+      await announce('Payment received', { category: 'payments' });
+      await announce('Payout failed', { category: 'payments', required: true });
+      await announce('Work order submitted', {
+        type: NotificationTypeEnum.MAINTENANCE,
+        category: 'maintenance',
+        targetDepartments: ['maintenance'],
+      });
+    });
+
+    const find = (targeting: Record<string, unknown>) =>
+      notificationDAO.findForUser(testUserId.toString(), testCuid, {
+        roles: ['manager'],
+        ...targeting,
+      });
+
+    it('hides announcements in a category the user switched off, but not required ones', async () => {
+      const result = await find({ disabledCategories: ['payments'], seesAllDepartments: true });
+
+      expect(titles(result)).toEqual(['Payout failed', 'Work order submitted']);
+    });
+
+    it('keeps only required announcements when in-app is switched off', async () => {
+      const result = await find({ inAppDisabled: true, seesAllDepartments: true });
+
+      expect(titles(result)).toEqual(['Payout failed']);
+    });
+
+    it('shows department-targeted announcements to management without a department', async () => {
+      expect(titles(await find({}))).toEqual(['Payment received', 'Payout failed']);
+      expect(titles(await find({ seesAllDepartments: true }))).toEqual([
+        'Payment received',
+        'Payout failed',
+        'Work order submitted',
+      ]);
+    });
+  });
+
   describe('getUnreadCount', () => {
     beforeEach(async () => {
       await notificationDAO.bulkCreate([

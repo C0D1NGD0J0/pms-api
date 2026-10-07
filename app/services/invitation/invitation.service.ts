@@ -13,15 +13,20 @@ import { InvitationQueue, EmailQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
-import { ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import { PaymentGatewayService, VendorService, UserService } from '@services/index';
 import { EmailFailedPayload, EmailSentPayload, EventTypes } from '@interfaces/events.interface';
 import { PaymentProcessorDAO, InvitationDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { ROLE_VALIDATION, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
   ISuccessReturnData,
   ExtractedMediaFile,
   IRequestContext,
 } from '@interfaces/utils.interface';
+import {
+  getInvitationImportFieldsResponse,
+  isKnownInvitationImportField,
+  InvitationCsvProcessor,
+} from '@services/csv';
 import {
   UnauthorizedError,
   BadRequestError,
@@ -40,6 +45,7 @@ import {
 } from '@interfaces/invitation.interface';
 
 interface IConstructor {
+  invitationCsvProcessor: InvitationCsvProcessor;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
@@ -59,6 +65,7 @@ interface IConstructor {
 export class InvitationService {
   private readonly log: Logger;
   private readonly invitationDAO: InvitationDAO;
+  private readonly invitationCsvProcessor: InvitationCsvProcessor;
   private readonly queueFactory: QueueFactory;
   private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
@@ -75,6 +82,7 @@ export class InvitationService {
 
   constructor({
     invitationDAO,
+    invitationCsvProcessor,
     queueFactory,
     userDAO,
     profileDAO,
@@ -95,6 +103,7 @@ export class InvitationService {
     this.profileDAO = profileDAO;
     this.subscriptionService = subscriptionService;
     this.invitationDAO = invitationDAO;
+    this.invitationCsvProcessor = invitationCsvProcessor;
     this.emitterService = emitterService;
     this.profileService = profileService;
     this.vendorService = vendorService;
@@ -113,148 +122,159 @@ export class InvitationService {
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
       const validatedData = InvitationValidations.sendInvitation.parse(invitationData);
-      await this.validateInviterPermissions(inviterUserId, cuid);
-
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
-      }
-
-      if (!client.isVerified && validatedData.role === ROLES.TENANT) {
-        const pendingTenantInvitations = await this.invitationDAO.countDocuments({
-          client: client._id,
-          role: IUserRole.TENANT,
-          status: 'pending',
-        });
-        if (pendingTenantInvitations >= 5) {
-          throw new BadRequestError({
-            message:
-              'Verify your account to invite more tenants. Unverified accounts are limited to 5 pending tenant invitations.',
-          });
-        }
-      }
-
-      const inviterUser = await this.userDAO.getUserById(inviterUserId);
-      if (!inviterUser) {
-        throw new UnauthorizedError({ message: t('common.errors.notFound', { resource: 'User' }) });
-      }
-
-      if (inviterUser.email.toLowerCase() === validatedData.inviteeEmail.toLowerCase()) {
-        throw new BadRequestError({
-          message: t('invitation.errors.cannotInviteYourself'),
-        });
-      }
-
-      const existingInvitation = await this.invitationDAO.findPendingInvitation(
-        validatedData.inviteeEmail,
-        client.id
-      );
-
-      if (existingInvitation) {
-        throw new ConflictError({
-          message: t('invitation.errors.pendingInvitationExists'),
-        });
-      }
-
-      const existingUser = await this.userDAO.getUserWithClientAccess(
-        validatedData.inviteeEmail,
-        client.cuid
-      );
-
-      if (existingUser) {
-        throw new ConflictError({
-          message: t('invitation.errors.userAlreadyHasAccess'),
-        });
-      }
-
-      // Check seat availability for employee roles
-      const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
-      if (EMPLOYEE_ROLES.includes(validatedData.role)) {
-        try {
-          const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
-
-          if (seatInfo.availableSeats <= 0) {
-            const canPurchase = seatInfo.canPurchaseMore;
-            const message = canPurchase
-              ? `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats (${seatInfo.includedSeats} included + ${seatInfo.additionalSeats} additional). You can purchase up to ${seatInfo.maxAdditionalSeats - seatInfo.additionalSeats} more seats.`
-              : `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`;
-
-            throw new BadRequestError({ message });
-          }
-        } catch (error) {
-          if (error instanceof BadRequestError) {
-            throw error;
-          }
-          this.log.error({ error, cuid }, 'Error checking seat availability');
-          // Don't block invitation if seat check fails - let event handler handle it
-        }
-      }
-
-      const invitation = await this.invitationDAO.createInvitation(
-        validatedData as IInvitationData,
-        inviterUserId,
-        client.id
-      );
-
-      const isDraft = validatedData.status === 'draft';
-      let emailData: any = null;
-
-      if (!isDraft) {
-        const inviter = await this.userDAO.getUserById(inviterUserId, {
-          populate: 'profile',
-        });
-
-        emailData = {
-          to: validatedData.inviteeEmail,
-          subject: t('email.invitation.subject', {
-            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-          }),
-          client: {
-            cuid: client.cuid,
-            id: client.id,
-          },
-          emailType: MailType.INVITATION,
-          data: {
-            role: validatedData.role,
-            expiresAt: invitation.expiresAt,
-            customMessage: validatedData.metadata?.inviteMessage || '',
-            inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
-            companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
-            inviteeName: `${validatedData.personalInfo.firstName} ${validatedData.personalInfo.lastName}`,
-            invitationUrl: `${envVariables.FRONTEND.URL}/invite/${cuid}/?token=${invitation.invitationToken}`,
-          },
-        };
-
-        const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-        emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
-          ...emailData,
-          invitationId: invitation._id.toString(),
-        } as any);
-
-        this.emitterService.emit(EventTypes.INVITATION_SENT, {
-          invitationId: invitation._id.toString(),
-          inviteeEmail: validatedData.inviteeEmail,
-          clientId: client.id,
-          role: validatedData.role,
-          cuid,
-        });
-      } else {
-        this.log.info(
-          `Draft invitation created for ${validatedData.inviteeEmail} for client ${cuid}`
-        );
-      }
-
-      return {
-        success: true,
-        data: { invitation, emailData },
-        message: isDraft
-          ? t('invitation.success.draftCreated', { email: validatedData.inviteeEmail })
-          : t('invitation.success.sent', { email: validatedData.inviteeEmail }),
-      };
+      return await this.dispatchInvitation(inviterUserId, cuid, validatedData as IInvitationData);
     } catch (error) {
       this.log.error('Error sending invitation:', error);
       throw error;
     }
+  }
+
+  /**
+   * Creates an invitation from already-validated data and, unless it's a draft,
+   * emails it. Shared by the single-invite endpoint and the CSV import worker so
+   * both apply the same permission, duplicate, seat and tenant-cap rules and the
+   * same bookkeeping (INVITATION_SENT for seat counting, client branding on the email).
+   */
+  async dispatchInvitation(
+    inviterUserId: string,
+    cuid: string,
+    validatedData: IInvitationData
+  ): Promise<ISuccessReturnData<ISendInvitationResult>> {
+    await this.validateInviterPermissions(inviterUserId, cuid, validatedData.role);
+
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    if (!client) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+
+    if (!client.isVerified && validatedData.role === ROLES.TENANT) {
+      const pendingTenantInvitations = await this.invitationDAO.countDocuments({
+        client: client._id,
+        role: IUserRole.TENANT,
+        status: 'pending',
+      });
+      if (pendingTenantInvitations >= 5) {
+        throw new BadRequestError({ message: t('invitation.errors.unverifiedTenantLimit') });
+      }
+    }
+
+    const inviterUser = await this.userDAO.getUserById(inviterUserId);
+    if (!inviterUser) {
+      throw new UnauthorizedError({ message: t('common.errors.notFound', { resource: 'User' }) });
+    }
+
+    if (inviterUser.email.toLowerCase() === validatedData.inviteeEmail.toLowerCase()) {
+      throw new BadRequestError({
+        message: t('invitation.errors.cannotInviteYourself'),
+      });
+    }
+
+    const existingInvitation = await this.invitationDAO.findPendingInvitation(
+      validatedData.inviteeEmail,
+      client.id
+    );
+
+    if (existingInvitation) {
+      throw new ConflictError({
+        message: t('invitation.errors.pendingInvitationExists'),
+      });
+    }
+
+    const existingUser = await this.userDAO.getUserWithClientAccess(
+      validatedData.inviteeEmail,
+      client.cuid
+    );
+
+    if (existingUser) {
+      throw new ConflictError({
+        message: t('invitation.errors.userAlreadyHasAccess'),
+      });
+    }
+
+    // Check seat availability for employee roles
+    const EMPLOYEE_ROLES = ['super-admin', 'admin', 'manager', 'staff'];
+    if (EMPLOYEE_ROLES.includes(validatedData.role)) {
+      try {
+        const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
+
+        if (seatInfo.availableSeats <= 0) {
+          const canPurchase = seatInfo.canPurchaseMore;
+          const message = canPurchase
+            ? `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats (${seatInfo.includedSeats} included + ${seatInfo.additionalSeats} additional). You can purchase up to ${seatInfo.maxAdditionalSeats - seatInfo.additionalSeats} more seats.`
+            : `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`;
+
+          throw new BadRequestError({ message });
+        }
+      } catch (error) {
+        if (error instanceof BadRequestError) {
+          throw error;
+        }
+        this.log.error({ error, cuid }, 'Error checking seat availability');
+        // Don't block invitation if seat check fails - let event handler handle it
+      }
+    }
+
+    const invitation = await this.invitationDAO.createInvitation(
+      validatedData,
+      inviterUserId,
+      client.id
+    );
+
+    const isDraft = validatedData.status === 'draft';
+    let emailData: any = null;
+
+    if (!isDraft) {
+      const inviter = await this.userDAO.getUserById(inviterUserId, {
+        populate: 'profile',
+      });
+
+      emailData = {
+        to: validatedData.inviteeEmail,
+        subject: t('email.invitation.subject', {
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+        }),
+        client: {
+          cuid: client.cuid,
+          id: client.id,
+        },
+        emailType: MailType.INVITATION,
+        data: {
+          role: validatedData.role,
+          expiresAt: invitation.expiresAt,
+          customMessage: validatedData.metadata?.inviteMessage || '',
+          inviterName: inviter?.profile?.fullname || inviter?.email || 'Team Member',
+          companyName: client.displayName || client.companyProfile?.legalEntityName || 'Company',
+          inviteeName: `${validatedData.personalInfo.firstName} ${validatedData.personalInfo.lastName}`,
+          invitationUrl: `${envVariables.FRONTEND.URL}/invite/${cuid}/?token=${invitation.invitationToken}`,
+        },
+      };
+
+      const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+      emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+        ...emailData,
+        invitationId: invitation._id.toString(),
+      } as any);
+
+      this.emitterService.emit(EventTypes.INVITATION_SENT, {
+        invitationId: invitation._id.toString(),
+        inviteeEmail: validatedData.inviteeEmail,
+        clientId: client.id,
+        role: validatedData.role,
+        cuid,
+      });
+    } else {
+      this.log.info(
+        `Draft invitation created for ${validatedData.inviteeEmail} for client ${cuid}`
+      );
+    }
+
+    return {
+      success: true,
+      data: { invitation, emailData },
+      message: isDraft
+        ? t('invitation.success.draftCreated', { email: validatedData.inviteeEmail })
+        : t('invitation.success.sent', { email: validatedData.inviteeEmail }),
+    };
   }
 
   async updateInvitation(
@@ -904,7 +924,17 @@ export class InvitationService {
     }
   }
 
-  private async validateInviterPermissions(userId: string, cuid: string): Promise<void> {
+  private async validateInviterPermissions(
+    userId: string,
+    cuid: string,
+    inviteeRole?: string
+  ): Promise<void> {
+    if (inviteeRole && !ROLE_VALIDATION.INVITABLE_ROLES.includes(inviteeRole)) {
+      throw new ForbiddenError({
+        message: t('invitation.errors.roleNotInvitable', { role: inviteeRole }),
+      });
+    }
+
     const user = await this.userDAO.getUserById(userId);
     if (!user) {
       throw new UnauthorizedError({ message: t('common.errors.notFound', { resource: 'User' }) });
@@ -924,12 +954,39 @@ export class InvitationService {
         message: t('invitation.errors.insufficientPermissions'),
       });
     }
+
+    const inviterIsAdmin = clientConnection.roles.some(
+      (role) => role === ROLES.ADMIN || role === ROLES.SUPER_ADMIN
+    );
+    if (inviteeRole === ROLES.ADMIN && !inviterIsAdmin) {
+      throw new ForbiddenError({ message: t('invitation.errors.adminInviteRequiresAdmin') });
+    }
+  }
+
+  getCsvTemplate(): string {
+    return this.invitationCsvProcessor.generateTemplateCsv();
+  }
+
+  getCsvImportFields() {
+    return getInvitationImportFieldsResponse();
+  }
+
+  // Drop anything the frontend sent that isn't a real import field
+  private sanitizeColumnMapping(
+    columnMapping?: Record<string, string>
+  ): Record<string, string> | undefined {
+    if (!columnMapping) return undefined;
+    const entries = Object.entries(columnMapping).filter(([, key]) =>
+      isKnownInvitationImportField(key)
+    );
+    return entries.length ? Object.fromEntries(entries) : undefined;
   }
 
   async validateInvitationCsv(
     cuid: string,
     csvFile: ExtractedMediaFile,
-    currentUser: ICurrentUser
+    currentUser: ICurrentUser,
+    columnMapping?: Record<string, string>
   ): Promise<ISuccessReturnData> {
     try {
       if (!csvFile) {
@@ -939,10 +996,12 @@ export class InvitationService {
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
         this.log.error(`Client with cuid ${cuid} not found`);
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
       if (csvFile.fileSize > 10 * 1024 * 1024) {
+        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
         throw new BadRequestError({ message: t('invitation.errors.fileTooLarge') });
       }
 
@@ -950,6 +1009,7 @@ export class InvitationService {
         userId: currentUser.sub,
         csvFilePath: csvFile.path,
         clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
+        columnMapping: this.sanitizeColumnMapping(columnMapping),
       };
 
       const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
@@ -966,54 +1026,10 @@ export class InvitationService {
     }
   }
 
-  async validateBulkUserCsv(
-    cuid: string,
-    csvFile: ExtractedMediaFile,
-    currentUser: ICurrentUser,
-    options: { sendNotifications?: boolean; passwordLength?: number }
-  ): Promise<ISuccessReturnData> {
-    try {
-      if (!csvFile) {
-        throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
-      }
-
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        this.log.error(`Client with cuid ${cuid} not found`);
-        throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
-      }
-
-      if (csvFile.fileSize > 10 * 1024 * 1024) {
-        throw new BadRequestError({ message: t('invitation.errors.fileTooLarge') });
-      }
-
-      const jobData = {
-        userId: currentUser.sub,
-        csvFilePath: csvFile.path,
-        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
-        bulkCreateOptions: {
-          sendNotifications: options.sendNotifications || false,
-          passwordLength: options.passwordLength || 12,
-        },
-      };
-
-      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
-      const job = await invitationQueue.addCsvBulkUserValidationJob(jobData);
-
-      return {
-        success: true,
-        data: { processId: job.id },
-        message: t('invitation.success.csvValidationStarted'),
-      };
-    } catch (error) {
-      this.log.error('Error validating bulk user CSV:', error);
-      throw error;
-    }
-  }
-
   async importInvitationsFromCsv(
     cxt: IRequestContext,
-    csvFilePath: string
+    csvFilePath: string,
+    columnMapping?: Record<string, string>
   ): Promise<ISuccessReturnData> {
     const { cuid } = cxt.request.params;
     const userId = cxt.currentuser!.sub;
@@ -1029,19 +1045,13 @@ export class InvitationService {
         throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
       }
 
-      // Pre-check: reject if no seats available and can't purchase more — avoids queueing a job that will fully fail
-      const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
-      if (seatInfo.availableSeats <= 0 && !seatInfo.canPurchaseMore) {
-        this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
-        throw new BadRequestError({
-          message: `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`,
-        });
-      }
-
+      // No whole-file seat check here: tenant and vendor rows don't use seats, and the
+      // worker trims extra employee rows individually and reports them as row errors.
       const jobData = {
         userId,
         csvFilePath,
         clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
+        columnMapping: this.sanitizeColumnMapping(columnMapping),
       };
 
       const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
@@ -1054,62 +1064,6 @@ export class InvitationService {
       };
     } catch (error) {
       this.log.error('Error importing invitations from CSV:', error);
-      throw error;
-    }
-  }
-
-  async importBulkUsersFromCsv(
-    cxt: IRequestContext,
-    csvFilePath: string,
-    options: { sendNotifications?: boolean; passwordLength?: number }
-  ): Promise<ISuccessReturnData> {
-    const { cuid } = cxt.request.params;
-    const userId = cxt.currentuser!.sub;
-
-    try {
-      if (!csvFilePath || !cuid) {
-        throw new BadRequestError({ message: t('invitation.errors.noCsvFileUploaded') });
-      }
-
-      const client = await this.clientDAO.getClientByCuid(cuid);
-      if (!client) {
-        this.log.error(`Client with cuid ${cuid} not found`);
-        throw new BadRequestError({ message: t('invitation.errors.clientNotFound') });
-      }
-
-      // Early exit if no seats are available at all — avoids queuing a job that will fully fail
-      try {
-        const seatInfo = await this.subscriptionService.getAvailableSeats(cuid);
-        if (seatInfo.availableSeats <= 0 && !seatInfo.canPurchaseMore) {
-          throw new BadRequestError({
-            message: `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Upgrade your plan or archive users to free up seats.`,
-          });
-        }
-      } catch (error) {
-        if (error instanceof BadRequestError) throw error;
-        this.log.error({ error, cuid }, 'Error checking seat availability before bulk user import');
-      }
-
-      const jobData = {
-        userId,
-        csvFilePath,
-        clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
-        bulkCreateOptions: {
-          sendNotifications: options.sendNotifications || false,
-          passwordLength: options.passwordLength || 12,
-        },
-      };
-
-      const invitationQueue = this.queueFactory.getQueue('invitationQueue') as InvitationQueue;
-      const job = await invitationQueue.addCsvBulkUserImportJob(jobData);
-
-      return {
-        success: true,
-        data: { processId: job.id },
-        message: t('invitation.success.csvImportStarted'),
-      };
-    } catch (error) {
-      this.log.error('Error importing bulk users from CSV:', error);
       throw error;
     }
   }

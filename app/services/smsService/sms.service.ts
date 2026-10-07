@@ -14,6 +14,8 @@ import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { NotificationMessageKey } from '@services/notification';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { NotificationCategory } from '@interfaces/notification.interface';
+import { shouldDeliver } from '@services/notification/notificationPolicy';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { NotificationService } from '@services/notification/notification.service';
 import {
@@ -43,6 +45,11 @@ interface IConstructor {
   clientDAO: ClientDAO;
 }
 
+/** Non-transactional SMS follow the recipient's category switch. */
+const SMS_TYPE_CATEGORY: Partial<Record<SMSMessageType, NotificationCategory>> = {
+  [SMSMessageType.MAINTENANCE_UPDATE]: 'maintenance',
+  [SMSMessageType.LEASE_REMINDER]: 'leases',
+};
 export class SMSService implements ICronProvider {
   private readonly log: Logger;
   private readonly smsLogDAO: SMSLogDAO;
@@ -272,11 +279,13 @@ export class SMSService implements ICronProvider {
   ): Promise<ISuccessReturnData<undefined>> {
     const userId = currentUser?.sub;
     const consented = data.consent;
+    // smsNotifications mirrors consent — it's what the preferences screen shows
     const update = consented
       ? {
           $set: {
             'settings.smsConsent.consented': true,
             'settings.smsConsent.consentedAt': new Date(),
+            'settings.notifications.smsNotifications': true,
           },
           $unset: { 'settings.smsConsent.revokedAt': '' },
         }
@@ -284,6 +293,7 @@ export class SMSService implements ICronProvider {
           $set: {
             'settings.smsConsent.consented': false,
             'settings.smsConsent.revokedAt': new Date(),
+            'settings.notifications.smsNotifications': false,
           },
         };
 
@@ -388,8 +398,13 @@ export class SMSService implements ICronProvider {
         return { success: false, error: 'opted_out', message: t('sms.errors.recipientOptedOut') };
       }
 
-      // Recipient must have SMS notifications enabled in their profile
-      if (!profile?.settings?.notifications?.smsNotifications) {
+      // Consent is the SMS channel switch; the matching category must also be on
+      const allowed = shouldDeliver({
+        prefs: { ...profile?.settings?.notifications, smsNotifications: true },
+        channel: 'sms',
+        category: SMS_TYPE_CATEGORY[messageType] ?? null,
+      });
+      if (!allowed) {
         return { success: false, error: 'opted_out', message: t('sms.errors.recipientOptedOut') };
       }
     }

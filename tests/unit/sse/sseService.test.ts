@@ -307,6 +307,7 @@ describe('SSEService', () => {
         'announcement',
         undefined,
         undefined,
+        undefined,
         undefined
       );
     });
@@ -335,6 +336,7 @@ describe('SSEService', () => {
         'announcements',
         eventId,
         undefined,
+        undefined,
         undefined
       );
     });
@@ -362,6 +364,7 @@ describe('SSEService', () => {
         'announcements',
         undefined,
         ['admin', 'staff'],
+        undefined,
         undefined
       );
     });
@@ -390,7 +393,8 @@ describe('SSEService', () => {
         'announcements',
         undefined,
         ['staff'],
-        ['security']
+        ['security'],
+        undefined
       );
     });
 
@@ -774,6 +778,60 @@ describe('SSEService', () => {
       await service.cleanup();
 
       expect(service.getTotalActiveConnections()).toBe(0);
+    });
+  });
+
+  // ── Announcement preferences on live delivery ───────────────────────────
+
+  describe('announcement fan-out respects viewer preferences', () => {
+    const addSession = (userId: string, state: Record<string, unknown>) => {
+      const session = {
+        isConnected: true,
+        push: jest.fn(),
+        state: { userRole: 'manager', ...state },
+      };
+      (service as any).activeSessions.set(`cuid-1:${userId}:announcement`, [session]);
+      return session;
+    };
+    const broadcast = (delivery?: Record<string, unknown>, targetDepartments?: string[]) =>
+      (service as any)._localBroadcastToClient(
+        'cuid-1',
+        {},
+        'announcements',
+        undefined,
+        ['manager'],
+        targetDepartments,
+        delivery
+      );
+
+    it('skips viewers who switched the category off, unless the announcement is required', () => {
+      const optedOut = addSession('u1', { disabledCategories: ['payments'] });
+      const optedIn = addSession('u2', {});
+
+      broadcast({ category: 'payments', required: false });
+      expect(optedOut.push).not.toHaveBeenCalled();
+      expect(optedIn.push).toHaveBeenCalled();
+
+      broadcast({ category: 'payments', required: true });
+      expect(optedOut.push).toHaveBeenCalled();
+    });
+
+    it('skips viewers with in-app switched off', () => {
+      const inAppOff = addSession('u1', { inAppDisabled: true });
+
+      broadcast({ category: 'maintenance' });
+
+      expect(inAppOff.push).not.toHaveBeenCalled();
+    });
+
+    it('reaches management without a department for department-targeted announcements', () => {
+      const manager = addSession('u1', { seesAllDepartments: true });
+      const otherStaff = addSession('u2', { userDepartment: 'accounting' });
+
+      broadcast({ category: 'maintenance' }, ['maintenance']);
+
+      expect(manager.push).toHaveBeenCalled();
+      expect(otherStaff.push).not.toHaveBeenCalled();
     });
   });
 });

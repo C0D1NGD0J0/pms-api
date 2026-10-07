@@ -5,8 +5,20 @@ import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { createSession, Session } from 'better-sse';
 
-interface IConstructor {}
+/** Viewer preferences captured when an announcement stream connects. */
+export interface ISSEAnnouncementPreferences {
+  disabledCategories?: string[];
+  seesAllDepartments?: boolean;
+  inAppDisabled?: boolean;
+}
 
+/** Lets the fan-out honour preferences without looking anything up. */
+export interface ISSEBroadcastDelivery {
+  category?: string | null;
+  required?: boolean;
+}
+
+interface IConstructor {}
 export class SSEService {
   private readonly log: Logger;
   private readonly activeSessions: Map<string, Session[]> = new Map();
@@ -38,7 +50,8 @@ export class SSEService {
             msg.eventType,
             msg.eventId,
             msg.targetRoles,
-            msg.targetDepartments
+            msg.targetDepartments,
+            msg.delivery
           );
         }
       } catch (err) {
@@ -54,7 +67,8 @@ export class SSEService {
     cuid: string,
     channelType: 'individual' | 'announcement',
     userRole?: string,
-    userDepartment?: string
+    userDepartment?: string,
+    preferences?: ISSEAnnouncementPreferences
   ): Promise<Session> {
     try {
       const session = await createSession(req, res);
@@ -65,6 +79,7 @@ export class SSEService {
         connectedAt: new Date(),
         userRole,
         userDepartment,
+        ...preferences,
       };
 
       const sessionKey = this.getSessionKey(userId, cuid, channelType);
@@ -103,7 +118,8 @@ export class SSEService {
     eventType: string = 'announcement',
     eventId?: string,
     targetRoles?: string[],
-    targetDepartments?: string[]
+    targetDepartments?: string[],
+    delivery?: ISSEBroadcastDelivery
   ): Promise<number> {
     const plainData = data?.toObject ? data.toObject() : data;
     await this.redisPub.publish(
@@ -116,6 +132,7 @@ export class SSEService {
         eventId,
         targetRoles,
         targetDepartments,
+        delivery,
       })
     );
     return 1;
@@ -173,7 +190,8 @@ export class SSEService {
     eventType: string,
     eventId?: string,
     targetRoles?: string[],
-    targetDepartments?: string[]
+    targetDepartments?: string[],
+    delivery?: ISSEBroadcastDelivery
   ): void {
     try {
       let sentCount = 0;
@@ -185,9 +203,19 @@ export class SSEService {
               const sessionRole = (session.state as any)?.userRole;
               if (!sessionRole || !targetRoles.includes(sessionRole)) continue;
             }
-            if (targetDepartments?.length) {
-              const sessionDept = (session.state as any)?.userDepartment;
-              if (!sessionDept || !targetDepartments.includes(sessionDept)) continue;
+            const state = (session.state ?? {}) as {
+              userDepartment?: string;
+            } & ISSEAnnouncementPreferences;
+            if (targetDepartments?.length && !state.seesAllDepartments) {
+              if (!state.userDepartment || !targetDepartments.includes(state.userDepartment)) {
+                continue;
+              }
+            }
+            if (!delivery?.required) {
+              if (state.inAppDisabled) continue;
+              if (delivery?.category && state.disabledCategories?.includes(delivery.category)) {
+                continue;
+              }
             }
             if (eventId) {
               session.push(data, eventType, eventId);

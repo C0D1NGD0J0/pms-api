@@ -155,6 +155,7 @@ export async function handleInvoiceApproved(
           type: NotificationTypeEnum.PAYMENT,
           recipient: tenantId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
+          required: true,
           priority: NotificationPriorityEnum.HIGH,
           title,
           message,
@@ -166,7 +167,6 @@ export async function handleInvoiceApproved(
     }
   }
 }
-
 export async function handleVendorPaid(
   ctx: INotificationContext,
   payload: MaintenanceVendorPaidPayload
@@ -321,13 +321,15 @@ export async function handleInvoiceSubmitted(
     const { mruid, cuid, amount, vendorId } = payload;
     const request = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
     if (request) {
-      ctx.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
-        to: '',
-        requestId: ctx.requestId,
-        emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
-        subject: '',
-        data: { request, invoice: request.invoice, vendorId, amount },
-      });
+      const managerEmail = await getPropertyManagerEmail(ctx, request.propertyId, cuid);
+      if (managerEmail)
+        ctx.emailQueue.addToEmailQueue('maintenanceInvoiceSubmitted', {
+          to: managerEmail,
+          requestId: ctx.requestId,
+          emailType: MailType.MAINTENANCE_INVOICE_SUBMITTED,
+          subject: '',
+          data: { request, invoice: request.invoice, vendorId, amount },
+        });
     }
   } catch (err) {
     ctx.log.error(
@@ -450,13 +452,15 @@ export async function handleWorkOrderSubmitted(
     const request = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
     if (request) {
       const workOrder = normalizeWorkOrderForEmail((request as any).workOrder);
-      ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmitted', {
-        to: '',
-        requestId: ctx.requestId,
-        emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED,
-        subject: '',
-        data: { request, workOrder, vendorId },
-      } as any);
+      const managerEmail = await getPropertyManagerEmail(ctx, request.propertyId, cuid);
+      if (managerEmail)
+        ctx.emailQueue.addToEmailQueue('maintenanceWorkOrderSubmitted', {
+          to: managerEmail,
+          requestId: ctx.requestId,
+          emailType: MailType.MAINTENANCE_WORK_ORDER_SUBMITTED,
+          subject: '',
+          data: { request, workOrder, vendorId },
+        } as any);
 
       if (request.tenantId) {
         const tenantUser = await ctx.userDAO.findFirst({
@@ -483,6 +487,7 @@ export async function handleWorkOrderSubmitted(
             cuid,
             type: NotificationTypeEnum.MAINTENANCE,
             recipientType: RecipientTypeEnum.INDIVIDUAL,
+            required: true,
             recipient: request.tenantId.toString(),
             priority: NotificationPriorityEnum.MEDIUM,
             title,
@@ -662,6 +667,7 @@ export async function handleMaintenanceChargeCreated(
       type: NotificationTypeEnum.PAYMENT,
       recipient: tenantId,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
+      required: true,
       priority: NotificationPriorityEnum.HIGH,
       title,
       message,
@@ -702,8 +708,6 @@ export async function handleMaintenanceChargeCreated(
     );
   }
 }
-
-// ── Invoice & charge handlers ───────────────────────────────────────────────
 
 export async function handleInvoiceRejected(
   ctx: INotificationContext,
@@ -753,6 +757,8 @@ export async function handleInvoiceRejected(
     );
   }
 }
+
+// ── Invoice & charge handlers ───────────────────────────────────────────────
 
 export async function handleMRAccepted(
   ctx: INotificationContext,
@@ -855,6 +861,49 @@ export async function handleMRCreated(
   }
 }
 
+export async function handleMRDeclined(
+  ctx: INotificationContext,
+  payload: MaintenanceRequestDeclinedPayload
+): Promise<void> {
+  try {
+    const { cuid, mruid } = payload;
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.MAINTENANCE,
+      'maintenance.requestDeclined',
+      { mruid },
+      ALL_STAFF_ROLES,
+      { mruid },
+      NotificationPriorityEnum.HIGH,
+      MAINTENANCE_DEPARTMENTS
+    );
+  } catch (error) {
+    ctx.log.error('Error sending MR declined notification', { error, payload });
+  }
+
+  try {
+    const { mruid, cuid, vendorId, reason } = payload;
+    const request = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
+    if (request) {
+      const managerEmail = await getPropertyManagerEmail(ctx, request.propertyId, cuid);
+      if (managerEmail)
+        ctx.emailQueue.addToEmailQueue('maintenanceRequestDeclined', {
+          to: managerEmail,
+          requestId: ctx.requestId,
+          emailType: MailType.MAINTENANCE_REQUEST_DECLINED,
+          subject: '',
+          data: { request, vendorId, reason },
+        });
+    }
+  } catch (err) {
+    ctx.log.error(
+      { err, mruid: payload.mruid },
+      'Failed to enqueue maintenanceRequestDeclined email'
+    );
+  }
+}
+
 export async function handleMRCompleted(
   ctx: INotificationContext,
   payload: MaintenanceRequestCompletedPayload
@@ -939,49 +988,6 @@ export async function handleMRUpdatedByTenant(
   }
 }
 
-export async function handleMRDeclined(
-  ctx: INotificationContext,
-  payload: MaintenanceRequestDeclinedPayload
-): Promise<void> {
-  try {
-    const { cuid, mruid } = payload;
-    await notifyAnnouncement(
-      ctx,
-      cuid,
-      NotificationTypeEnum.MAINTENANCE,
-      'maintenance.requestDeclined',
-      { mruid },
-      ALL_STAFF_ROLES,
-      { mruid },
-      NotificationPriorityEnum.HIGH,
-      MAINTENANCE_DEPARTMENTS
-    );
-  } catch (error) {
-    ctx.log.error('Error sending MR declined notification', { error, payload });
-  }
-
-  try {
-    const { mruid, cuid, vendorId, reason } = payload;
-    const request = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
-    if (request) {
-      ctx.emailQueue.addToEmailQueue('maintenanceRequestDeclined', {
-        to: '',
-        requestId: ctx.requestId,
-        emailType: MailType.MAINTENANCE_REQUEST_DECLINED,
-        subject: '',
-        data: { request, vendorId, reason },
-      });
-    }
-  } catch (err) {
-    ctx.log.error(
-      { err, mruid: payload.mruid },
-      'Failed to enqueue maintenanceRequestDeclined email'
-    );
-  }
-}
-
-// ── Work order handlers ─────────────────────────────────────────────────────
-
 export async function handleMRWorkDone(
   ctx: INotificationContext,
   payload: MaintenanceRequestWorkDonePayload
@@ -1018,6 +1024,8 @@ export async function handleMRWorkDone(
     ctx.log.error('Error sending MR work done notification', { error, payload });
   }
 }
+
+// ── Work order handlers ─────────────────────────────────────────────────────
 
 export async function handleMRCancelled(
   ctx: INotificationContext,
@@ -1073,8 +1081,6 @@ export async function handleAutoVendorPaid(
   }
 }
 
-// ── AI triage handler ───────────────────────────────────────────────────────
-
 export async function handleMaintenanceChargePaid(
   ctx: INotificationContext,
   payload: MaintenanceChargePaidPayload
@@ -1097,6 +1103,8 @@ export async function handleMaintenanceChargePaid(
     ctx.log.error('Error sending maintenance charge paid notification', { error, payload });
   }
 }
+
+// ── AI triage handler ───────────────────────────────────────────────────────
 
 export async function handleMaintenanceFundsAvailable(
   ctx: INotificationContext,
@@ -1136,4 +1144,30 @@ export async function handleAITriageCompleted(
   } catch (error) {
     ctx.log.error('Error sending ai-analysis-ready SSE', { error, payload });
   }
+}
+
+/**
+ * Who should hear about a property's maintenance (invoices, work orders, declines):
+ * the property's manager, or the account admin when none is assigned.
+ */
+async function getPropertyManagerEmail(
+  ctx: INotificationContext,
+  propertyId: Types.ObjectId | string | undefined,
+  cuid: string
+): Promise<string | null> {
+  const property = propertyId
+    ? await ctx.propertyDAO.findFirst({ _id: new Types.ObjectId(propertyId.toString()) })
+    : null;
+  let managerId = property?.managedBy?.toString();
+  if (!managerId) {
+    const client = await ctx.clientDAO.getClientByCuid(cuid);
+    const admin = client?.accountAdmin as { _id?: Types.ObjectId } | Types.ObjectId | undefined;
+    managerId = (admin && '_id' in admin ? admin._id : admin)?.toString();
+  }
+  if (!managerId) return null;
+  const manager = await ctx.userDAO.findFirst({
+    _id: new Types.ObjectId(managerId),
+    deletedAt: null,
+  });
+  return manager?.email ?? null;
 }

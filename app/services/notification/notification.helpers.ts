@@ -79,7 +79,8 @@ export async function notifyIndividuals(
   vars: Record<string, any>,
   recipientIds: (string | undefined | null)[],
   metadata: Record<string, any>,
-  priority: NotificationPriorityEnum = NotificationPriorityEnum.MEDIUM
+  priority: NotificationPriorityEnum = NotificationPriorityEnum.MEDIUM,
+  required = false
 ): Promise<void> {
   const { title, message } = getFormattedNotification(messageKey, vars);
   const seen = new Set<string>();
@@ -97,6 +98,7 @@ export async function notifyIndividuals(
       recipient: id,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
       metadata,
+      required,
     };
     await ctx.createNotification(cuid, type, data);
   }
@@ -115,7 +117,8 @@ export async function notifyAnnouncement(
   targetRoles: readonly string[],
   metadata: Record<string, any>,
   priority: NotificationPriorityEnum = NotificationPriorityEnum.MEDIUM,
-  targetDepartments?: readonly string[]
+  targetDepartments?: readonly string[],
+  required = false
 ): Promise<void> {
   const { title, message } = getFormattedNotification(messageKey, vars);
   const data: ICreateNotificationRequest = {
@@ -128,6 +131,7 @@ export async function notifyAnnouncement(
     targetRoles: targetRoles as string[],
     ...(targetDepartments && { targetDepartments: targetDepartments as string[] }),
     metadata,
+    required,
   };
   await ctx.createNotification(cuid, type, data);
 }

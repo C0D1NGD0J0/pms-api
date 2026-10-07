@@ -15,6 +15,7 @@ export async function handleLeaseActivated(ctx: INotificationContext, payload: a
       type: NotificationTypeEnum.LEASE,
       recipient: tenantId,
       recipientType: RecipientTypeEnum.INDIVIDUAL,
+      required: true,
       priority: NotificationPriorityEnum.HIGH,
       title: 'Lease Activated',
       message: `Your lease ${luid} has been fully signed and is now active.`,

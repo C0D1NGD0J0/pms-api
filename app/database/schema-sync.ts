@@ -17,6 +17,7 @@
 
 import mongoose from 'mongoose';
 import { createLogger } from '@utils/helpers';
+import { DEFAULT_NOTIFICATION_SETTINGS } from '@services/notification/notificationPolicy';
 
 interface SyncRule {
   /** Filter to find documents needing the patch */
@@ -307,19 +308,38 @@ const SYNC_RULES: SyncRule[] = [
     collection: 'profiles',
     filter: { 'settings.notifications': { $exists: false } },
     update: {
-      'settings.notifications': {
-        messages: false,
-        comments: false,
-        announcements: true,
-        maintenance: true,
-        payments: true,
-        system: true,
-        propertyUpdates: true,
-        emailNotifications: true,
-        inAppNotifications: true,
-        emailFrequency: 'immediate',
-      },
+      'settings.notifications': { ...DEFAULT_NOTIFICATION_SETTINGS },
     },
+  },
+  {
+    label: 'profile.settings.notifications.leases',
+    collection: 'profiles',
+    filter: {
+      'settings.notifications': { $exists: true },
+      'settings.notifications.leases': { $exists: false },
+    },
+    // The legacy `system` switch is folded in by the notification-categories migration
+    update: { 'settings.notifications.leases': true },
+  },
+  {
+    label: 'profile.settings.notifications.approvals',
+    collection: 'profiles',
+    filter: {
+      'settings.notifications': { $exists: true },
+      'settings.notifications.approvals': { $exists: false },
+    },
+    // The legacy `system` switch is folded in by the notification-categories migration
+    update: { 'settings.notifications.approvals': true },
+  },
+  {
+    label: 'profile.settings.notifications.guestPasses',
+    collection: 'profiles',
+    filter: {
+      'settings.notifications': { $exists: true },
+      'settings.notifications.guestPasses': { $exists: false },
+    },
+    // The legacy `system` switch is folded in by the notification-categories migration
+    update: { 'settings.notifications.guestPasses': true },
   },
   {
     label: 'profile.settings.theme',

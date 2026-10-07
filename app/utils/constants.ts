@@ -52,7 +52,6 @@ export const QUEUE_NAMES = {
 export const JOB_NAME = {
   CSV_IMPORT_JOB: 'csv_import',
   INVITATION_JOB: 'invitationJob',
-  USER_CREATED_JOB: 'userCreatedJob',
   MEDIA_UPLOAD_JOB: 'mediaUploadJob',
   CSV_VALIDATION_JOB: 'csv_validation',
   MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
@@ -66,8 +65,6 @@ export const JOB_NAME = {
   INVITATION_REMINDER_JOB: 'invitationReminderJob',
   INVITATION_CSV_IMPORT_JOB: 'invitation_csv_import',
   INVITATION_CSV_VALIDATION_JOB: 'invitation_csv_validation',
-  INVITATION_BULK_USER_IMPORT_JOB: 'invitation_bulk_user_import',
-  INVITATION_BULK_USER_VALIDATION_JOB: 'invitation_bulk_user_validation',
   LEASE_ENDING_SOON_JOB: 'leaseEndingSoonJob',
   LEASE_ADMIN_UPDATED_JOB: 'leaseAdminUpdatedJob',
   CREATE_RENT_INVOICE_JOB: 'createRentInvoiceJob',

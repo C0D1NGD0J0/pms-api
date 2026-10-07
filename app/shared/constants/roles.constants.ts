@@ -152,6 +152,12 @@ export const ROLE_VALIDATION = {
   EMPLOYEE_ROLES: [...ROLE_GROUPS.EMPLOYEE_ROLES] as [string, ...string[]],
   MANAGEMENT_ROLES: [...ROLE_GROUPS.MANAGEMENT_ROLES] as [string, ...string[]],
   EXTERNAL_ROLES: [...ROLE_GROUPS.EXTERNAL_ROLES] as [string, ...string[]],
+  // Roles that can be granted by invitation. Account-owner roles (super-admin,
+  // root-admin) are never invitable.
+  INVITABLE_ROLES: [ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF, ROLES.TENANT, ROLES.VENDOR] as [
+    string,
+    ...string[],
+  ],
 } as const;
 
 export default ROLES;

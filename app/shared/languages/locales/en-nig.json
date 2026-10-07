@@ -325,7 +325,30 @@
       "cannotResend": "We no fit resend dis invitation",
       "expired": "Invitation don expire",
       "noCsvFileUploaded": "No CSV file upload. Please select file to continue.",
-      "pendingInvitationExists": "Active invitation already dey for dis email address"
+      "pendingInvitationExists": "Active invitation already dey for dis email address",
+      "cannotInviteYourself": "You can't send an invitation to yourself",
+      "userAlreadyHasAccess": "This user already has access to this account",
+      "fileTooLarge": "The file is too large. The maximum size is 10 MB.",
+      "clientNotFound": "Account not found",
+      "insufficientPermissions": "You don't have permission to send invitations",
+      "roleNotInvitable": "The {{role}} role can't be granted by invitation",
+      "adminInviteRequiresAdmin": "Only admins can invite other admins",
+      "unverifiedTenantLimit": "Unverified accounts are limited to 5 pending tenant invitations. Verify your account to invite more.",
+      "seatLimitReached": "Seat limit reached. Your plan allows {{total}} seats."
+    },
+    "csv": {
+      "noValidRows": "No valid rows found in the CSV file",
+      "validationFailed": "The CSV file couldn't be validated: {{error}}",
+      "importFailed": "The CSV import couldn't be completed: {{error}}",
+      "seatCheckFailed": "Unable to verify seat availability. Please try again.",
+      "missingColumns": "Missing required columns: {{columns}}",
+      "duplicateEmailInFile": "This email also appears on row {{row}}",
+      "duplicateRegistrationNumber": "Duplicate registration number in this file: {{value}}",
+      "vendorNotFound": "Vendor {{vuid}} was not found",
+      "vendorNotConnected": "Vendor {{vuid}} is not connected to this account",
+      "vendorCompanyRequired": "Company name is required for a new vendor",
+      "validationCompleted": "{{valid}} of {{total}} rows are ready to invite",
+      "importCompleted": "{{created}} invitations created"
     }
   },
   "profile": {

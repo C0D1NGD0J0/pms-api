@@ -39,6 +39,8 @@ export enum EventTypes {
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
   PAYMENT_PROCESSOR_VERIFIED = 'payment:processor:verified',
   MAINTENANCE_CHARGE_CREATED = 'maintenance:charge:created',
+  MAINTENANCE_CHARGE_SKIPPED = 'maintenance:charge:skipped',
+  PAYMENT_RETRIED_WITH_CARD = 'payment:retried:with:card',
   LEASE_ESIGNATURE_DECLINED = 'lease:esignature:declined',
   ACCOUNT_CLOSURE_INITIATED = 'account:closure:initiated',
   PDF_GENERATION_REQUESTED = 'pdf:generation:requested',
@@ -54,6 +56,7 @@ export enum EventTypes {
   VACATE_REQUEST_REJECTED = 'vacate:request:rejected',
   GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
   INSPECTION_AI_ANALYZED = 'inspection:ai:analyzed',
+  DEPOSIT_REFUND_FAILED = 'deposit:refund:failed',
   PAD_MANDATE_CONFIRMED = 'pad:mandate:confirmed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
@@ -63,6 +66,7 @@ export enum EventTypes {
   INSPECTION_SUBMITTED = 'inspection:submitted',
   INSPECTION_CANCELLED = 'inspection:cancelled',
   GUEST_PASS_VALIDATED = 'guestPass:validated',
+  PAD_DEBIT_INITIATED = 'pad:debit:initiated',
   INSPECTION_REMINDER = 'inspection:reminder',
   INSPECTION_REJECTED = 'inspection:rejected',
   PAYMENT_DISPUTE_WON = 'payment:dispute:won',
@@ -180,9 +184,13 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_METHOD_SETUP_COMPLETED]: PaymentMethodSetupCompletedPayload;
   [EventTypes.PAD_MANDATE_CONFIRMED]: PadMandateConfirmedPayload;
   [EventTypes.PAD_PRE_DEBIT_NOTIFICATION]: PadPreDebitNotificationPayload;
+  [EventTypes.PAD_DEBIT_INITIATED]: PadDebitInitiatedPayload;
+  [EventTypes.PAYMENT_RETRIED_WITH_CARD]: PaymentRetriedWithCardPayload;
+  [EventTypes.DEPOSIT_REFUND_FAILED]: DepositRefundFailedPayload;
   [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
   [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
   [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
+  [EventTypes.MAINTENANCE_CHARGE_SKIPPED]: MaintenanceChargeSkippedPayload;
   [EventTypes.MAINTENANCE_CHARGE_PAID]: MaintenanceChargePaidPayload;
   [EventTypes.MAINTENANCE_AUTO_VENDOR_PAID]: MaintenanceAutoVendorPaidPayload;
   [EventTypes.MAINTENANCE_VENDOR_PAID]: MaintenanceVendorPaidPayload;
@@ -210,6 +218,23 @@ export type EventPayloadMap = {
   [EventTypes.ACCOUNT_CLOSURE_INITIATED]: AccountClosureInitiatedPayload;
 };
 
+export interface MaintenanceInvoiceApprovedPayload {
+  invoiceLineItems?: { description: string; amountInCents: number }[];
+  tenantChargeTotalInCents?: number; // what the tenant will actually be charged (invoice + service fee); set when billable
+  serviceFeeInCents?: number; // platform service fee added on top of the invoice amount; set when billable
+  technicianId?: string;
+  isBillable: boolean;
+  approvedBy: string;
+  invoiceId: string;
+  requestId: string;
+  vendorId?: string;
+  tenantId?: string;
+  currency: string;
+  amount: number;
+  title: string;
+  mruid: string;
+  cuid: string;
+}
 export interface UserSignupInitiatedPayload {
   billingInterval: 'monthly' | 'annual'; // Billing frequency
   subscriptionId: string; // MongoDB ObjectId of created subscription
@@ -221,6 +246,7 @@ export interface UserSignupInitiatedPayload {
   email: string; // User email (required for Stripe customer creation)
   cuid: string; // Client unique identifier
 }
+
 export interface UnitChangedPayload {
   changeType: 'created' | 'updated' | 'archived' | 'unarchived' | 'status_changed';
   previousStatus?: string; // For status changes
@@ -268,19 +294,16 @@ export interface IEventBus {
   ): void;
 }
 
-export interface MaintenanceInvoiceApprovedPayload {
-  invoiceLineItems?: { description: string; amountInCents: number }[];
-  technicianId?: string;
-  isBillable: boolean;
-  approvedBy: string;
-  invoiceId: string;
-  requestId: string;
-  vendorId?: string;
-  tenantId?: string;
-  currency: string;
-  amount: number;
-  title: string;
-  mruid: string;
+export interface PaymentRefundedPayload {
+  totalRefunded?: number; // cumulative refunded cents on the payment
+  refundAmount: number;
+  isPartial?: boolean;
+  currency?: string;
+  tenantId?: string; // User _id or Profile _id
+  chargeId: string;
+  amount?: number; // this refund, cents
+  reason?: string;
+  pytuid: string;
   cuid: string;
 }
 
@@ -291,6 +314,29 @@ export interface UnitBatchChangedPayload {
   propertyId: string; // MongoDB ObjectId as string
   userId: string; // User who made the change
   cuid: string; // Client ID
+}
+
+export interface PaymentRequestCreatedPayload {
+  acceptedPaymentMethod?: string; // lease payment method — 'auto-debit' means the bank account is charged
+  amountInCents: number;
+  paymentType?: string;
+  tenantUserId: string; // User._id — used for SSE routing
+  currency?: string;
+  pytuid: string;
+  dueDate: Date;
+  cuid: string;
+}
+
+export interface PadPreDebitNotificationPayload {
+  mandateReference?: string;
+  accountLast4?: string;
+  paymentType?: string;
+  debitDate?: Date; // planned debit date — always set by the cron advance-notice job
+  currency: string;
+  tenantId: string;
+  amount: number;
+  pytuid: string;
+  cuid: string;
 }
 
 export interface UploadFailedPayload {
@@ -327,6 +373,20 @@ export interface InvitationEventPayload {
   cuid: string; // Client unique ID
 }
 
+/**
+ * Emitted when an approved billable invoice could not be turned into a tenant charge
+ * (no tenant on the request, or the tenant's profile is missing). The PM must bill manually.
+ */
+export interface MaintenanceChargeSkippedPayload {
+  reason: 'no_tenant' | 'tenant_profile_not_found';
+  notifyUserId?: string; // the PM who approved the invoice
+  amountInCents: number;
+  currency?: string;
+  title?: string;
+  mruid: string;
+  cuid: string;
+}
+
 export interface UploadCompletedPayload {
   senderInfo?: {
     email: string;
@@ -338,6 +398,18 @@ export interface UploadCompletedPayload {
   resourceId: string;
   fieldName: string;
   actorId: string;
+}
+
+export interface MaintenanceChargeCreatedPayload {
+  serviceFeeInCents?: number;
+  amountInCents: number;
+  tenantId: string;
+  currency: string;
+  pytuid: string;
+  title: string;
+  mruid: string;
+  dueDate: Date;
+  cuid: string;
 }
 
 export interface PdfGeneratedPayload {
@@ -398,6 +470,18 @@ export interface LeaseRenewalRequestedPayload {
   cuid: string;
 }
 
+export interface PaymentSucceededPayload {
+  paymentType?: string;
+  receiptUrl?: string;
+  currency?: string;
+  invoiceId: string;
+  tenantId?: string;
+  pytuid: string;
+  amount: number;
+  cuid: string;
+  paidAt: Date;
+}
+
 export interface MaintenanceRequestCompletedPayload {
   technicianId?: string;
   completedBy: string;
@@ -417,6 +501,16 @@ export interface VacateRequestDecisionPayload {
   tenantId: string;
   leaseId: string;
   luid: string;
+  cuid: string;
+}
+
+export interface PaymentRetriedWithCardPayload {
+  failureReason?: string;
+  cardLast4?: string;
+  tenantId: string; // User _id or Profile _id
+  currency: string;
+  amount: number;
+  pytuid: string;
   cuid: string;
 }
 
@@ -441,6 +535,17 @@ export interface InspectionApprovedPayload {
   cuid: string;
 }
 
+export interface PaymentFailedPayload {
+  hostedInvoiceUrl?: string;
+  failureReason?: string;
+  currency?: string;
+  invoiceId: string;
+  tenantId?: string;
+  amount?: number;
+  pytuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceInvoiceSubmittedPayload {
   invoiceId?: string;
   requestId: string;
@@ -462,18 +567,6 @@ export interface PaymentDisputeCreatedPayload {
   reason: string;
   cuid: string;
 }
-
-export interface MaintenanceChargeCreatedPayload {
-  amountInCents: number;
-  tenantId: string;
-  currency: string;
-  pytuid: string;
-  title: string;
-  mruid: string;
-  dueDate: Date;
-  cuid: string;
-}
-
 export interface PdfGenerationRequestedPayload {
   senderInfo?: {
     email: string;
@@ -483,17 +576,6 @@ export interface PdfGenerationRequestedPayload {
   resource: ResourceInfo;
   templateType?: string;
   cuid: string;
-}
-
-export interface PaymentSucceededPayload {
-  paymentType?: string;
-  receiptUrl?: string;
-  invoiceId: string;
-  tenantId?: string;
-  pytuid: string;
-  amount: number;
-  cuid: string;
-  paidAt: Date;
 }
 
 export interface MaintenanceRequestWorkDonePayload {
@@ -536,6 +618,16 @@ export type JobType =
   | 'document_processing'
   | 'report_generation'
   | 'bulk_operation';
+
+export interface PaymentCancelledPayload {
+  amountInCents: number;
+  tenantUserId: string; // User._id — for SSE routing
+  currency?: string;
+  reason?: string;
+  pytuid: string;
+  cuid: string;
+}
+
 export interface MaintenanceRequestAssignedPayload {
   scheduledDate?: Date;
   assignedBy: string;
@@ -566,22 +658,22 @@ export interface InvoiceGeneratedPayload {
   cuid: string;
 }
 
-export interface PaymentFailedPayload {
-  hostedInvoiceUrl?: string;
-  failureReason?: string;
-  invoiceId: string;
-  tenantId?: string;
-  amount?: number;
-  pytuid: string;
-  cuid: string;
-}
-
 export interface SubscriptionRenewalUpcomingPayload {
   stripeSubscriptionId: string;
   amountInCents: number;
   renewalDate: Date;
   planName: string;
   currency: string;
+  cuid: string;
+}
+
+export interface MaintenanceVendorPaidPayload {
+  amountInCents: number;
+  transferId: string;
+  currency?: string;
+  vendorId: string;
+  invuid: string;
+  mruid: string;
   cuid: string;
 }
 
@@ -624,14 +716,6 @@ export interface PaymentDisputeLostPayload {
   cuid: string;
 }
 
-export interface PaymentRequestCreatedPayload {
-  amountInCents: number;
-  tenantUserId: string; // User._id — used for SSE routing
-  pytuid: string;
-  dueDate: Date;
-  cuid: string;
-}
-
 export interface EmailFailedPayload {
   error: {
     message: string;
@@ -653,11 +737,22 @@ export interface PaymentDisputeWonPayload {
   cuid: string;
 }
 
-export interface PaymentCancelledPayload {
-  amountInCents: number;
-  tenantUserId: string; // User._id — for SSE routing
-  reason?: string;
+export interface PadMandateConfirmedPayload {
+  institutionName?: string;
+  accountLast4?: string;
+  pmAccountId: string;
+  mandateId: string;
+  tenantId: string;
+  cuid: string;
+}
+
+export interface PaymentOverduePayload {
+  paymentType: string;
+  currency?: string;
+  tenantId?: string;
   pytuid: string;
+  amount: number;
+  dueDate: Date;
   cuid: string;
 }
 
@@ -688,20 +783,20 @@ export interface MaintenanceRequestDeclinedPayload {
   cuid: string;
 }
 
-export interface MaintenanceVendorPaidPayload {
-  amountInCents: number;
-  transferId: string;
-  vendorId: string;
-  invuid: string;
-  mruid: string;
-  cuid: string;
-}
-
 export interface PaymentProcessorVerifiedPayload {
   ownerType: 'client' | 'vendor' | null;
   accountId: string;
   verifiedAt: Date;
   vuid?: string;
+  cuid: string;
+}
+
+export interface MaintenanceChargePaidPayload {
+  amountInCents: number;
+  currency?: string;
+  chargeId?: string;
+  pytuid: string;
+  mruid: string;
   cuid: string;
 }
 
@@ -720,6 +815,14 @@ export interface VacateRequestEventPayload {
   leaseId: string;
   reason: string;
   luid: string;
+  cuid: string;
+}
+
+export interface PadDebitInitiatedPayload {
+  tenantId: string; // User _id or Profile _id
+  currency: string;
+  amount: number;
+  pytuid: string;
   cuid: string;
 }
 
@@ -750,12 +853,12 @@ export interface InvoiceOverduePayload {
   cuid: string;
 }
 
-export interface PaymentOverduePayload {
-  paymentType: string;
-  tenantId?: string;
-  pytuid: string;
+export interface DepositRefundFailedPayload {
+  currency: string;
+  leaseId: string;
   amount: number;
-  dueDate: Date;
+  reason: string;
+  pytuid: string;
   cuid: string;
 }
 
@@ -783,14 +886,6 @@ export interface InspectionReviewedPayload {
   cuid: string;
 }
 
-export interface MaintenanceChargePaidPayload {
-  amountInCents: number;
-  chargeId?: string;
-  pytuid: string;
-  mruid: string;
-  cuid: string;
-}
-
 export interface InspectionDisputedPayload {
   disputeNotes: string;
   inspectorUid: string;
@@ -804,14 +899,6 @@ export interface GuestPassCreatedPayload {
   propertyId: string;
   createdBy: string;
   vpuid: string;
-  cuid: string;
-}
-
-export interface PadPreDebitNotificationPayload {
-  currency: string;
-  tenantId: string;
-  amount: number;
-  pytuid: string;
   cuid: string;
 }
 
@@ -862,13 +949,6 @@ export interface MaintenanceFundsAvailablePayload {
   cuid: string;
 }
 
-export interface PadMandateConfirmedPayload {
-  pmAccountId: string;
-  mandateId: string;
-  tenantId: string;
-  cuid: string;
-}
-
 export interface PlanDowngradedPayload {
   disabledFeatures: string[];
   fromPlan: string;
@@ -893,13 +973,6 @@ export interface InspectionCancelledPayload {
 export type GuestPassAcknowledgedPayload = Pick<GuestPassCreatedPayload, 'vpuid' | 'cuid'> & {
   acknowledgedBy: string;
 };
-
-export interface PaymentRefundedPayload {
-  refundAmount: number;
-  chargeId: string;
-  pytuid: string;
-  cuid: string;
-}
 
 export interface UserDisconnectedPayload {
   disconnectedBy: string;

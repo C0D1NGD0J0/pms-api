@@ -16,6 +16,18 @@ export enum PaymentRecordStatus {
   PAID = 'paid',
 }
 
+/**
+ * Machine-readable codes sent as the error response's `code` on payment errors the UI reacts to,
+ * so the frontend doesn't depend on message wording.
+ */
+export enum PaymentErrorCode {
+  VENDOR_PAYOUT_REVERSAL_REQUIRED = 'VENDOR_PAYOUT_REVERSAL_REQUIRED',
+  CHARGE_SELECTION_REQUIRED = 'CHARGE_SELECTION_REQUIRED',
+  CHARGE_ALREADY_SETTLED = 'CHARGE_ALREADY_SETTLED',
+  DEBIT_IN_PROGRESS = 'DEBIT_IN_PROGRESS',
+  AMOUNT_MISMATCH = 'AMOUNT_MISMATCH',
+}
+
 export enum PaymentRecordType {
   SECURITY_DEPOSIT = 'security_deposit',
   DEPOSIT_REFUND = 'deposit_refund',
@@ -33,33 +45,37 @@ export enum PaymentMethod {
 }
 
 export interface IPaymentDocument extends Document {
-  dispute?: {
-    status?: 'open' | 'won' | 'lost' | 'needs_response';
-    resolvedAt?: Date;
-    disputeId?: string;
-    amount?: number;
+  refund?: {
+    vendorTransferReversalId?: string; // maintenance refund that pulled the vendor payout back
+    refundedAt?: Date;
+    refundedBy?: string;
+    amount?: number; // CUMULATIVE refunded cents; status stays PAID until fully refunded
     reason?: string;
-    disputedAt?: Date;
+    gatewayRefundId?: string;
+    failureReason?: string; // last gateway refund failure — cleared when a refund succeeds
+    failedAt?: Date;
   };
   splitInvoices?: {
     invoiceId: string;
     amount: number;
     category: 'rent' | 'fees';
     status: 'pending' | 'paid' | 'failed';
+    applicationFee?: number; // application fee charged on this split's invoice (cents)
     chargeId?: string;
     paidAt?: Date;
   }[];
+  dispute?: {
+    status?: 'open' | 'won' | 'lost' | 'needs_response' | 'under_review' | 'closed';
+    resolvedAt?: Date;
+    disputeId?: string;
+    amount?: number;
+    reason?: string;
+    disputedAt?: Date;
+  };
   managerReview?: {
     reviewedBy?: Types.ObjectId; // User who reviewed/confirmed the payment
     reviewedAt?: Date;
     notes?: string;
-  };
-  refund?: {
-    refundedAt?: Date;
-    refundedBy?: string;
-    amount?: number;
-    reason?: string;
-    gatewayRefundId?: string;
   };
   receipt?: {
     url?: string;
@@ -92,6 +108,7 @@ export interface IPaymentDocument extends Document {
   managerReviewRequired?: boolean; // true for staff-initiated manual entries — PM must confirm
   paymentType: PaymentRecordType;
   maintenanceRequestUid?: string; // mruid — links maintenance expense/charge back to its request
+  cardCheckoutSessionId?: string; // latest card checkout session — expired before a new one is opened
   paymentSource?: PaymentSource;
   paymentMethod: PaymentMethod;
   status: PaymentRecordStatus;
@@ -107,6 +124,7 @@ export interface IPaymentDocument extends Document {
   tenant: Types.ObjectId; // References Profile
   isManualEntry: boolean;
   applicationFee: number; // Platform's application fee in cents (kept by platform; distinct from processingFee which is the Stripe gateway fee)
+  padNoticeSentAt?: Date; // when the PAD (ACSS) pre-debit notice for this record was sent
   invoiceNumber: string;
   processingFee: number;
   description?: string;
@@ -167,6 +185,8 @@ export interface IManualPaymentFormData {
   leaseId?: string;
   tenantId: string;
   unitId?: string; // Unit ID (puid) — used when no lease
+  pytuid?: string; // Open charge to settle; when omitted the service auto-matches one
+  mruid?: string; // Maintenance request the payment is for
   paidAt: Date;
 }
 
@@ -179,6 +199,13 @@ export interface IVendorEarningsResponse {
   };
   pagination: { total: number; page: number; limit: number; pages: number };
   items: IVendorEarningItem[];
+}
+
+export interface IRefundPaymentData {
+  reverseVendorTransfer?: boolean; // Maintenance refunds after the vendor was paid: pull the payout back
+  isManualRelease?: boolean; // When true, skip Stripe and record refund as processed outside the app
+  amount?: number;
+  reason?: string;
 }
 
 export interface IPaymentFormData {
@@ -201,12 +228,6 @@ export interface IVendorEarningItem {
   mruid: string;
   title: string;
   paidAt?: Date;
-}
-
-export interface IRefundPaymentData {
-  isManualRelease?: boolean; // When true, skip Stripe and record refund as processed outside the app
-  amount?: number;
-  reason?: string;
 }
 
 /**

@@ -265,3 +265,158 @@ describe('StripeService.retrieveSetupIntent', () => {
     });
   });
 });
+
+describe('StripeService.getInvoicePaymentDetails', () => {
+  const makeService = (stripe: Record<string, any>) => {
+    const service = new StripeService();
+    (service as any).stripe = stripe;
+    return service;
+  };
+
+  const paymentIntent = {
+    id: 'pi_123',
+    payment_method_types: ['acss_debit', 'card'],
+    last_payment_error: null,
+    latest_charge: {
+      id: 'ch_123',
+      receipt_url: 'https://pay.stripe.com/receipts/ch_123',
+      payment_method_details: { type: 'card' },
+    },
+  };
+
+  it('reads charge and payment_intent from the acacia invoice shape without invalid expands', async () => {
+    const stripe = {
+      invoices: {
+        retrieve: jest.fn().mockResolvedValue({
+          id: 'in_123',
+          charge: 'ch_123',
+          payment_intent: 'pi_123',
+        }),
+      },
+      paymentIntents: { retrieve: jest.fn().mockResolvedValue(paymentIntent) },
+    };
+    const service = makeService(stripe);
+
+    const details = await service.getInvoicePaymentDetails('in_123');
+
+    expect(stripe.invoices.retrieve).toHaveBeenCalledTimes(1);
+    expect(stripe.invoices.retrieve).toHaveBeenCalledWith('in_123');
+    expect(stripe.paymentIntents.retrieve).toHaveBeenCalledWith('pi_123', {
+      expand: ['latest_charge'],
+    });
+    expect(details).toEqual(
+      expect.objectContaining({
+        chargeId: 'ch_123',
+        paymentIntentId: 'pi_123',
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_123',
+        paymentMethodType: 'card',
+      })
+    );
+  });
+
+  it('falls back to the payments sub-object on basil+ invoice shapes', async () => {
+    const stripe = {
+      invoices: {
+        retrieve: jest
+          .fn()
+          .mockResolvedValueOnce({ id: 'in_456', status: 'paid' })
+          .mockResolvedValueOnce({
+            id: 'in_456',
+            payments: {
+              data: [{ payment: { type: 'payment_intent', payment_intent: 'pi_123' } }],
+            },
+          }),
+      },
+      paymentIntents: { retrieve: jest.fn().mockResolvedValue(paymentIntent) },
+    };
+    const service = makeService(stripe);
+
+    const details = await service.getInvoicePaymentDetails('in_456');
+
+    expect(stripe.invoices.retrieve).toHaveBeenNthCalledWith(2, 'in_456', {
+      expand: ['payments'],
+    });
+    expect(details.chargeId).toBe('ch_123');
+    expect(details.paymentIntentId).toBe('pi_123');
+  });
+
+  it('returns the failed payment method type from last_payment_error', async () => {
+    const stripe = {
+      invoices: {
+        retrieve: jest
+          .fn()
+          .mockResolvedValue({ id: 'in_789', charge: null, payment_intent: 'pi_9' }),
+      },
+      paymentIntents: {
+        retrieve: jest.fn().mockResolvedValue({
+          id: 'pi_9',
+          payment_method_types: ['card', 'acss_debit'],
+          latest_charge: null,
+          last_payment_error: {
+            message: 'Insufficient funds',
+            code: 'insufficient_funds',
+            type: 'card_error',
+            payment_method: { type: 'acss_debit' },
+          },
+        }),
+      },
+    };
+    const service = makeService(stripe);
+
+    const details = await service.getInvoicePaymentDetails('in_789');
+
+    expect(details.chargeId).toBeUndefined();
+    expect(details.paymentMethodType).toBe('acss_debit');
+    expect(details.lastPaymentError).toEqual(
+      expect.objectContaining({ message: 'Insufficient funds', code: 'insufficient_funds' })
+    );
+  });
+
+  it('returns the charge id without a PaymentIntent lookup when the invoice has no payment intent', async () => {
+    const stripe = {
+      invoices: {
+        retrieve: jest.fn().mockResolvedValue({ id: 'in_1', charge: 'ch_9', payment_intent: null }),
+      },
+      paymentIntents: { retrieve: jest.fn() },
+    };
+    const service = makeService(stripe);
+
+    await expect(service.getInvoicePaymentDetails('in_1')).resolves.toEqual({ chargeId: 'ch_9' });
+    expect(stripe.paymentIntents.retrieve).not.toHaveBeenCalled();
+  });
+
+  it('returns an empty object when Stripe errors', async () => {
+    const stripe = {
+      invoices: { retrieve: jest.fn().mockRejectedValue(new Error('boom')) },
+      paymentIntents: { retrieve: jest.fn() },
+    };
+    const service = makeService(stripe);
+
+    await expect(service.getInvoicePaymentDetails('in_x')).resolves.toEqual({});
+  });
+});
+
+describe('StripeService.getInvoiceIdForPaymentIntent', () => {
+  it('returns the invoice id from the PaymentIntent (string or expanded)', async () => {
+    const service = new StripeService();
+    const retrieve = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 'pi_1', invoice: 'in_1' })
+      .mockResolvedValueOnce({ id: 'pi_2', invoice: { id: 'in_2' } })
+      .mockResolvedValueOnce({ id: 'pi_3', invoice: null });
+    (service as any).stripe = { paymentIntents: { retrieve } };
+
+    await expect(service.getInvoiceIdForPaymentIntent('pi_1')).resolves.toBe('in_1');
+    await expect(service.getInvoiceIdForPaymentIntent('pi_2')).resolves.toBe('in_2');
+    await expect(service.getInvoiceIdForPaymentIntent('pi_3')).resolves.toBeNull();
+  });
+
+  it('returns null when Stripe errors', async () => {
+    const service = new StripeService();
+    (service as any).stripe = {
+      paymentIntents: { retrieve: jest.fn().mockRejectedValue(new Error('nope')) },
+    };
+
+    await expect(service.getInvoiceIdForPaymentIntent('pi_x')).resolves.toBeNull();
+  });
+});

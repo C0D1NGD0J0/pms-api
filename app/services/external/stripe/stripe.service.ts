@@ -1122,6 +1122,16 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
+  async expireCheckoutSession(sessionId: string): Promise<{ status: string | null }> {
+    const session = await this.withBreaker(() => this.stripe.checkout.sessions.retrieve(sessionId));
+    if (session.status !== 'open') {
+      return { status: session.status };
+    }
+    const expired = await this.withBreaker(() => this.stripe.checkout.sessions.expire(sessionId));
+    this.log.info({ sessionId }, 'Expired checkout session');
+    return { status: expired.status };
+  }
+
   async createPaymentCheckoutSession(params: {
     customerEmail: string;
     customerId?: string;
@@ -1198,9 +1208,12 @@ export class StripeService implements IPaymentProvider {
   }
 
   /**
-   * Retrieve payment details for a Stripe invoice by expanding the payments
-   * sub-object. Since API v2025-03-31.basil, `charge` and `payment_intent`
-   * were removed from the Invoice top-level and moved into `payments.data[]`.
+   * Retrieve charge / PaymentIntent details for a Stripe invoice.
+   *
+   * The client is pinned to API `2025-02-24.acacia`, where the Invoice exposes
+   * `charge` and `payment_intent` at the top level (the `payments` sub-object
+   * does not exist and cannot be expanded). Newer versions (basil+) moved them
+   * into `payments.data[].payment`, so that shape is read as a fallback.
    */
   async getInvoicePaymentDetails(invoiceId: string): Promise<{
     chargeId?: string;
@@ -1215,49 +1228,82 @@ export class StripeService implements IPaymentProvider {
     paymentMethodType?: string;
   }> {
     try {
-      const invoice = await this.stripe.invoices.retrieve(invoiceId, {
-        expand: ['payments.data.payment.payment_intent'],
+      const invoice = (await this.stripe.invoices.retrieve(invoiceId)) as Record<string, any> &
+        Stripe.Invoice;
+
+      let paymentIntentId = this.extractStripeObjectId(invoice.payment_intent);
+      let chargeId = this.extractStripeObjectId(invoice.charge);
+
+      const usesInvoicePaymentsShape = !('payment_intent' in invoice) && !('charge' in invoice);
+      if (!paymentIntentId && !chargeId && usesInvoicePaymentsShape) {
+        const invoiceWithPayments = (await this.stripe.invoices.retrieve(invoiceId, {
+          expand: ['payments'],
+        })) as Record<string, any>;
+        const firstPayment = invoiceWithPayments.payments?.data?.[0]?.payment;
+        paymentIntentId = this.extractStripeObjectId(firstPayment?.payment_intent);
+        chargeId = this.extractStripeObjectId(firstPayment?.charge);
+      }
+
+      if (!paymentIntentId) {
+        return { ...(chargeId && { chargeId }) };
+      }
+
+      const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+        expand: ['latest_charge'],
       });
+      const latestCharge =
+        paymentIntent.latest_charge && typeof paymentIntent.latest_charge === 'object'
+          ? paymentIntent.latest_charge
+          : null;
+      chargeId = chargeId ?? this.extractStripeObjectId(paymentIntent.latest_charge);
 
-      const firstPayment = (invoice as any).payments?.data?.[0];
-      const pi = firstPayment?.payment?.payment_intent;
-      const piObj = pi && typeof pi === 'object' ? pi : undefined;
-      const paymentIntentId = typeof pi === 'string' ? pi : piObj?.id;
-
-      // Extract charge ID from expanded PaymentIntent
-      let chargeId: string | undefined;
-      if (piObj?.latest_charge) {
-        chargeId =
-          typeof piObj.latest_charge === 'string' ? piObj.latest_charge : piObj.latest_charge.id;
-      }
-
-      // Fallback: if expansion didn't yield a charge (e.g. pi was a string),
-      // retrieve the PaymentIntent directly to get latest_charge.
-      if (!chargeId && paymentIntentId) {
-        try {
-          const piDirect = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
-            expand: ['latest_charge'],
-          });
-          const charge = piDirect.latest_charge as Stripe.Charge | null;
-          chargeId =
-            charge?.id ??
-            (typeof piDirect.latest_charge === 'string' ? piDirect.latest_charge : undefined);
-        } catch (err) {
-          this.log.warn({ err, paymentIntentId }, 'Fallback PaymentIntent retrieve failed');
-        }
-      }
+      const lastPaymentError = paymentIntent.last_payment_error
+        ? {
+            message: paymentIntent.last_payment_error.message,
+            code: paymentIntent.last_payment_error.code,
+            type: paymentIntent.last_payment_error.type,
+            payment_method: { type: paymentIntent.last_payment_error.payment_method?.type },
+          }
+        : undefined;
 
       return {
         chargeId,
         paymentIntentId,
-        lastPaymentError: piObj?.last_payment_error ?? undefined,
+        receiptUrl: latestCharge?.receipt_url ?? undefined,
+        lastPaymentError,
         paymentMethodType:
-          piObj?.last_payment_error?.payment_method?.type ?? piObj?.payment_method_types?.[0],
+          latestCharge?.payment_method_details?.type ??
+          lastPaymentError?.payment_method?.type ??
+          paymentIntent.payment_method_types?.[0],
       };
     } catch (error) {
       this.log.warn({ error, invoiceId }, 'Could not retrieve invoice payment details');
       return {};
     }
+  }
+
+  /**
+   * Resolve the invoice a PaymentIntent belongs to. Used when a Charge webhook
+   * payload has no `invoice` field (basil+ endpoint versions). Retrieval runs on
+   * the pinned acacia version, where PaymentIntent still exposes `invoice`.
+   */
+  async getInvoiceIdForPaymentIntent(paymentIntentId: string): Promise<string | null> {
+    try {
+      const paymentIntent = (await this.stripe.paymentIntents.retrieve(
+        paymentIntentId
+      )) as Stripe.PaymentIntent & Record<string, any>;
+      return this.extractStripeObjectId(paymentIntent.invoice) ?? null;
+    } catch (error) {
+      this.log.warn({ error, paymentIntentId }, 'Could not resolve invoice for PaymentIntent');
+      return null;
+    }
+  }
+
+  private extractStripeObjectId(
+    value: string | { id?: string } | null | undefined
+  ): string | undefined {
+    if (!value) return undefined;
+    return typeof value === 'string' ? value : value.id;
   }
 
   async retrievePaymentMethod(paymentMethodId: string): Promise<{

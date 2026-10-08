@@ -142,17 +142,22 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
     }
   }
 
-  /** @internal Cron method — returns past-due payments, optionally scoped to specific clients. */
+  /**
+   * @internal Cron method — returns past-due payments, optionally scoped to specific clients.
+   * `dueBefore` is the cutoff (exclusive) — pass the start of the client's local "today" so a
+   * payment isn't treated as past due on its own due date. Defaults to now.
+   */
   async findOverduePayments(
     extraFilter?: Record<string, any>,
-    pagination?: { limit?: number; skip?: number }
+    pagination?: { limit?: number; skip?: number },
+    dueBefore?: Date
   ): ListResultWithPagination<IPaymentDocument[]> {
     try {
       return await this.list(
         {
           status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
-          dueDate: { $lt: dayjs().toDate() },
-          'dispute.status': { $nin: ['open', 'needs_response'] },
+          dueDate: { $lt: dueBefore ?? dayjs().toDate() },
+          'dispute.status': { $nin: ['open', 'needs_response', 'under_review'] },
           deletedAt: null,
           ...extraFilter,
         },
@@ -418,22 +423,52 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       ...propertyFilterStages,
       {
         $facet: {
+          // Collected revenue: verified PAID records net of partial refunds. Deposit refunds are
+          // money paid out, and unreviewed staff manual entries aren't verified yet.
           revenue: [
-            { $match: { status: PaymentRecordStatus.PAID } },
+            {
+              $match: {
+                status: PaymentRecordStatus.PAID,
+                paymentType: { $ne: PaymentRecordType.DEPOSIT_REFUND },
+                managerReviewRequired: { $ne: true },
+              },
+            },
+            {
+              $addFields: {
+                netAmount: {
+                  $subtract: [
+                    '$baseAmount',
+                    { $min: [{ $ifNull: ['$refund.amount', 0] }, '$baseAmount'] },
+                  ],
+                },
+              },
+            },
             {
               $group: {
                 _id: '$currency',
-                totalRevenue: { $sum: '$baseAmount' },
+                totalRevenue: { $sum: '$netAmount' },
                 monthRevenue: {
                   $sum: {
-                    $cond: [{ $gte: ['$paidAt', monthStart] }, '$baseAmount', 0],
+                    $cond: [{ $gte: ['$paidAt', monthStart] }, '$netAmount', 0],
                   },
                 },
               },
             },
           ],
+          // Unreviewed staff manual entries are expected but not yet collected
           pending: [
-            { $match: { status: PaymentRecordStatus.PENDING } },
+            {
+              $match: {
+                $or: [
+                  { status: PaymentRecordStatus.PENDING },
+                  {
+                    status: PaymentRecordStatus.PAID,
+                    managerReviewRequired: true,
+                    paymentType: { $ne: PaymentRecordType.DEPOSIT_REFUND },
+                  },
+                ],
+              },
+            },
             { $group: { _id: '$currency', pendingAmount: { $sum: '$baseAmount' } } },
           ],
           // Count payments that are overdue by status OR pending/failed with past due date

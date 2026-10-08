@@ -5,6 +5,7 @@ import { IPaymentGatewayProvider } from './subscription.interface';
 export interface IPaymentProvider {
   getInvoicePaymentDetails(invoiceId: string): Promise<{
     chargeId?: string;
+    receiptUrl?: string;
     paymentIntentId?: string;
     lastPaymentError?: {
       message?: string;

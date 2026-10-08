@@ -70,6 +70,11 @@ const setupService = () => {
   } as any;
 
   const maintenanceInvoiceService = new MaintenanceInvoiceService({
+    maintenancePaymentService: {
+      quoteTenantMaintenanceCharge: jest.fn((_cuid: string, amount: number) =>
+        Promise.resolve({ serviceFeeCents: 0, totalAmount: amount })
+      ),
+    } as any,
     maintenanceRequestDAO,
     emitterService,
     invoiceDAO,
@@ -181,6 +186,27 @@ describe('MaintenanceRequestService', () => {
       expect(result.data.mruid).toBeDefined();
       expect(result.data.status).toBe(MaintenanceRequestStatus.OPEN);
       expect(result.data.propertyId.toString()).toBe(property._id.toString());
+    });
+
+    it("should set managedBy from the property's manager", async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const service = setupService();
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+
+      const result = await service.createRequest(ctx, {
+        pid: property.pid,
+        title: 'Broken window latch',
+        description: { text: 'The living room window latch no longer closes' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid: result.data.mruid }).lean();
+      expect(stored?.managedBy?.toString()).toBe(property.managedBy?.toString());
     });
 
     it('should create a maintenance request with pid and puid', async () => {
@@ -629,6 +655,34 @@ describe('MaintenanceRequestService', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.scheduledDate).toBeDefined();
+    });
+
+    it('should store estimatedCost in cents when given dollars', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+
+      const created = await service.createRequest(ctx, {
+        pid: property.pid,
+        title: 'Vendor assignment with budget',
+        description: { text: 'Request assigned with an estimated budget in dollars' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+
+      await service.assignVendor(ctx, created.data.mruid, {
+        vuid: vendorRecord.vuid,
+        estimatedCost: 250.5,
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid: created.data.mruid }).lean();
+      expect(stored?.estimatedCost).toBe(25050);
     });
   });
 

@@ -5,15 +5,21 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { EventEmitterService } from '@services/eventEmitter';
-import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { PlanName } from '@interfaces/subscription.interface';
 import { SMSService } from '@services/smsService/sms.service';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
+import { IInvoiceDocument, InvoiceStatus } from '@interfaces/invoice.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import { IMaintenanceRequestDocument } from '@interfaces/maintenanceRequest.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import { MaintenanceInvoiceApprovedPayload, EventTypes } from '@interfaces/events.interface';
 import {
+  MaintenanceInvoiceApprovedPayload,
+  MaintenanceChargeSkippedPayload,
+  EventTypes,
+} from '@interfaces/events.interface';
+import {
+  MaintenanceRequestDAO,
   PaymentProcessorDAO,
   SubscriptionDAO,
   PaymentDAO,
@@ -33,8 +39,20 @@ import {
   PaymentMethod,
 } from '@interfaces/index';
 
+const LIVE_MAINTENANCE_CHARGE_STATUSES = [
+  PaymentRecordStatus.PENDING,
+  PaymentRecordStatus.OVERDUE,
+  PaymentRecordStatus.PROCESSING,
+  PaymentRecordStatus.PAID,
+];
+
+// A payout claim older than this is assumed to belong to a crashed attempt and may be
+// re-claimed; the Stripe idempotency key makes the retried transfer safe.
+const STALE_VENDOR_PAYOUT_CLAIM_MS = 15 * 60 * 1000;
+
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
+  maintenanceRequestDAO: MaintenanceRequestDAO;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
@@ -53,6 +71,7 @@ export class MaintenancePaymentService {
   private readonly log: Logger;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
+  private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
@@ -66,6 +85,7 @@ export class MaintenancePaymentService {
   private readonly userDAO: UserDAO;
 
   constructor({
+    maintenanceRequestDAO,
     paymentGatewayService,
     paymentProcessorDAO,
     subscriptionPlanConfig,
@@ -83,6 +103,7 @@ export class MaintenancePaymentService {
     this.log = createLogger('MaintenancePaymentService');
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
+    this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
@@ -111,32 +132,72 @@ export class MaintenancePaymentService {
   handleMaintenanceInvoiceApproved = async (
     payload: MaintenanceInvoiceApprovedPayload
   ): Promise<void> => {
-    if (payload.isBillable && payload.tenantId) {
-      try {
-        await this.createMaintenanceCharge(payload);
-      } catch (err: unknown) {
-        this.log.error(
-          { err, mruid: payload.mruid, cuid: payload.cuid },
-          '[MaintenancePaymentService] Failed to create tenant maintenance charge'
-        );
-      }
+    if (!payload.isBillable) return;
+
+    if (!payload.tenantId) {
+      this.reportSkippedCharge(payload, 'no_tenant');
+      return;
+    }
+
+    try {
+      await this.createMaintenanceCharge(payload);
+    } catch (err: unknown) {
+      this.log.error(
+        { err, mruid: payload.mruid, cuid: payload.cuid },
+        '[MaintenancePaymentService] Failed to create tenant maintenance charge'
+      );
     }
   };
 
+  private reportSkippedCharge(
+    payload: MaintenanceInvoiceApprovedPayload,
+    reason: MaintenanceChargeSkippedPayload['reason']
+  ): void {
+    this.log.warn(
+      { mruid: payload.mruid, cuid: payload.cuid, reason },
+      '[MaintenancePaymentService] Billable invoice approved but no tenant charge was created — PM must bill manually'
+    );
+    this.emitterService.emit(EventTypes.MAINTENANCE_CHARGE_SKIPPED, {
+      reason,
+      notifyUserId: payload.approvedBy,
+      amountInCents: payload.amount,
+      currency: payload.currency,
+      title: payload.title,
+      mruid: payload.mruid,
+      cuid: payload.cuid,
+    });
+  }
+
   /**
-   * PM-initiated charge: creates a PENDING payment record linking the tenant to
-   * a specific maintenance request.
+   * Creates a PENDING tenant charge for an approved, billable maintenance invoice.
+   * Used by the PM endpoint, the tenant "ensure" endpoint and lease-expiry offboarding.
+   * The amount is always derived from the approved invoice (+ service fee) — any
+   * caller-supplied amount is ignored.
    */
   async chargeForMaintenance(
     cuid: string,
     currentUserId: string,
-    body: { mruid: string; tenantId: string; amount: number; description?: string }
+    body: { mruid: string; tenantId: string; amount?: number; description?: string }
   ): IPromiseReturnedData<IPaymentDocument> {
-    const { mruid, tenantId, amount, description } = body;
+    const { mruid, tenantId, description } = body;
 
     const client = await this.clientDAO.findFirst({ cuid });
     if (!client) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+
+    const { maintenanceRequest, invoice } = await this.getBillableRequestWithApprovedInvoice(
+      cuid,
+      mruid
+    );
+    await this.assertTenantCanBeBilledForRequest(cuid, tenantId, maintenanceRequest);
+
+    const amount = invoice.amountInCents;
+    if (body.amount !== undefined && body.amount !== amount) {
+      this.log.warn(
+        { mruid, cuid, requestedAmount: body.amount, invoiceAmount: amount },
+        '[MaintenancePaymentService] Ignoring caller-supplied amount — charging the approved invoice amount'
+      );
     }
 
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
@@ -174,13 +235,7 @@ export class MaintenancePaymentService {
       });
     }
 
-    const existingCharge = await this.paymentDAO.findFirst({
-      cuid,
-      maintenanceRequestUid: mruid,
-      paymentType: PaymentRecordType.MAINTENANCE,
-      vendorId: { $exists: false },
-      deletedAt: null,
-    });
+    const existingCharge = await this.findLiveTenantCharge(cuid, mruid);
     if (existingCharge) {
       this.log.warn(
         { mruid, cuid },
@@ -195,7 +250,8 @@ export class MaintenancePaymentService {
         tenantId,
         amount,
         planName: subscription.planName,
-        vendorLineItems: [{ description: 'Maintenance Service', amountInCents: amount }],
+        vendorLineItems: this.toVendorLineItems(invoice.lineItems, amount),
+        invoiceCurrency: invoice.currency,
       });
 
     const payment = await this.paymentDAO.insert({
@@ -218,10 +274,145 @@ export class MaintenancePaymentService {
 
     this.log.info(
       { mruid, amount, cuid, dueDate },
-      '[MaintenancePaymentService] PM-initiated maintenance charge created'
+      '[MaintenancePaymentService] Maintenance charge created from approved invoice'
     );
 
+    // Tell the tenant before any auto-charge can run (the overdue auto-charge cron
+    // only acts after dueDate).
+    this.emitterService.emit(EventTypes.MAINTENANCE_CHARGE_CREATED, {
+      pytuid: payment.pytuid,
+      tenantId,
+      amountInCents: totalAmount,
+      serviceFeeInCents: serviceFeeCents,
+      currency,
+      mruid,
+      title: maintenanceRequest.title,
+      cuid,
+      dueDate,
+    });
+
     return { success: true, data: payment };
+  }
+
+  /**
+   * Returns the service fee and tenant total for a maintenance invoice amount so the
+   * tenant can be quoted exactly what they will be charged.
+   */
+  async quoteTenantMaintenanceCharge(
+    cuid: string,
+    invoiceAmountInCents: number
+  ): Promise<{ serviceFeeCents: number; totalAmount: number }> {
+    const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
+    return this.calculateServiceFee(invoiceAmountInCents, subscription?.planName ?? 'essential');
+  }
+
+  private calculateServiceFee(
+    amount: number,
+    planName: PlanName
+  ): { serviceFeeCents: number; totalAmount: number } {
+    const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(planName);
+    const serviceFeeCents = Math.round((amount * transactionFeePercent) / 100);
+    return { serviceFeeCents, totalAmount: amount + serviceFeeCents };
+  }
+
+  /**
+   * A charge "exists" only when it is still live — cancelled, refunded or failed
+   * charges must not block a fresh charge for the same request.
+   */
+  private async findLiveTenantCharge(
+    cuid: string,
+    mruid: string
+  ): Promise<IPaymentDocument | null> {
+    return this.paymentDAO.findFirst({
+      cuid,
+      maintenanceRequestUid: mruid,
+      paymentType: PaymentRecordType.MAINTENANCE,
+      vendorId: { $exists: false },
+      status: { $in: LIVE_MAINTENANCE_CHARGE_STATUSES },
+      deletedAt: null,
+    });
+  }
+
+  private async getBillableRequestWithApprovedInvoice(
+    cuid: string,
+    mruid: string
+  ): Promise<{ maintenanceRequest: IMaintenanceRequestDocument; invoice: IInvoiceDocument }> {
+    const maintenanceRequest = await this.maintenanceRequestDAO.getByMruid(mruid, cuid);
+    if (!maintenanceRequest) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'Maintenance request' }),
+      });
+    }
+    if (!maintenanceRequest.isBillable) {
+      throw new BadRequestError({
+        message: 'This maintenance request is not billable to the tenant.',
+      });
+    }
+
+    const invoice = await this.invoiceDAO.findByMaintenanceRequest(mruid, cuid);
+    if (!invoice || invoice.status !== InvoiceStatus.APPROVED) {
+      throw new BadRequestError({
+        message: 'An approved invoice is required before the tenant can be charged.',
+      });
+    }
+    if (!invoice.amountInCents || invoice.amountInCents <= 0) {
+      throw new BadRequestError({ message: 'The approved invoice has no chargeable amount.' });
+    }
+
+    return { maintenanceRequest, invoice };
+  }
+
+  /**
+   * The billed tenant must be the request's tenant, or a tenant leased on the
+   * request's property/unit (PM may bill another occupant), and must belong to this client.
+   */
+  private async assertTenantCanBeBilledForRequest(
+    cuid: string,
+    tenantId: string,
+    maintenanceRequest: IMaintenanceRequestDocument
+  ): Promise<void> {
+    if (!Types.ObjectId.isValid(tenantId)) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Tenant' }) });
+    }
+
+    const tenantUser = await this.userDAO.findFirst({
+      _id: new Types.ObjectId(tenantId),
+      'cuids.cuid': cuid,
+      deletedAt: null,
+    });
+    if (!tenantUser) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Tenant' }) });
+    }
+
+    const isRequestTenant = maintenanceRequest.tenantId?.toString() === tenantId;
+    if (isRequestTenant) return;
+
+    const leaseOnRequestProperty = await this.leaseDAO.findFirst({
+      cuid,
+      tenantId: new Types.ObjectId(tenantId),
+      'property.id': maintenanceRequest.propertyId,
+      ...(maintenanceRequest.propertyUnitId && {
+        'property.unitId': maintenanceRequest.propertyUnitId,
+      }),
+      deletedAt: null,
+    });
+    if (!leaseOnRequestProperty) {
+      throw new ForbiddenError({
+        message: 'This tenant is not associated with the maintenance request.',
+      });
+    }
+  }
+
+  private toVendorLineItems(
+    invoiceLineItems: { description: string; amountInCents: number }[] | undefined,
+    amount: number
+  ): { description: string; amountInCents: number }[] {
+    return invoiceLineItems?.length
+      ? invoiceLineItems.map((item) => ({
+          description: item.description,
+          amountInCents: item.amountInCents,
+        }))
+      : [{ description: 'Maintenance Service', amountInCents: amount }];
   }
 
   /**
@@ -247,6 +438,9 @@ export class MaintenancePaymentService {
         throw new BadRequestError({
           message: t('common.errors.alreadyInState', { resource: 'Vendor payout', state: 'paid' }),
         });
+      }
+      if (invoice.vendorPayoutStatus === 'processing' && !this.isStalePayoutClaim(invoice)) {
+        throw new BadRequestError({ message: 'A vendor payout for this invoice is in progress.' });
       }
 
       const pmProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
@@ -343,30 +537,58 @@ export class MaintenancePaymentService {
         });
       }
 
+      // Partial refunds keep the charge PAID — pay out only while the funds still held
+      // on the charge cover the vendor invoice.
+      const refundedAmount = paymentRecord.refund?.amount ?? 0;
+      const retainedAmount = (paymentRecord.baseAmount ?? 0) - refundedAmount;
+      if (refundedAmount > 0 && retainedAmount < invoice.amountInCents) {
+        throw new BadRequestError({
+          message:
+            'The tenant charge has been refunded below the vendor invoice amount. Resolve the refund before paying the vendor.',
+        });
+      }
+
+      const invoiceId = (invoice as any)._id.toString();
+      const claimedInvoice = await this.claimInvoiceForPayout(invoiceId);
+      if (!claimedInvoice) {
+        throw new BadRequestError({
+          message: 'A vendor payout for this invoice is in progress or already completed.',
+        });
+      }
+
       // Transfer vendor amount from platform to vendor's Connect account.
       // source_transaction links to the tenant's charge so Stripe earmarks the funds
       // and queues the transfer if the charge hasn't fully settled yet.
-      const transferResult = await this.paymentGatewayService.createTransfer(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          amountInCents: invoice.amountInCents,
-          currency,
-          destination: vendorProcessor.accountId,
-          sourceTransaction: paymentRecord.gatewayChargeId,
-          metadata: { cuid, mruid, invuid: invoice.invuid },
-        }
-      );
+      let transferResult: Awaited<ReturnType<PaymentGatewayService['createTransfer']>>;
+      try {
+        transferResult = await this.paymentGatewayService.createTransfer(
+          IPaymentGatewayProvider.STRIPE,
+          {
+            amountInCents: invoice.amountInCents,
+            currency,
+            destination: vendorProcessor.accountId,
+            sourceTransaction: paymentRecord.gatewayChargeId,
+            metadata: { cuid, mruid, invuid: invoice.invuid },
+            idempotencyKey: `vendor-payout:${invoice.invuid}`,
+          }
+        );
+      } catch (transferError) {
+        await this.releasePayoutClaim(invoiceId);
+        throw transferError;
+      }
       if (!transferResult.success || !transferResult.data) {
+        await this.releasePayoutClaim(invoiceId);
         throw new Error(transferResult.message || 'Failed to transfer funds to vendor.');
       }
 
       // Invoice is the single source of truth for vendor payout state
-      await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
+      await this.invoiceDAO.updateById(invoiceId, {
         $set: {
           vendorPayoutStatus: 'paid',
           vendorPaidAt: new Date(),
           vendorPayoutTransferId: transferResult.data.transferId,
         },
+        $unset: { vendorPayoutClaimedAt: 1 },
       });
 
       this.emitterService.emit(EventTypes.MAINTENANCE_VENDOR_PAID, {
@@ -402,16 +624,54 @@ export class MaintenancePaymentService {
     }
   }
 
+  /**
+   * Atomically moves the invoice payout from pending → processing so two concurrent
+   * payout attempts (PM click + auto-payout cron) cannot both transfer. A stale
+   * processing claim (crashed attempt) may be re-claimed.
+   */
+  private async claimInvoiceForPayout(invoiceId: string): Promise<IInvoiceDocument | null> {
+    const staleClaimCutoff = new Date(Date.now() - STALE_VENDOR_PAYOUT_CLAIM_MS);
+    return this.invoiceDAO.update(
+      {
+        _id: new Types.ObjectId(invoiceId),
+        status: InvoiceStatus.APPROVED,
+        $or: [
+          { vendorPayoutStatus: 'pending' },
+          { vendorPayoutStatus: { $exists: false } },
+          { vendorPayoutStatus: null },
+          { vendorPayoutStatus: 'processing', vendorPayoutClaimedAt: { $lt: staleClaimCutoff } },
+          { vendorPayoutStatus: 'processing', vendorPayoutClaimedAt: null },
+        ],
+      },
+      { $set: { vendorPayoutStatus: 'processing', vendorPayoutClaimedAt: new Date() } }
+    );
+  }
+
+  private async releasePayoutClaim(invoiceId: string): Promise<void> {
+    try {
+      await this.invoiceDAO.update(
+        { _id: new Types.ObjectId(invoiceId), vendorPayoutStatus: 'processing' },
+        { $set: { vendorPayoutStatus: 'pending' }, $unset: { vendorPayoutClaimedAt: 1 } }
+      );
+    } catch (err) {
+      this.log.error(
+        { err, invoiceId },
+        '[MaintenancePaymentService] Failed to release vendor payout claim'
+      );
+    }
+  }
+
+  private isStalePayoutClaim(invoice: IInvoiceDocument): boolean {
+    if (!invoice.vendorPayoutClaimedAt) return true;
+    return (
+      Date.now() - new Date(invoice.vendorPayoutClaimedAt).getTime() > STALE_VENDOR_PAYOUT_CLAIM_MS
+    );
+  }
+
   private async createMaintenanceCharge(payload: MaintenanceInvoiceApprovedPayload): Promise<void> {
     const { cuid, mruid, tenantId, amount, approvedBy, title } = payload;
 
-    const existing = await this.paymentDAO.findFirst({
-      cuid,
-      maintenanceRequestUid: mruid,
-      paymentType: PaymentRecordType.MAINTENANCE,
-      vendorId: { $exists: false },
-      deletedAt: null,
-    });
+    const existing = await this.findLiveTenantCharge(cuid, mruid);
     if (existing) {
       this.log.warn(
         { mruid, cuid },
@@ -422,20 +682,12 @@ export class MaintenancePaymentService {
 
     const tenantProfile = await this.profileDAO.getProfileByUserId(tenantId!);
     if (!tenantProfile) {
-      this.log.warn(
-        { mruid, tenantId },
-        '[MaintenancePaymentService] Skipping maintenance charge: tenant profile not found'
-      );
+      this.reportSkippedCharge(payload, 'tenant_profile_not_found');
       return;
     }
 
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     const planName = subscription?.planName ?? 'essential';
-
-    const vendorItems: { description: string; amountInCents: number }[] = payload.invoiceLineItems
-      ?.length
-      ? payload.invoiceLineItems
-      : [{ description: 'Maintenance Service', amountInCents: amount }];
 
     const { totalAmount, serviceFeeCents, lineItems, currency, dueDate } =
       await this.buildMaintenanceChargeSetup({
@@ -443,7 +695,7 @@ export class MaintenancePaymentService {
         tenantId: tenantId!,
         amount,
         planName,
-        vendorLineItems: vendorItems,
+        vendorLineItems: this.toVendorLineItems(payload.invoiceLineItems, amount),
         invoiceCurrency: payload.currency,
       });
 
@@ -474,6 +726,7 @@ export class MaintenancePaymentService {
       pytuid: record.pytuid,
       tenantId: tenantId!,
       amountInCents: totalAmount,
+      serviceFeeInCents: serviceFeeCents,
       currency,
       mruid,
       title,
@@ -506,9 +759,7 @@ export class MaintenancePaymentService {
     // Invoice currency takes priority — it's the currency the vendor invoiced in
     const currency = invoiceCurrency || activeLease?.fees?.currency || 'USD';
 
-    const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(planName);
-    const serviceFeeCents = Math.round((amount * transactionFeePercent) / 100);
-    const totalAmount = amount + serviceFeeCents;
+    const { serviceFeeCents, totalAmount } = this.calculateServiceFee(amount, planName);
 
     const lineItems = [
       ...vendorLineItems,

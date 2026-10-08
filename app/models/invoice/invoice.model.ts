@@ -106,8 +106,12 @@ const InvoiceSchema = new Schema<IInvoiceDocument>(
     },
     vendorPayoutStatus: {
       type: String,
-      enum: ['pending', 'paid'],
+      enum: ['pending', 'processing', 'paid'],
       default: 'pending',
+    },
+    vendorPayoutClaimedAt: {
+      type: Date,
+      default: null,
     },
     tenantPaymentStatus: {
       type: String,

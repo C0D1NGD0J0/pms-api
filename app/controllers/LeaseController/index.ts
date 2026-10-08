@@ -60,7 +60,6 @@ export class LeaseController {
       'terminated',
       'cancelled',
       'expired',
-      'renewed',
       'active',
       'draft',
     ]);

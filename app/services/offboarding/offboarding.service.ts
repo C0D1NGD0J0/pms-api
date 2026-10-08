@@ -21,7 +21,6 @@ import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { LEASE_CONSTANTS, createLogger, toId } from '@utils/index';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
@@ -30,6 +29,7 @@ import { buildSystemRequestContext, getSystemBotUserId } from '@utils/systemBot'
 import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
 import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { InspectionApprovedPayload, EventTypes } from '@interfaces/events.interface';
+import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { IPromiseReturnedData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import {
@@ -413,8 +413,9 @@ export class OffboardingService {
    * Close all open (non-completed, non-cancelled) service requests tied to a
    * tenant + property when their lease expires or is terminated.
    *
-   * For billable SRs with an approved invoice, an auto-charge is attempted first
-   * so the PM doesn't lose revenue. All remaining open SRs are then bulk-cancelled.
+   * SRs with an approved invoice or an existing maintenance charge are left open for
+   * completion (billable approved work is auto-charged first so the PM doesn't lose
+   * revenue). All remaining open SRs are bulk-cancelled.
    */
   private async closeOpenServiceRequests(
     cuid: string,
@@ -454,23 +455,29 @@ export class OffboardingService {
         mrCount: items.length,
       });
 
-      // For billable SRs with approved invoices, ensure charges exist. The charge is recorded
-      // by the system bot (chargeForMaintenance needs a real user ObjectId, not 'system').
-      // An SR whose charge fails stays open so the PM can still bill the approved work.
+      // SRs with approved work (approved invoice) or money already attached (a non-cancelled
+      // maintenance charge/payout) stay open for completion — cancelling them would orphan
+      // paid or payable charges. Billable approved work is charged first so the PM doesn't
+      // lose revenue; the charge is recorded by the system bot (chargeForMaintenance needs a
+      // real user ObjectId, not 'system').
+      const chargedMruids = await this.findMruidsWithMaintenanceCharges(
+        cuid,
+        items.map((sr: any) => sr.mruid)
+      );
       const systemBotId = await getSystemBotUserId();
-      const unchargedSrIds = new Set<string>();
+      const keptOpenSrIds = new Set<string>();
       for (const sr of items) {
         const invoice = sr.invoice ?? (sr as any).invoiceId;
-        if (
-          sr.isBillable &&
-          invoice?.status === InvoiceStatus.APPROVED &&
-          invoice.amountInCents > 0
-        ) {
+        const hasApprovedInvoice = invoice?.status === InvoiceStatus.APPROVED;
+        if (hasApprovedInvoice || chargedMruids.has(sr.mruid)) {
+          keptOpenSrIds.add(sr._id.toString());
+        }
+
+        if (sr.isBillable && hasApprovedInvoice && invoice.amountInCents > 0) {
           if (!systemBotId) {
             this.log.error('System bot user missing — cannot auto-charge SR; leaving it open', {
               mruid: sr.mruid,
             });
-            unchargedSrIds.add(sr._id.toString());
             continue;
           }
           try {
@@ -493,14 +500,13 @@ export class OffboardingService {
               mruid: sr.mruid,
               error: chargeError.message,
             });
-            unchargedSrIds.add(sr._id.toString());
           }
         }
       }
 
-      // Bulk cancel the open SRs, except billable ones whose charge could not be created
+      // Bulk cancel the open SRs that have no approved work or money attached
       const srIds = items
-        .filter((sr: any) => !unchargedSrIds.has(sr._id.toString()))
+        .filter((sr: any) => !keptOpenSrIds.has(sr._id.toString()))
         .map((sr: any) => sr._id);
       if (srIds.length > 0) {
         await this.maintenanceRequestDAO.updateMany(
@@ -518,7 +524,7 @@ export class OffboardingService {
         cuid,
         tenantId,
         count: srIds.length,
-        leftOpenForBilling: unchargedSrIds.size,
+        leftOpenForCompletion: keptOpenSrIds.size,
       });
     } catch (error) {
       this.log.error('Error closing open service requests on lease expiry', {
@@ -527,6 +533,26 @@ export class OffboardingService {
         tenantId,
       });
     }
+  }
+
+  private async findMruidsWithMaintenanceCharges(
+    cuid: string,
+    mruids: string[]
+  ): Promise<Set<string>> {
+    if (mruids.length === 0) return new Set();
+    const charges = await this.paymentDAO.list(
+      {
+        cuid,
+        maintenanceRequestUid: { $in: mruids },
+        paymentType: PaymentRecordType.MAINTENANCE,
+        status: { $ne: PaymentRecordStatus.CANCELLED },
+        deletedAt: null,
+      },
+      { projection: 'maintenanceRequestUid', limit: 1000 }
+    );
+    return new Set(
+      charges.items.map((charge: any) => charge.maintenanceRequestUid).filter(Boolean)
+    );
   }
 
   /**
@@ -781,9 +807,19 @@ export class OffboardingService {
       deletedAt: null,
     });
 
+    // The deposit record (security + pet, possibly on an earlier lease in the renewal chain)
+    // is the source of truth; 'refunded' only once the refund actually went through.
+    const depositPayment = await this.inspectionService.findLeaseDepositPayment(cuid, lease);
+    const depositAmount =
+      depositPayment?.baseAmount ??
+      (lease.fees.securityDeposit || 0) + (lease.petPolicy?.deposit || 0);
+
     let depositRefundStatus: IOffboardingStatus['depositRefundStatus'] = 'not_applicable';
-    if (lease.fees.securityDeposit > 0) {
-      depositRefundStatus = inspection?.refundInfo?.isRefunded ? 'refunded' : 'pending';
+    if (depositAmount > 0) {
+      const isRefunded =
+        depositPayment?.status === PaymentRecordStatus.REFUNDED ||
+        inspection?.refundInfo?.isRefunded === true;
+      depositRefundStatus = isRefunded ? 'refunded' : 'pending';
     }
 
     // Check if any open payments remain — paymentsCancelled is only true when no pending/overdue/processing charges exist
@@ -806,7 +842,7 @@ export class OffboardingService {
       inspectionStatus: inspection?.status || null,
       inspectionScheduledDate: inspection?.scheduledDate,
       depositRefundStatus,
-      depositAmount: lease.fees.securityDeposit,
+      depositAmount,
     };
 
     return {

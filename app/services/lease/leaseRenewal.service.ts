@@ -31,6 +31,7 @@ import {
   calcDaysElapsed,
   LEASE_CONSTANTS,
   createLogger,
+  MoneyUtils,
 } from '@utils/index';
 
 import { calculateRenewalMetadata, createSystemContext, findActiveLeasePDF } from './leaseHelpers';
@@ -323,7 +324,7 @@ export class LeaseRenewalService {
         previousLeaseId: existingLease._id,
         status: LeaseStatus.DRAFT_RENEWAL,
         approvalStatus:
-          isSystemCall && existingLease.renewalOptions?.requireApproval !== false
+          isSystemCall && existingLease.renewalOptions?.autoApproveRenewal !== true
             ? 'pending'
             : 'approved',
         duration: renewalData.duration || {
@@ -332,14 +333,17 @@ export class LeaseRenewalService {
           moveInDate: defaultStartDate,
         },
 
+        // Renewal money input is in major units (same as create/edit) — stored as cents
         fees: {
-          ...existingLease.fees,
-          ...renewalData.fees,
+          ...cleanLease.fees,
+          ...(renewalData.fees && MoneyUtils.parseMoneyInput(renewalData.fees)),
         },
 
         renewalOptions: renewalData.renewalOptions || existingLease.renewalOptions,
         utilitiesIncluded: renewalData.utilitiesIncluded || existingLease.utilitiesIncluded,
-        petPolicy: renewalData.petPolicy || existingLease.petPolicy,
+        petPolicy: renewalData.petPolicy
+          ? { ...cleanLease.petPolicy, ...MoneyUtils.parsePetPolicyFees(renewalData.petPolicy) }
+          : existingLease.petPolicy,
         coTenants: renewalData.coTenants || existingLease.coTenants,
         legalTerms: renewalData.legalTerms || existingLease.legalTerms,
 
@@ -382,14 +386,14 @@ export class LeaseRenewalService {
       };
 
       // For system-generated renewals, automatically approve if configured
-      const autoApprove = !ctx && existingLease.renewalOptions?.autoRenew;
+      const autoApprove = isSystemCall && existingLease.renewalOptions?.autoApproveRenewal === true;
       if (autoApprove) {
         newLeaseData.approvalStatus = 'approved';
         newLeaseData.approvalDetails.push({
           action: 'approved',
           actor: systemId,
           timestamp: new Date(),
-          notes: 'Auto-approved due to auto-renewal configuration',
+          notes: 'Auto-approved via renewalOptions.autoApproveRenewal=true',
         });
       }
 
@@ -563,7 +567,7 @@ export class LeaseRenewalService {
           }
 
           // Determine if auto-approve or needs admin review
-          const autoApprove = lease.renewalOptions?.requireApproval === false;
+          const autoApprove = lease.renewalOptions?.autoApproveRenewal === true;
 
           // Warn if conflicting settings detected
           if (
@@ -610,7 +614,7 @@ export class LeaseRenewalService {
                       action: 'auto_approved',
                       actor: new Types.ObjectId('000000000000000000000000'),
                       timestamp: new Date(),
-                      notes: 'Auto-approved via renewalOptions.requireApproval=false',
+                      notes: 'Auto-approved via renewalOptions.autoApproveRenewal=true',
                     },
                   },
                 });
@@ -997,10 +1001,23 @@ export class LeaseRenewalService {
         }
 
         // Extract fields we DON'T want to update during approval
-        const { property, tenantInfo, leaseNumber, ...allowedUpdates } = renewalData;
+        const { property, tenantInfo, leaseNumber, fees, petPolicy, ...allowedUpdates } =
+          renewalData;
 
         // Merge all allowed updates into updateData at once
         Object.assign(updateData, allowedUpdates);
+
+        // Money input is in major units; set per-field so a partial edit keeps the other fees
+        if (fees) {
+          for (const [field, value] of Object.entries(MoneyUtils.parseMoneyInput(fees))) {
+            updateData[`fees.${field}`] = value;
+          }
+        }
+        if (petPolicy) {
+          for (const [field, value] of Object.entries(MoneyUtils.parsePetPolicyFees(petPolicy))) {
+            updateData[`petPolicy.${field}`] = value;
+          }
+        }
 
         this.log.info(`Applying renewal data updates to ${luid}`, {
           updatedFields: Object.keys(allowedUpdates),

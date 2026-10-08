@@ -3,7 +3,12 @@ import { Schema, model } from 'mongoose';
 import { LEASE_CONSTANTS } from '@utils/constants';
 import { calcLateFee } from '@utils/financial.utils';
 import { generateShortUID, createLogger } from '@utils/index';
-import { ILeaseDocument, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
+import {
+  ILeaseESignatureStatusEnum,
+  ILeaseDocument,
+  LeaseStatus,
+  LeaseType,
+} from '@interfaces/lease.interface';
 
 const logger = createLogger('LeaseModel');
 
@@ -309,9 +314,9 @@ const LeaseSchema = new Schema<ILeaseDocument>(
         min: 0,
         default: 30,
       },
-      requireApproval: {
+      autoApproveRenewal: {
         type: Boolean,
-        default: true,
+        default: false,
       },
       daysBeforeExpiryToGenerateRenewal: {
         type: Number,
@@ -397,8 +402,8 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       },
       status: {
         type: String,
-        enum: ['not-sent', 'sent', 'signed', 'declined', 'voided'],
-        default: 'not-sent',
+        enum: Object.values(ILeaseESignatureStatusEnum),
+        default: ILeaseESignatureStatusEnum.NOT_SENT,
       },
       sentAt: {
         type: Date,

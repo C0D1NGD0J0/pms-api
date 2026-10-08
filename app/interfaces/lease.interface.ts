@@ -10,17 +10,17 @@ export enum LeaseStatus {
   TERMINATED = 'terminated',
   COMPLETED = 'completed',
   CANCELLED = 'cancelled',
-  RENEWED = 'renewed',
   EXPIRED = 'expired',
   ACTIVE = 'active',
   DRAFT = 'draft',
 }
 
 export enum ILeaseESignatureStatusEnum {
-  COMPLETED = 'completed',
+  NOT_SENT = 'not-sent',
   DECLINED = 'declined',
   SIGNED = 'signed',
   VOIDED = 'voided',
+  FAILED = 'failed',
   DRAFT = 'draft',
   SENT = 'sent',
 }
@@ -127,7 +127,7 @@ export interface ILeaseFinancialSummary {
  */
 export type LeasePreviewData = {
   petPolicy?: IPetPolicy;
-  renewalOptions?: Omit<IRenewalOptions, 'requireApproval' | 'autoApproveRenewal'>;
+  renewalOptions?: Omit<IRenewalOptions, 'autoApproveRenewal'>;
   coTenants?: ICoTenant[];
   legalTerms?: ILegalTerms;
   managementCompanyAddress?: string | null;
@@ -273,7 +273,7 @@ export interface IRenewalMetadata {
  * Used to generate lease document preview before actual lease creation
  */
 export interface ILeasePreviewRequest {
-  renewalOptions?: Omit<IRenewalOptions, 'requireApproval' | 'autoApproveRenewal'>;
+  renewalOptions?: Omit<IRenewalOptions, 'autoApproveRenewal'>;
   signingMethod: SigningMethod | string;
   utilitiesIncluded?: UtilityType[];
   templateType: LeaseTemplateType;
@@ -405,17 +405,6 @@ export interface ILeaseActivityEvent {
   notes?: string;
 }
 
-export interface IRenewalOptions {
-  daysBeforeExpiryToAutoSendSignature?: number;
-  daysBeforeExpiryToGenerateRenewal?: number;
-  enableAutoSendForSignature?: boolean;
-  autoApproveRenewal?: boolean; // Skip admin review, go straight to ready_for_signature
-  renewalTermMonths?: number;
-  requireApproval?: boolean; // Require admin review before sending for signature
-  noticePeriodDays?: number;
-  autoRenew: boolean;
-}
-
 /**
  * Enriched lease preview data with landlord/management info
  * Returned from backend after processing preview request
@@ -484,6 +473,16 @@ export interface IRentRollReport {
   items: IRentRollItem[];
   propertyName?: string;
   generatedAt: Date;
+}
+
+export interface IRenewalOptions {
+  daysBeforeExpiryToAutoSendSignature?: number;
+  daysBeforeExpiryToGenerateRenewal?: number;
+  enableAutoSendForSignature?: boolean;
+  autoApproveRenewal?: boolean; // System-generated renewals skip manager review (default false)
+  renewalTermMonths?: number;
+  noticePeriodDays?: number;
+  autoRenew: boolean;
 }
 
 export interface LeaseESignatureCompletedPayload {

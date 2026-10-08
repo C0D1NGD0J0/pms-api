@@ -2200,7 +2200,7 @@ export class PropertyService implements ICronProvider {
         {
           'property.id': new Types.ObjectId(propertyId),
           cuid,
-          status: { $in: [LeaseStatus.ACTIVE, LeaseStatus.RENEWED] },
+          status: LeaseStatus.ACTIVE,
           deletedAt: null,
         },
         {},

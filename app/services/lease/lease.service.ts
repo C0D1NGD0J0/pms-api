@@ -17,12 +17,14 @@ import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
+import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MediaUploadService, UserService, SMSService, S3Service } from '@services/index';
 import { InvitationDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import {
@@ -99,6 +101,7 @@ import {
 } from './leaseHelpers';
 
 interface IConstructor {
+  paymentGatewayService?: PaymentGatewayService;
   leaseSignatureService: LeaseSignatureService;
   leaseDocumentService: LeaseDocumentService;
   leaseTemplateService: LeaseTemplateService;
@@ -154,6 +157,7 @@ export class LeaseService {
   private readonly leasePdfService: LeasePdfService;
   private readonly smsService: SMSService;
   private readonly paymentDAO: PaymentDAO;
+  private readonly paymentGatewayService?: PaymentGatewayService;
   private readonly userCache: UserCache;
   private readonly authCache?: AuthCache;
   private readonly s3Service: S3Service;
@@ -180,6 +184,7 @@ export class LeaseService {
     queueFactory,
     smsService,
     paymentDAO,
+    paymentGatewayService,
     userCache,
     authCache,
     userDAO,
@@ -212,6 +217,7 @@ export class LeaseService {
     this.leaseSignatureService = leaseSignatureService;
     this.smsService = smsService;
     this.paymentDAO = paymentDAO;
+    this.paymentGatewayService = paymentGatewayService;
     this.userCache = userCache;
     this.authCache = authCache;
     this.s3Service = s3Service;
@@ -408,6 +414,7 @@ export class LeaseService {
         templateType: data.templateType || 'residential-single-family',
         landlordName: landlordInfo.landlordName,
         fees: MoneyUtils.parseLeaseFees(data.fees),
+        ...(data.petPolicy && { petPolicy: MoneyUtils.parsePetPolicyFees(data.petPolicy) }),
         internalNotes: data.internalNotes?.length
           ? data.internalNotes.map((n: any) => ({
               ...n,
@@ -512,7 +519,6 @@ export class LeaseService {
       LeaseStatus.ACTIVE,
       LeaseStatus.EXPIRED,
       LeaseStatus.TERMINATED,
-      LeaseStatus.RENEWED,
     ];
 
     if (context?.currentuser?.client?.role === 'tenant') {
@@ -771,6 +777,11 @@ export class LeaseService {
             cleanUpdateData.fees!.currency = (property.fees as any)?.currency ?? 'USD';
           }
         }
+      }
+
+      // Converted before routing so staff edits staged in pendingChanges are stored in cents too
+      if (cleanUpdateData.petPolicy) {
+        cleanUpdateData.petPolicy = MoneyUtils.parsePetPolicyFees(cleanUpdateData.petPolicy);
       }
 
       // Sanitize legalTerms HTML/text content
@@ -1066,15 +1077,7 @@ export class LeaseService {
       });
     }
 
-    // Cancel any pending/overdue payments with due dates after the termination date
-    await this.paymentDAO.updateMany(
-      {
-        lease: terminatedLease._id,
-        status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
-        dueDate: { $gt: terminationDate },
-      },
-      { status: PaymentRecordStatus.CANCELLED }
-    );
+    await this.cancelRentChargesAfterTermination(cuid, terminatedLease._id, terminationDate);
 
     await this.leaseCache.invalidateLease(cuid, luid);
     await this.leaseCache.invalidateLeaseLists(cuid);
@@ -1165,6 +1168,72 @@ export class LeaseService {
       data: terminatedLease,
       message: t('common.success.updated', { resource: 'Lease' }),
     };
+  }
+
+  /**
+   * Cancels rent and late-fee charges due after the termination date and voids their open
+   * Stripe invoices so the tenant can no longer pay them. PROCESSING charges (bank debit
+   * already submitted) are left to settle or fail via webhook. A charge whose invoice cannot
+   * be voided stays open — cancelling it locally would hide a still-payable invoice.
+   */
+  private async cancelRentChargesAfterTermination(
+    cuid: string,
+    leaseId: Types.ObjectId,
+    terminationDate: Date
+  ): Promise<void> {
+    const futureCharges = await this.paymentDAO.list(
+      {
+        cuid,
+        lease: leaseId,
+        paymentType: { $in: [PaymentRecordType.RENT, PaymentRecordType.LATE_FEE] },
+        status: {
+          $in: [
+            PaymentRecordStatus.PENDING,
+            PaymentRecordStatus.OVERDUE,
+            PaymentRecordStatus.PROCESSING,
+          ],
+        },
+        dueDate: { $gt: terminationDate },
+        deletedAt: null,
+      },
+      { limit: 500 }
+    );
+
+    const cancellableIds: Types.ObjectId[] = [];
+    for (const charge of futureCharges.items) {
+      if (charge.status === PaymentRecordStatus.PROCESSING) {
+        this.log.warn('Charge after termination date is already processing — left to settle', {
+          pytuid: charge.pytuid,
+          leaseId: leaseId.toString(),
+        });
+        continue;
+      }
+
+      if (charge.gatewayPaymentId) {
+        const voidResult = this.paymentGatewayService
+          ? await this.paymentGatewayService.voidInvoice(
+              IPaymentGatewayProvider.STRIPE,
+              charge.gatewayPaymentId
+            )
+          : { success: false, message: 'Payment gateway unavailable' };
+        if (!voidResult.success) {
+          this.log.error('Could not void invoice for charge after termination — left open', {
+            pytuid: charge.pytuid,
+            invoiceId: charge.gatewayPaymentId,
+            message: voidResult.message,
+          });
+          continue;
+        }
+      }
+      cancellableIds.push(charge._id as Types.ObjectId);
+    }
+
+    if (cancellableIds.length > 0) {
+      await this.paymentDAO.updateMany(
+        { _id: { $in: cancellableIds } },
+        { $set: { status: PaymentRecordStatus.CANCELLED, cancelledAt: new Date() } }
+      );
+    }
   }
 
   /**

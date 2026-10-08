@@ -517,7 +517,6 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       LeaseStatus.ACTIVE,
       LeaseStatus.EXPIRED,
       LeaseStatus.TERMINATED,
-      LeaseStatus.RENEWED,
     ];
 
     const mockLeaseList = [

@@ -765,6 +765,9 @@ export const generatePendingChangesPreview = (
   if (formattedChanges.fees) {
     formattedChanges.fees = MoneyUtils.formatMoneyDisplay(formattedChanges.fees);
   }
+  if (formattedChanges.petPolicy) {
+    formattedChanges.petPolicy = MoneyUtils.formatPetPolicyFees(formattedChanges.petPolicy);
+  }
 
   const updatedFields = Object.keys(changes);
   const summary = generateChangesSummary(updatedFields);
@@ -993,6 +996,15 @@ export const calculateFinancialSummary = (
  * - Otherwise: next occurrence of rentDueDay from today.
  * - Returns null if the next due date falls after the lease end (or termination) date.
  */
+/**
+ * The rent due date within the month of `monthDate`, clamped to the month's last day —
+ * dayjs().date(31) in April would otherwise roll into May 1.
+ */
+const dueDateInMonth = (monthDate: dayjs.Dayjs, rentDueDay: number): dayjs.Dayjs => {
+  const month = monthDate.startOf('month');
+  return month.date(Math.min(rentDueDay, month.daysInMonth()));
+};
+
 export const calculateNextPaymentDate = (
   rentDueDay: number,
   startDate: Date,
@@ -1011,8 +1023,10 @@ export const calculateNextPaymentDate = (
     return effectiveEnd && start.isAfter(effectiveEnd) ? null : startDate;
   }
 
-  const candidate = dayjs().date(rentDueDay).startOf('day');
-  const nextPayment = candidate.isAfter(today) ? candidate : candidate.add(1, 'month');
+  const thisMonthDueDate = dueDateInMonth(today, rentDueDay);
+  const nextPayment = thisMonthDueDate.isAfter(today)
+    ? thisMonthDueDate
+    : dueDateInMonth(today.add(1, 'month'), rentDueDay);
 
   if (effectiveEnd && nextPayment.isAfter(effectiveEnd)) return null;
   return nextPayment.toDate();
@@ -1179,6 +1193,21 @@ export const constructActivityFeed = (lease: ILeaseDocument): any[] => {
  *   expiry and flags indicating whether the lease is within the renewal window),
  *   or `null` if the metadata cannot be determined.
  */
+const petPolicyInMajorUnits = (petPolicy: ILeaseDocument['petPolicy']): Record<string, any> => {
+  if (!petPolicy) return {};
+  const plainPetPolicy =
+    typeof (petPolicy as any).toObject === 'function' ? (petPolicy as any).toObject() : petPolicy;
+  return {
+    ...plainPetPolicy,
+    ...(plainPetPolicy.deposit != null && {
+      deposit: MoneyUtils.fromCents(plainPetPolicy.deposit),
+    }),
+    ...(plainPetPolicy.monthlyFee != null && {
+      monthlyFee: MoneyUtils.fromCents(plainPetPolicy.monthlyFee),
+    }),
+  };
+};
+
 export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData = false) {
   // Validate that lease has a duration and endDate
   if (!lease.duration?.endDate) {
@@ -1225,12 +1254,13 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       endDate: renewalEndDate.toISOString().split('T')[0],
       moveInDate: renewalStartDate.toISOString().split('T')[0],
     },
+    // Money fields are major units (e.g. dollars) — the renewal endpoint converts them back to cents
     fees: {
-      rentAmount: lease.fees?.rentAmount || 0,
+      rentAmount: MoneyUtils.fromCents(lease.fees?.rentAmount || 0),
       currency: lease.fees?.currency || 'USD',
       rentDueDay: lease.fees?.rentDueDay || 1,
-      securityDeposit: lease.fees?.securityDeposit || 0,
-      lateFeeAmount: lease.fees?.lateFeeAmount || 0,
+      securityDeposit: MoneyUtils.fromCents(lease.fees?.securityDeposit || 0),
+      lateFeeAmount: MoneyUtils.fromCents(lease.fees?.lateFeeAmount || 0),
       lateFeeDays: lease.fees?.lateFeeDays || 5,
       lateFeeType: lease.fees?.lateFeeType || 'fixed',
       lateFeePercentage: lease.fees?.lateFeePercentage,
@@ -1244,13 +1274,13 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       autoRenew: lease.renewalOptions?.autoRenew || false,
       renewalTermMonths: lease.renewalOptions?.renewalTermMonths || 12,
       noticePeriodDays: lease.renewalOptions?.noticePeriodDays || 30,
-      requireApproval: lease.renewalOptions?.requireApproval,
+      autoApproveRenewal: lease.renewalOptions?.autoApproveRenewal ?? false,
       daysBeforeExpiryToGenerateRenewal: lease.renewalOptions?.daysBeforeExpiryToGenerateRenewal,
       daysBeforeExpiryToAutoSendSignature:
         lease.renewalOptions?.daysBeforeExpiryToAutoSendSignature,
     },
     status: lease.status,
-    petPolicy: lease.petPolicy || {},
+    petPolicy: petPolicyInMajorUnits(lease.petPolicy),
     utilitiesIncluded: lease.utilitiesIncluded || [],
     legalTerms: lease.legalTerms || '',
     coTenants: lease.coTenants || [],

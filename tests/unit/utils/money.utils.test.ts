@@ -108,3 +108,26 @@ describe('MoneyUtils.formatLeaseFees / parseLeaseFees', () => {
     expect(MoneyUtils.parseLeaseFees(MoneyUtils.formatLeaseFees(original))).toEqual(original);
   });
 });
+
+describe('MoneyUtils.parsePetPolicyFees / formatPetPolicyFees', () => {
+  it('converts pet deposit and monthly fee from major units to cents', () => {
+    expect(
+      MoneyUtils.parsePetPolicyFees({ allowed: true, deposit: 250, monthlyFee: '50.5' })
+    ).toEqual({ allowed: true, deposit: 25000, monthlyFee: 5050 });
+  });
+
+  it('does not inject missing pet money fields', () => {
+    expect(MoneyUtils.parsePetPolicyFees({ allowed: false })).toEqual({ allowed: false });
+  });
+
+  it('formats pet money fields from cents to display strings', () => {
+    expect(
+      MoneyUtils.formatPetPolicyFees({ allowed: true, deposit: 25000, monthlyFee: 5050 })
+    ).toEqual({ allowed: true, deposit: '250.00', monthlyFee: '50.50' });
+  });
+
+  it('passes through non-objects', () => {
+    expect(MoneyUtils.parsePetPolicyFees(undefined)).toBeUndefined();
+    expect(MoneyUtils.formatPetPolicyFees(null)).toBeNull();
+  });
+});

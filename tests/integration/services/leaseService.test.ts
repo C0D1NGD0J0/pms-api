@@ -232,6 +232,7 @@ const setupServices = () => {
     leaseSignatureService,
     paymentDAO: {
       findByLease: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
+      list: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
       updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
     } as any,
   } as any);
@@ -330,6 +331,51 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const savedLease = await Lease.findOne({ luid: result.data.luid });
       expect(savedLease).toBeDefined();
       expect(savedLease!.tenantId.toString()).toBe(tenant._id.toString());
+    });
+
+    it('should store pet fees in cents (input in major units, like fees)', async () => {
+      const client = await createTestClient();
+      const manager = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+      await Property.findByIdAndUpdate(property._id, {
+        approvalStatus: 'approved',
+        owner: { type: 'company_owned' },
+        authorization: { isActive: true },
+      });
+
+      const result = await leaseService.createLease(
+        client.cuid,
+        {
+          tenantInfo: { id: tenant._id.toString() },
+          property: { id: property._id.toString(), address: property.address.fullAddress },
+          duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-01-01') },
+          fees: {
+            rentAmount: 1500,
+            securityDeposit: 3000,
+            rentDueDay: 1,
+            currency: 'USD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
+          petPolicy: { allowed: true, maxPets: 1, deposit: 400, monthlyFee: 50 },
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-PETCREATE-${Date.now()}`,
+        } as any,
+        {
+          currentuser: {
+            uid: manager.uid,
+            sub: manager._id.toString(),
+            client: { cuid: client.cuid, role: ROLES.MANAGER },
+          },
+        } as any
+      );
+
+      const savedLease = await Lease.findOne({ luid: result.data.luid });
+      expect(savedLease!.fees.rentAmount).toBe(150000);
+      expect(savedLease!.petPolicy?.deposit).toBe(40000);
+      expect(savedLease!.petPolicy?.monthlyFee).toBe(5000);
     });
 
     it('should require unitId for apartment properties', async () => {
@@ -629,6 +675,52 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       // Verify in database
       const updatedLease = await Lease.findOne({ luid: lease.luid });
       expect(updatedLease?.fees.rentAmount).toBe(175000);
+    });
+
+    it('should convert pet fees from major units to cents on update', async () => {
+      const client = await createTestClient();
+      const manager = await createTestManagerUser(client.cuid, client._id);
+      const tenant = await createTestTenantUser(client.cuid, client._id);
+      const property = await createTestProperty(client.cuid, client._id, {
+        propertyType: 'house',
+      });
+
+      const lease = await Lease.create({
+        luid: `lease-pet-${Date.now()}`,
+        cuid: client.cuid,
+        tenantId: tenant._id,
+        property: { id: property._id, address: property.address.fullAddress },
+        duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-01-01') },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.DRAFT,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-PET-${Date.now()}`,
+        createdBy: manager._id,
+      } as any);
+
+      const mockContext = {
+        request: { params: { cuid: client.cuid } },
+        currentuser: {
+          uid: manager.uid,
+          sub: manager._id.toString(),
+          client: { cuid: client.cuid, role: ROLES.MANAGER },
+        },
+      } as any;
+
+      await leaseService.updateLease(mockContext, lease.luid, {
+        petPolicy: { allowed: true, maxPets: 1, deposit: 250, monthlyFee: 35.5 },
+      } as any);
+
+      const updatedLease = await Lease.findOne({ luid: lease.luid });
+      expect(updatedLease?.petPolicy?.deposit).toBe(25000);
+      expect(updatedLease?.petPolicy?.monthlyFee).toBe(3550);
     });
 
     it('should block updates to immutable fields on active lease', async () => {
@@ -1866,12 +1958,9 @@ describe('LeaseService Integration Tests - Read Operations', () => {
 
         expect(result.items).toBeInstanceOf(Array);
         result.items.forEach((lease: any) => {
-          expect([
-            LeaseStatus.ACTIVE,
-            LeaseStatus.EXPIRED,
-            LeaseStatus.TERMINATED,
-            LeaseStatus.RENEWED,
-          ]).toContain(lease.status);
+          expect([LeaseStatus.ACTIVE, LeaseStatus.EXPIRED, LeaseStatus.TERMINATED]).toContain(
+            lease.status
+          );
         });
       });
 
@@ -2019,7 +2108,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         },
         renewalOptions: {
           autoRenew: true,
-          requireApproval: true,
+          autoApproveRenewal: false,
           renewalTermMonths: 12,
           noticePeriodDays: 30,
           daysBeforeExpiryToGenerateRenewal: 30,
@@ -2056,10 +2145,10 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       });
     });
 
-    it('should auto-approve renewal when requireApproval is false', async () => {
-      // Update lease to have requireApproval: false
+    it('should auto-approve renewal when autoApproveRenewal is true', async () => {
+      // Update lease to have autoApproveRenewal: true
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
-        'renewalOptions.requireApproval': false,
+        'renewalOptions.autoApproveRenewal': true,
       });
 
       // Create renewal via system call (null context)
@@ -2077,15 +2166,53 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       expect(result.data.previousLeaseId?.toString()).toBe(activeLeaseForRenewal._id.toString());
     });
 
-    it('should require approval when requireApproval is not false (default behavior)', async () => {
-      // FIXME: There's a bug where requireApproval logic isn't working correctly
-      // The code says: isSystemCall && requireApproval !== false ? 'pending' : 'approved'
-      // But it's returning 'approved' even when requireApproval is undefined
-      // For now, skipping this test - needs investigation
-
-      // Option 1: requireApproval = undefined (use schema default)
+    it('should return renewal form money in major units (dollars), not cents', async () => {
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
-        $unset: { 'renewalOptions.requireApproval': '' },
+        'fees.rentAmount': 210050,
+        'fees.securityDeposit': 300000,
+        petPolicy: { allowed: true, maxPets: 1, deposit: 25000, monthlyFee: 3500 },
+      });
+
+      const result = await leaseService.getRenewalFormData(
+        {
+          request: { params: { cuid: testClient.cuid } },
+          currentuser: { sub: testManager._id.toString(), client: { cuid: testClient.cuid } },
+        } as any,
+        activeLeaseForRenewal.luid
+      );
+
+      expect(result.data.fees.rentAmount).toBe(2100.5);
+      expect(result.data.fees.securityDeposit).toBe(3000);
+      expect(result.data.petPolicy).toEqual(
+        expect.objectContaining({ allowed: true, maxPets: 1, deposit: 250, monthlyFee: 35 })
+      );
+    });
+
+    it('should store renewal fee and pet fee edits (major units) in cents, keeping other fees', async () => {
+      await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
+        petPolicy: { allowed: true, maxPets: 2, deposit: 20000, monthlyFee: 2500 },
+      });
+
+      const result = await leaseService.createDraftLeaseRenewal(
+        testClient.cuid,
+        activeLeaseForRenewal.luid,
+        { fees: { rentAmount: 2100 }, petPolicy: { monthlyFee: 30 } } as any,
+        null
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.fees.rentAmount).toBe(210000);
+      expect(result.data.fees.securityDeposit).toBe(2000); // carried over unchanged (cents)
+      expect(result.data.fees.rentDueDay).toBe(1);
+      expect(result.data.petPolicy?.monthlyFee).toBe(3000);
+      expect(result.data.petPolicy?.deposit).toBe(20000);
+      expect(result.data.petPolicy?.maxPets).toBe(2);
+    });
+
+    it('should require approval when autoApproveRenewal is not set (default behavior)', async () => {
+      // autoApproveRenewal = undefined (use schema default)
+      await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
+        $unset: { 'renewalOptions.autoApproveRenewal': '' },
       });
 
       const result = await leaseService.createDraftLeaseRenewal(
@@ -2097,9 +2224,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.status).toBe('draft_renewal');
-      // FIXME: This should be 'pending' but currently returns 'approved'
-      // expect(result.data.approvalStatus).toBe('pending');
-      expect(result.data.approvalStatus).toBe('approved'); // Actual current behavior
+      expect(result.data.approvalStatus).toBe('pending');
     });
 
     it('should prevent duplicate renewal creation with unique index', async () => {
@@ -2131,7 +2256,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       // Update lease to manual signing
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
         signingMethod: 'manual',
-        'renewalOptions.requireApproval': false,
+        'renewalOptions.autoApproveRenewal': true,
       });
 
       // Create auto-approved renewal
@@ -2160,7 +2285,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
     it('should skip auto-send for renewals without e-signature provider', async () => {
       // Update lease to have no provider
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
-        'renewalOptions.requireApproval': false,
+        'renewalOptions.autoApproveRenewal': true,
         'renewalOptions.enableAutoSendForSignature': true,
         eSignature: undefined,
       });

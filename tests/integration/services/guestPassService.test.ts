@@ -1127,14 +1127,16 @@ describe('GuestPassService', () => {
       const property = await createTestProperty(client.cuid, client._id);
       const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
 
-      // Pass valid within today (2 hours from now, but use expiryMinutes within model max)
+      // Pass valid within today — halfway to midnight, so the test holds late in the day too
+      const now = dayjs();
+      const laterToday = now.add(now.endOf('day').diff(now) / 2, 'millisecond');
       await GuestPassModel.create({
         cuid: client.cuid,
         code: '444555',
         propertyId: property._id,
         visitorInfo: { name: 'Today Visitor' },
         createdBy: manager._id,
-        validUntil: dayjs().add(2, 'hour').toDate(),
+        validUntil: laterToday.toDate(),
         expiryMinutes: 60,
         status: GuestPassStatus.ACTIVE,
         isAcknowledged: false,

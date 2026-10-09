@@ -801,6 +801,22 @@
       "workOrderRejected": {
         "title": "Work Order Rejected",
         "message": "Your work order for request {{mruid}} was rejected"
+      },
+      "chargeCreated": {
+        "title": "Maintenance Charge Added",
+        "message": "A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Due {{dueDate}} — pay now to avoid auto-debit."
+      },
+      "chargeCreatedManual": {
+        "title": "Maintenance Charge Added",
+        "message": "A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Please pay by {{dueDate}}."
+      },
+      "chargeSkipped": {
+        "title": "Tenant Not Billed — Action Required",
+        "message": "The approved invoice for maintenance request {{mruid}} ({{amount}}) could not be billed to the tenant automatically because {{reasonText}}. Please bill the tenant manually."
+      },
+      "autoVendorPaid": {
+        "title": "Vendor Paid Automatically",
+        "message": "{{vendorName}} was automatically paid {{amount}} for maintenance request {{mruid}}. The 5-day review period elapsed without manual action."
       }
     },
     "lease": {
@@ -841,7 +857,71 @@
       "refunded": {
         "title": "Payment Refunded",
         "message": "A refund of {{amount}} has been issued"
+      },
+      "requested": {
+        "title": "Payment Request Received",
+        "message": "A {{paymentLabel}} payment of {{amount}} is due on {{dueDate}}. Pay early, or your linked payment method will be charged automatically on or after the due date."
+      },
+      "requestedManual": {
+        "title": "Payment Request Received",
+        "message": "A {{paymentLabel}} payment of {{amount}} is due on {{dueDate}}. Please pay by the due date."
+      },
+      "overdue": {
+        "title": "{{paymentTitle}} Payment Overdue",
+        "message": "A {{paymentLabel}} payment of {{amount}} due on {{dueDate}} is now overdue"
+      },
+      "overdueTenant": {
+        "title": "{{paymentTitle}} Payment Overdue",
+        "message": "Your {{paymentLabel}} payment of {{amount}} was due on {{dueDate}} and is now overdue. Please make your payment as soon as possible."
+      },
+      "failedTenant": {
+        "title": "Payment Could Not Be Processed",
+        "message": "Your payment of {{amount}} could not be processed. Please use the payment link provided or add a card to complete your payment."
+      },
+      "failedTenantWithReason": {
+        "title": "Payment Could Not Be Processed",
+        "message": "Your payment of {{amount}} could not be processed ({{reason}}). Please use the payment link provided or add a card to complete your payment."
+      },
+      "refundedTenant": {
+        "title": "Refund Issued",
+        "message": "A {{refundKind}} refund of {{amount}} has been issued for payment {{pytuid}}."
+      },
+      "retriedWithCard": {
+        "title": "Bank Debit Retried on Card",
+        "message": "A bank debit of {{amount}} for payment {{pytuid}} failed and was charged to the tenant’s card on file instead."
+      },
+      "retriedWithCardTenant": {
+        "title": "Bank Debit Failed — Card Charged",
+        "message": "Your bank debit of {{amount}} could not be completed, so we charged {{cardDescription}} instead."
+      },
+      "depositRefundFailed": {
+        "title": "Deposit Refund Failed",
+        "message": "A deposit refund of {{amount}} for payment {{pytuid}} could not be processed. Reason: {{reason}}. Please review it and refund the tenant another way if needed."
       }
+    },
+    "fragments": {
+      "paymentTypes": {
+        "rent": "Rent",
+        "maintenance": "Maintenance",
+        "late_fee": "Late fee",
+        "security_deposit": "Security deposit",
+        "deposit_refund": "Deposit refund",
+        "default": "Payment"
+      },
+      "refundKinds": {
+        "partial": "partial",
+        "full": "full"
+      },
+      "cardDescriptions": {
+        "endingIn": "your card ending in {{cardLast4}}",
+        "onFile": "your card on file"
+      },
+      "chargeSkippedReasons": {
+        "tenant_profile_not_found": "the tenant's profile could not be found",
+        "no_tenant": "the request has no tenant",
+        "default": "the tenant could not be found"
+      },
+      "unknownError": "unknown error"
     }
   }
 }

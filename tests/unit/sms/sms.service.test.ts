@@ -359,6 +359,44 @@ describe('SMSService', () => {
       expect(twilioService.sendSMS).toHaveBeenCalledWith(PHONE, 'Hello!');
     });
 
+    it('should find the profile by User _id or Profile _id', async () => {
+      const { service, profileDAO } = makeService();
+
+      await service.sendToUser(CUID, USER_ID, 'Hello!', SMSMessageType.SYSTEM);
+
+      const id = new Types.ObjectId(USER_ID);
+      expect(profileDAO.findFirst).toHaveBeenCalledWith({ $or: [{ user: id }, { _id: id }] });
+    });
+
+    it('should send to the profile owner when given a Profile _id', async () => {
+      const profileOwnerId = new Types.ObjectId();
+      const profileId = new Types.ObjectId().toString();
+      const { service, twilioService } = makeService({
+        profileDAO: {
+          findFirst: jest.fn().mockResolvedValue({
+            _id: new Types.ObjectId(profileId),
+            user: profileOwnerId,
+            personalInfo: { phoneNumber: PHONE },
+            settings: {
+              phoneVerification: { verified: true, verifiedPhone: PHONE },
+              smsConsent: { consented: true, consentedAt: new Date() },
+              notifications: { smsNotifications: true },
+            },
+          }),
+          update: jest.fn(),
+        },
+      });
+      const sendSMS = jest.spyOn(service, 'sendSMS');
+
+      const result = await service.sendToUser(CUID, profileId, 'Hello!', SMSMessageType.SYSTEM);
+
+      expect(result.success).toBe(true);
+      expect(twilioService.sendSMS).toHaveBeenCalledWith(PHONE, 'Hello!');
+      expect(sendSMS).toHaveBeenCalledWith(
+        expect.objectContaining({ recipientUserId: profileOwnerId.toString() })
+      );
+    });
+
     it('should return unverified_phone when user has no phone number', async () => {
       const { service, twilioService } = makeService({
         profileDAO: {

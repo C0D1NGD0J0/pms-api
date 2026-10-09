@@ -37,15 +37,15 @@
       "clientNotVerified": "Votre compte doit être vérifié avant d'effectuer cette action. Veuillez compléter la vérification du compte.",
       "superAdminRequired": "Des privilèges de super administrateur sont requis pour effectuer cette action",
       "subscriptionInactive": "Votre abonnement n'est pas actif. Veuillez renouveler votre plan pour continuer.",
-      "unsupportedCountry": "[FR] We're not yet available in {{country}}. Our payment processor does not support this country. Please contact support if you believe this is an error.",
+      "unsupportedCountry": "Nous ne sommes pas encore offerts dans ce pays : {{country}}. Notre processeur de paiement ne prend pas en charge ce pays. Veuillez communiquer avec le soutien si vous croyez qu'il s'agit d'une erreur.",
       "subscriptionCreationFailed": "[FR] Encountered an error while creating subscription",
-      "tenantOnlyPaymentSetup": "[FR] Only tenants can set up a payment method.",
-      "tenantOnlyViewPaymentMethods": "[FR] Only tenants can view payment methods.",
-      "tenantOnlyRemovePaymentMethods": "[FR] Only tenants can remove payment methods.",
-      "noPaymentMethodOnFile": "[FR] No payment method on file.",
-      "mustKeepOnePaymentMethod": "[FR] You must keep at least one payment method on file.",
-      "noPaymentMethodForManager": "[FR] No payment method found for this property manager.",
-      "tenantOnlyFirstPayment": "[FR] Only tenants can initiate a first payment."
+      "tenantOnlyPaymentSetup": "Seuls les locataires peuvent configurer un mode de paiement.",
+      "tenantOnlyViewPaymentMethods": "Seuls les locataires peuvent consulter les modes de paiement.",
+      "tenantOnlyRemovePaymentMethods": "Seuls les locataires peuvent supprimer des modes de paiement.",
+      "noPaymentMethodOnFile": "Aucun mode de paiement enregistré.",
+      "mustKeepOnePaymentMethod": "Vous devez conserver au moins un mode de paiement enregistré.",
+      "noPaymentMethodForManager": "Aucun mode de paiement trouvé pour ce gestionnaire immobilier.",
+      "tenantOnlyFirstPayment": "Seuls les locataires peuvent effectuer un premier paiement."
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -490,7 +490,7 @@
       "onlyPrimaryCanUpdate": "[FR] You do not have permission to update this information.",
       "notConnectedToClient": "[FR] Vendor is not connected to this account.",
       "cannotChangeOwnStatus": "[FR] You cannot change your own active status.",
-      "payoutAccountNotFound": "[FR] Payout account not found."
+      "payoutAccountNotFound": "Compte de paiement introuvable."
     }
   },
   "tenant": {
@@ -540,12 +540,12 @@
   },
   "payment": {
     "errors": {
-      "paymentMethodFailed": "[FR] Payment could not be processed. Please try again or use a different payment method.",
-      "paymentFailedRetried": "[FR] Payment method failed. We are retrying with an alternate method.",
-      "paymentMethodFailedCardRequired": "[FR] Payment could not be processed. An alternate payment method is required.",
-      "paymentFailedNoFallback": "[FR] Payment failed and no alternate payment method is on file.",
-      "retryFailedMissingInfo": "[FR] Payment retry failed. Please update your account information.",
-      "paymentFailedAddPaymentMethod": "[FR] Payment failed. Please add a payment method to complete payment."
+      "paymentMethodFailed": "Le paiement n'a pas pu être traité. Veuillez réessayer ou utiliser un autre mode de paiement.",
+      "paymentFailedRetried": "Le mode de paiement a échoué. Nous réessayons avec un autre mode de paiement.",
+      "paymentMethodFailedCardRequired": "Le paiement n'a pas pu être traité. Un autre mode de paiement est requis.",
+      "paymentFailedNoFallback": "Le paiement a échoué et aucun autre mode de paiement n'est enregistré.",
+      "retryFailedMissingInfo": "La nouvelle tentative de paiement a échoué. Veuillez mettre à jour les renseignements de votre compte.",
+      "paymentFailedAddPaymentMethod": "Le paiement a échoué. Veuillez ajouter un mode de paiement pour effectuer le paiement."
     }
   },
   "sms": {
@@ -789,6 +789,22 @@
       "workOrderRejected": {
         "title": "Bon de travail rejeté",
         "message": "Votre bon de travail pour la demande {{mruid}} a été rejeté"
+      },
+      "chargeCreated": {
+        "title": "Frais de maintenance ajoutés",
+        "message": "Des frais de maintenance de {{amount}} ont été ajoutés à votre compte pour la demande {{mruid}}. Échéance : {{dueDate}} — payez maintenant pour éviter le prélèvement automatique."
+      },
+      "chargeCreatedManual": {
+        "title": "Frais de maintenance ajoutés",
+        "message": "Des frais de maintenance de {{amount}} ont été ajoutés à votre compte pour la demande {{mruid}}. Veuillez payer d'ici le {{dueDate}}."
+      },
+      "chargeSkipped": {
+        "title": "Locataire non facturé — action requise",
+        "message": "La facture approuvée pour la demande de maintenance {{mruid}} ({{amount}}) n'a pas pu être facturée automatiquement au locataire, car {{reasonText}}. Veuillez facturer le locataire manuellement."
+      },
+      "autoVendorPaid": {
+        "title": "Prestataire payé automatiquement",
+        "message": "{{vendorName}} a reçu automatiquement {{amount}} pour la demande de maintenance {{mruid}}. La période d'examen de 5 jours s'est écoulée sans intervention manuelle."
       }
     },
     "lease": {
@@ -829,7 +845,71 @@
       "refunded": {
         "title": "Paiement remboursé",
         "message": "Un remboursement de {{amount}} a été émis"
+      },
+      "requested": {
+        "title": "Demande de paiement reçue",
+        "message": "Un paiement ({{paymentLabel}}) de {{amount}} est dû le {{dueDate}}. Payez à l'avance, sinon votre mode de paiement lié sera débité automatiquement à la date d'échéance ou après."
+      },
+      "requestedManual": {
+        "title": "Demande de paiement reçue",
+        "message": "Un paiement ({{paymentLabel}}) de {{amount}} est dû le {{dueDate}}. Veuillez payer d'ici la date d'échéance."
+      },
+      "overdue": {
+        "title": "Paiement en retard : {{paymentTitle}}",
+        "message": "Un paiement ({{paymentLabel}}) de {{amount}} dû le {{dueDate}} est maintenant en retard"
+      },
+      "overdueTenant": {
+        "title": "Paiement en retard : {{paymentTitle}}",
+        "message": "Votre paiement ({{paymentLabel}}) de {{amount}} était dû le {{dueDate}} et est maintenant en retard. Veuillez effectuer votre paiement dès que possible."
+      },
+      "failedTenant": {
+        "title": "Le paiement n'a pas pu être traité",
+        "message": "Votre paiement de {{amount}} n'a pas pu être traité. Veuillez utiliser le lien de paiement fourni ou ajouter une carte pour effectuer votre paiement."
+      },
+      "failedTenantWithReason": {
+        "title": "Le paiement n'a pas pu être traité",
+        "message": "Votre paiement de {{amount}} n'a pas pu être traité ({{reason}}). Veuillez utiliser le lien de paiement fourni ou ajouter une carte pour effectuer votre paiement."
+      },
+      "refundedTenant": {
+        "title": "Remboursement émis",
+        "message": "Un remboursement {{refundKind}} de {{amount}} a été émis pour le paiement {{pytuid}}."
+      },
+      "retriedWithCard": {
+        "title": "Prélèvement bancaire repris sur carte",
+        "message": "Un prélèvement bancaire de {{amount}} pour le paiement {{pytuid}} a échoué et le montant a plutôt été porté à la carte enregistrée du locataire."
+      },
+      "retriedWithCardTenant": {
+        "title": "Échec du prélèvement bancaire — carte débitée",
+        "message": "Votre prélèvement bancaire de {{amount}} n'a pas pu être effectué; nous avons donc porté le montant à {{cardDescription}}."
+      },
+      "depositRefundFailed": {
+        "title": "Échec du remboursement du dépôt de garantie",
+        "message": "Le remboursement du dépôt de garantie de {{amount}} pour le paiement {{pytuid}} n'a pas pu être traité. Motif : {{reason}}. Veuillez vérifier la situation et rembourser le locataire autrement au besoin."
       }
+    },
+    "fragments": {
+      "paymentTypes": {
+        "rent": "Loyer",
+        "maintenance": "Maintenance",
+        "late_fee": "Frais de retard",
+        "security_deposit": "Dépôt de garantie",
+        "deposit_refund": "Remboursement du dépôt de garantie",
+        "default": "Paiement"
+      },
+      "refundKinds": {
+        "partial": "partiel",
+        "full": "total"
+      },
+      "cardDescriptions": {
+        "endingIn": "votre carte se terminant par {{cardLast4}}",
+        "onFile": "votre carte enregistrée"
+      },
+      "chargeSkippedReasons": {
+        "tenant_profile_not_found": "le profil du locataire est introuvable",
+        "no_tenant": "la demande n'est associée à aucun locataire",
+        "default": "le locataire est introuvable"
+      },
+      "unknownError": "erreur inconnue"
     }
   }
 }

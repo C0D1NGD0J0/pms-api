@@ -1,11 +1,27 @@
-import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
 import { basicLimiter } from '@shared/middlewares';
 import { AppRequest } from '@interfaces/utils.interface';
+import { NextFunction, Response, Request, Router } from 'express';
 import { WebhookController } from '@controllers/WebhookController';
 
 const router = Router();
 router.use(basicLimiter());
+
+/**
+ * Invoice-provider webhooks are unauthenticated and their HMAC signature verification is
+ * not implemented yet, so the endpoint is disabled in production until it is.
+ */
+export const blockUnverifiedInvoiceWebhookInProduction = (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(501).json({ success: false, error: 'Invoice webhooks are not enabled' });
+    return;
+  }
+  next();
+};
 
 router.post(
   '/boldsign',
@@ -48,6 +64,7 @@ router.post(
  */
 router.post(
   '/invoices/:source',
+  blockUnverifiedInvoiceWebhookInProduction,
   asyncWrapper(async (req: AppRequest, res) => {
     const controller = req.container.resolve<WebhookController>('webhookController');
     return controller.handleInvoiceWebhook(req, res);

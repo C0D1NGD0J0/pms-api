@@ -9,6 +9,8 @@ export class CustomError extends Error {
   public readonly isOperational: boolean;
   public readonly errorInfo?: Record<string, string[]>;
   public readonly originalError?: Error;
+  /** Machine-readable error code returned to clients that need to react to a specific error */
+  public readonly code?: string;
 
   constructor(options: {
     message: string;
@@ -16,6 +18,7 @@ export class CustomError extends Error {
     isOperational?: boolean;
     errorInfo?: Record<string, string[]>;
     originalError?: Error;
+    code?: string;
   }) {
     super(options.message);
 
@@ -24,8 +27,30 @@ export class CustomError extends Error {
     this.isOperational = options.isOperational ?? true;
     this.errorInfo = options.errorInfo;
     this.originalError = options.originalError;
+    this.code = options.code;
 
     Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+/**
+ * Error representing a 400 Bad Request
+ */
+export class BadRequestError extends CustomError {
+  constructor(options?: {
+    message: string;
+    statusCode?: number;
+    errorInfo?: Record<string, string[]>;
+    originalError?: Error;
+    code?: string;
+  }) {
+    super({
+      message: options?.message || 'Bad Request.',
+      statusCode: options?.statusCode || httpStatusCodes.BAD_REQUEST,
+      errorInfo: options?.errorInfo,
+      originalError: options?.originalError,
+      code: options?.code,
+    });
   }
 }
 
@@ -80,25 +105,6 @@ export class ValidationRequestError extends CustomError {
     super({
       message: options?.message || 'Validation Request.',
       statusCode: options?.statusCode || httpStatusCodes.UNPROCESSABLE,
-      errorInfo: options?.errorInfo,
-      originalError: options?.originalError,
-    });
-  }
-}
-
-/**
- * Error representing a 400 Bad Request
- */
-export class BadRequestError extends CustomError {
-  constructor(options?: {
-    message: string;
-    statusCode?: number;
-    errorInfo?: Record<string, string[]>;
-    originalError?: Error;
-  }) {
-    super({
-      message: options?.message || 'Bad Request.',
-      statusCode: options?.statusCode || httpStatusCodes.BAD_REQUEST,
       errorInfo: options?.errorInfo,
       originalError: options?.originalError,
     });

@@ -77,11 +77,12 @@ export class PaymentController {
     if (!tenantId) {
       return res.status(401).json({ success: false, message: 'Unauthenticated' });
     }
-    const { mruid, amountInCents } = req.body as { mruid: string; amountInCents: number };
+    // The amount is never taken from the client: the service derives it from the
+    // approved invoice and verifies the request belongs to this tenant.
+    const { mruid } = req.body as { mruid: string };
     const result = await this.paymentService.chargeForMaintenance(cuid, tenantId, {
       mruid,
       tenantId,
-      amount: amountInCents,
     });
     return res.status(200).json(result);
   }
@@ -258,8 +259,13 @@ export class PaymentController {
   async cancelPayment(req: AppRequest, res: Response) {
     const { cuid, pytuid } = req.params;
     const { reason } = req.body;
+    // Voiding a PAID manual entry is limited to managers and above — the service checks the role
+    const actor = {
+      role: req.context?.currentuser?.client?.role,
+      userId: req.context?.currentuser?.sub,
+    };
 
-    const result = await this.paymentService.cancelPayment(cuid, pytuid, reason);
+    const result = await this.paymentService.cancelPayment(cuid, pytuid, reason, actor);
 
     return res.status(200).json(result);
   }
@@ -272,12 +278,13 @@ export class PaymentController {
 
   async refundPayment(req: AppRequest, res: Response) {
     const { cuid, pytuid } = req.params;
-    const { amount, reason } = req.body;
+    const { amount, reason, reverseVendorTransfer } = req.body;
     const userSub = req.context?.currentuser?.sub ?? '';
 
     const result = await this.paymentService.refundPayment(cuid, pytuid, userSub, {
       amount,
       reason,
+      reverseVendorTransfer,
     });
 
     return res.status(201).json(result);

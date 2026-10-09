@@ -24,11 +24,13 @@ export const errorHandlerMiddleware = async (
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal Server Error';
   let errorInfo = err.errorInfo;
+  let code: string | undefined;
 
   if (err instanceof CustomError) {
     message = err.message;
     statusCode = err.statusCode || 500;
     errorInfo = err.errorInfo;
+    code = err.code;
   } else if (err instanceof MongooseError) {
     const mongoError = handleMongoError(err);
     message = mongoError.message;
@@ -65,6 +67,7 @@ export const errorHandlerMiddleware = async (
     statusCode,
     ...(err.errors?.length ? { errors: err.errors } : {}),
     ...(errorInfo ? { errorInfo } : {}),
+    ...(code ? { code } : {}),
   };
 
   if (statusCode >= 500) {

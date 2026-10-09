@@ -9,11 +9,12 @@
       "subscription": ["read:any", "update:any", "manage:any"],
       "billing": ["read:any", "update:any", "manage:any"],
       "client": ["update:mine", "read:mine", "settings:mine", "manage_users:mine"],
-      "payment": ["create:any", "read:any", "update:any"]
+      "payment": ["create:any", "read:any", "update:any", "list:any", "manage:any"]
     },
     "admin": {
       "$extend": ["manager"],
       "report": ["delete:any"],
+      "payment": ["read:any", "create:any", "list:any", "update:any", "manage:any"],
       "property": ["create:any", "read:any", "update:any", "delete:any"],
       "lease": ["create:any", "list:any", "read:any", "update:any"],
       "user": ["remove:any", "delete:any", "assign_roles:any"],
@@ -52,7 +53,7 @@
         "update:any",
         "stats:any"
       ],
-      "payment": ["read:any", "create:any", "list:any"],
+      "payment": ["read:any", "create:any", "list:any", "update:any", "manage:any"],
       "report": ["read:any", "create:any", "list:any", "update:any"],
       "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
       "invitation": [
@@ -205,7 +206,7 @@
       "description": "Lease agreement operations"
     },
     "payment": {
-      "actions": ["create", "read", "update", "delete", "list"],
+      "actions": ["create", "read", "update", "delete", "list", "manage"],
       "scopes": ["any", "mine", "assigned"],
       "description": "Payment and billing operations"
     },

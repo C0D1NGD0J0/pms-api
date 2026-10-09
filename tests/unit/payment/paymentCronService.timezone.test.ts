@@ -1,31 +1,14 @@
-import dayjs from 'dayjs';
-import { Types } from 'mongoose';
-
 jest.mock('@shared/middlewares', () => ({
   preventTenantConflict: jest.requireActual('@shared/middlewares/middleware').preventTenantConflict,
 }));
 jest.mock('@di/index', () => ({ container: {} }));
 
-import { PaymentCronService } from '@services/payments/paymentCron.service';
-import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
+import { PaymentRecordType } from '@interfaces/payments.interface';
+import { PaymentCronService, localCalendarDay } from '@services/payments/paymentCron.service';
 
 const CUID_TORONTO = 'CLIENT_TORONTO';
 const CUID_VANCOUVER = 'CLIENT_VANCOUVER';
 const CUID_UTC = 'CLIENT_UTC';
-
-const _makePayment = (overrides: Record<string, any> = {}) => ({
-  _id: new Types.ObjectId(),
-  pytuid: `PYT${Math.random().toString(36).slice(2, 6)}`,
-  cuid: CUID_TORONTO,
-  status: PaymentRecordStatus.PENDING,
-  paymentType: PaymentRecordType.RENT,
-  baseAmount: 150000,
-  dueDate: dayjs().subtract(2, 'day').toDate(),
-  tenant: new Types.ObjectId(),
-  isManualEntry: false,
-  lineItems: [],
-  ...overrides,
-});
 
 const makeMocks = () => {
   const paymentDAO = {
@@ -34,6 +17,7 @@ const makeMocks = () => {
       .fn()
       .mockReturnValue(Promise.resolve({ items: [], pagination: null })),
     updateById: jest.fn().mockReturnValue(Promise.resolve({})),
+    update: jest.fn().mockReturnValue(Promise.resolve({})),
   } as any;
 
   const clientDAO = {
@@ -41,169 +25,175 @@ const makeMocks = () => {
     getDistinctTimezones: jest.fn().mockReturnValue(Promise.resolve(['America/Toronto', 'UTC'])),
   } as any;
 
-  const leaseDAO = {
-    findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
-  } as any;
-
-  const profileDAO = {
-    findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
-  } as any;
-
-  const paymentProcessorDAO = {
-    findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
-  } as any;
-
   const noop = {} as any;
 
   const service = new PaymentCronService({
     maintenancePaymentService: noop,
     paymentGatewayService: noop,
-    paymentProcessorDAO,
+    paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     subscriptionPlanConfig: noop,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     subscriptionDAO: noop,
-    stripeService: noop,
     smsService: { sendToUser: jest.fn() } as any,
     invoiceDAO: noop,
     queueFactory: { getQueue: jest.fn() } as any,
-    profileDAO,
+    profileDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
     paymentDAO,
     clientDAO,
-    leaseDAO,
+    leaseDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,
   });
 
-  return { service, paymentDAO, clientDAO, leaseDAO };
+  return { service, paymentDAO, clientDAO };
 };
 
-// ── Tests ────────────────────────────────────────────────────────────────────
+const findJob = async (service: PaymentCronService, name: string) => {
+  const jobs = await service.getCronJobs();
+  const job = jobs.find((j) => j.name === name);
+  if (!job) throw new Error(`job ${name} not registered`);
+  return job;
+};
 
-describe('PaymentCronService — timezone-scoped jobs', () => {
+describe('PaymentCronService — client-timezone jobs', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   describe('getCronJobs', () => {
-    it('should create per-timezone jobs for each distinct client timezone', async () => {
+    it('registers one hourly UTC job per operation, independent of the client timezones', async () => {
       const { service, clientDAO } = makeMocks();
+
+      const jobs = await service.getCronJobs();
+      const hourlyJobs = jobs.filter((j) => j.name.endsWith('.hourly'));
+
+      expect(hourlyJobs.map((j) => j.name).sort()).toEqual([
+        'payment.auto-charge-due-rent.hourly',
+        'payment.auto-charge-overdue-maintenance.hourly',
+        'payment.mark-overdue.hourly',
+        'payment.pad-pre-debit-notices.hourly',
+      ]);
+      hourlyJobs.forEach((job) => {
+        expect(job.schedule).toBe('0 * * * *');
+        expect(job.timezone).toBeUndefined();
+      });
+      // Timezones are read when the job runs, not at registration
+      expect(clientDAO.getDistinctTimezones).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('runs at the client local hour', () => {
+    it('marks overdue only for timezones where it is 1 AM local time', async () => {
+      // 06:00 UTC on a winter day = 01:00 in Toronto (UTC-5), 22:00 in Vancouver
+      jest.useFakeTimers({ now: new Date('2026-01-15T06:00:00Z') });
+      const { service, clientDAO, paymentDAO } = makeMocks();
+      clientDAO.getDistinctTimezones.mockReturnValue(
+        Promise.resolve(['America/Toronto', 'America/Vancouver', 'UTC'])
+      );
+      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_TORONTO]));
+
+      const job = await findJob(service, 'payment.mark-overdue.hourly');
+      await job.handler();
+
+      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledTimes(1);
+      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('America/Toronto');
+      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
+        { cuid: { $in: [CUID_TORONTO] }, isManualEntry: { $ne: true } },
+        { limit: 500, skip: 0 },
+        new Date('2026-01-15T00:00:00Z')
+      );
+    });
+
+    it('picks up a timezone added after the worker started, without re-registering', async () => {
+      jest.useFakeTimers({ now: new Date('2026-01-15T14:00:00Z') }); // 06:00 in Vancouver
+      const { service, clientDAO, paymentDAO } = makeMocks();
+      const job = await findJob(service, 'payment.auto-charge-due-rent.hourly');
+
+      // A new Vancouver client signs up after registration
       clientDAO.getDistinctTimezones.mockReturnValue(
         Promise.resolve(['America/Toronto', 'America/Vancouver'])
       );
+      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_VANCOUVER]));
 
-      const jobs = await service.getCronJobs();
-      const tzJobNames = jobs.map((j) => j.name).filter((n) => n.includes('America/'));
+      await job.handler();
 
-      // 3 operations x 2 timezones = 6 timezone-scoped jobs
-      expect(tzJobNames).toHaveLength(6);
-      expect(tzJobNames).toContain('payment.auto-charge-overdue-maintenance.America/Toronto');
-      expect(tzJobNames).toContain('payment.auto-charge-due-rent.America/Vancouver');
-      expect(tzJobNames).toContain('payment.mark-overdue.America/Toronto');
-      expect(tzJobNames).toContain('payment.mark-overdue.America/Vancouver');
+      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('America/Vancouver');
+      const listFilter = paymentDAO.list.mock.calls[0][0];
+      expect(listFilter.cuid).toEqual({ $in: [CUID_VANCOUVER] });
+      expect(listFilter.paymentType).toEqual({
+        $in: [PaymentRecordType.RENT, PaymentRecordType.SECURITY_DEPOSIT],
+      });
     });
 
-    it('should fall back to UTC when no client timezones exist', async () => {
-      const { service, clientDAO } = makeMocks();
-      clientDAO.getDistinctTimezones.mockReturnValue(Promise.resolve([]));
-
-      const jobs = await service.getCronJobs();
-      const tzJobNames = jobs.filter((j) => j.name.startsWith('payment.mark-overdue.'));
-
-      expect(tzJobNames).toHaveLength(1);
-      expect(tzJobNames[0].name).toBe('payment.mark-overdue.UTC');
-    });
-  });
-
-  describe('markOverduePayments', () => {
-    it('should only query payments for clients in the specified timezone', async () => {
+    it('skips every timezone when none is at the job hour', async () => {
+      jest.useFakeTimers({ now: new Date('2026-01-15T12:00:00Z') });
       const { service, clientDAO, paymentDAO } = makeMocks();
-      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_TORONTO]));
 
-      const jobs = await service.getCronJobs();
-      const markOverdueToronto = jobs.find(
-        (j) => j.name === 'payment.mark-overdue.America/Toronto'
-      );
+      const job = await findJob(service, 'payment.auto-charge-overdue-maintenance.hourly');
+      await job.handler();
 
-      await markOverdueToronto!.handler();
-
-      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('America/Toronto');
-      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
-        {
-          cuid: { $in: [CUID_TORONTO] },
-        },
-        { limit: 500, skip: 0 }
-      );
+      expect(clientDAO.getCuidsByTimezone).not.toHaveBeenCalled();
+      expect(paymentDAO.list).not.toHaveBeenCalled();
     });
 
-    it('should skip processing when no clients exist in timezone', async () => {
+    it('falls back to UTC when no client timezones exist', async () => {
+      jest.useFakeTimers({ now: new Date('2026-01-15T10:00:00Z') });
+      const { service, clientDAO, paymentDAO } = makeMocks();
+      clientDAO.getDistinctTimezones.mockReturnValue(Promise.resolve([]));
+      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_UTC]));
+
+      const job = await findJob(service, 'payment.auto-charge-overdue-maintenance.hourly');
+      await job.handler();
+
+      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('UTC');
+      const listFilter = paymentDAO.list.mock.calls[0][0];
+      expect(listFilter.cuid).toEqual({ $in: [CUID_UTC] });
+      expect(listFilter.paymentType).toEqual({
+        $in: [PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE],
+      });
+    });
+
+    it('runs a half-hour-offset timezone once a day', async () => {
+      const { service, clientDAO } = makeMocks();
+      clientDAO.getDistinctTimezones.mockReturnValue(Promise.resolve(['Asia/Kolkata'])); // UTC+5:30
+      const job = await findJob(service, 'payment.mark-overdue.hourly');
+
+      let runs = 0;
+      for (let hour = 0; hour < 24; hour++) {
+        jest.useFakeTimers({ now: new Date(Date.UTC(2026, 0, 15, hour)) });
+        clientDAO.getCuidsByTimezone.mockClear();
+        await job.handler();
+        runs += clientDAO.getCuidsByTimezone.mock.calls.length;
+      }
+      expect(runs).toBe(1);
+    });
+
+    it('scopes queries with an empty $in when the timezone has no active clients', async () => {
+      jest.useFakeTimers({ now: new Date('2026-01-15T06:00:00Z') });
       const { service, clientDAO, paymentDAO } = makeMocks();
       clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([]));
 
-      const jobs = await service.getCronJobs();
-      const markOverdue = jobs.find((j) => j.name === 'payment.mark-overdue.America/Toronto');
+      const job = await findJob(service, 'payment.mark-overdue.hourly');
+      await job.handler();
 
-      await markOverdue!.handler();
-
-      // Should pass empty $in filter — matches nothing
-      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
-        {
-          cuid: { $in: [] },
-        },
-        { limit: 500, skip: 0 }
-      );
-    });
-  });
-
-  describe('autoChargeDueRentPayments', () => {
-    it('should scope rent auto-charge to timezone clients', async () => {
-      const { service, clientDAO, paymentDAO } = makeMocks();
-      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_TORONTO, CUID_VANCOUVER]));
-
-      const jobs = await service.getCronJobs();
-      const autoCharge = jobs.find(
-        (j) => j.name === 'payment.auto-charge-due-rent.America/Toronto'
-      );
-
-      await autoCharge!.handler();
-
-      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('America/Toronto');
-      const listCall = paymentDAO.list.mock.calls[0][0];
-      expect(listCall.cuid).toEqual({ $in: [CUID_TORONTO, CUID_VANCOUVER] });
-      expect(listCall.paymentType).toBe(PaymentRecordType.RENT);
-    });
-  });
-
-  describe('autoChargeOverdueMaintenancePayments', () => {
-    it('should scope maintenance auto-charge to timezone clients', async () => {
-      const { service, clientDAO, paymentDAO } = makeMocks();
-      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_UTC]));
-
-      const jobs = await service.getCronJobs();
-      const autoCharge = jobs.find((j) => j.name === 'payment.auto-charge-overdue-maintenance.UTC');
-
-      await autoCharge!.handler();
-
-      expect(clientDAO.getCuidsByTimezone).toHaveBeenCalledWith('UTC');
-      const listCall = paymentDAO.list.mock.calls[0][0];
-      expect(listCall.cuid).toEqual({ $in: [CUID_UTC] });
-      expect(listCall.paymentType).toEqual({
-        $in: [PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE],
+      expect(paymentDAO.findOverduePayments.mock.calls[0][0]).toEqual({
+        cuid: { $in: [] },
+        isManualEntry: { $ne: true },
       });
     });
   });
 
-  describe('buildCuidFilter (via handlers)', () => {
-    it('should return empty filter when no timezone is provided (UTC-only jobs)', async () => {
-      const { service, clientDAO, paymentDAO } = makeMocks();
-      clientDAO.getDistinctTimezones.mockReturnValue(Promise.resolve(['UTC']));
-
-      const jobs = await service.getCronJobs();
-      // test mark-overdue with UTC timezone
-      const markOverdueUtc = jobs.find((j) => j.name === 'payment.mark-overdue.UTC');
-      clientDAO.getCuidsByTimezone.mockReturnValue(Promise.resolve([CUID_UTC]));
-
-      await markOverdueUtc!.handler();
-
-      expect(paymentDAO.findOverduePayments).toHaveBeenCalledWith(
-        {
-          cuid: { $in: [CUID_UTC] },
-        },
-        { limit: 500, skip: 0 }
+  describe('localCalendarDay', () => {
+    it('returns the client-local calendar date as UTC midnight', () => {
+      // 03:00 UTC on Oct 2 is still Oct 1 in Toronto, already Oct 2 in Tokyo
+      const instant = new Date('2026-10-02T03:00:00Z');
+      expect(localCalendarDay(instant, 'America/Toronto')).toEqual(
+        new Date('2026-10-01T00:00:00Z')
       );
+      expect(localCalendarDay(instant, 'Asia/Tokyo')).toEqual(new Date('2026-10-02T00:00:00Z'));
+    });
+
+    it('falls back to UTC for an invalid timezone', () => {
+      const instant = new Date('2026-10-02T03:00:00Z');
+      expect(localCalendarDay(instant, 'Not/AZone')).toEqual(new Date('2026-10-02T00:00:00Z'));
     });
   });
 });

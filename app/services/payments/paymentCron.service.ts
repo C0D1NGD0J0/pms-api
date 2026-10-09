@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { NotFoundError } from '@shared/customErrors';
 import { PaymentQueue } from '@queues/payment.queue';
@@ -29,6 +30,7 @@ import {
   PaymentRecordStatus,
   PaymentRecordType,
   IPaymentDocument,
+  ILeaseDocument,
   SMSMessageType,
   PaymentMethod,
   PaymentSource,
@@ -42,7 +44,8 @@ interface IConstructor {
   paymentProcessorDAO: PaymentProcessorDAO;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
-  stripeService: StripeService;
+  // Kept for DI compatibility — Stripe is only reached through paymentGatewayService.
+  stripeService?: StripeService;
   queueFactory: QueueFactory;
   smsService: SMSService;
   invoiceDAO: InvoiceDAO;
@@ -52,6 +55,45 @@ interface IConstructor {
   leaseDAO: LeaseDAO;
 }
 
+interface ITenantChargeMethod {
+  paymentMethodId?: string;
+  tenantUserId?: string;
+  accountLast4?: string;
+  isBankDebit: boolean;
+  methodType?: string;
+  isPadDebit: boolean;
+  mandateId?: string;
+}
+
+type AutoChargeOutcome = 'charged' | 'skipped' | 'deferred';
+
+const CHARGEABLE_STATUSES = [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE];
+// Records billed through a Stripe invoice: the auto-charge pays the invoice on/after its due date
+const INVOICED_AUTO_CHARGE_TYPES = [PaymentRecordType.RENT, PaymentRecordType.SECURITY_DEPOSIT];
+const OPEN_DISPUTE_STATUSES = ['open', 'needs_response', 'under_review'];
+const BANK_DEBIT_METHOD_TYPES = new Set([
+  'us_bank_account',
+  'acss_debit',
+  'sepa_debit',
+  'bacs_debit',
+]);
+const DEFAULT_PAD_PRE_NOTIFICATION_DAYS = 10;
+// Weekly rent generation runs every 7 days, so auto-debit invoices are created this many days
+// beyond the PAD notice period to guarantee the notice can go out on time.
+const AUTO_DEBIT_EXTRA_LEAD_DAYS = 8;
+const AUTO_CHARGE_BATCH_SIZE = 200;
+const CARD_PROCESSING_STALE_HOURS = 72;
+const BANK_DEBIT_PROCESSING_STALE_HOURS = 240;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Local hour (client timezone) at which each timezone-scoped job runs.
+const LOCAL_HOUR = {
+  markOverdue: 1,
+  padPreDebitNotices: 5,
+  autoChargeDueRent: 6,
+  autoChargeOverdueMaintenance: 10,
+};
+
 export class PaymentCronService implements ICronProvider {
   private readonly log: Logger;
   private readonly maintenancePaymentService: MaintenancePaymentService;
@@ -60,7 +102,6 @@ export class PaymentCronService implements ICronProvider {
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
-  private readonly stripeService: StripeService;
   private readonly smsService: SMSService;
   private readonly invoiceDAO: InvoiceDAO;
   private readonly queueFactory: QueueFactory;
@@ -76,7 +117,6 @@ export class PaymentCronService implements ICronProvider {
     subscriptionPlanConfig,
     emitterService,
     subscriptionDAO,
-    stripeService,
     smsService,
     invoiceDAO,
     queueFactory,
@@ -92,7 +132,6 @@ export class PaymentCronService implements ICronProvider {
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
-    this.stripeService = stripeService;
     this.smsService = smsService;
     this.invoiceDAO = invoiceDAO;
     this.queueFactory = queueFactory;
@@ -100,6 +139,11 @@ export class PaymentCronService implements ICronProvider {
     this.paymentDAO = paymentDAO;
     this.clientDAO = clientDAO;
     this.leaseDAO = leaseDAO;
+  }
+
+  /** Payments Canada Rule H1: minimum days between the PAD pre-debit notice and the debit. */
+  private get padNoticeDays(): number {
+    return envVariables.STRIPE?.PAD_PRE_NOTIFICATION_DAYS || DEFAULT_PAD_PRE_NOTIFICATION_DAYS;
   }
 
   /**
@@ -124,7 +168,8 @@ export class PaymentCronService implements ICronProvider {
         handler: this.queueWeeklyRentInvoices.bind(this),
         enabled: true,
         service: 'PaymentCronService',
-        description: 'Queue rent invoice creation for leases due in the upcoming week',
+        description:
+          'Queue rent invoice creation for leases due in the upcoming week (further ahead for auto-debit leases so the PAD notice can go out on time)',
         timeout: 600000,
       },
       {
@@ -134,7 +179,7 @@ export class PaymentCronService implements ICronProvider {
         enabled: true,
         service: 'PaymentCronService',
         description:
-          'Queue rent invoices for leases due today or tomorrow (catches any missed by weekly job)',
+          'Queue rent invoices for leases due soon that have no record for the period yet (catches any missed by weekly job)',
         timeout: 300000,
       },
       {
@@ -153,7 +198,7 @@ export class PaymentCronService implements ICronProvider {
         enabled: true,
         service: 'PaymentCronService',
         description:
-          'Check Stripe Connect balance and flip fundsAvailable on settled maintenance invoices (morning run)',
+          'Flip fundsAvailable on maintenance invoices whose tenant charge succeeded (morning run)',
         timeout: 300000,
       },
       {
@@ -163,7 +208,7 @@ export class PaymentCronService implements ICronProvider {
         enabled: true,
         service: 'PaymentCronService',
         description:
-          'Check Stripe Connect balance and flip fundsAvailable on settled maintenance invoices (evening run)',
+          'Flip fundsAvailable on maintenance invoices whose tenant charge succeeded (evening run)',
         timeout: 300000,
       },
       {
@@ -188,55 +233,78 @@ export class PaymentCronService implements ICronProvider {
       },
     ];
 
-    // Time-sensitive jobs — register once per distinct client timezone so they fire
-    // at the right local time (e.g. 6 AM Vancouver, not 6 AM UTC).
+    // Time-sensitive jobs run hourly and process only the clients whose local time is at the
+    // job's hour (e.g. 6 AM Vancouver, not 6 AM UTC). Timezones are read on every run, so a new
+    // client or a changed timezone is covered without restarting the worker.
+    const localTimeJobs: ICronJob[] = [
+      this.buildLocalHourJob(
+        'payment.mark-overdue',
+        LOCAL_HOUR.markOverdue,
+        'Flip PENDING → OVERDUE for payments whose due date has passed in the client timezone',
+        (tz) => this.markOverduePayments(tz)
+      ),
+      this.buildLocalHourJob(
+        'payment.pad-pre-debit-notices',
+        LOCAL_HOUR.padPreDebitNotices,
+        'Send PAD pre-debit notices for upcoming bank (ACSS) debits',
+        (tz) => this.sendPadPreDebitNotices(tz)
+      ),
+      this.buildLocalHourJob(
+        'payment.auto-charge-due-rent',
+        LOCAL_HOUR.autoChargeDueRent,
+        'Auto-charge tenants for rent due today or overdue',
+        (tz) => this.autoChargeDueRentPayments(tz)
+      ),
+      this.buildLocalHourJob(
+        'payment.auto-charge-overdue-maintenance',
+        LOCAL_HOUR.autoChargeOverdueMaintenance,
+        'Auto-charge tenants for overdue maintenance and late-fee charges',
+        (tz) => this.autoChargeOverdueMaintenancePayments(tz)
+      ),
+    ];
+
+    return [...utcJobs, ...localTimeJobs];
+  }
+
+  private buildLocalHourJob(
+    baseName: string,
+    localHour: number,
+    description: string,
+    run: (timezone: string) => Promise<void>
+  ): ICronJob {
+    return {
+      name: `${baseName}.hourly`,
+      schedule: '0 * * * *',
+      handler: () => this.runForTimezonesAtLocalHour(baseName, localHour, run),
+      enabled: true,
+      service: 'PaymentCronService',
+      description: `${description} [runs at ${localHour}:00 client time]`,
+      timeout: 300000,
+    };
+  }
+
+  private async runForTimezonesAtLocalHour(
+    jobName: string,
+    localHour: number,
+    run: (timezone: string) => Promise<void>
+  ): Promise<void> {
     let timezones: string[] = [];
     try {
       timezones = await this.clientDAO.getDistinctTimezones();
     } catch (err) {
-      this.log.error(
-        { err },
-        '[PaymentCronService] Failed to load distinct timezones — falling back to UTC'
-      );
+      this.log.error({ err }, `[Cron] ${jobName}: failed to load client timezones — using UTC`);
     }
-    if (timezones.length === 0) {
-      timezones = ['UTC'];
+    if (timezones.length === 0) timezones = ['UTC'];
+
+    const now = new Date();
+    for (const timezone of timezones) {
+      if (getLocalDateParts(now, timezone).hour !== localHour) continue;
+      try {
+        await run(timezone);
+      } catch (err) {
+        this.log.error({ err, timezone }, `[Cron] ${jobName} failed for timezone`);
+      }
     }
-
-    const tzJobs: ICronJob[] = timezones.flatMap((tz) => [
-      {
-        name: `payment.auto-charge-overdue-maintenance.${tz}`,
-        schedule: '0 10 * * *',
-        timezone: tz,
-        handler: () => this.autoChargeOverdueMaintenancePayments(tz),
-        enabled: true,
-        service: 'PaymentCronService',
-        description: `Auto-charge tenant CC for overdue maintenance invoices [${tz}]`,
-        timeout: 300000,
-      },
-      {
-        name: `payment.auto-charge-due-rent.${tz}`,
-        schedule: '0 6 * * *',
-        timezone: tz,
-        handler: () => this.autoChargeDueRentPayments(tz),
-        enabled: true,
-        service: 'PaymentCronService',
-        description: `Auto-charge tenants for rent due today or overdue [${tz}]`,
-        timeout: 300000,
-      },
-      {
-        name: `payment.mark-overdue.${tz}`,
-        schedule: '0 1 * * *',
-        timezone: tz,
-        handler: () => this.markOverduePayments(tz),
-        enabled: true,
-        service: 'PaymentCronService',
-        description: `Flip PENDING → OVERDUE for payments where dueDate has passed [${tz}]`,
-        timeout: 300000,
-      },
-    ]);
-
-    return [...utcJobs, ...tzJobs];
   }
 
   /**
@@ -257,6 +325,7 @@ export class PaymentCronService implements ICronProvider {
     currency?: string;
     lineItems?: { description: string; amountInCents: number }[];
     paymentSource?: PaymentSource;
+    acceptedPaymentMethod?: string;
   }): Promise<IPaymentDocument> {
     const tenantProfile = await this.profileDAO.findFirst({ user: data.tenantId });
     if (!tenantProfile) {
@@ -288,6 +357,9 @@ export class PaymentCronService implements ICronProvider {
       dueDate: data.dueDate,
       pytuid: payment.pytuid,
       cuid: data.cuid,
+      paymentType: data.paymentType,
+      currency: payment.currency ?? data.currency,
+      ...(data.acceptedPaymentMethod && { acceptedPaymentMethod: data.acceptedPaymentMethod }),
     });
 
     return payment;
@@ -319,13 +391,27 @@ export class PaymentCronService implements ICronProvider {
     };
   }
 
+  private isAutoDebitLease(lease: ILeaseDocument): boolean {
+    return lease.fees?.acceptedPaymentMethod === 'auto-debit';
+  }
+
+  private isWithinLeaseTerm(lease: ILeaseDocument, dueDate: dayjs.Dayjs): boolean {
+    const leaseStart = dayjs(lease.duration.startDate).startOf('day');
+    const leaseEnd = (
+      lease.duration.terminationDate
+        ? dayjs(lease.duration.terminationDate)
+        : dayjs(lease.duration.endDate)
+    ).endOf('day');
+    return !dueDate.isBefore(leaseStart) && !dueDate.isAfter(leaseEnd);
+  }
+
   /**
-   * Weekly cron (Sunday midnight): queue invoice jobs for leases due this month
-   * or within the next 7 days.
+   * Weekly cron (Sunday): queue rent for leases due within the next 7 days. Auto-debit leases
+   * look further ahead (PAD notice period + a week) so their invoice exists before the
+   * pre-debit notice must be sent.
    */
   private async queueWeeklyRentInvoices(): Promise<void> {
     const today = dayjs().startOf('day');
-    const sevenDaysLater = today.add(7, 'day');
 
     // Page through every active lease — list() caps a single query at 1000 rows.
     // This cron only writes payments, never leases, so the pages stay stable.
@@ -344,98 +430,22 @@ export class PaymentCronService implements ICronProvider {
 
       for (const lease of leases) {
         try {
-          const leaseStart = dayjs(lease.duration.startDate).startOf('day');
-          const leaseEnd = (
-            lease.duration.terminationDate
-              ? dayjs(lease.duration.terminationDate)
-              : dayjs(lease.duration.endDate)
-          ).endOf('day');
-          const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
-          const nextMonthDue = today.add(1, 'month').date(lease.fees.rentDueDay).startOf('day');
-
-          const candidates: dayjs.Dayjs[] = [];
-          if (
-            !thisMonthDue.isBefore(today) &&
-            !thisMonthDue.isBefore(leaseStart) &&
-            !thisMonthDue.isAfter(sevenDaysLater) &&
-            !thisMonthDue.isAfter(leaseEnd)
-          ) {
-            candidates.push(thisMonthDue);
-          }
-          if (
-            !nextMonthDue.isBefore(today) &&
-            !nextMonthDue.isBefore(leaseStart) &&
-            !nextMonthDue.isAfter(sevenDaysLater) &&
-            !nextMonthDue.isAfter(leaseEnd)
-          ) {
-            candidates.push(nextMonthDue);
-          }
+          const windowEnd = today.add(
+            this.isAutoDebitLease(lease) ? this.padNoticeDays + AUTO_DEBIT_EXTRA_LEAD_DAYS : 7,
+            'day'
+          );
+          const candidates = [
+            rentDueDateForMonth(today, lease.fees.rentDueDay),
+            rentDueDateForMonth(today.add(1, 'month'), lease.fees.rentDueDay),
+          ].filter(
+            (due) =>
+              !due.isBefore(today) && !due.isAfter(windowEnd) && this.isWithinLeaseTerm(lease, due)
+          );
 
           for (const dueDayjs of candidates) {
-            const dueDate = dueDayjs.toDate();
-            const period = { month: dueDayjs.month() + 1, year: dueDayjs.year() };
-            const existing = await this.paymentDAO.findByPeriod(
-              lease.cuid,
-              lease._id.toString(),
-              period.month,
-              period.year
-            );
-            if (existing) {
-              const activeStatuses = [
-                PaymentRecordStatus.PENDING,
-                PaymentRecordStatus.OVERDUE,
-                PaymentRecordStatus.PAID,
-                PaymentRecordStatus.PROCESSING,
-              ];
-              if (activeStatuses.includes(existing.status as PaymentRecordStatus)) continue;
-              if (lease.fees?.acceptedPaymentMethod !== 'auto-debit') {
-                await this.paymentDAO.updateById(existing._id.toString(), {
-                  deletedAt: dayjs().toDate(),
-                });
-              }
+            if (await this.queueRentForPeriod(lease, dueDayjs, onlinePaymentsEnabled, 'Weekly')) {
+              queued++;
             }
-
-            if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
-              if (!onlinePaymentsEnabled.has(lease.cuid)) {
-                const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
-                onlinePaymentsEnabled.set(
-                  lease.cuid,
-                  lClient?.settings?.tenantFeatures?.onlinePayments !== false
-                );
-              }
-              if (!onlinePaymentsEnabled.get(lease.cuid)) {
-                this.log.info(
-                  { leaseId: lease._id, cuid: lease.cuid },
-                  'Weekly rent invoice skipped: online payments disabled for client'
-                );
-                continue;
-              }
-
-              const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
-              await paymentQueue.addCreateRentInvoiceJob({
-                cuid: lease.cuid,
-                leaseId: lease.luid,
-                tenantId: lease.tenantId.toString(),
-                period,
-                dueDate,
-                paymentType: PaymentRecordType.RENT,
-              });
-            } else {
-              const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
-              await this.createManualTrackingPayment({
-                cuid: lease.cuid,
-                tenantId: lease.tenantId.toString(),
-                dueDate,
-                baseAmount: totalMonthlyRent,
-                paymentType: PaymentRecordType.RENT,
-                paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
-                leaseId: lease._id.toString(),
-                period,
-                currency: lease.fees?.currency,
-                paymentSource: 'cron',
-              });
-            }
-            queued++;
           }
         } catch (error) {
           this.log.error(
@@ -454,12 +464,13 @@ export class PaymentCronService implements ICronProvider {
   }
 
   /**
-   * Daily cron (9 AM): safety net ensuring every active lease has a rent payment
-   * for the current month once its due date has arrived.
+   * Daily cron: safety net ensuring every active lease has a rent record for the current
+   * month once its due date arrives (and ahead of the PAD notice period for auto-debit leases).
+   * A period that already has a record — of any status — is never regenerated here; FAILED
+   * records are only surfaced to the property manager. Re-billing is an explicit PM action.
    */
   private async queueDailySafetyNetInvoices(): Promise<void> {
     const today = dayjs().startOf('day');
-    const tomorrow = today.add(1, 'day');
 
     // Page through every active lease — list() caps a single query at 1000 rows.
     // This cron only writes payments, never leases, so the pages stay stable.
@@ -478,98 +489,30 @@ export class PaymentCronService implements ICronProvider {
 
       for (const lease of leases) {
         try {
-          const thisMonthDue = today.date(lease.fees.rentDueDay).startOf('day');
-          const leaseStart = dayjs(lease.duration.startDate).startOf('day');
-          const leaseEnd = (
-            lease.duration.terminationDate
-              ? dayjs(lease.duration.terminationDate)
-              : dayjs(lease.duration.endDate)
-          ).endOf('day');
-
-          if (
-            thisMonthDue.isAfter(tomorrow) ||
-            thisMonthDue.isBefore(leaseStart) ||
-            thisMonthDue.isAfter(leaseEnd)
-          )
-            continue;
-
-          const period = { month: thisMonthDue.month() + 1, year: thisMonthDue.year() };
-          const existing = await this.paymentDAO.findByPeriod(
-            lease.cuid,
-            lease._id.toString(),
-            period.month,
-            period.year
+          const windowEnd = today.add(
+            this.isAutoDebitLease(lease) ? this.padNoticeDays + 1 : 1,
+            'day'
           );
-          if (existing) {
-            const activeStatuses = [
-              PaymentRecordStatus.PENDING,
-              PaymentRecordStatus.OVERDUE,
-              PaymentRecordStatus.PAID,
-              PaymentRecordStatus.PROCESSING,
-            ];
-            if (activeStatuses.includes(existing.status as PaymentRecordStatus)) continue;
-            if (existing.status === PaymentRecordStatus.CANCELLED) continue;
-            if (!existing.failure?.pmNotifiedAt) {
-              this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
-                cuid: existing.cuid,
-                pytuid: existing.pytuid,
-                invoiceId: existing.gatewayPaymentId ?? existing.pytuid,
-                amount: existing.baseAmount,
-                tenantId: existing.tenant?.toString(),
-                hostedInvoiceUrl: existing.receipt?.url,
-              });
-              await this.paymentDAO.updateById(existing._id.toString(), {
-                'failure.pmNotifiedAt': dayjs().toDate(),
-              });
-            }
-            if (lease.fees?.acceptedPaymentMethod !== 'auto-debit') {
-              await this.paymentDAO.updateById(existing._id.toString(), {
-                deletedAt: dayjs().toDate(),
-              });
+          const thisMonthDue = rentDueDateForMonth(today, lease.fees.rentDueDay);
+          const nextMonthDue = rentDueDateForMonth(today.add(1, 'month'), lease.fees.rentDueDay);
+          const candidates = [
+            // This month's rent, even if its due date already passed
+            ...(thisMonthDue.isAfter(windowEnd) ? [] : [thisMonthDue]),
+            ...(nextMonthDue.isAfter(windowEnd) ? [] : [nextMonthDue]),
+          ].filter((due) => this.isWithinLeaseTerm(lease, due));
+
+          for (const dueDayjs of candidates) {
+            if (
+              await this.queueRentForPeriod(
+                lease,
+                dueDayjs,
+                onlinePaymentsEnabled,
+                'Daily safety net'
+              )
+            ) {
+              queued++;
             }
           }
-
-          if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
-            if (!onlinePaymentsEnabled.has(lease.cuid)) {
-              const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
-              onlinePaymentsEnabled.set(
-                lease.cuid,
-                lClient?.settings?.tenantFeatures?.onlinePayments !== false
-              );
-            }
-            if (!onlinePaymentsEnabled.get(lease.cuid)) {
-              this.log.info(
-                { leaseId: lease._id, cuid: lease.cuid },
-                'Daily safety net skipped: online payments disabled for client'
-              );
-              continue;
-            }
-
-            const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
-            await paymentQueue.addCreateRentInvoiceJob({
-              cuid: lease.cuid,
-              leaseId: lease.luid,
-              tenantId: lease.tenantId.toString(),
-              period,
-              dueDate: thisMonthDue.toDate(),
-              paymentType: PaymentRecordType.RENT,
-            });
-          } else {
-            const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
-            await this.createManualTrackingPayment({
-              cuid: lease.cuid,
-              tenantId: lease.tenantId.toString(),
-              dueDate: thisMonthDue.toDate(),
-              baseAmount: totalMonthlyRent,
-              paymentType: PaymentRecordType.RENT,
-              paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
-              leaseId: lease._id.toString(),
-              period,
-              currency: lease.fees?.currency,
-              paymentSource: 'cron',
-            });
-          }
-          queued++;
         } catch (error) {
           this.log.error({ error, leaseId: lease._id }, 'Daily safety net: error processing lease');
         }
@@ -584,12 +527,103 @@ export class PaymentCronService implements ICronProvider {
   }
 
   /**
-   * Daily cron (1 AM): flip PENDING → OVERDUE for all payment types where dueDate has passed.
-   * For rent payments past the lease's grace period, adds a late fee line item if not already present.
+   * Creates (or queues) the rent record for one lease period unless the period already has a
+   * non-deleted record of any status. Returns true when something was queued.
+   */
+  private async queueRentForPeriod(
+    lease: ILeaseDocument,
+    dueDayjs: dayjs.Dayjs,
+    onlinePaymentsEnabled: Map<string, boolean>,
+    context: string
+  ): Promise<boolean> {
+    const dueDate = dueDayjs.toDate();
+    const period = { month: dueDayjs.month() + 1, year: dueDayjs.year() };
+    const existing = await this.paymentDAO.findByPeriod(
+      lease.cuid,
+      lease._id.toString(),
+      period.month,
+      period.year
+    );
+    if (existing) {
+      if (existing.status === PaymentRecordStatus.FAILED) {
+        await this.surfaceFailedRentPayment(existing);
+      }
+      return false;
+    }
+
+    if (this.isAutoDebitLease(lease)) {
+      if (!onlinePaymentsEnabled.has(lease.cuid)) {
+        const lClient = await this.clientDAO.getClientByCuid(lease.cuid);
+        onlinePaymentsEnabled.set(
+          lease.cuid,
+          lClient?.settings?.tenantFeatures?.onlinePayments !== false
+        );
+      }
+      if (!onlinePaymentsEnabled.get(lease.cuid)) {
+        this.log.info(
+          { leaseId: lease._id, cuid: lease.cuid },
+          `${context} rent invoice skipped: online payments disabled for client`
+        );
+        return false;
+      }
+
+      const paymentQueue = this.queueFactory.getQueue('paymentQueue') as PaymentQueue;
+      await paymentQueue.addCreateRentInvoiceJob({
+        cuid: lease.cuid,
+        leaseId: lease.luid,
+        tenantId: lease.tenantId.toString(),
+        period,
+        dueDate,
+        paymentType: PaymentRecordType.RENT,
+      });
+      return true;
+    }
+
+    const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+    await this.createManualTrackingPayment({
+      cuid: lease.cuid,
+      tenantId: lease.tenantId.toString(),
+      dueDate,
+      baseAmount: totalMonthlyRent,
+      paymentType: PaymentRecordType.RENT,
+      paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
+      leaseId: lease._id.toString(),
+      period,
+      currency: lease.fees?.currency,
+      paymentSource: 'cron',
+      acceptedPaymentMethod: lease.fees?.acceptedPaymentMethod,
+    });
+    return true;
+  }
+
+  /** Tells the PM (once) about a failed rent record; the record itself is left for PM action. */
+  private async surfaceFailedRentPayment(payment: IPaymentDocument): Promise<void> {
+    if (payment.isManualEntry || payment.failure?.pmNotifiedAt) return;
+
+    this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
+      cuid: payment.cuid,
+      pytuid: payment.pytuid,
+      invoiceId: payment.gatewayPaymentId ?? payment.pytuid,
+      amount: payment.baseAmount,
+      currency: payment.currency,
+      failureReason: payment.failure?.reason,
+      tenantId: payment.tenant?.toString(),
+      hostedInvoiceUrl: payment.receipt?.url,
+    });
+    await this.paymentDAO.updateById(payment._id.toString(), {
+      'failure.pmNotifiedAt': dayjs().toDate(),
+    });
+  }
+
+  /**
+   * Daily cron (1 AM client time): flip PENDING → OVERDUE for payments whose due date is before
+   * the client's local "today". For rent past the lease's grace period, adds the late fee.
+   * PM-recorded (manual) entries are never touched.
    */
   private async markOverduePayments(timezone?: string): Promise<void> {
     try {
       const cuidFilter = await this.buildCuidFilter(timezone);
+      const startOfLocalToday = localCalendarDay(new Date(), timezone ?? 'UTC');
       const BATCH_SIZE = 500;
       let page = 1;
       let hasMore = true;
@@ -600,26 +634,27 @@ export class PaymentCronService implements ICronProvider {
       // Page through every past-due payment — list() returns 20 rows unless given a limit.
       // Statuses only move between PENDING and OVERDUE here, so the result set stays stable.
       while (hasMore) {
-        const { items: batch } = await this.paymentDAO.findOverduePayments(cuidFilter, {
-          limit: BATCH_SIZE,
-          skip: (page - 1) * BATCH_SIZE,
-        });
+        const { items: batch } = await this.paymentDAO.findOverduePayments(
+          { ...cuidFilter, isManualEntry: { $ne: true } },
+          { limit: BATCH_SIZE, skip: (page - 1) * BATCH_SIZE },
+          startOfLocalToday
+        );
 
         // Stripe-invoiced auto-debit payments are charged by the auto-charge cron; their late
         // fee is a separate charge, queued after paging so new records don't shift the pages.
         const isStripeInvoiced = (p: IPaymentDocument) => !!p.gatewayPaymentId && !p.isManualEntry;
-        const trackedPayments = batch.filter((p) => !isStripeInvoiced(p));
+        const trackedPayments = batch.filter((p) => !p.isManualEntry && !isStripeInvoiced(p));
         lateAutoDebitRent.push(
           ...batch.filter((p) => isStripeInvoiced(p) && p.paymentType === PaymentRecordType.RENT)
         );
-        lateFeesAdded += await this.addDueLateFees(trackedPayments);
+        lateFeesAdded += await this.addDueLateFees(trackedPayments, startOfLocalToday);
         markedOverdue += await this.markPendingAsOverdue(trackedPayments);
 
         hasMore = batch.length === BATCH_SIZE;
         page++;
       }
 
-      lateFeesAdded += await this.queueAutoDebitLateFees(lateAutoDebitRent);
+      lateFeesAdded += await this.queueAutoDebitLateFees(lateAutoDebitRent, startOfLocalToday);
 
       this.log.info({ markedOverdue, lateFeesAdded }, '[Cron] Marked overdue payments complete');
     } catch (error: any) {
@@ -627,12 +662,22 @@ export class PaymentCronService implements ICronProvider {
     }
   }
 
+  private daysLate(dueDate: Date, startOfLocalToday: Date): number {
+    return Math.max(
+      0,
+      Math.round((startOfLocalToday.getTime() - utcCalendarDay(dueDate).getTime()) / DAY_MS)
+    );
+  }
+
   /**
    * Adds the lease's late fee to past-due rent once it is late enough. Checked on every run —
    * not only the run that first marks the payment overdue — because the lease's late-fee
    * threshold (lateFeeDays, default 5) is usually reached days after the due date.
    */
-  private async addDueLateFees(payments: IPaymentDocument[]): Promise<number> {
+  private async addDueLateFees(
+    payments: IPaymentDocument[],
+    startOfLocalToday: Date
+  ): Promise<number> {
     let added = 0;
     for (const payment of payments) {
       if (
@@ -650,7 +695,7 @@ export class PaymentCronService implements ICronProvider {
         const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
         if (!lease) continue;
 
-        const daysLate = Math.max(0, dayjs().diff(dayjs(payment.dueDate), 'day'));
+        const daysLate = this.daysLate(payment.dueDate, startOfLocalToday);
         const fees = lease.calculateFees({ daysLate });
         if (fees.late.fee > 0) {
           await this.paymentDAO.updateById(payment._id.toString(), {
@@ -676,7 +721,10 @@ export class PaymentCronService implements ICronProvider {
    * same period through the rent invoice job (the worker creates it via createRentPayment, which
    * builds the late-fee invoice). The auto-charge-overdue-maintenance cron then charges it.
    */
-  private async queueAutoDebitLateFees(rentPayments: IPaymentDocument[]): Promise<number> {
+  private async queueAutoDebitLateFees(
+    rentPayments: IPaymentDocument[],
+    startOfLocalToday: Date
+  ): Promise<number> {
     let queued = 0;
     for (const payment of rentPayments) {
       if (!payment.lease || !payment.dueDate || !payment.period) continue;
@@ -685,7 +733,7 @@ export class PaymentCronService implements ICronProvider {
         const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
         if (!lease) continue;
 
-        const daysLate = Math.max(0, dayjs().diff(dayjs(payment.dueDate), 'day'));
+        const daysLate = this.daysLate(payment.dueDate, startOfLocalToday);
         if (lease.calculateFees({ daysLate }).late.fee <= 0) continue;
 
         // createRentPayment allows one late fee per lease and period — don't queue a job it rejects
@@ -724,20 +772,28 @@ export class PaymentCronService implements ICronProvider {
   /** Flips PENDING past-due payments to OVERDUE and notifies the tenant. */
   private async markPendingAsOverdue(payments: IPaymentDocument[]): Promise<number> {
     const pendingPayments = payments.filter((p) => p.status === PaymentRecordStatus.PENDING);
+    let marked = 0;
 
     for (const payment of pendingPayments) {
-      await this.paymentDAO.updateById(payment._id.toString(), {
-        $set: {
-          status: PaymentRecordStatus.OVERDUE,
-          overdueAt: new Date(),
-        },
-      });
+      // Conditional on PENDING so a payment settled meanwhile is never flipped back
+      const updated = await this.paymentDAO.update(
+        { _id: payment._id, status: PaymentRecordStatus.PENDING, deletedAt: null },
+        {
+          $set: {
+            status: PaymentRecordStatus.OVERDUE,
+            overdueAt: new Date(),
+          },
+        }
+      );
+      if (!updated) continue;
+      marked++;
 
       this.emitterService.emit(EventTypes.PAYMENT_OVERDUE, {
         cuid: payment.cuid,
         pytuid: payment.pytuid,
         dueDate: payment.dueDate,
         amount: payment.baseAmount,
+        currency: payment.currency,
         paymentType: payment.paymentType,
         tenantId: payment.tenant?.toString(),
       });
@@ -756,161 +812,425 @@ export class PaymentCronService implements ICronProvider {
           });
       }
     }
-    return pendingPayments.length;
+    return marked;
   }
 
   /**
-   * Daily cron (10 AM): auto-charges tenant for non-rent charges past their grace period.
+   * Pages through every payment matching `filter`, ordered by _id. Uses an _id cursor instead
+   * of skip so records whose status changes while being processed don't shift the pages.
    */
-  private async autoChargeOverdueMaintenancePayments(timezone?: string): Promise<void> {
-    const now = dayjs().toDate();
-    const cuidFilter = await this.buildCuidFilter(timezone);
+  private async *iteratePaymentBatches(
+    filter: Record<string, any>,
+    batchSize = AUTO_CHARGE_BATCH_SIZE
+  ): AsyncGenerator<IPaymentDocument[]> {
+    let lastId: Types.ObjectId | undefined;
+    while (true) {
+      const { items } = await this.paymentDAO.list(
+        lastId ? { ...filter, _id: { $gt: lastId } } : filter,
+        { limit: batchSize, sort: { _id: 1 } }
+      );
+      if (!items.length) return;
+      yield items;
+      if (items.length < batchSize) return;
+      lastId = items[items.length - 1]._id;
+    }
+  }
 
-    const { items: overduePayments } = await this.paymentDAO.list(
-      {
-        status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
-        paymentType: { $in: [PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE] },
-        isManualEntry: false,
-        gatewayChargeId: { $exists: false },
-        dueDate: { $lt: now },
-        'dispute.status': { $nin: ['open', 'needs_response'] },
-        deletedAt: null,
-        ...cuidFilter,
-      },
-      { limit: 500 }
-    );
+  private async getProcessor(
+    cuid: string,
+    cache: Map<string, { accountId?: string; chargesEnabled?: boolean } | null>
+  ): Promise<{ accountId?: string; chargesEnabled?: boolean } | null> {
+    if (!cache.has(cuid)) {
+      const processor = await this.paymentProcessorDAO.findFirst({ cuid });
+      cache.set(cuid, processor ?? null);
+    }
+    return cache.get(cuid) ?? null;
+  }
 
-    if (overduePayments.length === 0) {
-      this.log.info('[Cron] No overdue maintenance payments to auto-charge');
-      return;
+  /**
+   * Resolves how the tenant will be charged — the same saved method payPendingChargeInternal
+   * uses (tenantInfo.paymentMethods / paymentMandates for the PM's Connect account).
+   * A Canadian pre-authorized debit (ACSS) is subject to the PAD advance-notice rule.
+   */
+  private async resolveTenantChargeMethod(
+    payment: IPaymentDocument,
+    processorCache: Map<string, { accountId?: string; chargesEnabled?: boolean } | null>
+  ): Promise<ITenantChargeMethod> {
+    const tenantProfile = payment.tenant
+      ? await this.profileDAO.findFirst({ _id: payment.tenant })
+      : null;
+    const tenantUserId = tenantProfile?.user?.toString();
+    const processor = await this.getProcessor(payment.cuid, processorCache);
+    if (!tenantProfile || !processor?.accountId) {
+      return { tenantUserId, isBankDebit: false, isPadDebit: false };
     }
 
-    const { charged, failed } = await this.processAutoChargePayments(
-      overduePayments,
-      'maintenance',
-      async (payment) => {
-        const tenantProfile = await this.profileDAO.findFirst({ _id: payment.tenant });
-        if (!tenantProfile?.user) {
+    const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(processor.accountId);
+    const mandateId = tenantProfile.tenantInfo?.paymentMandates?.get(processor.accountId);
+
+    let methodType: string | undefined;
+    let accountLast4: string | undefined;
+    if (paymentMethodId) {
+      const result = await this.paymentGatewayService.retrievePaymentMethod(
+        IPaymentGatewayProvider.STRIPE,
+        paymentMethodId
+      );
+      if (result.success && result.data) {
+        methodType = result.data.type;
+        accountLast4 = result.data.last4;
+      }
+    }
+
+    // Unknown type with a mandate on file — assume a bank debit so the notice rule still applies
+    const isPadDebit = methodType === 'acss_debit' || (!methodType && !!mandateId);
+    return {
+      isBankDebit: isPadDebit || (!!methodType && BANK_DEBIT_METHOD_TYPES.has(methodType)),
+      paymentMethodId: paymentMethodId || undefined,
+      mandateId: mandateId || undefined,
+      tenantUserId,
+      accountLast4,
+      methodType,
+      isPadDebit,
+    };
+  }
+
+  /**
+   * PAD rule (Payments Canada H1): a bank debit may only be initiated once the pre-debit notice
+   * was sent at least N calendar days earlier (client timezone). Sends the notice when missing.
+   * Returns true when the debit may go ahead now.
+   */
+  private async isPadDebitAllowed(
+    payment: IPaymentDocument,
+    method: ITenantChargeMethod,
+    timezone: string
+  ): Promise<boolean> {
+    if (!method.isPadDebit) return true;
+
+    if (!payment.padNoticeSentAt) {
+      await this.sendPadPreDebitNotice(payment, method, timezone);
+      return false;
+    }
+
+    const noticeDay = localCalendarDay(payment.padNoticeSentAt, timezone);
+    const today = localCalendarDay(new Date(), timezone);
+    const daysSinceNotice = Math.round((today.getTime() - noticeDay.getTime()) / DAY_MS);
+    if (daysSinceNotice < this.padNoticeDays) {
+      this.log.info(
+        { pytuid: payment.pytuid, cuid: payment.cuid, daysSinceNotice },
+        '[Cron] PAD notice period not elapsed — debit deferred'
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Records and emits the PAD pre-debit notice. The debit date is the later of the due date and
+   * N days from today. Claimed atomically so the notice is sent once per payment.
+   */
+  private async sendPadPreDebitNotice(
+    payment: IPaymentDocument,
+    method: ITenantChargeMethod,
+    timezone: string
+  ): Promise<boolean> {
+    const now = new Date();
+    const earliestDebitDay = dayjs(localCalendarDay(now, timezone))
+      .add(this.padNoticeDays, 'day')
+      .toDate();
+    const dueDay = utcCalendarDay(payment.dueDate);
+    const debitDate = dueDay > earliestDebitDay ? dueDay : earliestDebitDay;
+
+    const claimed = await this.paymentDAO.update(
+      { _id: payment._id, padNoticeSentAt: null, deletedAt: null },
+      { $set: { padNoticeSentAt: now } }
+    );
+    if (!claimed) return false;
+
+    this.emitterService.emit(EventTypes.PAD_PRE_DEBIT_NOTIFICATION, {
+      cuid: payment.cuid,
+      pytuid: payment.pytuid,
+      tenantId: method.tenantUserId ?? payment.tenant?.toString(),
+      amount: payment.baseAmount,
+      currency: payment.currency,
+      debitDate,
+      paymentType: payment.paymentType,
+      ...(method.accountLast4 && { accountLast4: method.accountLast4 }),
+      ...(method.mandateId && { mandateReference: method.mandateId }),
+    });
+    this.log.info(
+      { pytuid: payment.pytuid, cuid: payment.cuid, debitDate },
+      '[Cron] PAD pre-debit notice sent'
+    );
+    return true;
+  }
+
+  /**
+   * Daily cron (5 AM client time): sends the PAD pre-debit notice for every upcoming charge the
+   * auto-charge crons will debit from a Canadian bank account (rent, maintenance, late fees).
+   */
+  private async sendPadPreDebitNotices(timezone?: string): Promise<void> {
+    const tz = timezone ?? 'UTC';
+    const cuidFilter = await this.buildCuidFilter(timezone);
+    // One extra day so the notice goes out no later than N days before the due date
+    const noticeHorizon = dayjs(localCalendarDay(new Date(), tz))
+      .add(this.padNoticeDays + 1, 'day')
+      .toDate();
+
+    const filter = {
+      status: { $in: CHARGEABLE_STATUSES },
+      isManualEntry: { $ne: true },
+      vendorId: { $exists: false },
+      gatewayChargeId: { $exists: false },
+      padNoticeSentAt: null,
+      dueDate: { $lt: noticeHorizon },
+      'dispute.status': { $nin: OPEN_DISPUTE_STATUSES },
+      deletedAt: null,
+      $or: [
+        {
+          paymentType: { $in: INVOICED_AUTO_CHARGE_TYPES },
+          gatewayPaymentId: { $exists: true, $ne: null },
+        },
+        { paymentType: { $in: [PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE] } },
+      ],
+      ...cuidFilter,
+    };
+
+    const processorCache = new Map<string, { accountId?: string } | null>();
+    const onlinePaymentsEnabled = new Map<string, boolean>();
+    let sent = 0;
+    let checked = 0;
+
+    for await (const batch of this.iteratePaymentBatches(filter)) {
+      for (const payment of batch) {
+        checked++;
+        try {
+          if (!(await this.isOnlinePaymentsEnabled(payment.cuid, onlinePaymentsEnabled))) continue;
+          const method = await this.resolveTenantChargeMethod(payment, processorCache);
+          if (!method.isPadDebit) continue;
+          if (await this.sendPadPreDebitNotice(payment, method, tz)) sent++;
+        } catch (err: any) {
+          this.log.error(
+            { err: err?.message, pytuid: payment.pytuid },
+            '[Cron] Failed to send PAD pre-debit notice'
+          );
+        }
+      }
+    }
+
+    this.log.info({ sent, checked, timezone: tz }, '[Cron] PAD pre-debit notices complete');
+  }
+
+  private async isOnlinePaymentsEnabled(
+    cuid: string,
+    cache: Map<string, boolean>
+  ): Promise<boolean> {
+    if (!cache.has(cuid)) {
+      const client = await this.clientDAO.getClientByCuid(cuid);
+      cache.set(cuid, client?.settings?.tenantFeatures?.onlinePayments !== false);
+    }
+    return cache.get(cuid) ?? true;
+  }
+
+  /**
+   * Daily cron (10 AM client time): auto-charges tenant for non-rent charges past their grace
+   * period. Bank (ACSS) debits wait for the PAD notice period.
+   */
+  private async autoChargeOverdueMaintenancePayments(timezone?: string): Promise<void> {
+    const tz = timezone ?? 'UTC';
+    const cuidFilter = await this.buildCuidFilter(timezone);
+    const filter = {
+      status: { $in: CHARGEABLE_STATUSES },
+      paymentType: { $in: [PaymentRecordType.MAINTENANCE, PaymentRecordType.LATE_FEE] },
+      isManualEntry: false,
+      vendorId: { $exists: false },
+      gatewayChargeId: { $exists: false },
+      dueDate: { $lt: new Date() },
+      'dispute.status': { $nin: OPEN_DISPUTE_STATUSES },
+      deletedAt: null,
+      ...cuidFilter,
+    };
+
+    const processorCache = new Map<string, { accountId?: string } | null>();
+    const totals = { charged: 0, failed: 0, deferred: 0, total: 0 };
+
+    for await (const batch of this.iteratePaymentBatches(filter)) {
+      totals.total += batch.length;
+      const result = await this.processAutoChargePayments(batch, 'maintenance', async (payment) => {
+        const method = await this.resolveTenantChargeMethod(payment, processorCache);
+        if (!method.tenantUserId) {
           this.log.warn(
             { pytuid: payment.pytuid },
             '[Cron] Skipping auto-charge: tenant profile not found'
           );
-          return false;
+          return 'skipped';
         }
-
-        const tenantUserId = tenantProfile.user.toString();
+        if (!(await this.isPadDebitAllowed(payment, method, tz))) return 'deferred';
 
         // Attempt the charge BEFORE mutating the payment record.
         // This prevents a state where paymentMethod is updated but the charge never succeeds.
-        await this.payPendingChargeInternal(payment, tenantUserId);
+        await this.payPendingChargeInternal(payment, method.tenantUserId);
 
-        await this.paymentDAO.updateById(payment._id.toString(), {
-          status: PaymentRecordStatus.PROCESSING,
-          paymentMethod: PaymentMethod.BANK_TRANSFER,
-          chargedAt: new Date(),
+        await this.markChargeSubmitted(payment, {
+          paymentMethod: method.isBankDebit ? PaymentMethod.BANK_TRANSFER : PaymentMethod.ONLINE,
+          ...(method.methodType && { stripePaymentMethodType: method.methodType }),
         });
+        return 'charged';
+      });
+      totals.charged += result.charged;
+      totals.failed += result.failed;
+      totals.deferred += result.deferred;
+    }
 
-        return true;
-      }
-    );
-
-    this.log.info(
-      { charged, failed, total: overduePayments.length },
-      '[Cron] Auto-charge overdue maintenance payments complete'
-    );
+    this.log.info(totals, '[Cron] Auto-charge overdue maintenance payments complete');
   }
 
   /**
-   * Daily cron (6 AM): triggers Stripe collection for rent payments whose due date has arrived.
+   * Daily cron (6 AM client time): triggers Stripe collection for rent whose due date (a calendar
+   * day) has arrived in the client's timezone. Every unpaid split invoice is paid. Bank (ACSS)
+   * debits wait for the PAD notice period.
    */
   private async autoChargeDueRentPayments(timezone?: string): Promise<void> {
-    const now = dayjs().toDate();
+    const tz = timezone ?? 'UTC';
     const cuidFilter = await this.buildCuidFilter(timezone);
+    const startOfLocalTomorrow = dayjs(localCalendarDay(new Date(), tz)).add(1, 'day').toDate();
+    const filter = {
+      paymentType: { $in: INVOICED_AUTO_CHARGE_TYPES },
+      status: { $in: CHARGEABLE_STATUSES },
+      isManualEntry: false,
+      gatewayPaymentId: { $exists: true, $ne: null },
+      gatewayChargeId: { $exists: false },
+      dueDate: { $lt: startOfLocalTomorrow },
+      'dispute.status': { $nin: OPEN_DISPUTE_STATUSES },
+      deletedAt: null,
+      ...cuidFilter,
+    };
 
-    const { items: duePayments } = await this.paymentDAO.list(
-      {
-        paymentType: PaymentRecordType.RENT,
-        status: { $in: [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE] },
-        isManualEntry: false,
-        gatewayPaymentId: { $exists: true, $ne: null },
-        gatewayChargeId: { $exists: false },
-        dueDate: { $lte: now },
-        'dispute.status': { $nin: ['open', 'needs_response'] },
-        deletedAt: null,
-        ...cuidFilter,
-      },
-      { limit: 500 }
-    );
+    const processorCache = new Map<string, { accountId?: string } | null>();
+    const totals = { charged: 0, failed: 0, deferred: 0, total: 0 };
 
-    if (duePayments.length === 0) {
-      this.log.info('[Cron] No due rent payments to auto-charge');
+    for await (const batch of this.iteratePaymentBatches(filter)) {
+      totals.total += batch.length;
+      const result = await this.processAutoChargePayments(batch, 'rent', async (payment) => {
+        const processor = await this.getProcessor(payment.cuid, processorCache);
+        if (!processor?.accountId) {
+          this.log.warn(
+            { cuid: payment.cuid },
+            '[Cron] Skipping rent auto-charge: no payment processor configured'
+          );
+          return 'skipped';
+        }
+
+        const method = await this.resolveTenantChargeMethod(payment, processorCache);
+        if (!(await this.isPadDebitAllowed(payment, method, tz))) return 'deferred';
+
+        await this.payRentInvoices(payment);
+        return 'charged';
+      });
+      totals.charged += result.charged;
+      totals.failed += result.failed;
+      totals.deferred += result.deferred;
+    }
+
+    this.log.info(totals, '[Cron] Auto-charge due rent payments complete');
+  }
+
+  /**
+   * Pays the rent invoice — or every unpaid split invoice (rent + fees) — then marks the record
+   * PROCESSING. Throws only when nothing could be charged, so the shared loop applies its
+   * retry handling; splits that failed alongside a successful one are marked failed.
+   */
+  private async payRentInvoices(payment: IPaymentDocument): Promise<void> {
+    const invoicesToPay = payment.splitInvoices?.length
+      ? payment.splitInvoices
+          .map((split, index) => ({ invoiceId: split.invoiceId, index, status: split.status }))
+          .filter((split) => split.status !== 'paid')
+      : [{ invoiceId: payment.gatewayPaymentId!, index: -1, status: 'pending' }];
+
+    if (invoicesToPay.length === 0) {
+      // Every split is already paid — hand the record to reconciliation to settle it
+      await this.markChargeSubmitted(payment);
       return;
     }
 
-    const processorAccountIds = new Map<string, string>();
+    const failures: { index: number; message: string }[] = [];
+    for (const { invoiceId, index } of invoicesToPay) {
+      const payResult = await this.paymentGatewayService.payInvoice(
+        IPaymentGatewayProvider.STRIPE,
+        invoiceId
+      );
+      if (!payResult.success) {
+        failures.push({ index, message: payResult.message || 'Failed to pay invoice' });
+      }
+    }
 
-    const { charged, failed } = await this.processAutoChargePayments(
-      duePayments,
-      'rent',
-      async (payment) => {
-        if (!processorAccountIds.has(payment.cuid)) {
-          const processor = await this.paymentProcessorDAO.findFirst({ cuid: payment.cuid });
-          if (!processor?.accountId) {
-            this.log.warn(
-              { cuid: payment.cuid },
-              '[Cron] Skipping rent auto-charge: no payment processor configured'
-            );
-            return false;
-          }
-          processorAccountIds.set(payment.cuid, processor.accountId);
-        }
+    if (failures.length === invoicesToPay.length) {
+      // The gateway returns failures instead of throwing; rethrow so the shared loop
+      // applies its retry / FAILED / ACSS-limit handling.
+      throw new Error(failures[0].message);
+    }
 
-        const payResult = await this.paymentGatewayService.payInvoice(
-          IPaymentGatewayProvider.STRIPE,
-          payment.gatewayPaymentId!
-        );
-        if (!payResult.success) {
-          // The gateway returns failures instead of throwing; rethrow so the shared loop
-          // applies its retry / FAILED / ACSS-limit handling.
-          throw new Error(payResult.message || 'Failed to pay invoice');
-        }
-        await this.paymentDAO.updateById(payment._id.toString(), {
+    const failedSplitUpdates = Object.fromEntries(
+      failures
+        .filter((failure) => failure.index >= 0)
+        .map((failure) => [`splitInvoices.${failure.index}.status`, 'failed'])
+    );
+    if (failures.length) {
+      this.log.warn(
+        { pytuid: payment.pytuid, failures },
+        '[Cron] Some split invoices could not be charged'
+      );
+    }
+
+    await this.markChargeSubmitted(payment, {
+      ...failedSplitUpdates,
+      ...(failures.length && {
+        'failure.reason': failures[0].message,
+        'failure.lastFailedAt': new Date(),
+      }),
+    });
+  }
+
+  /** PENDING/OVERDUE → PROCESSING, only if the record is still unpaid (never overwrites PAID). */
+  private async markChargeSubmitted(
+    payment: IPaymentDocument,
+    extraFields: Record<string, any> = {}
+  ): Promise<void> {
+    const updated = await this.paymentDAO.update(
+      { _id: payment._id, status: { $in: CHARGEABLE_STATUSES }, deletedAt: null },
+      {
+        $set: {
           status: PaymentRecordStatus.PROCESSING,
           chargedAt: new Date(),
-        });
-
-        return true;
+          ...extraFields,
+        },
       }
     );
-
-    this.log.info(
-      { charged, failed, total: duePayments.length },
-      '[Cron] Auto-charge due rent payments complete'
-    );
+    if (!updated) {
+      this.log.info(
+        { pytuid: payment.pytuid },
+        '[Cron] Payment status changed while charging — left as is'
+      );
+    }
   }
 
   /**
-   * Shared auto-charge loop: checks onlinePayments, handles ACSS errors, emits PAYMENT_FAILED.
+   * Shared auto-charge loop: checks onlinePayments, re-reads each payment so one settled
+   * meanwhile (paid, cancelled, refunded, manually recorded) is never charged, and records
+   * failures.
    */
   private async processAutoChargePayments(
     payments: IPaymentDocument[],
     context: string,
-    chargePayment: (payment: IPaymentDocument) => Promise<boolean>
-  ): Promise<{ charged: number; failed: number }> {
+    chargePayment: (payment: IPaymentDocument) => Promise<AutoChargeOutcome>
+  ): Promise<{ charged: number; failed: number; deferred: number }> {
     let charged = 0;
     let failed = 0;
+    let deferred = 0;
     const onlinePaymentsEnabled = new Map<string, boolean>();
 
     for (const payment of payments) {
       try {
-        if (!onlinePaymentsEnabled.has(payment.cuid)) {
-          const pClient = await this.clientDAO.getClientByCuid(payment.cuid);
-          onlinePaymentsEnabled.set(
-            payment.cuid,
-            pClient?.settings?.tenantFeatures?.onlinePayments !== false
-          );
-        }
-        if (!onlinePaymentsEnabled.get(payment.cuid)) {
+        if (!(await this.isOnlinePaymentsEnabled(payment.cuid, onlinePaymentsEnabled))) {
           this.log.info(
             { pytuid: payment.pytuid, cuid: payment.cuid },
             `[Cron] Skipping ${context} auto-charge: online payments disabled for client`
@@ -918,70 +1238,120 @@ export class PaymentCronService implements ICronProvider {
           continue;
         }
 
-        const success = await chargePayment(payment);
-        if (success) {
-          charged++;
-        } else {
-          failed++;
+        const current = await this.paymentDAO.findFirst({
+          _id: payment._id,
+          status: { $in: CHARGEABLE_STATUSES },
+          isManualEntry: { $ne: true },
+          gatewayChargeId: { $exists: false },
+          deletedAt: null,
+        });
+        if (!current) {
+          this.log.info(
+            { pytuid: payment.pytuid },
+            `[Cron] Skipping ${context} auto-charge: payment no longer open`
+          );
+          continue;
         }
+
+        const outcome = await chargePayment(current);
+        if (outcome === 'charged') charged++;
+        else if (outcome === 'deferred') deferred++;
+        else failed++;
       } catch (err: any) {
-        const errMsg = (err?.message ?? '').toLowerCase();
-        const isAcssLimitError =
-          errMsg.includes('acss_debit') || errMsg.includes('amount_too_large');
-
-        if (isAcssLimitError) {
-          this.log.warn(
-            { pytuid: payment.pytuid, cuid: payment.cuid },
-            `[Cron] ACSS per-txn limit exceeded — leaving ${context} payment PENDING for card retry`
-          );
-          await this.paymentDAO.updateById(payment._id.toString(), {
-            'failure.reason':
-              'Bank debit failed: payment amount exceeds per-transaction limit. Card payment required.',
-            'failure.lastFailedAt': dayjs().toDate(),
-          });
-        } else {
-          const newRetryCount = (payment.failure?.retryCount ?? 0) + 1;
-          const exhausted = newRetryCount >= MAX_CHARGE_ATTEMPTS;
-
-          this.log.error(
-            {
-              err: err.message,
-              pytuid: payment.pytuid,
-              cuid: payment.cuid,
-              newRetryCount,
-              exhausted,
-            },
-            `[Cron] Failed to auto-charge ${context} payment`
-          );
-
-          if (exhausted) {
-            await this.paymentDAO.updateById(payment._id.toString(), {
-              status: PaymentRecordStatus.FAILED,
-              'failure.lastFailedAt': dayjs().toDate(),
-              'failure.retryCount': newRetryCount,
-              'failure.pmNotifiedAt': dayjs().toDate(),
-            });
-            this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
-              cuid: payment.cuid,
-              pytuid: payment.pytuid,
-              invoiceId: payment.gatewayPaymentId ?? '',
-              amount: payment.baseAmount,
-              tenantId: payment.tenant?.toString(),
-              hostedInvoiceUrl: payment.receipt?.url,
-            });
-          } else {
-            await this.paymentDAO.updateById(payment._id.toString(), {
-              status: PaymentRecordStatus.OVERDUE,
-              'failure.lastFailedAt': dayjs().toDate(),
-              'failure.retryCount': newRetryCount,
-            });
-          }
-        }
+        await this.recordAutoChargeFailure(payment, err, context);
         failed++;
       }
     }
 
-    return { charged, failed };
+    return { charged, failed, deferred };
+  }
+
+  private async recordAutoChargeFailure(
+    payment: IPaymentDocument,
+    err: any,
+    context: string
+  ): Promise<void> {
+    const failureReason: string = err?.message || 'Automatic charge failed';
+    const stillOpen = {
+      _id: payment._id,
+      status: { $in: CHARGEABLE_STATUSES },
+      deletedAt: null,
+    };
+
+    try {
+      if (isAmountTooLargeError(err)) {
+        const limitReason =
+          'Bank debit failed: payment amount exceeds per-transaction limit. Card payment required.';
+        this.log.warn(
+          { pytuid: payment.pytuid, cuid: payment.cuid },
+          `[Cron] ACSS per-txn limit exceeded — leaving ${context} payment open for card payment`
+        );
+        const alreadyNotified = !!payment.failure?.pmNotifiedAt;
+        await this.paymentDAO.update(stillOpen, {
+          $set: {
+            'failure.reason': limitReason,
+            'failure.lastFailedAt': new Date(),
+            ...(!alreadyNotified && { 'failure.pmNotifiedAt': new Date() }),
+          },
+        });
+        if (!alreadyNotified) this.emitPaymentFailed(payment, limitReason);
+        return;
+      }
+
+      const newRetryCount = (payment.failure?.retryCount ?? 0) + 1;
+      const exhausted = newRetryCount >= MAX_CHARGE_ATTEMPTS;
+
+      this.log.error(
+        {
+          err: failureReason,
+          pytuid: payment.pytuid,
+          cuid: payment.cuid,
+          newRetryCount,
+          exhausted,
+        },
+        `[Cron] Failed to auto-charge ${context} payment`
+      );
+
+      if (exhausted) {
+        await this.paymentDAO.update(stillOpen, {
+          $set: {
+            status: PaymentRecordStatus.FAILED,
+            'failure.reason': failureReason,
+            'failure.lastFailedAt': new Date(),
+            'failure.retryCount': newRetryCount,
+            'failure.pmNotifiedAt': new Date(),
+          },
+        });
+        this.emitPaymentFailed(payment, failureReason);
+      } else {
+        await this.paymentDAO.update(stillOpen, {
+          $set: {
+            status: PaymentRecordStatus.OVERDUE,
+            'failure.reason': failureReason,
+            'failure.lastFailedAt': new Date(),
+            'failure.retryCount': newRetryCount,
+          },
+        });
+      }
+    } catch (updateErr: any) {
+      this.log.error(
+        { err: updateErr?.message, pytuid: payment.pytuid },
+        '[Cron] Failed to record auto-charge failure'
+      );
+    }
+  }
+
+  private emitPaymentFailed(payment: IPaymentDocument, failureReason: string): void {
+    this.emitterService.emit(EventTypes.PAYMENT_FAILED, {
+      cuid: payment.cuid,
+      pytuid: payment.pytuid,
+      invoiceId: payment.gatewayPaymentId ?? '',
+      amount: payment.baseAmount,
+      currency: payment.currency,
+      failureReason,
+      tenantId: payment.tenant?.toString(),
+      hostedInvoiceUrl: payment.receipt?.url,
+    });
   }
 
   /**
@@ -1074,9 +1444,10 @@ export class PaymentCronService implements ICronProvider {
   }
 
   /**
-   * Twice-daily cron: for each maintenance invoice where the tenant has paid but
-   * PM funds haven't been confirmed available yet, check the Stripe Connect balance
-   * and flip fundsAvailable when the charge has settled.
+   * Twice-daily cron: flips fundsAvailable on maintenance invoices once the tenant's charge has
+   * succeeded. Maintenance charges are platform charges (no destination transfer), and the
+   * vendor transfer links to the tenant charge via source_transaction, so Stripe itself holds
+   * the transfer until those funds settle — the PM's Connect balance is irrelevant here.
    */
   private async checkFundsAvailability(): Promise<void> {
     const invoices = await this.invoiceDAO.findPendingFundsCheck(500);
@@ -1086,67 +1457,44 @@ export class PaymentCronService implements ICronProvider {
       return;
     }
 
-    // Group invoices by cuid so we make one Stripe balance call per PM account
-    const invoicesByCuid = new Map<string, typeof invoices>();
-    for (const inv of invoices) {
-      const cuid = inv.cuid;
-      if (!invoicesByCuid.has(cuid)) {
-        invoicesByCuid.set(cuid, []);
-      }
-      invoicesByCuid.get(cuid)!.push(inv);
-    }
-
-    // Cache PM processor account IDs keyed by cuid
-    const processorAccountIds = new Map<string, string | null>();
-
     let flipped = 0;
     let skipped = 0;
 
-    for (const [cuid, cuidInvoices] of invoicesByCuid) {
+    for (const invoice of invoices) {
       try {
-        if (!processorAccountIds.has(cuid)) {
-          const processor = await this.paymentProcessorDAO.findFirst({ cuid });
-          processorAccountIds.set(cuid, processor?.accountId ?? null);
-        }
-
-        const accountId = processorAccountIds.get(cuid);
-        if (!accountId) {
-          this.log.warn({ cuid }, '[Cron] No Stripe Connect account for client — skipping');
-          skipped += cuidInvoices.length;
+        const tenantCharge = await this.paymentDAO.findFirst({
+          cuid: invoice.cuid,
+          maintenanceRequestUid: invoice.mruid,
+          paymentType: PaymentRecordType.MAINTENANCE,
+          vendorId: { $exists: false },
+          status: PaymentRecordStatus.PAID,
+          gatewayChargeId: { $exists: true, $ne: null },
+          deletedAt: null,
+        });
+        if (!tenantCharge) {
+          skipped++;
           continue;
         }
 
-        const balance = await this.stripeService.getConnectBalance(accountId);
+        await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
+          $set: { fundsAvailable: true, fundsAvailableAt: new Date() },
+        });
 
-        for (const invoice of cuidInvoices) {
-          const currency = (invoice.currency ?? 'usd').toLowerCase();
-          const availableEntry = balance.available.find((b) => b.currency === currency);
+        const fundsPayload: MaintenanceFundsAvailablePayload = {
+          amountInCents: invoice.amountInCents,
+          invuid: invoice.invuid,
+          mruid: invoice.mruid,
+          cuid: invoice.cuid,
+        };
+        this.emitterService.emit(EventTypes.MAINTENANCE_FUNDS_AVAILABLE, fundsPayload);
 
-          if (!availableEntry || availableEntry.amount < invoice.amountInCents) {
-            skipped++;
-            continue;
-          }
-
-          await this.invoiceDAO.updateById((invoice as any)._id.toString(), {
-            $set: { fundsAvailable: true, fundsAvailableAt: new Date() },
-          });
-
-          const fundsPayload: MaintenanceFundsAvailablePayload = {
-            amountInCents: invoice.amountInCents,
-            invuid: invoice.invuid,
-            mruid: invoice.mruid,
-            cuid,
-          };
-          this.emitterService.emit(EventTypes.MAINTENANCE_FUNDS_AVAILABLE, fundsPayload);
-
-          flipped++;
-        }
+        flipped++;
       } catch (err: any) {
         this.log.error(
-          { err: err.message, cuid },
-          '[Cron] Error checking funds availability for client'
+          { err: err.message, cuid: invoice.cuid, invuid: invoice.invuid },
+          '[Cron] Error checking funds availability for invoice'
         );
-        skipped += invoicesByCuid.get(cuid)?.length ?? 0;
+        skipped++;
       }
     }
 
@@ -1173,8 +1521,8 @@ export class PaymentCronService implements ICronProvider {
     let failed = 0;
 
     for (const invoice of invoices) {
-      const cuid = (invoice as any).cuid;
-      const mruid = (invoice as any).maintenanceRequestUid;
+      const cuid = invoice.cuid;
+      const mruid = invoice.mruid;
 
       if (!cuid || !mruid) {
         this.log.warn(
@@ -1230,135 +1578,227 @@ export class PaymentCronService implements ICronProvider {
   }
 
   /**
-   * Daily cron (2 AM): reconcile payments stuck in PROCESSING by checking their
-   * Stripe invoice status. Catches missed webhooks, voided invoices, and
-   * charges that never completed.
+   * Daily cron (3 AM UTC): reconcile payments stuck in PROCESSING by checking their
+   * Stripe invoice(s). Catches missed webhooks, voided invoices, and charges that never
+   * completed. A split payment is PAID only when every split invoice is paid.
    */
   private async reconcileStaleProcessingPayments(): Promise<void> {
-    const stalePayments = await this.paymentDAO.list(
-      {
-        status: PaymentRecordStatus.PROCESSING,
-        $or: [
-          { chargedAt: { $lt: dayjs().subtract(24, 'hour').toDate() } },
-          {
-            chargedAt: { $exists: false },
-            dueDate: { $lt: dayjs().subtract(24, 'hour').toDate() },
-          },
-        ],
-        gatewayPaymentId: { $exists: true },
-        gatewayChargeId: { $exists: false },
-        deletedAt: null,
-      },
-      { limit: 200 }
-    );
+    const staleCutoff = dayjs().subtract(24, 'hour').toDate();
+    const filter = {
+      status: PaymentRecordStatus.PROCESSING,
+      $or: [
+        { chargedAt: { $lt: staleCutoff } },
+        { chargedAt: { $exists: false }, dueDate: { $lt: staleCutoff } },
+      ],
+      gatewayPaymentId: { $exists: true },
+      gatewayChargeId: { $exists: false },
+      deletedAt: null,
+    };
 
-    if (stalePayments.items.length === 0) {
-      this.log.info('[Cron] No stale PROCESSING payments to reconcile');
-      return;
-    }
+    const processorCache = new Map<string, { accountId?: string } | null>();
+    const counts = { reconciled: 0, markedOverdue: 0, cancelled: 0, total: 0 };
 
-    let reconciled = 0;
-    let markedOverdue = 0;
-    let cancelled = 0;
-
-    for (const payment of stalePayments.items) {
-      try {
-        // Skip if client has no payment processor — no point calling Stripe
-        const processor = await this.paymentProcessorDAO.findFirst({ cuid: payment.cuid });
-        if (!processor?.accountId) {
-          this.log.debug({ cuid: payment.cuid }, 'Skipping reconciliation — no payment processor');
-          continue;
-        }
-
-        const invoice = await this.stripeService.getInvoice(payment.gatewayPaymentId!);
-
-        if (invoice.status === 'paid') {
-          // Stripe charged successfully — webhook was missed
-          const paymentDetails = await this.stripeService.getInvoicePaymentDetails(
-            payment.gatewayPaymentId!
-          );
-
-          await this.paymentDAO.updateById(payment._id.toString(), {
-            status: PaymentRecordStatus.PAID,
-            paidAt: invoice.status_transitions?.paid_at
-              ? new Date(invoice.status_transitions.paid_at * 1000)
-              : new Date(),
-            gatewayChargeId: paymentDetails.chargeId,
-            ...(paymentDetails.paymentMethodType && {
-              stripePaymentMethodType: paymentDetails.paymentMethodType,
-            }),
-            ...(invoice.hosted_invoice_url && { 'receipt.url': invoice.hosted_invoice_url }),
-          });
-
-          this.emitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
-            cuid: payment.cuid,
-            pytuid: payment.pytuid,
-            amount: payment.baseAmount,
-            invoiceId: payment.gatewayPaymentId!,
-            paidAt: invoice.status_transitions?.paid_at
-              ? new Date(invoice.status_transitions.paid_at * 1000)
-              : new Date(),
-            paymentType: payment.paymentType,
-            ...(invoice.hosted_invoice_url && { receiptUrl: invoice.hosted_invoice_url }),
-          });
-
-          reconciled++;
-          this.log.info(
-            { pytuid: payment.pytuid, cuid: payment.cuid },
-            '[Cron] Reconciled stale PROCESSING payment to PAID'
-          );
-        } else if (invoice.status === 'void') {
-          await this.paymentDAO.updateById(payment._id.toString(), {
-            status: PaymentRecordStatus.CANCELLED,
-          });
-          cancelled++;
-          this.log.info(
-            { pytuid: payment.pytuid },
-            '[Cron] Voided Stripe invoice — marked CANCELLED'
-          );
-        } else if (invoice.status === 'uncollectible') {
-          // Terminal failure — mark overdue immediately
-          await this.paymentDAO.updateById(payment._id.toString(), {
-            status: PaymentRecordStatus.OVERDUE,
-            'failure.reason': 'Stripe invoice status: uncollectible',
-            'failure.lastFailedAt': new Date(),
-          });
-          markedOverdue++;
-          this.log.warn(
-            { pytuid: payment.pytuid, stripeStatus: invoice.status },
-            '[Cron] Uncollectible Stripe invoice — marked OVERDUE'
-          );
-        } else if (invoice.status === 'open') {
-          // Open invoices may still be processing (ACSS/SEPA/Bacs bank debits can take days).
-          // Check the underlying PaymentIntent before marking overdue.
-          const paymentDetails = await this.stripeService.getInvoicePaymentDetails(
-            payment.gatewayPaymentId!
-          );
-          const piStatus = paymentDetails.lastPaymentError ? 'failed' : 'processing';
-
-          const hoursStale = dayjs().diff(dayjs(payment.chargedAt ?? payment.dueDate), 'hour');
-          if (piStatus === 'failed' || hoursStale > 72) {
-            await this.paymentDAO.updateById(payment._id.toString(), {
-              status: PaymentRecordStatus.OVERDUE,
-              'failure.reason': `Stripe invoice open — ${piStatus === 'failed' ? 'payment failed' : 'not completed after 72+ hours'}`,
-              'failure.lastFailedAt': new Date(),
-            });
-            markedOverdue++;
-            this.log.warn(
-              { pytuid: payment.pytuid, stripeStatus: invoice.status, piStatus, hoursStale },
-              '[Cron] Stale PROCESSING payment marked OVERDUE'
+    for await (const batch of this.iteratePaymentBatches(filter)) {
+      for (const payment of batch) {
+        counts.total++;
+        try {
+          // Skip if client has no payment processor — no point calling Stripe
+          const processor = await this.getProcessor(payment.cuid, processorCache);
+          if (!processor?.accountId) {
+            this.log.debug(
+              { cuid: payment.cuid },
+              'Skipping reconciliation — no payment processor'
             );
+            continue;
           }
+
+          const outcome = await this.reconcileProcessingPayment(payment);
+          if (outcome === 'paid') counts.reconciled++;
+          else if (outcome === 'cancelled') counts.cancelled++;
+          else if (outcome === 'overdue') counts.markedOverdue++;
+        } catch (err) {
+          this.log.error({ err, pytuid: payment.pytuid }, '[Cron] Failed to reconcile payment');
         }
-      } catch (err) {
-        this.log.error({ err, pytuid: payment.pytuid }, '[Cron] Failed to reconcile payment');
       }
     }
 
-    this.log.info(
-      { reconciled, markedOverdue, cancelled, total: stalePayments.items.length },
-      '[Cron] Payment reconciliation complete'
+    if (counts.total === 0) {
+      this.log.info('[Cron] No stale PROCESSING payments to reconcile');
+      return;
+    }
+    this.log.info(counts, '[Cron] Payment reconciliation complete');
+  }
+
+  private async fetchInvoiceOrThrow(invoiceId: string) {
+    const result = await this.paymentGatewayService.getInvoice(
+      IPaymentGatewayProvider.STRIPE,
+      invoiceId
     );
+    if (!result.success || !result.data) {
+      throw new Error(result.message || `Failed to fetch invoice ${invoiceId}`);
+    }
+    return result.data;
+  }
+
+  private async fetchInvoicePaymentDetails(invoiceId: string) {
+    const result = await this.paymentGatewayService.getInvoicePaymentDetails(
+      IPaymentGatewayProvider.STRIPE,
+      invoiceId
+    );
+    if (!result.success) {
+      throw new Error(result.message || `Failed to fetch payment details for ${invoiceId}`);
+    }
+    return result.data ?? {};
+  }
+
+  private async reconcileProcessingPayment(
+    payment: IPaymentDocument
+  ): Promise<'paid' | 'cancelled' | 'overdue' | 'unchanged'> {
+    const splits = payment.splitInvoices ?? [];
+    const invoiceRefs = splits.length
+      ? splits.map((split, index) => ({ invoiceId: split.invoiceId, index, known: split.status }))
+      : [{ invoiceId: payment.gatewayPaymentId!, index: -1, known: 'pending' as const }];
+
+    const states: {
+      index: number;
+      invoiceId: string;
+      status: string | null;
+      paidAt?: Date;
+      hostedInvoiceUrl?: string;
+    }[] = [];
+    for (const ref of invoiceRefs) {
+      if (ref.known === 'paid') {
+        states.push({ index: ref.index, invoiceId: ref.invoiceId, status: 'paid' });
+        continue;
+      }
+      const invoice = await this.fetchInvoiceOrThrow(ref.invoiceId);
+      states.push({ index: ref.index, invoiceId: ref.invoiceId, ...invoice });
+    }
+
+    const stillOpen = { _id: payment._id, status: PaymentRecordStatus.PROCESSING, deletedAt: null };
+
+    if (states.every((s) => s.status === 'paid')) {
+      // Stripe charged successfully — webhook was missed
+      const primaryInvoiceId = payment.gatewayPaymentId!;
+      const paymentDetails = await this.fetchInvoicePaymentDetails(primaryInvoiceId);
+      const primary = states.find((s) => s.invoiceId === primaryInvoiceId) ?? states[0];
+      const paidAt = primary.paidAt ?? new Date();
+      const receiptUrl = primary.hostedInvoiceUrl;
+
+      const splitUpdates = Object.fromEntries(
+        states
+          .filter((s) => s.index >= 0 && splits[s.index]?.status !== 'paid')
+          .flatMap((s) => [
+            [`splitInvoices.${s.index}.status`, 'paid'],
+            [`splitInvoices.${s.index}.paidAt`, s.paidAt ?? paidAt],
+          ])
+      );
+
+      const updated = await this.paymentDAO.update(stillOpen, {
+        $set: {
+          status: PaymentRecordStatus.PAID,
+          paidAt,
+          ...(paymentDetails.chargeId && { gatewayChargeId: paymentDetails.chargeId }),
+          ...(paymentDetails.paymentMethodType && {
+            stripePaymentMethodType: paymentDetails.paymentMethodType,
+          }),
+          ...(receiptUrl && { 'receipt.url': receiptUrl }),
+          ...splitUpdates,
+        },
+      });
+      if (!updated) return 'unchanged';
+
+      this.emitterService.emit(EventTypes.PAYMENT_SUCCEEDED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        amount: payment.baseAmount,
+        currency: payment.currency,
+        invoiceId: primaryInvoiceId,
+        tenantId: await this.resolveTenantUserId(payment),
+        paidAt,
+        paymentType: payment.paymentType,
+        ...(receiptUrl && { receiptUrl }),
+      });
+
+      this.log.info(
+        { pytuid: payment.pytuid, cuid: payment.cuid },
+        '[Cron] Reconciled stale PROCESSING payment to PAID'
+      );
+      return 'paid';
+    }
+
+    if (states.every((s) => s.status === 'void')) {
+      const updated = await this.paymentDAO.update(stillOpen, {
+        $set: { status: PaymentRecordStatus.CANCELLED },
+      });
+      if (!updated) return 'unchanged';
+      this.log.info({ pytuid: payment.pytuid }, '[Cron] Voided Stripe invoice — marked CANCELLED');
+      return 'cancelled';
+    }
+
+    const failedSplitIndexes: number[] = [];
+    let failureReason: string | undefined;
+    let staleReason: string | undefined;
+
+    for (const state of states) {
+      if (state.status === 'uncollectible') {
+        failedSplitIndexes.push(state.index);
+        failureReason ??= 'Stripe invoice status: uncollectible';
+      } else if (state.status === 'open') {
+        // Open invoices may still be processing (ACSS/SEPA/Bacs bank debits can take days).
+        // Check the underlying PaymentIntent before marking overdue.
+        const details = await this.fetchInvoicePaymentDetails(state.invoiceId);
+        if (details.lastPaymentError) {
+          failedSplitIndexes.push(state.index);
+          failureReason ??= `Stripe invoice open — payment failed${details.lastPaymentError.message ? `: ${details.lastPaymentError.message}` : ''}`;
+          continue;
+        }
+        const isBankDebit =
+          !!details.paymentMethodType && BANK_DEBIT_METHOD_TYPES.has(details.paymentMethodType);
+        const staleAfterHours = isBankDebit
+          ? BANK_DEBIT_PROCESSING_STALE_HOURS
+          : CARD_PROCESSING_STALE_HOURS;
+        const hoursStale = dayjs().diff(dayjs(payment.chargedAt ?? payment.dueDate), 'hour');
+        if (hoursStale > staleAfterHours) {
+          staleReason ??= `Stripe invoice open — not completed after ${staleAfterHours}+ hours`;
+        }
+      }
+    }
+
+    if (!failureReason && !staleReason) return 'unchanged';
+
+    const updated = await this.paymentDAO.update(stillOpen, {
+      $set: {
+        status: PaymentRecordStatus.OVERDUE,
+        'failure.reason': failureReason ?? staleReason,
+        'failure.lastFailedAt': new Date(),
+        ...Object.fromEntries(
+          failedSplitIndexes
+            .filter((index) => index >= 0)
+            .map((index) => [`splitInvoices.${index}.status`, 'failed'])
+        ),
+      },
+    });
+    if (!updated) return 'unchanged';
+
+    if (failureReason) {
+      this.emitPaymentFailed(payment, failureReason);
+    }
+    this.log.warn(
+      { pytuid: payment.pytuid, reason: failureReason ?? staleReason },
+      '[Cron] Stale PROCESSING payment marked OVERDUE'
+    );
+    return 'overdue';
+  }
+
+  private async resolveTenantUserId(payment: IPaymentDocument): Promise<string | undefined> {
+    if (!payment.tenant) return undefined;
+    try {
+      const profile = await this.profileDAO.findFirst({ _id: payment.tenant });
+      return profile?.user?.toString() ?? payment.tenant.toString();
+    } catch {
+      return payment.tenant.toString();
+    }
   }
 
   private async createAndFinalizeInvoice(opts: {
@@ -1469,4 +1909,62 @@ export class PaymentCronService implements ICronProvider {
       'Connect status sync complete'
     );
   }
+}
+
+/**
+ * The rent due date for the month containing `monthAnchor`. A rentDueDay past the end of a
+ * short month (29–31) falls on that month's last day instead of rolling into the next month.
+ */
+export function rentDueDateForMonth(monthAnchor: dayjs.Dayjs, rentDueDay: number): dayjs.Dayjs {
+  const monthStart = monthAnchor.startOf('month');
+  return monthStart.date(Math.min(rentDueDay, monthStart.daysInMonth())).startOf('day');
+}
+
+/**
+ * The client's local calendar date for `date`, as UTC midnight — the convention rent due dates
+ * are stored in. Comparing stored due dates against this treats them as calendar days.
+ */
+export function localCalendarDay(date: Date, timeZone: string): Date {
+  const { year, month, day } = getLocalDateParts(date, timeZone);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function getLocalDateParts(
+  date: Date,
+  timeZone: string
+): { year: number; month: number; day: number; hour: number } {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+  } catch {
+    return getLocalDateParts(date, 'UTC');
+  }
+  const valueOf = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return {
+    year: valueOf('year'),
+    month: valueOf('month'),
+    day: valueOf('day'),
+    hour: valueOf('hour') % 24,
+  };
+}
+
+function isAmountTooLargeError(err: any): boolean {
+  if (err?.code === 'amount_too_large' || err?.raw?.code === 'amount_too_large') return true;
+  const message = (err?.message ?? '').toLowerCase();
+  if (/amount[_ ]too[_ ]large/.test(message)) return true;
+  return (
+    message.includes('acss_debit') &&
+    /(exceeds|maximum|no more than|per-transaction limit|transaction limit)/.test(message)
+  );
+}
+
+function utcCalendarDay(date: Date): Date {
+  return dayjs.utc(date).startOf('day').toDate();
 }

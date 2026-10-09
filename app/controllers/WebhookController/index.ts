@@ -11,11 +11,13 @@ import { TwilioService } from '@services/external/twilio/twilio.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
 import { IInvoiceWebhookPayload, InvoiceSource } from '@interfaces/maintenanceRequest.interface';
 import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 
 interface IConstructor {
   maintenanceInvoiceService: MaintenanceInvoiceService;
+  paymentWebhookService: PaymentWebhookService;
   subscriptionService: SubscriptionService;
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
@@ -33,6 +35,7 @@ export class WebhookController {
   private boldSignService: BoldSignService;
   private subscriptionService: SubscriptionService;
   private paymentService: PaymentService;
+  private paymentWebhookService: PaymentWebhookService;
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
   private maintenanceInvoiceService: MaintenanceInvoiceService;
@@ -46,6 +49,7 @@ export class WebhookController {
     subscriptionService,
     stripeService,
     paymentService,
+    paymentWebhookService,
     twilioService,
     clientService,
     idempotencyCache,
@@ -57,6 +61,7 @@ export class WebhookController {
     this.boldSignService = boldSignService;
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
+    this.paymentWebhookService = paymentWebhookService;
     this.twilioService = twilioService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
@@ -217,12 +222,20 @@ export class WebhookController {
             break;
           }
 
+          case 'charge.dispute.updated': {
+            const dispute = event.data.object as any;
+            await this.paymentWebhookService.handleDisputeUpdated(dispute.id, dispute);
+            break;
+          }
+
           case 'charge.dispute.closed': {
             const dispute = event.data.object as any;
             if (dispute.status === 'won') {
               await this.paymentService.handleDisputeWon(dispute.id, dispute);
             } else if (dispute.status === 'lost') {
               await this.paymentService.handleDisputeLost(dispute.id, dispute);
+            } else if (dispute.status === 'warning_closed') {
+              await this.paymentWebhookService.handleDisputeWarningClosed(dispute.id, dispute);
             }
             break;
           }
@@ -241,7 +254,11 @@ export class WebhookController {
 
           case 'charge.refunded': {
             const charge = event.data.object as any;
-            await this.paymentService.handleChargeRefunded(charge.id, charge);
+            const previousAttributes = (event.data as any).previous_attributes;
+            await this.paymentService.handleChargeRefunded(charge.id, {
+              ...charge,
+              ...(previousAttributes && { previous_attributes: previousAttributes }),
+            });
             break;
           }
 

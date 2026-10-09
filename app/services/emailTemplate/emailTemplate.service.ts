@@ -271,6 +271,34 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
     description: 'Notify tenant of upcoming pre-authorized debit',
     category: 'Payment',
   },
+  PAD_DEBIT_INITIATED: {
+    subdir: 'payment',
+    filename: 'pad-debit-initiated',
+    displayName: 'PAD Debit Initiated',
+    description: 'Tell tenant a pre-authorized debit has started processing',
+    category: 'Payment',
+  },
+  PAYMENT_RETRIED_WITH_CARD: {
+    subdir: 'payment',
+    filename: 'payment-retried-with-card',
+    displayName: 'Payment Retried With Card',
+    description: 'Tell tenant a failed bank debit was charged to their card',
+    category: 'Payment',
+  },
+  PAYMENT_REFUNDED: {
+    subdir: 'payment',
+    filename: 'payment-refunded',
+    displayName: 'Payment Refunded',
+    description: 'Tell tenant a refund has been issued',
+    category: 'Payment',
+  },
+  DEPOSIT_REFUND_FAILED: {
+    subdir: 'payment',
+    filename: 'deposit-refund-failed',
+    displayName: 'Deposit Refund Failed',
+    description: 'Alert the property manager that a deposit refund failed',
+    category: 'Payment',
+  },
 
   // ── Maintenance ──────────────────────────────────────────────
   MAINTENANCE_REQUEST_CREATED: {

@@ -6,7 +6,6 @@ import { NotificationCache } from '@caching/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { NotificationDAO, GuestPassDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData, IPaginationQuery, ResourceContext } from '@interfaces/utils.interface';
 import {
   EventEmitterService,
@@ -19,6 +18,16 @@ import {
   CreateNotificationWithRulesSchema,
   UpdateNotificationSchema,
 } from '@shared/validations/NotificationValidation';
+import {
+  NotificationDAO,
+  GuestPassDAO,
+  PropertyDAO,
+  PaymentDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ICreateNotificationRequest,
   IUpdateNotificationRequest,
@@ -67,8 +76,11 @@ import {
   handlePaymentMethodSetupCompleted,
   handleSubscriptionRenewalUpcoming,
   handlePadPreDebitNotification,
+  handlePaymentRetriedWithCard,
   handlePaymentRequestCreated,
+  handleDepositRefundFailed,
   handlePadMandateConfirmed,
+  handlePadDebitInitiated,
   handlePaymentSucceeded,
   handlePaymentCancelled,
   handlePaymentRefunded,
@@ -80,6 +92,7 @@ import {
 } from './notification.payment.handlers';
 import {
   handleMaintenanceFundsAvailable,
+  handleMaintenanceChargeSkipped,
   handleMaintenanceChargeCreated,
   handleMaintenanceChargePaid,
   handleWorkOrderSubmitted,
@@ -111,9 +124,12 @@ interface IConstructor {
   userService: UserService;
   pushService: PushService;
   propertyDAO: PropertyDAO;
+  profileDAO?: ProfileDAO;
+  paymentDAO?: PaymentDAO;
   emailQueue: EmailQueue;
   sseService: SSEService;
   clientDAO: ClientDAO;
+  leaseDAO?: LeaseDAO;
   userDAO: UserDAO;
 }
 
@@ -129,6 +145,9 @@ export class NotificationService {
   private readonly profileService: ProfileService;
   private readonly clientDAO: ClientDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly profileDAO?: ProfileDAO;
+  private readonly paymentDAO?: PaymentDAO;
+  private readonly leaseDAO?: LeaseDAO;
   private readonly emailQueue: EmailQueue;
   private readonly userDAO: UserDAO;
   private readonly log: Logger;
@@ -147,7 +166,13 @@ export class NotificationService {
     profileService,
     guestPassDAO,
     pushService,
+    profileDAO,
+    paymentDAO,
+    leaseDAO,
   }: IConstructor) {
+    this.profileDAO = profileDAO;
+    this.paymentDAO = paymentDAO;
+    this.leaseDAO = leaseDAO;
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
     this.guestPassDAO = guestPassDAO;
@@ -1521,6 +1546,9 @@ export class NotificationService {
     this.emitterService.on(EventTypes.MAINTENANCE_CHARGE_CREATED, (p) =>
       handleMaintenanceChargeCreated(ctx, p)
     );
+    this.emitterService.on(EventTypes.MAINTENANCE_CHARGE_SKIPPED, (p) =>
+      handleMaintenanceChargeSkipped(ctx, p)
+    );
     this.emitterService.on(EventTypes.MAINTENANCE_INVOICE_REJECTED, (p) =>
       handleInvoiceRejected(ctx, p)
     );
@@ -1564,6 +1592,13 @@ export class NotificationService {
     );
     this.emitterService.on(EventTypes.PAD_PRE_DEBIT_NOTIFICATION, (p) =>
       handlePadPreDebitNotification(ctx, p)
+    );
+    this.emitterService.on(EventTypes.PAD_DEBIT_INITIATED, (p) => handlePadDebitInitiated(ctx, p));
+    this.emitterService.on(EventTypes.PAYMENT_RETRIED_WITH_CARD, (p) =>
+      handlePaymentRetriedWithCard(ctx, p)
+    );
+    this.emitterService.on(EventTypes.DEPOSIT_REFUND_FAILED, (p) =>
+      handleDepositRefundFailed(ctx, p)
     );
     this.emitterService.on(EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING, (p) =>
       handleSubscriptionRenewalUpcoming(ctx, p)
@@ -1610,6 +1645,9 @@ export class NotificationService {
       userDAO: this.userDAO,
       clientDAO: this.clientDAO,
       propertyDAO: this.propertyDAO,
+      profileDAO: this.profileDAO,
+      paymentDAO: this.paymentDAO,
+      leaseDAO: this.leaseDAO,
       maintenanceRequestDAO: this.maintenanceRequestDAO,
       guestPassDAO: this.guestPassDAO,
       sseService: this.sseService,

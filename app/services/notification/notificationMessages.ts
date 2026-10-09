@@ -110,15 +110,20 @@ export const NotificationMessages = {
     requested: {
       title: 'Payment Request Received',
       message:
-        'A payment of {{amount}} is due on {{dueDate}}. Pay early or your linked bank account will be automatically charged on the due date.',
+        'A {{paymentLabel}} payment of {{amount}} is due on {{dueDate}}. Pay early, or your linked payment method will be charged automatically on or after the due date.',
+    },
+    requestedManual: {
+      title: 'Payment Request Received',
+      message:
+        'A {{paymentLabel}} payment of {{amount}} is due on {{dueDate}}. Please pay by the due date.',
     },
     succeeded: {
       title: 'Payment Received',
       message: 'A payment of {{amount}} has been successfully processed',
     },
     overdue: {
-      title: 'Rent Payment Overdue',
-      message: 'A rent payment of {{amount}} due on {{dueDate}} is now overdue',
+      title: '{{paymentTitle}} Payment Overdue',
+      message: 'A {{paymentLabel}} payment of {{amount}} due on {{dueDate}} is now overdue',
     },
     failed: {
       title: 'Payment Failed',
@@ -130,10 +135,34 @@ export const NotificationMessages = {
       message:
         'Your payment of {{amount}} could not be processed. Please use the payment link provided or add a card to complete your payment.',
     },
-    overdueTenant: {
-      title: 'Rent Payment Overdue',
+    failedTenantWithReason: {
+      title: 'Payment Could Not Be Processed',
       message:
-        'Your rent payment of {{amount}} was due on {{dueDate}} and is now overdue. Please make your payment as soon as possible to avoid late fees.',
+        'Your payment of {{amount}} could not be processed ({{reason}}). Please use the payment link provided or add a card to complete your payment.',
+    },
+    overdueTenant: {
+      title: '{{paymentTitle}} Payment Overdue',
+      message:
+        'Your {{paymentLabel}} payment of {{amount}} was due on {{dueDate}} and is now overdue. Please make your payment as soon as possible.',
+    },
+    refundedTenant: {
+      title: 'Refund Issued',
+      message: 'A {{refundKind}} refund of {{amount}} has been issued for payment {{pytuid}}.',
+    },
+    retriedWithCard: {
+      title: 'Bank Debit Retried on Card',
+      message:
+        'A bank debit of {{amount}} for payment {{pytuid}} failed and was charged to the tenant’s card on file instead.',
+    },
+    retriedWithCardTenant: {
+      title: 'Bank Debit Failed — Card Charged',
+      message:
+        'Your bank debit of {{amount}} could not be completed, so we charged {{cardDescription}} instead.',
+    },
+    depositRefundFailed: {
+      title: 'Deposit Refund Failed',
+      message:
+        'A deposit refund of {{amount}} for payment {{pytuid}} could not be processed. Reason: {{reason}}. Please review it and refund the tenant another way if needed.',
     },
     refunded: {
       title: 'Payment Refunded',
@@ -230,6 +259,16 @@ export const NotificationMessages = {
       message:
         'A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Due {{dueDate}} — pay now to avoid auto-debit.',
     },
+    chargeSkipped: {
+      title: 'Tenant Not Billed — Action Required',
+      message:
+        'The approved invoice for maintenance request {{mruid}} ({{amount}}) could not be billed to the tenant automatically because {{reasonText}}. Please bill the tenant manually.',
+    },
+    chargeCreatedManual: {
+      title: 'Maintenance Charge Added',
+      message:
+        'A maintenance charge of {{amount}} has been added to your account for request {{mruid}}. Please pay by {{dueDate}}.',
+    },
     vendorPaid: {
       title: 'Payout Received',
       message:
@@ -264,7 +303,7 @@ export const NotificationMessages = {
     autoVendorPaid: {
       title: 'Vendor Paid Automatically',
       message:
-        '{{vendorName}} was automatically paid ${{amount}} for maintenance request {{mruid}}. The 5-day review period elapsed without manual action.',
+        '{{vendorName}} was automatically paid {{amount}} for maintenance request {{mruid}}. The 5-day review period elapsed without manual action.',
     },
   },
 
@@ -355,6 +394,8 @@ export type NotificationMessageKey =
   | 'maintenance.invoiceApprovedTenant'
   | 'maintenance.invoiceBillableNotice'
   | 'maintenance.chargeCreated'
+  | 'maintenance.chargeCreatedManual'
+  | 'maintenance.chargeSkipped'
   | 'maintenance.invoiceRejected'
   | 'maintenance.vendorPaid'
   | 'maintenance.workOrderSubmitted'
@@ -372,6 +413,12 @@ export type NotificationMessageKey =
   | 'payment.disputeWon'
   | 'payment.payoutAccountVerified'
   | 'payment.requested'
+  | 'payment.requestedManual'
+  | 'payment.failedTenantWithReason'
+  | 'payment.refundedTenant'
+  | 'payment.retriedWithCard'
+  | 'payment.retriedWithCardTenant'
+  | 'payment.depositRefundFailed'
   | 'payment.succeeded'
   | 'payment.overdue'
   | 'payment.failed'
@@ -401,9 +448,7 @@ export function getFormattedNotification(
   key: string,
   variables: Record<string, any>
 ): { title: string; message: string } {
-  const i18nParams = Object.fromEntries(
-    Object.entries(variables).map(([k, v]) => [k, v?.toString() ?? ''])
-  );
+  const i18nParams = toI18nParams(variables);
 
   const titleKey = `notifications.${key}.title`;
   const messageKey = `notifications.${key}.message`;
@@ -471,4 +516,27 @@ export function formatNotificationMessage(
   );
 
   return { title, message };
+}
+
+/**
+ * Resolves a text fragment interpolated into a notification (payment type label, refund kind,
+ * skip reason, ...) via i18n, so the whole notice reads in one language.
+ * Falls back to the English `fallback` template when the i18n key is missing.
+ * @param key - Key under `notifications.` (e.g., 'fragments.refundKinds.partial')
+ */
+export function translateNotificationText(
+  key: string,
+  fallback: string,
+  variables: Record<string, any> = {}
+): string {
+  const fullKey = `notifications.${key}`;
+  const result = t(fullKey, toI18nParams(variables));
+  if (result === fullKey) {
+    return fallback.replace(/\{\{(\w+)\}\}/g, (_, name) => variables[name]?.toString() || '');
+  }
+  return result;
+}
+
+function toI18nParams(variables: Record<string, any>): Record<string, string> {
+  return Object.fromEntries(Object.entries(variables).map(([k, v]) => [k, v?.toString() ?? '']));
 }

@@ -25,21 +25,29 @@ import {
   MaintenanceFundsAvailablePayload,
   MaintenanceRequestCreatedPayload,
   MaintenanceRequestUpdatedPayload,
+  MaintenanceChargeSkippedPayload,
   MaintenanceChargeCreatedPayload,
   MaintenanceChargePaidPayload,
   MaintenanceVendorPaidPayload,
 } from '@interfaces/events.interface';
 
 import { INotificationContext } from './notification.types';
-import { getFormattedNotification } from './notificationMessages';
+import { translateNotificationText, getFormattedNotification } from './notificationMessages';
 import {
   fetchRequestAndEnqueueEmail,
   sendResourceEventToMany,
   MAINTENANCE_DEPARTMENTS,
+  resolveTenantRecipient,
+  buildTenantPaymentsUrl,
+  resolveNoticeCurrency,
+  findPaymentForNotice,
   FINANCE_DEPARTMENTS,
+  isAutoDebitPayment,
+  formatNoticeAmount,
   notifyAnnouncement,
   sendResourceEvent,
   notifyIndividuals,
+  formatNoticeDate,
   ALL_STAFF_ROLES,
   MGMT_ROLES,
 } from './notification.helpers';
@@ -126,6 +134,7 @@ export async function handleInvoiceApproved(
   await sendResourceEvent(ctx, tenantId, cuid, 'maintenance', 'invoice-approved', mruid);
 
   if (tenantId) {
+    const tenantUserId = (await resolveTenantRecipient(ctx, tenantId))?.userId ?? tenantId;
     try {
       const { title, message } = getFormattedNotification('maintenance.invoiceApprovedTenant', {
         mruid,
@@ -133,7 +142,7 @@ export async function handleInvoiceApproved(
       await ctx.createNotification(cuid, NotificationTypeEnum.MAINTENANCE, {
         cuid,
         type: NotificationTypeEnum.MAINTENANCE,
-        recipient: tenantId,
+        recipient: tenantUserId,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.MEDIUM,
         title,
@@ -146,20 +155,25 @@ export async function handleInvoiceApproved(
 
     if (isBillable) {
       try {
+        // The tenant is charged the invoice plus any service fee — quote that same total.
+        const tenantChargeTotal = payload.tenantChargeTotalInCents ?? amount;
         const { title, message } = getFormattedNotification('maintenance.invoiceBillableNotice', {
           mruid,
-          amount: fmt,
+          amount: MoneyUtils.formatCurrency(
+            tenantChargeTotal || 0,
+            (currency || 'USD').toUpperCase()
+          ),
         });
         await ctx.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
           cuid,
           type: NotificationTypeEnum.PAYMENT,
-          recipient: tenantId,
+          recipient: tenantUserId,
           recipientType: RecipientTypeEnum.INDIVIDUAL,
           required: true,
           priority: NotificationPriorityEnum.HIGH,
           title,
           message,
-          metadata: { mruid, amount, currency },
+          metadata: { mruid, amount: tenantChargeTotal, currency },
         });
       } catch (error) {
         ctx.log.error('Error sending billable invoice notice to tenant', { error, payload });
@@ -172,8 +186,8 @@ export async function handleVendorPaid(
   payload: MaintenanceVendorPaidPayload
 ): Promise<void> {
   const { cuid, mruid, vendorId, amountInCents, transferId } = payload;
-  const currency = 'USD'; // transfer currency not on payload — default for display
-  const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency);
+  const currency = await resolveNoticeCurrency(ctx, { currency: payload.currency, cuid });
+  const fmt = formatNoticeAmount(amountInCents || 0, currency);
 
   // ── Resource-event SSE → vendor portal invalidates cache immediately ──────
   try {
@@ -243,7 +257,8 @@ export async function handleVendorPaid(
           mruid,
           jobTitle: invoice?.title || '',
           amountInCents,
-          currency: 'USD',
+          currency,
+          amountFormatted: fmt,
           transferId,
         },
       });
@@ -578,6 +593,77 @@ export async function handleMRAssigned(
   }
 }
 
+export async function handleMaintenanceChargeCreated(
+  ctx: INotificationContext,
+  payload: MaintenanceChargeCreatedPayload
+): Promise<void> {
+  const { cuid, mruid, tenantId, amountInCents, pytuid, dueDate, title: jobTitle } = payload;
+  const tenant = await resolveTenantRecipient(ctx, tenantId);
+  if (!tenant) {
+    ctx.log.warn(
+      { tenantId, mruid, pytuid },
+      'Maintenance charge: tenant not found — not notified'
+    );
+    return;
+  }
+
+  const payment = await findPaymentForNotice(ctx, pytuid, cuid);
+  const currency = await resolveNoticeCurrency(ctx, {
+    currency: payload.currency,
+    pytuid,
+    cuid,
+    payment,
+  });
+  const isAutoDebit = await isAutoDebitPayment(ctx, { payment });
+  const fmt = formatNoticeAmount(amountInCents || 0, currency);
+  const dueDateStr = formatNoticeDate(dueDate);
+
+  try {
+    const { title, message } = getFormattedNotification(
+      isAutoDebit ? 'maintenance.chargeCreated' : 'maintenance.chargeCreatedManual',
+      { mruid, amount: fmt, dueDate: dueDateStr }
+    );
+    await ctx.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
+      cuid,
+      type: NotificationTypeEnum.PAYMENT,
+      recipient: tenant.userId,
+      recipientType: RecipientTypeEnum.INDIVIDUAL,
+      required: true,
+      priority: NotificationPriorityEnum.HIGH,
+      title,
+      message,
+      metadata: { mruid, pytuid },
+    });
+  } catch (error) {
+    ctx.log.error('Error sending maintenance charge notification to tenant', { error, payload });
+  }
+
+  if (!tenant.email) return;
+  try {
+    ctx.emailQueue.addToEmailQueue('maintenanceChargeCreated', {
+      to: tenant.email,
+      requestId: ctx.requestId,
+      emailType: MailType.MAINTENANCE_CHARGE_CREATED,
+      subject: '',
+      data: {
+        mruid,
+        cuid,
+        pytuid,
+        jobTitle,
+        amountInCents,
+        currency,
+        amountFormatted: fmt,
+        dueDate,
+        dueDateFormatted: dueDateStr,
+        isAutoDebit,
+        paymentUrl: buildTenantPaymentsUrl(cuid, tenant, pytuid),
+      },
+    });
+  } catch (err) {
+    ctx.log.error({ err, mruid }, 'Failed to enqueue maintenanceChargeCreated email to tenant');
+  }
+}
+
 export async function handleWorkOrderRejected(
   ctx: INotificationContext,
   payload: MaintenanceWorkOrderRejectedPayload
@@ -645,69 +731,21 @@ export async function handleWorkOrderRejected(
   }
 }
 
-export async function handleMaintenanceChargeCreated(
-  ctx: INotificationContext,
-  payload: MaintenanceChargeCreatedPayload
-): Promise<void> {
-  try {
-    const { cuid, mruid, tenantId, amountInCents, currency, pytuid, dueDate } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, currency || 'USD');
-    const dueDateStr = new Date(dueDate).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-    const { title, message } = getFormattedNotification('maintenance.chargeCreated', {
-      mruid,
-      amount: fmt,
-      dueDate: dueDateStr,
-    });
-    await ctx.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
-      cuid,
-      type: NotificationTypeEnum.PAYMENT,
-      recipient: tenantId,
-      recipientType: RecipientTypeEnum.INDIVIDUAL,
-      required: true,
-      priority: NotificationPriorityEnum.HIGH,
-      title,
-      message,
-      metadata: { mruid, pytuid },
-    });
-  } catch (error) {
-    ctx.log.error('Error sending maintenance charge notification to tenant', { error, payload });
-  }
+const CHARGE_SKIPPED_REASONS: Record<MaintenanceChargeSkippedPayload['reason'], string> = {
+  tenant_profile_not_found: "the tenant's profile could not be found",
+  no_tenant: 'the request has no tenant',
+};
 
-  try {
-    const {
-      cuid,
-      mruid,
-      tenantId,
-      amountInCents,
-      currency,
-      pytuid,
-      title: jobTitle,
-      dueDate,
-    } = payload;
-    const tenantUser = await ctx.userDAO.findFirst({
-      _id: new Types.ObjectId(tenantId),
-      deletedAt: null,
-    });
-    if (tenantUser?.email) {
-      ctx.emailQueue.addToEmailQueue('maintenanceChargeCreated', {
-        to: tenantUser.email,
-        requestId: ctx.requestId,
-        emailType: MailType.MAINTENANCE_CHARGE_CREATED,
-        subject: '',
-        data: { mruid, cuid, pytuid, jobTitle, amountInCents, currency, dueDate },
-      });
-    }
-  } catch (err) {
-    ctx.log.error(
-      { err, mruid: payload.mruid },
-      'Failed to enqueue maintenanceChargeCreated email to tenant'
-    );
-  }
-}
+const getChargeSkippedReasonText = (reason: MaintenanceChargeSkippedPayload['reason']): string =>
+  CHARGE_SKIPPED_REASONS[reason]
+    ? translateNotificationText(
+        `fragments.chargeSkippedReasons.${reason}`,
+        CHARGE_SKIPPED_REASONS[reason]
+      )
+    : translateNotificationText(
+        'fragments.chargeSkippedReasons.default',
+        'the tenant could not be found'
+      );
 
 export async function handleInvoiceRejected(
   ctx: INotificationContext,
@@ -757,8 +795,6 @@ export async function handleInvoiceRejected(
     );
   }
 }
-
-// ── Invoice & charge handlers ───────────────────────────────────────────────
 
 export async function handleMRAccepted(
   ctx: INotificationContext,
@@ -858,6 +894,61 @@ export async function handleMRCreated(
       { err, mruid: payload.mruid },
       'Failed to enqueue maintenanceRequestCreated email'
     );
+  }
+}
+
+// ── Invoice & charge handlers ───────────────────────────────────────────────
+
+/**
+ * A billable invoice was approved but no tenant charge could be created. The approving PM
+ * and the property's manager must bill the tenant manually.
+ */
+export async function handleMaintenanceChargeSkipped(
+  ctx: INotificationContext,
+  payload: MaintenanceChargeSkippedPayload
+): Promise<void> {
+  try {
+    const { cuid, mruid, reason, notifyUserId, amountInCents } = payload;
+    const currency = await resolveNoticeCurrency(ctx, { currency: payload.currency, cuid });
+    const vars = {
+      mruid,
+      amount: formatNoticeAmount(amountInCents, currency),
+      reasonText: getChargeSkippedReasonText(reason),
+    };
+    const metadata = { mruid, reason };
+
+    const propertyManagerId = await findRequestPropertyManagerId(ctx, mruid, cuid);
+    const recipients = [notifyUserId, propertyManagerId].filter(Boolean);
+
+    if (recipients.length === 0) {
+      await notifyAnnouncement(
+        ctx,
+        cuid,
+        NotificationTypeEnum.PAYMENT,
+        'maintenance.chargeSkipped',
+        vars,
+        MGMT_ROLES,
+        metadata,
+        NotificationPriorityEnum.HIGH,
+        FINANCE_DEPARTMENTS,
+        true
+      );
+      return;
+    }
+
+    await notifyIndividuals(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      'maintenance.chargeSkipped',
+      vars,
+      recipients,
+      metadata,
+      NotificationPriorityEnum.HIGH,
+      true
+    );
+  } catch (error) {
+    ctx.log.error('Error sending maintenance charge skipped notification', { error, payload });
   }
 }
 
@@ -1025,8 +1116,6 @@ export async function handleMRWorkDone(
   }
 }
 
-// ── Work order handlers ─────────────────────────────────────────────────────
-
 export async function handleMRCancelled(
   ctx: INotificationContext,
   payload: MaintenanceRequestCancelledPayload
@@ -1059,18 +1148,21 @@ export async function handleMRCancelled(
   }
 }
 
+// ── Work order handlers ─────────────────────────────────────────────────────
+
 export async function handleAutoVendorPaid(
   ctx: INotificationContext,
   payload: { amountInCents: number; vendorName: string; mruid: string; cuid: string }
 ): Promise<void> {
   try {
     const { cuid, mruid, vendorName, amountInCents } = payload;
+    const currency = await resolveNoticeCurrency(ctx, { cuid });
     await notifyAnnouncement(
       ctx,
       cuid,
       NotificationTypeEnum.PAYMENT,
       'maintenance.autoVendorPaid',
-      { mruid, vendorName, amount: (amountInCents / 100).toFixed(2) },
+      { mruid, vendorName, amount: formatNoticeAmount(amountInCents, currency) },
       ALL_STAFF_ROLES,
       { mruid },
       NotificationPriorityEnum.HIGH,
@@ -1086,8 +1178,9 @@ export async function handleMaintenanceChargePaid(
   payload: MaintenanceChargePaidPayload
 ): Promise<void> {
   try {
-    const { cuid, mruid, amountInCents } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents, 'usd');
+    const { cuid, mruid, amountInCents, pytuid } = payload;
+    const currency = await resolveNoticeCurrency(ctx, { currency: payload.currency, pytuid, cuid });
+    const fmt = formatNoticeAmount(amountInCents, currency);
     await notifyAnnouncement(
       ctx,
       cuid,
@@ -1103,8 +1196,6 @@ export async function handleMaintenanceChargePaid(
     ctx.log.error('Error sending maintenance charge paid notification', { error, payload });
   }
 }
-
-// ── AI triage handler ───────────────────────────────────────────────────────
 
 export async function handleMaintenanceFundsAvailable(
   ctx: INotificationContext,
@@ -1127,6 +1218,8 @@ export async function handleMaintenanceFundsAvailable(
     ctx.log.error('Error sending funds available notification', { error, payload });
   }
 }
+
+// ── AI triage handler ───────────────────────────────────────────────────────
 
 export async function handleAITriageCompleted(
   ctx: INotificationContext,
@@ -1170,4 +1263,25 @@ async function getPropertyManagerEmail(
     deletedAt: null,
   });
   return manager?.email ?? null;
+}
+
+/** The property's manager for a maintenance request, or undefined. */
+async function findRequestPropertyManagerId(
+  ctx: INotificationContext,
+  mruid: string,
+  cuid: string
+): Promise<string | undefined> {
+  try {
+    const request: any = await ctx.maintenanceRequestDAO.getByMruid(mruid, cuid);
+    const propertyId = request?.propertyId?._id ?? request?.propertyId;
+    if (!propertyId) return undefined;
+    const property = await ctx.propertyDAO.findFirst({
+      _id: new Types.ObjectId(propertyId.toString()),
+      deletedAt: null,
+    });
+    return property?.managedBy?.toString();
+  } catch (error) {
+    ctx.log.error({ error, mruid, cuid }, 'Failed to find property manager for request');
+    return undefined;
+  }
 }

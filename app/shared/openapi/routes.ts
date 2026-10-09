@@ -2126,6 +2126,19 @@ openApiRegistry.registerPath({
 });
 
 // ════════════════════════════════════════════════════════════════════
+// SEARCH
+// ════════════════════════════════════════════════════════════════════
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/search/{cuid}',
+  summary: 'Search properties, tenants, leases and service requests (max 5 per type)',
+  tags: ['Search'],
+  request: { params: cuidParams, query: z.object({ q: z.string().min(2).max(100) }) },
+  responses: { ...ok200, ...err401, ...err422 },
+});
+
+// ════════════════════════════════════════════════════════════════════
 // INSPECTIONS
 // ════════════════════════════════════════════════════════════════════
 

@@ -4,8 +4,8 @@ A payout has been initiated for the maintenance job below.
 
 Reference #: <%= mruid %>
 <% if (jobTitle) { %>Job: <%= jobTitle %>
-<% } %>Amount: $<%= (amountInCents / 100).toFixed(2) %> <%= currency.toUpperCase() %>
+<% } %>Amount: <%= (typeof amountFormatted !== 'undefined' && amountFormatted) ? amountFormatted : (amountInCents / 100).toFixed(2) + ' ' + (currency || 'USD').toUpperCase() %>
 Transfer ID: <%= transferId %>
-Date: <%= new Date().toLocaleDateString() %>
+Date: <%= new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) %>
 
 Funds typically arrive within 1-2 business days depending on your bank and payout schedule.

@@ -143,6 +143,7 @@ export interface IMaintenanceFilters {
   tenantUid?: string; // user resource UID of tenant
   dateFrom?: string;
   dateTo?: string;
+  search?: string; // matches title or mruid
   puid?: string; // property unit resource UID
   pid?: string; // property resource UID
 }

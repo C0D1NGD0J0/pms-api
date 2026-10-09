@@ -1,13 +1,23 @@
-MAINTENANCE CHARGE ADDED
+<%
+  var _autoDebit = typeof isAutoDebit !== 'undefined' && isAutoDebit;
+  var _dueDate = (typeof dueDateFormatted !== 'undefined' && dueDateFormatted)
+    ? dueDateFormatted
+    : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  var _amount = (typeof amountFormatted !== 'undefined' && amountFormatted)
+    ? amountFormatted
+    : (amountInCents / 100).toFixed(2) + ' ' + (currency || 'USD').toUpperCase();
+  var _payUrl = (typeof paymentUrl !== 'undefined' && paymentUrl) ? paymentUrl : '';
+%>MAINTENANCE CHARGE ADDED
 
 A maintenance charge has been added to your account.
 
 Reference: <%= mruid %>
 <% if (jobTitle) { %>Job: <%= jobTitle %>
-<% } %>Amount Due: $<%= (amountInCents / 100).toFixed(2) %> <%= (currency || 'USD').toUpperCase() %>
-Due Date: <%= new Date(dueDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) %>
+<% } %>Amount Due: <%= _amount %>
+Due Date: <%= _dueDate %>
+<% if (_payUrl) { %>
+Pay now: <%= _payUrl %>
+<% } %>
+<% if (_autoDebit) { %>If you do not pay by the due date, the amount will be charged to your payment method on file (bank debits are made only after you receive advance notice of the debit).<% } else { %>Please pay by the due date.<% } %>
 
-Pay now to avoid automatic debit:
-<%= process.env.APP_URL %>/tenants/<%= cuid %>/<%= pytuid %>/payments
-
-If you do not pay by the due date, the amount will be automatically charged to your payment method on file.
+Questions about this charge? Contact your property manager directly.

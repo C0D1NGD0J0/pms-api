@@ -16,9 +16,12 @@
         if (jobTitle) {
           _rows.push({ label: 'Job', value: jobTitle });
         }
-        _rows.push({ label: 'Payout Amount', value: '$' + (amountInCents / 100).toFixed(2) + ' ' + currency.toUpperCase() });
+        var _payoutAmount = (typeof amountFormatted !== 'undefined' && amountFormatted)
+          ? amountFormatted
+          : (amountInCents / 100).toFixed(2) + ' ' + (currency || 'USD').toUpperCase();
+        _rows.push({ label: 'Payout Amount', value: _payoutAmount });
         _rows.push({ label: 'Transfer ID', value: transferId });
-        _rows.push({ label: 'Date', value: new Date().toLocaleDateString() });
+        _rows.push({ label: 'Date', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) });
       %>
       <%- include("../shared/html/_detail-table", { rows: _rows }) %>
     </td>

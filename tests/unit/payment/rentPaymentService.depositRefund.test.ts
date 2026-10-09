@@ -13,6 +13,7 @@ import { RentPaymentService } from '@services/payments/rentPayment.service';
 describe('RentPaymentService — handleDepositRefund', () => {
   let mockPaymentDAO: { findFirst: jest.Mock; updateById: jest.Mock; insert: jest.Mock };
   let mockClientDAO: { findFirst: jest.Mock };
+  let mockLeaseDAO: { findFirst: jest.Mock };
   let mockPaymentGatewayService: { createRefund: jest.Mock };
   let mockEmitterService: { emit: jest.Mock; on: jest.Mock; off: jest.Mock };
   let registeredListeners: Record<string, (...args: any[]) => any>;
@@ -45,6 +46,8 @@ describe('RentPaymentService — handleDepositRefund', () => {
       findFirst: jest.fn().mockReturnValue(Promise.resolve({ settings: {} })),
     };
 
+    mockLeaseDAO = { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) };
+
     mockPaymentGatewayService = {
       createRefund: jest
         .fn()
@@ -73,7 +76,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
       queueFactory: { getQueue: jest.fn() } as any,
       profileDAO: {} as any,
       userCache: {} as any,
-      leaseDAO: {} as any,
+      leaseDAO: mockLeaseDAO as any,
     }).registerEventListeners();
   });
 
@@ -99,11 +102,12 @@ describe('RentPaymentService — handleDepositRefund', () => {
           amountInCents: 100000,
           reason: 'requested_by_customer',
           note: 'Move-out inspection — security deposit refund',
-          idempotencyKey: 'deposit-refund:PYT-DEP-001',
+          idempotencyKey: 'deposit-refund:PYT-DEP-001:0',
         }
       );
 
       expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
+        $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1 },
         $set: expect.objectContaining({
           status: PaymentRecordStatus.REFUNDED,
           'refund.amount': 100000,
@@ -115,9 +119,49 @@ describe('RentPaymentService — handleDepositRefund', () => {
       });
     });
 
-    it('should log error and NOT update payment when Stripe refund fails', async () => {
+    it('should use a new idempotency key when retrying after a failed refund', async () => {
       const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
-      const deposit = makeDepositPayment();
+      const failedAt = new Date('2026-10-01T12:00:00Z');
+      const deposit = makeDepositPayment({ refund: { failureReason: 'card_declined', failedAt } });
+
+      mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
+
+      await handler({ refundAmount: 100000, leaseId: LEASE_ID, cuid: CUID });
+
+      expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        expect.objectContaining({
+          idempotencyKey: `deposit-refund:PYT-DEP-001:${failedAt.getTime()}`,
+        })
+      );
+    });
+
+    it('should emit PAYMENT_REFUNDED once Stripe accepts the refund', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      const tenantProfileId = new Types.ObjectId();
+      const deposit = makeDepositPayment({ tenant: tenantProfileId, currency: 'CAD' });
+      mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
+
+      await handler({ refundAmount: 100000, leaseId: LEASE_ID, cuid: CUID });
+
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        EventTypes.PAYMENT_REFUNDED,
+        expect.objectContaining({
+          cuid: CUID,
+          pytuid: 'PYT-DEP-001',
+          tenantId: tenantProfileId.toString(),
+          amount: 100000,
+          totalRefunded: 100000,
+          currency: 'CAD',
+          isPartial: true,
+          reason: 'Move-out inspection deposit refund',
+        })
+      );
+    });
+
+    it('should stage PENDING_REFUND with the failure reason and emit DEPOSIT_REFUND_FAILED when Stripe refund fails', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      const deposit = makeDepositPayment({ currency: 'CAD' });
 
       mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
       mockPaymentGatewayService.createRefund.mockReturnValue(
@@ -126,15 +170,52 @@ describe('RentPaymentService — handleDepositRefund', () => {
 
       await handler({ refundAmount: 100000, leaseId: LEASE_ID, cuid: CUID });
 
-      // Should NOT update payment to REFUNDED
-      expect(mockPaymentDAO.updateById).not.toHaveBeenCalled();
+      expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
+        $set: expect.objectContaining({
+          status: PaymentRecordStatus.PENDING_REFUND,
+          'refund.amount': 100000,
+          'refund.failureReason': 'Card expired',
+          'refund.failedAt': expect.any(Date),
+        }),
+      });
+      expect(mockPaymentDAO.updateById).not.toHaveBeenCalledWith(
+        deposit._id.toString(),
+        expect.objectContaining({
+          $set: expect.objectContaining({ status: PaymentRecordStatus.REFUNDED }),
+        })
+      );
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(EventTypes.DEPOSIT_REFUND_FAILED, {
+        cuid: CUID,
+        pytuid: 'PYT-DEP-001',
+        leaseId: LEASE_ID,
+        amount: 100000,
+        currency: 'CAD',
+        reason: 'Card expired',
+      });
+      expect(mockEmitterService.emit).not.toHaveBeenCalledWith(
+        EventTypes.PAYMENT_REFUNDED,
+        expect.anything()
+      );
+    });
+
+    it('should cap the refund at the collected deposit (security + pet)', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      const deposit = makeDepositPayment({ baseAmount: 175000 });
+      mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
+
+      await handler({ refundAmount: 999999, leaseId: LEASE_ID, cuid: CUID });
+
+      expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        expect.objectContaining({ amountInCents: 175000 })
+      );
     });
   });
 
   // ─── Offline deposit path ──────────────────────────────────────────────────
 
   describe('Offline deposit (no Stripe charge)', () => {
-    it('should mark as REFUNDED without calling Stripe', async () => {
+    it('should stage PENDING_REFUND for manager release without calling Stripe', async () => {
       const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
       const deposit = makeDepositPayment({ gatewayChargeId: null });
 
@@ -142,16 +223,14 @@ describe('RentPaymentService — handleDepositRefund', () => {
 
       await handler({ refundAmount: 80000, leaseId: LEASE_ID, cuid: CUID });
 
-      // Should NOT call Stripe
       expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
-
-      // Should mark as REFUNDED directly
       expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
         $set: expect.objectContaining({
-          status: PaymentRecordStatus.REFUNDED,
+          status: PaymentRecordStatus.PENDING_REFUND,
           'refund.amount': 80000,
           'refund.refundedBy': 'system:inspection-approved',
-          'refund.reason': 'Move-out inspection deposit refund (offline)',
+          'refund.reason':
+            'Move-out inspection deposit refund (offline) — awaiting manager release',
         }),
       });
     });
@@ -225,12 +304,35 @@ describe('RentPaymentService — handleDepositRefund', () => {
       expect(mockPaymentDAO.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           paymentType: PaymentRecordType.SECURITY_DEPOSIT,
-          status: PaymentRecordStatus.PAID,
+          status: { $in: [PaymentRecordStatus.PAID] },
         })
       );
 
       // Should NOT process any refund
       expect(mockPaymentDAO.updateById).not.toHaveBeenCalled();
+    });
+
+    it('should refund the deposit held on the original lease when the lease is a renewal', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      const originalLeaseId = new Types.ObjectId();
+      const deposit = makeDepositPayment({ lease: originalLeaseId });
+
+      mockPaymentDAO.findFirst
+        .mockReturnValueOnce(Promise.resolve(null))
+        .mockReturnValueOnce(Promise.resolve(deposit));
+      mockLeaseDAO.findFirst.mockReturnValueOnce(
+        Promise.resolve({ previousLeaseId: originalLeaseId })
+      );
+
+      await handler({ refundAmount: 100000, leaseId: LEASE_ID, cuid: CUID });
+
+      expect(mockPaymentDAO.findFirst).toHaveBeenLastCalledWith(
+        expect.objectContaining({ lease: originalLeaseId })
+      );
+      expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        expect.objectContaining({ chargeId: 'ch_stripe_123', amountInCents: 100000 })
+      );
     });
 
     it('should skip when no paid deposit payment exists', async () => {

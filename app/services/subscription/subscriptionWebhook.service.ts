@@ -361,6 +361,65 @@ export class SubscriptionWebhookService {
     });
   }
 
+  /**
+   * Bills manual payment records over the plan quota for the period that just ended, then
+   * starts counting the new period. Runs only when Stripe's billing period actually advanced:
+   * customer.subscription.updated also fires for plan, seat and status changes, and those must
+   * not reset the counter. The reset is an atomic claim on the stored periodStart, so a
+   * retried or concurrent webhook can't bill or reset the same period twice.
+   */
+  private async closeManualRecordPeriod(
+    subscription: ISubscriptionDocument,
+    newPeriodStart: Date
+  ): Promise<void> {
+    const previousPeriod = await this.subscriptionDAO.update(
+      {
+        _id: subscription._id,
+        $or: [
+          { 'manualRecords.periodStart': null },
+          { 'manualRecords.periodStart': { $lt: newPeriodStart } },
+        ],
+      },
+      {
+        $set: {
+          'manualRecords.countThisPeriod': 0,
+          'manualRecords.periodStart': newPeriodStart,
+        },
+      },
+      { returnDocument: 'before' }
+    );
+    if (!previousPeriod) return; // same period — nothing to close
+
+    const quota = subscriptionPlanConfig.getManualRecordQuota(previousPeriod.planName);
+    const previousCount = previousPeriod.manualRecords?.countThisPeriod ?? 0;
+    if (previousCount <= quota || !previousPeriod.billing?.customerId) return;
+
+    const overageCount = previousCount - quota;
+    const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
+    const totalCents = overageCount * feeCents;
+
+    const result = await this.paymentGatewayService.createInvoiceItem(
+      IPaymentGatewayProvider.STRIPE,
+      {
+        customerId: previousPeriod.billing.customerId,
+        amountInCents: totalCents,
+        currency: 'usd',
+        description: `Manual payment record overage: ${overageCount} record(s) over ${quota} free @ $${(feeCents / 100).toFixed(2)} each`,
+      }
+    );
+    if (!result.success) {
+      this.log.error(
+        { cuid: previousPeriod.cuid, overageCount, totalCents, message: result.message },
+        'Failed to create manual record overage invoice item'
+      );
+      return;
+    }
+    this.log.info(
+      { cuid: previousPeriod.cuid, overageCount, totalCents },
+      'Manual record overage invoice item created'
+    );
+  }
+
   async handleSubscriptionUpdated(data: {
     stripeSubscriptionId: string;
     stripeCustomerId?: string;
@@ -423,37 +482,7 @@ export class SubscriptionWebhookService {
       if (currentPeriodStart) {
         updateData.startDate = new Date(currentPeriodStart * 1000);
 
-        // Charge overage for manual payment records from the previous period
-        const quota = subscriptionPlanConfig.getManualRecordQuota(subscription.planName);
-        const previousCount = subscription.manualRecords?.countThisPeriod ?? 0;
-
-        if (previousCount > quota && subscription.billing?.customerId) {
-          const overageCount = previousCount - quota;
-          const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
-          const totalCents = overageCount * feeCents;
-
-          try {
-            await this.paymentGatewayService.createInvoiceItem(IPaymentGatewayProvider.STRIPE, {
-              customerId: subscription.billing.customerId,
-              amountInCents: totalCents,
-              currency: 'usd',
-              description: `Manual payment record overage: ${overageCount} record(s) over ${quota} free @ $${(feeCents / 100).toFixed(2)} each`,
-            });
-            this.log.info(
-              { cuid: subscription.cuid, overageCount, totalCents },
-              'Manual record overage invoice item created'
-            );
-          } catch (err) {
-            this.log.error(
-              { err, cuid: subscription.cuid },
-              'Failed to create manual record overage invoice item'
-            );
-          }
-        }
-
-        // Reset counter for new billing period
-        updateData['manualRecords.countThisPeriod'] = 0;
-        updateData['manualRecords.periodStart'] = new Date(currentPeriodStart * 1000);
+        await this.closeManualRecordPeriod(subscription, new Date(currentPeriodStart * 1000));
       }
 
       // Only advance endDate — never allow a stale webhook retry to roll it back

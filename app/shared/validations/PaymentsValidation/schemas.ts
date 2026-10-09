@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { calendarDate, safeString } from '../UtilsValidation';
+import { isAllowedCheckoutReturnUrl } from './checkoutReturnUrl';
 
 export const vendorPayoutParams = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
@@ -8,6 +9,15 @@ export const vendorPayoutParams = z.object({
 
 export const cardCheckoutParams = z.object({
   pytuid: z.string().min(1, 'Payment ID is required'),
+});
+
+const checkoutReturnUrl = z.string().trim().max(2048).refine(isAllowedCheckoutReturnUrl, {
+  message: 'Return URL must be a path in this app or on the app domain',
+});
+
+export const cardCheckoutBody = z.object({
+  successUrl: checkoutReturnUrl.optional(),
+  cancelUrl: checkoutReturnUrl.optional(),
 });
 
 export const chargeForMaintenance = z.object({
@@ -33,18 +43,28 @@ export const createPayment = z.object({
     .optional(),
 });
 
+// Dates arrive as calendar days at UTC midnight; one day of slack keeps "today" valid in
+// timezones ahead of UTC.
+const isNotFutureDate = (date: Date) => date.getTime() <= Date.now() + 24 * 60 * 60 * 1000;
+
 export const recordManualPayment = z
   .object({
     paymentType: z.enum(['rent', 'maintenance', 'late_fee', 'security_deposit', 'deposit_refund']),
-    paymentMethod: z.enum(['online', 'cash', 'check', 'bank_transfer', 'other']),
-    status: z.enum(['paid', 'pending', 'overdue', 'failed', 'cancelled']).optional(),
+    // Online payments only come from the payment gateway — never from a manual entry
+    paymentMethod: z.enum(['cash', 'check', 'bank_transfer', 'other']),
+    // A manual entry records money already received, so it can only be saved as paid
+    status: z.literal('paid').optional(),
     baseAmount: z.coerce.number().int().min(1, 'Base amount must be at least 1 cent'),
     processingFee: z.coerce.number().int().min(0, 'Processing fee cannot be negative').optional(),
-    paidAt: calendarDate(),
+    paidAt: calendarDate().refine(isNotFutureDate, {
+      message: 'Payment date cannot be in the future',
+    }),
     tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
     leaseId: safeString.optional(),
     propertyId: safeString.optional(),
     unitId: safeString.optional(),
+    pytuid: safeString.pipe(z.string().trim().min(1).max(64)).optional(),
+    mruid: safeString.pipe(z.string().trim().min(1).max(64)).optional(),
     description: z.string().optional(),
     receipt: z
       .object({
@@ -60,13 +80,18 @@ export const recordManualPayment = z
       })
       .optional(),
   })
-  .refine((data) => data.leaseId || data.propertyId, {
-    message: 'Either a lease or a property must be provided',
+  .refine((data) => data.leaseId || data.propertyId || data.pytuid || data.mruid, {
+    message: 'Either a lease, a property, a charge or a maintenance request must be provided',
     path: ['leaseId'],
   });
 
 export const refundPayment = z.object({
   amount: z.number().int().positive('Refund amount must be positive').optional(),
+  reason: z.string().trim().max(500, 'Reason cannot exceed 500 characters').optional(),
+  reverseVendorTransfer: z.boolean().optional(),
+});
+
+export const cancelPayment = z.object({
   reason: z.string().trim().max(500, 'Reason cannot exceed 500 characters').optional(),
 });
 

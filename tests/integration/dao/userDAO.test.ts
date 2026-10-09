@@ -350,6 +350,47 @@ describe('UserDAO Integration Tests', () => {
 
       expect(result.items).toHaveLength(0);
     });
+
+    it('should match users by profile name rather than User fields', async () => {
+      const bob = await User.findOne({ uid: 'uid-bob-001' });
+      await Profile.create({
+        puid: 'puid-bob-search',
+        user: bob!._id,
+        personalInfo: {
+          firstName: 'Roberto',
+          lastName: 'Jonesy',
+          displayName: 'Roberto Jonesy',
+          location: 'Toronto',
+          phoneNumber: '+15550001111',
+        },
+      });
+
+      const byFirstName = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'roberto' },
+        { limit: 10 }
+      );
+      const byFullName = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: 'Roberto Jonesy' },
+        { limit: 10 }
+      );
+      const byPhone = await userDAO.getUsersByFilteredType(
+        cuid,
+        { search: '5550001111' },
+        { limit: 10 }
+      );
+
+      expect(byFirstName.items.map((u: any) => u.uid)).toEqual(['uid-bob-001']);
+      expect(byFullName.items.map((u: any) => u.uid)).toEqual(['uid-bob-001']);
+      expect(byPhone.items.map((u: any) => u.uid)).toEqual(['uid-bob-001']);
+    });
+
+    it('should treat regex characters in the search term literally', async () => {
+      const result = await userDAO.getUsersByFilteredType(cuid, { search: '.*' }, { limit: 10 });
+
+      expect(result.items).toHaveLength(0);
+    });
   });
 
   describe('clearOnboardingFlag', () => {
@@ -602,6 +643,25 @@ describe('UserDAO Integration Tests', () => {
       const result = await userDAO.getTenantsByClient(cuid, { search: 'Dave' }, { limit: 10 });
 
       expect(result.items).toHaveLength(0);
+    });
+
+    it('should match tenants by profile first and last name', async () => {
+      const alice = await User.findOne({ uid: 'uid-tenant-alice' });
+      await Profile.create({
+        puid: 'puid-alice-tenant-search',
+        user: alice!._id,
+        personalInfo: {
+          firstName: 'Alicia',
+          lastName: 'Keyes',
+          displayName: 'Alicia Keyes',
+          location: 'Toronto',
+        },
+      });
+
+      const byLastName = await userDAO.getTenantsByClient(cuid, { search: 'keyes' }, { limit: 10 });
+
+      expect(byLastName.items).toHaveLength(1);
+      expect(byLastName.items[0].email).toBe('alice.tenant@example.com');
     });
 
     it('should return all tenants when search is omitted', async () => {

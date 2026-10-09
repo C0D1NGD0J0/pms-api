@@ -37,6 +37,31 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     },
   };
 
+  // Names and phone numbers live on the profile, so this stage must run after PROFILE_LOOKUP_STAGES
+  private static buildNameEmailSearchStage(search: string): PipelineStage.Match {
+    const escapedSearch = escapeRegExp(search.trim());
+    const searchRegex = new RegExp(escapedSearch, 'i');
+    const fullNameExpr = {
+      $concat: [
+        { $ifNull: ['$profile.personalInfo.firstName', ''] },
+        ' ',
+        { $ifNull: ['$profile.personalInfo.lastName', ''] },
+      ],
+    };
+    return {
+      $match: {
+        $or: [
+          { $expr: { $regexMatch: { input: fullNameExpr, regex: escapedSearch, options: 'i' } } },
+          { email: { $regex: searchRegex } },
+          { 'profile.personalInfo.firstName': { $regex: searchRegex } },
+          { 'profile.personalInfo.lastName': { $regex: searchRegex } },
+          { 'profile.personalInfo.displayName': { $regex: searchRegex } },
+          { 'profile.personalInfo.phoneNumber': { $regex: searchRegex } },
+        ],
+      },
+    };
+  }
+
   private async paginateAggregation(
     pipeline: PipelineStage[],
     opts?: IFindOptions
@@ -302,17 +327,11 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         query['cuids.roles'] = Array.isArray(role) ? { $in: role } : role;
       }
 
-      if (search && search.trim()) {
-        const searchRegex = new RegExp(escapeRegExp(search.trim()), 'i');
-        query.$or = [
-          { firstName: { $regex: searchRegex } },
-          { lastName: { $regex: searchRegex } },
-          { email: { $regex: searchRegex } },
-          { phoneNumber: { $regex: searchRegex } },
-        ];
-      }
-
       const pipeline: PipelineStage[] = [{ $match: query }, ...UserDAO.PROFILE_LOOKUP_STAGES];
+
+      if (search && search.trim()) {
+        pipeline.push(UserDAO.buildNameEmailSearchStage(search));
+      }
 
       if (department) {
         pipeline.push({
@@ -804,17 +823,11 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
         deletedAt: null,
       };
 
-      if (filters?.search && filters.search.trim()) {
-        const searchRegex = new RegExp(escapeRegExp(filters.search.trim()), 'i');
-        tenantMatch.$or = [
-          { firstName: { $regex: searchRegex } },
-          { lastName: { $regex: searchRegex } },
-          { email: { $regex: searchRegex } },
-          { phoneNumber: { $regex: searchRegex } },
-        ];
-      }
-
       const pipeline: PipelineStage[] = [{ $match: tenantMatch }, ...UserDAO.PROFILE_LOOKUP_STAGES];
+
+      if (filters?.search && filters.search.trim()) {
+        pipeline.push(UserDAO.buildNameEmailSearchStage(filters.search));
+      }
 
       if (filters) {
         const matchConditions: any = {};

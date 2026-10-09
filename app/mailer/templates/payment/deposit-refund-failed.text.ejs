@@ -1,0 +1,16 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _reason = _val(typeof reason !== 'undefined' ? reason : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _url = _val(typeof paymentUrl !== 'undefined' ? paymentUrl : '');
+%>Deposit Refund Failed
+
+A security deposit refund of <%= amount %> could not be processed. The tenant has not received this money.
+
+<% if (_reference) { %>Reference: <%= _reference %>
+<% } %><% if (_reason) { %>Reason: <%= _reason %>
+<% } %>
+Please review the refund and retry it, or refund the tenant another way (for example by cheque or e-transfer) and record it.
+<% if (_url) { %>
+Review refund: <%= _url %>
+<% } %>

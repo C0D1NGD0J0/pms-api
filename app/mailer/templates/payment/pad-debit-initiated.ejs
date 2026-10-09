@@ -1,0 +1,51 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _initiatedOn = _val(typeof initiatedOn !== 'undefined' ? initiatedOn : '');
+  var _phone = _val(typeof payeePhone !== 'undefined' ? payeePhone : '');
+  var _email = _val(typeof payeeEmail !== 'undefined' ? payeeEmail : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+%>
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= tenantName %></strong>,</p>
+      <p>
+        Your pre-authorized debit of <strong><%= amount %></strong> (<%= currency %>) to
+        <strong><%= payeeName %></strong> has been initiated and is now processing.
+        Bank debits usually take 3–5 business days to complete. We will email you a receipt once it clears.
+      </p>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafb; border: 1px solid #e8edf2; border-radius: 10px; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px;">
+        <tr><td style="padding: 18px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="padding: 6px 0; color: #64748b; width: 38%;">Amount</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= amount %> (<%= currency %>)</td></tr>
+            <% if (_initiatedOn) { %><tr><td style="padding: 6px 0; color: #64748b;">Initiated</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= _initiatedOn %></td></tr><% } %>
+            <% if (_reference) { %><tr><td style="padding: 6px 0; color: #64748b;">Reference</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= _reference %></td></tr><% } %>
+            <tr><td style="padding: 6px 0; color: #64748b;">Payee</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= payeeName %></td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+
+  <% if (_url) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: _url, label: "View Payment" }) %>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <p style="font-size: 13px; color: #555;">
+        Questions about this debit? Contact <strong><%= payeeName %></strong><% if (_phone) { %> at <%= _phone %><% } %><% if (_email) { %> or <%= _email %><% } %>.
+      </p>
+    </td>
+  </tr>
+</table>

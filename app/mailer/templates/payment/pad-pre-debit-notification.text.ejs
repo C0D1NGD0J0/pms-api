@@ -1,9 +1,35 @@
-Upcoming Pre-Authorized Debit
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _debitDate = _val(typeof debitDate !== 'undefined' ? debitDate : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : (typeof pytuid !== 'undefined' ? pytuid : ''));
+  var _last4 = _val(typeof accountLast4 !== 'undefined' ? accountLast4 : '');
+  var _type = _val(typeof paymentType !== 'undefined' ? paymentType : '') || 'Payment';
+  var _mandate = _val(typeof mandateReference !== 'undefined' ? mandateReference : '');
+  var _phone = _val(typeof payeePhone !== 'undefined' ? payeePhone : '');
+  var _email = _val(typeof payeeEmail !== 'undefined' ? payeeEmail : '');
+  var _address = _val(typeof payeeAddress !== 'undefined' ? payeeAddress : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+%>Upcoming Pre-Authorized Debit
 
 Hi <%= tenantName %>,
 
-A pre-authorized debit of <%= amount %> (<%= currency %>) will be charged to your bank account by <%= payeeName %>.
+This is advance notice that <%= payeeName %> will debit <%= amount %> (<%= currency %>) from your bank account under your pre-authorized debit (PAD) agreement<% if (_debitDate) { %> on <%= _debitDate %><% } %>.
 
-Please ensure sufficient funds are available in your account to avoid any processing issues.
+<% if (_debitDate) { %>Debit date: <%= _debitDate %>
+<% } %>Amount: <%= amount %> (<%= currency %>)
+For: <%= _type %>
+<% if (_reference) { %>Reference: <%= _reference %>
+<% } %><% if (_last4) { %>Bank account: ending in <%= _last4 %>
+<% } %><% if (_mandate) { %>PAD agreement: <%= _mandate %>
+<% } %>Payee: <%= payeeName %>
 
-If you have questions about this debit, please contact <%= payeeName %>.
+Please make sure enough funds are in your account on the debit date.
+
+You can pay this amount another way before the debit date from your payments page. If you believe this debit is wrong, or you want to cancel or change your PAD agreement, contact <%= payeeName %> before the debit date:
+<% if (_phone) { %>Phone: <%= _phone %>
+<% } %><% if (_email) { %>Email: <%= _email %>
+<% } %><% if (_address) { %>Address: <%= _address %>
+<% } %><% if (_url) { %>
+View payment: <%= _url %>
+<% } %>
+You have certain recourse rights if any debit does not comply with your PAD agreement. For example, you have the right to receive reimbursement for any debit that is not authorized or is not consistent with your PAD agreement. To obtain more information on your recourse rights, contact your financial institution or visit www.payments.ca.

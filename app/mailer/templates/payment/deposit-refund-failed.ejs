@@ -1,0 +1,29 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _reason = _val(typeof reason !== 'undefined' ? reason : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _url = _val(typeof paymentUrl !== 'undefined' ? paymentUrl : '');
+%>
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>
+        A security deposit refund of <strong><%= amount %></strong> could not be processed.
+        The tenant has not received this money.
+      </p>
+      <p style="font-size: 14px; color: #334155;">
+        <% if (_reference) { %>Reference: <%= _reference %><br /><% } %>
+        <% if (_reason) { %>Reason: <%= _reason %><% } %>
+      </p>
+      <%- include("../shared/html/_notice", { text: 'Please review the refund and retry it, or refund the tenant another way (for example by cheque or e-transfer) and record it.', type: 'warning' }) %>
+    </td>
+  </tr>
+
+  <% if (_url) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: _url, label: "Review Refund" }) %>
+    </td>
+  </tr>
+  <% } %>
+</table>

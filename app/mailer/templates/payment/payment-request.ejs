@@ -1,3 +1,9 @@
+<%
+  var _autoDebit = typeof isAutoDebit !== 'undefined' && isAutoDebit;
+  var _dueDate = isNaN(new Date(dueDate).getTime())
+    ? dueDate
+    : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+%>
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
@@ -16,7 +22,7 @@
         ...(unitNumber ? [{ label: "Unit", value: unitNumber }] : []),
         { label: "Type", value: paymentType },
         { label: "Amount Due", value: amountDue },
-        { label: "Due Date", value: new Date(dueDate).toLocaleDateString() },
+        { label: "Due Date", value: _dueDate },
         ...(description ? [{ label: "Note", value: description }] : [])
       ]}) %>
     </td>
@@ -33,7 +39,12 @@
   <tr>
     <td class="content">
       <p>
-        You can pay early using the button above, or your linked bank account will be automatically charged on the due date.
+        <% if (_autoDebit) { %>
+        You can pay early using the button above. Otherwise your linked payment method will be charged automatically
+        on or after the due date (bank debits are made only after you receive advance notice of the debit).
+        <% } else { %>
+        Please pay by <strong><%= _dueDate %></strong> using your usual payment method.
+        <% } %>
         If you have any questions about this charge, please contact your property manager directly.
       </p>
     </td>

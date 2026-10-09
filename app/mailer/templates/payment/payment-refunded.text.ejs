@@ -1,0 +1,23 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _partial = typeof isPartial !== 'undefined' && isPartial;
+  var _total = _val(typeof totalRefunded !== 'undefined' ? totalRefunded : '');
+  var _reason = _val(typeof reason !== 'undefined' ? reason : '');
+  var _refundedOn = _val(typeof refundedOn !== 'undefined' ? refundedOn : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+%>Refund Issued
+
+Hi <%= tenantName %>,
+
+A <%= _partial ? 'partial' : 'full' %> refund of <%= amount %> has been issued for your payment. Refunds go back to the original payment method and usually appear within 5-10 business days.
+
+Refund: <%= amount %> (<%= _partial ? 'partial' : 'full' %>)
+<% if (_partial && _total) { %>Total refunded so far: <%= _total %>
+<% } %><% if (_refundedOn) { %>Date: <%= _refundedOn %>
+<% } %><% if (_reference) { %>Reference: <%= _reference %>
+<% } %><% if (_reason) { %>Reason: <%= _reason %>
+<% } %><% if (_url) { %>
+View payment: <%= _url %>
+<% } %>
+If you have questions about this refund, contact your property manager.

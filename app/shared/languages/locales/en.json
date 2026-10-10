@@ -603,7 +603,9 @@
       "updated": "{{resource}} updated successfully.",
       "created": "{{resource}} created successfully.",
       "deleted": "{{resource}} deleted successfully.",
-      "archived": "{{resource}} archived successfully."
+      "archived": "{{resource}} archived successfully.",
+      "approved": "{{resource}} approved successfully.",
+      "rejected": "{{resource}} rejected successfully."
     },
     "notices": {
       "locationDeterminesPaymentProcessor": "Your location determines your payment provider and cannot be changed after account setup."

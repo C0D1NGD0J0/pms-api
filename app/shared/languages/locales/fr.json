@@ -595,7 +595,9 @@
       "updated": "{{resource}} mis(e) à jour avec succès.",
       "created": "{{resource}} créé(e) avec succès.",
       "deleted": "{{resource}} supprimé(e) avec succès.",
-      "archived": "{{resource}} archivé(e) avec succès."
+      "archived": "{{resource}} archivé(e) avec succès.",
+      "approved": "{{resource}} approuvé(e) avec succès.",
+      "rejected": "{{resource}} rejeté(e) avec succès."
     }
   },
   "maintenance": {

@@ -2209,6 +2209,27 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       expect(result.data.petPolicy?.maxPets).toBe(2);
     });
 
+    it('should reject an invalid renewal duration with a 400 and its validation message', async () => {
+      await expect(
+        leaseService.createDraftLeaseRenewal(
+          testClient.cuid,
+          activeLeaseForRenewal.luid,
+          {
+            duration: { startDate: new Date('2026-12-31'), endDate: new Date('2026-01-01') },
+          } as any,
+          null
+        )
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: 'Renewal start date must be before end date',
+      });
+
+      const renewalCount = await Lease.countDocuments({
+        previousLeaseId: activeLeaseForRenewal._id,
+      });
+      expect(renewalCount).toBe(0);
+    });
+
     it('should require approval when autoApproveRenewal is not set (default behavior)', async () => {
       // autoApproveRenewal = undefined (use schema default)
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {

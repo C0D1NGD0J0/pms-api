@@ -803,3 +803,26 @@ export const parseColumnMappingField = (raw: unknown): Record<string, string> | 
     return undefined;
   }
 };
+
+/**
+ * Yields every document matching the filter, reading one page at a time in _id order.
+ * A DAO's list() caps each call (20 by default, 1000 max), so cron and bulk jobs that must
+ * see every match use this. The _id cursor stays correct even when the caller updates
+ * documents so they no longer match the filter.
+ */
+export async function* iterateInPages<T extends { _id: unknown }>(
+  dao: { list(filter: any, opts?: any): Promise<{ items: T[] }> },
+  filter: Record<string, any>,
+  opts?: { projection?: string | Record<string, any>; populate?: any },
+  pageSize: number = 200
+): AsyncGenerator<T> {
+  let lastId: unknown;
+  while (true) {
+    const pageFilter = lastId ? { $and: [filter, { _id: { $gt: lastId } }] } : filter;
+    const page = await dao.list(pageFilter, { ...opts, sort: { _id: 1 }, limit: pageSize });
+    const items = page.items || [];
+    yield* items;
+    if (items.length < pageSize) return;
+    lastId = items[items.length - 1]._id;
+  }
+}

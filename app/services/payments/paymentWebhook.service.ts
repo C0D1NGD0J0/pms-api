@@ -24,6 +24,24 @@ import {
 } from '@interfaces/index';
 
 /**
+ * Charge webhook payload. `invoice` exists on acacia endpoint versions only —
+ * basil+ payloads omit it, so the invoice is resolved via `payment_intent`.
+ */
+export interface IStripeChargeWebhookData {
+  refunds?: {
+    data?: Array<{ id: string; amount?: number; reason?: string | null }>;
+  };
+  payment_method_details?: { type?: string; card?: { last4?: string | null } } | null;
+  previous_attributes?: { amount_refunded?: number };
+  payment_intent?: string | { id?: string } | null;
+  invoice?: string | { id?: string } | null;
+  amount_refunded?: number;
+  refunded?: boolean;
+  currency?: string;
+  amount?: number;
+}
+
+/**
  * Fields read from the Stripe Invoice object in webhook payloads. Charge and
  * PaymentIntent ids are not read from the payload (they moved in basil+);
  * use `paymentGatewayService.getInvoicePaymentDetails()` instead.
@@ -43,22 +61,37 @@ export interface IStripeInvoiceWebhookData {
   id?: string;
 }
 
-/**
- * Charge webhook payload. `invoice` exists on acacia endpoint versions only —
- * basil+ payloads omit it, so the invoice is resolved via `payment_intent`.
- */
-interface IStripeChargeWebhookData {
-  refunds?: {
-    data?: Array<{ id: string; amount?: number; reason?: string | null }>;
+export interface IStripePayoutWebhookData {
+  status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
+  failure_message?: string;
+  failure_reason?: string;
+  failure_code?: string;
+  arrival_date: number;
+  destination: string;
+  currency: string;
+  amount: number;
+  id: string;
+}
+
+export interface IStripeAccountWebhookData {
+  requirements?: {
+    currently_due?: string[];
+    eventually_due?: string[];
+    past_due?: string[];
+    disabled_reason?: string;
   };
-  payment_method_details?: { type?: string; card?: { last4?: string | null } } | null;
-  previous_attributes?: { amount_refunded?: number };
-  payment_intent?: string | { id?: string } | null;
-  invoice?: string | { id?: string } | null;
-  amount_refunded?: number;
-  refunded?: boolean;
-  currency?: string;
-  amount?: number;
+  details_submitted?: boolean;
+  payouts_enabled?: boolean;
+  charges_enabled?: boolean;
+}
+
+export interface IStripeDisputeWebhookData {
+  evidence_details?: { due_by?: number };
+  charge?: string | { id: string };
+  currency: string;
+  reason?: string;
+  status?: string;
+  amount: number;
 }
 
 interface IConstructor {
@@ -73,39 +106,6 @@ interface IConstructor {
   profileDAO: ProfileDAO;
   paymentDAO: PaymentDAO;
   userCache: UserCache;
-}
-
-interface IStripePayoutWebhookData {
-  status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
-  failure_message?: string;
-  failure_reason?: string;
-  failure_code?: string;
-  arrival_date: number;
-  destination: string;
-  currency: string;
-  amount: number;
-  id: string;
-}
-
-interface IStripeAccountWebhookData {
-  requirements?: {
-    currently_due?: string[];
-    eventually_due?: string[];
-    past_due?: string[];
-    disabled_reason?: string;
-  };
-  details_submitted?: boolean;
-  payouts_enabled?: boolean;
-  charges_enabled?: boolean;
-}
-
-interface IStripeDisputeWebhookData {
-  evidence_details?: { due_by?: number };
-  charge?: string | { id: string };
-  currency: string;
-  reason?: string;
-  status?: string;
-  amount: number;
 }
 
 const SETTLED_PAYMENT_STATUSES = new Set<PaymentRecordStatus>([

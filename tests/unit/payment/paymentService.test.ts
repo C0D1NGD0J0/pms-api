@@ -824,6 +824,41 @@ describe('PaymentService - getPaymentStats', () => {
     expect(result.data.refunded).toBe(40000);
   });
 
+  it('should count a staged PENDING_REFUND deposit as still collected, not refunded', async () => {
+    mockPaymentDAO.findByCuid.mockResolvedValue({
+      items: [
+        makeStat(PaymentRecordStatus.PENDING_REFUND, 150000, {
+          paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+          refund: { amount: 100000 },
+        }),
+      ],
+      total: 1,
+    } as any);
+
+    const result = await paymentService.getPaymentStats(CUID);
+
+    expect(result.data.collected).toBe(150000);
+    expect(result.data.expectedRevenue).toBe(150000);
+    expect(result.data.refunded).toBe(0);
+  });
+
+  it('should page through every payment instead of stopping at the DAO page cap', async () => {
+    const fullPage = Array.from({ length: 1000 }, () => makeStat(PaymentRecordStatus.PAID, 100));
+    mockPaymentDAO.findByCuid
+      .mockResolvedValueOnce({ items: fullPage } as any)
+      .mockResolvedValueOnce({ items: [makeStat(PaymentRecordStatus.PAID, 500)] } as any);
+
+    const result = await paymentService.getPaymentStats(CUID);
+
+    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledTimes(2);
+    expect(mockPaymentDAO.findByCuid).toHaveBeenLastCalledWith(
+      CUID,
+      {},
+      expect.objectContaining({ skip: 1000, limit: 1000 })
+    );
+    expect(result.data.collected).toBe(100500);
+  });
+
   it('should calculate collectionRate as percentage of collected vs expected', async () => {
     mockPaymentDAO.findByCuid.mockResolvedValue({
       items: [

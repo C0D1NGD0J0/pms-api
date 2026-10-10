@@ -64,7 +64,14 @@ import { PaymentCronService } from './paymentCron.service';
 import { RentPaymentService } from './rentPayment.service';
 import { PayoutAccountService } from './payoutAccount.service';
 import { MaintenancePaymentService } from './maintenancePayment.service';
-import { IStripeInvoiceWebhookData, PaymentWebhookService } from './paymentWebhook.service';
+import {
+  IStripeDisputeWebhookData,
+  IStripeAccountWebhookData,
+  IStripeInvoiceWebhookData,
+  IStripeChargeWebhookData,
+  IStripePayoutWebhookData,
+  PaymentWebhookService,
+} from './paymentWebhook.service';
 
 export type IManualPaymentResult = { manualEntryOutcome: ManualEntryOutcome } & IPaymentDocument;
 
@@ -94,50 +101,11 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-interface IStripePayoutWebhookData {
-  status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
-  failure_message?: string;
-  failure_reason?: string;
-  failure_code?: string;
-  arrival_date: number;
-  destination: string;
-  currency: string;
-  amount: number;
-  id: string;
-}
-
-interface IStripeAccountWebhookData {
-  requirements?: {
-    currently_due?: string[];
-    eventually_due?: string[];
-    past_due?: string[];
-    disabled_reason?: string;
-  };
-  details_submitted?: boolean;
-  payouts_enabled?: boolean;
-  charges_enabled?: boolean;
-}
-
-interface IStripeDisputeWebhookData {
-  evidence_details?: { due_by?: number };
-  charge?: string | { id: string };
-  currency: string;
-  reason?: string;
-  amount: number;
-}
-
 interface IManualEntryTarget {
   propertyObjectId?: Types.ObjectId;
   maintenanceRequestUid?: string;
   unitObjectId?: Types.ObjectId;
   lease?: ILeaseDocument;
-}
-
-interface IStripeChargeWebhookData {
-  refunds?: {
-    data?: Array<{ id: string }>;
-  };
-  amount_refunded?: number;
 }
 
 type ManualEntryOutcome = 'settled' | 'created';
@@ -715,8 +683,7 @@ export class PaymentService implements ICronProvider {
       // Fetch ALL payments for this client across all time (no date filter).
       // Overdue payments from past months are still outstanding and relevant —
       // restricting to current month would hide unpaid historical debt.
-      const result = await this.paymentDAO.findByCuid(cuid, daoFilters, { limit: 10000 });
-      const allPayments = result.items || [];
+      const allPayments = await this.fetchAllPaymentsForStats(cuid, daoFilters);
 
       // Running totals — all values are in cents (e.g. 150000 = $1,500.00)
       let expectedRevenue = 0; // PAID + PENDING + OVERDUE (excludes CANCELLED, FAILED, REFUNDED)
@@ -736,6 +703,17 @@ export class PaymentService implements ICronProvider {
         const isRent = payment.paymentType === PaymentRecordType.RENT;
 
         switch (payment.status) {
+          // PENDING_REFUND: a collected deposit whose refund is staged but not yet released.
+          // The money is still held, so it counts as collected; refund.amount is only the
+          // staged figure and is not subtracted until the refund actually goes out.
+          case PaymentRecordStatus.PENDING_REFUND:
+            expectedRevenue += amount;
+            collected += amount;
+            if (isRent) {
+              rentExpected += amount;
+              rentCollected += amount;
+            }
+            break;
           // PROCESSING: charge submitted to the bank, awaiting settlement (bank transfer).
           // Treated identically to PENDING — expected but not yet collected.
           // PENDING: payment is due but not yet collected.
@@ -752,6 +730,7 @@ export class PaymentService implements ICronProvider {
             if (isRent) rentExpected += amount;
             break;
           }
+
           // CANCELLED: obligation waived, excluded from all stats.
           case PaymentRecordStatus.CANCELLED:
             break;
@@ -836,6 +815,26 @@ export class PaymentService implements ICronProvider {
     } catch (error: any) {
       this.log.error('Error getting payment stats', error);
       throw error;
+    }
+  }
+
+  // BaseDAO.list caps a single page at 1000, so page through until every record is read
+  private async fetchAllPaymentsForStats(
+    cuid: string,
+    daoFilters: Record<string, any>
+  ): Promise<IPaymentDocument[]> {
+    const pageSize = 1000;
+    const allPayments: IPaymentDocument[] = [];
+    for (let skip = 0; ; skip += pageSize) {
+      const page = await this.paymentDAO.findByCuid(cuid, daoFilters, {
+        sort: { dueDate: -1, _id: -1 },
+        populate: [],
+        limit: pageSize,
+        skip,
+      });
+      const items = page.items || [];
+      allPayments.push(...items);
+      if (items.length < pageSize) return allPayments;
     }
   }
 

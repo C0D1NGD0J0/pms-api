@@ -1,24 +1,82 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _phone = _val(typeof payeePhone !== 'undefined' ? payeePhone : '');
+  var _email = _val(typeof payeeEmail !== 'undefined' ? payeeEmail : '');
+  var _address = _val(typeof payeeAddress !== 'undefined' ? payeeAddress : '');
+  var _mandate = _val(typeof mandateReference !== 'undefined' ? mandateReference : (typeof mandateId !== 'undefined' ? mandateId : ''));
+  var _last4 = _val(typeof accountLast4 !== 'undefined' ? accountLast4 : '');
+  var _institution = _val(typeof institutionName !== 'undefined' ? institutionName : '');
+  var _variable = _val(typeof variableAmounts !== 'undefined' ? variableAmounts : '');
+  var _noticeDays = _val(typeof noticeDays !== 'undefined' ? noticeDays : '') || 10;
+  var _debitDay = _val(typeof debitDay !== 'undefined' ? debitDay : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+  var _account = _institution && _last4 ? _institution + ', account ending in ' + _last4
+    : _last4 ? 'Account ending in ' + _last4 : _institution;
+%>
 <table role="presentation" width="100%">
   <tr>
     <td class="content">
       <p>Hi <strong><%= tenantName %></strong>,</p>
       <p>
-        This confirms that you have authorized <strong><%= payeeName %></strong> to debit your bank account under the following terms:
-      </p>
-
-      <%- include("../shared/html/_detail-table", { rows: [
-        { label: "Amount", value: amount },
-        { label: "Frequency", value: frequency },
-        ...(typeof debitDay !== 'undefined' && debitDay ? [{ label: "Debit Day", value: 'Day ' + debitDay + ' of each month' }] : []),
-        { label: "Start Date", value: startDate }
-      ]}) %>
-
-      <%- include("../shared/html/_notice", { text: '<strong>Cancellation Rights:</strong> ' + cancellationRights, type: 'info' }) %>
-
-      <p>
-        If you did not authorize this debit or believe this is an error, please contact
-        <strong><%= payeeName %></strong> immediately.
+        This confirms your pre-authorized debit (PAD) agreement. You have authorized
+        <strong><%= payeeName %></strong> to debit your bank account on the following terms:
       </p>
     </td>
   </tr>
+
+  <tr>
+    <td class="content" style="padding-top: 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafb; border: 1px solid #e8edf2; border-radius: 10px; font-family: 'DM Sans', system-ui, sans-serif; font-size: 14px;">
+        <tr><td style="padding: 18px 24px;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+            <tr><td style="padding: 6px 0; color: #64748b; width: 38%;">Payee</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= payeeName %></td></tr>
+            <% if (_account) { %><tr><td style="padding: 6px 0; color: #64748b;">Bank account</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= _account %></td></tr><% } %>
+            <% if (_mandate) { %><tr><td style="padding: 6px 0; color: #64748b;">Agreement reference</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= _mandate %></td></tr><% } %>
+            <tr><td style="padding: 6px 0; color: #64748b;">Amount</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= amount %></td></tr>
+            <tr><td style="padding: 6px 0; color: #64748b;">Frequency</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= frequency %></td></tr>
+            <% if (_debitDay) { %><tr><td style="padding: 6px 0; color: #64748b;">Debit day</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;">Day <%= _debitDay %> of each month</td></tr><% } %>
+            <tr><td style="padding: 6px 0; color: #64748b;">Start date</td><td style="padding: 6px 0; color: #1e293b; font-weight: 500;"><%= startDate %></td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td class="content">
+      <% if (_variable) { %><p><%= _variable %></p><% } %>
+      <p>
+        <strong>Advance notice:</strong> we will send you written notice of the amount and date of every debit
+        at least <strong><%= _noticeDays %> days</strong> before your account is debited.
+      </p>
+      <p>
+        <strong>Cancelling:</strong> <%= cancellationRights %>
+        To obtain a sample cancellation form, or for more information on your right to cancel a PAD agreement,
+        contact your financial institution or visit www.payments.ca.
+      </p>
+      <p>
+        <strong>Your recourse rights:</strong> you have certain recourse rights if any debit does not comply with
+        this agreement. For example, you have the right to receive reimbursement for any debit that is not authorized
+        or is not consistent with this PAD agreement. To obtain more information on your recourse rights, contact your
+        financial institution or visit www.payments.ca.
+      </p>
+      <p>
+        <strong>Contact <%= payeeName %>:</strong><br />
+        <% if (_phone) { %>Phone: <%= _phone %><br /><% } %>
+        <% if (_email) { %>Email: <%= _email %><br /><% } %>
+        <% if (_address) { %>Address: <%= _address %><br /><% } %>
+      </p>
+      <p>
+        If you did not authorize this agreement or believe it is in error, contact <strong><%= payeeName %></strong> immediately.
+      </p>
+    </td>
+  </tr>
+
+  <% if (_url) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: _url, label: "Manage Payments" }) %>
+    </td>
+  </tr>
+  <% } %>
 </table>

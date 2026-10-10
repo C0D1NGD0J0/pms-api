@@ -15,12 +15,13 @@ export enum TenantPaymentStatus {
 }
 
 export interface IInvoice {
+  vendorPayoutStatus?: 'pending' | 'processing' | 'paid';
   tenantPaymentStatus?: TenantPaymentStatus;
-  vendorPayoutStatus?: 'pending' | 'paid';
   maintenanceRequestId: Types.ObjectId;
   vendorPayoutTransferId?: string;
   attachment?: IInvoiceAttachment;
   lineItems?: IInvoiceLineItem[];
+  vendorPayoutClaimedAt?: Date; // when a payout attempt claimed this invoice (status → processing)
   submittedBy: Types.ObjectId;
   source: IInvoiceSourceInfo;
   stripeReceiptUrl?: string;

@@ -43,6 +43,14 @@ const mockEmitterService = {
   on: jest.fn() as any,
 };
 
+const mockPaymentDAO = {
+  findFirst: jest.fn() as any,
+};
+
+const mockNotificationService = {
+  createNotification: jest.fn() as any,
+};
+
 const mockEmailQueue = {
   addToEmailQueue: jest.fn() as any,
 } as any;
@@ -103,6 +111,8 @@ beforeEach(() => {
     propertyDAO: mockPropertyDAO as any,
     userDAO: mockUserDAO as any,
     emitterService: mockEmitterService as any,
+    notificationService: mockNotificationService as any,
+    paymentDAO: mockPaymentDAO as any,
     emailQueue: mockEmailQueue,
     s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
   });

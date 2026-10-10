@@ -1,7 +1,9 @@
+import { z } from 'zod';
 import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { PaymentValidations } from '@shared/validations';
 import { PaymentController } from '@controllers/PaymentController';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { UtilsValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
@@ -19,6 +21,19 @@ import {
 } from '@shared/middlewares';
 
 export const router: Router = express.Router();
+
+// Payment routes that act on other people's money (charges, manual records, payouts,
+// refunds, cancellations) are internal-only. Tenants hold `payment:create:mine`, which
+// passes requirePermission when no owner is supplied, so external roles are blocked here
+// explicitly; staff are then narrowed further by their department permissions.
+const requireInternalPaymentRole = requireRole([ROLES.ROOT_ADMIN, ...ROLE_GROUPS.EMPLOYEE_ROLES]);
+const requirePaymentManagerRole = requireRole([ROLES.ROOT_ADMIN, ...ROLE_GROUPS.MANAGEMENT_ROLES]);
+
+// The charge amount is derived server-side from the approved invoice; any client-sent
+// amount (e.g. amountInCents) is stripped by this schema.
+const ensureSelfMaintenanceChargeBody = z.object({
+  mruid: z.string().trim().min(1, 'Maintenance request ID is required').max(64),
+});
 
 router.use(isAuthenticated);
 
@@ -83,6 +98,7 @@ router.post(
   '/:cuid/maintenance-charge',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requireNotSuspended,
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,
@@ -105,7 +121,7 @@ router.post(
   requireActiveTenant('onlinePayments'),
   requireVerifiedClient,
   idempotency,
-  validateRequest({ params: UtilsValidations.cuid }),
+  validateRequest({ params: UtilsValidations.cuid, body: ensureSelfMaintenanceChargeBody }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.ensureSelfMaintenanceCharge(req, res);
@@ -116,6 +132,7 @@ router.post(
   '/:cuid',
   basicLimiter({ max: 50, windowMs: 60 * 60 * 1000 }),
   requireNotSuspended,
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireActiveTenant('onlinePayments'),
   requireVerifiedClient,
@@ -134,6 +151,7 @@ router.post(
   '/:cuid/vendor-payout/:mruid',
   basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
   requireNotSuspended,
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,
@@ -150,6 +168,7 @@ router.post(
   '/:cuid/scan-receipt',
   basicLimiter({ max: 5, windowMs: 60 * 1000 }),
   requireNotSuspended,
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   diskUpload(['receipt']),
@@ -165,6 +184,7 @@ router.post(
   '/:cuid/manual_entry',
   basicLimiter(),
   requireNotSuspended,
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.CREATE),
   requireVerifiedClient,
   idempotency,
@@ -183,9 +203,15 @@ router.post(
 router.patch(
   '/:cuid/:pytuid/cancel',
   basicLimiter(),
+  requireNotSuspended,
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
+  requireVerifiedClient,
   idempotency,
-  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(UtilsValidations.pytuid),
+    body: PaymentValidations.cancelPayment,
+  }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.cancelPayment(req, res);
@@ -195,8 +221,8 @@ router.patch(
 router.post(
   '/:cuid/:pytuid/refund',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requireInternalPaymentRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.UPDATE),
-  requireActiveTenant('onlinePayments'),
   requireVerifiedClient,
   idempotency,
   validateRequest({
@@ -214,6 +240,7 @@ router.post(
 router.post(
   '/:cuid/:pytuid/release-deposit',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePaymentManagerRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
   requireVerifiedClient,
   idempotency,
@@ -231,6 +258,7 @@ router.post(
 router.patch(
   '/:cuid/:pytuid/review',
   basicLimiter({ max: 20, windowMs: 15 * 60 * 1000 }),
+  requirePaymentManagerRole,
   requirePermission(PermissionResource.PAYMENT, PermissionAction.MANAGE),
   requireVerifiedClient,
   idempotency,
@@ -253,6 +281,7 @@ router.post(
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(PaymentValidations.cardCheckoutParams),
+    body: PaymentValidations.cardCheckoutBody,
   }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');

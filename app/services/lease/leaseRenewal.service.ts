@@ -30,7 +30,9 @@ import {
   calcDaysRemaining,
   calcDaysElapsed,
   LEASE_CONSTANTS,
+  iterateInPages,
   createLogger,
+  MoneyUtils,
 } from '@utils/index';
 
 import { calculateRenewalMetadata, createSystemContext, findActiveLeasePDF } from './leaseHelpers';
@@ -263,21 +265,15 @@ export class LeaseRenewalService {
           const { startDate, endDate } = renewalData.duration;
           if (startDate && endDate) {
             if (new Date(startDate) >= new Date(endDate)) {
-              return {
-                success: false,
-                error: 'Renewal start date must be before end date',
-                message: 'Invalid renewal duration',
-                data: null,
-              };
+              throw new BadRequestError({
+                message: 'Renewal start date must be before end date',
+              });
             }
             // Renewal should start after original lease ends
             if (new Date(startDate) <= existingLease.duration.endDate) {
-              return {
-                success: false,
-                error: 'Renewal start date must be after original lease end date',
-                message: 'Invalid renewal start date',
-                data: null,
-              };
+              throw new BadRequestError({
+                message: 'Renewal start date must be after original lease end date',
+              });
             }
           }
         }
@@ -285,23 +281,17 @@ export class LeaseRenewalService {
         // Validate fee amounts if provided
         if (renewalData.fees) {
           if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
-            return {
-              success: false,
-              error: 'Monthly rent cannot be negative',
-              message: 'Invalid renewal fees',
-              data: null,
-            };
+            throw new BadRequestError({
+              message: 'Monthly rent cannot be negative',
+            });
           }
           if (
             renewalData.fees.securityDeposit !== undefined &&
             renewalData.fees.securityDeposit < 0
           ) {
-            return {
-              success: false,
-              error: 'Security deposit cannot be negative',
-              message: 'Invalid renewal fees',
-              data: null,
-            };
+            throw new BadRequestError({
+              message: 'Security deposit cannot be negative',
+            });
           }
         }
       }
@@ -318,28 +308,32 @@ export class LeaseRenewalService {
       delete cleanLease.propertyInfo;
       delete cleanLease.propertyUnitInfo;
 
+      // Only cron-created renewals wait for approval, unless the lease opts into auto-approval
+      const requiresApproval =
+        isSystemCall && existingLease.renewalOptions?.autoApproveRenewal !== true;
+
       const newLeaseData = {
         ...cleanLease,
         previousLeaseId: existingLease._id,
         status: LeaseStatus.DRAFT_RENEWAL,
-        approvalStatus:
-          isSystemCall && existingLease.renewalOptions?.requireApproval !== false
-            ? 'pending'
-            : 'approved',
+        approvalStatus: requiresApproval ? 'pending' : 'approved',
         duration: renewalData.duration || {
           startDate: defaultStartDate,
           endDate: defaultEndDate,
           moveInDate: defaultStartDate,
         },
 
+        // Renewal money input is in major units (same as create/edit) — stored as cents
         fees: {
-          ...existingLease.fees,
-          ...renewalData.fees,
+          ...cleanLease.fees,
+          ...(renewalData.fees && MoneyUtils.parseMoneyInput(renewalData.fees)),
         },
 
         renewalOptions: renewalData.renewalOptions || existingLease.renewalOptions,
         utilitiesIncluded: renewalData.utilitiesIncluded || existingLease.utilitiesIncluded,
-        petPolicy: renewalData.petPolicy || existingLease.petPolicy,
+        petPolicy: renewalData.petPolicy
+          ? { ...cleanLease.petPolicy, ...MoneyUtils.parsePetPolicyFees(renewalData.petPolicy) }
+          : existingLease.petPolicy,
         coTenants: renewalData.coTenants || existingLease.coTenants,
         legalTerms: renewalData.legalTerms || existingLease.legalTerms,
 
@@ -382,14 +376,14 @@ export class LeaseRenewalService {
       };
 
       // For system-generated renewals, automatically approve if configured
-      const autoApprove = !ctx && existingLease.renewalOptions?.autoRenew;
+      const autoApprove = isSystemCall && existingLease.renewalOptions?.autoApproveRenewal === true;
       if (autoApprove) {
         newLeaseData.approvalStatus = 'approved';
         newLeaseData.approvalDetails.push({
           action: 'approved',
           actor: systemId,
           timestamp: new Date(),
-          notes: 'Auto-approved due to auto-renewal configuration',
+          notes: 'Auto-approved via renewalOptions.autoApproveRenewal=true',
         });
       }
 
@@ -515,26 +509,24 @@ export class LeaseRenewalService {
     try {
       const today = new Date();
 
-      // Find leases with auto-renewal enabled
-      const eligibleLeases = await this.leaseDAO.list(
+      let checkedCount = 0;
+      let createdCount = 0;
+      let skippedCount = 0;
+      let errorCount = 0;
+
+      const eligibleLeases = iterateInPages(
+        this.leaseDAO,
         {
           status: LeaseStatus.ACTIVE,
           'renewalOptions.autoRenew': true,
           'renewalOptions.daysBeforeExpiryToGenerateRenewal': { $exists: true },
           deletedAt: null,
         },
-        {
-          populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'],
-        }
+        { populate: ['tenantInfo', 'propertyInfo', 'propertyUnitInfo'] }
       );
 
-      this.log.info(`Checking ${eligibleLeases.items.length} leases with auto-renewal enabled`);
-
-      let createdCount = 0;
-      let skippedCount = 0;
-      let errorCount = 0;
-
-      for (const lease of eligibleLeases.items) {
+      for await (const lease of eligibleLeases) {
+        checkedCount++;
         try {
           // Calculate if it's time to create renewal
           const daysBeforeExpiry =
@@ -563,7 +555,7 @@ export class LeaseRenewalService {
           }
 
           // Determine if auto-approve or needs admin review
-          const autoApprove = lease.renewalOptions?.requireApproval === false;
+          const autoApprove = lease.renewalOptions?.autoApproveRenewal === true;
 
           // Warn if conflicting settings detected
           if (
@@ -610,7 +602,7 @@ export class LeaseRenewalService {
                       action: 'auto_approved',
                       actor: new Types.ObjectId('000000000000000000000000'),
                       timestamp: new Date(),
-                      notes: 'Auto-approved via renewalOptions.requireApproval=false',
+                      notes: 'Auto-approved via renewalOptions.autoApproveRenewal=true',
                     },
                   },
                 });
@@ -680,7 +672,7 @@ export class LeaseRenewalService {
       }
 
       this.log.info('Auto-renewal draft creation completed', {
-        total: eligibleLeases.items.length,
+        total: checkedCount,
         created: createdCount,
         skipped: skippedCount,
         errors: errorCount,
@@ -706,25 +698,24 @@ export class LeaseRenewalService {
 
     try {
       // Find renewals in ready_for_signature status that are approved
-      const readyRenewals = await this.leaseDAO.list(
+      const readyRenewals = iterateInPages(
+        this.leaseDAO,
         {
           status: LeaseStatus.READY_FOR_SIGNATURE,
           approvalStatus: 'approved',
           previousLeaseId: { $exists: true },
           deletedAt: null,
         },
-        {
-          populate: ['previousLeaseId', 'tenantInfo', 'propertyInfo'],
-        }
+        { populate: ['previousLeaseId', 'tenantInfo', 'propertyInfo'] }
       );
 
-      this.log.info(`Found ${readyRenewals.items.length} renewals in ready_for_signature status`);
-
+      let checkedCount = 0;
       let sentCount = 0;
       let skippedCount = 0;
       let errorCount = 0;
 
-      for (const renewal of readyRenewals.items) {
+      for await (const renewal of readyRenewals) {
+        checkedCount++;
         try {
           const originalLease = renewal.previousLeaseId as any;
 
@@ -856,7 +847,7 @@ export class LeaseRenewalService {
       }
 
       this.log.info('Auto-send renewals completed', {
-        total: readyRenewals.items.length,
+        total: checkedCount,
         sent: sentCount,
         skipped: skippedCount,
         errors: errorCount,
@@ -997,10 +988,23 @@ export class LeaseRenewalService {
         }
 
         // Extract fields we DON'T want to update during approval
-        const { property, tenantInfo, leaseNumber, ...allowedUpdates } = renewalData;
+        const { property, tenantInfo, leaseNumber, fees, petPolicy, ...allowedUpdates } =
+          renewalData;
 
         // Merge all allowed updates into updateData at once
         Object.assign(updateData, allowedUpdates);
+
+        // Money input is in major units; set per-field so a partial edit keeps the other fees
+        if (fees) {
+          for (const [field, value] of Object.entries(MoneyUtils.parseMoneyInput(fees))) {
+            updateData[`fees.${field}`] = value;
+          }
+        }
+        if (petPolicy) {
+          for (const [field, value] of Object.entries(MoneyUtils.parsePetPolicyFees(petPolicy))) {
+            updateData[`petPolicy.${field}`] = value;
+          }
+        }
 
         this.log.info(`Applying renewal data updates to ${luid}`, {
           updatedFields: Object.keys(allowedUpdates),

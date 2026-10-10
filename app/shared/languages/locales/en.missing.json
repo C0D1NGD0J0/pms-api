@@ -42,6 +42,10 @@
       "chargePaid": {
         "title": "Maintenance Charge Paid",
         "message": "Tenant has paid the maintenance charge for request {{mruid}}"
+      },
+      "fundsAvailable": {
+        "title": "notifications.maintenance.fundsAvailable.title",
+        "message": "notifications.maintenance.fundsAvailable.message"
       }
     }
   },

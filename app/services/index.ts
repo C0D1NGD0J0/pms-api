@@ -50,6 +50,7 @@ export { ExpenseService } from './expense/expense.service';
 export { MetricsService } from './metrics/metrics.service';
 export { PaymentGatewayService } from './paymentGateway';
 export { ReportService } from './report/report.service';
+export { SearchService } from './search/search.service';
 export { AuthTokenService, AuthService } from './auth';
 export { DiskStorage, S3Service } from './fileUpload';
 export { EventEmitterService } from './eventEmitter';

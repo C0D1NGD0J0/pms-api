@@ -91,6 +91,7 @@ const PaymentSchema = new Schema<IPaymentDocument>(
         amount: { type: Number, required: true },
         category: { type: String, enum: ['rent', 'fees'], required: true },
         status: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+        applicationFee: { type: Number, min: 0 },
         chargeId: String,
         paidAt: Date,
         _id: false,
@@ -105,6 +106,9 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       },
       reason: { type: String, trim: true },
       gatewayRefundId: { type: String, trim: true },
+      vendorTransferReversalId: { type: String, trim: true },
+      failureReason: { type: String, trim: true },
+      failedAt: { type: Date },
     },
     managerReviewRequired: {
       type: Boolean,
@@ -116,7 +120,10 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       notes: { type: String, trim: true, maxlength: 500 },
     },
     dispute: {
-      status: { type: String, enum: ['open', 'won', 'lost'] },
+      status: {
+        type: String,
+        enum: ['open', 'needs_response', 'under_review', 'won', 'lost', 'closed'],
+      },
       resolvedAt: { type: Date },
       disputeId: { type: String },
       amount: {
@@ -143,6 +150,8 @@ const PaymentSchema = new Schema<IPaymentDocument>(
       required: [true, 'Due date is required'],
     },
     chargedAt: Date,
+    cardCheckoutSessionId: String, // latest card checkout session — expired before a new one is opened
+    padNoticeSentAt: Date,
     paidAt: Date,
     period: {
       month: {
@@ -259,15 +268,18 @@ PaymentSchema.virtual('maintenanceRequest', {
 
 PaymentSchema.index({ cuid: 1, status: 1, dueDate: -1 });
 PaymentSchema.index({ tenant: 1, dueDate: -1 });
+// One rent record per lease per period. Only lease-bound records are covered: property-mode
+// manual rent has no lease, and a null lease would otherwise collide across every client.
+// PaymentModel.syncIndexes() below drops and recreates this index on existing databases
+// whenever its options change (Mongoose compares partialFilterExpression).
+export const RENT_PERIOD_UNIQUE_INDEX_FILTER = {
+  paymentType: PaymentRecordType.RENT,
+  deletedAt: null,
+  lease: { $type: 'objectId' },
+};
 PaymentSchema.index(
   { lease: 1, paymentType: 1, 'period.month': 1, 'period.year': 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      paymentType: PaymentRecordType.RENT,
-      deletedAt: null,
-    },
-  }
+  { unique: true, partialFilterExpression: RENT_PERIOD_UNIQUE_INDEX_FILTER }
 );
 
 PaymentSchema.index({ gatewayPaymentId: 1 }, { unique: true, sparse: true });

@@ -1,0 +1,20 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _last4 = _val(typeof cardLast4 !== 'undefined' ? cardLast4 : '');
+  var _reason = _val(typeof failureReason !== 'undefined' ? failureReason : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+  var _card = _last4 ? 'your card ending in ' + _last4 : 'your card on file';
+%>Bank Debit Failed - Card Charged
+
+Hi <%= tenantName %>,
+
+Your bank debit of <%= amount %> to <%= payeeName %> could not be completed, so we charged <%= _card %> instead.
+<% if (_reason) { %>
+Bank debit failure reason: <%= _reason %>
+<% } %><% if (_reference) { %>Reference: <%= _reference %>
+<% } %>
+You don't need to do anything if the card charge is correct. If you didn't expect this charge, or want to update your bank details so future payments are debited from your bank account, contact <%= payeeName %>.
+<% if (_url) { %>
+View payment: <%= _url %>
+<% } %>

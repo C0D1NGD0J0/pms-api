@@ -116,6 +116,7 @@ describe('OffboardingService - Vacate Requests', () => {
 
     mockPaymentDAO = {
       countDocuments: jest.fn(),
+      list: jest.fn().mockResolvedValue({ items: [] }), // no existing maintenance charges
     } as any;
 
     mockInspectionDAO = {
@@ -155,6 +156,7 @@ describe('OffboardingService - Vacate Requests', () => {
       propertyDAO: { updateById: jest.fn() } as any,
       propertyUnitDAO: { updateById: jest.fn() } as any,
       paymentDAO: mockPaymentDAO,
+      invoiceDAO: {} as any,
       leaseService: mockLeaseService as any,
       inspectionDAO: mockInspectionDAO,
       inspectionService: mockInspectionService as any,
@@ -384,6 +386,7 @@ describe('OffboardingService - Vacate Requests', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(result.message).toMatch(/approved/i);
 
       // Verify lease termination was called with correct move-out date
       expect(mockLeaseService.terminateLease).toHaveBeenCalledWith(
@@ -464,6 +467,7 @@ describe('OffboardingService - Vacate Requests', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(result.message).toMatch(/rejected/i);
 
       // Verify lease was NOT terminated
       expect(mockLeaseService.terminateLease).not.toHaveBeenCalled();
@@ -591,7 +595,7 @@ describe('OffboardingService - Vacate Requests', () => {
       expect(terminatedEventHandler).toBeDefined();
     });
 
-    it('should auto-charge billable SRs with approved invoices and cancel all open SRs', async () => {
+    it('should auto-charge billable SRs with approved invoices, keep them open and cancel the rest', async () => {
       const lease = makeActiveLease({ status: LeaseStatus.TERMINATED });
       mockLeaseDAO.findFirst.mockResolvedValue(lease as any);
       mockInspectionDAO.findFirst.mockResolvedValue(null); // no existing move-out inspection
@@ -609,9 +613,7 @@ describe('OffboardingService - Vacate Requests', () => {
         invoiceId: null,
       };
 
-      mockMaintenanceRequestDAO.list.mockResolvedValue({
-        items: [billableSR, nonBillableSR],
-      });
+      mockMaintenanceRequestDAO.list.mockResolvedValue({ items: [billableSR, nonBillableSR] });
 
       await terminatedEventHandler({
         leaseId: mockLeaseId.toString(),
@@ -635,9 +637,9 @@ describe('OffboardingService - Vacate Requests', () => {
       // Verify non-billable SR was not charged
       expect(mockMaintenancePaymentService.chargeForMaintenance).toHaveBeenCalledTimes(1);
 
-      // Verify all open SRs were bulk cancelled
+      // Approved work stays open for completion; only the other SR is cancelled
       expect(mockMaintenanceRequestDAO.updateMany).toHaveBeenCalledWith(
-        { _id: { $in: [billableSR._id, nonBillableSR._id] } },
+        { _id: { $in: [nonBillableSR._id] } },
         {
           $set: {
             status: MaintenanceRequestStatus.CANCELLED,

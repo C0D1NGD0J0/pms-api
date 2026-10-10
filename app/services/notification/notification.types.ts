@@ -2,8 +2,16 @@ import Logger from 'bunyan';
 import { SSEService } from '@services/index';
 import { EmailQueue } from '@queues/email.queue';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { GuestPassDAO, PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
 import { ISuccessReturnData, ResourceContext } from '@interfaces/utils.interface';
+import {
+  GuestPassDAO,
+  PropertyDAO,
+  PaymentDAO,
+  ProfileDAO,
+  ClientDAO,
+  LeaseDAO,
+  UserDAO,
+} from '@dao/index';
 import {
   ICreateNotificationRequest,
   NotificationPriorityEnum,
@@ -40,9 +48,12 @@ export interface INotificationContext {
   maintenanceRequestDAO: MaintenanceRequestDAO;
   guestPassDAO: GuestPassDAO;
   propertyDAO: PropertyDAO;
+  profileDAO?: ProfileDAO;
+  paymentDAO?: PaymentDAO;
   emailQueue: EmailQueue;
   sseService: SSEService;
   clientDAO: ClientDAO;
+  leaseDAO?: LeaseDAO;
   requestId?: string;
   userDAO: UserDAO;
   log: Logger;

@@ -3,7 +3,8 @@ Payment Receipt
 Hi <%= tenantName %>,
 
 Your <%= paymentType %> payment of <%= amount %> has been successfully processed on <%= paidAt %>.
-<% if (typeof receiptUrl !== 'undefined' && receiptUrl) { %>
+<% if (typeof reference !== 'undefined' && reference) { %>Reference: <%= reference %>
+<% } %><% if (typeof receiptUrl !== 'undefined' && receiptUrl) { %>
 View your receipt: <%= receiptUrl %>
 <% } %>
 

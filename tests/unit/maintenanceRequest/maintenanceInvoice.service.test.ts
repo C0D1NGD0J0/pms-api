@@ -42,6 +42,10 @@ const mockVendorDAO = {
 
 const mockEmitter = { emit: jest.fn() } as any;
 
+const mockMaintenancePaymentService = {
+  quoteTenantMaintenanceCharge: jest.fn(),
+} as any;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -101,7 +105,11 @@ let service: MaintenanceInvoiceService;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockMaintenancePaymentService.quoteTenantMaintenanceCharge.mockReturnValue(
+    Promise.resolve({ serviceFeeCents: 600, totalAmount: 15600 })
+  );
   service = new MaintenanceInvoiceService({
+    maintenancePaymentService: mockMaintenancePaymentService,
     maintenanceRequestDAO: mockDAO,
     invoiceDAO: mockInvoiceDAO,
     emitterService: mockEmitter,
@@ -395,6 +403,65 @@ describe('approveInvoice', () => {
     expect(mockEmitter.emit).toHaveBeenCalledWith(
       EventTypes.MAINTENANCE_INVOICE_APPROVED,
       expect.objectContaining({ mruid: 'MR001', cuid: testCuid, isBillable: true })
+    );
+  });
+
+  it('includes the tenant charge total (invoice + service fee) in the billable approval payload', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const invoice = makeInvoice(InvoiceStatus.PENDING);
+    mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(invoice));
+    mockInvoiceDAO.updateById.mockReturnValue(Promise.resolve(invoice));
+    mockDAO.updateById.mockReturnValue(Promise.resolve(request));
+
+    await service.approveInvoice(makeCtx('manager'), 'MR001', { isBillable: true });
+
+    expect(mockMaintenancePaymentService.quoteTenantMaintenanceCharge).toHaveBeenCalledWith(
+      testCuid,
+      15000
+    );
+    expect(mockEmitter.emit).toHaveBeenCalledWith(
+      EventTypes.MAINTENANCE_INVOICE_APPROVED,
+      expect.objectContaining({
+        amount: 15000,
+        tenantChargeTotalInCents: 15600,
+        serviceFeeInCents: 600,
+      })
+    );
+  });
+
+  it('omits the tenant charge quote for non-billable approvals', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const invoice = makeInvoice(InvoiceStatus.PENDING);
+    mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(invoice));
+    mockInvoiceDAO.updateById.mockReturnValue(Promise.resolve(invoice));
+
+    await service.approveInvoice(makeCtx('manager'), 'MR001');
+
+    expect(mockMaintenancePaymentService.quoteTenantMaintenanceCharge).not.toHaveBeenCalled();
+    const payload = mockEmitter.emit.mock.calls.find(
+      (call: any[]) => call[0] === EventTypes.MAINTENANCE_INVOICE_APPROVED
+    )[1];
+    expect(payload.tenantChargeTotalInCents).toBeUndefined();
+  });
+
+  it('still approves when the tenant charge quote fails', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    const invoice = makeInvoice(InvoiceStatus.PENDING);
+    mockDAO.getByMruid.mockReturnValue(Promise.resolve(request));
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(invoice));
+    mockInvoiceDAO.updateById.mockReturnValue(Promise.resolve(invoice));
+    mockMaintenancePaymentService.quoteTenantMaintenanceCharge.mockReturnValue(
+      Promise.reject(new Error('db down'))
+    );
+
+    const result = await service.approveInvoice(makeCtx('manager'), 'MR001', { isBillable: true });
+
+    expect(result.success).toBe(true);
+    expect(mockEmitter.emit).toHaveBeenCalledWith(
+      EventTypes.MAINTENANCE_INVOICE_APPROVED,
+      expect.objectContaining({ amount: 15000 })
     );
   });
 });
@@ -778,7 +845,29 @@ describe('handleInvoiceWebhook', () => {
     };
   }
 
+  const approvedWorkOrder = { status: WorkOrderStatus.APPROVED };
+
+  function allowSignature() {
+    jest.spyOn(service as any, 'validateWebhookSignature').mockReturnValue(true);
+  }
+
+  it('denies every webhook by default (no per-source signing secret configured)', async () => {
+    mockDAO.findFirst.mockReturnValue(
+      Promise.resolve(
+        makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, { workOrder: approvedWorkOrder })
+      )
+    );
+
+    for (const source of ['manual', 'quickbooks', 'freshbooks', 'jobber'] as InvoiceSource[]) {
+      await expect(
+        service.handleInvoiceWebhook(source, rawBody, headers, makePayload({ source }))
+      ).rejects.toThrow(ForbiddenError);
+    }
+    expect(mockInvoiceDAO.insert).not.toHaveBeenCalled();
+  });
+
   it('throws NotFoundError when no MR matches the payload mruid', async () => {
+    allowSignature();
     mockDAO.findFirst.mockReturnValue(Promise.resolve(null));
 
     await expect(
@@ -787,6 +876,7 @@ describe('handleInvoiceWebhook', () => {
   });
 
   it('throws ForbiddenError when request cuid does not match payload cuid', async () => {
+    allowSignature();
     const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
       cuid: 'DIFFERENT_CLIENT',
     });
@@ -798,6 +888,7 @@ describe('handleInvoiceWebhook', () => {
   });
 
   it('throws BadRequestError when MR has no assigned vendor', async () => {
+    allowSignature();
     const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, { vendorId: null });
     mockDAO.findFirst.mockReturnValue(Promise.resolve(request));
 
@@ -806,8 +897,62 @@ describe('handleInvoiceWebhook', () => {
     ).rejects.toThrow(BadRequestError);
   });
 
+  it.each([
+    ['an APPROVED invoice', InvoiceStatus.APPROVED],
+    ['a PENDING invoice', InvoiceStatus.PENDING],
+  ])('refuses to overwrite %s', async (_label, existingStatus) => {
+    allowSignature();
+    mockDAO.findFirst.mockReturnValue(
+      Promise.resolve(
+        makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, { workOrder: approvedWorkOrder })
+      )
+    );
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(
+      Promise.resolve(makeInvoice(existingStatus))
+    );
+
+    await expect(
+      service.handleInvoiceWebhook('manual', rawBody, headers, makePayload())
+    ).rejects.toThrow(BadRequestError);
+    expect(mockInvoiceDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invoice for an MR that is not awaiting an invoice', async () => {
+    allowSignature();
+    mockDAO.findFirst.mockReturnValue(
+      Promise.resolve(
+        makeRequest(MaintenanceRequestStatus.COMPLETED, { workOrder: approvedWorkOrder })
+      )
+    );
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
+
+    await expect(
+      service.handleInvoiceWebhook('manual', rawBody, headers, makePayload())
+    ).rejects.toThrow(BadRequestError);
+    expect(mockInvoiceDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invoice when the work order is not approved', async () => {
+    allowSignature();
+    mockDAO.findFirst.mockReturnValue(
+      Promise.resolve(makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE))
+    );
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(Promise.resolve(null));
+
+    await expect(
+      service.handleInvoiceWebhook('manual', rawBody, headers, makePayload())
+    ).rejects.toThrow(BadRequestError);
+    expect(mockInvoiceDAO.insert).not.toHaveBeenCalled();
+  });
+
   it('creates an invoice and links it to the MR atomically', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE);
+    allowSignature();
+    const request = makeRequest(MaintenanceRequestStatus.AWAITING_INVOICE, {
+      workOrder: approvedWorkOrder,
+    });
+    mockInvoiceDAO.findByMaintenanceRequest.mockReturnValue(
+      Promise.resolve(makeInvoice(InvoiceStatus.REJECTED))
+    );
     const createdInvoice = makeInvoice(InvoiceStatus.PENDING);
     mockDAO.findFirst.mockReturnValue(Promise.resolve(request));
     mockInvoiceDAO.insert.mockReturnValue(Promise.resolve(createdInvoice));

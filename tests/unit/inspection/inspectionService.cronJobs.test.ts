@@ -47,6 +47,14 @@ const mockEmitterService = {
   on: jest.fn() as any,
 };
 
+const mockPaymentDAO = {
+  findFirst: jest.fn() as any,
+};
+
+const mockNotificationService = {
+  createNotification: jest.fn() as any,
+};
+
 const mockEmailQueue = {
   addToEmailQueue: jest.fn() as any,
 } as any;
@@ -114,6 +122,8 @@ beforeEach(() => {
     propertyDAO: mockPropertyDAO as any,
     userDAO: mockUserDAO as any,
     emitterService: mockEmitterService as any,
+    notificationService: mockNotificationService as any,
+    paymentDAO: mockPaymentDAO as any,
     emailQueue: mockEmailQueue,
     s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
   });
@@ -199,22 +209,78 @@ describe('InspectionService Cron Jobs', () => {
       expect(update).not.toHaveProperty('$push');
     });
 
-    it('should forfeit deposit (isRefunded=false) when refundInfo exists', async () => {
+    it('should approve with the PM-proposed refund — never forfeit by default', async () => {
       const inspection = makeStaleInspection({
-        refundInfo: { amount: 1500, isRefunded: true },
+        refundInfo: { amount: 1500, proposedRefund: 1200, currency: 'USD', isRefunded: false },
       });
       mockInspectionDAO.list.mockResolvedValue({ items: [inspection], total: 1 });
 
       await autoCloseHandler();
 
-      expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
-        inspection._id.toString(),
-        expect.objectContaining({
-          $set: expect.objectContaining({
-            'refundInfo.isRefunded': false,
-          }),
-        })
+      const update = mockInspectionDAO.updateById.mock.calls[0][1];
+      expect(update.$set.status).toBe(InspectionStatus.APPROVED);
+      expect(update.$set).not.toHaveProperty('refundInfo.isRefunded');
+      expect(update.$push.notes.note).not.toMatch(/forfeit/i);
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        'inspection:approved',
+        expect.objectContaining({ refundAmount: 1200, depositAmount: 1500, currency: 'USD' })
       );
+    });
+
+    it('should honour an explicit 0 proposed refund', async () => {
+      const inspection = makeStaleInspection({
+        refundInfo: { amount: 1500, proposedRefund: 0, currency: 'USD', isRefunded: false },
+      });
+      mockInspectionDAO.list.mockResolvedValue({ items: [inspection], total: 1 });
+
+      await autoCloseHandler();
+
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        'inspection:approved',
+        expect.objectContaining({ refundAmount: 0 })
+      );
+    });
+
+    describe('deposit without a proposed refund', () => {
+      const managerId = new Types.ObjectId();
+      const makeUndecided = () =>
+        makeStaleInspection({
+          refundInfo: { amount: 1500, currency: 'USD', isRefunded: false },
+        });
+
+      beforeEach(() => {
+        mockPropertyDAO.findFirst.mockResolvedValue({ managedBy: managerId });
+      });
+
+      it('does not approve the inspection or emit INSPECTION_APPROVED', async () => {
+        const inspection = makeUndecided();
+        mockInspectionDAO.list.mockResolvedValue({ items: [inspection], total: 1 });
+
+        await autoCloseHandler();
+
+        const update = mockInspectionDAO.updateById.mock.calls[0][1];
+        expect(update.$set).not.toHaveProperty('status');
+        expect(update.$set).not.toHaveProperty('refundInfo.isRefunded');
+        expect(update.$push.notes.note).toMatch(/no deposit refund amount has been proposed/);
+        expect(mockEmitterService.emit).not.toHaveBeenCalled();
+      });
+
+      it('notifies the property manager to decide the refund', async () => {
+        const inspection = makeUndecided();
+        mockInspectionDAO.list.mockResolvedValue({ items: [inspection], total: 1 });
+
+        await autoCloseHandler();
+
+        expect(mockNotificationService.createNotification).toHaveBeenCalledWith(
+          CUID,
+          'inspection',
+          expect.objectContaining({
+            recipient: managerId.toString(),
+            title: 'Deposit Refund Decision Needed',
+            actionUrl: `/inspections/${CUID}/${inspection.iuid}`,
+          })
+        );
+      });
     });
 
     it('should not set refundInfo.isRefunded when refundInfo is absent', async () => {
@@ -299,7 +365,7 @@ describe('InspectionService Cron Jobs', () => {
 
     it('should emit INSPECTION_APPROVED event with refund data when refundInfo exists', async () => {
       const inspection = makeStaleInspection({
-        refundInfo: { amount: 2000, isRefunded: true },
+        refundInfo: { amount: 2000, proposedRefund: 1500, isRefunded: false },
       });
       mockInspectionDAO.list.mockResolvedValue({ items: [inspection], total: 1 });
 
@@ -310,7 +376,7 @@ describe('InspectionService Cron Jobs', () => {
         expect.objectContaining({
           iuid: inspection.iuid,
           cuid: inspection.cuid,
-          refundAmount: 0,
+          refundAmount: 1500,
           depositAmount: 2000,
         })
       );

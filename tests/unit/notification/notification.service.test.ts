@@ -1340,6 +1340,15 @@ describe('NotificationService - MR event handlers', () => {
 // Rent payment notification gaps
 // ===========================================================================
 
+const TENANT_USER_ID = new Types.ObjectId().toString();
+const tenantUserDAO = () => ({
+  findFirst: jest
+    .fn()
+    .mockReturnValue(
+      Promise.resolve({ _id: new Types.ObjectId(TENANT_USER_ID), email: 'tenant@example.com' })
+    ),
+});
+
 describe('NotificationService - handlePaymentFailed', () => {
   let mockCtx: any;
 
@@ -1348,7 +1357,7 @@ describe('NotificationService - handlePaymentFailed', () => {
     pytuid: 'PYT001',
     invoiceId: 'inv_123',
     amount: 150000,
-    tenantId: 'tenant-user-id',
+    tenantId: TENANT_USER_ID,
   };
 
   beforeEach(() => {
@@ -1357,6 +1366,8 @@ describe('NotificationService - handlePaymentFailed', () => {
       createNotification: jest
         .fn()
         .mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      emailQueue: { addToEmailQueue: jest.fn() },
+      userDAO: tenantUserDAO(),
       log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
     };
   });
@@ -1382,7 +1393,7 @@ describe('NotificationService - handlePaymentFailed', () => {
       'CLIENT001',
       NotificationTypeEnum.PAYMENT,
       expect.objectContaining({
-        recipient: 'tenant-user-id',
+        recipient: TENANT_USER_ID,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.HIGH,
       })
@@ -1418,7 +1429,7 @@ describe('NotificationService - handlePaymentOverdue', () => {
     amount: 150000,
     dueDate: new Date('2026-05-01'),
     paymentType: 'rent',
-    tenantId: 'tenant-user-id',
+    tenantId: TENANT_USER_ID,
   };
 
   beforeEach(() => {
@@ -1427,6 +1438,8 @@ describe('NotificationService - handlePaymentOverdue', () => {
       createNotification: jest
         .fn()
         .mockReturnValue(Promise.resolve({ success: true, data: { nuid: 'nuid-1' } })),
+      emailQueue: { addToEmailQueue: jest.fn() },
+      userDAO: tenantUserDAO(),
       log: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
     };
   });
@@ -1452,7 +1465,7 @@ describe('NotificationService - handlePaymentOverdue', () => {
       'CLIENT001',
       NotificationTypeEnum.PAYMENT,
       expect.objectContaining({
-        recipient: 'tenant-user-id',
+        recipient: TENANT_USER_ID,
         recipientType: RecipientTypeEnum.INDIVIDUAL,
         priority: NotificationPriorityEnum.HIGH,
       })
@@ -1532,6 +1545,7 @@ describe('NotificationService - handlePaymentSucceeded', () => {
 
     mockCtx.userDAO.findFirst.mockReturnValue(
       Promise.resolve({
+        _id: new Types.ObjectId(tenantId),
         email: 'tenant@example.com',
         fullname: 'Jane Doe',
         profile: { personalInfo: { firstName: 'Jane' } },

@@ -128,4 +128,32 @@ export const MoneyUtils = {
       }),
     };
   },
+
+  /** Pet policy money fields (deposit, monthlyFee): major units → cents. Missing fields are not injected. */
+  parsePetPolicyFees: (petPolicy: any): any => {
+    if (!petPolicy || typeof petPolicy !== 'object') return petPolicy;
+    return {
+      ...petPolicy,
+      ...(petPolicy.deposit != null && {
+        deposit: MoneyUtils.stringToCents(petPolicy.deposit),
+      }),
+      ...(petPolicy.monthlyFee != null && {
+        monthlyFee: MoneyUtils.stringToCents(petPolicy.monthlyFee),
+      }),
+    };
+  },
+
+  /** Pet policy money fields: cents → display strings. Missing fields are not injected. */
+  formatPetPolicyFees: (petPolicy: any): any => {
+    if (!petPolicy || typeof petPolicy !== 'object') return petPolicy;
+    return {
+      ...petPolicy,
+      ...(petPolicy.deposit != null && {
+        deposit: MoneyUtils.centsToString(petPolicy.deposit),
+      }),
+      ...(petPolicy.monthlyFee != null && {
+        monthlyFee: MoneyUtils.centsToString(petPolicy.monthlyFee),
+      }),
+    };
+  },
 };

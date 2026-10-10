@@ -1,0 +1,21 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _initiatedOn = _val(typeof initiatedOn !== 'undefined' ? initiatedOn : '');
+  var _phone = _val(typeof payeePhone !== 'undefined' ? payeePhone : '');
+  var _email = _val(typeof payeeEmail !== 'undefined' ? payeeEmail : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+%>Pre-Authorized Debit Processing
+
+Hi <%= tenantName %>,
+
+Your pre-authorized debit of <%= amount %> (<%= currency %>) to <%= payeeName %> has been initiated and is now processing. Bank debits usually take 3-5 business days to complete. We will email you a receipt once it clears.
+
+Amount: <%= amount %> (<%= currency %>)
+<% if (_initiatedOn) { %>Initiated: <%= _initiatedOn %>
+<% } %><% if (_reference) { %>Reference: <%= _reference %>
+<% } %>Payee: <%= payeeName %>
+<% if (_url) { %>
+View payment: <%= _url %>
+<% } %>
+Questions about this debit? Contact <%= payeeName %><% if (_phone) { %> at <%= _phone %><% } %><% if (_email) { %> or <%= _email %><% } %>.

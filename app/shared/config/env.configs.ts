@@ -131,6 +131,8 @@ class EnvVariables {
       // Default: $3,000 USD (in cents). Conservative limit that covers both USD and CAD.
       // Override via STRIPE_ACSS_PER_TXN_LIMIT if your Stripe account has a higher limit.
       ACSS_PER_TXN_LIMIT: Number(process.env.STRIPE_ACSS_PER_TXN_LIMIT) || 300_000,
+      // Payments Canada Rule H1: days between the PAD pre-debit notice and the bank debit.
+      PAD_PRE_NOTIFICATION_DAYS: Number(process.env.PAD_PRE_NOTIFICATION_DAYS) || 10,
     };
     this.BOLDSIGN = {
       API_KEY: process.env.BOLDSIGN_API_KEY || '',

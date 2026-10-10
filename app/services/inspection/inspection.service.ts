@@ -3,18 +3,25 @@ import Logger from 'bunyan';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { EmailQueue } from '@queues/index';
+import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { S3Service } from '@services/fileUpload';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
-import { LEASE_CONSTANTS, createLogger, toId } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { LEASE_CONSTANTS, createLogger, MoneyUtils, toId } from '@utils/index';
 import { DEFAULT_INSPECTION_ROOMS } from '@models/inspection/inspection.model';
+import { PaymentRefundedPayload, EventTypes } from '@interfaces/events.interface';
+import { NotificationService } from '@services/notification/notification.service';
+import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  IPaymentDocument,
+} from '@interfaces/payments.interface';
 import {
   ValidationRequestError,
   BadRequestError,
@@ -22,8 +29,15 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
+  NotificationPriorityEnum,
+  NotificationTypeEnum,
+  RecipientTypeEnum,
+} from '@interfaces/notification.interface';
+import {
   LeaseESignatureCompletedPayload,
+  ILeaseESignatureStatusEnum,
   LeaseTerminatedPayload,
+  ILeaseDocument,
   LeaseStatus,
 } from '@interfaces/lease.interface';
 import {
@@ -39,15 +53,27 @@ import {
 } from '@interfaces/inspection.interface';
 
 interface IConstructor {
+  notificationService: NotificationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   inspectionDAO: InspectionDAO;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
+  paymentDAO: PaymentDAO;
   s3Service: S3Service;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
 }
+
+// Renewal chains are short; the cap only guards against a corrupt previousLeaseId loop
+const MAX_LEASE_CHAIN_HOPS = 10;
+
+const RENEWAL_IN_PROGRESS_STATUSES = [
+  LeaseStatus.DRAFT_RENEWAL,
+  LeaseStatus.READY_FOR_SIGNATURE,
+  LeaseStatus.PENDING_SIGNATURE,
+  LeaseStatus.ACTIVE,
+];
 
 export class InspectionService implements ICronProvider {
   private static readonly MAX_DISPUTES = 2;
@@ -57,6 +83,8 @@ export class InspectionService implements ICronProvider {
   private readonly propertyDAO: PropertyDAO;
   private readonly userDAO: UserDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly notificationService: NotificationService;
+  private readonly paymentDAO: PaymentDAO;
   private readonly emailQueue: EmailQueue;
   private readonly s3Service: S3Service;
   private readonly log: Logger;
@@ -68,6 +96,8 @@ export class InspectionService implements ICronProvider {
     propertyDAO,
     userDAO,
     emitterService,
+    notificationService,
+    paymentDAO,
     emailQueue,
     s3Service,
   }: IConstructor) {
@@ -77,6 +107,8 @@ export class InspectionService implements ICronProvider {
     this.propertyDAO = propertyDAO;
     this.userDAO = userDAO;
     this.emitterService = emitterService;
+    this.notificationService = notificationService;
+    this.paymentDAO = paymentDAO;
     this.emailQueue = emailQueue;
     this.s3Service = s3Service;
     this.log = createLogger('InspectionService');
@@ -88,6 +120,7 @@ export class InspectionService implements ICronProvider {
       EventTypes.LEASE_ESIGNATURE_COMPLETED,
       this.handleLeaseActivated.bind(this)
     );
+    this.emitterService.on(EventTypes.PAYMENT_REFUNDED, this.handlePaymentRefunded.bind(this));
   }
 
   getCronJobs(): ICronJob[] {
@@ -234,14 +267,14 @@ export class InspectionService implements ICronProvider {
 
       const rooms = data.rooms && data.rooms.length > 0 ? data.rooms : DEFAULT_INSPECTION_ROOMS;
 
-      // Populate refundInfo from lease security deposit for move-out inspections
+      // Move-out refund ceiling = the deposit actually held (security + pet deposit)
+      const refundableDeposit =
+        data.refundDeposit && data.type === InspectionType.MOVE_OUT
+          ? await this.resolveRefundableDeposit(cuid, lease)
+          : null;
       const refundInfo =
-        data.refundDeposit && data.type === InspectionType.MOVE_OUT && lease.fees?.securityDeposit
-          ? {
-              amount: lease.fees.securityDeposit,
-              currency: lease.fees?.currency || 'USD',
-              isRefunded: false,
-            }
+        refundableDeposit && refundableDeposit.amount > 0
+          ? { ...refundableDeposit, isRefunded: false }
           : undefined;
 
       // Convert scheduling notes into the shared notes thread
@@ -767,19 +800,20 @@ export class InspectionService implements ICronProvider {
       });
     }
 
-    if (
-      inspection.refundInfo &&
-      inspection.type === InspectionType.MOVE_OUT &&
-      refundAmount !== undefined
-    ) {
-      if (refundAmount < 0) {
+    // Without an explicit amount, honour the reviewed proposal (else the full deposit) —
+    // the same rule acknowledgeInspection applies. isRefunded is set once the refund succeeds.
+    const effectiveRefund =
+      inspection.refundInfo && inspection.type === InspectionType.MOVE_OUT
+        ? (refundAmount ?? this.defaultRefundAmount(inspection.refundInfo))
+        : undefined;
+    if (effectiveRefund !== undefined) {
+      if (effectiveRefund < 0) {
         throw new BadRequestError({ message: 'Refund amount cannot be negative' });
       }
-      if (refundAmount > inspection.refundInfo.amount) {
+      if (effectiveRefund > inspection.refundInfo!.amount) {
         throw new BadRequestError({ message: 'Refund amount cannot exceed deposit amount' });
       }
-      updateFields['refundInfo.proposedRefund'] = refundAmount;
-      updateFields['refundInfo.isRefunded'] = refundAmount > 0;
+      updateFields['refundInfo.proposedRefund'] = effectiveRefund;
     }
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
@@ -815,8 +849,8 @@ export class InspectionService implements ICronProvider {
       tenantId: toId(inspection.tenantId),
       inspectorUid: inspection.inspectorUid,
       ...(inspection.refundInfo &&
-        refundAmount !== undefined && {
-          refundAmount,
+        effectiveRefund !== undefined && {
+          refundAmount: effectiveRefund,
           depositAmount: inspection.refundInfo.amount,
           currency: inspection.refundInfo.currency,
         }),
@@ -843,10 +877,13 @@ export class InspectionService implements ICronProvider {
       tenantAcknowledgedAt: new Date(),
     };
 
-    // Process refund on acknowledgement (move-out only)
-    if (inspection.refundInfo && inspection.type === InspectionType.MOVE_OUT) {
-      const refundValue = inspection.refundInfo.proposedRefund ?? inspection.refundInfo.amount;
-      updateFields['refundInfo.isRefunded'] = refundValue > 0;
+    // Refund is initiated by the INSPECTION_APPROVED listener; isRefunded flips once it succeeds
+    const effectiveRefund =
+      inspection.refundInfo && inspection.type === InspectionType.MOVE_OUT
+        ? this.defaultRefundAmount(inspection.refundInfo)
+        : undefined;
+    if (effectiveRefund !== undefined) {
+      updateFields['refundInfo.proposedRefund'] = effectiveRefund;
     }
 
     const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
@@ -880,11 +917,12 @@ export class InspectionService implements ICronProvider {
       leaseId: toId(inspection.leaseId),
       tenantId: toId(inspection.tenantId),
       inspectorUid: inspection.inspectorUid,
-      ...(inspection.refundInfo && {
-        refundAmount: inspection.refundInfo.proposedRefund ?? inspection.refundInfo.amount,
-        depositAmount: inspection.refundInfo.amount,
-        currency: inspection.refundInfo.currency,
-      }),
+      ...(inspection.refundInfo &&
+        effectiveRefund !== undefined && {
+          refundAmount: effectiveRefund,
+          depositAmount: inspection.refundInfo.amount,
+          currency: inspection.refundInfo.currency,
+        }),
     });
 
     return { success: true, message: 'Inspection acknowledged and approved', data: updated! };
@@ -1095,7 +1133,196 @@ export class InspectionService implements ICronProvider {
     this.log.info(`Sent ${upcoming.items.length} inspection reminders`);
   }
 
+  // ─── Deposit & Renewal Helpers ───────────────────────────────────────────────
+
+  /**
+   * The lease's security-deposit payment record (security + pet deposit). Renewals carry the
+   * deposit forward, so the previousLeaseId chain is walked back until a record is found.
+   */
+  async findLeaseDepositPayment(
+    cuid: string,
+    lease: Pick<ILeaseDocument, '_id' | 'previousLeaseId'>
+  ): Promise<IPaymentDocument | null> {
+    let currentLease: Pick<ILeaseDocument, '_id' | 'previousLeaseId'> | null = lease;
+    for (let hop = 0; currentLease && hop < MAX_LEASE_CHAIN_HOPS; hop++) {
+      const deposit = await this.paymentDAO.findFirst(
+        {
+          cuid,
+          lease: currentLease._id,
+          paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+          status: { $ne: PaymentRecordStatus.CANCELLED },
+          deletedAt: null,
+        },
+        { sort: { createdAt: -1 } }
+      );
+      if (deposit) return deposit;
+      if (!currentLease.previousLeaseId) return null;
+      currentLease = await this.leaseDAO.findFirst({
+        _id: currentLease.previousLeaseId,
+        cuid,
+        deletedAt: null,
+      });
+    }
+    return null;
+  }
+
+  /**
+   * Refund ceiling for a move-out inspection: the paid deposit (security + pet) minus anything
+   * already refunded. Without a deposit record (collected outside the app) the lease's
+   * configured security + pet deposit is used; an unpaid deposit has nothing to refund.
+   */
+  private async resolveRefundableDeposit(
+    cuid: string,
+    lease: ILeaseDocument
+  ): Promise<{ amount: number; currency: string }> {
+    const deposit = await this.findLeaseDepositPayment(cuid, lease);
+    const currency = deposit?.currency || lease.fees?.currency || 'USD';
+
+    if (!deposit) {
+      const configuredDeposit =
+        (lease.fees?.securityDeposit || 0) + (lease.petPolicy?.deposit || 0);
+      return { amount: configuredDeposit, currency };
+    }
+    if (deposit.status !== PaymentRecordStatus.PAID) {
+      return { amount: 0, currency };
+    }
+    return {
+      amount: Math.max(0, deposit.baseAmount - (deposit.refund?.amount || 0)),
+      currency,
+    };
+  }
+
+  private defaultRefundAmount(refundInfo: { amount: number; proposedRefund?: number }): number {
+    return refundInfo.proposedRefund ?? refundInfo.amount;
+  }
+
+  /**
+   * True while a renewal of this lease is in progress (or expected via autoRenew / a pending
+   * tenant request), so no move-out inspection should be auto-scheduled. A declined,
+   * cancelled or expired renewal means the tenant is leaving.
+   */
+  private async isRenewalPending(lease: ILeaseDocument): Promise<boolean> {
+    try {
+      const latestRenewal = await this.leaseDAO.findFirst(
+        { previousLeaseId: lease._id, cuid: lease.cuid, deletedAt: null },
+        { sort: { createdAt: -1 } }
+      );
+      if (latestRenewal) {
+        const signatureDeclined =
+          latestRenewal.eSignature?.status === ILeaseESignatureStatusEnum.DECLINED;
+        return RENEWAL_IN_PROGRESS_STATUSES.includes(latestRenewal.status) && !signatureDeclined;
+      }
+
+      if (lease.renewalRequest?.status === 'rejected') return false;
+      return lease.renewalRequest?.status === 'pending' || lease.renewalOptions?.autoRenew === true;
+    } catch (error) {
+      this.log.error({ error, luid: lease.luid }, 'Renewal check failed — treating as no renewal');
+      return false;
+    }
+  }
+
+  /**
+   * A stale move-out inspection with a deposit but no proposed refund is not auto-approved.
+   * The PM is asked to decide; touching the inspection restarts the 7-day clock so the
+   * reminder repeats weekly rather than nightly.
+   */
+  private async holdForRefundDecision(
+    inspection: any,
+    systemBotId: Awaited<ReturnType<typeof getSystemBotUserId>>
+  ): Promise<void> {
+    await this.inspectionDAO.updateById(inspection._id.toString(), {
+      $set: { updatedAt: new Date() },
+      ...(systemBotId && {
+        $push: {
+          notes: {
+            note: 'Not auto-closed: the tenant did not respond, but no deposit refund amount has been proposed. A property manager must approve this inspection with a refund amount.',
+            author: 'System',
+            authorId: systemBotId,
+            timestamp: new Date(),
+          },
+        },
+      }),
+    });
+
+    try {
+      const property = await this.propertyDAO.findFirst(
+        { _id: inspection.propertyId },
+        { select: 'managedBy' }
+      );
+      const inspector = inspection.inspectorUid
+        ? await this.userDAO.findFirst({ uid: inspection.inspectorUid, deletedAt: null })
+        : null;
+      const recipient =
+        toId(property?.managedBy) || toId(inspector?._id) || toId(inspection.createdBy);
+      if (!recipient) return;
+
+      await this.notificationService.createNotification(
+        inspection.cuid,
+        NotificationTypeEnum.INSPECTION,
+        {
+          cuid: inspection.cuid,
+          type: NotificationTypeEnum.INSPECTION,
+          title: 'Deposit Refund Decision Needed',
+          message:
+            'The tenant has not responded to a move-out inspection for 7 days. Approve it with the deposit refund amount to close it.',
+          recipientType: RecipientTypeEnum.INDIVIDUAL,
+          recipient,
+          priority: NotificationPriorityEnum.HIGH,
+          actionUrl: `/inspections/${inspection.cuid}/${inspection.iuid}`,
+        }
+      );
+    } catch (error) {
+      this.log.error(
+        { error, iuid: inspection.iuid },
+        'Failed to notify PM about pending deposit refund decision'
+      );
+    }
+  }
+
   // ─── Event Handlers ──────────────────────────────────────────────────────────
+
+  /**
+   * refundInfo.isRefunded only flips once a deposit refund has actually succeeded. The
+   * inspection may sit on a renewal of the lease that holds the deposit record.
+   */
+  private async handlePaymentRefunded(payload: PaymentRefundedPayload): Promise<void> {
+    try {
+      const payment = await this.paymentDAO.findFirst({
+        pytuid: payload.pytuid,
+        cuid: payload.cuid,
+        deletedAt: null,
+      });
+      if (!payment?.lease || payment.paymentType !== PaymentRecordType.SECURITY_DEPOSIT) return;
+
+      const leaseIds = [payment.lease];
+      for (let hop = 0; hop < MAX_LEASE_CHAIN_HOPS; hop++) {
+        const renewal = await this.leaseDAO.findFirst({
+          previousLeaseId: leaseIds[leaseIds.length - 1],
+          cuid: payload.cuid,
+          deletedAt: null,
+        });
+        if (!renewal) break;
+        leaseIds.push(renewal._id);
+      }
+
+      await this.inspectionDAO.updateMany(
+        {
+          cuid: payload.cuid,
+          leaseId: { $in: leaseIds },
+          type: InspectionType.MOVE_OUT,
+          status: InspectionStatus.APPROVED,
+          'refundInfo.isRefunded': false,
+          deletedAt: null,
+        } as any,
+        { $set: { 'refundInfo.isRefunded': true } }
+      );
+    } catch (error) {
+      this.log.error(
+        { error, pytuid: payload.pytuid, cuid: payload.cuid },
+        'Failed to mark move-out inspection deposit as refunded'
+      );
+    }
+  }
 
   private async handleLeaseTerminated(payload: LeaseTerminatedPayload): Promise<void> {
     try {
@@ -1226,6 +1453,14 @@ export class InspectionService implements ICronProvider {
           });
           if (existing) continue;
 
+          if (await this.isRenewalPending(lease)) {
+            this.log.info(
+              { luid: lease.luid },
+              'Renewal in progress — move-out not auto-scheduled'
+            );
+            continue;
+          }
+
           const populatedProperty = lease.property?.id as any;
           const managerId = toId(populatedProperty?.managedBy) || toId(lease.createdBy);
           const inspectionDate = dayjs(lease.duration.endDate).subtract(1, 'day').toDate();
@@ -1273,6 +1508,8 @@ export class InspectionService implements ICronProvider {
       );
 
       for (const lease of reminderLeases.items) {
+        if (await this.isRenewalPending(lease)) continue;
+
         this.emitterService.emit(EventTypes.INSPECTION_REMINDER, {
           cuid: lease.cuid,
           luid: lease.luid,
@@ -1323,25 +1560,34 @@ export class InspectionService implements ICronProvider {
 
       for (const inspection of staleInspections.items) {
         try {
+          // notes.authorId must be a user ObjectId, so the system bot authors the note;
+          // without a seeded bot the inspection still closes, just without the note.
+          const systemBotId = await getSystemBotUserId();
+
+          // Never forfeit a deposit by default: without the PM's proposed refund the
+          // inspection waits for the PM to decide the amount.
+          const proposedRefund = inspection.refundInfo?.proposedRefund;
+          if (inspection.refundInfo && proposedRefund == null) {
+            await this.holdForRefundDecision(inspection, systemBotId);
+            continue;
+          }
+
           const updateFields: Record<string, any> = {
             status: InspectionStatus.APPROVED,
             approvedAt: new Date(),
           };
 
-          // Deposit is forfeited when tenant does not respond
-          if (inspection.refundInfo) {
-            updateFields['refundInfo.isRefunded'] = false;
-          }
+          const noResponseNote = 'Auto-closed: tenant did not respond within 7 days of submission.';
+          const closingNote = inspection.refundInfo
+            ? `${noResponseNote} Deposit refund proposed by the property manager: ${MoneyUtils.formatCurrency(proposedRefund, inspection.refundInfo.currency)}.`
+            : noResponseNote;
 
-          // notes.authorId must be a user ObjectId, so the system bot authors the note;
-          // without a seeded bot the inspection still closes, just without the note.
-          const systemBotId = await getSystemBotUserId();
           await this.inspectionDAO.updateById(inspection._id.toString(), {
             $set: updateFields,
             ...(systemBotId && {
               $push: {
                 notes: {
-                  note: 'Auto-closed: tenant did not respond within 7 days of submission. Security deposit forfeited.',
+                  note: closingNote,
                   author: 'System',
                   authorId: systemBotId,
                   timestamp: new Date(),
@@ -1381,7 +1627,7 @@ export class InspectionService implements ICronProvider {
             tenantId: toId(inspection.tenantId),
             inspectorUid: inspection.inspectorUid,
             ...(inspection.refundInfo && {
-              refundAmount: 0,
+              refundAmount: proposedRefund,
               depositAmount: inspection.refundInfo.amount,
               currency: inspection.refundInfo.currency,
             }),

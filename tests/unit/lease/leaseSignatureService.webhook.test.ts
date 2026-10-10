@@ -121,7 +121,7 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
         { _id: leaseId },
         expect.objectContaining({
           status: LeaseStatus.ACTIVE,
-          'eSignature.status': ILeaseESignatureStatusEnum.COMPLETED,
+          'eSignature.status': ILeaseESignatureStatusEnum.SIGNED,
         })
       );
     });

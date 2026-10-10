@@ -142,6 +142,7 @@ const RenewalOptionsBaseSchema = z.object({
   enableAutoSendForSignature: z.boolean().optional(),
   noticePeriodDays: z.coerce.number().int().min(0).optional(),
   renewalTermMonths: z.coerce.number().int().min(0).optional(),
+  autoApproveRenewal: z.boolean().optional(),
 });
 
 export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, ctx) => {

@@ -1,0 +1,33 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _last4 = _val(typeof cardLast4 !== 'undefined' ? cardLast4 : '');
+  var _reason = _val(typeof failureReason !== 'undefined' ? failureReason : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+  var _card = _last4 ? 'your card ending in ' + _last4 : 'your card on file';
+%>
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= tenantName %></strong>,</p>
+      <p>
+        Your bank debit of <strong><%= amount %></strong> to <strong><%= payeeName %></strong> could not be completed,
+        so we charged <strong><%= _card %></strong> instead.
+      </p>
+      <% if (_reason) { %><p><strong>Bank debit failure reason:</strong> <%= _reason %></p><% } %>
+      <% if (_reference) { %><p><strong>Reference:</strong> <%= _reference %></p><% } %>
+      <p>
+        You don't need to do anything if the card charge is correct. If you didn't expect this charge, or want to update
+        your bank details so future payments are debited from your bank account, contact <strong><%= payeeName %></strong>.
+      </p>
+    </td>
+  </tr>
+
+  <% if (_url) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: _url, label: "View Payment" }) %>
+    </td>
+  </tr>
+  <% } %>
+</table>

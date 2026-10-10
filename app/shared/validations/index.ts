@@ -11,6 +11,7 @@ export * from './MetricsValidation';
 export * from './ProfileValidation';
 export * from './ExpenseValidation';
 export * from './ReportValidation';
+export * from './SearchValidation';
 export * from './ClientValidation';
 export * from './VendorValidation';
 export * from './UtilsValidation';

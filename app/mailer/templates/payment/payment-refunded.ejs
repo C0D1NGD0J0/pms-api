@@ -1,0 +1,41 @@
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _partial = typeof isPartial !== 'undefined' && isPartial;
+  var _total = _val(typeof totalRefunded !== 'undefined' ? totalRefunded : '');
+  var _reason = _val(typeof reason !== 'undefined' ? reason : '');
+  var _refundedOn = _val(typeof refundedOn !== 'undefined' ? refundedOn : '');
+  var _reference = _val(typeof reference !== 'undefined' ? reference : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+%>
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= tenantName %></strong>,</p>
+      <p>
+        A <%= _partial ? 'partial' : 'full' %> refund of <strong><%= amount %></strong> has been issued for your payment.
+        Refunds go back to the original payment method and usually appear within 5–10 business days.
+      </p>
+      <p style="font-size: 14px; color: #334155;">
+        Refund: <%= amount %> (<%= _partial ? 'partial' : 'full' %>)<br />
+        <% if (_partial && _total) { %>Total refunded so far: <%= _total %><br /><% } %>
+        <% if (_refundedOn) { %>Date: <%= _refundedOn %><br /><% } %>
+        <% if (_reference) { %>Reference: <%= _reference %><br /><% } %>
+        <% if (_reason) { %>Reason: <%= _reason %><% } %>
+      </p>
+    </td>
+  </tr>
+
+  <% if (_url) { %>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: _url, label: "View Payment" }) %>
+    </td>
+  </tr>
+  <% } %>
+
+  <tr>
+    <td class="content">
+      <p>If you have questions about this refund, contact your property manager.</p>
+    </td>
+  </tr>
+</table>

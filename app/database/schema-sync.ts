@@ -220,12 +220,41 @@ const SYNC_RULES: SyncRule[] = [
       renewalOptions: {
         autoRenew: false,
         noticePeriodDays: 30,
-        requireApproval: true,
+        autoApproveRenewal: false,
         daysBeforeExpiryToGenerateRenewal: 14,
         daysBeforeExpiryToAutoSendSignature: 7,
         enableAutoSendForSignature: true,
       },
     },
+  },
+  // requireApproval → autoApproveRenewal rename (inverted). Must run before the backfill below.
+  {
+    label: 'lease.renewalOptions.autoApproveRenewal: migrate requireApproval=false',
+    collection: 'leases',
+    filter: {
+      'renewalOptions.requireApproval': false,
+      'renewalOptions.autoApproveRenewal': { $exists: false },
+    },
+    update: { 'renewalOptions.autoApproveRenewal': true },
+  },
+  // autoRenew leases were always auto-approved (autoRenew used to force approval) — keep that behaviour
+  {
+    label: 'lease.renewalOptions.autoApproveRenewal: preserve for autoRenew leases',
+    collection: 'leases',
+    filter: {
+      'renewalOptions.autoRenew': true,
+      'renewalOptions.autoApproveRenewal': { $exists: false },
+    },
+    update: { 'renewalOptions.autoApproveRenewal': true },
+  },
+  {
+    label: 'lease.renewalOptions.autoApproveRenewal',
+    collection: 'leases',
+    filter: {
+      renewalOptions: { $exists: true },
+      'renewalOptions.autoApproveRenewal': { $exists: false },
+    },
+    update: { 'renewalOptions.autoApproveRenewal': false },
   },
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -387,6 +416,15 @@ const SYNC_RULES: SyncRule[] = [
 
 const CLEANUP_RULES: CleanupRule[] = [
   // ═══════════════════════════════════════════════════════════════════════════
+  // LEASES — renamed to renewalOptions.autoApproveRenewal
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    label: 'lease.renewalOptions: remove renamed requireApproval',
+    collection: 'leases',
+    filter: { 'renewalOptions.requireApproval': { $exists: true } },
+    unset: { 'renewalOptions.requireApproval': 1 },
+  },
+  // ═══════════════════════════════════════════════════════════════════════════
   // SUBSCRIPTIONS — remove stale entitlement fields
   // ═══════════════════════════════════════════════════════════════════════════
   {
@@ -508,9 +546,53 @@ export async function runSchemaSync(): Promise<void> {
     log.error(`[subscription.entitlements] plan sync failed: ${err.message}`);
   }
 
+  try {
+    const relinked = await relinkDepositTenantsToProfiles(db);
+    if (relinked > 0) {
+      log.info(`[payments.security_deposit.tenant] relinked ${relinked} deposits to profiles`);
+      patched += relinked;
+    }
+  } catch (err: any) {
+    log.error(`[payments.security_deposit.tenant] relink failed: ${err.message}`);
+  }
+
   if (patched === 0) {
     log.info('All collections in sync — nothing to patch');
   } else {
     log.info(`Schema sync complete — ${patched} documents patched`);
   }
+}
+
+/**
+ * Security-deposit records used to store the tenant's User _id in `tenant`, while every other
+ * payment stores the Profile _id. Rewrites those to the matching Profile _id. Idempotent: a
+ * deposit whose `tenant` already resolves to a profile is left untouched.
+ */
+export async function relinkDepositTenantsToProfiles(
+  db: NonNullable<typeof mongoose.connection.db>
+): Promise<number> {
+  const payments = db.collection('payments');
+  const profiles = db.collection('profiles');
+  let relinked = 0;
+
+  const deposits = payments.find(
+    { paymentType: 'security_deposit', tenant: { $exists: true } },
+    { projection: { _id: 1, tenant: 1 } }
+  );
+
+  for await (const deposit of deposits) {
+    const isProfileId = await profiles.countDocuments({ _id: deposit.tenant }, { limit: 1 });
+    if (isProfileId) continue;
+
+    const profile = await profiles.findOne({ user: deposit.tenant }, { projection: { _id: 1 } });
+    if (!profile) continue;
+
+    const result = await payments.updateOne(
+      { _id: deposit._id, tenant: deposit.tenant },
+      { $set: { tenant: profile._id } }
+    );
+    relinked += result.modifiedCount;
+  }
+
+  return relinked;
 }

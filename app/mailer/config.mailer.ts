@@ -148,7 +148,27 @@ export const TEMPLATE_HERO_CONFIG: Record<string, HeroConfig> = {
   [MailType.PAD_PRE_DEBIT_NOTIFICATION]: {
     icon: '&#x1F4B3;',
     title: 'Upcoming Debit',
-    subtitle: 'Pre-authorized debit notification',
+    subtitle: 'Advance notice of a pre-authorized debit',
+  },
+  [MailType.PAD_DEBIT_INITIATED]: {
+    icon: '&#x1F4B3;',
+    title: 'Debit Processing',
+    subtitle: 'Your pre-authorized debit has been initiated',
+  },
+  [MailType.PAYMENT_RETRIED_WITH_CARD]: {
+    icon: '&#x1F4B3;',
+    title: 'Card Charged',
+    subtitle: 'Your bank debit failed, so your card was charged',
+  },
+  [MailType.PAYMENT_REFUNDED]: {
+    icon: '&#x1F4B3;',
+    title: 'Refund Issued',
+    subtitle: 'Money is on its way back to you',
+  },
+  [MailType.DEPOSIT_REFUND_FAILED]: {
+    icon: '&#x1F4B3;',
+    title: 'Deposit Refund Failed',
+    subtitle: 'Action required',
   },
 
   // Maintenance
@@ -507,6 +527,9 @@ export class MailService {
       case MailType.PAD_PRE_DEBIT_NOTIFICATION:
         template = await this.buildTemplate('pad-pre-debit-notification', emailData, 'payment');
         break;
+      case MailType.PAYMENT_RETRIED_WITH_CARD:
+        template = await this.buildTemplate('payment-retried-with-card', emailData, 'payment');
+        break;
       case MailType.PAD_MANDATE_CONFIRMATION:
         template = await this.buildTemplate('pad-mandate-confirmation', emailData, 'payment');
         break;
@@ -526,6 +549,9 @@ export class MailService {
       case MailType.COMPANY_CLOSURE_TENANT:
         emailData._audience = 'tenant';
         template = await this.buildTemplate('company-closure', emailData, 'subscription');
+        break;
+      case MailType.DEPOSIT_REFUND_FAILED:
+        template = await this.buildTemplate('deposit-refund-failed', emailData, 'payment');
         break;
       case MailType.COMPANY_CLOSURE_STAFF:
         emailData._audience = 'staff';
@@ -562,6 +588,9 @@ export class MailService {
         emailData._status = 'updated';
         template = await this.buildTemplate('subscription-status', emailData, 'subscription');
         break;
+      case MailType.PAD_DEBIT_INITIATED:
+        template = await this.buildTemplate('pad-debit-initiated', emailData, 'payment');
+        break;
       case MailType.INVITATION_REMINDER:
         template = await this.buildTemplate('reminder', emailData, 'invitation');
         break;
@@ -581,6 +610,9 @@ export class MailService {
         break;
       case MailType.LEASE_ENDING_SOON:
         template = await this.buildTemplate('lease-ending-soon', emailData, 'lease');
+        break;
+      case MailType.PAYMENT_REFUNDED:
+        template = await this.buildTemplate('payment-refunded', emailData, 'payment');
         break;
       case MailType.LEASE_TERMINATED:
         template = await this.buildTemplate('lease-terminated', emailData, 'lease');
@@ -726,7 +758,11 @@ export class MailService {
       [MailType.PAYMENT_RECEIPT]: 'Payment Receipt',
       [MailType.PAYMENT_FAILED]: 'Payment Could Not Be Processed',
       [MailType.PAD_MANDATE_CONFIRMATION]: 'Pre-Authorized Debit Agreement Confirmation',
-      [MailType.PAD_PRE_DEBIT_NOTIFICATION]: 'Upcoming Pre-Authorized Debit Notification',
+      [MailType.PAD_PRE_DEBIT_NOTIFICATION]: 'Advance Notice: Upcoming Pre-Authorized Debit',
+      [MailType.PAD_DEBIT_INITIATED]: 'Your Pre-Authorized Debit Is Processing',
+      [MailType.PAYMENT_RETRIED_WITH_CARD]: 'Bank Debit Failed — Your Card Was Charged',
+      [MailType.PAYMENT_REFUNDED]: 'Refund Issued',
+      [MailType.DEPOSIT_REFUND_FAILED]: 'Action Required: Deposit Refund Failed',
       [MailType.SUBSCRIPTION_RENEWAL_RECEIPT]: 'Subscription Renewal Receipt',
       [MailType.SUBSCRIPTION_RENEWAL_UPCOMING]: 'Upcoming Subscription Renewal',
       [MailType.SUBSCRIPTION_CANCELED]: 'Your Subscription Has Been Canceled',

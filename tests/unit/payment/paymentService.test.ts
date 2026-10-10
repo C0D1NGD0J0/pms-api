@@ -7,22 +7,24 @@ jest.mock('@shared/middlewares', () => ({
 jest.mock('@di/index', () => ({ container: {} }));
 
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { envVariables } from '@shared/config';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PaymentService } from '@services/payments/payments.service';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { PaymentCronService } from '@services/payments/paymentCron.service';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
 import { PayoutAccountService } from '@services/payments/payoutAccount.service';
 import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
+import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { SubscriptionPlanConfig, subscriptionPlanConfig } from '@services/subscription';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
+  PaymentErrorCode,
   PaymentMethod,
 } from '@interfaces/payments.interface';
 import {
@@ -126,6 +128,7 @@ const makeServiceWithMocks = (
   });
 
   const maintenancePaymentService = new MaintenancePaymentService({
+    maintenanceRequestDAO: {} as any,
     paymentGatewayService,
     paymentProcessorDAO,
     subscriptionPlanConfig,
@@ -255,7 +258,10 @@ describe('PaymentService - setup payment method webhooks', () => {
     });
 
     expect(mockProfileDAO.update).toHaveBeenCalledWith(
-      { user: new Types.ObjectId(tenantId) },
+      {
+        user: new Types.ObjectId(tenantId),
+        [`tenantInfo.padMandateDetails.${pmAccountId}.mandateId`]: { $ne: 'mandate_123' },
+      },
       {
         $set: expect.objectContaining({
           [`tenantInfo.paymentMethods.${pmAccountId}`]: 'pm_123',
@@ -370,7 +376,7 @@ describe('PaymentService - cancelPayment', () => {
 
     expect(mockPaymentDAO.updateById.mock.calls[0][1]).toMatchObject({
       status: PaymentRecordStatus.CANCELLED,
-      $push: { notes: expect.objectContaining({ text: 'Cancelled: Tenant moved out' }) },
+      $push: { notes: expect.objectContaining({ note: 'Cancelled: Tenant moved out' }) },
     });
   });
 
@@ -400,6 +406,73 @@ describe('PaymentService - cancelPayment', () => {
     mockClientDAO.findFirst.mockResolvedValue({ cuid: CUID } as any);
     mockPaymentDAO.findFirst.mockResolvedValue(null);
     await expect(paymentService.cancelPayment(CUID, PYTUID)).rejects.toThrow(NotFoundError);
+  });
+
+  describe('voiding a PAID manual entry', () => {
+    const MANAGER_ID = new Types.ObjectId().toString();
+    const makeManualPaid = (overrides: Record<string, any> = {}) =>
+      makePayment({ status: PaymentRecordStatus.PAID, isManualEntry: true, ...overrides });
+
+    beforeEach(() => {
+      mockClientDAO.findFirst.mockResolvedValue({ cuid: CUID } as any);
+      (mockPaymentDAO as any).update = jest.fn();
+    });
+
+    it('lets a manager void a manual PAID entry with a reason, without any gateway call', async () => {
+      const payment = makeManualPaid();
+      mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+      (mockPaymentDAO as any).update.mockReturnValue(
+        Promise.resolve({ ...payment, status: PaymentRecordStatus.CANCELLED })
+      );
+
+      const result = await paymentService.cancelPayment(CUID, PYTUID, 'Entered twice', {
+        role: 'manager',
+        userId: MANAGER_ID,
+      });
+
+      expect(result.data.status).toBe(PaymentRecordStatus.CANCELLED);
+      expect((mockPaymentDAO as any).update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: PaymentRecordStatus.PAID, isManualEntry: true }),
+        expect.objectContaining({
+          $set: expect.objectContaining({ status: PaymentRecordStatus.CANCELLED }),
+          $push: {
+            notes: expect.objectContaining({
+              note: 'Manual entry voided: Entered twice',
+              author: MANAGER_ID,
+            }),
+          },
+        })
+      );
+      expect(mockPaymentGatewayService.voidInvoice).not.toHaveBeenCalled();
+    });
+
+    it('rejects staff and callers without a role', async () => {
+      mockPaymentDAO.findFirst.mockResolvedValue(makeManualPaid() as any);
+
+      await expect(
+        paymentService.cancelPayment(CUID, PYTUID, 'oops', { role: 'staff', userId: MANAGER_ID })
+      ).rejects.toThrow(ForbiddenError);
+      await expect(paymentService.cancelPayment(CUID, PYTUID, 'oops')).rejects.toThrow(
+        ForbiddenError
+      );
+      expect((mockPaymentDAO as any).update).not.toHaveBeenCalled();
+    });
+
+    it('requires a reason', async () => {
+      mockPaymentDAO.findFirst.mockResolvedValue(makeManualPaid() as any);
+      await expect(
+        paymentService.cancelPayment(CUID, PYTUID, '  ', { role: 'admin', userId: MANAGER_ID })
+      ).rejects.toThrow(BadRequestError);
+    });
+
+    it('never voids a paid online payment', async () => {
+      mockPaymentDAO.findFirst.mockResolvedValue(
+        makeManualPaid({ isManualEntry: false, gatewayChargeId: 'ch_1' }) as any
+      );
+      await expect(
+        paymentService.cancelPayment(CUID, PYTUID, 'x', { role: 'super-admin', userId: MANAGER_ID })
+      ).rejects.toThrow('refund it instead');
+    });
   });
 
   it('should throw BadRequestError when payment is already PAID or CANCELLED', async () => {
@@ -712,14 +785,14 @@ describe('PaymentService - getPaymentStats', () => {
     mockClientDAO = {
       findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
     } as unknown as jest.Mocked<ClientDAO>;
-    mockPaymentDAO = { findByCuid: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = { list: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     paymentService = makeServiceWithMocks({ clientDAO: mockClientDAO, paymentDAO: mockPaymentDAO });
   });
 
   afterEach(() => jest.clearAllMocks());
 
   it('should aggregate mixed statuses: collected, pending, overdue, refunded, expectedRevenue', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 200000),
         makeStat(PaymentRecordStatus.PAID, 150000),
@@ -741,7 +814,7 @@ describe('PaymentService - getPaymentStats', () => {
   });
 
   it('should use refund.amount (not baseAmount) for partial refunds', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [makeStat(PaymentRecordStatus.REFUNDED, 100000, { refund: { amount: 40000 } })],
       total: 1,
     } as any);
@@ -751,8 +824,50 @@ describe('PaymentService - getPaymentStats', () => {
     expect(result.data.refunded).toBe(40000);
   });
 
+  it('should count a staged PENDING_REFUND deposit as still collected, not refunded', async () => {
+    mockPaymentDAO.list.mockResolvedValue({
+      items: [
+        makeStat(PaymentRecordStatus.PENDING_REFUND, 150000, {
+          paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+          refund: { amount: 100000 },
+        }),
+      ],
+      total: 1,
+    } as any);
+
+    const result = await paymentService.getPaymentStats(CUID);
+
+    expect(result.data.collected).toBe(150000);
+    expect(result.data.expectedRevenue).toBe(150000);
+    expect(result.data.refunded).toBe(0);
+  });
+
+  it('should page through every payment instead of stopping at the DAO page cap', async () => {
+    const fullPage = Array.from({ length: 1000 }, () => ({
+      ...makeStat(PaymentRecordStatus.PAID, 100),
+      _id: new Types.ObjectId(),
+    }));
+    mockPaymentDAO.list
+      .mockResolvedValueOnce({ items: fullPage } as any)
+      .mockResolvedValueOnce({ items: [makeStat(PaymentRecordStatus.PAID, 500)] } as any);
+
+    const result = await paymentService.getPaymentStats(CUID);
+
+    expect(mockPaymentDAO.list).toHaveBeenCalledTimes(2);
+    expect(mockPaymentDAO.list).toHaveBeenLastCalledWith(
+      {
+        $and: [
+          { cuid: CUID, deletedAt: null, vendorId: { $exists: false } },
+          { _id: { $gt: fullPage[999]._id } },
+        ],
+      },
+      expect.objectContaining({ sort: { _id: 1 }, limit: 1000 })
+    );
+    expect(result.data.collected).toBe(100500);
+  });
+
   it('should calculate collectionRate as percentage of collected vs expected', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 75000),
         makeStat(PaymentRecordStatus.PENDING, 25000),
@@ -766,7 +881,7 @@ describe('PaymentService - getPaymentStats', () => {
   });
 
   it('should return 0 for all stats when there are no payments', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({ items: [], total: 0 } as any);
+    mockPaymentDAO.list.mockResolvedValue({ items: [], total: 0 } as any);
 
     const result = await paymentService.getPaymentStats(CUID);
 
@@ -800,7 +915,7 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
       findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
     } as unknown as jest.Mocked<ClientDAO>;
     mockPaymentDAO = {
-      findByCuid: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockProfileDAO = {
       findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_PROFILE_ID) }),
@@ -827,10 +942,9 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     // profileDAO.findFirst should be called with the requester's own userId (sub), not the caller-supplied tenantId
     expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({ user: expect.any(Types.ObjectId) });
 
-    // findByCuid should receive the auto-resolved profile id, not OTHER_TENANT_PROFILE_ID
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
-      CUID,
-      expect.objectContaining({ tenantId: TENANT_PROFILE_ID }),
+    // The payment query should use the auto-resolved profile id, not OTHER_TENANT_PROFILE_ID
+    expect(mockPaymentDAO.list).toHaveBeenCalledWith(
+      expect.objectContaining({ cuid: CUID, tenant: TENANT_PROFILE_ID }),
       expect.anything()
     );
   });
@@ -848,9 +962,8 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     // profileDAO.findFirst should NOT be called — PM tenantId is passed through directly
     expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
 
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
-      CUID,
-      expect.objectContaining({ tenantId: OTHER_TENANT_PROFILE_ID }),
+    expect(mockPaymentDAO.list).toHaveBeenCalledWith(
+      expect.objectContaining({ cuid: CUID, tenant: OTHER_TENANT_PROFILE_ID }),
       expect.anything()
     );
   });
@@ -859,9 +972,8 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     await paymentService.getPaymentStats(CUID);
 
     expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
-      CUID,
-      expect.not.objectContaining({ tenantId: expect.anything() }),
+    expect(mockPaymentDAO.list).toHaveBeenCalledWith(
+      expect.not.objectContaining({ tenant: expect.anything() }),
       expect.anything()
     );
   });
@@ -891,6 +1003,7 @@ describe('PaymentService - recordManualPayment', () => {
     _id: new Types.ObjectId(),
     luid: LEASE_ID,
     cuid: CUID,
+    tenantId: new Types.ObjectId(TENANT_ID),
     ...overrides,
   });
   const makeClient = (overrides: Record<string, any> = {}) => ({
@@ -912,16 +1025,29 @@ describe('PaymentService - recordManualPayment', () => {
     ...overrides,
   });
 
+  let mockUserDAO: jest.Mocked<UserDAO>;
+
   beforeEach(() => {
-    mockPaymentDAO = { insert: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = {
+      insert: jest.fn(),
+      findFirst: jest.fn().mockResolvedValue(null),
+      list: jest.fn().mockResolvedValue({ items: [] }),
+    } as unknown as jest.Mocked<PaymentDAO>;
     mockClientDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ClientDAO>;
     mockProfileDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ProfileDAO>;
     mockLeaseDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<LeaseDAO>;
+    mockUserDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_ID) }),
+    } as unknown as jest.Mocked<UserDAO>;
     paymentService = makeServiceWithMocks({
       paymentDAO: mockPaymentDAO,
       clientDAO: mockClientDAO,
       profileDAO: mockProfileDAO,
       leaseDAO: mockLeaseDAO,
+      userDAO: mockUserDAO,
+      subscriptionDAO: {
+        incrementUsageCounter: jest.fn().mockResolvedValue({ matched: true, modified: true }),
+      } as any,
     });
   });
 
@@ -1082,6 +1208,62 @@ describe('PaymentService - recordManualPayment', () => {
     expect(insert.lease).toBeUndefined();
   });
 
+  it('should derive currency from client settings.defaultCurrency when there is no lease', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(
+      makeClient({ settings: { defaultCurrency: 'CAD' } }) as any
+    );
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.recordManualPayment(
+      CUID,
+      USER_ID,
+      USER_ID,
+      makeData({ leaseId: undefined })
+    );
+    expect(mockPaymentDAO.insert.mock.calls[0][0].currency).toBe('CAD');
+  });
+
+  it('should reject a tenant who does not belong to the client', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockUserDAO.findFirst.mockResolvedValue(null);
+
+    await expect(
+      paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())
+    ).rejects.toThrow(NotFoundError);
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ 'cuids.cuid': CUID })
+    );
+    expect(mockPaymentDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('should reject when the tenant is not the tenant on the lease', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease({ tenantId: new Types.ObjectId() }) as any);
+
+    await expect(
+      paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())
+    ).rejects.toThrow('not the tenant on this lease');
+    expect(mockLeaseDAO.findFirst).toHaveBeenCalledWith({
+      luid: LEASE_ID,
+      cuid: CUID,
+      deletedAt: null,
+    });
+  });
+
+  it.each([
+    [{ status: PaymentRecordStatus.PENDING }, 'only be recorded as paid'],
+    [{ paymentMethod: PaymentMethod.ONLINE }, 'cannot be entered manually'],
+    [{ paidAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) }, 'cannot be in the future'],
+  ])('should reject invalid manual entries %#', async (overrides, message) => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    await expect(
+      paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData(overrides))
+    ).rejects.toThrow(message);
+    expect(mockPaymentDAO.insert).not.toHaveBeenCalled();
+  });
+
   it('should throw NotFoundError for invalid propertyId', async () => {
     mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
     mockProfileDAO.findFirst.mockResolvedValue(makeProfile() as any);
@@ -1108,8 +1290,10 @@ describe('PaymentService - refundPayment', () => {
   let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
   let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
   let mockProfileDAO: jest.Mocked<ProfileDAO>;
+  let mockEmitterService: { emit: jest.Mock; on: jest.Mock };
 
   const ADMIN_ID = new Types.ObjectId().toString();
+  const TENANT_USER_ID = new Types.ObjectId();
 
   const makePaidPayment = (overrides: Record<string, any> = {}) => ({
     _id: new Types.ObjectId(),
@@ -1119,6 +1303,8 @@ describe('PaymentService - refundPayment', () => {
     paymentType: PaymentRecordType.RENT,
     baseAmount: 150000,
     processingFee: 0,
+    currency: 'CAD',
+    tenant: new Types.ObjectId(),
     gatewayChargeId: 'ch_test_abc123',
     dueDate: new Date('2026-03-01'),
     paidAt: new Date('2026-02-28'),
@@ -1131,38 +1317,46 @@ describe('PaymentService - refundPayment', () => {
     ...overrides,
   });
 
+  const finalUpdate = () => mockPaymentDAO.updateById.mock.calls[0][1] as any;
+
   beforeEach(() => {
     mockPaymentDAO = {
       findFirst: jest.fn(),
-      updateById: jest.fn(),
+      updateById: jest.fn().mockResolvedValue({}),
+      // atomic refund claim / claim release
+      update: jest.fn().mockResolvedValue({}),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockPaymentProcessorDAO = {
-      findFirst: jest.fn(),
+      findFirst: jest.fn().mockResolvedValue(makeProcessor()),
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
-      createRefund: jest.fn(),
+      createRefund: jest.fn().mockResolvedValue({
+        success: true,
+        data: { refundId: 're_test_123', status: 'succeeded', amount: 150000, currency: 'cad' },
+      }),
+      createTransferReversal: jest.fn().mockResolvedValue({
+        success: true,
+        data: { reversalId: 'trr_123', amount: 1 },
+      }),
     } as unknown as jest.Mocked<PaymentGatewayService>;
     mockProfileDAO = {
-      findFirst: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), user: TENANT_USER_ID }),
     } as unknown as jest.Mocked<ProfileDAO>;
+    mockEmitterService = { emit: jest.fn(), on: jest.fn() };
     paymentService = makeServiceWithMocks({
       paymentDAO: mockPaymentDAO,
       paymentProcessorDAO: mockPaymentProcessorDAO,
       paymentGatewayService: mockPaymentGatewayService,
       profileDAO: mockProfileDAO,
+      emitterService: mockEmitterService,
     });
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  it('should refund a PAID payment and set status to REFUNDED', async () => {
+  it('should refund a PAID payment in full and set status to REFUNDED', async () => {
     const payment = makePaidPayment();
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
-    mockPaymentGatewayService.createRefund.mockResolvedValue({
-      success: true,
-      data: { refundId: 're_test_123', status: 'succeeded', amount: 150000, currency: 'usd' },
-    } as any);
     mockPaymentDAO.updateById.mockResolvedValue({
       ...payment,
       status: PaymentRecordStatus.REFUNDED,
@@ -1172,18 +1366,16 @@ describe('PaymentService - refundPayment', () => {
     const result = await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {});
 
     expect(result.success).toBe(true);
-    expect(result.data.status).toBe(PaymentRecordStatus.REFUNDED);
+    expect(finalUpdate().$set).toMatchObject({
+      status: PaymentRecordStatus.REFUNDED,
+      'refund.amount': 150000,
+      'refund.gatewayRefundId': 're_test_123',
+    });
+    expect(finalUpdate().$set['refund.refundedAt']).toBeInstanceOf(Date);
   });
 
-  it('should route refund through paymentGatewayService with correct params', async () => {
-    const payment = makePaidPayment();
-    mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
-    mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: {} } as any);
-    mockPaymentDAO.updateById.mockResolvedValue({
-      ...payment,
-      status: PaymentRecordStatus.REFUNDED,
-    } as any);
+  it('should route refund through paymentGatewayService with an idempotency key tied to the new total', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment() as any);
 
     await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {
       amount: 50000,
@@ -1197,31 +1389,162 @@ describe('PaymentService - refundPayment', () => {
         amountInCents: 50000,
         reason: 'requested_by_customer',
         note: 'Partial refund',
+        idempotencyKey: `refund:${PYTUID}:50000`,
       })
     );
   });
 
-  it('should store refundAmount: full baseAmount for full refund, partial amount for partial', async () => {
+  it('keeps a partially refunded payment PAID with the cumulative refund amount', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ baseAmount: 200000 }) as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
-    mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: {} } as any);
-    mockPaymentDAO.updateById.mockResolvedValue({} as any);
+
+    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 75000 });
+
+    expect(finalUpdate().$set).toMatchObject({
+      status: PaymentRecordStatus.PAID,
+      'refund.amount': 75000,
+    });
+  });
+
+  it('allows a further refund up to the remaining amount and marks REFUNDED when complete', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(
+      makePaidPayment({ baseAmount: 200000, refund: { amount: 75000 } }) as any
+    );
 
     await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {});
-    expect(mockPaymentDAO.updateById.mock.calls[0][1]).toMatchObject({
+
+    expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
+      'stripe',
+      expect.objectContaining({ amountInCents: 125000, idempotencyKey: `refund:${PYTUID}:200000` })
+    );
+    expect(mockPaymentDAO.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: PaymentRecordStatus.PAID, 'refund.amount': 75000 }),
+      { $set: { 'refund.amount': 200000 } }
+    );
+    expect(finalUpdate().$set).toMatchObject({
       status: PaymentRecordStatus.REFUNDED,
       'refund.amount': 200000,
     });
-    expect(mockPaymentDAO.updateById.mock.calls[0][1]['refund.refundedAt']).toBeInstanceOf(Date);
+  });
 
-    jest.clearAllMocks();
-    mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ baseAmount: 200000 }) as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
-    mockPaymentGatewayService.createRefund.mockResolvedValue({ success: true, data: {} } as any);
-    mockPaymentDAO.updateById.mockResolvedValue({} as any);
+  it('rejects a refund larger than the remaining refundable amount', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(
+      makePaidPayment({ baseAmount: 200000, refund: { amount: 150000 } }) as any
+    );
+    await expect(
+      paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 60000 })
+    ).rejects.toThrow('remaining refundable amount of 50000');
+    expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
+  });
 
-    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 75000 });
-    expect(mockPaymentDAO.updateById.mock.calls[0][1]['refund.amount']).toBe(75000);
+  it('does not call Stripe when the atomic claim fails (concurrent refund)', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment() as any);
+    mockPaymentDAO.update.mockResolvedValue(null);
+
+    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(
+      'another refund is in progress'
+    );
+    expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
+  });
+
+  it('releases the claim when Stripe fails', async () => {
+    const payment = makePaidPayment({ refund: { amount: 10000 } });
+    mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
+    mockPaymentGatewayService.createRefund.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'card_declined',
+    } as any);
+
+    await expect(
+      paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 5000 })
+    ).rejects.toThrow('card_declined');
+
+    expect(mockPaymentDAO.update).toHaveBeenLastCalledWith(
+      { _id: payment._id, 'refund.amount': 15000 },
+      { $set: { 'refund.amount': 10000 } }
+    );
+    expect(mockPaymentDAO.updateById).not.toHaveBeenCalled();
+    expect(mockEmitterService.emit).not.toHaveBeenCalled();
+  });
+
+  it('emits PAYMENT_REFUNDED with the tenant user, currency and partial flag', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment() as any);
+
+    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {
+      amount: 50000,
+      reason: 'Goodwill',
+    });
+
+    expect(mockEmitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYMENT_REFUNDED,
+      expect.objectContaining({
+        cuid: CUID,
+        pytuid: PYTUID,
+        tenantId: TENANT_USER_ID.toString(),
+        amount: 50000,
+        refundAmount: 50000,
+        totalRefunded: 50000,
+        currency: 'CAD',
+        isPartial: true,
+        reason: 'Goodwill',
+      })
+    );
+  });
+
+  describe('maintenance refunds after the vendor was paid', () => {
+    const makeMaintenancePayment = () =>
+      makePaidPayment({ paymentType: PaymentRecordType.MAINTENANCE, maintenanceRequestUid: 'MR1' });
+
+    beforeEach(() => {
+      (paymentService as any).invoiceDAO = {
+        findByMaintenanceRequest: jest.fn().mockResolvedValue({
+          vendorPayoutStatus: 'paid',
+          vendorPayoutTransferId: 'tr_vendor_1',
+          amountInCents: 120000,
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      };
+    });
+
+    it('refuses by default so the platform does not fund the refund', async () => {
+      mockPaymentDAO.findFirst.mockResolvedValue(makeMaintenancePayment() as any);
+
+      await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toMatchObject({
+        message: expect.stringContaining('vendor has already been paid'),
+        code: PaymentErrorCode.VENDOR_PAYOUT_REVERSAL_REQUIRED,
+      });
+      expect(mockPaymentDAO.update).not.toHaveBeenCalled();
+      expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
+    });
+
+    it('reverses the vendor transfer first when the PM opts in', async () => {
+      mockPaymentDAO.findFirst.mockResolvedValue(makeMaintenancePayment() as any);
+
+      await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { reverseVendorTransfer: true });
+
+      expect(mockPaymentGatewayService.createTransferReversal).toHaveBeenCalledWith(
+        'stripe',
+        'tr_vendor_1',
+        120000,
+        expect.objectContaining({ idempotencyKey: `refund-vendor-reversal:${PYTUID}:150000` })
+      );
+      expect(mockPaymentGatewayService.createRefund).toHaveBeenCalled();
+      expect(finalUpdate().$set['refund.vendorTransferReversalId']).toBe('trr_123');
+    });
+
+    it('does not refund when the reversal fails', async () => {
+      mockPaymentDAO.findFirst.mockResolvedValue(makeMaintenancePayment() as any);
+      mockPaymentGatewayService.createTransferReversal.mockResolvedValue({
+        success: false,
+        data: null,
+        message: 'insufficient funds',
+      } as any);
+
+      await expect(
+        paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { reverseVendorTransfer: true })
+      ).rejects.toThrow('Could not reverse the vendor payout');
+      expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
+    });
   });
 
   it('should throw BadRequestError when cuid or pytuid is missing', async () => {
@@ -1240,20 +1563,17 @@ describe('PaymentService - refundPayment', () => {
     );
   });
 
-  it('should throw BadRequestError when payment is not PAID (PENDING or CANCELLED)', async () => {
-    mockPaymentDAO.findFirst.mockResolvedValue(
-      makePaidPayment({ status: PaymentRecordStatus.PENDING }) as any
-    );
-    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(
-      BadRequestError
-    );
-
-    mockPaymentDAO.findFirst.mockResolvedValue(
-      makePaidPayment({ status: PaymentRecordStatus.CANCELLED }) as any
-    );
-    await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(
-      BadRequestError
-    );
+  it('should throw BadRequestError when payment is not PAID (PENDING, CANCELLED, REFUNDED)', async () => {
+    for (const status of [
+      PaymentRecordStatus.PENDING,
+      PaymentRecordStatus.CANCELLED,
+      PaymentRecordStatus.REFUNDED,
+    ]) {
+      mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ status }) as any);
+      await expect(paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, {})).rejects.toThrow(
+        BadRequestError
+      );
+    }
   });
 
   it('should throw BadRequestError when payment has no gatewayChargeId (manual entry)', async () => {
@@ -2033,6 +2353,9 @@ describe('PaymentService - handleInvoicePaymentSucceeded', () => {
     paymentService = makeServiceWithMocks({
       paymentDAO: mockPaymentDAO,
       emitterService: mockEmitterService,
+      paymentGatewayService: {
+        getInvoicePaymentDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
+      } as unknown as jest.Mocked<PaymentGatewayService>,
     });
   });
 
@@ -2143,8 +2466,9 @@ describe('PaymentService - handleInvoicePaymentFailed', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  it('should mark payment as FAILED and emit PAYMENT_FAILED event', async () => {
-    const payment = makePaymentRecord();
+  it('should mark payment as FAILED and emit PAYMENT_FAILED event once retries are exhausted', async () => {
+    // MAX_CHARGE_ATTEMPTS is 2 — this decline is the second attempt.
+    const payment = makePaymentRecord({ failure: { retryCount: 1 } });
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
     mockPaymentDAO.update.mockResolvedValue(payment as any);
 
@@ -2198,6 +2522,7 @@ describe('PaymentService - handleChargeRefunded', () => {
     cuid: CUID,
     gatewayChargeId: CHARGE_ID,
     status: PaymentRecordStatus.PAID,
+    baseAmount: 150000,
     ...overrides,
   });
 
@@ -2257,19 +2582,15 @@ describe('PaymentService - handleChargeRefunded', () => {
     expect(mockEmitterService.emit).not.toHaveBeenCalled();
   });
 
-  it('should default refund amount to 0 when amount_refunded is absent', async () => {
+  it('should ignore the event when amount_refunded is absent', async () => {
     const payment = makePaymentRecord();
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
     mockPaymentDAO.update.mockResolvedValue(payment as any);
 
     await paymentService.handleChargeRefunded(CHARGE_ID, {});
 
-    expect(mockPaymentDAO.update).toHaveBeenCalledWith(
-      { _id: payment._id, cuid: payment.cuid },
-      expect.objectContaining({
-        $set: expect.objectContaining({ 'refund.amount': 0 }),
-      })
-    );
+    expect(mockPaymentDAO.update).not.toHaveBeenCalled();
+    expect(mockEmitterService.emit).not.toHaveBeenCalled();
   });
 });
 
@@ -2859,6 +3180,28 @@ describe('PaymentService - chargeForMaintenance', () => {
     (paymentService as any).maintenancePaymentService.subscriptionPlanConfig = {
       getTransactionFeePercent: jest.fn().mockReturnValue(0),
     };
+    // Charges are derived from the MR's approved invoice and require the tenant to belong to the client
+    (paymentService as any).maintenancePaymentService.maintenanceRequestDAO = {
+      getByMruid: jest.fn().mockResolvedValue({
+        mruid: MRUID,
+        cuid: CUID,
+        isBillable: true,
+        tenantId: new Types.ObjectId(TENANT_USER_ID),
+        propertyId: new Types.ObjectId(),
+        title: 'Leaking pipe',
+      }),
+    };
+    (paymentService as any).maintenancePaymentService.invoiceDAO = {
+      findByMaintenanceRequest: jest.fn().mockResolvedValue({
+        status: InvoiceStatus.APPROVED,
+        amountInCents: 45000,
+        currency: 'USD',
+        lineItems: [],
+      }),
+    };
+    (paymentService as any).maintenancePaymentService.userDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_USER_ID) }),
+    };
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -2976,7 +3319,8 @@ describe('PaymentService - markOverduePayments', () => {
     paymentType: PaymentRecordType.RENT,
     baseAmount: 100000,
     dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-    isManualEntry: true,
+    // Cron tracking record (cash / cheque lease) — PM-recorded manual entries are never touched
+    isManualEntry: false,
     ...overrides,
   });
 
@@ -2984,6 +3328,7 @@ describe('PaymentService - markOverduePayments', () => {
     mockPaymentDAO = {
       findOverduePayments: jest.fn(),
       updateById: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
     } as unknown as jest.Mocked<PaymentDAO>;
 
     mockEmitter = { emit: jest.fn(), on: jest.fn() };
@@ -3003,20 +3348,20 @@ describe('PaymentService - markOverduePayments', () => {
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    expect(mockPaymentDAO.updateById).toHaveBeenCalledTimes(2);
-    expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(
-      p1._id.toString(),
-      expect.objectContaining({
-        $set: expect.objectContaining({
+    expect((mockPaymentDAO as any).update).toHaveBeenCalledTimes(2);
+    expect((mockPaymentDAO as any).update).toHaveBeenCalledWith(
+      { _id: p1._id, status: PaymentRecordStatus.PENDING, deletedAt: null },
+      {
+        $set: {
           status: PaymentRecordStatus.OVERDUE,
           overdueAt: expect.any(Date),
-        }),
-      })
+        },
+      }
     );
     expect(mockEmitter.emit).toHaveBeenCalledTimes(2);
   });
 
-  it('should skip auto-debit payments (gatewayPaymentId set and not manual)', async () => {
+  it('should skip auto-debit payments and PM-recorded manual entries', async () => {
     const manual = makeOverduePayment({ isManualEntry: true, gatewayPaymentId: 'inv_abc' });
     const autoDebit = makeOverduePayment({ isManualEntry: false, gatewayPaymentId: 'inv_xyz' });
     const noGateway = makeOverduePayment({ isManualEntry: false, gatewayPaymentId: undefined });
@@ -3025,15 +3370,15 @@ describe('PaymentService - markOverduePayments', () => {
       items: [manual, autoDebit, noGateway],
       total: 3,
     } as any);
-    mockPaymentDAO.updateById.mockResolvedValue(undefined as any);
 
     await (paymentService as any).paymentCronService.markOverduePayments();
 
-    // autoDebit should be skipped — only manual and noGateway should be updated
-    const updatedIds = mockPaymentDAO.updateById.mock.calls.map((c: any) => c[0]);
-    expect(updatedIds).not.toContain(autoDebit._id.toString());
-    expect(updatedIds).toContain(manual._id.toString());
-    expect(updatedIds).toContain(noGateway._id.toString());
+    // Only the cron tracking record without a Stripe invoice is flipped
+    const updatedIds = (mockPaymentDAO as any).update.mock.calls.map((c: any) => c[0]._id);
+    expect(updatedIds).toEqual([noGateway._id]);
+    expect(mockPaymentDAO.findOverduePayments.mock.calls[0][0]).toEqual({
+      isManualEntry: { $ne: true },
+    });
   });
 
   it('should do nothing when there are no past-due payments', async () => {
@@ -3086,14 +3431,14 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
     mockClientDAO = {
       findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
     } as unknown as jest.Mocked<ClientDAO>;
-    mockPaymentDAO = { findByCuid: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = { list: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     paymentService = makeServiceWithMocks({ clientDAO: mockClientDAO, paymentDAO: mockPaymentDAO });
   });
 
   afterEach(() => jest.clearAllMocks());
 
   it('should exclude MAINTENANCE payments from the collection rate calculation', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         // RENT: 60k collected out of 100k expected → 60%
         makeStat(PaymentRecordStatus.PAID, 60000, PaymentRecordType.RENT),
@@ -3112,7 +3457,7 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
   });
 
   it('should exclude LATE_FEE payments from the collection rate', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 100000, PaymentRecordType.RENT),
         makeStat(PaymentRecordStatus.PAID, 5000, PaymentRecordType.LATE_FEE),
@@ -3130,7 +3475,7 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
   });
 
   it('should return 0 collection rate when no RENT payments exist', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 30000, PaymentRecordType.MAINTENANCE),
         makeStat(PaymentRecordStatus.PAID, 5000, PaymentRecordType.LATE_FEE),
@@ -3145,7 +3490,7 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
   });
 
   it('should include SECURITY_DEPOSIT and DEPOSIT_REFUND in totals but not collection rate', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 50000, PaymentRecordType.RENT),
         makeStat(PaymentRecordStatus.PAID, 150000, PaymentRecordType.SECURITY_DEPOSIT),
@@ -3196,6 +3541,12 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     mockPaymentDAO = {
       list: jest.fn(),
       updateById: jest.fn().mockResolvedValue({}),
+      update: jest.fn().mockResolvedValue({}),
+      // The cron re-reads each payment before charging — return the listed (still open) record
+      findFirst: jest.fn().mockImplementation(async (filter: any) => {
+        const listed = await mockPaymentDAO.list.mock.results[0]?.value;
+        return listed?.items.find((p: any) => p._id.equals(filter._id)) ?? null;
+      }),
     } as unknown as jest.Mocked<PaymentDAO>;
 
     mockClientDAO = {
@@ -3208,6 +3559,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
     mockGateway = {
       payInvoice: jest.fn(),
+      retrievePaymentMethod: jest.fn().mockResolvedValue({ success: true, data: { type: 'card' } }),
     } as unknown as jest.Mocked<PaymentGatewayService>;
 
     paymentService = makeServiceWithMocks({
@@ -3228,19 +3580,21 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     expect(mockGateway.payInvoice).not.toHaveBeenCalled();
   });
 
-  it('queries only PENDING/OVERDUE rent with a gatewayPaymentId and dueDate <= now', async () => {
+  it('queries only PENDING/OVERDUE rent with a gatewayPaymentId due by the end of the client-local day', async () => {
     mockPaymentDAO.list.mockResolvedValue({ items: [], total: 0 } as any);
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
     const [query] = mockPaymentDAO.list.mock.calls[0] as [any];
-    expect(query.paymentType).toBe(PaymentRecordType.RENT);
+    expect(query.paymentType).toEqual({
+      $in: [PaymentRecordType.RENT, PaymentRecordType.SECURITY_DEPOSIT],
+    });
     expect(query.status.$in).toEqual(
       expect.arrayContaining([PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE])
     );
     expect(query.isManualEntry).toBe(false);
     expect(query.gatewayPaymentId.$exists).toBe(true);
-    expect(query.dueDate.$lte).toBeInstanceOf(Date);
+    expect(query.dueDate.$lt).toBeInstanceOf(Date);
   });
 
   it('calls payInvoice for each due payment with the connected account id', async () => {
@@ -3322,9 +3676,10 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
   it('is registered in getCronJobs with the correct schedule and service name', async () => {
     const jobs = await paymentService.getCronJobs();
-    const job = jobs.find((j) => j.name.startsWith('payment.auto-charge-due-rent.'));
+    const job = jobs.find((j) => j.name === 'payment.auto-charge-due-rent.hourly');
     expect(job).toBeDefined();
-    expect(job!.schedule).toBe('0 6 * * *');
+    // Runs hourly in UTC; each run charges the clients whose local time is 6 AM
+    expect(job!.schedule).toBe('0 * * * *');
     expect(job!.service).toBe('PaymentCronService');
     expect(job!.enabled).toBe(true);
     expect(typeof job!.handler).toBe('function');
@@ -3361,6 +3716,12 @@ describe('PaymentService - autoChargeOverdueMaintenancePayments', () => {
     mockPaymentDAO = {
       list: jest.fn(),
       updateById: jest.fn().mockResolvedValue({} as any),
+      update: jest.fn().mockResolvedValue({} as any),
+      // The cron re-reads each payment before charging — return the listed (still open) record
+      findFirst: jest.fn().mockImplementation(async (filter: any) => {
+        const listed = await mockPaymentDAO.list.mock.results[0]?.value;
+        return listed?.items.find((p: any) => p._id.equals(filter._id)) ?? null;
+      }),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockClientDAO = {
       getClientByCuid: jest.fn().mockResolvedValue({
@@ -3446,25 +3807,14 @@ describe('PaymentService - buildLineItemsFromFees', () => {
     expect(items[1]).toEqual({ description: 'Pet Fee', amountInCents: 5000 });
   });
 
-  it('should include late fee with description containing days late', () => {
+  it('should NOT add a late fee to rent line items — late fees are billed as their own charge', () => {
     const fees = {
       ...baseFees,
       late: { daysLate: 10, fee: 7500, type: 'fixed', percentage: 0, gracePeriod: 5 },
     };
     const items = callBuild(fees);
-    expect(items).toHaveLength(2);
-    expect(items[1].description).toContain('Late Fee');
-    expect(items[1].description).toContain('10 days late');
-    expect(items[1].amountInCents).toBe(7500);
-  });
-
-  it('should include percentage in late fee description when type is percentage', () => {
-    const fees = {
-      ...baseFees,
-      late: { daysLate: 7, fee: 7500, type: 'percentage', percentage: 5, gracePeriod: 5 },
-    };
-    const items = callBuild(fees);
-    expect(items[1].description).toContain('5%');
+    expect(items).toHaveLength(1);
+    expect(items.find((i: any) => i.description.includes('Late Fee'))).toBeUndefined();
   });
 
   it('should NOT include deposits in line items (deposits invoiced separately)', () => {
@@ -4417,6 +4767,8 @@ describe('MaintenancePaymentService - payVendor', () => {
     mockInvoiceDAO = {
       findByMaintenanceRequest: jest.fn(),
       updateById: jest.fn(),
+      // atomic payout claim (pending → processing)
+      update: jest.fn().mockResolvedValue({ vendorPayoutStatus: 'processing' }),
     } as unknown as jest.Mocked<InvoiceDAO>;
     mockPaymentProcessorDAO = {
       findFirst: jest.fn(),
@@ -4431,6 +4783,7 @@ describe('MaintenancePaymentService - payVendor', () => {
     mockUserDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<UserDAO>;
 
     service = new MaintenancePaymentService({
+      maintenanceRequestDAO: {} as any,
       invoiceDAO: mockInvoiceDAO,
       paymentDAO: mockPaymentDAO as any,
       paymentProcessorDAO: mockPaymentProcessorDAO,
@@ -4631,6 +4984,7 @@ describe('MaintenancePaymentService - handleMaintenanceInvoiceApproved', () => {
     mockEmitter = { emit: jest.fn(), on: jest.fn() };
 
     service = new MaintenancePaymentService({
+      maintenanceRequestDAO: {} as any,
       invoiceDAO: {} as any,
       paymentDAO: mockPaymentDAO,
       paymentProcessorDAO: {} as any,
@@ -4795,9 +5149,11 @@ describe('PaymentService — handleInvoicePaymentFailed — failure metadata', (
   let mockStripeService: any;
 
   const INVOICE_ID = 'in_test123';
+  // One prior failed attempt — with MAX_CHARGE_ATTEMPTS = 2 the next decline exhausts retries.
   const existingPayment = makePayment({
-    status: PaymentRecordStatus.PENDING,
+    status: PaymentRecordStatus.OVERDUE,
     gatewayPaymentId: INVOICE_ID,
+    failure: { retryCount: 1 },
   });
 
   beforeEach(() => {
@@ -4823,7 +5179,7 @@ describe('PaymentService — handleInvoicePaymentFailed — failure metadata', (
   it('persists failure.reason and failure.lastFailedAt when retries exhausted', async () => {
     // When no default_payment_method is present on the invoice data,
     // the code uses the default failureReason ('Payment failed').
-    // attempt_count=1, next_payment_attempt=undefined → exhausted → FAILED status.
+    // Our retry count (not Stripe's next_payment_attempt) drives exhaustion → FAILED.
     const invoiceData = {
       attempt_count: 1,
       next_payment_attempt: undefined,
@@ -5230,6 +5586,11 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
   const REQUESTING_USER = new Types.ObjectId().toString();
   const PROFILE_ID = new Types.ObjectId();
 
+  const makeTenantUserDAO = () =>
+    ({
+      findFirst: jest.fn().mockReturnValue(Promise.resolve({ _id: new Types.ObjectId(TENANT_ID) })),
+    }) as any;
+
   const makeManualPaymentData = () => ({
     tenantId: TENANT_ID,
     paymentType: PaymentRecordType.RENT,
@@ -5269,6 +5630,7 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
       profileDAO: {
         findFirst: jest.fn().mockReturnValue(Promise.resolve({ _id: PROFILE_ID, user: TENANT_ID })),
       } as any,
+      userDAO: makeTenantUserDAO(),
       subscriptionDAO: mockSubscriptionDAO,
     });
 
@@ -5288,19 +5650,22 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
     );
   });
 
-  it('resets counter when billing period has rolled over', async () => {
-    const lastMonth = new Date();
-    lastMonth.setMonth(lastMonth.getMonth() - 2);
+  it('never resets the counter itself — only the subscription webhook closes a billing period', async () => {
+    const twoMonthsAgo = new Date();
+    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
 
     const mockSubscriptionDAO = {
       findFirst: jest.fn().mockReturnValue(
         Promise.resolve({
           cuid: CUID,
-          startDate: lastMonth,
-          manualRecords: { countThisPeriod: 20, periodStart: lastMonth },
+          startDate: twoMonthsAgo,
+          manualRecords: { countThisPeriod: 20, periodStart: twoMonthsAgo },
         })
       ),
       update: jest.fn().mockReturnValue(Promise.resolve(true)),
+      incrementUsageCounter: jest
+        .fn()
+        .mockReturnValue(Promise.resolve({ matched: true, modified: true })),
     } as any;
 
     const mockPaymentDAO = {
@@ -5313,6 +5678,7 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
       profileDAO: {
         findFirst: jest.fn().mockReturnValue(Promise.resolve({ _id: PROFILE_ID, user: TENANT_ID })),
       } as any,
+      userDAO: makeTenantUserDAO(),
       subscriptionDAO: mockSubscriptionDAO,
     });
 
@@ -5325,13 +5691,10 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
 
     await new Promise((r) => setTimeout(r, 50));
 
-    expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
-      { cuid: CUID },
-      expect.objectContaining({
-        $set: expect.objectContaining({
-          'manualRecords.countThisPeriod': 1,
-        }),
-      })
+    expect(mockSubscriptionDAO.update).not.toHaveBeenCalled();
+    expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+      CUID,
+      'manualRecords.countThisPeriod'
     );
   });
 
@@ -5351,6 +5714,7 @@ describe('PaymentService — recordManualPayment — manual record counter', () 
       profileDAO: {
         findFirst: jest.fn().mockReturnValue(Promise.resolve({ _id: PROFILE_ID, user: TENANT_ID })),
       } as any,
+      userDAO: makeTenantUserDAO(),
       subscriptionDAO: mockSubscriptionDAO,
     });
 
@@ -5520,6 +5884,23 @@ describe('PaymentService - createCardPaymentSession', () => {
     );
   });
 
+  it.each([PaymentRecordStatus.REFUNDED, PaymentRecordStatus.PROCESSING])(
+    'refuses card checkout when payment is %s and never creates a session',
+    async (status) => {
+      const d = makeDefaults();
+      const mockStripe = { createPaymentCheckoutSession: jest.fn() };
+      const svc = makeServiceWithMocks({
+        paymentDAO: { findFirst: jest.fn().mockResolvedValue({ ...d.payment, status }) } as any,
+        stripeService: mockStripe,
+      });
+
+      await expect(svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID)).rejects.toThrow(
+        'cannot be paid'
+      );
+      expect(mockStripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
+    }
+  );
+
   it('throws BadRequestError when tenant does not own the payment', async () => {
     const d = makeDefaults();
     const differentTenantId = new Types.ObjectId().toString();
@@ -5612,6 +5993,7 @@ describe('PaymentService - handleCardPaymentSessionCompleted', () => {
           paidAt: expect.any(Date),
           gatewayPaymentId: PAYMENT_INTENT_ID,
         }),
+        $unset: { cardCheckoutSessionId: '' },
       }
     );
     expect(mockEmitter.emit).toHaveBeenCalledWith(
@@ -5846,6 +6228,8 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
     ...overrides,
   });
 
+  const APPROVED_INVOICE_ID = new Types.ObjectId();
+
   let webhookService: PaymentWebhookService;
   let mockPaymentDAO: jest.Mocked<PaymentDAO>;
   let mockInvoiceDAO: jest.Mocked<InvoiceDAO>;
@@ -5857,12 +6241,17 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
       update: jest.fn().mockResolvedValue({} as any),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockInvoiceDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: APPROVED_INVOICE_ID } as any),
       update: jest.fn().mockResolvedValue({} as any),
     } as unknown as jest.Mocked<InvoiceDAO>;
     mockEmitter = { emit: jest.fn(), on: jest.fn() };
 
     webhookService = new PaymentWebhookService({
-      paymentGatewayService: {} as any,
+      paymentGatewayService: {
+        getInvoicePaymentDetails: jest
+          .fn()
+          .mockResolvedValue({ success: true, data: { chargeId: CHARGE_ID } }),
+      } as any,
       paymentProcessorDAO: {} as any,
       subscriptionPlanConfig: {
         getTransactionFeePercent: jest.fn().mockReturnValue(4.0),
@@ -5889,8 +6278,12 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
 
     await webhookService.handleInvoicePaymentSucceeded(INVOICE_ID, {});
 
+    expect(mockInvoiceDAO.findFirst).toHaveBeenCalledWith(
+      { mruid: MRUID, cuid: CUID, status: InvoiceStatus.APPROVED, isDeleted: false },
+      { sort: { createdAt: -1 } }
+    );
     expect(mockInvoiceDAO.update).toHaveBeenCalledWith(
-      { mruid: MRUID, cuid: CUID, isDeleted: false },
+      { _id: APPROVED_INVOICE_ID, cuid: CUID },
       {
         $set: expect.objectContaining({
           tenantPaymentStatus: TenantPaymentStatus.PAID,
@@ -5901,9 +6294,11 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
   });
 
   it('stamps Invoice tenantPaymentStatus=paid without stripeChargeId when charge is absent', async () => {
-    // Override the stripeService mock to return no chargeId for this test
+    // Override the gateway mock to return no chargeId for this test
     webhookService = new PaymentWebhookService({
-      paymentGatewayService: {} as any,
+      paymentGatewayService: {
+        getInvoicePaymentDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
+      } as any,
       paymentProcessorDAO: {} as any,
       subscriptionPlanConfig: {
         getTransactionFeePercent: jest.fn().mockReturnValue(4.0),
@@ -5926,7 +6321,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
     await webhookService.handleInvoicePaymentSucceeded(INVOICE_ID, {});
 
     expect(mockInvoiceDAO.update).toHaveBeenCalledWith(
-      { mruid: MRUID, cuid: CUID, isDeleted: false },
+      { _id: APPROVED_INVOICE_ID, cuid: CUID },
       { $set: { tenantPaymentStatus: TenantPaymentStatus.PAID } }
     );
   });
@@ -5958,12 +6353,11 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
 
 // ═════════════════════════════════════════════════════════════════════════════
 // PaymentCronService - checkFundsAvailability
-// Twice-daily cron: checks Stripe Connect balance per PM account and flips
-// fundsAvailable on invoices where tenant has already paid.
+// Twice-daily cron: flips fundsAvailable on invoices once the tenant's maintenance
+// charge has succeeded (vendor transfers use source_transaction, so no balance check).
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe('PaymentCronService - checkFundsAvailability', () => {
-  const PM_ACCOUNT_ID = 'acct_pm_funds_test';
   const INVUID = 'INV-FUNDS-001';
   const MRUID = 'MR-FUNDS-001';
 
@@ -5983,68 +6377,64 @@ describe('PaymentCronService - checkFundsAvailability', () => {
 
   let cronService: PaymentCronService;
   let mockInvoiceDAO: jest.Mocked<InvoiceDAO>;
-  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
-  let mockStripe: { getConnectBalance: jest.Mock };
+  let mockPaymentDAO: { findFirst: jest.Mock };
+  let mockGateway: { getConnectBalance: jest.Mock };
   let mockEmitter: { emit: jest.Mock; on: jest.Mock };
-  let mockClientDAO: jest.Mocked<ClientDAO>;
 
   beforeEach(() => {
     mockInvoiceDAO = {
       findPendingFundsCheck: jest.fn(),
       updateById: jest.fn().mockResolvedValue({} as any),
     } as unknown as jest.Mocked<InvoiceDAO>;
-    mockPaymentProcessorDAO = {
-      findFirst: jest.fn(),
-    } as unknown as jest.Mocked<PaymentProcessorDAO>;
-    mockStripe = { getConnectBalance: jest.fn() };
+    mockPaymentDAO = { findFirst: jest.fn().mockResolvedValue(null) };
+    mockGateway = { getConnectBalance: jest.fn() };
     mockEmitter = { emit: jest.fn(), on: jest.fn() };
-    mockClientDAO = {
-      getDistinctTimezones: jest.fn().mockResolvedValue(['UTC']),
-      getClientByCuid: jest.fn(),
-    } as unknown as jest.Mocked<ClientDAO>;
 
     cronService = new PaymentCronService({
       maintenancePaymentService: {
         payVendor: jest.fn().mockResolvedValue({ success: true }),
       } as any,
-      paymentGatewayService: {} as any,
-      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockGateway as any,
+      paymentProcessorDAO: { findFirst: jest.fn() } as any,
       subscriptionPlanConfig: {} as any,
       emitterService: mockEmitter as unknown as EventEmitterService,
       subscriptionDAO: {} as any,
-      stripeService: mockStripe as unknown as StripeService,
       smsService: { sendToUser: jest.fn().mockResolvedValue({}) } as any,
       invoiceDAO: mockInvoiceDAO,
       queueFactory: { getQueue: jest.fn() } as any,
       profileDAO: {} as any,
-      paymentDAO: {} as any,
-      clientDAO: mockClientDAO,
+      paymentDAO: mockPaymentDAO as any,
+      clientDAO: { getClientByCuid: jest.fn() } as any,
       leaseDAO: {} as any,
     });
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  it('returns early without Stripe call when no invoices need a funds check', async () => {
+  it('returns early when no invoices need a funds check', async () => {
     mockInvoiceDAO.findPendingFundsCheck.mockResolvedValue([]);
 
     await (cronService as any).checkFundsAvailability();
 
-    expect(mockStripe.getConnectBalance).not.toHaveBeenCalled();
+    expect(mockPaymentDAO.findFirst).not.toHaveBeenCalled();
     expect(mockInvoiceDAO.updateById).not.toHaveBeenCalled();
     expect(mockEmitter.emit).not.toHaveBeenCalled();
   });
 
-  it('flips fundsAvailable and emits MAINTENANCE_FUNDS_AVAILABLE when Stripe balance is sufficient', async () => {
+  it('flips fundsAvailable and emits MAINTENANCE_FUNDS_AVAILABLE once the tenant charge succeeded', async () => {
     mockInvoiceDAO.findPendingFundsCheck.mockResolvedValue([makeSettledInvoice()] as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: PM_ACCOUNT_ID } as any);
-    mockStripe.getConnectBalance.mockResolvedValue({
-      available: [{ currency: 'cad', amount: 200000 }],
-      pending: [],
-    });
+    mockPaymentDAO.findFirst.mockResolvedValue({ gatewayChargeId: 'ch_tenant' });
 
     await (cronService as any).checkFundsAvailability();
 
+    expect(mockPaymentDAO.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cuid: CUID,
+        maintenanceRequestUid: MRUID,
+        paymentType: PaymentRecordType.MAINTENANCE,
+        status: PaymentRecordStatus.PAID,
+      })
+    );
     expect(mockInvoiceDAO.updateById).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
@@ -6057,13 +6447,8 @@ describe('PaymentCronService - checkFundsAvailability', () => {
     );
   });
 
-  it('skips invoice without updating when Stripe balance is insufficient', async () => {
+  it('skips the invoice while no PAID tenant charge exists', async () => {
     mockInvoiceDAO.findPendingFundsCheck.mockResolvedValue([makeSettledInvoice()] as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: PM_ACCOUNT_ID } as any);
-    mockStripe.getConnectBalance.mockResolvedValue({
-      available: [{ currency: 'cad', amount: 10000 }], // less than 50000
-      pending: [],
-    });
 
     await (cronService as any).checkFundsAvailability();
 
@@ -6071,34 +6456,17 @@ describe('PaymentCronService - checkFundsAvailability', () => {
     expect(mockEmitter.emit).not.toHaveBeenCalled();
   });
 
-  it('skips entire cuid batch when no payment processor account found', async () => {
-    mockInvoiceDAO.findPendingFundsCheck.mockResolvedValue([makeSettledInvoice()] as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+  it("never reads the PM's Connect balance (maintenance funds sit on the platform)", async () => {
+    mockInvoiceDAO.findPendingFundsCheck.mockResolvedValue([
+      makeSettledInvoice({ invuid: 'INV-001' }),
+      makeSettledInvoice({ invuid: 'INV-002', cuid: 'CUID_2' }),
+    ] as any);
+    mockPaymentDAO.findFirst.mockResolvedValue({ gatewayChargeId: 'ch_tenant' });
 
     await (cronService as any).checkFundsAvailability();
 
-    expect(mockStripe.getConnectBalance).not.toHaveBeenCalled();
-    expect(mockInvoiceDAO.updateById).not.toHaveBeenCalled();
-  });
-
-  it('makes one Stripe balance call per unique PM account across multiple invoices', async () => {
-    const cuid2 = 'CUID_2';
-    const invoices = [
-      makeSettledInvoice({ invuid: 'INV-001', cuid: CUID }),
-      makeSettledInvoice({ invuid: 'INV-002', cuid: CUID }),
-      makeSettledInvoice({ invuid: 'INV-003', cuid: cuid2 }),
-    ];
-    mockInvoiceDAO.findPendingFundsCheck.mockResolvedValue(invoices as any);
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: PM_ACCOUNT_ID } as any);
-    mockStripe.getConnectBalance.mockResolvedValue({
-      available: [{ currency: 'cad', amount: 999999 }],
-      pending: [],
-    });
-
-    await (cronService as any).checkFundsAvailability();
-
-    // 2 cuids → 2 Stripe balance calls (not 3 per invoice)
-    expect(mockStripe.getConnectBalance).toHaveBeenCalledTimes(2);
+    expect(mockGateway.getConnectBalance).not.toHaveBeenCalled();
+    expect(mockInvoiceDAO.updateById).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -6138,7 +6506,7 @@ describe('PaymentCronService - getCronJobs', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  it('returns fixed UTC jobs plus per-timezone variants', async () => {
+  it('returns fixed UTC jobs plus hourly client-local-time jobs', async () => {
     mockClientDAO.getDistinctTimezones.mockResolvedValue(['America/Vancouver', 'Africa/Lagos']);
 
     const jobs = await cronService.getCronJobs();
@@ -6151,32 +6519,27 @@ describe('PaymentCronService - getCronJobs', () => {
     expect(names).toContain('payment.check-funds-availability-morning');
     expect(names).toContain('payment.check-funds-availability-evening');
 
-    // Per-timezone variants for each timezone
-    for (const tz of ['America/Vancouver', 'Africa/Lagos']) {
-      expect(names).toContain(`payment.auto-charge-overdue-maintenance.${tz}`);
-      expect(names).toContain(`payment.auto-charge-due-rent.${tz}`);
-      expect(names).toContain(`payment.mark-overdue.${tz}`);
-    }
+    // One hourly job per operation — not one per timezone
+    expect(names).toContain('payment.auto-charge-overdue-maintenance.hourly');
+    expect(names).toContain('payment.auto-charge-due-rent.hourly');
+    expect(names).toContain('payment.mark-overdue.hourly');
+    expect(names).toContain('payment.pad-pre-debit-notices.hourly');
+    expect(names.some((n) => n.includes('America/Vancouver'))).toBe(false);
   });
 
-  it('falls back to UTC when getDistinctTimezones returns empty', async () => {
-    mockClientDAO.getDistinctTimezones.mockResolvedValue([]);
+  it('does not read client timezones at registration (they are read on each run)', async () => {
+    await cronService.getCronJobs();
 
-    const jobs = await cronService.getCronJobs();
-
-    const names = jobs.map((j) => j.name);
-    expect(names).toContain('payment.auto-charge-due-rent.UTC');
-    expect(names).toContain('payment.mark-overdue.UTC');
+    expect(mockClientDAO.getDistinctTimezones).not.toHaveBeenCalled();
   });
 
-  it('timezone-aware jobs carry the correct timezone field', async () => {
-    mockClientDAO.getDistinctTimezones.mockResolvedValue(['America/Vancouver']);
-
+  it('hourly client-local-time jobs run every hour in UTC', async () => {
     const jobs = await cronService.getCronJobs();
 
-    const tzJob = jobs.find((j) => j.name === 'payment.auto-charge-due-rent.America/Vancouver');
-    expect(tzJob).toBeDefined();
-    expect(tzJob!.timezone).toBe('America/Vancouver');
+    const hourlyJob = jobs.find((j) => j.name === 'payment.auto-charge-due-rent.hourly');
+    expect(hourlyJob).toBeDefined();
+    expect(hourlyJob!.schedule).toBe('0 * * * *');
+    expect(hourlyJob!.timezone).toBeUndefined();
   });
 
   it('funds availability jobs have no timezone field (fixed UTC)', async () => {
@@ -6187,5 +6550,126 @@ describe('PaymentCronService - getCronJobs', () => {
     const morningJob = jobs.find((j) => j.name === 'payment.check-funds-availability-morning');
     expect(morningJob).toBeDefined();
     expect(morningJob!.timezone).toBeUndefined();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// createCardPaymentSession — one payable checkout per charge, safe return URLs
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - createCardPaymentSession — session expiry and return URLs', () => {
+  const TENANT_USER_ID = new Types.ObjectId().toString();
+  const PROFILE_ID = new Types.ObjectId();
+  const FRONTEND = 'https://app.example.com';
+  let originalFrontendUrl: string;
+
+  const setup = (paymentOverrides: Record<string, any> = {}) => {
+    const payment = makePayment({ tenant: PROFILE_ID, currency: 'cad', ...paymentOverrides });
+    const paymentDAO = {
+      findFirst: jest.fn().mockResolvedValue(payment),
+      updateById: jest.fn().mockResolvedValue({}),
+    };
+    const gateway = {
+      voidInvoice: jest.fn().mockResolvedValue({ success: true }),
+      expireCheckoutSession: jest.fn().mockResolvedValue({
+        success: true,
+        data: { status: 'expired' },
+      }),
+    };
+    const stripe = {
+      createPaymentCheckoutSession: jest
+        .fn()
+        .mockResolvedValue({ id: 'cs_new', url: 'https://checkout.stripe.com/cs_new' }),
+    };
+    const svc = makeServiceWithMocks({
+      paymentDAO: paymentDAO as any,
+      paymentProcessorDAO: {
+        findFirst: jest.fn().mockResolvedValue({ accountId: 'acct_1', chargesEnabled: true }),
+      } as any,
+      profileDAO: {
+        findFirst: jest.fn().mockResolvedValue({ _id: PROFILE_ID, user: TENANT_USER_ID }),
+      } as any,
+      userDAO: { findFirst: jest.fn().mockResolvedValue({ email: 't@example.com' }) } as any,
+      paymentGatewayService: gateway as any,
+      stripeService: stripe,
+    });
+    return { svc, paymentDAO, gateway, stripe };
+  };
+
+  beforeAll(() => {
+    originalFrontendUrl = envVariables.FRONTEND.URL;
+    envVariables.FRONTEND.URL = FRONTEND;
+  });
+  afterAll(() => {
+    envVariables.FRONTEND.URL = originalFrontendUrl;
+  });
+
+  it('stores the new checkout session id on the payment', async () => {
+    const { svc, paymentDAO } = setup();
+
+    await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID);
+
+    expect(paymentDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
+      $set: { cardCheckoutSessionId: 'cs_new' },
+    });
+  });
+
+  it('expires the previous open session before creating a new one', async () => {
+    const { svc, gateway, stripe, paymentDAO } = setup({ cardCheckoutSessionId: 'cs_old' });
+
+    await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID);
+
+    expect(gateway.expireCheckoutSession).toHaveBeenCalledWith('stripe', 'cs_old');
+    expect(paymentDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
+      $unset: { cardCheckoutSessionId: 1 },
+    });
+    expect(gateway.expireCheckoutSession.mock.invocationCallOrder[0]).toBeLessThan(
+      stripe.createPaymentCheckoutSession.mock.invocationCallOrder[0]
+    );
+  });
+
+  it('refuses a new session when the previous one was already paid', async () => {
+    const { svc, gateway, stripe } = setup({ cardCheckoutSessionId: 'cs_old' });
+    gateway.expireCheckoutSession.mockResolvedValue({
+      success: true,
+      data: { status: 'complete' },
+    });
+
+    await expect(svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID)).rejects.toThrow(
+      'already been completed'
+    );
+    expect(stripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('refuses a new session when the previous one cannot be expired', async () => {
+    const { svc, gateway, stripe } = setup({ cardCheckoutSessionId: 'cs_old' });
+    gateway.expireCheckoutSession.mockResolvedValue({ success: false, data: null });
+
+    await expect(svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID)).rejects.toThrow(
+      BadRequestError
+    );
+    expect(stripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [`/tenants/${CUID}/u1/payments?ok=1`, `${FRONTEND}/tenants/${CUID}/u1/payments?ok=1`],
+    [`${FRONTEND}/tenants/${CUID}/u1/payments`, `${FRONTEND}/tenants/${CUID}/u1/payments`],
+    ['https://evil.example.com/tenants/x/', null],
+    ['//evil.example.com/tenants/x/', null],
+    ['/tenants/OTHER_CUID/u1/payments', null],
+    [`${FRONTEND}.evil.com/tenants/${CUID}/`, null],
+  ])('resolves return URL %s safely', async (requested, expected) => {
+    const { svc, stripe } = setup();
+
+    await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID, { successUrl: requested });
+
+    const { successUrl } = stripe.createPaymentCheckoutSession.mock.calls[0][0];
+    if (expected) {
+      expect(successUrl).toBe(expected);
+    } else {
+      expect(successUrl).toMatch(
+        new RegExp(`^${FRONTEND}/tenants/${CUID}/.+payment_success=true$`)
+      );
+    }
   });
 });

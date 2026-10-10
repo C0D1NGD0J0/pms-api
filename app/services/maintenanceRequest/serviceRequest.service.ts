@@ -9,11 +9,11 @@ import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { MoneyUtils } from '@utils/money.utils';
 import { S3Service } from '@services/fileUpload';
 import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
-import { convertUserRoleToEnum } from '@utils/helpers';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { UploadResult } from '@interfaces/utils.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -21,6 +21,7 @@ import { SMSService } from '@services/smsService/sms.service';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { assertRecordOwnership } from '@utils/authorization.utils';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
+import { convertUserRoleToEnum, escapeRegExp } from '@utils/helpers';
 import ROLES, { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
@@ -382,6 +383,7 @@ export class MaintenanceRequestService {
             currentuser.client.role === 'tenant' ? new Types.ObjectId(currentuser.sub) : undefined,
           propertyId: property._id,
           propertyUnitId: unit?._id,
+          managedBy: property.managedBy,
           title: data.title,
           description: data.description,
           category: data.category,
@@ -448,7 +450,9 @@ export class MaintenanceRequestService {
               assignedBy: new Types.ObjectId(currentuser.sub),
               status: MaintenanceRequestStatus.ASSIGNED,
               ...(data.scheduledDate && { scheduledDate: new Date(data.scheduledDate) }),
-              ...(data.estimatedCost !== undefined && { estimatedCost: data.estimatedCost }),
+              ...(data.estimatedCost !== undefined && {
+                estimatedCost: MoneyUtils.toCents(data.estimatedCost),
+              }),
             },
           });
 
@@ -518,6 +522,10 @@ export class MaintenanceRequestService {
       baseFilter.createdAt = {};
       if (filters.dateFrom) baseFilter.createdAt.$gte = new Date(filters.dateFrom);
       if (filters.dateTo) baseFilter.createdAt.$lte = new Date(filters.dateTo);
+    }
+    if (filters.search?.trim()) {
+      const searchRegex = { $regex: escapeRegExp(filters.search.trim()), $options: 'i' };
+      baseFilter.$or = [{ title: searchRegex }, { mruid: searchRegex }];
     }
 
     // Resolve resource UIDs to ObjectIds for DB queries
@@ -812,7 +820,9 @@ export class MaintenanceRequestService {
             assignedBy: new Types.ObjectId(currentuser.sub),
             status: MaintenanceRequestStatus.ASSIGNED,
             ...(data.scheduledDate && { scheduledDate: new Date(data.scheduledDate) }),
-            ...(data.estimatedCost !== undefined && { estimatedCost: data.estimatedCost }),
+            ...(data.estimatedCost !== undefined && {
+              estimatedCost: MoneyUtils.toCents(data.estimatedCost),
+            }),
           },
         },
         undefined,

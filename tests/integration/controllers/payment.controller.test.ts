@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import request from 'supertest';
+import { Types } from 'mongoose';
 import { Application } from 'express';
 import { ROLES } from '@shared/constants/roles.constants';
+import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { IClientDocument } from '@interfaces/client.interface';
 import { PaymentController } from '@controllers/PaymentController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
@@ -9,6 +11,7 @@ import { IProfileDocument, IUserDocument } from '@interfaces/index';
 import { PaymentService } from '@services/payments/payments.service';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
+import { MaintenanceCategory } from '@interfaces/maintenanceRequest.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
@@ -18,8 +21,17 @@ import {
   PaymentMethod,
 } from '@interfaces/payments.interface';
 import {
+  createControllerTestApp,
+  clearTestDatabase,
+  createTestProfile,
+  createTestClient,
+  createTestUser,
+} from '@tests/helpers';
+import {
+  MaintenanceRequest,
   PaymentProcessor,
   Subscription,
+  Invoice,
   Payment,
   Profile,
   Client,
@@ -27,21 +39,16 @@ import {
   User,
 } from '@models/index';
 import {
+  MaintenanceRequestDAO,
   PaymentProcessorDAO,
   SubscriptionDAO,
+  InvoiceDAO,
   PaymentDAO,
   ProfileDAO,
   ClientDAO,
   LeaseDAO,
   UserDAO,
 } from '@dao/index';
-import {
-  createControllerTestApp,
-  clearTestDatabase,
-  createTestProfile,
-  createTestClient,
-  createTestUser,
-} from '@tests/helpers';
 
 describe('PaymentController Integration Tests', () => {
   let app: Application;
@@ -102,13 +109,16 @@ describe('PaymentController Integration Tests', () => {
     const stripeService = {} as any;
 
     const maintenancePaymentService = new MaintenancePaymentService({
+      maintenanceRequestDAO: new MaintenanceRequestDAO({
+        maintenanceRequestModel: MaintenanceRequest,
+      }),
       subscriptionPlanConfig,
       paymentGatewayService: mockPaymentGatewayService,
       paymentProcessorDAO,
       emitterService,
       subscriptionDAO,
       smsService: {} as any,
-      invoiceDAO,
+      invoiceDAO: new InvoiceDAO({ invoiceModel: Invoice }),
       profileDAO,
       paymentDAO,
       clientDAO,
@@ -307,8 +317,9 @@ describe('PaymentController Integration Tests', () => {
         .send({ amount: 50000, reason: 'Partial refund requested' })
         .expect(201);
 
+      // A partial refund keeps the payment PAID; refund.amount is the cumulative total
       expect(response.body.success).toBe(true);
-      expect(response.body.data.status).toBe(PaymentRecordStatus.REFUNDED);
+      expect(response.body.data.status).toBe(PaymentRecordStatus.PAID);
       expect(response.body.data.refund.amount).toBe(50000);
       expect(response.body.data.refund.reason).toBe('Partial refund requested');
     });
@@ -441,7 +452,38 @@ describe('PaymentController Integration Tests', () => {
       });
     });
 
+    // Charges are derived from the request's approved invoice — seed both
+    const seedBillableRequest = async (
+      mruid: string,
+      invoiceAmountInCents: number,
+      overrides: { isBillable?: boolean; invoiceStatus?: InvoiceStatus } = {}
+    ) => {
+      const maintenanceRequest = await MaintenanceRequest.create({
+        mruid,
+        cuid: localClient.cuid,
+        tenantId: tenantUser._id,
+        propertyId: new Types.ObjectId(),
+        title: 'Pipe replacement',
+        description: { text: 'Leaking pipe under the sink' },
+        category: Object.values(MaintenanceCategory)[0],
+        isBillable: overrides.isBillable ?? true,
+      });
+      await Invoice.create({
+        cuid: localClient.cuid,
+        maintenanceRequestId: maintenanceRequest._id,
+        mruid,
+        submittedBy: new Types.ObjectId(),
+        submittedAt: new Date(),
+        amountInCents: invoiceAmountInCents,
+        currency: 'USD',
+        description: 'Pipe replacement',
+        status: overrides.invoiceStatus ?? InvoiceStatus.APPROVED,
+      });
+    };
+
     it('should create a PENDING maintenance payment linked to the MR uid', async () => {
+      await seedBillableRequest('MR-TEST-001', 45000);
+
       const response = await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
         .send({
@@ -467,7 +509,60 @@ describe('PaymentController Integration Tests', () => {
       expect(daysUntilDue).toBeLessThan(6);
     });
 
+    it('should charge the approved invoice amount, not the amount in the request body', async () => {
+      await seedBillableRequest('MR-TEST-005', 30000);
+
+      await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
+        .send({ mruid: 'MR-TEST-005', tenantId: tenantUser._id.toString(), amount: 1 })
+        .expect(201);
+
+      const created = await Payment.findOne({ maintenanceRequestUid: 'MR-TEST-005' });
+      expect(created!.baseAmount).toBe(30000);
+    });
+
+    it('should reject a charge when the invoice is not approved', async () => {
+      await seedBillableRequest('MR-TEST-006', 30000, { invoiceStatus: InvoiceStatus.PENDING });
+
+      await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
+        .send({ mruid: 'MR-TEST-006', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .expect(400);
+
+      expect(await Payment.findOne({ maintenanceRequestUid: 'MR-TEST-006' })).toBeNull();
+    });
+
+    it('should reject a charge when the request is not billable', async () => {
+      await seedBillableRequest('MR-TEST-007', 30000, { isBillable: false });
+
+      await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
+        .send({ mruid: 'MR-TEST-007', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .expect(400);
+    });
+
+    it('should create a new charge when the previous one was cancelled', async () => {
+      await seedBillableRequest('MR-TEST-008', 30000);
+      const firstResponse = await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
+        .send({ mruid: 'MR-TEST-008', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .expect(201);
+      await Payment.updateOne(
+        { pytuid: firstResponse.body.data.pytuid },
+        { $set: { status: PaymentRecordStatus.CANCELLED } }
+      );
+
+      await request(app)
+        .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
+        .send({ mruid: 'MR-TEST-008', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .expect(201);
+
+      const charges = await Payment.find({ maintenanceRequestUid: 'MR-TEST-008' });
+      expect(charges).toHaveLength(2);
+    });
+
     it('should use the provided description on the payment record', async () => {
+      await seedBillableRequest('MR-TEST-002', 20000);
       await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
         .send({
@@ -483,6 +578,7 @@ describe('PaymentController Integration Tests', () => {
     });
 
     it('should return 404 when the tenant does not exist', async () => {
+      await seedBillableRequest('MR-TEST-003', 10000);
       const response = await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
         .send({

@@ -137,6 +137,10 @@ export const MAIL_POLICY: Record<MailType, MailPolicy> = {
   [MailType.LEASE_PAYMENT_REMINDER]: required('payments'),
   [MailType.PAD_MANDATE_CONFIRMATION]: required('payments'),
   [MailType.PAD_PRE_DEBIT_NOTIFICATION]: required('payments'),
+  [MailType.PAD_DEBIT_INITIATED]: required('payments'),
+  [MailType.PAYMENT_RETRIED_WITH_CARD]: required('payments'),
+  [MailType.PAYMENT_REFUNDED]: required('payments'),
+  [MailType.DEPOSIT_REFUND_FAILED]: required('payments'),
   [MailType.MAINTENANCE_CHARGE_CREATED]: required('payments'),
   [MailType.MAINTENANCE_VENDOR_PAID]: optional('payments'),
   // Lease legal notices — always sent
@@ -160,7 +164,8 @@ export const MAIL_POLICY: Record<MailType, MailPolicy> = {
   // Tenant is told a vendor will enter their unit — entry notice
   [MailType.MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT]: required('maintenance'),
   [MailType.INSPECTION_SCHEDULED]: required('maintenance'),
-  [MailType.INSPECTION_APPROVED]: optional('maintenance'),
+  // Carries the deposit disposition — a legal notice
+  [MailType.INSPECTION_APPROVED]: required('maintenance'),
   [MailType.INSPECTION_REJECTED]: optional('maintenance'),
   [MailType.INSPECTION_CANCELLED]: optional('maintenance'),
   [MailType.INSPECTION_SUBMITTED]: optional('maintenance'),

@@ -13,6 +13,16 @@ export interface FeaturesConfig {
   AI_ENABLED: boolean;
 }
 
+export interface StripeConfig {
+  PAD_PRE_NOTIFICATION_DAYS: number;
+  CONNECT_WEBHOOK_SECRET: string;
+  ACSS_PER_TXN_LIMIT: number;
+  WEBHOOK_SECRET: string;
+  REDIRECT_URL: string;
+  SECRET_KEY: string;
+  PUBLIC_KEY: string;
+}
+
 export interface JwtConfig {
   REFRESH: {
     EXPIRESIN: string;
@@ -32,15 +42,6 @@ export interface ServerConfig {
   LOG_LEVEL: string;
   PORT: number;
   ENV: string;
-}
-
-export interface StripeConfig {
-  CONNECT_WEBHOOK_SECRET: string;
-  ACSS_PER_TXN_LIMIT: number;
-  WEBHOOK_SECRET: string;
-  REDIRECT_URL: string;
-  SECRET_KEY: string;
-  PUBLIC_KEY: string;
 }
 
 export interface EmailProviderConfig {

@@ -23,7 +23,6 @@ const makeInvoice = (overrides: Record<string, any> = {}) => ({
   invuid: 'INV-001',
   cuid: CUID,
   mruid: MRUID,
-  maintenanceRequestUid: MRUID,
   amountInCents: 50000,
   submittedBy: VENDOR_ID,
   ...overrides,
@@ -132,10 +131,7 @@ describe('PaymentCronService — autoPayoutVendors event emission', () => {
   it('should emit one event per successful payout in batch', async () => {
     const { service, invoiceDAO, emitterService } = makeMocks();
     invoiceDAO.findReadyForAutoPayout.mockReturnValue(
-      Promise.resolve([
-        makeInvoice({ mruid: 'MR-001', maintenanceRequestUid: 'MR-001' }),
-        makeInvoice({ mruid: 'MR-002', maintenanceRequestUid: 'MR-002' }),
-      ])
+      Promise.resolve([makeInvoice({ mruid: 'MR-001' }), makeInvoice({ mruid: 'MR-002' })])
     );
 
     const handler = await getAutoPayoutHandler(service);
@@ -145,6 +141,28 @@ describe('PaymentCronService — autoPayoutVendors event emission', () => {
       ([type]: [string]) => type === EventTypes.MAINTENANCE_AUTO_VENDOR_PAID
     );
     expect(autoPayCalls).toHaveLength(2);
+  });
+
+  it('pays the vendor using the invoice mruid', async () => {
+    const { service, invoiceDAO, maintenancePaymentService } = makeMocks();
+    invoiceDAO.findReadyForAutoPayout.mockReturnValue(Promise.resolve([makeInvoice()]));
+
+    const handler = await getAutoPayoutHandler(service);
+    await handler();
+
+    expect(maintenancePaymentService.payVendor).toHaveBeenCalledWith(CUID, MRUID);
+  });
+
+  it('skips an invoice without an mruid', async () => {
+    const { service, invoiceDAO, maintenancePaymentService } = makeMocks();
+    invoiceDAO.findReadyForAutoPayout.mockReturnValue(
+      Promise.resolve([makeInvoice({ mruid: undefined })])
+    );
+
+    const handler = await getAutoPayoutHandler(service);
+    await handler();
+
+    expect(maintenancePaymentService.payVendor).not.toHaveBeenCalled();
   });
 
   it('should NOT emit when no invoices are ready', async () => {

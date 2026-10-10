@@ -822,6 +822,36 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     );
   });
 
+  it('listRequests: search filter matches title or mruid with an escaped, case-insensitive regex', async () => {
+    mockDAO.listWithDetails.mockResolvedValue({ items: [], pagination: {} });
+
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    await service.listRequests(
+      ctx as IRequestContext,
+      { search: '  leak (sink)  ' },
+      { page: 1, limit: 5 }
+    );
+
+    const expectedRegex = { $regex: 'leak \\(sink\\)', $options: 'i' };
+    expect(mockDAO.listWithDetails).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cuid: testCuid,
+        $or: [{ title: expectedRegex }, { mruid: expectedRegex }],
+      }),
+      { page: 1, limit: 5 }
+    );
+  });
+
+  it('listRequests: blank search adds no $or filter', async () => {
+    mockDAO.listWithDetails.mockResolvedValue({ items: [], pagination: {} });
+
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    await service.listRequests(ctx as IRequestContext, { search: '   ' }, { page: 1, limit: 20 });
+
+    const [filterArg] = mockDAO.listWithDetails.mock.calls[0];
+    expect(filterArg).not.toHaveProperty('$or');
+  });
+
   // ─── acceptAssignment ─────────────────────────────────────────────────────
 
   it('acceptAssignment: team member can accept when primary vendor is the assigned vendor', async () => {

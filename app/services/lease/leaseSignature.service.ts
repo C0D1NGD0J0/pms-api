@@ -422,8 +422,9 @@ export class LeaseSignatureService {
         { _id: new Types.ObjectId(leaseId) },
         {
           $set: {
-            'eSignature.status': 'failed',
-            'eSignature.error': error,
+            'eSignature.status': ILeaseESignatureStatusEnum.FAILED,
+            'eSignature.errorMessage': error,
+            'eSignature.failedAt': new Date(),
             updatedAt: new Date(),
           },
         }
@@ -504,7 +505,8 @@ export class LeaseSignatureService {
           result = await this.leaseDAO.update(
             { _id: lease._id },
             {
-              'eSignature.status': ILeaseESignatureStatusEnum.COMPLETED,
+              // 'signed' (not 'completed') — the lease model only activates electronic leases with eSignature.status === 'signed'
+              'eSignature.status': ILeaseESignatureStatusEnum.SIGNED,
               'eSignature.completedAt': new Date(data?.completedDate || Date.now()),
               status: LeaseStatus.ACTIVE,
               updatedAt: new Date(),

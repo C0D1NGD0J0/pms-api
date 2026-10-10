@@ -138,6 +138,8 @@ random.ts
 ./docs
 docs/
 scripts/
+# Tests for local-only migration scripts (scripts/ is not committed)
+tests/unit/migrations/
 *.md
 uploads/
 .vscode/*

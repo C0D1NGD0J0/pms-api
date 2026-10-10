@@ -1,6 +1,7 @@
 import { UserDAO } from '@dao/userDAO';
 import { faker } from '@faker-js/faker';
 import { LeaseDAO } from '@dao/leaseDAO';
+import { PaymentDAO } from '@dao/paymentDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
@@ -8,12 +9,17 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { mockEventEmitter } from '@tests/setup/externalMocks';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { InspectionService } from '@services/inspection/inspection.service';
-import { PropertyUnit, Inspection, Property, Lease, User } from '@models/index';
+import { PropertyUnit, Inspection, Property, Payment, Lease, User } from '@models/index';
 import {
   InspectionStatus,
   ConditionRating,
   InspectionType,
 } from '@interfaces/inspection.interface';
+import {
+  PaymentRecordStatus,
+  PaymentRecordType,
+  PaymentMethod,
+} from '@interfaces/payments.interface';
 import {
   createTestPropertyUnit,
   createTestProperty,
@@ -56,6 +62,8 @@ describe('InspectionService Integration Tests', () => {
       propertyDAO,
       userDAO,
       emitterService: mockEventEmitter as any,
+      notificationService: { createNotification: jest.fn() } as any,
+      paymentDAO: new PaymentDAO({ paymentModel: Payment }),
       emailQueue: mockEmailQueue,
     });
   });
@@ -263,7 +271,55 @@ describe('InspectionService Integration Tests', () => {
       dbDoc = await Inspection.findOne({ iuid });
       expect(dbDoc!.status).toBe(InspectionStatus.APPROVED);
       expect(dbDoc!.refundInfo!.proposedRefund).toBe(refundAmount);
-      expect(dbDoc!.refundInfo!.isRefunded).toBe(true);
+      // Flips to true only once the deposit refund actually succeeds (PAYMENT_REFUNDED)
+      expect(dbDoc!.refundInfo!.isRefunded).toBe(false);
+    });
+
+    it('caps the refund at the paid deposit record (security + pet) of the original lease for a renewal', async () => {
+      const { cuid, admin, lease, tenant } = await setupScenario();
+
+      // Renewal of `lease` — the deposit record stays on the original lease (carried forward)
+      const renewal = await Lease.create({
+        ...(await Lease.findById(lease._id).lean()),
+        _id: undefined,
+        luid: `lease-${faker.string.alphanumeric(12)}`,
+        leaseNumber: undefined,
+        previousLeaseId: lease._id,
+        duration: {
+          startDate: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000),
+          endDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        },
+      } as any);
+      await Lease.updateOne({ _id: lease._id }, { $set: { status: LeaseStatus.COMPLETED } });
+
+      await Payment.create({
+        cuid,
+        pytuid: `PY-${faker.string.alphanumeric(8)}`,
+        invoiceNumber: `INV-${faker.string.alphanumeric(8)}`,
+        paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+        paymentMethod: PaymentMethod.ONLINE,
+        status: PaymentRecordStatus.PAID,
+        baseAmount: 2000, // 1500 security + 500 pet deposit
+        processingFee: 0,
+        applicationFee: 0,
+        platformRevenue: 0,
+        currency: 'CAD',
+        lease: lease._id,
+        tenant: tenant._id,
+        dueDate: new Date(),
+        isManualEntry: false,
+      } as any);
+
+      const result = await inspectionService.scheduleInspection(cuid, admin._id.toString(), {
+        type: InspectionType.MOVE_OUT,
+        leaseId: renewal.luid,
+        scheduledDate: new Date(Date.now() + 86400000).toISOString(),
+        refundDeposit: true,
+      });
+
+      const dbDoc = await Inspection.findOne({ iuid: (result.data as any).iuid });
+      expect(dbDoc!.refundInfo!.amount).toBe(2000);
+      expect(dbDoc!.refundInfo!.currency).toBe('CAD');
     });
   });
 

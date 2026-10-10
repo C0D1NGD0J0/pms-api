@@ -1,27 +1,39 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { envVariables } from '@shared/config';
 import { MoneyUtils } from '@utils/money.utils';
 import { type QueryFilter, Types } from 'mongoose';
 import { MAX_CHARGE_ATTEMPTS } from '@utils/constants';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PdfGeneratorService } from '@services/pdfGenerator';
-import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
+import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { InvoiceTemplateRenderer, InvoiceRenderData } from '@services/invoice';
+import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import { preventTenantConflict, calcCollectionRate, createLogger } from '@utils/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import { IVendorEarningsResponse, IVendorEarningItem } from '@interfaces/payments.interface';
+import { isAllowedCheckoutReturnUrl } from '@shared/validations/PaymentsValidation/checkoutReturnUrl';
 import {
   IPromiseReturnedData,
   IPaginateResult,
   IRequestContext,
 } from '@interfaces/utils.interface';
+import {
+  preventTenantConflict,
+  calcCollectionRate,
+  iterateInPages,
+  createLogger,
+} from '@utils/index';
+import {
+  IVendorEarningsResponse,
+  IVendorEarningItem,
+  PaymentErrorCode,
+} from '@interfaces/payments.interface';
 import {
   MaintenanceRequestDAO,
   PaymentProcessorDAO,
@@ -45,16 +57,28 @@ import {
   PaymentRecordType,
   IPaymentListItem,
   IPaymentDocument,
+  IProfileDocument,
   IPaymentFormData,
   IProfileWithUser,
+  ILeaseDocument,
   PaymentSource,
+  PaymentMethod,
 } from '@interfaces/index';
 
 import { PaymentCronService } from './paymentCron.service';
 import { RentPaymentService } from './rentPayment.service';
 import { PayoutAccountService } from './payoutAccount.service';
 import { MaintenancePaymentService } from './maintenancePayment.service';
-import { IStripeInvoiceWebhookData, PaymentWebhookService } from './paymentWebhook.service';
+import {
+  IStripeDisputeWebhookData,
+  IStripeAccountWebhookData,
+  IStripeInvoiceWebhookData,
+  IStripeChargeWebhookData,
+  IStripePayoutWebhookData,
+  PaymentWebhookService,
+} from './paymentWebhook.service';
+
+export type IManualPaymentResult = { manualEntryOutcome: ManualEntryOutcome } & IPaymentDocument;
 
 interface IConstructor {
   maintenancePaymentService: MaintenancePaymentService;
@@ -82,44 +106,23 @@ interface IConstructor {
   userDAO: UserDAO;
 }
 
-interface IStripePayoutWebhookData {
-  status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
-  failure_message?: string;
-  failure_reason?: string;
-  failure_code?: string;
-  arrival_date: number;
-  destination: string;
-  currency: string;
-  amount: number;
-  id: string;
+interface IManualEntryTarget {
+  propertyObjectId?: Types.ObjectId;
+  maintenanceRequestUid?: string;
+  unitObjectId?: Types.ObjectId;
+  lease?: ILeaseDocument;
 }
 
-interface IStripeAccountWebhookData {
-  requirements?: {
-    currently_due?: string[];
-    eventually_due?: string[];
-    past_due?: string[];
-    disabled_reason?: string;
-  };
-  details_submitted?: boolean;
-  payouts_enabled?: boolean;
-  charges_enabled?: boolean;
-}
+type ManualEntryOutcome = 'settled' | 'created';
 
-interface IStripeDisputeWebhookData {
-  evidence_details?: { due_by?: number };
-  charge?: string | { id: string };
-  currency: string;
-  reason?: string;
-  amount: number;
-}
+// Charges still owed by the tenant — a manual payment settles one of these
+const OPEN_CHARGE_STATUSES: PaymentRecordStatus[] = [
+  PaymentRecordStatus.PENDING,
+  PaymentRecordStatus.OVERDUE,
+  PaymentRecordStatus.FAILED,
+];
 
-interface IStripeChargeWebhookData {
-  refunds?: {
-    data?: Array<{ id: string }>;
-  };
-  amount_refunded?: number;
-}
+const MANUAL_ENTRY_VOID_ROLES: string[] = [ROLES.ROOT_ADMIN, ...ROLE_GROUPS.MANAGEMENT_ROLES];
 
 export class PaymentService implements ICronProvider {
   private readonly log: Logger;
@@ -401,7 +404,8 @@ export class PaymentService implements ICronProvider {
           receipt: payment.receipt || undefined,
           maintenanceRequestUid: (payment as any).maintenanceRequestUid || undefined,
           managerReviewRequired: (payment as any).managerReviewRequired || false,
-          ...(payment.status === PaymentRecordStatus.REFUNDED && payment.refund
+          // Partial refunds keep the payment PAID, so show any refunded amount
+          ...(payment.refund?.amount
             ? {
                 refundAmount: payment.refund.amount,
                 refundedAt: payment.refund.refundedAt,
@@ -684,8 +688,7 @@ export class PaymentService implements ICronProvider {
       // Fetch ALL payments for this client across all time (no date filter).
       // Overdue payments from past months are still outstanding and relevant —
       // restricting to current month would hide unpaid historical debt.
-      const result = await this.paymentDAO.findByCuid(cuid, daoFilters, { limit: 10000 });
-      const allPayments = result.items || [];
+      const allPayments = await this.fetchAllPaymentsForStats(cuid, daoFilters);
 
       // Running totals — all values are in cents (e.g. 150000 = $1,500.00)
       let expectedRevenue = 0; // PAID + PENDING + OVERDUE (excludes CANCELLED, FAILED, REFUNDED)
@@ -705,6 +708,17 @@ export class PaymentService implements ICronProvider {
         const isRent = payment.paymentType === PaymentRecordType.RENT;
 
         switch (payment.status) {
+          // PENDING_REFUND: a collected deposit whose refund is staged but not yet released.
+          // The money is still held, so it counts as collected; refund.amount is only the
+          // staged figure and is not subtracted until the refund actually goes out.
+          case PaymentRecordStatus.PENDING_REFUND:
+            expectedRevenue += amount;
+            collected += amount;
+            if (isRent) {
+              rentExpected += amount;
+              rentCollected += amount;
+            }
+            break;
           // PROCESSING: charge submitted to the bank, awaiting settlement (bank transfer).
           // Treated identically to PENDING — expected but not yet collected.
           // PENDING: payment is due but not yet collected.
@@ -721,6 +735,7 @@ export class PaymentService implements ICronProvider {
             if (isRent) rentExpected += amount;
             break;
           }
+
           // CANCELLED: obligation waived, excluded from all stats.
           case PaymentRecordStatus.CANCELLED:
             break;
@@ -752,15 +767,30 @@ export class PaymentService implements ICronProvider {
           }
 
           // PAID: payment was successfully collected.
-          // Counts toward both expectedRevenue and collected.
-          case PaymentRecordStatus.PAID:
-            expectedRevenue += amount;
-            collected += amount;
+          // Counts toward both expectedRevenue and collected, net of any partial refund.
+          case PaymentRecordStatus.PAID: {
+            // A deposit refund is money paid out to the tenant — never revenue
+            if (payment.paymentType === PaymentRecordType.DEPOSIT_REFUND) break;
+
+            // Staff manual entries aren't verified until a manager reviews them
+            if (payment.managerReviewRequired) {
+              expectedRevenue += amount;
+              pending += amount;
+              if (isRent) rentExpected += amount;
+              break;
+            }
+
+            const partiallyRefunded = Math.min(payment.refund?.amount ?? 0, amount);
+            const netAmount = amount - partiallyRefunded;
+            refunded += partiallyRefunded;
+            expectedRevenue += netAmount;
+            collected += netAmount;
             if (isRent) {
-              rentExpected += amount;
-              rentCollected += amount;
+              rentExpected += netAmount;
+              rentCollected += netAmount;
             }
             break;
+          }
 
           default:
             this.log.warn('Unknown payment status encountered', {
@@ -784,13 +814,29 @@ export class PaymentService implements ICronProvider {
           overdue, // OVERDUE only (in cents)
           refunded, // REFUNDED amounts (in cents)
           collectionRate, // percentage (0–100)
-          currency: allPayments[0]?.currency ?? 'USD',
+          currency: allPayments[allPayments.length - 1]?.currency ?? 'USD', // most recent record
         },
       };
     } catch (error: any) {
       this.log.error('Error getting payment stats', error);
       throw error;
     }
+  }
+
+  // A single list() call caps at 1000 rows, so read every page via the _id cursor
+  private async fetchAllPaymentsForStats(
+    cuid: string,
+    daoFilters: Record<string, any>
+  ): Promise<IPaymentDocument[]> {
+    // Same exclusions as paymentDAO.findByCuid: soft-deleted and vendor expense records
+    const filter: Record<string, any> = { cuid, deletedAt: null, vendorId: { $exists: false } };
+    if (daoFilters.tenantId) filter.tenant = daoFilters.tenantId;
+
+    const allPayments: IPaymentDocument[] = [];
+    for await (const payment of iterateInPages(this.paymentDAO, filter, undefined, 1000)) {
+      allPayments.push(payment);
+    }
+    return allPayments;
   }
 
   async getTenantPaymentHistory(
@@ -998,106 +1044,108 @@ export class PaymentService implements ICronProvider {
 
   // ── Operations ───────────────────────────────────────────────────────
 
+  /**
+   * Records money a property manager received outside the app (cash, cheque, bank transfer).
+   *
+   * When the payment is for a charge the app already tracks, that charge is settled instead of
+   * creating a second record: either the one named by `data.pytuid`, or the single open charge
+   * that matches (rent: lease + period; late fee: lease + period; maintenance: mruid; deposit:
+   * lease). Open charges that can't be matched unambiguously are rejected so the PM picks one —
+   * otherwise the crons would keep charging, marking overdue and adding late fees to a debt the
+   * tenant already paid. With no open charge a new PAID record is created.
+   */
   async recordManualPayment(
     cuid: string,
     userId: string,
     requestingUserSub: string,
     data: IManualPaymentFormData,
     paymentSource?: PaymentSource
-  ): IPromiseReturnedData<IPaymentDocument> {
+  ): IPromiseReturnedData<IManualPaymentResult> {
     try {
       // Prevent conflict of interest: cannot record payment where you are the tenant
       preventTenantConflict(requestingUserSub, data.tenantId as string);
+      this.assertValidManualEntry(data);
 
       const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
       if (!client) {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      const tenantProfile = await this.getProfileOrThrow(
-        data.tenantId as string,
-        'Tenant profile not found'
-      );
+      const tenantProfile = await this.getClientTenantProfileOrThrow(cuid, data.tenantId);
+      const target = await this.resolveManualEntryTarget(cuid, data);
 
-      let lease;
-      let currency: string | undefined;
-      let propertyObjectId: Types.ObjectId | undefined;
-      let unitObjectId: Types.ObjectId | undefined;
+      const chargeToSettle = data.pytuid
+        ? await this.getChargeToSettleOrThrow(cuid, data, tenantProfile._id, target.lease?._id)
+        : await this.findOpenChargeToSettle(cuid, data, tenantProfile._id, target.lease?._id);
 
-      if (data.leaseId) {
-        lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid });
-        if (!lease) {
-          throw new NotFoundError({ message: 'Lease not found' });
-        }
-        currency = lease.fees?.currency;
-      } else if (data.propertyId) {
-        // Property-tied entry without a lease
-        // Values are pre-validated by Zod safeString in PaymentsValidation schema
-        const pid = String(data.propertyId);
-        const property = await this.propertyDAO.findFirst({
-          pid,
+      let payment: IPaymentDocument;
+      let manualEntryOutcome: ManualEntryOutcome;
+
+      if (chargeToSettle) {
+        payment = await this.settleChargeWithManualPayment(
+          chargeToSettle,
+          data,
+          userId,
+          paymentSource
+        );
+        manualEntryOutcome = 'settled';
+      } else {
+        const currency =
+          target.lease?.fees?.currency || (client as any).settings?.defaultCurrency || 'USD';
+
+        payment = await this.paymentDAO.insert({
           cuid,
-          deletedAt: null,
+          paymentType: data.paymentType,
+          paymentMethod: data.paymentMethod,
+          lease: target.lease ? target.lease._id : undefined,
+          propertyId: target.propertyObjectId,
+          unitId: target.unitObjectId,
+          tenant: tenantProfile._id,
+          baseAmount: data.baseAmount,
+          processingFee: data.processingFee || 0,
+          currency,
+          status: PaymentRecordStatus.PAID,
+          dueDate: data.paidAt,
+          paidAt: data.paidAt,
+          period: data.period,
+          description: data.description,
+          recordedBy: new Types.ObjectId(userId),
+          isManualEntry: true,
+          ...(target.maintenanceRequestUid
+            ? { maintenanceRequestUid: target.maintenanceRequestUid }
+            : {}),
+          // Staff-initiated entries require PM/admin confirmation before considered verified
+          managerReviewRequired: paymentSource === 'staff_initiated',
+          ...(paymentSource ? { paymentSource } : {}),
+          ...(data.receipt
+            ? { receipt: { ...data.receipt, uploadedBy: new Types.ObjectId(userId) } }
+            : {}),
         });
-        if (!property) {
-          throw new NotFoundError({ message: 'Property not found' });
-        }
-        propertyObjectId = property._id;
-
-        if (data.unitId) {
-          const puid = String(data.unitId);
-          const unit = await this.propertyUnitDAO.findFirst({
-            puid,
-            propertyId: property._id,
-            deletedAt: null,
-          });
-          if (!unit) {
-            throw new NotFoundError({ message: 'Unit not found for this property' });
-          }
-          unitObjectId = unit._id as Types.ObjectId;
-        }
+        manualEntryOutcome = 'created';
       }
 
-      // Derive currency: lease > client settings > default
-      if (!currency) {
-        currency = (client as any).settings?.currency || 'USD';
+      // A charge that was already a manual entry has been counted once — don't count it again
+      if (!chargeToSettle?.isManualEntry) {
+        this.incrementManualRecordCount(cuid).catch((err) => {
+          this.log.error({ err, cuid }, 'Background manual record usage tracking failed');
+        });
       }
 
-      const payment = await this.paymentDAO.insert({
-        cuid,
-        paymentType: data.paymentType,
-        paymentMethod: data.paymentMethod,
-        lease: lease ? lease._id : undefined,
-        propertyId: propertyObjectId,
-        unitId: unitObjectId,
-        tenant: tenantProfile._id,
-        baseAmount: data.baseAmount,
-        processingFee: data.processingFee || 0,
-        currency,
-        status: data.status || PaymentRecordStatus.PAID,
-        dueDate: data.paidAt,
-        paidAt: data.paidAt,
-        period: data.period,
-        description: data.description,
-        recordedBy: new Types.ObjectId(userId),
-        isManualEntry: true,
-        // Staff-initiated entries require PM/admin confirmation before considered verified
-        managerReviewRequired: paymentSource === 'staff_initiated',
-        ...(paymentSource ? { paymentSource } : {}),
-        ...(data.receipt
-          ? { receipt: { ...data.receipt, uploadedBy: new Types.ObjectId(userId) } }
-          : {}),
+      await this.completeManualMaintenancePayment(payment).catch((err) => {
+        this.log.error(
+          { err, cuid, pytuid: payment.pytuid },
+          'Could not complete the maintenance flow for a manual payment'
+        );
       });
 
-      // Track manual record usage for quota (fire-and-forget)
-      this.incrementManualRecordCount(cuid).catch((err) => {
-        this.log.error({ err, cuid }, 'Background manual record usage tracking failed');
-      });
-
+      const paymentData = typeof payment.toObject === 'function' ? payment.toObject() : payment;
       return {
         success: true,
-        data: payment,
-        message: 'Payment recorded successfully',
+        data: { ...paymentData, manualEntryOutcome } as IManualPaymentResult,
+        message:
+          manualEntryOutcome === 'settled'
+            ? 'Open charge settled with the manual payment'
+            : 'Payment recorded successfully',
       };
     } catch (error: any) {
       this.log.error('Error recording manual payment:', error);
@@ -1105,38 +1153,398 @@ export class PaymentService implements ICronProvider {
     }
   }
 
+  /**
+   * Counts a manual record toward the plan's quota for the current billing period.
+   * The counter is reset only by the subscription webhook when Stripe starts a new period.
+   */
   async incrementManualRecordCount(cuid: string): Promise<void> {
-    const subscription = await this.subscriptionDAO.findFirst({ cuid });
-    if (!subscription) return;
-
-    const now = dayjs();
-    const periodStart = subscription.manualRecords?.periodStart
-      ? dayjs(subscription.manualRecords.periodStart)
-      : dayjs(subscription.startDate);
-
-    const monthsElapsed =
-      (now.year() - periodStart.year()) * 12 + (now.month() - periodStart.month());
-
-    if (monthsElapsed >= 1) {
-      await this.subscriptionDAO.update(
-        { cuid },
-        {
-          $set: {
-            'manualRecords.countThisPeriod': 1,
-            'manualRecords.periodStart': now.toDate(),
-          },
-        }
-      );
-      return;
-    }
-
     await this.subscriptionDAO.incrementUsageCounter(cuid, 'manualRecords.countThisPeriod');
   }
 
+  // Defence in depth — the route schema enforces the same rules
+  private assertValidManualEntry(data: IManualPaymentFormData): void {
+    if (data.status && data.status !== PaymentRecordStatus.PAID) {
+      throw new BadRequestError({ message: 'Manual payments can only be recorded as paid' });
+    }
+    if (data.paymentMethod === PaymentMethod.ONLINE) {
+      throw new BadRequestError({
+        message: 'Online payments are recorded automatically and cannot be entered manually',
+      });
+    }
+    if (dayjs(data.paidAt).isAfter(dayjs().add(1, 'day'))) {
+      throw new BadRequestError({ message: 'Payment date cannot be in the future' });
+    }
+  }
+
+  /** The tenant must be a member of this client — a user id from another client is rejected. */
+  private async getClientTenantProfileOrThrow(
+    cuid: string,
+    tenantUserId: string
+  ): Promise<IProfileDocument> {
+    if (!Types.ObjectId.isValid(tenantUserId)) {
+      throw new BadRequestError({ message: 'Invalid tenant ID' });
+    }
+    const tenantUser = await this.userDAO.findFirst({
+      _id: new Types.ObjectId(tenantUserId),
+      'cuids.cuid': cuid,
+    });
+    if (!tenantUser) {
+      throw new NotFoundError({ message: 'Tenant not found for this account' });
+    }
+    return this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
+  }
+
+  /** Resolves and validates the lease / property / maintenance request a manual entry points to. */
+  private async resolveManualEntryTarget(
+    cuid: string,
+    data: IManualPaymentFormData
+  ): Promise<IManualEntryTarget> {
+    const target: IManualEntryTarget = {};
+
+    if (data.leaseId) {
+      const lease = await this.leaseDAO.findFirst({ luid: data.leaseId, cuid, deletedAt: null });
+      if (!lease) {
+        throw new NotFoundError({ message: 'Lease not found' });
+      }
+      if (lease.useInvitationIdAsTenantId || lease.tenantId?.toString() !== data.tenantId) {
+        throw new BadRequestError({
+          message: 'The selected tenant is not the tenant on this lease',
+        });
+      }
+      target.lease = lease;
+    } else if (data.propertyId) {
+      // Property-tied entry without a lease. Values are pre-validated by Zod safeString.
+      const property = await this.propertyDAO.findFirst({
+        pid: String(data.propertyId),
+        cuid,
+        deletedAt: null,
+      });
+      if (!property) {
+        throw new NotFoundError({ message: 'Property not found' });
+      }
+      target.propertyObjectId = property._id;
+
+      if (data.unitId) {
+        const unit = await this.propertyUnitDAO.findFirst({
+          puid: String(data.unitId),
+          propertyId: property._id,
+          deletedAt: null,
+        });
+        if (!unit) {
+          throw new NotFoundError({ message: 'Unit not found for this property' });
+        }
+        target.unitObjectId = unit._id as Types.ObjectId;
+      }
+    }
+
+    if (data.mruid) {
+      if (data.paymentType !== PaymentRecordType.MAINTENANCE) {
+        throw new BadRequestError({
+          message: 'A maintenance request can only be linked to a maintenance payment',
+        });
+      }
+      const request = await this.maintenanceRequestDAO.getByMruid(data.mruid, cuid);
+      if (!request) {
+        throw new NotFoundError({ message: 'Maintenance request not found' });
+      }
+      if (request.tenantId && request.tenantId.toString() !== data.tenantId) {
+        throw new BadRequestError({
+          message: 'The selected tenant is not the tenant on this maintenance request',
+        });
+      }
+      target.maintenanceRequestUid = data.mruid;
+      if (!target.lease && !target.propertyObjectId) {
+        target.propertyObjectId = request.propertyId as Types.ObjectId;
+        target.unitObjectId = (request.propertyUnitId as Types.ObjectId) || undefined;
+      }
+    }
+
+    return target;
+  }
+
+  /** The PM named the charge (pytuid) — it must belong to this tenant and still be owed. */
+  private async getChargeToSettleOrThrow(
+    cuid: string,
+    data: IManualPaymentFormData,
+    tenantProfileId: Types.ObjectId,
+    leaseObjectId?: Types.ObjectId
+  ): Promise<IPaymentDocument> {
+    const charge = await this.paymentDAO.findFirst({
+      pytuid: data.pytuid,
+      cuid,
+      deletedAt: null,
+      vendorId: { $exists: false },
+    });
+    if (!charge) {
+      throw new NotFoundError({ message: 'Charge not found' });
+    }
+    if (!charge.tenant?.equals(tenantProfileId)) {
+      throw new BadRequestError({ message: 'This charge belongs to a different tenant' });
+    }
+    if (charge.paymentType !== data.paymentType) {
+      throw new BadRequestError({
+        message: `This charge is a ${charge.paymentType} charge, not ${data.paymentType}`,
+      });
+    }
+    if (leaseObjectId && charge.lease && !charge.lease.equals(leaseObjectId)) {
+      throw new BadRequestError({ message: 'This charge belongs to a different lease' });
+    }
+    if (data.mruid && charge.maintenanceRequestUid !== data.mruid) {
+      throw new BadRequestError({
+        message: 'This charge belongs to a different maintenance request',
+      });
+    }
+    this.assertChargeCanBeSettled(charge);
+    this.assertAmountMatchesCharge(charge, data.baseAmount);
+    return charge;
+  }
+
+  /**
+   * Finds the single open charge a manual payment pays off. Returns null when nothing is owed
+   * for it (a new record is created). Throws when open charges exist but none or several match.
+   */
+  private async findOpenChargeToSettle(
+    cuid: string,
+    data: IManualPaymentFormData,
+    tenantProfileId: Types.ObjectId,
+    leaseObjectId?: Types.ObjectId
+  ): Promise<IPaymentDocument | null> {
+    const baseFilter: QueryFilter<IPaymentDocument> = {
+      cuid,
+      paymentType: data.paymentType,
+      deletedAt: null,
+      vendorId: { $exists: false },
+    };
+    const hasPeriod = !!(data.period?.month && data.period?.year);
+    const periodFilter: Record<string, number> = hasPeriod
+      ? { 'period.month': data.period!.month, 'period.year': data.period!.year }
+      : {};
+
+    let scope: QueryFilter<IPaymentDocument>;
+    let isExactMatch: boolean;
+
+    switch (data.paymentType) {
+      case PaymentRecordType.SECURITY_DEPOSIT:
+        if (!leaseObjectId) return null;
+        scope = { lease: leaseObjectId };
+        isExactMatch = true;
+        break;
+      case PaymentRecordType.MAINTENANCE:
+        scope = data.mruid
+          ? { maintenanceRequestUid: data.mruid }
+          : { tenant: tenantProfileId, ...(leaseObjectId ? { lease: leaseObjectId } : {}) };
+        isExactMatch = !!data.mruid;
+        break;
+      case PaymentRecordType.LATE_FEE:
+        if (!leaseObjectId) return null;
+        scope = { lease: leaseObjectId, ...periodFilter };
+        isExactMatch = hasPeriod;
+        break;
+      case PaymentRecordType.RENT:
+        if (!leaseObjectId) return null; // property-mode rent has no lease-bound charges
+        if (hasPeriod) {
+          return this.findRentChargeForPeriod(baseFilter, leaseObjectId, periodFilter, data);
+        }
+        scope = { lease: leaseObjectId };
+        isExactMatch = false;
+        break;
+      default:
+        // Deposit refunds are money paid out — there is no charge to settle
+        return null;
+    }
+
+    const { items } = await this.paymentDAO.list(
+      {
+        ...baseFilter,
+        ...scope,
+        status: { $in: [...OPEN_CHARGE_STATUSES, PaymentRecordStatus.PROCESSING] },
+      },
+      { limit: 10 }
+    );
+    const candidates = items as IPaymentDocument[];
+
+    if (candidates.some((charge) => charge.status === PaymentRecordStatus.PROCESSING)) {
+      throw new BadRequestError({
+        message:
+          'A bank debit for this charge is already in progress. Wait for it to settle before recording a manual payment.',
+        code: PaymentErrorCode.DEBIT_IN_PROGRESS,
+      });
+    }
+    if (candidates.length === 0) {
+      if (data.mruid) await this.assertMaintenanceRequestNotPaid(baseFilter, data.mruid);
+      return null;
+    }
+    if (isExactMatch && candidates.length === 1) {
+      this.assertAmountMatchesCharge(candidates[0], data.baseAmount);
+      return candidates[0];
+    }
+
+    throw new BadRequestError({
+      message: `This tenant has ${candidates.length} open ${data.paymentType.replace('_', ' ')} charge(s) that this payment could be for. Choose the charge being paid (pytuid) so it is settled instead of recorded twice.`,
+      code: PaymentErrorCode.CHARGE_SELECTION_REQUIRED,
+    });
+  }
+
+  /** Rent is unique per lease + period, so the existing record decides what happens. */
+  private async findRentChargeForPeriod(
+    baseFilter: QueryFilter<IPaymentDocument>,
+    leaseObjectId: Types.ObjectId,
+    periodFilter: Record<string, number>,
+    data: IManualPaymentFormData
+  ): Promise<IPaymentDocument | null> {
+    const existing = await this.paymentDAO.findFirst({
+      ...baseFilter,
+      ...periodFilter,
+      lease: leaseObjectId,
+    });
+    if (!existing) return null;
+
+    this.assertChargeCanBeSettled(existing);
+    this.assertAmountMatchesCharge(existing, data.baseAmount);
+    return existing;
+  }
+
+  private async assertMaintenanceRequestNotPaid(
+    baseFilter: QueryFilter<IPaymentDocument>,
+    mruid: string
+  ): Promise<void> {
+    const paid = await this.paymentDAO.findFirst({
+      ...baseFilter,
+      maintenanceRequestUid: mruid,
+      status: { $in: [PaymentRecordStatus.PAID, PaymentRecordStatus.REFUNDED] },
+    });
+    if (paid) {
+      throw new BadRequestError({
+        message: `This maintenance request has already been paid (${paid.pytuid})`,
+      });
+    }
+  }
+
+  // Open charges can be settled; so can a cancelled one the tenant ends up paying anyway
+  private assertChargeCanBeSettled(charge: IPaymentDocument): void {
+    if (charge.status === PaymentRecordStatus.PROCESSING) {
+      throw new BadRequestError({
+        message:
+          'A bank debit for this charge is already in progress. Wait for it to settle before recording a manual payment.',
+        code: PaymentErrorCode.DEBIT_IN_PROGRESS,
+      });
+    }
+    const isSettleable =
+      OPEN_CHARGE_STATUSES.includes(charge.status) ||
+      charge.status === PaymentRecordStatus.CANCELLED;
+    if (!isSettleable) {
+      throw new BadRequestError({
+        message: `This charge is already ${charge.status.replace('_', ' ')} (${charge.pytuid}) and cannot be paid again`,
+        code: PaymentErrorCode.CHARGE_ALREADY_SETTLED,
+      });
+    }
+  }
+
+  // Partial manual payments would silently write off the rest of the charge
+  private assertAmountMatchesCharge(charge: IPaymentDocument, amountInCents: number): void {
+    if (charge.baseAmount !== amountInCents) {
+      throw new BadRequestError({
+        message: `The amount must match the charge being settled (${charge.baseAmount} cents, ${charge.pytuid}). Partial manual payments are not supported.`,
+        code: PaymentErrorCode.AMOUNT_MISMATCH,
+      });
+    }
+  }
+
+  private async settleChargeWithManualPayment(
+    charge: IPaymentDocument,
+    data: IManualPaymentFormData,
+    userId: string,
+    paymentSource?: PaymentSource
+  ): Promise<IPaymentDocument> {
+    // Stop Stripe from collecting the same charge after it was paid in cash
+    await this.expireOpenCardCheckout(charge);
+    await this.voidGatewayInvoices(
+      charge,
+      'This charge is already being paid online and cannot be settled manually right now.'
+    );
+
+    const now = new Date();
+    const recordedBy = new Types.ObjectId(userId);
+    const settled = await this.paymentDAO.update(
+      { _id: charge._id, cuid: charge.cuid, status: charge.status, deletedAt: null },
+      {
+        $set: {
+          status: PaymentRecordStatus.PAID,
+          isManualEntry: true,
+          paidAt: data.paidAt,
+          paymentMethod: data.paymentMethod,
+          recordedBy,
+          // No money moved through the gateway, so no gateway or platform fees apply
+          processingFee: data.processingFee || 0,
+          applicationFee: 0,
+          platformRevenue: 0,
+          cancelledAt: null,
+          managerReviewRequired: paymentSource === 'staff_initiated',
+          ...(data.description ? { description: data.description } : {}),
+          ...(data.receipt
+            ? { receipt: { ...data.receipt, uploadedBy: recordedBy, uploadedAt: now } }
+            : {}),
+        },
+        $push: {
+          notes: {
+            note: `Settled by a manual ${data.paymentMethod.replace('_', ' ')} payment`,
+            author: userId,
+            createdAt: now,
+          },
+        },
+      }
+    );
+
+    if (!settled) {
+      throw new BadRequestError({
+        message: 'This charge changed while it was being settled. Refresh and try again.',
+      });
+    }
+    this.log.info(
+      { pytuid: charge.pytuid, cuid: charge.cuid, previousStatus: charge.status },
+      'Open charge settled by manual payment'
+    );
+    return settled;
+  }
+
+  /**
+   * A paid maintenance charge completes the service request — same outcome as the Stripe path
+   * (PaymentWebhookService.markMaintenanceChargePaid): the invoice is marked paid and
+   * MAINTENANCE_CHARGE_PAID lets the service request auto-complete.
+   */
+  private async completeManualMaintenancePayment(payment: IPaymentDocument): Promise<void> {
+    if (
+      payment.paymentType !== PaymentRecordType.MAINTENANCE ||
+      payment.vendorId ||
+      !payment.maintenanceRequestUid
+    ) {
+      return;
+    }
+
+    await this.invoiceDAO.update(
+      { mruid: payment.maintenanceRequestUid, cuid: payment.cuid, isDeleted: false },
+      { $set: { tenantPaymentStatus: TenantPaymentStatus.PAID } }
+    );
+
+    this.emitterService.emit(EventTypes.MAINTENANCE_CHARGE_PAID, {
+      cuid: payment.cuid,
+      pytuid: payment.pytuid,
+      mruid: payment.maintenanceRequestUid,
+      amountInCents: payment.baseAmount,
+    });
+  }
+
+  /**
+   * Cancels an unpaid charge (voiding its Stripe invoice). A PAID record can only be voided
+   * when it is a manual entry, by a manager or above, with a reason — this corrects a wrong
+   * manual entry without any money movement. The manual-record usage counter is not reduced:
+   * the record was created and stays in the audit trail.
+   */
   async cancelPayment(
     cuid: string,
     pytuid: string,
-    reason?: string
+    reason?: string,
+    actor?: { role?: string; userId?: string }
   ): IPromiseReturnedData<IPaymentDocument> {
     try {
       if (!cuid || !pytuid) {
@@ -1157,10 +1565,11 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Payment not found' });
       }
 
-      if (
-        payment.status === PaymentRecordStatus.PAID ||
-        payment.status === PaymentRecordStatus.CANCELLED
-      ) {
+      if (payment.status === PaymentRecordStatus.PAID) {
+        return await this.voidManualPayment(payment, reason, actor);
+      }
+
+      if (payment.status === PaymentRecordStatus.CANCELLED) {
         throw new BadRequestError({
           message: `Cannot cancel a payment with status: ${payment.status}`,
         });
@@ -1187,9 +1596,9 @@ export class PaymentService implements ICronProvider {
           ? {
               $push: {
                 notes: {
-                  text: `Cancelled: ${reason}`,
+                  note: `Cancelled: ${reason}`,
                   createdAt: dayjs().toDate(),
-                  author: 'system',
+                  author: actor?.userId ?? 'system',
                 },
               },
             }
@@ -1218,6 +1627,85 @@ export class PaymentService implements ICronProvider {
     }
   }
 
+  private async voidManualPayment(
+    payment: IPaymentDocument,
+    reason: string | undefined,
+    actor?: { role?: string; userId?: string }
+  ): IPromiseReturnedData<IPaymentDocument> {
+    if (!payment.isManualEntry || payment.gatewayChargeId) {
+      throw new BadRequestError({
+        message: 'A paid online payment cannot be cancelled — refund it instead',
+      });
+    }
+    if (!actor?.role || !MANUAL_ENTRY_VOID_ROLES.includes(actor.role)) {
+      throw new ForbiddenError({
+        message: 'Only managers and administrators can void a recorded manual payment',
+      });
+    }
+    if (!reason?.trim()) {
+      throw new BadRequestError({ message: 'A reason is required to void a manual payment' });
+    }
+
+    const now = new Date();
+    const voided = await this.paymentDAO.update(
+      {
+        _id: payment._id,
+        cuid: payment.cuid,
+        status: PaymentRecordStatus.PAID,
+        isManualEntry: true,
+      },
+      {
+        $set: { status: PaymentRecordStatus.CANCELLED, cancelledAt: now },
+        $push: {
+          notes: {
+            note: `Manual entry voided: ${reason.trim()}`,
+            author: actor.userId ?? actor.role,
+            createdAt: now,
+          },
+        },
+      }
+    );
+    if (!voided) {
+      throw new BadRequestError({
+        message: 'This payment changed while it was being voided. Refresh and try again.',
+      });
+    }
+
+    if (payment.paymentType === PaymentRecordType.MAINTENANCE && payment.maintenanceRequestUid) {
+      await this.invoiceDAO
+        .update(
+          {
+            mruid: payment.maintenanceRequestUid,
+            cuid: payment.cuid,
+            isDeleted: false,
+            tenantPaymentStatus: TenantPaymentStatus.PAID,
+          },
+          { $set: { tenantPaymentStatus: TenantPaymentStatus.UNPAID } }
+        )
+        .catch((err) => {
+          this.log.error(
+            { err, pytuid: payment.pytuid },
+            'Could not reset invoice payment status after voiding a manual payment'
+          );
+        });
+    }
+
+    this.log.info(
+      { pytuid: payment.pytuid, cuid: payment.cuid, voidedBy: actor.userId, reason },
+      'Manual payment voided'
+    );
+    return { success: true, data: voided, message: 'Manual payment voided' };
+  }
+
+  /**
+   * Refunds part or all of a paid online payment. `refund.amount` is cumulative: partial
+   * refunds keep the record PAID and further refunds are allowed up to the remaining amount;
+   * it becomes REFUNDED only once fully refunded.
+   *
+   * The refunded total is claimed atomically before Stripe is called (so two concurrent
+   * requests can't both refund) and released if Stripe fails. The idempotency key is tied to
+   * the new total, so a retried request can't refund twice.
+   */
   async refundPayment(
     cuid: string,
     pytuid: string,
@@ -1250,9 +1738,16 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      if (data.amount && data.amount > payment.baseAmount) {
+      const alreadyRefunded = payment.refund?.amount ?? 0;
+      const refundableAmount = payment.baseAmount - alreadyRefunded;
+      if (refundableAmount <= 0) {
+        throw new BadRequestError({ message: 'This payment has already been fully refunded' });
+      }
+
+      const refundAmount = data.amount ?? refundableAmount;
+      if (refundAmount > refundableAmount) {
         throw new BadRequestError({
-          message: `Refund amount cannot exceed the original payment amount of ${payment.baseAmount}`,
+          message: `Refund amount cannot exceed the remaining refundable amount of ${refundableAmount}`,
         });
       }
 
@@ -1261,36 +1756,121 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({ message: 'Payment processor not configured for this account' });
       }
 
-      const refundResult = await this.paymentGatewayService.createRefund(
-        IPaymentGatewayProvider.STRIPE,
-        {
-          chargeId: payment.gatewayChargeId,
-          amountInCents: data.amount,
-          reason: 'requested_by_customer',
-          note: data.reason,
-        }
-      );
+      const vendorPayout = await this.getVendorPayoutToReverse(payment, data.reverseVendorTransfer);
 
-      if (!refundResult.success) {
+      const totalRefunded = alreadyRefunded + refundAmount;
+      const isFullyRefunded = totalRefunded >= payment.baseAmount;
+
+      const claimed = await this.paymentDAO.update(
+        {
+          _id: payment._id,
+          cuid,
+          status: PaymentRecordStatus.PAID,
+          'refund.amount': alreadyRefunded > 0 ? alreadyRefunded : { $in: [null, 0] },
+        },
+        { $set: { 'refund.amount': totalRefunded } }
+      );
+      if (!claimed) {
         throw new BadRequestError({
-          message: refundResult.message || 'Stripe refund failed',
+          message: 'This payment changed or another refund is in progress. Refresh and try again.',
         });
       }
 
+      let vendorTransferReversalId: string | undefined;
+      let gatewayRefundId: string | undefined;
+      try {
+        if (vendorPayout) {
+          const reversal = await this.paymentGatewayService.createTransferReversal(
+            IPaymentGatewayProvider.STRIPE,
+            vendorPayout.transferId,
+            Math.min(refundAmount, vendorPayout.amountInCents),
+            {
+              metadata: { pytuid, cuid, reason: 'tenant_refund' },
+              idempotencyKey: `refund-vendor-reversal:${pytuid}:${totalRefunded}`,
+            }
+          );
+          if (!reversal.success) {
+            throw new BadRequestError({
+              message: `Could not reverse the vendor payout: ${reversal.message || 'unknown error'}`,
+            });
+          }
+          vendorTransferReversalId = reversal.data?.reversalId;
+        }
+
+        const refundResult = await this.paymentGatewayService.createRefund(
+          IPaymentGatewayProvider.STRIPE,
+          {
+            chargeId: payment.gatewayChargeId,
+            amountInCents: refundAmount,
+            reason: 'requested_by_customer',
+            note: data.reason,
+            idempotencyKey: `refund:${pytuid}:${totalRefunded}`,
+          }
+        );
+        if (!refundResult.success) {
+          throw new BadRequestError({
+            message: refundResult.message || 'Stripe refund failed',
+          });
+        }
+        gatewayRefundId = refundResult.data?.refundId;
+      } catch (refundError) {
+        await this.releaseRefundClaim(payment._id, alreadyRefunded, totalRefunded);
+        if (vendorTransferReversalId) {
+          // Retrying the same refund reuses the reversal (same idempotency key)
+          this.log.error(
+            { pytuid, cuid, vendorTransferReversalId },
+            'Vendor payout was reversed but the tenant refund failed — retry the refund'
+          );
+        }
+        throw refundError;
+      }
+
       const updated = await this.paymentDAO.updateById(payment._id.toString(), {
-        status: PaymentRecordStatus.REFUNDED,
-        'refund.refundedAt': dayjs().toDate(),
-        'refund.refundedBy': requestingUserSub,
-        'refund.amount': data.amount || payment.baseAmount,
-        'refund.reason': data.reason,
-        'refund.gatewayRefundId': refundResult.data?.refundId,
+        $set: {
+          status: isFullyRefunded ? PaymentRecordStatus.REFUNDED : PaymentRecordStatus.PAID,
+          'refund.refundedAt': dayjs().toDate(),
+          'refund.refundedBy': requestingUserSub,
+          'refund.amount': totalRefunded,
+          ...(data.reason ? { 'refund.reason': data.reason } : {}),
+          ...(gatewayRefundId ? { 'refund.gatewayRefundId': gatewayRefundId } : {}),
+          ...(vendorTransferReversalId
+            ? { 'refund.vendorTransferReversalId': vendorTransferReversalId }
+            : {}),
+        },
+        $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1 },
+      });
+
+      if (isFullyRefunded && payment.paymentType === PaymentRecordType.MAINTENANCE) {
+        await this.invoiceDAO
+          .update(
+            { mruid: payment.maintenanceRequestUid, cuid, isDeleted: false },
+            { $set: { tenantPaymentStatus: TenantPaymentStatus.REFUNDED } }
+          )
+          .catch((err) => {
+            this.log.error({ err, pytuid }, 'Could not mark the maintenance invoice refunded');
+          });
+      }
+
+      this.emitterService.emit(EventTypes.PAYMENT_REFUNDED, {
+        cuid,
+        pytuid,
+        chargeId: payment.gatewayChargeId,
+        tenantId: tenantProfile?.user?.toString() ?? payment.tenant.toString(),
+        amount: refundAmount,
+        refundAmount,
+        totalRefunded,
+        currency: payment.currency,
+        isPartial: !isFullyRefunded,
+        reason: data.reason,
       });
 
       this.log.info('Payment refund initiated', {
         pytuid: payment.pytuid,
         refundedBy: requestingUserSub,
-        refundAmount: data.amount || payment.baseAmount,
-        isPartial: !!data.amount && data.amount < payment.baseAmount,
+        refundAmount,
+        totalRefunded,
+        isPartial: !isFullyRefunded,
+        vendorTransferReversalId,
       });
 
       return { success: true, data: updated as IPaymentDocument };
@@ -1298,6 +1878,67 @@ export class PaymentService implements ICronProvider {
       this.log.error({ error: error.message, cuid, pytuid }, 'Error refunding payment');
       throw error;
     }
+  }
+
+  private async releaseRefundClaim(
+    paymentId: Types.ObjectId,
+    alreadyRefunded: number,
+    claimedTotal: number
+  ): Promise<void> {
+    try {
+      await this.paymentDAO.update(
+        { _id: paymentId, 'refund.amount': claimedTotal },
+        alreadyRefunded > 0
+          ? { $set: { 'refund.amount': alreadyRefunded } }
+          : { $unset: { 'refund.amount': 1 } }
+      );
+    } catch (err) {
+      this.log.error({ err, paymentId }, 'Could not release the refund claim');
+    }
+  }
+
+  /**
+   * Maintenance charges are not transferred to the PM — the vendor is paid by a separate
+   * transfer. Once the vendor is paid, refunding the tenant would come out of the platform's
+   * balance, so the refund is refused unless the PM explicitly asks to reverse the vendor payout.
+   */
+  private async getVendorPayoutToReverse(
+    payment: IPaymentDocument,
+    reverseVendorTransfer?: boolean
+  ): Promise<{ transferId: string; amountInCents: number } | null> {
+    if (
+      payment.paymentType !== PaymentRecordType.MAINTENANCE ||
+      payment.vendorId ||
+      !payment.maintenanceRequestUid
+    ) {
+      return null;
+    }
+
+    const invoice = await this.invoiceDAO.findByMaintenanceRequest(
+      payment.maintenanceRequestUid,
+      payment.cuid
+    );
+    const vendorWasPaid =
+      invoice?.vendorPayoutStatus === 'paid' || !!invoice?.vendorPayoutTransferId;
+    if (!invoice || !vendorWasPaid) return null;
+
+    if (!reverseVendorTransfer) {
+      throw new BadRequestError({
+        message:
+          'The vendor has already been paid for this maintenance request. To refund the tenant, confirm that the vendor payout should be reversed (reverseVendorTransfer: true).',
+        code: PaymentErrorCode.VENDOR_PAYOUT_REVERSAL_REQUIRED,
+      });
+    }
+    if (!invoice.vendorPayoutTransferId) {
+      throw new BadRequestError({
+        message:
+          'The vendor was paid outside the platform, so the payout cannot be reversed automatically.',
+      });
+    }
+    return {
+      transferId: invoice.vendorPayoutTransferId,
+      amountInCents: invoice.amountInCents || payment.baseAmount,
+    };
   }
 
   /**
@@ -1338,10 +1979,14 @@ export class PaymentService implements ICronProvider {
             status: PaymentRecordStatus.REFUNDED,
             'refund.refundedAt': dayjs().toDate(),
             'refund.refundedBy': releasedBy,
+            'refund.amount': refundAmount,
             'refund.reason': data?.reason || 'Security deposit refund released by PM (offline)',
           },
         });
         this.log.info({ pytuid, cuid, releasedBy }, 'Offline deposit refund released');
+        // refund.amount was set when the refund was staged, so the Stripe webhook won't announce
+        // it — tell the tenant here, offline releases included
+        await this.emitDepositRefunded(payment, refundAmount, data?.reason);
         return { success: true, data: updated as IPaymentDocument };
       }
 
@@ -1352,7 +1997,8 @@ export class PaymentService implements ICronProvider {
           amountInCents: refundAmount,
           reason: 'requested_by_customer',
           note: data?.reason || 'Security deposit refund released by PM',
-          idempotencyKey: `deposit-refund:${payment.pytuid}`,
+          // A new key per failed attempt so a retry isn't answered with Stripe's cached failure
+          idempotencyKey: `deposit-refund:${payment.pytuid}:${payment.refund?.failedAt?.getTime() ?? 0}`,
         }
       );
 
@@ -1367,9 +2013,11 @@ export class PaymentService implements ICronProvider {
           status: PaymentRecordStatus.REFUNDED,
           'refund.refundedAt': dayjs().toDate(),
           'refund.refundedBy': releasedBy,
+          'refund.amount': refundAmount,
           'refund.reason': data?.reason || 'Security deposit refund released by PM',
           'refund.gatewayRefundId': refundResult.data?.refundId,
         },
+        $unset: { 'refund.failureReason': '', 'refund.failedAt': '' },
       });
 
       this.log.info(
@@ -1377,10 +2025,36 @@ export class PaymentService implements ICronProvider {
         'Security deposit refund released via Stripe'
       );
 
+      await this.emitDepositRefunded(payment, refundAmount, data?.reason);
+
       return { success: true, data: updated as IPaymentDocument };
     } catch (error: any) {
       this.log.error({ error: error.message, cuid, pytuid }, 'Error releasing deposit refund');
       throw error;
+    }
+  }
+
+  private async emitDepositRefunded(
+    payment: IPaymentDocument,
+    refundAmount: number,
+    reason?: string
+  ): Promise<void> {
+    try {
+      const tenantProfile = await this.profileDAO.findFirst({ _id: payment.tenant });
+      this.emitterService.emit(EventTypes.PAYMENT_REFUNDED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        chargeId: payment.gatewayChargeId ?? '',
+        tenantId: tenantProfile?.user?.toString() ?? payment.tenant.toString(),
+        amount: refundAmount,
+        refundAmount,
+        totalRefunded: refundAmount,
+        currency: payment.currency,
+        isPartial: refundAmount < payment.baseAmount,
+        reason,
+      });
+    } catch (err) {
+      this.log.error({ err, pytuid: payment.pytuid }, 'Could not announce the deposit refund');
     }
   }
 
@@ -1563,33 +2237,37 @@ export class PaymentService implements ICronProvider {
       const customerEmail = tenantUser?.email ?? '';
 
       const uid = tenantUserId;
-      const frontendUrl = process.env.FRONTEND_URL ?? '';
-
-      // Validate that a caller-supplied URL belongs to this app before using it.
-      const isSafeReturnUrl = (url: string) => url.startsWith(`${frontendUrl}/tenants/${cuid}/`);
+      const frontendUrl = envVariables.FRONTEND.URL;
 
       // Fall back to the specific payment-detail page so the user lands in the
       // right context and can see success / cancel state immediately.
       const defaultSuccessUrl = `${frontendUrl}/tenants/${cuid}/${uid}/payments/${pytuid}?payment_success=true`;
       const defaultCancelUrl = `${frontendUrl}/tenants/${cuid}/${uid}/payments/${pytuid}?payment_cancelled=true`;
 
-      const successUrl =
-        returnUrls?.successUrl && isSafeReturnUrl(returnUrls.successUrl)
-          ? returnUrls.successUrl
-          : defaultSuccessUrl;
-
-      const cancelUrl =
-        returnUrls?.cancelUrl && isSafeReturnUrl(returnUrls.cancelUrl)
-          ? returnUrls.cancelUrl
-          : defaultCancelUrl;
+      const successUrl = this.resolveCheckoutReturnUrl(
+        returnUrls?.successUrl,
+        cuid,
+        defaultSuccessUrl
+      );
+      const cancelUrl = this.resolveCheckoutReturnUrl(
+        returnUrls?.cancelUrl,
+        cuid,
+        defaultCancelUrl
+      );
 
       // Use Stripe customer ID (if available) so the card is saved for future
       // charges (e.g., automatic ACSS-to-card retry when bank debit fails).
       const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
 
+      // Only one checkout per charge can be payable — paying two sessions would charge twice
+      await this.expireOpenCardCheckout(payment);
+
       // Card checkout charges through its own PaymentIntent. Void the open Stripe invoice(s)
       // first so the auto-charge cron can't also pay them while the tenant is checking out.
-      await this.voidInvoicesBeforeCardCheckout(payment);
+      await this.voidGatewayInvoices(
+        payment,
+        'This payment is already being processed and cannot be paid by card right now.'
+      );
 
       const session = await this.stripeService.createPaymentCheckoutSession({
         customerEmail,
@@ -1614,6 +2292,17 @@ export class PaymentService implements ICronProvider {
         throw new Error('Stripe did not return a checkout URL');
       }
 
+      try {
+        await this.paymentDAO.updateById(payment._id.toString(), {
+          $set: { cardCheckoutSessionId: session.id },
+        });
+      } catch (err) {
+        this.log.error(
+          { err, pytuid, sessionId: session.id },
+          'Could not store the checkout session id — it cannot be expired later'
+        );
+      }
+
       this.log.info(
         { pytuid, cuid, sessionId: session.id },
         'Card payment checkout session created'
@@ -1630,13 +2319,65 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
-   * Voids every Stripe invoice still attached to a payment (including ACSS split invoices)
-   * and detaches them. Refuses when one can't be voided — e.g. it is already paid or a bank
-   * debit is in flight — because charging the card as well would charge the tenant twice.
-   * If the tenant then abandons checkout, the payment stays payable: a new invoice is created
-   * when they pay, and the overdue cron tracks it like any invoice-less payment.
+   * Expires the charge's previous card checkout session so it can no longer be paid. Refuses
+   * when that session was already paid (the webhook is still confirming it) or when Stripe
+   * can't be reached — leaving it open could let the tenant pay the same charge twice.
    */
-  private async voidInvoicesBeforeCardCheckout(payment: IPaymentDocument): Promise<void> {
+  private async expireOpenCardCheckout(payment: IPaymentDocument): Promise<void> {
+    if (!payment.cardCheckoutSessionId) return;
+
+    const result = await this.paymentGatewayService.expireCheckoutSession(
+      IPaymentGatewayProvider.STRIPE,
+      payment.cardCheckoutSessionId
+    );
+    if (!result.success) {
+      throw new BadRequestError({
+        message: 'Could not close the previous card checkout for this payment. Try again shortly.',
+      });
+    }
+    if (result.data?.status === 'complete') {
+      throw new BadRequestError({
+        message:
+          'A card payment for this charge has already been completed and is being confirmed.',
+      });
+    }
+
+    await this.paymentDAO.updateById(payment._id.toString(), {
+      $unset: { cardCheckoutSessionId: 1 },
+    });
+  }
+
+  /**
+   * Caller-supplied checkout return URLs must stay inside this client's tenant portal on the
+   * frontend origin (relative paths are resolved against it); anything else falls back to the
+   * payment page, so Stripe can't be used as an open redirect.
+   */
+  private resolveCheckoutReturnUrl(
+    requestedUrl: string | undefined,
+    cuid: string,
+    fallbackUrl: string
+  ): string {
+    if (!requestedUrl || !isAllowedCheckoutReturnUrl(requestedUrl)) return fallbackUrl;
+    try {
+      const resolved = new URL(requestedUrl, envVariables.FRONTEND.URL);
+      return resolved.pathname.startsWith(`/tenants/${cuid}/`) ? resolved.toString() : fallbackUrl;
+    } catch {
+      return fallbackUrl;
+    }
+  }
+
+  /**
+   * Voids every Stripe invoice still attached to a payment (including ACSS split invoices)
+   * and detaches them. Used before the charge is paid another way (card checkout or a manual
+   * payment). Refuses with `blockedMessage` when one can't be voided — e.g. it is already paid
+   * or a bank debit is in flight — because paying it another way would charge the tenant twice.
+   * If the tenant then abandons card checkout, the payment stays payable: a new invoice is
+   * created when they pay, and the overdue cron tracks it like any invoice-less payment.
+   */
+  private async voidGatewayInvoices(
+    payment: IPaymentDocument,
+    blockedMessage: string
+  ): Promise<void> {
     const invoiceIds = [
       ...new Set(
         [payment.gatewayPaymentId, ...(payment.splitInvoices ?? []).map((s) => s.invoiceId)].filter(
@@ -1655,7 +2396,7 @@ export class PaymentService implements ICronProvider {
       if (!voidResult.success) {
         this.log.warn(
           { pytuid: payment.pytuid, invoiceId, voided, message: voidResult.message },
-          'Could not void invoice before card checkout'
+          'Could not void invoice before the charge is paid another way'
         );
         if (voided.length > 0) {
           // Some invoices were already voided at the gateway — detach them so the DB stays consistent
@@ -1664,9 +2405,7 @@ export class PaymentService implements ICronProvider {
             $pull: { splitInvoices: { invoiceId: { $in: voided } } },
           });
         }
-        throw new BadRequestError({
-          message: 'This payment is already being processed and cannot be paid by card right now.',
-        });
+        throw new BadRequestError({ message: blockedMessage });
       }
       voided.push(invoiceId);
     }
@@ -1835,7 +2574,7 @@ export class PaymentService implements ICronProvider {
   async chargeForMaintenance(
     cuid: string,
     currentUserId: string,
-    body: { mruid: string; tenantId: string; amount: number; description?: string }
+    body: { mruid: string; tenantId: string; amount?: number; description?: string }
   ): IPromiseReturnedData<IPaymentDocument> {
     return this.maintenancePaymentService.chargeForMaintenance(cuid, currentUserId, body);
   }

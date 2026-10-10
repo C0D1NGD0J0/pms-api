@@ -5,6 +5,9 @@
       <p>
         Your <strong><%= paymentType %></strong> payment of <strong><%= amount %></strong> has been successfully processed on <%= paidAt %>.
       </p>
+      <% if (typeof reference !== 'undefined' && reference) { %>
+      <p style="font-size: 13px; color: #555;">Reference: <%= reference %></p>
+      <% } %>
     </td>
   </tr>
 

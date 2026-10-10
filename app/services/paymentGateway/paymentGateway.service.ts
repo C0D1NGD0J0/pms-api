@@ -746,6 +746,7 @@ export class PaymentGatewayService {
   ): IPromiseReturnedData<
     | {
         chargeId?: string;
+        receiptUrl?: string;
         paymentIntentId?: string;
         lastPaymentError?: { message?: string; code?: string };
         paymentMethodType?: string;
@@ -762,6 +763,84 @@ export class PaymentGatewayService {
         success: false,
         data: undefined,
         message: error instanceof Error ? error.message : 'Failed to fetch invoice payment details',
+      };
+    }
+  }
+
+  async getInvoiceIdForPaymentIntent(
+    provider: IPaymentGatewayProvider,
+    paymentIntentId: string
+  ): IPromiseReturnedData<string | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('getInvoiceIdForPaymentIntent' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement getInvoiceIdForPaymentIntent`);
+      }
+      const invoiceId = await (providerInstance as any).getInvoiceIdForPaymentIntent(
+        paymentIntentId
+      );
+      return { success: true, data: invoiceId ?? null };
+    } catch (error) {
+      this.log.error({ error, provider, paymentIntentId }, 'Error resolving invoice for payment');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to resolve invoice for payment',
+      };
+    }
+  }
+
+  async getInvoice(
+    provider: IPaymentGatewayProvider,
+    invoiceId: string
+  ): IPromiseReturnedData<{
+    status: string | null;
+    hostedInvoiceUrl?: string;
+    paidAt?: Date;
+  } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      const invoice = await providerInstance.getInvoice(invoiceId);
+      const paidAtSeconds = invoice?.status_transitions?.paid_at;
+      return {
+        success: true,
+        data: {
+          status: invoice?.status ?? null,
+          hostedInvoiceUrl: invoice?.hosted_invoice_url ?? undefined,
+          paidAt: paidAtSeconds ? new Date(paidAtSeconds * 1000) : undefined,
+        },
+      };
+    } catch (error) {
+      this.log.error({ error, provider, invoiceId }, 'Error fetching invoice');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to fetch invoice',
+      };
+    }
+  }
+
+  /**
+   * Expires a still-open checkout session so it can no longer be paid. Returns the session's
+   * status: 'expired' when it was open (or already expired), 'complete' when it was paid.
+   */
+  async expireCheckoutSession(
+    provider: IPaymentGatewayProvider,
+    sessionId: string
+  ): IPromiseReturnedData<{ status: string | null } | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!('expireCheckoutSession' in providerInstance)) {
+        throw new Error(`Provider ${provider} does not implement expireCheckoutSession`);
+      }
+      const result = await (providerInstance as any).expireCheckoutSession(sessionId);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider, sessionId }, 'Error expiring checkout session');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to expire checkout session',
       };
     }
   }

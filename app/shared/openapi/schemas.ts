@@ -142,7 +142,6 @@ const leaseStatuses = [
   'terminated',
   'cancelled',
   'completed',
-  'renewed',
   'ready_for_signature',
   'pending_signature',
   'draft_renewal',

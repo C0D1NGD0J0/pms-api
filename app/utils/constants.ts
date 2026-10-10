@@ -332,6 +332,12 @@ export const LEASE_CONSTANTS = {
   MINIMUM_ACTIVE_DURATION_DAYS: 30,
 } as const;
 
+export const SEARCH_CONSTANTS = {
+  GLOBAL_LIMIT_PER_TYPE: 5,
+  MIN_TERM_LENGTH: 2,
+  MAX_TERM_LENGTH: 100,
+} as const;
+
 /**
  * Maps maintenance request categories to vendor servicesOffered boolean keys.
  * Used by the vendor suggestion scoring algorithm to filter qualified vendors.

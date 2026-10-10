@@ -1,6 +1,5 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
-import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
@@ -8,8 +7,10 @@ import { ClientDAO } from '@dao/clientDAO';
 import { VendorDAO } from '@dao/vendorDAO';
 import { LeaseCache } from '@caching/index';
 import { PaymentDAO } from '@dao/paymentDAO';
+import { InvoiceDAO } from '@dao/invoiceDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { LeaseService } from '@services/lease';
+import { PipelineStage, Types } from 'mongoose';
 import { UserCache } from '@caching/user.cache';
 import { AuthCache } from '@caching/auth.cache';
 import { EmailQueue } from '@queues/email.queue';
@@ -19,19 +20,22 @@ import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
-import { LEASE_CONSTANTS, createLogger, toId } from '@utils/index';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
-import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { buildSystemRequestContext, getSystemBotUserId } from '@utils/systemBot';
+import { LEASE_CONSTANTS, iterateInPages, createLogger, toId } from '@utils/index';
 import { InspectionStatus, InspectionType } from '@interfaces/inspection.interface';
-import { MaintenanceRequestStatus } from '@interfaces/maintenanceRequest.interface';
 import { InspectionApprovedPayload, EventTypes } from '@interfaces/events.interface';
+import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { IPromiseReturnedData, IRequestContext, MailType } from '@interfaces/utils.interface';
+import {
+  IMaintenanceRequestDocument,
+  MaintenanceRequestStatus,
+} from '@interfaces/maintenanceRequest.interface';
 import {
   IVacateRequestDecision,
   IOffboardingStatus,
@@ -46,6 +50,7 @@ export class OffboardingService {
   private readonly propertyDAO: PropertyDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly paymentDAO: PaymentDAO;
+  private readonly invoiceDAO: InvoiceDAO;
   private readonly leaseService: LeaseService;
   private readonly userCache?: UserCache;
   private readonly leaseCache?: LeaseCache;
@@ -67,6 +72,7 @@ export class OffboardingService {
     propertyDAO,
     propertyUnitDAO,
     paymentDAO,
+    invoiceDAO,
     userCache,
     leaseCache,
     authCache,
@@ -87,6 +93,7 @@ export class OffboardingService {
     propertyDAO: PropertyDAO;
     propertyUnitDAO: PropertyUnitDAO;
     paymentDAO: PaymentDAO;
+    invoiceDAO: InvoiceDAO;
     userCache?: UserCache;
     leaseCache?: LeaseCache;
     authCache?: AuthCache;
@@ -108,6 +115,7 @@ export class OffboardingService {
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
     this.paymentDAO = paymentDAO;
+    this.invoiceDAO = invoiceDAO;
     this.userCache = userCache;
     this.leaseCache = leaseCache;
     this.authCache = authCache;
@@ -413,8 +421,9 @@ export class OffboardingService {
    * Close all open (non-completed, non-cancelled) service requests tied to a
    * tenant + property when their lease expires or is terminated.
    *
-   * For billable SRs with an approved invoice, an auto-charge is attempted first
-   * so the PM doesn't lose revenue. All remaining open SRs are then bulk-cancelled.
+   * SRs with an approved invoice or an existing maintenance charge are left open for
+   * completion (billable approved work is auto-charged first so the PM doesn't lose
+   * revenue). All remaining open SRs are bulk-cancelled.
    */
   private async closeOpenServiceRequests(
     cuid: string,
@@ -438,10 +447,12 @@ export class OffboardingService {
         filter.propertyUnitId = new Types.ObjectId(unitId);
       }
 
-      const openRequests = await this.maintenanceRequestDAO.list(filter, {
+      const items: IMaintenanceRequestDocument[] = [];
+      for await (const sr of iterateInPages(this.maintenanceRequestDAO, filter, {
         populate: [{ path: 'invoiceId', select: 'status amountInCents' }],
-      });
-      const items = openRequests.items || [];
+      })) {
+        items.push(sr);
+      }
 
       if (items.length === 0) {
         this.log.info('No open service requests to close', { cuid, tenantId });
@@ -454,23 +465,29 @@ export class OffboardingService {
         mrCount: items.length,
       });
 
-      // For billable SRs with approved invoices, ensure charges exist. The charge is recorded
-      // by the system bot (chargeForMaintenance needs a real user ObjectId, not 'system').
-      // An SR whose charge fails stays open so the PM can still bill the approved work.
+      // SRs with approved work (approved invoice) or money already attached (a non-cancelled
+      // maintenance charge/payout) stay open for completion — cancelling them would orphan
+      // paid or payable charges. Billable approved work is charged first so the PM doesn't
+      // lose revenue; the charge is recorded by the system bot (chargeForMaintenance needs a
+      // real user ObjectId, not 'system').
+      const chargedMruids = await this.findMruidsWithMaintenanceCharges(
+        cuid,
+        items.map((sr: any) => sr.mruid)
+      );
       const systemBotId = await getSystemBotUserId();
-      const unchargedSrIds = new Set<string>();
+      const keptOpenSrIds = new Set<string>();
       for (const sr of items) {
         const invoice = sr.invoice ?? (sr as any).invoiceId;
-        if (
-          sr.isBillable &&
-          invoice?.status === InvoiceStatus.APPROVED &&
-          invoice.amountInCents > 0
-        ) {
+        const hasApprovedInvoice = invoice?.status === InvoiceStatus.APPROVED;
+        if (hasApprovedInvoice || chargedMruids.has(sr.mruid)) {
+          keptOpenSrIds.add(sr._id.toString());
+        }
+
+        if (sr.isBillable && hasApprovedInvoice && invoice.amountInCents > 0) {
           if (!systemBotId) {
             this.log.error('System bot user missing — cannot auto-charge SR; leaving it open', {
               mruid: sr.mruid,
             });
-            unchargedSrIds.add(sr._id.toString());
             continue;
           }
           try {
@@ -493,14 +510,13 @@ export class OffboardingService {
               mruid: sr.mruid,
               error: chargeError.message,
             });
-            unchargedSrIds.add(sr._id.toString());
           }
         }
       }
 
-      // Bulk cancel the open SRs, except billable ones whose charge could not be created
+      // Bulk cancel the open SRs that have no approved work or money attached
       const srIds = items
-        .filter((sr: any) => !unchargedSrIds.has(sr._id.toString()))
+        .filter((sr: any) => !keptOpenSrIds.has(sr._id.toString()))
         .map((sr: any) => sr._id);
       if (srIds.length > 0) {
         await this.maintenanceRequestDAO.updateMany(
@@ -518,7 +534,7 @@ export class OffboardingService {
         cuid,
         tenantId,
         count: srIds.length,
-        leftOpenForBilling: unchargedSrIds.size,
+        leftOpenForCompletion: keptOpenSrIds.size,
       });
     } catch (error) {
       this.log.error('Error closing open service requests on lease expiry', {
@@ -527,6 +543,29 @@ export class OffboardingService {
         tenantId,
       });
     }
+  }
+
+  private async findMruidsWithMaintenanceCharges(
+    cuid: string,
+    mruids: string[]
+  ): Promise<Set<string>> {
+    if (mruids.length === 0) return new Set();
+    const chargedMruids = new Set<string>();
+    const charges = iterateInPages(
+      this.paymentDAO,
+      {
+        cuid,
+        maintenanceRequestUid: { $in: mruids },
+        paymentType: PaymentRecordType.MAINTENANCE,
+        status: { $ne: PaymentRecordStatus.CANCELLED },
+        deletedAt: null,
+      },
+      { projection: 'maintenanceRequestUid' }
+    );
+    for await (const charge of charges) {
+      if (charge.maintenanceRequestUid) chargedMruids.add(charge.maintenanceRequestUid);
+    }
+    return chargedMruids;
   }
 
   /**
@@ -729,8 +768,8 @@ export class OffboardingService {
       success: true,
       data: updatedLease,
       message: decision.approved
-        ? t('common.success.updated', { resource: 'Vacate request' })
-        : t('common.success.updated', { resource: 'Vacate request' }),
+        ? t('common.success.approved', { resource: 'Vacate request' })
+        : t('common.success.rejected', { resource: 'Vacate request' }),
     };
   }
 
@@ -781,9 +820,19 @@ export class OffboardingService {
       deletedAt: null,
     });
 
+    // The deposit record (security + pet, possibly on an earlier lease in the renewal chain)
+    // is the source of truth; 'refunded' only once the refund actually went through.
+    const depositPayment = await this.inspectionService.findLeaseDepositPayment(cuid, lease);
+    const depositAmount =
+      depositPayment?.baseAmount ??
+      (lease.fees.securityDeposit || 0) + (lease.petPolicy?.deposit || 0);
+
     let depositRefundStatus: IOffboardingStatus['depositRefundStatus'] = 'not_applicable';
-    if (lease.fees.securityDeposit > 0) {
-      depositRefundStatus = inspection?.refundInfo?.isRefunded ? 'refunded' : 'pending';
+    if (depositAmount > 0) {
+      const isRefunded =
+        depositPayment?.status === PaymentRecordStatus.REFUNDED ||
+        inspection?.refundInfo?.isRefunded === true;
+      depositRefundStatus = isRefunded ? 'refunded' : 'pending';
     }
 
     // Check if any open payments remain — paymentsCancelled is only true when no pending/overdue/processing charges exist
@@ -806,7 +855,7 @@ export class OffboardingService {
       inspectionStatus: inspection?.status || null,
       inspectionScheduledDate: inspection?.scheduledDate,
       depositRefundStatus,
-      depositAmount: lease.fees.securityDeposit,
+      depositAmount,
     };
 
     return {
@@ -1261,8 +1310,10 @@ export class OffboardingService {
   }
 
   /**
-   * Pre-flight check before account closure — returns financial warnings/blockers.
+   * Pre-flight check before account closure — returns financial warnings.
    * The frontend should call this before showing the closure confirmation modal.
+   * Closure is never blocked: every finding is advisory, so `canProceed` is always true.
+   * It is kept in the response so a future blocker can flip it without changing the contract.
    */
   async closurePreflightCheck(cuid: string): IPromiseReturnedData<{
     canProceed: boolean;
@@ -1271,76 +1322,65 @@ export class OffboardingService {
     const warnings: Array<{ type: string; message: string; count: number; totalCents: number }> =
       [];
 
-    // 1. Outstanding rent / payment balances — query each status separately
-    const [pendingPayments, overduePayments, processingPayments] = await Promise.all([
-      this.paymentDAO.findByCuid(cuid, { status: PaymentRecordStatus.PENDING }, { limit: 1000 }),
-      this.paymentDAO.findByCuid(cuid, { status: PaymentRecordStatus.OVERDUE }, { limit: 1000 }),
-      this.paymentDAO.findByCuid(cuid, { status: PaymentRecordStatus.PROCESSING }, { limit: 1000 }),
+    // Count and total in the database so every record is included, not just one list page
+    const [outstandingPayments, unpaidInvoices, heldDeposits] = await Promise.all([
+      // 1. Outstanding rent / payment balances (vendor expense records excluded, as in findByCuid)
+      this.countAndSum(
+        this.paymentDAO,
+        {
+          cuid,
+          deletedAt: null,
+          vendorId: { $exists: false },
+          status: {
+            $in: [
+              PaymentRecordStatus.PENDING,
+              PaymentRecordStatus.OVERDUE,
+              PaymentRecordStatus.PROCESSING,
+            ],
+          },
+        },
+        '$baseAmount'
+      ),
+      // 2. Approved vendor invoices that have not been paid out
+      this.countAndSum(
+        this.invoiceDAO,
+        {
+          cuid,
+          status: InvoiceStatus.APPROVED,
+          vendorPayoutStatus: { $ne: 'paid' },
+          isDeleted: { $ne: true },
+        },
+        '$amountInCents'
+      ),
+      // 3. Security deposits held on active leases
+      this.countAndSum(
+        this.leaseDAO,
+        { cuid, status: LeaseStatus.ACTIVE, 'fees.securityDeposit': { $gt: 0 }, deletedAt: null },
+        '$fees.securityDeposit'
+      ),
     ]);
 
-    const outstandingPayments = [
-      ...(pendingPayments?.items ?? []),
-      ...(overduePayments?.items ?? []),
-      ...(processingPayments?.items ?? []),
-    ];
-
-    if (outstandingPayments.length > 0) {
-      const totalCents = outstandingPayments.reduce(
-        (sum: number, p: any) => sum + (p.baseAmount ?? 0),
-        0
-      );
+    if (outstandingPayments.count > 0) {
       warnings.push({
         type: 'outstanding_payments',
-        message: `${outstandingPayments.length} outstanding payment(s) totaling ${(totalCents / 100).toFixed(2)}. These will be cancelled.`,
-        count: outstandingPayments.length,
-        totalCents,
+        message: `${outstandingPayments.count} outstanding payment(s) totaling ${(outstandingPayments.totalCents / 100).toFixed(2)}. These will be cancelled.`,
+        ...outstandingPayments,
       });
     }
 
-    // 2. Unpaid vendor invoices (approved but not yet paid out)
-    const unpaidInvoiceResult = await this.maintenanceRequestDAO.listWithDetails(
-      {
-        cuid,
-        'invoice.status': InvoiceStatus.APPROVED,
-        'invoice.vendorPaidAt': { $exists: false },
-        deletedAt: null,
-      },
-      { limit: 1000 }
-    );
-    const unpaidInvoices = unpaidInvoiceResult?.items ?? [];
-
-    if (unpaidInvoices.length > 0) {
-      const totalCents = unpaidInvoices.reduce(
-        (sum: number, mr: any) => sum + (mr.invoice?.amountInCents ?? 0),
-        0
-      );
+    if (unpaidInvoices.count > 0) {
       warnings.push({
         type: 'unpaid_vendor_invoices',
-        message: `${unpaidInvoices.length} approved vendor invoice(s) totaling ${(totalCents / 100).toFixed(2)} have not been paid out. Vendors will be disconnected without payment.`,
-        count: unpaidInvoices.length,
-        totalCents,
+        message: `${unpaidInvoices.count} approved vendor invoice(s) totaling ${(unpaidInvoices.totalCents / 100).toFixed(2)} have not been paid out. Vendors will be disconnected without payment.`,
+        ...unpaidInvoices,
       });
     }
 
-    // 3. Security deposits held (active leases with deposits)
-    const activeLeasesResult = await this.leaseDAO.list({
-      cuid,
-      status: LeaseStatus.ACTIVE,
-      'fees.securityDeposit': { $gt: 0 },
-      deletedAt: null,
-    });
-    const activeLeasesWithDeposits = activeLeasesResult?.items ?? [];
-
-    if (activeLeasesWithDeposits.length > 0) {
-      const totalCents = activeLeasesWithDeposits.reduce(
-        (sum: number, l: any) => sum + (l.fees?.securityDeposit ?? 0),
-        0
-      );
+    if (heldDeposits.count > 0) {
       warnings.push({
         type: 'security_deposits',
-        message: `${activeLeasesWithDeposits.length} active lease(s) hold security deposits totaling ${(totalCents / 100).toFixed(2)}. Deposits will need to be refunded after move-out inspections.`,
-        count: activeLeasesWithDeposits.length,
-        totalCents,
+        message: `${heldDeposits.count} active lease(s) hold security deposits totaling ${(heldDeposits.totalCents / 100).toFixed(2)}. Deposits will need to be refunded after move-out inspections.`,
+        ...heldDeposits,
       });
     }
 
@@ -1368,6 +1408,24 @@ export class OffboardingService {
       },
       message: 'Pre-flight check complete',
     };
+  }
+
+  private async countAndSum(
+    dao: { aggregate(pipeline: PipelineStage[]): Promise<unknown[]> },
+    match: Record<string, unknown>,
+    amountField: string
+  ): Promise<{ count: number; totalCents: number }> {
+    const [totals] = (await dao.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: null,
+          count: { $sum: 1 },
+          totalCents: { $sum: { $ifNull: [amountField, 0] } },
+        },
+      },
+    ])) as Array<{ count: number; totalCents: number }>;
+    return { count: totals?.count ?? 0, totalCents: totals?.totalCents ?? 0 };
   }
 
   /**

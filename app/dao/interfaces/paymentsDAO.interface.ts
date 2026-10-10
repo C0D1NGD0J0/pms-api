@@ -22,16 +22,17 @@ export interface IPaymentDAO {
     Array<{ _id: { currency: string; propertyId: string }; total: number; propertyName: string }>
   >;
 
+  findOverduePayments(
+    extraFilter?: Record<string, any>,
+    pagination?: { limit?: number; skip?: number },
+    dueBefore?: Date
+  ): ListResultWithPagination<IPaymentDocument[]>;
+
   findByTenant(
     tenantId: string,
     cuid: string,
     status?: PaymentRecordStatus,
     opts?: IFindOptions
-  ): ListResultWithPagination<IPaymentDocument[]>;
-
-  findOverduePayments(
-    extraFilter?: Record<string, any>,
-    pagination?: { limit?: number; skip?: number }
   ): ListResultWithPagination<IPaymentDocument[]>;
 
   /** Critical for duplicate rent prevention — finds existing payment for a specific month/year. */

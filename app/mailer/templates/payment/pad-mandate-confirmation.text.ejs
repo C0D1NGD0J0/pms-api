@@ -1,14 +1,45 @@
-Pre-Authorized Debit Agreement Confirmation
+<%
+  var _val = function (v) { return typeof v !== 'undefined' && v ? v : ''; };
+  var _phone = _val(typeof payeePhone !== 'undefined' ? payeePhone : '');
+  var _email = _val(typeof payeeEmail !== 'undefined' ? payeeEmail : '');
+  var _address = _val(typeof payeeAddress !== 'undefined' ? payeeAddress : '');
+  var _mandate = _val(typeof mandateReference !== 'undefined' ? mandateReference : (typeof mandateId !== 'undefined' ? mandateId : ''));
+  var _last4 = _val(typeof accountLast4 !== 'undefined' ? accountLast4 : '');
+  var _institution = _val(typeof institutionName !== 'undefined' ? institutionName : '');
+  var _variable = _val(typeof variableAmounts !== 'undefined' ? variableAmounts : '');
+  var _noticeDays = _val(typeof noticeDays !== 'undefined' ? noticeDays : '') || 10;
+  var _debitDay = _val(typeof debitDay !== 'undefined' ? debitDay : '');
+  var _url = _val(typeof paymentsUrl !== 'undefined' ? paymentsUrl : '');
+  var _account = _institution && _last4 ? _institution + ', account ending in ' + _last4
+    : _last4 ? 'Account ending in ' + _last4 : _institution;
+%>Pre-Authorized Debit Agreement Confirmation
 
 Hi <%= tenantName %>,
 
-This confirms that you have authorized <%= payeeName %> to debit your bank account under the following terms:
+This confirms your pre-authorized debit (PAD) agreement. You have authorized <%= payeeName %> to debit your bank account on the following terms:
 
-Amount: <%= amount %>
+Payee: <%= payeeName %>
+<% if (_account) { %>Bank account: <%= _account %>
+<% } %><% if (_mandate) { %>Agreement reference: <%= _mandate %>
+<% } %>Amount: <%= amount %>
 Frequency: <%= frequency %>
-<% if (typeof debitDay !== 'undefined' && debitDay) { %>Debit Day: Day <%= debitDay %> of each month
-<% } %>Start Date: <%= startDate %>
+<% if (_debitDay) { %>Debit day: Day <%= _debitDay %> of each month
+<% } %>Start date: <%= startDate %>
+<% if (_variable) { %>
+<%= _variable %>
+<% } %>
+Advance notice: we will send you written notice of the amount and date of every debit at least <%= _noticeDays %> days before your account is debited.
 
-Cancellation Rights: <%= cancellationRights %>
+Cancelling: <%= cancellationRights %> To obtain a sample cancellation form, or for more information on your right to cancel a PAD agreement, contact your financial institution or visit www.payments.ca.
 
-If you did not authorize this debit or believe this is an error, please contact <%= payeeName %> immediately.
+Your recourse rights: you have certain recourse rights if any debit does not comply with this agreement. For example, you have the right to receive reimbursement for any debit that is not authorized or is not consistent with this PAD agreement. To obtain more information on your recourse rights, contact your financial institution or visit www.payments.ca.
+
+Contact <%= payeeName %>:
+<% if (_phone) { %>Phone: <%= _phone %>
+<% } %><% if (_email) { %>Email: <%= _email %>
+<% } %><% if (_address) { %>Address: <%= _address %>
+<% } %>
+If you did not authorize this agreement or believe it is in error, contact <%= payeeName %> immediately.
+<% if (_url) { %>
+Manage payments: <%= _url %>
+<% } %>

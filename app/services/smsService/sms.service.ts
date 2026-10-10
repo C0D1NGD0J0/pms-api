@@ -88,6 +88,7 @@ export class SMSService implements ICronProvider {
   /**
    * Convenience method — looks up user's phone from profile and sends SMS.
    * Consuming services call this instead of sendSMS() directly.
+   * `userId` may be a User _id or a Profile _id (payment records reference the Profile).
    * Silently returns on failure (SMS should never block business logic).
    */
   async sendToUser(
@@ -98,19 +99,21 @@ export class SMSService implements ICronProvider {
     sentBy?: string
   ): Promise<ISendSMSResult> {
     try {
-      const profile = await this.profileDAO.findFirst({ user: new Types.ObjectId(userId) });
+      const id = new Types.ObjectId(userId);
+      const profile = await this.profileDAO.findFirst({ $or: [{ user: id }, { _id: id }] });
       const phone = profile?.personalInfo?.phoneNumber;
       if (!phone) {
         this.log.debug({ userId }, 'No phone number on profile — skipping SMS');
         return { success: false, error: 'unverified_phone' };
       }
 
+      const profileUserId = (profile.user as any)?._id ?? profile.user;
       return this.sendSMS({
         cuid,
         to: phone,
         body,
         messageType,
-        recipientUserId: userId,
+        recipientUserId: profileUserId ? profileUserId.toString() : userId,
         sentBy,
       });
     } catch (error: any) {

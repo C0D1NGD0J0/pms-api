@@ -16,7 +16,9 @@ import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
+import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import {
+  IMaintenanceRequestDocument,
   MaintenanceRequestStatus,
   ISubmitWorkOrderPayload,
   IReviewWorkOrderPayload,
@@ -31,6 +33,7 @@ import {
 import { resolvePrimaryVendorId, getRequestOrThrow } from './serviceRequest.helpers';
 
 interface IConstructor {
+  maintenancePaymentService: MaintenancePaymentService;
   maintenanceRequestDAO: MaintenanceRequestDAO;
   emitterService: EventEmitterService;
   invoiceDAO: InvoiceDAO;
@@ -47,8 +50,10 @@ export class MaintenanceInvoiceService {
   private readonly smsService: SMSService;
   private readonly emitterService: EventEmitterService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly maintenancePaymentService: MaintenancePaymentService;
 
   constructor({
+    maintenancePaymentService,
     maintenanceRequestDAO,
     emitterService,
     invoiceDAO,
@@ -62,6 +67,7 @@ export class MaintenanceInvoiceService {
     this.smsService = smsService;
     this.emitterService = emitterService;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
+    this.maintenancePaymentService = maintenancePaymentService;
     this.log = createLogger('MaintenanceInvoiceService');
   }
 
@@ -74,18 +80,7 @@ export class MaintenanceInvoiceService {
     const { cuid } = ctx.request.params;
     const request = await getRequestOrThrow(this.maintenanceRequestDAO, mruid, cuid);
 
-    const invoiceAllowedStatuses = [
-      MaintenanceRequestStatus.IN_PROGRESS,
-      MaintenanceRequestStatus.AWAITING_INVOICE,
-    ];
-    if (!invoiceAllowedStatuses.includes(request.status)) {
-      throw new BadRequestError({ message: t('maintenance.errors.invoiceInvalidStatus') });
-    }
-
-    // Work order must be approved before invoicing (same gate as mark_work_done)
-    if (!request.workOrder || request.workOrder.status !== WorkOrderStatus.APPROVED) {
-      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotApproved') });
-    }
+    this.assertRequestAcceptsInvoice(request);
 
     if (CurrentUser.isVendor(currentuser)) {
       const isDirectlyAssigned = request.vendorId?.toString() === currentuser.sub;
@@ -104,16 +99,7 @@ export class MaintenanceInvoiceService {
       }
     }
 
-    const existingInvoice = await this.invoiceDAO.findByMaintenanceRequest(mruid, cuid);
-    if (existingInvoice) {
-      if ([InvoiceStatus.APPROVED, InvoiceStatus.PENDING].includes(existingInvoice.status)) {
-        const statusLabel =
-          existingInvoice.status === InvoiceStatus.PENDING ? 'pending review' : 'already approved';
-        throw new BadRequestError({
-          message: `An invoice is ${statusLabel}. You can only submit a new invoice after a rejection.`,
-        });
-      }
-    }
+    await this.assertNoOpenInvoice(mruid, cuid);
 
     // Track whether we need to emit WORK_DONE after the transaction succeeds
     const needsAutoTransition = request.status === MaintenanceRequestStatus.IN_PROGRESS;
@@ -240,6 +226,9 @@ export class MaintenanceInvoiceService {
     }
 
     const isBillable = options?.isBillable ?? request.isBillable;
+    const tenantChargeQuote = isBillable
+      ? await this.quoteTenantCharge(cuid, invoice.amountInCents)
+      : null;
 
     (this.emitterService as any).emit(EventTypes.MAINTENANCE_INVOICE_APPROVED, {
       requestId: request._id.toString(),
@@ -252,6 +241,10 @@ export class MaintenanceInvoiceService {
       tenantId: options?.billToTenantId || request.tenantId?.toString(),
       isBillable,
       amount: invoice.amountInCents,
+      ...(tenantChargeQuote && {
+        tenantChargeTotalInCents: tenantChargeQuote.totalAmount,
+        serviceFeeInCents: tenantChargeQuote.serviceFeeCents,
+      }),
       currency: invoice.currency,
       approvedBy: currentuser.sub,
       invoiceLineItems: (invoice.lineItems ?? []).map((item: any) => ({
@@ -567,6 +560,11 @@ export class MaintenanceInvoiceService {
       throw new BadRequestError({ message: t('maintenance.errors.noVendorAssigned') });
     }
 
+    // Same guards as a vendor-submitted invoice: never overwrite an approved/pending
+    // invoice and only accept invoices for work that is actually ready to be invoiced.
+    this.assertRequestAcceptsInvoice(request);
+    await this.assertNoOpenInvoice(request.mruid, request.cuid);
+
     // Create invoice and link to MR atomically — mirrors submitInvoice transaction pattern.
     // Uses baseDAO.withTransaction which gracefully skips sessions in dev mode.
     const session = await this.invoiceDAO.startSession();
@@ -620,19 +618,65 @@ export class MaintenanceInvoiceService {
     return { success: true, data: invoice };
   }
 
-  private validateWebhookSignature(
+  private assertRequestAcceptsInvoice(request: IMaintenanceRequestDocument): void {
+    const invoiceAllowedStatuses = [
+      MaintenanceRequestStatus.IN_PROGRESS,
+      MaintenanceRequestStatus.AWAITING_INVOICE,
+    ];
+    if (!invoiceAllowedStatuses.includes(request.status)) {
+      throw new BadRequestError({ message: t('maintenance.errors.invoiceInvalidStatus') });
+    }
+
+    // Work order must be approved before invoicing (same gate as mark_work_done)
+    if (!request.workOrder || request.workOrder.status !== WorkOrderStatus.APPROVED) {
+      throw new BadRequestError({ message: t('maintenance.errors.workOrderNotApproved') });
+    }
+  }
+
+  private async assertNoOpenInvoice(mruid: string, cuid: string): Promise<void> {
+    const existingInvoice = await this.invoiceDAO.findByMaintenanceRequest(mruid, cuid);
+    if (
+      existingInvoice &&
+      [InvoiceStatus.APPROVED, InvoiceStatus.PENDING].includes(existingInvoice.status)
+    ) {
+      const statusLabel =
+        existingInvoice.status === InvoiceStatus.PENDING ? 'pending review' : 'already approved';
+      throw new BadRequestError({
+        message: `An invoice is ${statusLabel}. You can only submit a new invoice after a rejection.`,
+      });
+    }
+  }
+
+  /**
+   * Quote shown to the tenant in the billable notice must match what they are charged
+   * (invoice + platform service fee). A quote failure must not block the approval.
+   */
+  private async quoteTenantCharge(
+    cuid: string,
+    invoiceAmountInCents: number
+  ): Promise<{ serviceFeeCents: number; totalAmount: number } | null> {
+    try {
+      return await this.maintenancePaymentService.quoteTenantMaintenanceCharge(
+        cuid,
+        invoiceAmountInCents
+      );
+    } catch (err) {
+      this.log.warn({ err, cuid }, 'Could not quote tenant maintenance charge total');
+      return null;
+    }
+  }
+
+  /**
+   * No per-source signing secret is configured for QuickBooks/FreshBooks/Jobber/manual
+   * invoice webhooks yet, so every request is denied. Implement per-source HMAC
+   * verification (with a per-client secret) before enabling a source.
+   */
+  protected validateWebhookSignature(
     source: InvoiceSource,
     _headers: Record<string, string>,
     _rawBody: Buffer
   ): boolean {
-    // HMAC signature verification not yet implemented — do NOT expose in production without network-level protection
-    switch (source) {
-      case 'quickbooks':
-      case 'freshbooks':
-      case 'jobber':
-      case 'manual':
-      default:
-        return true;
-    }
+    this.log.warn({ source }, 'Invoice webhook rejected — signature verification not configured');
+    return false;
   }
 }

@@ -11,6 +11,7 @@ describe('WebhookController - Stripe Webhooks', () => {
   let mockStripeService: jest.Mocked<StripeService>;
   let mockSubscriptionService: jest.Mocked<SubscriptionService>;
   let mockPaymentService: any;
+  let mockPaymentWebhookService: any;
   let mockLeaseService: jest.Mocked<LeaseService>;
   let mockBoldSignService: jest.Mocked<BoldSignService>;
   let mockIdempotencyCache: jest.Mocked<IdempotencyCache>;
@@ -37,6 +38,14 @@ describe('WebhookController - Stripe Webhooks', () => {
       handleInvoiceUpcoming: jest.fn().mockResolvedValue(undefined),
       handlePayoutPaid: jest.fn().mockResolvedValue(undefined),
       handlePayoutFailed: jest.fn().mockResolvedValue(undefined),
+      handleChargeRefunded: jest.fn().mockResolvedValue(undefined),
+      handleDisputeWon: jest.fn().mockResolvedValue(undefined),
+      handleDisputeLost: jest.fn().mockResolvedValue(undefined),
+    };
+
+    mockPaymentWebhookService = {
+      handleDisputeUpdated: jest.fn().mockResolvedValue(undefined),
+      handleDisputeWarningClosed: jest.fn().mockResolvedValue(undefined),
     };
 
     mockLeaseService = {} as any;
@@ -59,6 +68,7 @@ describe('WebhookController - Stripe Webhooks', () => {
       leaseService: mockLeaseService,
       boldSignService: mockBoldSignService,
       paymentService: mockPaymentService,
+      paymentWebhookService: mockPaymentWebhookService,
       clientService: {} as any,
       idempotencyCache: mockIdempotencyCache,
       maintenanceInvoiceService: {} as any,
@@ -75,6 +85,48 @@ describe('WebhookController - Stripe Webhooks', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
     };
+  });
+
+  describe('handleStripeWebhook — dispute and refund routing', () => {
+    const sendEvent = async (event: Record<string, any>) => {
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(event as any);
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+    };
+
+    it('routes charge.dispute.updated to handleDisputeUpdated', async () => {
+      const dispute = { id: 'dp_1', status: 'needs_response', charge: 'ch_1' };
+      await sendEvent({ id: 'evt_1', type: 'charge.dispute.updated', data: { object: dispute } });
+
+      expect(mockPaymentWebhookService.handleDisputeUpdated).toHaveBeenCalledWith('dp_1', dispute);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+    });
+
+    it('routes a warning_closed dispute to handleDisputeWarningClosed', async () => {
+      const dispute = { id: 'dp_2', status: 'warning_closed', charge: 'ch_2' };
+      await sendEvent({ id: 'evt_2', type: 'charge.dispute.closed', data: { object: dispute } });
+
+      expect(mockPaymentWebhookService.handleDisputeWarningClosed).toHaveBeenCalledWith(
+        'dp_2',
+        dispute
+      );
+      expect(mockPaymentService.handleDisputeWon).not.toHaveBeenCalled();
+      expect(mockPaymentService.handleDisputeLost).not.toHaveBeenCalled();
+    });
+
+    it('passes previous_attributes to handleChargeRefunded', async () => {
+      const charge = { id: 'ch_3', amount_refunded: 700 };
+      await sendEvent({
+        id: 'evt_3',
+        type: 'charge.refunded',
+        data: { object: charge, previous_attributes: { amount_refunded: 500 } },
+      });
+
+      expect(mockPaymentService.handleChargeRefunded).toHaveBeenCalledWith('ch_3', {
+        ...charge,
+        previous_attributes: { amount_refunded: 500 },
+      });
+    });
   });
 
   describe('handleStripeWebhook', () => {

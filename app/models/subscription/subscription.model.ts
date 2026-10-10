@@ -16,7 +16,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
     client: { type: Schema.Types.ObjectId, ref: 'Client', required: true, index: true },
     planName: {
       type: String,
-      enum: ['essential', 'growth', 'portfolio'] as const,
+      enum: ['essential', 'growth', 'portfolio', 'enterprise'] as const,
       required: true,
       default: 'essential',
       index: true,
@@ -72,6 +72,8 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       inspectionService: { type: Boolean, default: false },
       aiInspectionAnalysis: { type: Boolean, default: false },
       aiReportAnalysis: { type: Boolean, default: false },
+      expenseTracking: { type: Boolean, default: false },
+      whiteLabelling: { type: Boolean, default: false },
     },
     billing: {
       customerId: {

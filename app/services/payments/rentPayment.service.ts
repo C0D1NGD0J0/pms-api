@@ -111,6 +111,54 @@ export class RentPaymentService {
     this.emitterService.on(EventTypes.INSPECTION_APPROVED, this.handleDepositRefund.bind(this));
   }
 
+  /**
+   * Finds the lease's security deposit record. A renewal carries the original deposit forward
+   * (it is never invoiced again), so when the lease has no deposit of its own this walks
+   * `previousLeaseId` back to the lease that collected it.
+   */
+  async findLeaseDepositPayment(
+    cuid: string,
+    leaseId: string,
+    statuses: PaymentRecordStatus[] = [PaymentRecordStatus.PAID]
+  ): Promise<IPaymentDocument | null> {
+    const visitedLeaseIds = new Set<string>();
+    let currentLeaseId: string | undefined = leaseId;
+
+    while (currentLeaseId && !visitedLeaseIds.has(currentLeaseId)) {
+      visitedLeaseIds.add(currentLeaseId);
+
+      const deposit = await this.paymentDAO.findFirst({
+        lease: new Types.ObjectId(currentLeaseId),
+        cuid,
+        paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+        status: { $in: statuses },
+        deletedAt: null,
+      });
+      if (deposit) return deposit;
+
+      const lease = await this.leaseDAO.findFirst({
+        _id: new Types.ObjectId(currentLeaseId),
+        cuid,
+      });
+      currentLeaseId = lease?.previousLeaseId?.toString();
+    }
+
+    return null;
+  }
+
+  /**
+   * The full refundable deposit (security + pet deposit, as collected) for a lease or the
+   * lease it was renewed from. Null when no paid deposit exists.
+   */
+  async getRefundableDeposit(
+    cuid: string,
+    leaseId: string
+  ): Promise<{ amount: number; currency: string; pytuid: string } | null> {
+    const deposit = await this.findLeaseDepositPayment(cuid, leaseId);
+    if (!deposit) return null;
+    return { amount: deposit.baseAmount, currency: deposit.currency, pytuid: deposit.pytuid };
+  }
+
   private async handleDepositRefund(payload: {
     refundAmount?: number;
     leaseId: string;
@@ -119,13 +167,7 @@ export class RentPaymentService {
     if (!payload.refundAmount || payload.refundAmount <= 0) {
       // Warn if a paid deposit exists but no refund was requested — PM may have
       // accidentally approved with $0 refund
-      const paidDeposit = await this.paymentDAO.findFirst({
-        lease: new Types.ObjectId(payload.leaseId),
-        cuid: payload.cuid,
-        paymentType: PaymentRecordType.SECURITY_DEPOSIT,
-        status: PaymentRecordStatus.PAID,
-        deletedAt: null,
-      });
+      const paidDeposit = await this.findLeaseDepositPayment(payload.cuid, payload.leaseId);
       if (paidDeposit) {
         this.log.warn(
           { leaseId: payload.leaseId, depositAmount: paidDeposit.baseAmount },
@@ -136,53 +178,47 @@ export class RentPaymentService {
     }
 
     try {
-      const depositPayment = await this.paymentDAO.findFirst({
-        lease: new Types.ObjectId(payload.leaseId),
-        cuid: payload.cuid,
-        paymentType: PaymentRecordType.SECURITY_DEPOSIT,
-        status: PaymentRecordStatus.PAID,
-        deletedAt: null,
-      });
+      const depositPayment = await this.findLeaseDepositPayment(payload.cuid, payload.leaseId);
 
       if (!depositPayment) {
         this.log.info({ leaseId: payload.leaseId }, 'No paid deposit found — skipping refund');
         return;
       }
 
+      const refundAmount = Math.min(payload.refundAmount, depositPayment.baseAmount);
+      const stageForManagerRelease = (reason: string) =>
+        this.paymentDAO.updateById(depositPayment._id.toString(), {
+          $set: {
+            status: PaymentRecordStatus.PENDING_REFUND,
+            'refund.amount': refundAmount,
+            'refund.refundedBy': 'system:inspection-approved',
+            'refund.reason': reason,
+          },
+        });
+
       // Check client setting: if requireDepositRefundApproval is enabled, stage the
       // refund as PENDING_REFUND instead of hitting Stripe immediately. A PM/admin
       // must then call releaseDepositRefund to execute the actual Stripe refund.
       const client = await this.clientDAO.findFirst({ cuid: payload.cuid, deletedAt: null });
       if (client?.settings?.requireDepositRefundApproval) {
-        await this.paymentDAO.updateById(depositPayment._id.toString(), {
-          $set: {
-            status: PaymentRecordStatus.PENDING_REFUND,
-            'refund.amount': payload.refundAmount,
-            'refund.refundedBy': 'system:inspection-approved',
-            'refund.reason': 'Move-out inspection deposit refund — awaiting PM approval',
-          },
-        });
+        await stageForManagerRelease('Move-out inspection deposit refund — awaiting PM approval');
         this.log.info(
-          { leaseId: payload.leaseId, refundAmount: payload.refundAmount },
+          { leaseId: payload.leaseId, refundAmount },
           'Deposit refund staged as PENDING_REFUND — requireDepositRefundApproval is enabled'
         );
         return;
       }
 
+      // Cash/cheque deposits have no gateway charge to refund. The money has to be paid back
+      // outside the app, so a manager releases it (releaseDepositRefund) once that is done.
       if (!depositPayment.gatewayChargeId) {
-        this.log.info(
-          { leaseId: payload.leaseId },
-          'No Stripe charge on deposit — marking as refunded (offline)'
+        await stageForManagerRelease(
+          'Move-out inspection deposit refund (offline) — awaiting manager release'
         );
-        await this.paymentDAO.updateById(depositPayment._id.toString(), {
-          $set: {
-            status: PaymentRecordStatus.REFUNDED,
-            'refund.amount': payload.refundAmount,
-            'refund.refundedAt': new Date(),
-            'refund.refundedBy': 'system:inspection-approved',
-            'refund.reason': 'Move-out inspection deposit refund (offline)',
-          },
-        });
+        this.log.info(
+          { leaseId: payload.leaseId, refundAmount },
+          'Offline deposit refund staged as PENDING_REFUND for manager release'
+        );
         return;
       }
 
@@ -190,10 +226,10 @@ export class RentPaymentService {
         IPaymentGatewayProvider.STRIPE,
         {
           chargeId: depositPayment.gatewayChargeId,
-          amountInCents: payload.refundAmount,
+          amountInCents: refundAmount,
           reason: 'requested_by_customer',
           note: 'Move-out inspection — security deposit refund',
-          idempotencyKey: `deposit-refund:${depositPayment.pytuid}`,
+          idempotencyKey: `deposit-refund:${depositPayment.pytuid}:${depositPayment.refund?.failedAt?.getTime() ?? 0}`,
         }
       );
 
@@ -201,23 +237,58 @@ export class RentPaymentService {
         await this.paymentDAO.updateById(depositPayment._id.toString(), {
           $set: {
             status: PaymentRecordStatus.REFUNDED,
-            'refund.amount': payload.refundAmount,
+            'refund.amount': refundAmount,
             'refund.refundedAt': new Date(),
             'refund.refundedBy': 'system:inspection-approved',
             'refund.reason': 'Move-out inspection deposit refund',
             'refund.gatewayRefundId': refundResult.data?.refundId,
           },
+          $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1 },
+        });
+        // refund.amount is already stored, so the charge.refunded webhook won't notify — do it here
+        this.emitterService.emit(EventTypes.PAYMENT_REFUNDED, {
+          cuid: payload.cuid,
+          pytuid: depositPayment.pytuid,
+          tenantId: depositPayment.tenant?.toString(),
+          amount: refundAmount,
+          totalRefunded: refundAmount,
+          refundAmount,
+          chargeId: depositPayment.gatewayChargeId,
+          currency: depositPayment.currency,
+          isPartial: refundAmount < depositPayment.baseAmount,
+          reason: 'Move-out inspection deposit refund',
         });
         this.log.info(
-          { leaseId: payload.leaseId, refundAmount: payload.refundAmount },
+          { leaseId: payload.leaseId, refundAmount },
           'Security deposit refund processed via Stripe'
         );
-      } else {
-        this.log.error(
-          { leaseId: payload.leaseId, error: refundResult.message },
-          'Stripe deposit refund failed'
-        );
+        return;
       }
+
+      // Leave the refund staged so a manager can retry it (releaseDepositRefund), and tell them.
+      const failureReason = refundResult.message || 'Stripe deposit refund failed';
+      await this.paymentDAO.updateById(depositPayment._id.toString(), {
+        $set: {
+          status: PaymentRecordStatus.PENDING_REFUND,
+          'refund.amount': refundAmount,
+          'refund.refundedBy': 'system:inspection-approved',
+          'refund.reason': 'Move-out inspection deposit refund — gateway refund failed',
+          'refund.failureReason': failureReason,
+          'refund.failedAt': new Date(),
+        },
+      });
+      this.emitterService.emit(EventTypes.DEPOSIT_REFUND_FAILED, {
+        cuid: payload.cuid,
+        pytuid: depositPayment.pytuid,
+        leaseId: payload.leaseId,
+        amount: refundAmount,
+        currency: depositPayment.currency,
+        reason: failureReason,
+      });
+      this.log.error(
+        { leaseId: payload.leaseId, pytuid: depositPayment.pytuid, error: failureReason },
+        'Stripe deposit refund failed — staged as PENDING_REFUND for manager retry'
+      );
     } catch (error) {
       this.log.error(
         { error, leaseId: payload.leaseId },
@@ -265,11 +336,25 @@ export class RentPaymentService {
       paymentSource?: PaymentSource;
       /** Prefix for Stripe idempotency keys — stable across retries of the same job. */
       idempotencyKey?: string;
+      /**
+       * Also invoice the security + pet deposit. Only lease activation sets this (and never for a
+       * renewal, which carries the original deposit forward).
+       */
+      invoiceDeposit?: boolean;
     }
   ): IPromiseReturnedData<IPaymentDocument> {
     try {
       if (!data.leaseId) {
         throw new BadRequestError({ message: 'Lease ID is required for rent payments' });
+      }
+      if (
+        data.paymentType === PaymentRecordType.DEPOSIT_REFUND ||
+        data.paymentType === PaymentRecordType.SECURITY_DEPOSIT
+      ) {
+        throw new BadRequestError({
+          message:
+            'Deposits are invoiced when the lease is activated and refunded through the move-out inspection — they cannot be created as a payment request.',
+        });
       }
 
       const lease = await this.leaseDAO.findFirst(
@@ -281,6 +366,12 @@ export class RentPaymentService {
       }
       if (lease.status !== LeaseStatus.ACTIVE) {
         throw new BadRequestError({ message: 'Cannot create payment for inactive lease' });
+      }
+
+      // The lease (already scoped to this client) is the source of truth for who is billed.
+      const tenantUserId = lease.tenantId.toString();
+      if (data.tenantId && data.tenantId !== tenantUserId) {
+        throw new BadRequestError({ message: 'Tenant does not match the lease tenant' });
       }
 
       const effectiveEndDate = lease.duration.terminationDate || lease.duration.endDate;
@@ -316,6 +407,8 @@ export class RentPaymentService {
             // Free the index slot so the new insert can succeed.
             // CANCELLED: PM explicitly cancelled. FAILED: Stripe rejected the charge.
             // Both are dead-end states — a replacement record is the next step.
+            // Void the old invoice(s) first so the tenant can't pay a charge we no longer track.
+            await this.voidOpenInvoices(existingForPeriod);
             await this.paymentDAO.updateById(existingForPeriod._id.toString(), {
               deletedAt: dayjs().toDate(),
             });
@@ -340,6 +433,7 @@ export class RentPaymentService {
       // then return early — no invoice, no gateway calls.
       if (!isAutoDebit) {
         let trackingAmount: number;
+        let trackingLineItems: { description: string; amountInCents: number }[] | undefined;
         if (effectivePaymentType === PaymentRecordType.LATE_FEE) {
           const fees = lease.calculateFees({ daysLate: data.daysLate ?? 0 });
           trackingAmount = fees.late.fee;
@@ -349,11 +443,15 @@ export class RentPaymentService {
             });
           }
         } else {
-          trackingAmount = computeLeaseMonthlyFees(lease).totalMonthlyRent;
+          trackingLineItems = this.buildRentLineItems(lease, {
+            period: data.period,
+            dueDate: data.dueDate,
+          });
+          trackingAmount = RentPaymentService.sumLineItems(trackingLineItems);
         }
         const payment = await this.createManualTrackingPayment({
           cuid,
-          tenantId: data.tenantId,
+          tenantId: tenantUserId,
           dueDate: dayjs(data.dueDate).toDate(),
           baseAmount: trackingAmount,
           paymentType: effectivePaymentType,
@@ -363,11 +461,12 @@ export class RentPaymentService {
           description: data.description,
           currency: lease.fees?.currency,
           paymentSource: options?.paymentSource,
+          lineItems: trackingLineItems,
         });
         if (data.notifyByEmail) {
           await this.queuePaymentRequestEmail({
             cuid,
-            tenantId: data.tenantId,
+            tenantId: tenantUserId,
             lease,
             amountInCents: trackingAmount,
             currency: lease.fees?.currency ?? 'usd',
@@ -420,23 +519,18 @@ export class RentPaymentService {
         });
       }
 
-      const existingPaymentCount = await this.paymentDAO.countDocuments({
-        lease: lease._id,
-        cuid,
-        deletedAt: null,
-      });
-      const isFirstPayment = existingPaymentCount === 0;
-
-      let effectiveDaysLate = 0;
-      if (!isFirstPayment) {
+      // Late fees are only ever billed as their own LATE_FEE charge (the overdue crons queue
+      // them); a rent invoice created after its due date never carries one.
+      let lateFeeDaysLate = 0;
+      if (effectivePaymentType === PaymentRecordType.LATE_FEE) {
         if (data.daysLate !== undefined) {
-          effectiveDaysLate = data.daysLate;
+          lateFeeDaysLate = data.daysLate;
         } else if (data.dueDate) {
-          effectiveDaysLate = Math.max(0, dayjs().diff(dayjs(data.dueDate), 'day'));
+          lateFeeDaysLate = Math.max(0, dayjs().diff(dayjs(data.dueDate), 'day'));
         }
       }
 
-      const leaseFees = lease.calculateFees({ daysLate: effectiveDaysLate });
+      const leaseFees = lease.calculateFees({ daysLate: lateFeeDaysLate });
       let lineItems: Array<{ description: string; amountInCents: number }>;
 
       if (effectivePaymentType === PaymentRecordType.LATE_FEE) {
@@ -451,19 +545,14 @@ export class RentPaymentService {
             : `Late Fee (${leaseFees.late.daysLate} days late)`;
         lineItems = [{ description: lateDesc, amountInCents: leaseFees.late.fee }];
       } else {
-        const { managementFee } = computeLeaseMonthlyFees(lease);
-        lineItems = this.buildLineItemsFromFees(leaseFees, {
-          isFirstPayment,
-          startDate: lease.duration.startDate,
-          managementFee,
-        });
+        lineItems = this.buildRentLineItems(lease, { period: data.period, dueDate: data.dueDate });
       }
-      const totalAmountInCents = lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
+      const totalAmountInCents = RentPaymentService.sumLineItems(lineItems);
 
       if (!options?.createStripeInvoice) {
         const payment = await this.createManualTrackingPayment({
           cuid,
-          tenantId: data.tenantId,
+          tenantId: tenantUserId,
           dueDate: dayjs(data.dueDate).toDate(),
           baseAmount: totalAmountInCents,
           paymentType: effectivePaymentType,
@@ -481,7 +570,7 @@ export class RentPaymentService {
         if (data.notifyByEmail) {
           await this.queuePaymentRequestEmail({
             cuid,
-            tenantId: data.tenantId,
+            tenantId: tenantUserId,
             lease,
             amountInCents: totalAmountInCents,
             currency: leaseFees.currency,
@@ -496,18 +585,7 @@ export class RentPaymentService {
       const isAch = lease.fees?.acceptedPaymentMethod === 'auto-debit';
       let feeBreakdown;
       if (isAch) {
-        const achFee = this.subscriptionPlanConfig.calculateAchApplicationFee(totalAmountInCents);
-        const gatewayFee = this.subscriptionPlanConfig.calculatePaymentGatewayFee(
-          totalAmountInCents,
-          'stripe',
-          'auto-debit'
-        );
-        feeBreakdown = {
-          baseAmount: totalAmountInCents,
-          applicationFee: achFee,
-          gatewayProcessingFee: gatewayFee,
-          platformNetRevenue: achFee - gatewayFee,
-        };
+        feeBreakdown = this.calculateAchFees(totalAmountInCents);
       } else {
         const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
           subscription.planName
@@ -521,13 +599,17 @@ export class RentPaymentService {
       }
 
       const tenantProfile = (await this.profileDAO.findFirst(
-        { user: data.tenantId },
+        { user: new Types.ObjectId(tenantUserId) },
         {
           populate: ['user'],
         }
       )) as IProfileWithUser | null;
       if (!tenantProfile) {
         throw new NotFoundError({ message: 'Tenant profile not found' });
+      }
+      const tenantClientLinks = (tenantProfile.user as { cuids?: { cuid: string }[] }).cuids;
+      if (Array.isArray(tenantClientLinks) && !tenantClientLinks.some((c) => c.cuid === cuid)) {
+        throw new BadRequestError({ message: 'Tenant does not belong to this client' });
       }
 
       let tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
@@ -566,12 +648,28 @@ export class RentPaymentService {
         paymentProcessor.accountId
       );
 
-      // Split ACSS payments that exceed the per-transaction limit into rent vs fees
+      // Split ACSS payments that exceed the per-transaction limit into rent vs fees, so each
+      // bank debit stays under the limit. When the rent alone is over the limit a split can't
+      // help, so one invoice is created: the bank rejects the debit at charge time and the
+      // existing ACSS-limit handling (payPendingCharge → retryPaymentWithCard) moves it to card.
       const acssLimit = envVariables.STRIPE.ACSS_PER_TXN_LIMIT;
       const rentItems = lineItems.filter((li) => li.description.toLowerCase().includes('rent'));
       const feeItems = lineItems.filter((li) => !li.description.toLowerCase().includes('rent'));
+      const rentSplitAmount = RentPaymentService.sumLineItems(rentItems);
+      const feesSplitAmount = RentPaymentService.sumLineItems(feeItems);
       const needsSplit =
-        isAch && totalAmountInCents > acssLimit && rentItems.length > 0 && feeItems.length > 0;
+        isAch &&
+        totalAmountInCents > acssLimit &&
+        rentItems.length > 0 &&
+        feeItems.length > 0 &&
+        rentSplitAmount <= acssLimit &&
+        feesSplitAmount <= acssLimit;
+      if (isAch && totalAmountInCents > acssLimit && !needsSplit) {
+        this.log.warn(
+          { cuid, luid: lease.luid, totalAmountInCents, acssLimit },
+          'Rent exceeds the ACSS per-transaction limit and cannot be split under it — a bank debit will fall back to card'
+        );
+      }
 
       let invoiceId: string;
       let hostedInvoiceUrl: string | undefined;
@@ -590,9 +688,21 @@ export class RentPaymentService {
         options?.idempotencyKey ? `${options.idempotencyKey}:${part}` : undefined;
 
       if (needsSplit) {
+        // Each invoice carries the application fee for its own amount — a fee computed on the
+        // full total can exceed the smaller fees invoice, which Stripe rejects.
+        const rentSplitFees = this.calculateAchFees(rentSplitAmount);
+        const feesSplitFees = this.calculateAchFees(feesSplitAmount);
+        feeBreakdown = {
+          baseAmount: totalAmountInCents,
+          applicationFee: rentSplitFees.applicationFee + feesSplitFees.applicationFee,
+          gatewayProcessingFee:
+            rentSplitFees.gatewayProcessingFee + feesSplitFees.gatewayProcessingFee,
+          platformNetRevenue: rentSplitFees.platformNetRevenue + feesSplitFees.platformNetRevenue,
+        };
+
         const rentInvoice = await this.createAndFinalizeInvoice({
           ...invoiceOpts,
-          applicationFee: 0,
+          applicationFee: rentSplitFees.applicationFee,
           description: `Rent for ${data.period?.month}/${data.period?.year}`,
           lineItems: rentItems,
           idempotencyKey: invoiceKey('rent'),
@@ -600,7 +710,7 @@ export class RentPaymentService {
 
         const feesInvoice = await this.createAndFinalizeInvoice({
           ...invoiceOpts,
-          applicationFee: feeBreakdown.applicationFee,
+          applicationFee: feesSplitFees.applicationFee,
           description: `Fees for ${data.period?.month}/${data.period?.year}`,
           lineItems: feeItems,
           idempotencyKey: invoiceKey('fees'),
@@ -611,13 +721,15 @@ export class RentPaymentService {
         splitInvoices = [
           {
             invoiceId: rentInvoice.invoiceId,
-            amount: rentItems.reduce((s, li) => s + li.amountInCents, 0),
+            amount: rentSplitAmount,
+            applicationFee: rentSplitFees.applicationFee,
             category: 'rent' as const,
             status: 'pending' as const,
           },
           {
             invoiceId: feesInvoice.invoiceId,
-            amount: feeItems.reduce((s, li) => s + li.amountInCents, 0),
+            amount: feesSplitAmount,
+            applicationFee: feesSplitFees.applicationFee,
             category: 'fees' as const,
             status: 'pending' as const,
           },
@@ -666,15 +778,18 @@ export class RentPaymentService {
         dueDate: dayjs(data.dueDate).toDate(),
         pytuid: payment.pytuid,
         cuid,
+        currency: leaseFees.currency,
+        paymentType: effectivePaymentType,
+        acceptedPaymentMethod: lease.fees?.acceptedPaymentMethod,
       });
 
       // Create a separate deposit invoice (own chargeId for independent refund)
-      if (isFirstPayment && (leaseFees.deposits.security > 0 || leaseFees.deposits.pet > 0)) {
+      if (options?.invoiceDeposit && leaseFees.deposits.total > 0) {
         try {
           await this.createDepositInvoice({
             ...invoiceOpts,
             leaseId: lease._id.toString(),
-            tenantId: data.tenantId,
+            tenantProfileId: tenantProfile._id,
             deposits: leaseFees.deposits,
             idempotencyKey: invoiceKey('deposit'),
           });
@@ -689,7 +804,7 @@ export class RentPaymentService {
       if (data.notifyByEmail) {
         await this.queuePaymentRequestEmail({
           cuid,
-          tenantId: data.tenantId,
+          tenantId: tenantUserId,
           lease,
           amountInCents: totalAmountInCents,
           currency: leaseFees.currency,
@@ -728,10 +843,17 @@ export class RentPaymentService {
 
       if (
         payment.status !== PaymentRecordStatus.PENDING &&
+        payment.status !== PaymentRecordStatus.OVERDUE &&
         payment.status !== PaymentRecordStatus.FAILED
       ) {
         throw new BadRequestError({
           message: `Cannot pay a charge with status: ${payment.status}`,
+        });
+      }
+
+      if (!RentPaymentService.TENANT_PAYABLE_TYPES.has(payment.paymentType)) {
+        throw new BadRequestError({
+          message: 'Only rent, maintenance, late fee or deposit charges can be paid this way',
         });
       }
 
@@ -751,16 +873,6 @@ export class RentPaymentService {
         payment.status = PaymentRecordStatus.PENDING;
         payment.gatewayPaymentId = undefined;
         payment.failure = { ...payment.failure, retryCount: nextRetryCount };
-      }
-
-      if (
-        payment.paymentType !== PaymentRecordType.MAINTENANCE &&
-        payment.paymentType !== PaymentRecordType.RENT &&
-        payment.paymentType !== PaymentRecordType.LATE_FEE
-      ) {
-        throw new BadRequestError({
-          message: 'Only rent, maintenance, or late fee charges can be paid this way',
-        });
       }
 
       const tenantProfile = await this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
@@ -973,6 +1085,7 @@ export class RentPaymentService {
         ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
         : 0;
       const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
+      const isDeposit = payment.paymentType === PaymentRecordType.SECURITY_DEPOSIT;
 
       let activeInvoiceId = payment.gatewayPaymentId;
 
@@ -980,9 +1093,12 @@ export class RentPaymentService {
         const { invoiceId, hostedInvoiceUrl: hostedUrl } = await this.createAndFinalizeInvoice({
           tenantCustomerId,
           connectedAccountId: paymentProcessor.accountId,
-          applicationFee: feeBreakdown.applicationFee,
+          // Deposits are held for the tenant and refunded in full — the platform takes no fee.
+          applicationFee: isDeposit ? 0 : feeBreakdown.applicationFee,
           currency: (payment.currency ?? 'USD').toLowerCase(),
-          description: payment.description || `Maintenance charge ${pytuid}`,
+          description:
+            payment.description ||
+            (isDeposit ? 'Security & Pet Deposit' : `Maintenance charge ${pytuid}`),
           dueDate: dayjs().toDate(),
           lineItems: payment.lineItems?.length
             ? (payment.lineItems as { description: string; amountInCents: number }[])
@@ -1045,16 +1161,7 @@ export class RentPaymentService {
    */
   private buildLineItemsFromFees(
     fees: {
-      monthly: { rent: number; petFee: number; total: number };
-      late: {
-        daysLate: number;
-        fee: number;
-        type: string;
-        percentage: number;
-        gracePeriod: number;
-      };
-      deposits: { security: number; pet: number; total: number };
-      currency: string;
+      monthly: { rent: number; petFee: number };
     },
     options?: {
       isFirstPayment?: boolean;
@@ -1102,19 +1209,7 @@ export class RentPaymentService {
       });
     }
 
-    // Late fee (if applicable)
-    if (fees.late.fee > 0) {
-      const lateFeeDesc =
-        fees.late.type === 'percentage'
-          ? `Late Fee (${fees.late.percentage}% - ${fees.late.daysLate} days late)`
-          : `Late Fee (${fees.late.daysLate} days late)`;
-
-      lineItems.push({
-        description: lateFeeDesc,
-        amountInCents: fees.late.fee,
-      });
-    }
-
+    // Late fees are never added here — they are billed as their own LATE_FEE charge.
     // Security deposit and pet deposit are handled as a separate invoice
     // (see createDepositInvoice) to enable independent refund via Stripe.
 
@@ -1129,6 +1224,63 @@ export class RentPaymentService {
   // TODO: Security and pet deposits are combined into a single SECURITY_DEPOSIT payment record.
   // If partial refund is needed (e.g., non-refundable pet deposit), consider splitting into
   // separate payment records per deposit type.
+  private static buildDepositLineItems(deposits: {
+    security: number;
+    pet: number;
+  }): { description: string; amountInCents: number }[] {
+    const depositLineItems: { description: string; amountInCents: number }[] = [];
+    if (deposits.security > 0) {
+      depositLineItems.push({ description: 'Security Deposit', amountInCents: deposits.security });
+    }
+    if (deposits.pet > 0) {
+      depositLineItems.push({ description: 'Pet Deposit', amountInCents: deposits.pet });
+    }
+    return depositLineItems;
+  }
+
+  private async leaseHasDepositRecord(cuid: string, leaseId: string): Promise<boolean> {
+    const existing = await this.paymentDAO.findFirst({
+      cuid,
+      lease: new Types.ObjectId(leaseId),
+      paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+      status: { $ne: PaymentRecordStatus.CANCELLED },
+      deletedAt: null,
+    });
+    return !!existing;
+  }
+
+  /**
+   * Deposit record without a Stripe invoice, used when the activation invoice could not be
+   * created (e.g. onboarding unfinished). The tenant pays it through payPendingCharge, which
+   * creates the invoice on demand.
+   */
+  private async createDepositTrackingRecord(opts: {
+    cuid: string;
+    leaseId: string;
+    tenantUserId: string;
+    dueDate: Date;
+    currency?: string;
+    deposits: { security: number; pet: number; total: number };
+  }): Promise<void> {
+    const depositLineItems = RentPaymentService.buildDepositLineItems(opts.deposits);
+    if (depositLineItems.length === 0) return;
+    if (await this.leaseHasDepositRecord(opts.cuid, opts.leaseId)) return;
+
+    await this.createManualTrackingPayment({
+      cuid: opts.cuid,
+      tenantId: opts.tenantUserId,
+      dueDate: opts.dueDate,
+      baseAmount: opts.deposits.total,
+      paymentType: PaymentRecordType.SECURITY_DEPOSIT,
+      paymentMethod: PaymentMethod.ONLINE,
+      leaseId: opts.leaseId,
+      description: 'Security & Pet Deposit',
+      currency: opts.currency,
+      lineItems: depositLineItems,
+      paymentSource: 'cron',
+    });
+  }
+
   private async createDepositInvoice(opts: {
     tenantCustomerId: string;
     connectedAccountId: string;
@@ -1136,29 +1288,21 @@ export class RentPaymentService {
     dueDate: string | Date;
     cuid: string;
     leaseId: string;
-    tenantId: string;
+    tenantProfileId: Types.ObjectId;
     paymentMethodId?: string;
     leaseUid?: string;
     deposits: { security: number; pet: number; total: number };
     idempotencyKey?: string;
   }): Promise<void> {
-    const depositLineItems: { description: string; amountInCents: number }[] = [];
-
-    if (opts.deposits.security > 0) {
-      depositLineItems.push({
-        description: 'Security Deposit',
-        amountInCents: opts.deposits.security,
-      });
-    }
-
-    if (opts.deposits.pet > 0) {
-      depositLineItems.push({
-        description: 'Pet Deposit',
-        amountInCents: opts.deposits.pet,
-      });
-    }
-
+    const depositLineItems = RentPaymentService.buildDepositLineItems(opts.deposits);
     if (depositLineItems.length === 0) return;
+    if (await this.leaseHasDepositRecord(opts.cuid, opts.leaseId)) {
+      this.log.info(
+        { cuid: opts.cuid, leaseId: opts.leaseId },
+        'Deposit already recorded for lease — not invoicing again'
+      );
+      return;
+    }
 
     const { invoiceId, hostedInvoiceUrl } = await this.createAndFinalizeInvoice({
       tenantCustomerId: opts.tenantCustomerId,
@@ -1179,7 +1323,7 @@ export class RentPaymentService {
       paymentType: PaymentRecordType.SECURITY_DEPOSIT,
       paymentMethod: PaymentMethod.ONLINE,
       lease: new Types.ObjectId(opts.leaseId),
-      tenant: new Types.ObjectId(opts.tenantId),
+      tenant: opts.tenantProfileId,
       baseAmount: opts.deposits.total,
       processingFee: 0,
       applicationFee: 0,
@@ -1250,6 +1394,103 @@ export class RentPaymentService {
     };
   }
 
+  private static readonly TENANT_PAYABLE_TYPES = new Set<PaymentRecordType>([
+    PaymentRecordType.SECURITY_DEPOSIT,
+    PaymentRecordType.MAINTENANCE,
+    PaymentRecordType.LATE_FEE,
+    PaymentRecordType.RENT,
+  ]);
+
+  private static sumLineItems(lineItems: { amountInCents: number }[]): number {
+    return lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
+  }
+
+  /** True when the billed period (or, without one, the due date) is the lease's first month. */
+  private static isLeaseFirstMonth(
+    lease: ILeaseDocument,
+    billing: { period?: { month: number; year: number }; dueDate?: Date | string }
+  ): boolean {
+    const start = dayjs(lease.duration.startDate);
+    const billedMonth =
+      billing.period ??
+      (billing.dueDate
+        ? { month: dayjs(billing.dueDate).month() + 1, year: dayjs(billing.dueDate).year() }
+        : undefined);
+    if (!billedMonth) return false;
+    return billedMonth.month === start.month() + 1 && billedMonth.year === start.year();
+  }
+
+  /**
+   * Monthly rent line items for a lease (rent, pet fee, management fee). The lease's first
+   * month is pro-rated the same way for every payment method.
+   */
+  private buildRentLineItems(
+    lease: ILeaseDocument,
+    billing: { period?: { month: number; year: number }; dueDate?: Date | string }
+  ): { description: string; amountInCents: number }[] {
+    const { baseRent, petMonthlyFee, managementFee } = computeLeaseMonthlyFees(lease);
+    return this.buildLineItemsFromFees(
+      { monthly: { rent: baseRent, petFee: petMonthlyFee } },
+      {
+        isFirstPayment: RentPaymentService.isLeaseFirstMonth(lease, billing),
+        startDate: lease.duration.startDate,
+        managementFee,
+      }
+    );
+  }
+
+  /** Auto-debit (ACSS/ACH) fees for one invoice; the application fee never exceeds its amount. */
+  private calculateAchFees(amountInCents: number): {
+    baseAmount: number;
+    applicationFee: number;
+    gatewayProcessingFee: number;
+    platformNetRevenue: number;
+  } {
+    const applicationFee = Math.min(
+      this.subscriptionPlanConfig.calculateAchApplicationFee(amountInCents),
+      amountInCents
+    );
+    const gatewayFee = this.subscriptionPlanConfig.calculatePaymentGatewayFee(
+      amountInCents,
+      'stripe',
+      'auto-debit'
+    );
+    return {
+      baseAmount: amountInCents,
+      applicationFee,
+      gatewayProcessingFee: gatewayFee,
+      platformNetRevenue: applicationFee - gatewayFee,
+    };
+  }
+
+  /**
+   * Voids every Stripe invoice still attached to a record that is about to be replaced, so the
+   * tenant can no longer pay a charge we stop tracking. An invoice that can't be voided is
+   * usually already void (e.g. after a card retry); it is logged for reconciliation in case it
+   * was paid instead, and the replacement still goes ahead so the month is billed.
+   */
+  private async voidOpenInvoices(payment: IPaymentDocument): Promise<void> {
+    const invoiceIds = [
+      ...new Set(
+        [payment.gatewayPaymentId, ...(payment.splitInvoices ?? []).map((s) => s.invoiceId)].filter(
+          (id): id is string => !!id && id.startsWith('in_')
+        )
+      ),
+    ];
+    for (const invoiceId of invoiceIds) {
+      const voidResult = await this.paymentGatewayService.voidInvoice(
+        IPaymentGatewayProvider.STRIPE,
+        invoiceId
+      );
+      if (!voidResult.success) {
+        this.log.error(
+          { pytuid: payment.pytuid, invoiceId, message: voidResult.message },
+          'Could not void the invoice of the payment being replaced — check it was not paid'
+        );
+      }
+    }
+  }
+
   private calculateRentFees(
     totalAmount: number,
     transactionFeePercent: number,
@@ -1284,35 +1525,26 @@ export class RentPaymentService {
   }): Promise<void> => {
     const { leaseId, luid, cuid, tenantId } = payload;
     try {
-      const lease = await this.leaseDAO.findFirst({
-        _id: new Types.ObjectId(leaseId),
-        cuid,
-        deletedAt: null,
-      });
+      const lease = await this.leaseDAO.findFirst(
+        { _id: new Types.ObjectId(leaseId), cuid, deletedAt: null },
+        { populate: ['property.id'] }
+      );
       if (!lease) return;
 
       const startDate = dayjs(lease.duration.startDate);
       const period = { month: startDate.month() + 1, year: startDate.year() };
+      // A renewal carries the original deposit forward — only a new tenancy is invoiced for it.
+      const invoiceDeposit = !lease.previousLeaseId;
 
       if (lease.fees?.acceptedPaymentMethod === 'auto-debit') {
-        await this.createRentPayment(
-          cuid,
-          {
-            paymentType: PaymentRecordType.RENT,
-            leaseId: luid,
-            tenantId,
-            dueDate: startDate.toDate(),
-            period,
-          },
-          { paymentSource: 'cron' }
-        );
+        await this.createAutoDebitFirstMonth(lease, { tenantId, period, invoiceDeposit });
       } else {
-        const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+        const lineItems = this.buildRentLineItems(lease, { period });
         await this.createManualTrackingPayment({
           cuid,
           tenantId,
           dueDate: startDate.toDate(),
-          baseAmount: totalMonthlyRent,
+          baseAmount: RentPaymentService.sumLineItems(lineItems),
           paymentType: PaymentRecordType.RENT,
           paymentMethod: RentPaymentService.mapLeasePaymentMethod(
             lease.fees?.acceptedPaymentMethod
@@ -1321,6 +1553,7 @@ export class RentPaymentService {
           period,
           currency: lease.fees?.currency,
           paymentSource: 'cron',
+          lineItems,
         });
       }
       this.log.info(
@@ -1335,6 +1568,75 @@ export class RentPaymentService {
       );
     }
   };
+
+  /**
+   * First month of an auto-debit lease: a real Stripe invoice the tenant can pay right away
+   * (the auto-charge cron charges it if still unpaid when due), plus the deposit invoice for a
+   * new tenancy. If the invoice can't be created yet (e.g. payment onboarding unfinished), the
+   * charges are recorded without an invoice so they stay visible and payable — payPendingCharge
+   * creates the invoice when the tenant pays.
+   */
+  private async createAutoDebitFirstMonth(
+    lease: ILeaseDocument,
+    opts: { tenantId: string; period: { month: number; year: number }; invoiceDeposit: boolean }
+  ): Promise<void> {
+    const dueDate = dayjs(lease.duration.startDate).toDate();
+    try {
+      await this.createRentPayment(
+        lease.cuid,
+        {
+          paymentType: PaymentRecordType.RENT,
+          leaseId: lease.luid,
+          tenantId: opts.tenantId,
+          dueDate,
+          period: opts.period,
+        },
+        {
+          createStripeInvoice: true,
+          paymentSource: 'cron',
+          idempotencyKey: `lease-activation:${lease._id.toString()}`,
+          invoiceDeposit: opts.invoiceDeposit,
+        }
+      );
+      return;
+    } catch (error: any) {
+      this.log.warn(
+        { error: error.message, luid: lease.luid, cuid: lease.cuid },
+        'First-month invoice could not be created — recording the charges without an invoice'
+      );
+    }
+
+    const lineItems = this.buildRentLineItems(lease, { period: opts.period });
+    await this.createManualTrackingPayment({
+      cuid: lease.cuid,
+      tenantId: opts.tenantId,
+      dueDate,
+      baseAmount: RentPaymentService.sumLineItems(lineItems),
+      paymentType: PaymentRecordType.RENT,
+      paymentMethod: PaymentMethod.ONLINE,
+      leaseId: lease._id.toString(),
+      period: opts.period,
+      currency: lease.fees?.currency,
+      paymentSource: 'cron',
+      lineItems,
+    });
+
+    if (opts.invoiceDeposit) {
+      const { securityDeposit, petDeposit } = computeLeaseMonthlyFees(lease);
+      await this.createDepositTrackingRecord({
+        cuid: lease.cuid,
+        leaseId: lease._id.toString(),
+        tenantUserId: opts.tenantId,
+        dueDate,
+        currency: lease.fees?.currency,
+        deposits: {
+          security: securityDeposit,
+          pet: petDeposit,
+          total: securityDeposit + petDeposit,
+        },
+      });
+    }
+  }
 
   /**
    * Queue a payment-request notification email to the tenant.
@@ -1388,7 +1690,8 @@ export class RentPaymentService {
           amountDue: MoneyUtils.formatCurrency(opts.amountInCents, opts.currency),
           dueDate: opts.dueDate instanceof Date ? opts.dueDate.toISOString() : opts.dueDate,
           description: opts.description || '',
-          paymentUrl: `${envVariables.FRONTEND.URL}/tenants/${opts.cuid}/${profile?.user?._id?.toString()}/payments`,
+          isAutoDebit: opts.lease.fees?.acceptedPaymentMethod === 'auto-debit',
+          paymentUrl: `${envVariables.FRONTEND.URL}/tenants/${opts.cuid}/${profile?.user?.uid}/payments`,
         },
       });
       this.log.info({ tenantEmail }, 'Payment request email queued');

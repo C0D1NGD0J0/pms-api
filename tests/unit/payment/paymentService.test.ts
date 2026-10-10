@@ -785,14 +785,14 @@ describe('PaymentService - getPaymentStats', () => {
     mockClientDAO = {
       findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
     } as unknown as jest.Mocked<ClientDAO>;
-    mockPaymentDAO = { findByCuid: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = { list: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     paymentService = makeServiceWithMocks({ clientDAO: mockClientDAO, paymentDAO: mockPaymentDAO });
   });
 
   afterEach(() => jest.clearAllMocks());
 
   it('should aggregate mixed statuses: collected, pending, overdue, refunded, expectedRevenue', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 200000),
         makeStat(PaymentRecordStatus.PAID, 150000),
@@ -814,7 +814,7 @@ describe('PaymentService - getPaymentStats', () => {
   });
 
   it('should use refund.amount (not baseAmount) for partial refunds', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [makeStat(PaymentRecordStatus.REFUNDED, 100000, { refund: { amount: 40000 } })],
       total: 1,
     } as any);
@@ -825,7 +825,7 @@ describe('PaymentService - getPaymentStats', () => {
   });
 
   it('should count a staged PENDING_REFUND deposit as still collected, not refunded', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PENDING_REFUND, 150000, {
           paymentType: PaymentRecordType.SECURITY_DEPOSIT,
@@ -843,24 +843,31 @@ describe('PaymentService - getPaymentStats', () => {
   });
 
   it('should page through every payment instead of stopping at the DAO page cap', async () => {
-    const fullPage = Array.from({ length: 1000 }, () => makeStat(PaymentRecordStatus.PAID, 100));
-    mockPaymentDAO.findByCuid
+    const fullPage = Array.from({ length: 1000 }, () => ({
+      ...makeStat(PaymentRecordStatus.PAID, 100),
+      _id: new Types.ObjectId(),
+    }));
+    mockPaymentDAO.list
       .mockResolvedValueOnce({ items: fullPage } as any)
       .mockResolvedValueOnce({ items: [makeStat(PaymentRecordStatus.PAID, 500)] } as any);
 
     const result = await paymentService.getPaymentStats(CUID);
 
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledTimes(2);
-    expect(mockPaymentDAO.findByCuid).toHaveBeenLastCalledWith(
-      CUID,
-      {},
-      expect.objectContaining({ skip: 1000, limit: 1000 })
+    expect(mockPaymentDAO.list).toHaveBeenCalledTimes(2);
+    expect(mockPaymentDAO.list).toHaveBeenLastCalledWith(
+      {
+        $and: [
+          { cuid: CUID, deletedAt: null, vendorId: { $exists: false } },
+          { _id: { $gt: fullPage[999]._id } },
+        ],
+      },
+      expect.objectContaining({ sort: { _id: 1 }, limit: 1000 })
     );
     expect(result.data.collected).toBe(100500);
   });
 
   it('should calculate collectionRate as percentage of collected vs expected', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 75000),
         makeStat(PaymentRecordStatus.PENDING, 25000),
@@ -874,7 +881,7 @@ describe('PaymentService - getPaymentStats', () => {
   });
 
   it('should return 0 for all stats when there are no payments', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({ items: [], total: 0 } as any);
+    mockPaymentDAO.list.mockResolvedValue({ items: [], total: 0 } as any);
 
     const result = await paymentService.getPaymentStats(CUID);
 
@@ -908,7 +915,7 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
       findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
     } as unknown as jest.Mocked<ClientDAO>;
     mockPaymentDAO = {
-      findByCuid: jest.fn().mockResolvedValue({ items: [], total: 0 }),
+      list: jest.fn().mockResolvedValue({ items: [], total: 0 }),
     } as unknown as jest.Mocked<PaymentDAO>;
     mockProfileDAO = {
       findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_PROFILE_ID) }),
@@ -935,10 +942,9 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     // profileDAO.findFirst should be called with the requester's own userId (sub), not the caller-supplied tenantId
     expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({ user: expect.any(Types.ObjectId) });
 
-    // findByCuid should receive the auto-resolved profile id, not OTHER_TENANT_PROFILE_ID
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
-      CUID,
-      expect.objectContaining({ tenantId: TENANT_PROFILE_ID }),
+    // The payment query should use the auto-resolved profile id, not OTHER_TENANT_PROFILE_ID
+    expect(mockPaymentDAO.list).toHaveBeenCalledWith(
+      expect.objectContaining({ cuid: CUID, tenant: TENANT_PROFILE_ID }),
       expect.anything()
     );
   });
@@ -956,9 +962,8 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     // profileDAO.findFirst should NOT be called — PM tenantId is passed through directly
     expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
 
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
-      CUID,
-      expect.objectContaining({ tenantId: OTHER_TENANT_PROFILE_ID }),
+    expect(mockPaymentDAO.list).toHaveBeenCalledWith(
+      expect.objectContaining({ cuid: CUID, tenant: OTHER_TENANT_PROFILE_ID }),
       expect.anything()
     );
   });
@@ -967,9 +972,8 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     await paymentService.getPaymentStats(CUID);
 
     expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
-    expect(mockPaymentDAO.findByCuid).toHaveBeenCalledWith(
-      CUID,
-      expect.not.objectContaining({ tenantId: expect.anything() }),
+    expect(mockPaymentDAO.list).toHaveBeenCalledWith(
+      expect.not.objectContaining({ tenant: expect.anything() }),
       expect.anything()
     );
   });
@@ -3427,14 +3431,14 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
     mockClientDAO = {
       findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
     } as unknown as jest.Mocked<ClientDAO>;
-    mockPaymentDAO = { findByCuid: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
+    mockPaymentDAO = { list: jest.fn() } as unknown as jest.Mocked<PaymentDAO>;
     paymentService = makeServiceWithMocks({ clientDAO: mockClientDAO, paymentDAO: mockPaymentDAO });
   });
 
   afterEach(() => jest.clearAllMocks());
 
   it('should exclude MAINTENANCE payments from the collection rate calculation', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         // RENT: 60k collected out of 100k expected → 60%
         makeStat(PaymentRecordStatus.PAID, 60000, PaymentRecordType.RENT),
@@ -3453,7 +3457,7 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
   });
 
   it('should exclude LATE_FEE payments from the collection rate', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 100000, PaymentRecordType.RENT),
         makeStat(PaymentRecordStatus.PAID, 5000, PaymentRecordType.LATE_FEE),
@@ -3471,7 +3475,7 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
   });
 
   it('should return 0 collection rate when no RENT payments exist', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 30000, PaymentRecordType.MAINTENANCE),
         makeStat(PaymentRecordStatus.PAID, 5000, PaymentRecordType.LATE_FEE),
@@ -3486,7 +3490,7 @@ describe('PaymentService - getPaymentStats (RENT-only collection rate)', () => {
   });
 
   it('should include SECURITY_DEPOSIT and DEPOSIT_REFUND in totals but not collection rate', async () => {
-    mockPaymentDAO.findByCuid.mockResolvedValue({
+    mockPaymentDAO.list.mockResolvedValue({
       items: [
         makeStat(PaymentRecordStatus.PAID, 50000, PaymentRecordType.RENT),
         makeStat(PaymentRecordStatus.PAID, 150000, PaymentRecordType.SECURITY_DEPOSIT),

@@ -16,7 +16,6 @@ import { StripeService } from '@services/external/stripe/stripe.service';
 import { InvoiceTemplateRenderer, InvoiceRenderData } from '@services/invoice';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import { preventTenantConflict, calcCollectionRate, createLogger } from '@utils/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { isAllowedCheckoutReturnUrl } from '@shared/validations/PaymentsValidation/checkoutReturnUrl';
 import {
@@ -24,6 +23,12 @@ import {
   IPaginateResult,
   IRequestContext,
 } from '@interfaces/utils.interface';
+import {
+  preventTenantConflict,
+  calcCollectionRate,
+  iterateInPages,
+  createLogger,
+} from '@utils/index';
 import {
   IVendorEarningsResponse,
   IVendorEarningItem,
@@ -809,7 +814,7 @@ export class PaymentService implements ICronProvider {
           overdue, // OVERDUE only (in cents)
           refunded, // REFUNDED amounts (in cents)
           collectionRate, // percentage (0–100)
-          currency: allPayments[0]?.currency ?? 'USD',
+          currency: allPayments[allPayments.length - 1]?.currency ?? 'USD', // most recent record
         },
       };
     } catch (error: any) {
@@ -818,24 +823,20 @@ export class PaymentService implements ICronProvider {
     }
   }
 
-  // BaseDAO.list caps a single page at 1000, so page through until every record is read
+  // A single list() call caps at 1000 rows, so read every page via the _id cursor
   private async fetchAllPaymentsForStats(
     cuid: string,
     daoFilters: Record<string, any>
   ): Promise<IPaymentDocument[]> {
-    const pageSize = 1000;
+    // Same exclusions as paymentDAO.findByCuid: soft-deleted and vendor expense records
+    const filter: Record<string, any> = { cuid, deletedAt: null, vendorId: { $exists: false } };
+    if (daoFilters.tenantId) filter.tenant = daoFilters.tenantId;
+
     const allPayments: IPaymentDocument[] = [];
-    for (let skip = 0; ; skip += pageSize) {
-      const page = await this.paymentDAO.findByCuid(cuid, daoFilters, {
-        sort: { dueDate: -1, _id: -1 },
-        populate: [],
-        limit: pageSize,
-        skip,
-      });
-      const items = page.items || [];
-      allPayments.push(...items);
-      if (items.length < pageSize) return allPayments;
+    for await (const payment of iterateInPages(this.paymentDAO, filter, undefined, 1000)) {
+      allPayments.push(payment);
     }
+    return allPayments;
   }
 
   async getTenantPaymentHistory(

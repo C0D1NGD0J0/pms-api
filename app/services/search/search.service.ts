@@ -5,6 +5,7 @@ import { LeaseService } from '@services/lease/lease.service';
 import { SEARCH_CONSTANTS, createLogger } from '@utils/index';
 import { PropertyService } from '@services/property/property.service';
 import { PermissionService } from '@services/permission/permission.service';
+import { IMaintenanceRequestDocument } from '@interfaces/maintenanceRequest.interface';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
 import {
   GlobalSearchResultType,
@@ -207,7 +208,7 @@ export class SearchService {
       { page: 1, limit: SEARCH_CONSTANTS.GLOBAL_LIMIT_PER_TYPE }
     );
 
-    return (result.data?.items ?? []).map((request: any) => ({
+    return (result.data?.items ?? []).map((request: IMaintenanceRequestDocument) => ({
       type: 'serviceRequest',
       id: request.mruid,
       title: request.title,

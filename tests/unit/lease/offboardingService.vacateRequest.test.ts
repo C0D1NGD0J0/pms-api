@@ -156,6 +156,7 @@ describe('OffboardingService - Vacate Requests', () => {
       propertyDAO: { updateById: jest.fn() } as any,
       propertyUnitDAO: { updateById: jest.fn() } as any,
       paymentDAO: mockPaymentDAO,
+      invoiceDAO: {} as any,
       leaseService: mockLeaseService as any,
       inspectionDAO: mockInspectionDAO,
       inspectionService: mockInspectionService as any,
@@ -385,6 +386,7 @@ describe('OffboardingService - Vacate Requests', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(result.message).toMatch(/approved/i);
 
       // Verify lease termination was called with correct move-out date
       expect(mockLeaseService.terminateLease).toHaveBeenCalledWith(
@@ -465,6 +467,7 @@ describe('OffboardingService - Vacate Requests', () => {
       );
 
       expect(result.success).toBe(true);
+      expect(result.message).toMatch(/rejected/i);
 
       // Verify lease was NOT terminated
       expect(mockLeaseService.terminateLease).not.toHaveBeenCalled();
@@ -610,9 +613,7 @@ describe('OffboardingService - Vacate Requests', () => {
         invoiceId: null,
       };
 
-      mockMaintenanceRequestDAO.list.mockResolvedValue({
-        items: [billableSR, nonBillableSR],
-      });
+      mockMaintenanceRequestDAO.list.mockResolvedValue({ items: [billableSR, nonBillableSR] });
 
       await terminatedEventHandler({
         leaseId: mockLeaseId.toString(),

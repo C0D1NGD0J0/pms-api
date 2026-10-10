@@ -59,6 +59,7 @@ describe('OffboardingService', () => {
       propertyDAO: {} as any,
       propertyUnitDAO: {} as any,
       paymentDAO: mockPaymentDAO as any,
+      invoiceDAO: {} as any,
       leaseService: {} as any,
       inspectionDAO: mockInspectionDAO as any,
       inspectionService: { findLeaseDepositPayment: mockFindLeaseDepositPayment } as any,
@@ -208,6 +209,79 @@ describe('OffboardingService', () => {
       expect(result.data).toEqual(
         expect.objectContaining({ depositAmount: 180000, depositRefundStatus: 'pending' })
       );
+    });
+  });
+
+  describe('closurePreflightCheck', () => {
+    const totals = (count: number, totalCents: number) =>
+      jest.fn().mockResolvedValue(count ? [{ _id: null, count, totalCents }] : []);
+
+    const buildPreflightService = (daos: Record<string, any>) =>
+      new OffboardingService({
+        leaseDAO: {} as any,
+        paymentDAO: {} as any,
+        invoiceDAO: {} as any,
+        userDAO: {} as any,
+        propertyDAO: {} as any,
+        propertyUnitDAO: {} as any,
+        leaseService: {} as any,
+        inspectionDAO: {} as any,
+        inspectionService: {} as any,
+        leaseRenewalService: {} as any,
+        emitterService: { on: jest.fn(), emit: jest.fn() } as any,
+        maintenanceRequestDAO: {} as any,
+        maintenancePaymentService: {} as any,
+        sseService: {} as any,
+        vendorDAO: {} as any,
+        clientDAO: {} as any,
+        emailQueue: {} as any,
+        ...daos,
+      });
+
+    it('totals every matching record in the database and queries standalone invoices', async () => {
+      const paymentDAO = { aggregate: totals(1500, 3_000_000) };
+      const invoiceDAO = { aggregate: totals(2, 45000) };
+      const leaseDAO = {
+        aggregate: totals(40, 8_000_000),
+        countDocuments: jest.fn().mockResolvedValue(40),
+      };
+      const preflightService = buildPreflightService({ paymentDAO, invoiceDAO, leaseDAO });
+
+      const result = await preflightService.closurePreflightCheck(CUID);
+
+      expect(result.data.canProceed).toBe(true);
+      expect(result.data.warnings).toEqual([
+        expect.objectContaining({
+          type: 'outstanding_payments',
+          count: 1500,
+          totalCents: 3_000_000,
+        }),
+        expect.objectContaining({ type: 'unpaid_vendor_invoices', count: 2, totalCents: 45000 }),
+        expect.objectContaining({ type: 'security_deposits', count: 40, totalCents: 8_000_000 }),
+        expect.objectContaining({ type: 'active_leases', count: 40 }),
+      ]);
+      expect(invoiceDAO.aggregate.mock.calls[0][0][0].$match).toEqual(
+        expect.objectContaining({
+          cuid: CUID,
+          status: InvoiceStatus.APPROVED,
+          vendorPayoutStatus: { $ne: 'paid' },
+        })
+      );
+      expect(paymentDAO.aggregate.mock.calls[0][0][0].$match).toEqual(
+        expect.objectContaining({ cuid: CUID, vendorId: { $exists: false } })
+      );
+    });
+
+    it('returns no warnings when nothing is outstanding', async () => {
+      const preflightService = buildPreflightService({
+        paymentDAO: { aggregate: totals(0, 0) },
+        invoiceDAO: { aggregate: totals(0, 0) },
+        leaseDAO: { aggregate: totals(0, 0), countDocuments: jest.fn().mockResolvedValue(0) },
+      });
+
+      const result = await preflightService.closurePreflightCheck(CUID);
+
+      expect(result.data.warnings).toEqual([]);
     });
   });
 });

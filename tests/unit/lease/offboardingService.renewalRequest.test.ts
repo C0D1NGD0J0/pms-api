@@ -130,6 +130,7 @@ describe('OffboardingService - Renewal Requests', () => {
       propertyDAO: { updateById: jest.fn() } as any,
       propertyUnitDAO: { updateById: jest.fn() } as any,
       paymentDAO: mockPaymentDAO,
+      invoiceDAO: {} as any,
       leaseService: mockLeaseService as any,
       inspectionDAO: mockInspectionDAO,
       inspectionService: mockInspectionService as any,

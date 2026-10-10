@@ -14,10 +14,10 @@ export class SearchController {
     this.searchService = searchService;
   }
 
-  async globalSearch(req: AppRequest, res: Response) {
+  async globalSearch(req: AppRequest, res: Response): Promise<Response> {
     const { cuid } = req.params;
     const { q } = req.query as { q: string };
-    const data = await this.searchService.globalSearch(cuid, req.context, q);
-    return res.status(httpStatusCodes.OK).json({ success: true, data });
+    const result = await this.searchService.globalSearch(cuid, req.context, q);
+    return res.status(httpStatusCodes.OK).json(result);
   }
 }

@@ -68,7 +68,7 @@ describe('SearchService.globalSearch', () => {
   it('maps every record type to the flat result shape', async () => {
     const result = await service.globalSearch(cuid, makeContext(ROLES.MANAGER), 'maple');
 
-    expect(result.results).toEqual([
+    expect(result.data.results).toEqual([
       { type: 'property', id: 'PID1', title: 'Maple Court', subtitle: '1 Maple St' },
       { type: 'tenant', id: 'UID1', title: 'Jane Doe', subtitle: 'jane@example.com' },
       { type: 'tenant', id: 'UID2', title: 'noname@example.com', subtitle: 'noname@example.com' },
@@ -125,7 +125,7 @@ describe('SearchService.globalSearch', () => {
 
     expect(mocks.userService.getFilteredUsers).not.toHaveBeenCalled();
     expect(mocks.leaseService.getFilteredLeases).not.toHaveBeenCalled();
-    expect(result.results.map((r) => r.type)).toEqual(['property', 'serviceRequest']);
+    expect(result.data.results.map((r) => r.type)).toEqual(['property', 'serviceRequest']);
   });
 
   it('checks LIST permission with the caller role, department and client context', async () => {
@@ -148,7 +148,7 @@ describe('SearchService.globalSearch', () => {
 
     const result = await service.globalSearch(cuid, makeContext(ROLES.MANAGER), 'maple');
 
-    const types = result.results.map((r) => r.type);
+    const types = result.data.results.map((r) => r.type);
     expect(types).not.toContain('lease');
     expect(types).toEqual(['property', 'tenant', 'tenant', 'serviceRequest']);
   });
@@ -156,7 +156,7 @@ describe('SearchService.globalSearch', () => {
   it('returns no results and makes no lookups for a term under 2 characters', async () => {
     const result = await service.globalSearch(cuid, makeContext(ROLES.MANAGER), ' a ');
 
-    expect(result).toEqual({ results: [] });
+    expect(result).toEqual(expect.objectContaining({ success: true, data: { results: [] } }));
     expect(mocks.permissionService.checkPermission).not.toHaveBeenCalled();
     expect(mocks.propertyService.getClientProperties).not.toHaveBeenCalled();
   });
@@ -167,11 +167,15 @@ describe('SearchService.globalSearch', () => {
 
     const staffResult = await realService.globalSearch(cuid, makeContext(ROLES.STAFF), 'maple');
     expect(mocks.userService.getFilteredUsers).not.toHaveBeenCalled();
-    expect(staffResult.results.map((r) => r.type)).toEqual(['property', 'lease', 'serviceRequest']);
+    expect(staffResult.data.results.map((r) => r.type)).toEqual([
+      'property',
+      'lease',
+      'serviceRequest',
+    ]);
 
     jest.clearAllMocks();
     const tenantResult = await realService.globalSearch(cuid, makeContext(ROLES.TENANT), 'maple');
-    expect(tenantResult.results).toEqual([]);
+    expect(tenantResult.data.results).toEqual([]);
     expect(mocks.propertyService.getClientProperties).not.toHaveBeenCalled();
   });
 });

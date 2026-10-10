@@ -1,16 +1,23 @@
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
+import { t } from '@shared/languages';
 import { UserService } from '@services/user/user.service';
 import { LeaseService } from '@services/lease/lease.service';
+import { SEARCH_CONSTANTS, createLogger } from '@utils/index';
 import { PropertyService } from '@services/property/property.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { MaintenanceRequestService } from '@services/maintenanceRequest/serviceRequest.service';
-import { PermissionResource, PermissionAction, IRequestContext } from '@interfaces/utils.interface';
 import {
   GlobalSearchResultType,
   IGlobalSearchResponse,
   IGlobalSearchResult,
 } from '@interfaces/search.interface';
+import {
+  IPromiseReturnedData,
+  ISuccessReturnData,
+  PermissionResource,
+  PermissionAction,
+  IRequestContext,
+} from '@interfaces/utils.interface';
 
 interface IConstructor {
   maintenanceRequestService: MaintenanceRequestService;
@@ -25,9 +32,6 @@ interface ISearchGroup {
   resource: PermissionResource;
   type: GlobalSearchResultType;
 }
-
-export const GLOBAL_SEARCH_LIMIT_PER_TYPE = 5;
-export const GLOBAL_SEARCH_MIN_LENGTH = 2;
 
 export class SearchService {
   private readonly maintenanceRequestService: MaintenanceRequestService;
@@ -56,51 +60,67 @@ export class SearchService {
     cuid: string,
     context: IRequestContext,
     query: string
-  ): Promise<IGlobalSearchResponse> {
-    const searchTerm = (query || '').trim();
-    if (searchTerm.length < GLOBAL_SEARCH_MIN_LENGTH) {
-      return { results: [] };
-    }
-
-    const groups: ISearchGroup[] = [
-      {
-        type: 'property',
-        resource: PermissionResource.PROPERTY,
-        run: () => this.searchProperties(cuid, context, searchTerm),
-      },
-      {
-        type: 'tenant',
-        resource: PermissionResource.USER,
-        run: () => this.searchTenants(cuid, searchTerm),
-      },
-      {
-        type: 'lease',
-        resource: PermissionResource.LEASE,
-        run: () => this.searchLeases(cuid, context, searchTerm),
-      },
-      {
-        type: 'serviceRequest',
-        resource: PermissionResource.MAINTENANCE,
-        run: () => this.searchServiceRequests(context, searchTerm),
-      },
-    ];
-
-    const allowedGroups = await this.filterAllowedGroups(cuid, context, groups);
-    const settled = await Promise.allSettled(allowedGroups.map((group) => group.run()));
-
-    const results: IGlobalSearchResult[] = [];
-    settled.forEach((outcome, index) => {
-      if (outcome.status === 'fulfilled') {
-        results.push(...outcome.value);
-        return;
+  ): IPromiseReturnedData<IGlobalSearchResponse> {
+    try {
+      const searchTerm = query.trim();
+      if (searchTerm.length < SEARCH_CONSTANTS.MIN_TERM_LENGTH) {
+        return this.buildSearchResponse([]);
       }
-      this.log.error(
-        { err: outcome.reason, cuid, type: allowedGroups[index].type },
-        'Global search lookup failed'
-      );
-    });
 
-    return { results };
+      const groups: ISearchGroup[] = [
+        {
+          type: 'property',
+          resource: PermissionResource.PROPERTY,
+          run: () => this.searchProperties(cuid, context, searchTerm),
+        },
+        {
+          type: 'tenant',
+          resource: PermissionResource.USER,
+          run: () => this.searchTenants(cuid, searchTerm),
+        },
+        {
+          type: 'lease',
+          resource: PermissionResource.LEASE,
+          run: () => this.searchLeases(cuid, context, searchTerm),
+        },
+        {
+          type: 'serviceRequest',
+          resource: PermissionResource.MAINTENANCE,
+          run: () => this.searchServiceRequests(context, searchTerm),
+        },
+      ];
+
+      const allowedGroups = await this.filterAllowedGroups(cuid, context, groups);
+      const settled = await Promise.allSettled(allowedGroups.map((group) => group.run()));
+
+      // One failing lookup must not hide the other record types
+      const results: IGlobalSearchResult[] = [];
+      settled.forEach((outcome, index) => {
+        if (outcome.status === 'fulfilled') {
+          results.push(...outcome.value);
+          return;
+        }
+        this.log.error(
+          { error: outcome.reason, cuid, type: allowedGroups[index].type },
+          'Global search lookup failed'
+        );
+      });
+
+      return this.buildSearchResponse(results);
+    } catch (error) {
+      this.log.error({ error, cuid }, 'Error running global search');
+      throw error;
+    }
+  }
+
+  private buildSearchResponse(
+    results: IGlobalSearchResult[]
+  ): ISuccessReturnData<IGlobalSearchResponse> {
+    return {
+      success: true,
+      data: { results },
+      message: t('common.success.retrieved', { resource: 'Search results' }),
+    };
   }
 
   private async filterAllowedGroups(
@@ -130,10 +150,10 @@ export class SearchService {
   ): Promise<IGlobalSearchResult[]> {
     const result = await this.propertyService.getClientProperties(cuid, context.currentuser, {
       filters: { searchTerm },
-      pagination: { page: 1, limit: GLOBAL_SEARCH_LIMIT_PER_TYPE },
+      pagination: { page: 1, limit: SEARCH_CONSTANTS.GLOBAL_LIMIT_PER_TYPE },
     });
 
-    return (result.data?.items ?? []).map((property: any) => ({
+    return (result.data?.items ?? []).map((property) => ({
       type: 'property',
       id: property.pid,
       title: property.name,
@@ -145,7 +165,7 @@ export class SearchService {
     const result = await this.userService.getFilteredUsers(
       cuid,
       { role: ['tenant'], search: searchTerm },
-      { limit: GLOBAL_SEARCH_LIMIT_PER_TYPE, skip: 0 }
+      { limit: SEARCH_CONSTANTS.GLOBAL_LIMIT_PER_TYPE, skip: 0 }
     );
 
     return (result.data?.items ?? []).map((tenant) => ({
@@ -164,7 +184,7 @@ export class SearchService {
     const result = await this.leaseService.getFilteredLeases(
       cuid,
       { search: searchTerm },
-      { page: 1, limit: GLOBAL_SEARCH_LIMIT_PER_TYPE },
+      { page: 1, limit: SEARCH_CONSTANTS.GLOBAL_LIMIT_PER_TYPE },
       context
     );
 
@@ -184,7 +204,7 @@ export class SearchService {
     const result = await this.maintenanceRequestService.listRequests(
       context,
       { search: searchTerm },
-      { page: 1, limit: GLOBAL_SEARCH_LIMIT_PER_TYPE }
+      { page: 1, limit: SEARCH_CONSTANTS.GLOBAL_LIMIT_PER_TYPE }
     );
 
     return (result.data?.items ?? []).map((request: any) => ({

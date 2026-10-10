@@ -7,11 +7,10 @@ import { SearchValidations, UtilsValidations, validateRequest } from '@shared/va
 
 const router = Router();
 
-router.use(isAuthenticated);
+router.use(basicLimiter({ max: 60, windowMs: 60_000, delayAfter: 60 }), isAuthenticated);
 
 router.get(
   '/:cuid',
-  basicLimiter({ max: 60, windowMs: 60_000, delayAfter: 60 }),
   requirePermission(PermissionResource.CLIENT, PermissionAction.READ),
   validateRequest({
     params: UtilsValidations.cuid,

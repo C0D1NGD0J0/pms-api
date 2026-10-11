@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { ROLES } from '@shared/constants/roles.constants';
+import { ClientService } from '@services/client/client.service';
 import express, { NextFunction, Response, Request } from 'express';
 import { PermissionService } from '@services/permission/permission.service';
 
@@ -31,13 +32,29 @@ import clientRoutes from '@routes/client.routes';
 
 const CUID = 'client-abc-123';
 
-const mockController = {
-  updateClientProfile: jest.fn((req: Request, res: Response) =>
-    res.status(200).json({ body: req.body })
-  ),
-};
-
 const permissionService = new PermissionService();
+
+// Real service with stubbed persistence, so the super-admin-only field rule runs behind the route.
+const clientDAO = {
+  getClientByCuid: jest
+    .fn()
+    .mockResolvedValue({ _id: 'client-id', cuid: CUID, companyProfile: {} }),
+  startSession: jest.fn().mockResolvedValue({}),
+  withTransaction: jest.fn((session: unknown, run: (session: unknown) => unknown) => run(session)),
+  updateById: jest.fn((_id: string, update: object) => Promise.resolve(update)),
+};
+const clientService = new ClientService({
+  clientDAO,
+  paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) },
+  permissionService,
+} as any);
+
+const mockController = {
+  updateClientProfile: jest.fn(async (req: Request, res: Response) => {
+    await clientService.updateClientDetails((req as any).context, req.body);
+    return res.status(200).json({ body: req.body });
+  }),
+};
 
 interface ITestUser {
   department?: string;
@@ -62,6 +79,8 @@ const buildApp = () => {
         clients: [{ cuid: CUID, isConnected: true }],
         employeeInfo: department ? { department } : undefined,
       },
+      request: { params: { cuid: CUID }, url: req.url },
+      requestId: 'req-route-access',
     };
     next();
   });
@@ -79,6 +98,34 @@ const fullFormSave = {
   settings: { lang: 'fr' },
 };
 
+const adminFieldsSave = {
+  displayName: 'Acme Renamed',
+  companyProfile: {
+    tradingName: 'New Trading',
+    companyEmail: 'ops@acme.example.com',
+    companyPhone: '+1 416 979 1234',
+    website: 'https://acme.example.com',
+    logo: 'https://cdn.example.com/logo.png',
+    contactInfo: { contactPerson: 'Jane Ops' },
+  },
+  settings: {
+    timeZone: 'America/Toronto',
+    lang: 'fr',
+    notificationPreferences: { email: false },
+    tenantFeatures: { guestPass: true },
+  },
+};
+
+const superAdminOnlyPayloads: Array<[string, object]> = [
+  ['companyProfile.legalEntityName', { companyProfile: { legalEntityName: 'Acme Inc' } }],
+  ['companyProfile.registrationNumber', { companyProfile: { registrationNumber: 'R-1' } }],
+  ['companyProfile.companyAddress', { companyProfile: { companyAddress: '1 Main Street' } }],
+  ['settings.defaultCurrency', { settings: { defaultCurrency: 'EUR' } }],
+  ['settings.vendorPayoutMode', { settings: { vendorPayoutMode: 'express' } }],
+  ['settings.requireDepositRefundApproval', { settings: { requireDepositRefundApproval: true } }],
+  ['dataProcessingConsent', { dataProcessingConsent: false }],
+];
+
 const patchClient = (as: ITestUser, body: object = fullFormSave) => {
   const req = request(app).patch(`/api/v1/clients/${CUID}`).set('x-test-role', as.role);
   if (as.department) req.set('x-test-department', as.department);
@@ -95,16 +142,15 @@ describe('client routes — PATCH /:cuid (update client details) access control'
     expect(mockController.updateClientProfile).not.toHaveBeenCalled();
   });
 
-  it.each([ROLES.ADMIN, ROLES.MANAGER])(
-    'forbids %s (client:update is held by super-admin only)',
-    async (role) => {
-      const res = await patchClient({ role });
+  it('forbids manager (no client:settings)', async () => {
+    const res = await patchClient({ role: ROLES.MANAGER });
 
-      expect(res.status).toBe(403);
-      expect(mockController.updateClientProfile).not.toHaveBeenCalled();
-    }
-  );
+    expect(res.status).toBe(403);
+    expect(mockController.updateClientProfile).not.toHaveBeenCalled();
+  });
 
+  // management holds client:settings as a department grant (for /settings/tenant-features);
+  // department grants must not open the account-details route.
   it.each(['maintenance', 'operations', 'accounting', 'security', 'management'])(
     'forbids staff in the %s department',
     async (department) => {
@@ -115,13 +161,52 @@ describe('client routes — PATCH /:cuid (update client details) access control'
     }
   );
 
-  it('allows super-admin to save the account form', async () => {
-    const res = await patchClient({ role: ROLES.SUPER_ADMIN });
+  it('allows admin to save the admin fields', async () => {
+    const res = await patchClient({ role: ROLES.ADMIN }, adminFieldsSave);
 
     expect(res.status).toBe(200);
-    expect(mockController.updateClientProfile).toHaveBeenCalledTimes(1);
-    expect(res.body.body).toEqual(fullFormSave);
+    expect(clientDAO.updateById).toHaveBeenCalledTimes(1);
   });
+
+  it.each(superAdminOnlyPayloads)(
+    'returns 403 when admin sends super-admin-only %s',
+    async (_field, restrictedPayload) => {
+      const res = await patchClient(
+        { role: ROLES.ADMIN },
+        { displayName: 'Acme Renamed', ...restrictedPayload }
+      );
+
+      expect(res.status).toBe(403);
+      expect(clientDAO.updateById).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([ROLES.SUPER_ADMIN, ROLES.ROOT_ADMIN])(
+    'allows %s to save admin and super-admin-only fields',
+    async (role) => {
+      const allFields = {
+        ...adminFieldsSave,
+        companyProfile: {
+          ...adminFieldsSave.companyProfile,
+          legalEntityName: 'Acme Holdings Inc',
+          registrationNumber: 'REG-1',
+          companyAddress: '1 Main Street',
+        },
+        settings: {
+          ...adminFieldsSave.settings,
+          defaultCurrency: 'CAD',
+          vendorPayoutMode: 'platform_hold',
+          requireDepositRefundApproval: true,
+        },
+        dataProcessingConsent: true,
+      };
+
+      const res = await patchClient({ role }, allFields);
+
+      expect(res.status).toBe(200);
+      expect(clientDAO.updateById).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it('forbids a super-admin of another client (cuid mismatch)', async () => {
     const res = await request(app)

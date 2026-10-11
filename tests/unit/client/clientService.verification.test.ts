@@ -4,6 +4,7 @@ import { IRequestContext } from '@interfaces/utils.interface';
 import { IClientDocument } from '@interfaces/client.interface';
 import { ClientService } from '@services/client/client.service';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
+import { PermissionService } from '@services/permission/permission.service';
 
 describe('ClientService - Account Verification', () => {
   let clientService: ClientService;
@@ -50,6 +51,7 @@ describe('ClientService - Account Verification', () => {
       paymentGatewayService: {} as any,
       vendorDAO: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+      permissionService: new PermissionService(),
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
       paymentProcessorDAO: {} as any,
     });

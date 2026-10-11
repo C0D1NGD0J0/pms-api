@@ -109,7 +109,8 @@
       "departmentEmployeeOnly": "[FR] Departments can only be assigned to employee roles.",
       "verificationFailed": "[FR] Failed to verify account.",
       "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided.",
-      "immutableFieldLocked": "Ce champ est verrouillé et ne peut pas être modifié. Veuillez contacter le support si une mise à jour est nécessaire."
+      "immutableFieldLocked": "Ce champ est verrouillé et ne peut pas être modifié. Veuillez contacter le support si une mise à jour est nécessaire.",
+      "restrictedFieldsRequireSuperAdmin": "Seul un super-administrateur peut modifier : {{fields}}."
     },
     "success": {
       "roleAssigned": "Rôle {{role}} assigné avec succès",

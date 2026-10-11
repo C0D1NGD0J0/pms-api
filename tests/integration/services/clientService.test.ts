@@ -1,6 +1,7 @@
 import { ROLES } from '@shared/constants/roles.constants';
-import { BadRequestError } from '@shared/customErrors/index';
 import { ClientService } from '@services/client/client.service';
+import { PermissionService } from '@services/permission/permission.service';
+import { BadRequestError, ForbiddenError } from '@shared/customErrors/index';
 import { PropertyUnit, Property, Profile, Client, User } from '@models/index';
 import { beforeEach, beforeAll, afterEach, describe, expect, it } from '@jest/globals';
 import {
@@ -57,6 +58,7 @@ const setupServices = () => {
     sseService: {} as any,
     paymentGatewayService: {} as any,
     featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+    permissionService: new PermissionService(),
     vendorDAO: {} as any,
     paymentProcessorDAO: paymentProcessorDAO as any,
     queueFactory: mockQueueFactory as any,
@@ -161,7 +163,7 @@ describe('ClientService Integration Tests - Write Operations', () => {
         ({
           currentuser: {
             sub: userId,
-            client: { cuid, role: ROLES.ADMIN },
+            client: { cuid, role: ROLES.SUPER_ADMIN },
           },
           request: {
             params: { cuid },
@@ -246,7 +248,7 @@ describe('ClientService Integration Tests - Write Operations', () => {
     describe('locked fields once a payment processor exists', () => {
       const buildContext = (cuid: string, userId: string) =>
         ({
-          currentuser: { sub: userId, client: { cuid, role: ROLES.ADMIN } },
+          currentuser: { sub: userId, client: { cuid, role: ROLES.SUPER_ADMIN } },
           request: { params: { cuid }, url: '/test', method: 'PATCH', path: '/', query: {} },
           requestId: 'req-currency',
         }) as any;
@@ -359,6 +361,158 @@ describe('ClientService Integration Tests - Write Operations', () => {
         expect(updated?.companyProfile?.tradingName).toBe('New Trading');
         expect(updated?.settings?.lang).toBe('fr');
         expect(updated?.settings?.defaultCurrency).toBe('USD');
+      });
+
+      it('vendorPayoutMode is super-admin-only but not processor-locked', async () => {
+        const client = await createTestClient();
+        const user = await createTestUser(client.cuid, { roles: [ROLES.SUPER_ADMIN] });
+        paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: client.cuid });
+
+        const result = await clientService.updateClientDetails(
+          buildContext(client.cuid, user._id.toString()),
+          { settings: { vendorPayoutMode: 'platform_hold' } } as any
+        );
+
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe('super-admin-only fields', () => {
+      const buildContext = (cuid: string, userId: string, role: string) =>
+        ({
+          currentuser: { sub: userId, client: { cuid, role } },
+          request: { params: { cuid }, url: '/test', method: 'PATCH', path: '/', query: {} },
+          requestId: 'req-restricted',
+        }) as any;
+
+      const superAdminOnlyPayloads: Array<[string, object]> = [
+        ['companyProfile.legalEntityName', { companyProfile: { legalEntityName: 'Acme Inc' } }],
+        ['companyProfile.registrationNumber', { companyProfile: { registrationNumber: 'R-1' } }],
+        ['companyProfile.companyAddress', { companyProfile: { companyAddress: '1 Main Street' } }],
+        ['settings.defaultCurrency', { settings: { defaultCurrency: 'EUR' } }],
+        ['settings.vendorPayoutMode', { settings: { vendorPayoutMode: 'platform_hold' } }],
+        [
+          'settings.requireDepositRefundApproval',
+          { settings: { requireDepositRefundApproval: true } },
+        ],
+        ['dataProcessingConsent', { dataProcessingConsent: true }],
+      ];
+
+      const adminPayload = {
+        displayName: 'Admin Renamed',
+        companyProfile: {
+          tradingName: 'Admin Trading',
+          companyEmail: 'ops@acme.example.com',
+          companyPhone: '+1 416 979 1234',
+          website: 'https://acme.example.com',
+          logo: 'https://cdn.example.com/new-logo.png',
+          contactInfo: { contactPerson: 'Jane Ops', email: 'jane@acme.example.com' },
+        },
+        settings: {
+          timeZone: 'America/Vancouver',
+          lang: 'fr',
+          notificationPreferences: { sms: true },
+          tenantFeatures: { guestPass: true },
+        },
+      };
+
+      afterEach(() => {
+        paymentProcessorDAO.findFirst.mockResolvedValue(null);
+      });
+
+      it.each(superAdminOnlyPayloads)(
+        'rejects %s from an admin with 403 and saves nothing',
+        async (_field, restrictedPayload) => {
+          const client = await createTestClient();
+          const user = await createTestUser(client.cuid, { roles: [ROLES.ADMIN] });
+
+          await expect(
+            clientService.updateClientDetails(
+              buildContext(client.cuid, user._id.toString(), ROLES.ADMIN),
+              { ...restrictedPayload, displayName: 'Should Not Save' } as any
+            )
+          ).rejects.toThrow(ForbiddenError);
+          const unchanged = await Client.findById(client._id).lean();
+          expect(unchanged?.displayName).not.toBe('Should Not Save');
+        }
+      );
+
+      it('lets an admin save every admin field', async () => {
+        const client = await createTestClient();
+        const user = await createTestUser(client.cuid, { roles: [ROLES.ADMIN] });
+
+        const result = await clientService.updateClientDetails(
+          buildContext(client.cuid, user._id.toString(), ROLES.ADMIN),
+          structuredClone(adminPayload) as any
+        );
+
+        expect(result.success).toBe(true);
+        const updated = await Client.findById(client._id).lean();
+        expect(updated?.displayName).toBe('Admin Renamed');
+        expect(updated?.companyProfile?.contactInfo?.contactPerson).toBe('Jane Ops');
+        expect(updated?.settings?.lang).toBe('fr');
+        expect(updated?.settings?.tenantFeatures?.guestPass).toBe(true);
+      });
+
+      it.each([ROLES.SUPER_ADMIN, ROLES.ROOT_ADMIN])(
+        'lets %s save admin and super-admin-only fields together',
+        async (role) => {
+          const client = await createTestClient();
+          const user = await createTestUser(client.cuid, { roles: [role] });
+
+          const result = await clientService.updateClientDetails(
+            buildContext(client.cuid, user._id.toString(), role),
+            {
+              ...structuredClone(adminPayload),
+              companyProfile: {
+                ...adminPayload.companyProfile,
+                legalEntityName: 'Acme Holdings Inc',
+                registrationNumber: 'REG-9',
+                companyAddress: '1 Main Street',
+              },
+              settings: {
+                ...adminPayload.settings,
+                defaultCurrency: 'CAD',
+                vendorPayoutMode: 'platform_hold',
+                requireDepositRefundApproval: true,
+              },
+              dataProcessingConsent: true,
+            } as any
+          );
+
+          expect(result.success).toBe(true);
+          const updated = await Client.findById(client._id).lean();
+          expect(updated?.companyProfile?.legalEntityName).toBe('Acme Holdings Inc');
+          expect(updated?.settings?.defaultCurrency).toBe('CAD');
+          expect(updated?.settings?.vendorPayoutMode).toBe('platform_hold');
+          expect(updated?.settings?.requireDepositRefundApproval).toBe(true);
+        }
+      );
+
+      it('an admin sending a processor-locked field gets 403 (role rule runs first)', async () => {
+        const client = await createTestClient();
+        const user = await createTestUser(client.cuid, { roles: [ROLES.ADMIN] });
+        paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: client.cuid });
+
+        await expect(
+          clientService.updateClientDetails(
+            buildContext(client.cuid, user._id.toString(), ROLES.ADMIN),
+            { settings: { defaultCurrency: 'EUR' } } as any
+          )
+        ).rejects.toThrow(ForbiddenError);
+      });
+
+      it('an admin can still save admin fields once a processor exists', async () => {
+        const client = await createTestClient();
+        const user = await createTestUser(client.cuid, { roles: [ROLES.ADMIN] });
+        paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: client.cuid });
+
+        const result = await clientService.updateClientDetails(
+          buildContext(client.cuid, user._id.toString(), ROLES.ADMIN),
+          structuredClone(adminPayload) as any
+        );
+
+        expect(result.success).toBe(true);
       });
     });
   });

@@ -194,6 +194,28 @@ export const IMMUTABLE_LEASE_FIELDS = [
 ];
 
 /**
+ * Lease fields owned by the lifecycle endpoints (activate, send for signature, approve,
+ * terminate, renew, signing webhooks) — never writable through the generic lease update,
+ * whatever the lease status, so those flows' checks and side effects can't be skipped.
+ */
+export const LIFECYCLE_MANAGED_LEASE_FIELDS = [
+  'status',
+  'approvalStatus',
+  'approvalDetails',
+  'pendingChanges',
+  'eSignature',
+  'signatures',
+  'signedDate',
+  'previousLeaseId',
+  'renewalRequest',
+  'vacateRequest',
+  'terminationReason',
+  'leaseDocuments',
+  'deletedAt',
+  'deletedBy',
+];
+
+/**
  * Fields that when modified invalidate existing signatures (top-level only)
  */
 export const SIGNATURE_INVALIDATING_LEASE_FIELDS = ['fees', 'duration', 'petPolicy', 'type'];
@@ -267,6 +289,21 @@ export const IMMUTABLE_MAINTENANCE_REQUEST_FIELDS_WHEN_CLOSED = [
   'unitId',
   'requestType',
   'priority',
+] as const;
+
+/**
+ * Account (client) fields only callers holding client:update (super-admin and above) may send to
+ * PATCH /clients/:cuid. Callers with client:settings only (admin) get a 403 if any are present.
+ * Dot-notation paths into the update payload.
+ */
+export const SUPER_ADMIN_ONLY_CLIENT_FIELDS = [
+  'companyProfile.legalEntityName',
+  'companyProfile.registrationNumber',
+  'companyProfile.companyAddress',
+  'settings.defaultCurrency',
+  'settings.vendorPayoutMode',
+  'settings.requireDepositRefundApproval',
+  'dataProcessingConsent',
 ] as const;
 
 /**

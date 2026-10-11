@@ -115,7 +115,8 @@
       "departmentEmployeeOnly": "Departments can only be assigned to employee roles.",
       "verificationFailed": "Failed to verify account.",
       "noTenantFeaturesProvided": "At least one tenant feature must be provided.",
-      "immutableFieldLocked": "This field is locked and cannot be changed. Please contact support if an update is required."
+      "immutableFieldLocked": "This field is locked and cannot be changed. Please contact support if an update is required.",
+      "restrictedFieldsRequireSuperAdmin": "Only a super-admin can change: {{fields}}."
     },
     "success": {
       "roleAssigned": "Role {{role}} assigned successfully",

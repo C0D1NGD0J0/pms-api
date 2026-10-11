@@ -4,6 +4,7 @@ import { ClientController } from '@controllers/ClientController';
 import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
+  requireRolePermission,
   requireUserManagement,
   requirePermission,
   isAuthenticated,
@@ -27,10 +28,13 @@ router.get(
   })
 );
 
+// Admins (client:settings) may save; super-admin-only fields are enforced in
+// ClientService.updateClientDetails. Role grants only, so the management staff
+// department's client:settings (meant for /settings/tenant-features) doesn't open this route.
 router.patch(
   '/:cuid',
   basicLimiter(),
-  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  requireRolePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam,

@@ -5,6 +5,7 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { ClientController } from '@controllers/ClientController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
+import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
@@ -91,6 +92,7 @@ describe('ClientController Integration Tests', () => {
       paymentGatewayService: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+      permissionService: new PermissionService(),
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
@@ -287,13 +289,24 @@ describe('ClientController Integration Tests', () => {
 
       await request(app)
         .patch(`/api/v1/clients/${testClient.cuid}`)
-        .send({ settings: { requireDepositRefundApproval: true } })
+        .send({ settings: { timeZone: 'Europe/Paris' } })
         .expect(httpStatusCodes.OK);
 
       const client = await Client.findOne({ cuid: testClient.cuid }).lean();
-      expect(client?.settings?.requireDepositRefundApproval).toBe(true);
+      expect(client?.settings?.timeZone).toBe('Europe/Paris');
       expect(client?.settings?.defaultCurrency).toBe('CAD');
       expect(client?.settings?.lang).toBe('fr');
+    });
+
+    it('returns 403 when an admin sends a super-admin-only field', async () => {
+      const response = await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}`)
+        .send({ settings: { requireDepositRefundApproval: true, lang: 'fr' } })
+        .expect(httpStatusCodes.FORBIDDEN);
+
+      expect(response.body.success).toBe(false);
+      const client = await Client.findOne({ cuid: testClient.cuid }).lean();
+      expect(client?.settings?.requireDepositRefundApproval).not.toBe(true);
     });
   });
 

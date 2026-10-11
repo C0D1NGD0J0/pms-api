@@ -553,6 +553,11 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   return currentuser;
 };
 
+interface IPermissionMiddlewareOptions {
+  allowMineFallback?: boolean;
+  roleGrantsOnly?: boolean;
+}
+
 /**
  * check if user has specific permission
  * Includes client context validation for client-specific resources
@@ -582,7 +587,23 @@ export const requirePermission = (
   resource: PermissionResource | string,
   action: PermissionAction | string,
   allowMineFallback?: boolean
-) => {
+) => buildPermissionMiddleware(resource, action, { allowMineFallback });
+
+/**
+ * Like requirePermission, but staff department grants are ignored — only the role's own
+ * (and inherited) grants count. Use when a department grant (e.g. management → client:settings)
+ * is meant for a narrower route and must not open this one.
+ */
+export const requireRolePermission = (
+  resource: PermissionResource | string,
+  action: PermissionAction | string
+) => buildPermissionMiddleware(resource, action, { roleGrantsOnly: true });
+
+function buildPermissionMiddleware(
+  resource: PermissionResource | string,
+  action: PermissionAction | string,
+  { allowMineFallback, roleGrantsOnly }: IPermissionMiddlewareOptions
+) {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       const currentuser = validateUserAndConnection(req, next);
@@ -609,8 +630,11 @@ export const requirePermission = (
       }
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
+      const userToCheck = roleGrantsOnly
+        ? { ...currentuser, employeeInfo: undefined }
+        : currentuser;
       let hasPermission = await permissionService.checkUserPermission(
-        currentuser,
+        userToCheck,
         resource as PermissionResource,
         action as string
       );
@@ -643,7 +667,7 @@ export const requirePermission = (
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
-};
+}
 
 /**
  * Restrict access to primary vendor users only.

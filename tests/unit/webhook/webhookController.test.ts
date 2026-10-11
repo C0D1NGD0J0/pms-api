@@ -41,6 +41,8 @@ describe('WebhookController - Stripe Webhooks', () => {
       handleChargeRefunded: jest.fn().mockResolvedValue(undefined),
       handleDisputeWon: jest.fn().mockResolvedValue(undefined),
       handleDisputeLost: jest.fn().mockResolvedValue(undefined),
+      handlePaymentIntentSucceeded: jest.fn().mockResolvedValue(undefined),
+      handlePaymentIntentFailed: jest.fn().mockResolvedValue(undefined),
     };
 
     mockPaymentWebhookService = {
@@ -126,6 +128,54 @@ describe('WebhookController - Stripe Webhooks', () => {
         ...charge,
         previous_attributes: { amount_refunded: 500 },
       });
+    });
+  });
+
+  describe('handleStripeWebhook — tenant PaymentIntent routing', () => {
+    const sendEvent = async (event: Record<string, any>) => {
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(event as any);
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+    };
+
+    it('routes a succeeded tenant charge to handlePaymentIntentSucceeded', async () => {
+      const paymentIntent = { id: 'pi_1', metadata: { cuid: 'C1' } };
+      await sendEvent({
+        id: 'evt_pi_1',
+        type: 'payment_intent.succeeded',
+        data: { object: paymentIntent },
+      });
+
+      expect(mockPaymentService.handlePaymentIntentSucceeded).toHaveBeenCalledWith(paymentIntent);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+    });
+
+    it('routes a failed tenant charge to handlePaymentIntentFailed', async () => {
+      const paymentIntent = { id: 'pi_2', metadata: { cuid: 'C1' } };
+      await sendEvent({
+        id: 'evt_pi_2',
+        type: 'payment_intent.payment_failed',
+        data: { object: paymentIntent },
+      });
+
+      expect(mockPaymentService.handlePaymentIntentFailed).toHaveBeenCalledWith(paymentIntent);
+    });
+
+    it.each([
+      ['a subscription PaymentIntent (no cuid)', {}],
+      [
+        'a card-checkout PaymentIntent (settled by checkout.session.completed)',
+        { cuid: 'C1', pytuid: 'P1' },
+      ],
+    ])('ignores %s', async (_label, metadata) => {
+      await sendEvent({
+        id: 'evt_pi_3',
+        type: 'payment_intent.succeeded',
+        data: { object: { id: 'pi_3', metadata } },
+      });
+
+      expect(mockPaymentService.handlePaymentIntentSucceeded).not.toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
     });
   });
 

@@ -6,16 +6,16 @@ import { isValidPhoneNumber, CircuitBreaker, createLogger } from '@utils/index';
 import {
   IIdentityVerificationReport,
   ICreateIdentitySessionInput,
+  ICreateTenantChargeResponse,
   ICreateConnectAccountInput,
-  IFinalizeInvoiceResponse,
   IIdentitySessionResponse,
+  ICreateTenantChargeInput,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
   StripePaymentMethodType,
-  ICreateInvoiceResponse,
   ICreateCheckoutInput,
   ICreateCustomerInput,
-  ICreateInvoiceInput,
+  ITenantChargeDetails,
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
@@ -778,101 +778,6 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse> {
-    try {
-      const {
-        tenantCustomerId,
-        connectedAccountId,
-        applicationFeeAmountInCents: applicationFeeAmount,
-        currency,
-        description,
-        lineItems,
-        paymentMethodId,
-        cuid,
-        leaseUid,
-        idempotencyKey,
-      } = input;
-      const keyed = (suffix: string) =>
-        idempotencyKey ? { idempotencyKey: `${idempotencyKey}:${suffix}` } : undefined;
-
-      // Destination charges (rent): application_fee_amount is all-inclusive — Stripe takes
-      // its processing fee from it, platform keeps the rest.
-      // Separate charges (maintenance): charge stays on platform, no transfer_data.
-      // Vendor is paid later via source_transaction transfer.
-      const invoiceParams: Stripe.InvoiceCreateParams = {
-        customer: tenantCustomerId,
-        currency,
-        ...(paymentMethodId && { default_payment_method: paymentMethodId }),
-        auto_advance: false,
-        collection_method: 'charge_automatically',
-        description,
-        metadata: {
-          cuid,
-          ...(leaseUid ? { leaseUid } : {}),
-        },
-        ...(!input.skipDestinationTransfer && {
-          application_fee_amount: applicationFeeAmount,
-          transfer_data: { destination: connectedAccountId },
-        }),
-      };
-
-      const invoice = await this.stripe.invoices.create(invoiceParams, keyed('create'));
-
-      const itemResults = await Promise.allSettled(
-        lineItems.map((item, index) =>
-          this.stripe.invoiceItems.create(
-            {
-              customer: tenantCustomerId,
-              invoice: invoice.id,
-              amount: item.amountInCents,
-              currency,
-              description: item.description,
-            },
-            keyed(`item:${index}`)
-          )
-        )
-      );
-
-      const failedItems = itemResults.reduce<{ index: number; reason: any }[]>((acc, r, i) => {
-        if (r.status === 'rejected') acc.push({ index: i, reason: r.reason });
-        return acc;
-      }, []);
-      const successCount = itemResults.filter((r) => r.status === 'fulfilled').length;
-
-      if (failedItems.length > 0) {
-        this.log.error(
-          {
-            invoiceId: invoice.id,
-            failedCount: failedItems.length,
-            successCount,
-            failures: failedItems.map(({ index, reason }) => ({
-              item: lineItems[index],
-              stripeCode: (reason as any)?.code ?? null,
-              stripeType: (reason as any)?.type ?? null,
-              stripeMessage: (reason as any)?.message ?? null,
-            })),
-          },
-          'Some invoice items failed to create'
-        );
-
-        throw new Error(
-          `Failed to add ${failedItems.length} of ${lineItems.length} invoice items. Invoice ${invoice.id} created but incomplete.`
-        );
-      }
-
-      return {
-        invoiceId: invoice.id,
-        amountDue: invoice.amount_due,
-        status: invoice.status || 'open',
-        hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
-        dueDate: invoice.due_date ? new Date(invoice.due_date * 1000) : undefined,
-      };
-    } catch (error) {
-      this.log.error({ error, input }, 'Error creating invoice');
-      throw error;
-    }
-  }
-
   async createInvoiceItem(params: {
     customerId: string;
     amountInCents: number;
@@ -937,28 +842,6 @@ export class StripeService implements IPaymentProvider {
     }
   }
 
-  async finalizeInvoice(
-    invoiceId: string,
-    idempotencyKey?: string
-  ): Promise<IFinalizeInvoiceResponse> {
-    try {
-      const invoice = await this.stripe.invoices.finalizeInvoice(
-        invoiceId,
-        {},
-        idempotencyKey ? { idempotencyKey } : undefined
-      );
-
-      return {
-        invoiceId: invoice.id,
-        status: invoice.status!,
-        hostedInvoiceUrl: invoice.hosted_invoice_url || undefined,
-      };
-    } catch (error) {
-      this.log.error({ error, invoiceId }, 'Error finalizing invoice');
-      throw error;
-    }
-  }
-
   async voidInvoice(invoiceId: string): Promise<void> {
     try {
       await this.withBreaker(() => this.stripe.invoices.voidInvoice(invoiceId));
@@ -978,6 +861,165 @@ export class StripeService implements IPaymentProvider {
       this.log.error({ error, invoiceId }, 'Error voiding invoice');
       throw error;
     }
+  }
+
+  /**
+   * Create a tenant charge as an unconfirmed PaymentIntent (charged later by
+   * confirmPaymentIntent). Destination charge for rent/deposits/late fees; for
+   * maintenance (skipDestinationTransfer) the charge stays on the platform.
+   */
+  async createPaymentIntent(input: ICreateTenantChargeInput): Promise<ICreateTenantChargeResponse> {
+    const {
+      tenantCustomerId,
+      connectedAccountId,
+      applicationFeeAmountInCents,
+      currency,
+      description,
+      lineItems,
+      paymentMethodId,
+      mandateId,
+      cuid,
+      leaseUid,
+      idempotencyKey,
+    } = input;
+    try {
+      const amount = lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
+      // Metadata values are capped at 500 chars; the line items live on our Payment record.
+      const lineItemSummary = lineItems
+        .map((item) => `${item.description}: ${item.amountInCents}`)
+        .join('; ')
+        .slice(0, 500);
+
+      const paymentIntent = await this.withBreaker(() =>
+        this.stripe.paymentIntents.create(
+          {
+            amount,
+            currency,
+            customer: tenantCustomerId,
+            description,
+            ...(paymentMethodId && { payment_method: paymentMethodId }),
+            // Saved methods are charged off-session, so no redirect-based methods.
+            automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+            metadata: {
+              cuid,
+              ...(leaseUid && { leaseUid }),
+              ...(mandateId && { mandateId }),
+              lineItems: lineItemSummary,
+            },
+            ...(!input.skipDestinationTransfer && {
+              application_fee_amount: applicationFeeAmountInCents,
+              transfer_data: { destination: connectedAccountId },
+            }),
+          },
+          idempotencyKey ? { idempotencyKey: `${idempotencyKey}:create` } : undefined
+        )
+      );
+
+      return {
+        chargeId: paymentIntent.id,
+        amount: paymentIntent.amount,
+        status: paymentIntent.status,
+      };
+    } catch (error) {
+      this.log.error({ error, cuid, leaseUid }, 'Error creating payment intent');
+      throw error;
+    }
+  }
+
+  /**
+   * Charge a tenant PaymentIntent off-session. Without an explicit mandate, the one
+   * stored at creation is used — but only for the payment method it was created with,
+   * so switching to a card never sends a bank mandate.
+   */
+  async confirmPaymentIntent(
+    paymentIntentId: string,
+    opts?: { paymentMethod?: string; mandate?: string }
+  ): Promise<void> {
+    try {
+      let mandate = opts?.mandate;
+      if (!mandate) {
+        const existing = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+        const existingPaymentMethod = this.extractStripeObjectId(existing.payment_method);
+        const samePaymentMethod =
+          !opts?.paymentMethod || opts.paymentMethod === existingPaymentMethod;
+        mandate = samePaymentMethod ? existing.metadata?.mandateId || undefined : undefined;
+      }
+
+      await this.withBreaker(() =>
+        this.stripe.paymentIntents.confirm(paymentIntentId, {
+          ...(opts?.paymentMethod && { payment_method: opts.paymentMethod }),
+          ...(mandate && { mandate }),
+          off_session: true,
+        })
+      );
+    } catch (error: any) {
+      // Already charged (e.g. a retried cron job) — mirror invoice_already_paid.
+      if (error?.code === 'payment_intent_unexpected_state') {
+        const current = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+        if (current.status === 'succeeded' || current.status === 'processing') return;
+      }
+      this.log.error({ error, paymentIntentId }, 'Error confirming payment intent');
+      throw error;
+    }
+  }
+
+  async cancelPaymentIntent(paymentIntentId: string): Promise<void> {
+    try {
+      await this.withBreaker(() => this.stripe.paymentIntents.cancel(paymentIntentId));
+    } catch (error: any) {
+      // Already canceled — safe to ignore
+      if (error?.code === 'payment_intent_unexpected_state') {
+        const current = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+        if (current.status === 'canceled') return;
+      }
+      this.log.error({ error, paymentIntentId }, 'Error canceling payment intent');
+      throw error;
+    }
+  }
+
+  /** Current state of a tenant PaymentIntent, mapped to the invoice status vocabulary. */
+  async getPaymentIntentDetails(paymentIntentId: string): Promise<ITenantChargeDetails> {
+    const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId, {
+      expand: ['latest_charge'],
+    });
+    const latestCharge =
+      paymentIntent.latest_charge && typeof paymentIntent.latest_charge === 'object'
+        ? paymentIntent.latest_charge
+        : null;
+    const lastPaymentError = paymentIntent.last_payment_error
+      ? {
+          message: paymentIntent.last_payment_error.message,
+          code: paymentIntent.last_payment_error.code,
+          type: paymentIntent.last_payment_error.type,
+          payment_method: { type: paymentIntent.last_payment_error.payment_method?.type },
+        }
+      : undefined;
+
+    const statusMap: Record<Stripe.PaymentIntent.Status, ITenantChargeDetails['status']> = {
+      succeeded: 'paid',
+      canceled: 'void',
+      processing: 'open',
+      requires_payment_method: 'open',
+      requires_confirmation: 'open',
+      requires_action: 'open',
+      requires_capture: 'open',
+    };
+
+    return {
+      status: statusMap[paymentIntent.status] ?? null,
+      paymentIntentId: paymentIntent.id,
+      chargeId: latestCharge?.id ?? this.extractStripeObjectId(paymentIntent.latest_charge),
+      receiptUrl: latestCharge?.receipt_url ?? undefined,
+      paidAt:
+        paymentIntent.status === 'succeeded' && latestCharge?.created
+          ? new Date(latestCharge.created * 1000)
+          : undefined,
+      lastPaymentError,
+      paymentMethodType:
+        latestCharge?.payment_method_details?.type ??
+        lastPaymentError?.payment_method?.type ??
+        paymentIntent.payment_method_types?.[0],
+    };
   }
 
   async verifyWebhookSignature(

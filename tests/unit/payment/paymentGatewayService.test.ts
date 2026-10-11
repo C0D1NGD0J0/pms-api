@@ -57,51 +57,6 @@ describe('PaymentGatewayService - getInvoiceIdForPaymentIntent', () => {
   });
 });
 
-describe('PaymentGatewayService - getInvoice', () => {
-  it('maps status, hosted url and paid_at from the provider invoice', async () => {
-    const stripeService = {
-      getInvoice: jest.fn().mockResolvedValue({
-        status: 'paid',
-        hosted_invoice_url: 'https://invoice.stripe.com/i/1',
-        status_transitions: { paid_at: 1_700_000_000 },
-      }),
-    };
-    const gateway = makeGateway(stripeService);
-
-    const result = await gateway.getInvoice(IPaymentGatewayProvider.STRIPE, 'in_1');
-
-    expect(stripeService.getInvoice).toHaveBeenCalledWith('in_1');
-    expect(result).toEqual({
-      success: true,
-      data: {
-        status: 'paid',
-        hostedInvoiceUrl: 'https://invoice.stripe.com/i/1',
-        paidAt: new Date(1_700_000_000 * 1000),
-      },
-    });
-  });
-
-  it('leaves optional fields undefined for an unpaid invoice', async () => {
-    const gateway = makeGateway({
-      getInvoice: jest.fn().mockResolvedValue({ status: 'open', status_transitions: {} }),
-    });
-
-    const result = await gateway.getInvoice(IPaymentGatewayProvider.STRIPE, 'in_2');
-
-    expect(result.data).toEqual({ status: 'open', hostedInvoiceUrl: undefined, paidAt: undefined });
-  });
-
-  it('returns success:false when the provider throws', async () => {
-    const gateway = makeGateway({
-      getInvoice: jest.fn().mockRejectedValue(new Error('No such invoice')),
-    });
-
-    const result = await gateway.getInvoice(IPaymentGatewayProvider.STRIPE, 'in_missing');
-
-    expect(result).toEqual({ success: false, data: null, message: 'No such invoice' });
-  });
-});
-
 describe('PaymentGatewayService - getInvoicePaymentDetails', () => {
   it('passes the provider details through, including receiptUrl', async () => {
     const details = {
@@ -127,5 +82,94 @@ describe('PaymentGatewayService - getInvoicePaymentDetails', () => {
     const result = await gateway.getInvoicePaymentDetails(IPaymentGatewayProvider.STRIPE, 'in_x');
 
     expect(result).toEqual({ success: false, data: undefined, message: 'boom' });
+  });
+});
+
+describe('PaymentGatewayService - tenant charges', () => {
+  const STRIPE = IPaymentGatewayProvider.STRIPE;
+
+  it('creates tenant charges as PaymentIntents', async () => {
+    const createPaymentIntent = jest
+      .fn()
+      .mockResolvedValue({ chargeId: 'pi_1', amount: 100, status: 'requires_confirmation' });
+    const gateway = makeGateway({ createPaymentIntent });
+
+    const result = await gateway.createCharge(STRIPE, { cuid: 'C1' } as any);
+
+    expect(result).toEqual({
+      success: true,
+      data: { chargeId: 'pi_1', amount: 100, status: 'requires_confirmation' },
+    });
+  });
+
+  it('confirms PaymentIntents and still pays legacy invoices', async () => {
+    const confirmPaymentIntent = jest.fn().mockResolvedValue(undefined);
+    const payInvoice = jest.fn().mockResolvedValue(undefined);
+    const gateway = makeGateway({ confirmPaymentIntent, payInvoice });
+    const opts = { paymentMethod: 'pm_1', mandate: 'mandate_1' };
+
+    await gateway.payCharge(STRIPE, 'pi_1', opts);
+    await gateway.payCharge(STRIPE, 'in_1', opts);
+
+    expect(confirmPaymentIntent).toHaveBeenCalledWith('pi_1', opts);
+    expect(payInvoice).toHaveBeenCalledWith('in_1', opts);
+  });
+
+  it('cancels PaymentIntents and voids legacy invoices', async () => {
+    const cancelPaymentIntent = jest.fn().mockResolvedValue(undefined);
+    const voidInvoice = jest.fn().mockResolvedValue(undefined);
+    const gateway = makeGateway({ cancelPaymentIntent, voidInvoice });
+
+    await gateway.cancelCharge(STRIPE, 'pi_1');
+    await gateway.cancelCharge(STRIPE, 'in_1');
+
+    expect(cancelPaymentIntent).toHaveBeenCalledWith('pi_1');
+    expect(voidInvoice).toHaveBeenCalledWith('in_1');
+  });
+
+  it('returns a failure instead of throwing when a charge cannot be paid', async () => {
+    const confirmPaymentIntent = jest.fn().mockRejectedValue(new Error('card_declined'));
+    const gateway = makeGateway({ confirmPaymentIntent });
+
+    expect(await gateway.payCharge(STRIPE, 'pi_1')).toEqual({
+      success: false,
+      data: null,
+      message: 'card_declined',
+    });
+  });
+
+  it('reads PaymentIntent details directly', async () => {
+    const details = { status: 'paid', chargeId: 'ch_1', receiptUrl: 'https://r' };
+    const getPaymentIntentDetails = jest.fn().mockResolvedValue(details);
+    const gateway = makeGateway({ getPaymentIntentDetails });
+
+    expect(await gateway.getChargeDetails(STRIPE, 'pi_1')).toEqual({
+      success: true,
+      data: details,
+    });
+  });
+
+  it('combines invoice status and payment details for legacy invoices', async () => {
+    const getInvoice = jest.fn().mockResolvedValue({
+      status: 'paid',
+      hosted_invoice_url: 'https://invoice',
+      status_transitions: { paid_at: 1790000000 },
+    });
+    const getInvoicePaymentDetails = jest.fn().mockResolvedValue({
+      chargeId: 'ch_1',
+      paymentMethodType: 'acss_debit',
+      receiptUrl: 'https://r',
+    });
+    const gateway = makeGateway({ getInvoice, getInvoicePaymentDetails });
+
+    const result = await gateway.getChargeDetails(STRIPE, 'in_1');
+
+    expect(result.data).toEqual({
+      status: 'paid',
+      chargeId: 'ch_1',
+      paymentMethodType: 'acss_debit',
+      receiptUrl: 'https://invoice',
+      paidAt: new Date(1790000000 * 1000),
+    });
   });
 });

@@ -6,16 +6,16 @@ import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import {
   IIdentityVerificationReport,
   ICreateIdentitySessionInput,
+  ICreateTenantChargeResponse,
   ICreateConnectAccountInput,
-  IFinalizeInvoiceResponse,
   IIdentitySessionResponse,
+  ICreateTenantChargeInput,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
   StripePaymentMethodType,
-  ICreateInvoiceResponse,
   ICreateCustomerInput,
   ICreateCheckoutInput,
-  ICreateInvoiceInput,
+  ITenantChargeDetails,
   IPaymentProvider,
   IPaymentCustomer,
   ICheckoutSession,
@@ -573,28 +573,6 @@ export class PaymentGatewayService {
     }
   }
 
-  async createInvoice(
-    provider: IPaymentGatewayProvider,
-    input: ICreateInvoiceInput
-  ): IPromiseReturnedData<ICreateInvoiceResponse | null> {
-    try {
-      const providerInstance = this.getProvider(provider);
-      if (!('createInvoice' in providerInstance)) {
-        throw new Error(`Provider ${provider} does not support invoices`);
-      }
-
-      const result = await providerInstance.createInvoice(input);
-      return { success: true, data: result };
-    } catch (error) {
-      this.log.error({ error, provider }, 'Error creating invoice');
-      return {
-        success: false,
-        data: null,
-        message: error instanceof Error ? error.message : 'Failed to create invoice',
-      };
-    }
-  }
-
   async createInvoiceItem(
     provider: IPaymentGatewayProvider,
     params: { customerId: string; amountInCents: number; currency: string; description: string }
@@ -613,28 +591,6 @@ export class PaymentGatewayService {
         success: false,
         data: null,
         message: error instanceof Error ? error.message : 'Failed to create invoice item',
-      };
-    }
-  }
-
-  async payInvoice(
-    provider: IPaymentGatewayProvider,
-    invoiceId: string,
-    opts?: { paymentMethod?: string; mandate?: string }
-  ): IPromiseReturnedData<null> {
-    try {
-      const providerInstance = this.getProvider(provider);
-      if (!('payInvoice' in providerInstance)) {
-        throw new Error(`Provider ${provider} does not support payInvoice`);
-      }
-      await providerInstance.payInvoice(invoiceId, opts);
-      return { success: true, data: null };
-    } catch (error) {
-      this.log.error({ error, provider }, 'Error paying invoice');
-      return {
-        success: false,
-        data: null,
-        message: error instanceof Error ? error.message : 'Failed to pay invoice',
       };
     }
   }
@@ -696,50 +652,6 @@ export class PaymentGatewayService {
     }
   }
 
-  async finalizeInvoice(
-    provider: IPaymentGatewayProvider,
-    invoiceId: string,
-    idempotencyKey?: string
-  ): IPromiseReturnedData<IFinalizeInvoiceResponse | null> {
-    try {
-      const providerInstance = this.getProvider(provider);
-      if (!('finalizeInvoice' in providerInstance)) {
-        throw new Error(`Provider ${provider} does not support invoice finalization`);
-      }
-
-      const result = await providerInstance.finalizeInvoice!(invoiceId, idempotencyKey);
-      return { success: true, data: result };
-    } catch (error) {
-      this.log.error({ error, provider }, 'Error finalizing invoice');
-      return {
-        success: false,
-        data: null,
-        message: error instanceof Error ? error.message : 'Failed to finalize invoice',
-      };
-    }
-  }
-
-  async voidInvoice(
-    provider: IPaymentGatewayProvider,
-    invoiceId: string
-  ): IPromiseReturnedData<null> {
-    try {
-      const providerInstance = this.getProvider(provider);
-      if (!('voidInvoice' in providerInstance)) {
-        throw new Error(`Provider ${provider} does not support voidInvoice`);
-      }
-      await providerInstance.voidInvoice(invoiceId);
-      return { success: true, data: null };
-    } catch (error) {
-      this.log.error({ error, provider, invoiceId }, 'Error voiding invoice');
-      return {
-        success: false,
-        data: null,
-        message: error instanceof Error ? error.message : 'Failed to void invoice',
-      };
-    }
-  }
-
   async getInvoicePaymentDetails(
     provider: IPaymentGatewayProvider,
     invoiceId: string
@@ -790,32 +702,109 @@ export class PaymentGatewayService {
     }
   }
 
-  async getInvoice(
+  // ── Tenant charges ──────────────────────────────────────────────────────
+  // New tenant charges are PaymentIntents (`pi_…`). Records created before the
+  // switch still hold Stripe invoice ids (`in_…`), so pay/cancel/status dispatch
+  // on the id prefix and those settle through the invoice path as before.
+
+  private static isLegacyInvoiceId(chargeId: string): boolean {
+    return chargeId.startsWith('in_');
+  }
+
+  async createCharge(
     provider: IPaymentGatewayProvider,
-    invoiceId: string
-  ): IPromiseReturnedData<{
-    status: string | null;
-    hostedInvoiceUrl?: string;
-    paidAt?: Date;
-  } | null> {
+    input: ICreateTenantChargeInput
+  ): IPromiseReturnedData<ICreateTenantChargeResponse | null> {
     try {
       const providerInstance = this.getProvider(provider);
-      const invoice = await providerInstance.getInvoice(invoiceId);
+      const result = await providerInstance.createPaymentIntent(input);
+      return { success: true, data: result };
+    } catch (error) {
+      this.log.error({ error, provider }, 'Error creating tenant charge');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to create charge',
+      };
+    }
+  }
+
+  async payCharge(
+    provider: IPaymentGatewayProvider,
+    chargeId: string,
+    opts?: { paymentMethod?: string; mandate?: string }
+  ): IPromiseReturnedData<null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (PaymentGatewayService.isLegacyInvoiceId(chargeId)) {
+        await providerInstance.payInvoice(chargeId, opts);
+      } else {
+        await providerInstance.confirmPaymentIntent(chargeId, opts);
+      }
+      return { success: true, data: null };
+    } catch (error) {
+      this.log.error({ error, provider, chargeId }, 'Error paying tenant charge');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to pay charge',
+      };
+    }
+  }
+
+  async cancelCharge(
+    provider: IPaymentGatewayProvider,
+    chargeId: string
+  ): IPromiseReturnedData<null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (PaymentGatewayService.isLegacyInvoiceId(chargeId)) {
+        await providerInstance.voidInvoice(chargeId);
+      } else {
+        await providerInstance.cancelPaymentIntent(chargeId);
+      }
+      return { success: true, data: null };
+    } catch (error) {
+      this.log.error({ error, provider, chargeId }, 'Error canceling tenant charge');
+      return {
+        success: false,
+        data: null,
+        message: error instanceof Error ? error.message : 'Failed to cancel charge',
+      };
+    }
+  }
+
+  async getChargeDetails(
+    provider: IPaymentGatewayProvider,
+    chargeId: string
+  ): IPromiseReturnedData<ITenantChargeDetails | null> {
+    try {
+      const providerInstance = this.getProvider(provider);
+      if (!PaymentGatewayService.isLegacyInvoiceId(chargeId)) {
+        return { success: true, data: await providerInstance.getPaymentIntentDetails(chargeId) };
+      }
+
+      const [invoice, paymentDetails] = await Promise.all([
+        providerInstance.getInvoice(chargeId),
+        providerInstance.getInvoicePaymentDetails(chargeId),
+      ]);
       const paidAtSeconds = invoice?.status_transitions?.paid_at;
       return {
         success: true,
         data: {
+          ...paymentDetails,
           status: invoice?.status ?? null,
-          hostedInvoiceUrl: invoice?.hosted_invoice_url ?? undefined,
+          // Legacy invoices keep their hosted page as the receipt link.
+          receiptUrl: invoice?.hosted_invoice_url ?? paymentDetails.receiptUrl,
           paidAt: paidAtSeconds ? new Date(paidAtSeconds * 1000) : undefined,
         },
       };
     } catch (error) {
-      this.log.error({ error, provider, invoiceId }, 'Error fetching invoice');
+      this.log.error({ error, provider, chargeId }, 'Error fetching tenant charge');
       return {
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : 'Failed to fetch invoice',
+        message: error instanceof Error ? error.message : 'Failed to fetch charge',
       };
     }
   }

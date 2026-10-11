@@ -44,7 +44,7 @@ export interface IStripeChargeWebhookData {
 /**
  * Fields read from the Stripe Invoice object in webhook payloads. Charge and
  * PaymentIntent ids are not read from the payload (they moved in basil+);
- * use `paymentGatewayService.getInvoicePaymentDetails()` instead.
+ * use `paymentGatewayService.getChargeDetails()` instead.
  */
 export interface IStripeInvoiceWebhookData {
   metadata?: Record<string, string>;
@@ -92,6 +92,15 @@ export interface IStripeDisputeWebhookData {
   reason?: string;
   status?: string;
   amount: number;
+}
+
+/** Fields read from the Stripe PaymentIntent object in webhook payloads. */
+export interface IStripePaymentIntentWebhookData {
+  metadata?: Record<string, string>;
+  payment_method?: string | null;
+  customer?: string | null;
+  currency?: string;
+  id: string;
 }
 
 interface IConstructor {
@@ -208,7 +217,8 @@ export class PaymentWebhookService {
         this.log.warn('No charge ID found for invoice', { invoiceId });
       }
 
-      const hostedInvoiceUrl = invoiceData.hosted_invoice_url || null;
+      // Legacy invoices link their hosted page; PaymentIntent charges link the charge receipt.
+      const hostedInvoiceUrl = invoiceData.hosted_invoice_url || paymentDetails.receiptUrl || null;
 
       // Handle split invoice payments
       if (payment.splitInvoices?.length) {
@@ -603,21 +613,21 @@ export class PaymentWebhookService {
       return notRetried;
     }
 
-    // Void the failed ACSS invoice so Stripe stops retrying it
-    const voidResult = await this.paymentGatewayService.voidInvoice(
+    // Cancel the failed ACSS charge so it can't be confirmed again
+    const cancelResult = await this.paymentGatewayService.cancelCharge(
       IPaymentGatewayProvider.STRIPE,
       failedInvoiceId
     );
-    if (!voidResult.success) {
+    if (!cancelResult.success) {
       this.log.warn(
-        { pytuid: payment.pytuid, invoiceId: failedInvoiceId },
-        '[PaymentWebhookService] Could not void failed ACSS invoice — proceeding with card retry anyway'
+        { pytuid: payment.pytuid, chargeId: failedInvoiceId },
+        '[PaymentWebhookService] Could not cancel failed ACSS charge — proceeding with card retry anyway'
       );
     }
 
     // Recalculate application fee for card rates since the original fee was
     // computed for ACH/ACSS. Card processing costs are higher (2.9% + $0.30 vs
-    // flat $0.80), so the platform needs a higher application fee to cover them.
+    // a bank debit capped at $5), so the platform needs a higher application fee.
     // For split retries, each split carries the fee computed from its own amount.
     let cardApplicationFee = failedSplit
       ? (failedSplit.applicationFee ?? 0)
@@ -665,7 +675,7 @@ export class PaymentWebhookService {
       ];
     }
 
-    const invoiceResult = await this.paymentGatewayService.createInvoice(
+    const chargeResult = await this.paymentGatewayService.createCharge(
       IPaymentGatewayProvider.STRIPE,
       {
         tenantCustomerId,
@@ -673,29 +683,22 @@ export class PaymentWebhookService {
         applicationFeeAmountInCents: cardApplicationFee,
         currency: (payment.currency ?? 'USD').toLowerCase(),
         description: payment.description || `Card retry for ${payment.pytuid}`,
-        autoChargeDueDate: dayjs().toDate(),
         lineItems,
         cuid,
         paymentMethodId,
+        // Maintenance stays on the platform so the vendor can be paid from it
+        skipDestinationTransfer: payment.paymentType === PaymentRecordType.MAINTENANCE,
       }
     );
-    if (!invoiceResult.success || !invoiceResult.data) {
+    if (!chargeResult.success || !chargeResult.data) {
       await markFailed(t('common.errors.operationFailed', { action: 'process payment retry' }));
       return notRetried;
     }
+    const newChargeId = chargeResult.data.chargeId;
 
-    const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
+    const payResult = await this.paymentGatewayService.payCharge(
       IPaymentGatewayProvider.STRIPE,
-      invoiceResult.data.invoiceId
-    );
-    if (!finalizeResult.success) {
-      await markFailed(t('common.errors.operationFailed', { action: 'process payment retry' }));
-      return notRetried;
-    }
-
-    const payResult = await this.paymentGatewayService.payInvoice(
-      IPaymentGatewayProvider.STRIPE,
-      invoiceResult.data.invoiceId,
+      newChargeId,
       { paymentMethod: paymentMethodId }
     );
 
@@ -716,17 +719,17 @@ export class PaymentWebhookService {
       // For split retries, only update the failed split's invoiceId — don't overwrite parent gatewayPaymentId
       const splitIndex = payment.splitInvoices.findIndex((si) => si.invoiceId === failedInvoiceId);
       if (splitIndex >= 0) {
-        updateOps.$set[`splitInvoices.${splitIndex}.invoiceId`] = invoiceResult.data.invoiceId;
+        updateOps.$set[`splitInvoices.${splitIndex}.invoiceId`] = newChargeId;
         updateOps.$set[`splitInvoices.${splitIndex}.status`] = 'pending';
       }
     } else {
-      updateOps.$set.gatewayPaymentId = invoiceResult.data.invoiceId;
+      updateOps.$set.gatewayPaymentId = newChargeId;
     }
 
     await this.paymentDAO.update({ _id: payment._id, cuid: payment.cuid }, updateOps);
 
     this.log.info(
-      { pytuid: payment.pytuid, cuid, newInvoiceId: invoiceResult.data.invoiceId },
+      { pytuid: payment.pytuid, cuid, newChargeId },
       '[PaymentWebhookService] ACSS payment retried with card successfully'
     );
 
@@ -739,6 +742,35 @@ export class PaymentWebhookService {
    * PAD (acss_debit) the tenant is told the debit is now processing; the Rule H1
    * pre-debit notice itself is sent in advance by the cron.
    */
+  /**
+   * payment_intent.succeeded for a tenant charge. Settles through the same path as a
+   * paid invoice: records are looked up by charge id (gatewayPaymentId / splitInvoices),
+   * and PaymentIntents not tracked by a Payment (subscriptions, card checkout) are ignored.
+   */
+  async handlePaymentIntentSucceeded(
+    paymentIntent: IStripePaymentIntentWebhookData
+  ): IPromiseReturnedData<void> {
+    return this.handleInvoicePaymentSucceeded(paymentIntent.id, {
+      id: paymentIntent.id,
+      currency: paymentIntent.currency,
+      metadata: paymentIntent.metadata,
+      customer: paymentIntent.customer ?? undefined,
+    });
+  }
+
+  /** payment_intent.payment_failed for a tenant charge — same handling as invoice.payment_failed. */
+  async handlePaymentIntentFailed(
+    paymentIntent: IStripePaymentIntentWebhookData
+  ): IPromiseReturnedData<void> {
+    return this.handleInvoicePaymentFailed(paymentIntent.id, {
+      id: paymentIntent.id,
+      currency: paymentIntent.currency,
+      metadata: paymentIntent.metadata,
+      customer: paymentIntent.customer ?? undefined,
+      default_payment_method: paymentIntent.payment_method ?? undefined,
+    });
+  }
+
   async handleChargePending(
     chargeId: string,
     chargeData: IStripeChargeWebhookData
@@ -1645,14 +1677,16 @@ export class PaymentWebhookService {
     }
   }
 
-  private async fetchInvoicePaymentDetails(invoiceId: string): Promise<{
+  /** Charge details for a tenant charge id — a PaymentIntent, or a legacy invoice. */
+  private async fetchInvoicePaymentDetails(chargeId: string): Promise<{
     chargeId?: string;
+    receiptUrl?: string;
     paymentMethodType?: string;
     lastPaymentError?: { message?: string; code?: string };
   }> {
-    const result = await this.paymentGatewayService.getInvoicePaymentDetails(
+    const result = await this.paymentGatewayService.getChargeDetails(
       IPaymentGatewayProvider.STRIPE,
-      invoiceId
+      chargeId
     );
     return result.success && result.data ? result.data : {};
   }

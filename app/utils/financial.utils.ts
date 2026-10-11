@@ -82,18 +82,24 @@ export const calcLateFee = (
   return rateOrAmount;
 };
 
-/** round_half_up(amount × percentRate / 100) + fixedFeeCents. All values in cents. */
+/**
+ * round_half_up(amount × percentRate / 100) + fixedFeeCents, optionally capped at maxFeeCents.
+ * All values in cents.
+ */
 export const calcGatewayFee = (
   amountCents: number,
   percentRate: number,
-  fixedFeeCents: number
-): number =>
-  new Decimal(amountCents)
+  fixedFeeCents: number,
+  maxFeeCents?: number
+): number => {
+  const fee = new Decimal(amountCents)
     .times(percentRate)
     .div(100)
     .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
     .plus(fixedFeeCents)
     .toNumber();
+  return maxFeeCents != null ? Math.min(fee, maxFeeCents) : fee;
+};
 
 /** Returns { applicationFee, gatewayFee, platformRevenue } all in cents. platformRevenue can be negative. */
 export const calcApplicationFeeSplit = (

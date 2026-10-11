@@ -193,6 +193,23 @@ export class WebhookController {
             break;
           }
 
+          // Tenant charges are PaymentIntents tagged with our cuid. Card-checkout
+          // PaymentIntents (tagged with pytuid) settle via checkout.session.completed,
+          // and subscription PaymentIntents via invoice.* — both are skipped here.
+          case 'payment_intent.payment_failed':
+          case 'payment_intent.succeeded': {
+            const paymentIntent = event.data.object as any;
+            const isTenantCharge =
+              !!paymentIntent.metadata?.cuid && !paymentIntent.metadata?.pytuid;
+            if (!isTenantCharge) break;
+            if (event.type === 'payment_intent.succeeded') {
+              await this.paymentService.handlePaymentIntentSucceeded(paymentIntent);
+            } else {
+              await this.paymentService.handlePaymentIntentFailed(paymentIntent);
+            }
+            break;
+          }
+
           case 'checkout.session.completed': {
             const session = event.data.object as any;
             if (session.mode === 'setup') {

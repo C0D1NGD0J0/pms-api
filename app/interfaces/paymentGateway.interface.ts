@@ -72,24 +72,29 @@ export interface IPaymentProvider {
     amount: number;
     currency: string;
   }>;
+  confirmPaymentIntent(
+    paymentIntentId: string,
+    opts?: { paymentMethod?: string; mandate?: string }
+  ): Promise<void>;
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
   payInvoice(invoiceId: string, opts?: { paymentMethod?: string; mandate?: string }): Promise<void>;
   updateCustomerDefaultPaymentMethod(customerId: string, paymentMethodId: string): Promise<void>;
-  finalizeInvoice(invoiceId: string, idempotencyKey?: string): Promise<IFinalizeInvoiceResponse>;
   verifyWebhookSignature(payload: string | Buffer<ArrayBufferLike>, signature: string): unknown;
   updateSubscription(subscriptionId: string, newPriceId: string): Promise<Stripe.Subscription>;
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
+  createPaymentIntent(input: ICreateTenantChargeInput): Promise<ICreateTenantChargeResponse>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
   /** Total reversed from a transfer by reversals tagged with this dispute ID. */
   getDisputeReversedAmount(transferId: string, disputeId: string): Promise<number>;
+  getPaymentIntentDetails(paymentIntentId: string): Promise<ITenantChargeDetails>;
   createDashboardLoginLink(accountId: string): Promise<IOnboardingLinkResponse>;
-  createInvoice(input: ICreateInvoiceInput): Promise<ICreateInvoiceResponse>;
   cancelSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getSubscription(subscriptionId: string): Promise<Stripe.Subscription>;
   getPayoutSchedule(accountId: string): Promise<IPayoutSchedule>;
+  cancelPaymentIntent(paymentIntentId: string): Promise<void>;
   getCustomer(customerId: string): Promise<Stripe.Customer>;
   getCharge(chargeId: string): Promise<Stripe.Charge>;
   getConnectAccount(accountId: string): Promise<any>;
@@ -98,20 +103,27 @@ export interface IPaymentProvider {
   getProducts(): Promise<Stripe.Product[]>;
 }
 
-export interface ICreateInvoiceInput {
+/**
+ * A one-off tenant charge (rent, deposit, late fee, maintenance), created as a Stripe
+ * PaymentIntent and confirmed later — the same create-now / charge-later lifecycle the
+ * invoice flow had, without Stripe Invoicing's per-invoice fee.
+ */
+export interface ICreateTenantChargeInput {
   lineItems: Array<{
     description: string;
     amountInCents: number;
   }>;
   applicationFeeAmountInCents: number;
+  /** Maintenance: charge stays on the platform; the vendor is paid via source_transaction. */
   skipDestinationTransfer?: boolean;
   connectedAccountId: string;
   tenantCustomerId: string;
   paymentMethodId?: string;
-  autoChargeDueDate: Date;
-  /** Stable across retries of the same job, so a retry can't create a second invoice. */
+  /** Stable across retries of the same job, so a retry can't create a second charge. */
   idempotencyKey?: string;
   description: string;
+  /** Bank-debit mandate, kept on the PaymentIntent so an off-session confirm can use it. */
+  mandateId?: string;
   leaseUid?: string;
   currency: string;
   cuid: string;
@@ -137,6 +149,23 @@ export interface ICreateConnectAccountInput {
   country: string;
   email: string;
   cuid: string;
+}
+
+/** Normalised state of a tenant charge, for either a PaymentIntent or a legacy invoice. */
+export interface ITenantChargeDetails {
+  lastPaymentError?: {
+    message?: string;
+    code?: string;
+    type?: string;
+    payment_method?: { type?: string };
+  };
+  /** Invoice-style vocabulary so reconciliation treats both charge kinds alike. */
+  status: 'open' | 'paid' | 'void' | 'uncollectible' | null;
+  paymentMethodType?: string;
+  paymentIntentId?: string;
+  receiptUrl?: string;
+  chargeId?: string;
+  paidAt?: Date;
 }
 
 export interface IRefundParams {
@@ -170,14 +199,6 @@ export interface ICreateCheckoutInput {
   priceId: string;
 }
 
-export interface ICreateInvoiceResponse {
-  status: 'draft' | 'open' | 'paid' | 'uncollectible' | 'void';
-  hostedInvoiceUrl?: string;
-  invoiceId: string;
-  amountDue: number;
-  dueDate?: Date;
-}
-
 export interface ICreateIdentitySessionInput {
   allowedTypes?: Array<'driving_license' | 'passport' | 'id_card'>;
   metadata?: Record<string, string>;
@@ -192,6 +213,7 @@ export interface ICreateCustomerInput {
   email: string;
   name?: string;
 }
+
 export interface ICheckoutSession {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -199,7 +221,6 @@ export interface ICheckoutSession {
   customerId: string;
   sessionId: string;
 }
-
 export interface IPaymentCustomer {
   provider: IPaymentGatewayProvider;
   metadata?: Record<string, string>;
@@ -228,9 +249,9 @@ export interface IIdentityVerificationReport {
   status: string;
 }
 
-export interface IFinalizeInvoiceResponse {
-  hostedInvoiceUrl?: string;
-  invoiceId: string;
+export interface ICreateTenantChargeResponse {
+  chargeId: string;
+  amount: number;
   status: string;
 }
 

@@ -10,7 +10,6 @@ import { UserCache } from '@caching/user.cache';
 import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
 import { EventEmitterService } from '@services/eventEmitter';
-import { getRequestDuration, createLogger } from '@utils/index';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
@@ -18,6 +17,7 @@ import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
+import { createSafeMongoUpdate, getRequestDuration, createLogger } from '@utils/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils.interface';
@@ -155,6 +155,7 @@ export class ClientService {
     }
 
     // ── Immutable field guard: block changes once payment infrastructure exists ──
+    // Locked fields must not be sent at all (even unchanged); the UI omits them from the payload.
     const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
     if (processor) {
       const locked: string[] = [];
@@ -285,8 +286,10 @@ export class ClientService {
       const updatedClient = await this.clientDAO.updateById(
         client._id.toString(),
         {
+          // Dot-notation paths so partial nested updates (e.g. one settings flag)
+          // don't replace the whole settings/companyProfile subdocument.
           $set: {
-            ...updateData,
+            ...createSafeMongoUpdate(updateData),
             lastModifiedBy: currentuser.sub,
           },
         },

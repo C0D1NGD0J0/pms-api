@@ -23,7 +23,8 @@ export const cardCheckoutBody = z.object({
 export const chargeForMaintenance = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
   tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
-  amount: z.number().int().positive('Amount must be a positive integer (cents)'),
+  // Optional: the service always charges the approved invoice amount and only logs a mismatch
+  amount: z.number().int().positive('Amount must be a positive integer (cents)').optional(),
   description: z.string().trim().max(500).optional(),
 });
 

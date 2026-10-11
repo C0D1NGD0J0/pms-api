@@ -277,17 +277,23 @@ describe('ClientController Integration Tests', () => {
       expect(client?.displayName).toBe(originalName);
     });
 
-    it('should reject invalid update data', async () => {
-      const invalidData = {
-        status: 'invalid-status',
-      };
+    // Body validation (incl. rejecting empty/unknown-only payloads) happens in the route's
+    // validateRequest middleware — see tests/unit/validation/clientValidation.updateDetails.test.ts
+    it('should only touch the settings field that was sent', async () => {
+      await Client.updateOne(
+        { cuid: testClient.cuid },
+        { $set: { 'settings.defaultCurrency': 'CAD', 'settings.lang': 'fr' } }
+      );
 
-      const response = await request(app)
+      await request(app)
         .patch(`/api/v1/clients/${testClient.cuid}`)
-        .send(invalidData)
-        .expect(httpStatusCodes.BAD_REQUEST);
+        .send({ settings: { requireDepositRefundApproval: true } })
+        .expect(httpStatusCodes.OK);
 
-      expect(response.body.success).toBe(false);
+      const client = await Client.findOne({ cuid: testClient.cuid }).lean();
+      expect(client?.settings?.requireDepositRefundApproval).toBe(true);
+      expect(client?.settings?.defaultCurrency).toBe('CAD');
+      expect(client?.settings?.lang).toBe('fr');
     });
   });
 
@@ -573,14 +579,9 @@ describe('ClientController Integration Tests', () => {
       expect(response.body.success).toBe(false);
     });
 
-    it('should handle malformed request data', async () => {
-      const response = await request(app)
-        .patch(`/api/v1/clients/${testClient.cuid}`)
-        .send({ settings: 'not-an-object' })
-        .expect(httpStatusCodes.BAD_REQUEST);
-
-      expect(response.body.success).toBe(false);
-    });
+    // Malformed PATCH /clients/:cuid bodies are rejected by the route's validateRequest
+    // middleware (not mounted in this controller-only app) — covered in
+    // tests/unit/validation/clientValidation.updateDetails.test.ts
 
     it('should handle concurrent role assignments', async () => {
       const promises = [

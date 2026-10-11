@@ -14,7 +14,7 @@ const userInfoSchema = z
   });
 
 // profile model fields that can be updated
-const personalInfoSchema = z.object({
+export const personalInfoSchema = z.object({
   firstName: z.string().min(2).max(25).optional(),
   lastName: z.string().min(2).max(25).optional(),
   displayName: z.string().min(2).max(45).optional(),

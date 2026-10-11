@@ -1,5 +1,8 @@
 import { z } from 'zod';
+import { CURRENCIES } from '@interfaces/utils.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+
+import { personalInfoSchema } from '../ProfileValidation';
 
 const TenantFeaturesSchema = z.object({
   tenantPortalActive: z.boolean().optional(),
@@ -44,6 +47,13 @@ export const ClientSettingsSchema = z.object({
     .optional(),
   vendorPayoutMode: z.enum(['express', 'platform_hold']).optional(),
   tenantFeatures: TenantFeaturesSchema.optional(),
+  defaultCurrency: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .pipe(z.nativeEnum(CURRENCIES, { errorMap: () => ({ message: 'Invalid currency code' }) }))
+    .optional(),
+  requireDepositRefundApproval: z.boolean().optional(),
 });
 
 export const CompanyProfileSchema = z.object({
@@ -57,6 +67,7 @@ export const CompanyProfileSchema = z.object({
     .optional(),
   registrationNumber: z.string().trim().optional(),
   website: z.string().url('Invalid website URL').optional(),
+  logo: z.string().trim().optional(),
   companyPhone: z
     .string()
     .trim()
@@ -159,6 +170,12 @@ export const TenantDetailsIncludeQuerySchema = z.object({
     .optional(),
 });
 
+const hasAtLeastOneLeafValue = (value: unknown): boolean => {
+  if (value === undefined) return false;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return true;
+  return Object.values(value).some(hasAtLeastOneLeafValue);
+};
+
 export const UpdateClientDetailsSchema = z
   .object({
     dataProcessingConsent: z.boolean().optional(),
@@ -166,7 +183,7 @@ export const UpdateClientDetailsSchema = z
     displayName: z.string().trim().min(1, 'Display name cannot be empty').optional(),
     settings: ClientSettingsSchema.partial().optional(),
   })
-  .refine((data) => Object.keys(data).length > 0, {
+  .refine(hasAtLeastOneLeafValue, {
     message: 'At least one field must be provided for update',
   })
   .refine(
@@ -199,9 +216,10 @@ export const EnterpriseClientValidationSchema = z.object({
   }),
 });
 
+// Multipart requests (avatar/document attached) deliver numbers as strings, hence z.coerce
 export const UpdateTenantProfileSchema = z.object({
-  personalInfo: z
-    .object({
+  personalInfo: personalInfoSchema
+    .extend({
       firstName: z.string().trim().min(1, 'First name is required').optional(),
       lastName: z.string().trim().min(1, 'Last name is required').optional(),
       email: z.string().email('Invalid email format').optional(),
@@ -219,7 +237,7 @@ export const UpdateTenantProfileSchema = z.object({
           z.object({
             companyName: z.string().trim().min(1, 'Company name is required'),
             position: z.string().trim().min(1, 'Position is required'),
-            monthlyIncome: z.number().min(0, 'Monthly income must be non-negative'),
+            monthlyIncome: z.coerce.number().min(0, 'Monthly income must be non-negative'),
             contactPerson: z.string().trim().optional(),
             companyAddress: z.string().trim().optional(),
             contactEmail: z.string().email('Invalid email format').optional(),
@@ -232,7 +250,7 @@ export const UpdateTenantProfileSchema = z.object({
             landlordName: z.string().trim().min(1, 'Landlord name is required'),
             landlordEmail: z.string().email('Invalid email format').optional(),
             landlordContact: z.string().trim().optional(),
-            durationMonths: z.number().int().min(0, 'Duration must be non-negative'),
+            durationMonths: z.coerce.number().int().min(0, 'Duration must be non-negative'),
             reasonForLeaving: z.string().trim().optional(),
             propertyAddress: z.string().trim().optional(),
           })

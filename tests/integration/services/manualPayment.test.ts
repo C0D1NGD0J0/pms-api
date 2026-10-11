@@ -43,7 +43,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
   const LUID = 'LEASE-MANUAL-1';
 
   const mockGateway = {
-    voidInvoice: jest.fn(),
+    cancelCharge: jest.fn(),
   };
   const mockEmitter = { emit: jest.fn(), on: jest.fn(), off: jest.fn() };
 
@@ -116,7 +116,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
   beforeEach(async () => {
     await clearTestDatabase();
     jest.clearAllMocks();
-    mockGateway.voidInvoice.mockResolvedValue({ success: true, data: null });
+    mockGateway.cancelCharge.mockResolvedValue({ success: true, data: null });
 
     await Client.create({
       cuid: CUID,
@@ -200,7 +200,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
       expect(settled!.recordedBy!.toString()).toBe(PM_USER_ID);
       expect(settled!.gatewayPaymentId).toBeUndefined();
       expect(settled!.notes?.[0]?.note).toContain('Settled by a manual cash payment');
-      expect(mockGateway.voidInvoice).toHaveBeenCalledWith('stripe', 'in_open_rent');
+      expect(mockGateway.cancelCharge).toHaveBeenCalledWith('stripe', 'in_open_rent');
       expect(await manualRecordCount()).toBe(1);
     });
 
@@ -242,7 +242,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
 
     it('refuses to settle when the Stripe invoice cannot be voided (already being paid online)', async () => {
       const charge = await createCharge({ gatewayPaymentId: 'in_paid_meanwhile' });
-      mockGateway.voidInvoice.mockResolvedValue({ success: false, data: null, message: 'paid' });
+      mockGateway.cancelCharge.mockResolvedValue({ success: false, data: null, message: 'paid' });
 
       await expect(record(manualEntry())).rejects.toThrow('already being paid online');
       expect((await Payment.findById(charge._id).lean())!.status).toBe(PaymentRecordStatus.PENDING);

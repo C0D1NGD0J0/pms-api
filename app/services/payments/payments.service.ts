@@ -70,6 +70,7 @@ import { RentPaymentService } from './rentPayment.service';
 import { PayoutAccountService } from './payoutAccount.service';
 import { MaintenancePaymentService } from './maintenancePayment.service';
 import {
+  IStripePaymentIntentWebhookData,
   IStripeDisputeWebhookData,
   IStripeAccountWebhookData,
   IStripeInvoiceWebhookData,
@@ -1576,14 +1577,14 @@ export class PaymentService implements ICronProvider {
       }
 
       if (payment.gatewayPaymentId) {
-        const voidResult = await this.paymentGatewayService.voidInvoice(
+        const voidResult = await this.paymentGatewayService.cancelCharge(
           IPaymentGatewayProvider.STRIPE,
           payment.gatewayPaymentId
         );
         if (!voidResult.success) {
           this.log.warn(
             { pytuid, invoiceId: payment.gatewayPaymentId, message: voidResult.message },
-            'Failed to void Stripe invoice — proceeding with local cancellation'
+            'Failed to cancel Stripe charge — proceeding with local cancellation'
           );
         }
       }
@@ -2367,8 +2368,8 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
-   * Voids every Stripe invoice still attached to a payment (including ACSS split invoices)
-   * and detaches them. Used before the charge is paid another way (card checkout or a manual
+   * Cancels every Stripe charge still attached to a payment (PaymentIntents, legacy invoices,
+   * including ACSS splits) and detaches them. Used before the charge is paid another way (card checkout or a manual
    * payment). Refuses with `blockedMessage` when one can't be voided — e.g. it is already paid
    * or a bank debit is in flight — because paying it another way would charge the tenant twice.
    * If the tenant then abandons card checkout, the payment stays payable: a new invoice is
@@ -2381,7 +2382,7 @@ export class PaymentService implements ICronProvider {
     const invoiceIds = [
       ...new Set(
         [payment.gatewayPaymentId, ...(payment.splitInvoices ?? []).map((s) => s.invoiceId)].filter(
-          (id): id is string => !!id && id.startsWith('in_')
+          (id): id is string => !!id && (id.startsWith('in_') || id.startsWith('pi_'))
         )
       ),
     ];
@@ -2389,7 +2390,7 @@ export class PaymentService implements ICronProvider {
 
     const voided: string[] = [];
     for (const invoiceId of invoiceIds) {
-      const voidResult = await this.paymentGatewayService.voidInvoice(
+      const voidResult = await this.paymentGatewayService.cancelCharge(
         IPaymentGatewayProvider.STRIPE,
         invoiceId
       );
@@ -2597,6 +2598,18 @@ export class PaymentService implements ICronProvider {
     invoiceData: IStripeInvoiceWebhookData
   ): IPromiseReturnedData<void> {
     return this.paymentWebhookService.handleInvoicePaymentFailed(invoiceId, invoiceData);
+  }
+
+  async handlePaymentIntentSucceeded(
+    paymentIntent: IStripePaymentIntentWebhookData
+  ): IPromiseReturnedData<void> {
+    return this.paymentWebhookService.handlePaymentIntentSucceeded(paymentIntent);
+  }
+
+  async handlePaymentIntentFailed(
+    paymentIntent: IStripePaymentIntentWebhookData
+  ): IPromiseReturnedData<void> {
+    return this.paymentWebhookService.handlePaymentIntentFailed(paymentIntent);
   }
 
   async handleChargePending(

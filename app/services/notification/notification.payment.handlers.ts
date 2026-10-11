@@ -244,6 +244,8 @@ export async function handlePaymentFailed(
       return;
     }
 
+    const payUrl = hostedInvoiceUrl || buildTenantPaymentsUrl(cuid, tenant, pytuid);
+
     const notice = failureReason
       ? getFormattedNotification('payment.failedTenantWithReason', {
           amount: fmt,
@@ -252,7 +254,7 @@ export async function handlePaymentFailed(
       : getFormattedNotification('payment.failedTenant', { amount: fmt });
     await notifyTenantInApp(ctx, cuid, tenant, notice, {
       pytuid,
-      ...(hostedInvoiceUrl && { hostedInvoiceUrl }),
+      ...(payUrl && { hostedInvoiceUrl: payUrl }),
     });
 
     if (!tenant.email) return;
@@ -266,7 +268,7 @@ export async function handlePaymentFailed(
           tenantName: tenant.firstName,
           amount: fmt,
           failureReason: failureReason || '',
-          hostedInvoiceUrl: hostedInvoiceUrl || '',
+          hostedInvoiceUrl: payUrl,
           reference: pytuid,
         },
       });

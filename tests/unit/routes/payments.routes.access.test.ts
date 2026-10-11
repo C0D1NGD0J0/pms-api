@@ -55,6 +55,7 @@ const controllerMethods = [
   'payPendingCharge',
   'listPayments',
   'getPayment',
+  'downloadMyReceipt',
 ] as const;
 
 const mockController = Object.fromEntries(
@@ -272,6 +273,14 @@ describe('payments routes — access control', () => {
       expect(
         (await request(app).get(`${base}/${PYTUID}`).set('x-test-role', ROLES.TENANT)).status
       ).toBe(200);
+    });
+
+    it('downloads the PDF receipt for an own charge', async () => {
+      expect(
+        (await request(app).get(`${base}/${PYTUID}/receipt`).set('x-test-role', ROLES.TENANT))
+          .status
+      ).toBe(200);
+      expect(mockController.downloadMyReceipt).toHaveBeenCalled();
     });
 
     it('ensures an own maintenance charge, stripping any client-supplied amount', async () => {

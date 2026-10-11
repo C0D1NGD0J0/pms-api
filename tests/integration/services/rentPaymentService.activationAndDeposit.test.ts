@@ -97,15 +97,12 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
     paymentGatewayService = {
       createCustomer: jest.fn().mockResolvedValue({ success: true, data: { customerId: 'cus_1' } }),
-      createInvoice: jest.fn().mockImplementation(async () => ({
+      createCharge: jest.fn().mockImplementation(async () => ({
         success: true,
-        data: { invoiceId: `in_test_${++invoiceCounter}` },
+        data: { chargeId: `pi_test_${++invoiceCounter}` },
       })),
-      finalizeInvoice: jest
-        .fn()
-        .mockResolvedValue({ success: true, data: { hostedInvoiceUrl: 'https://stripe/inv' } }),
-      voidInvoice: jest.fn().mockResolvedValue({ success: true, data: null }),
-      payInvoice: jest.fn().mockResolvedValue({ success: true, data: null }),
+      cancelCharge: jest.fn().mockResolvedValue({ success: true, data: null }),
+      payCharge: jest.fn().mockResolvedValue({ success: true, data: null }),
       retrievePaymentMethod: jest.fn().mockResolvedValue({ success: true, data: { type: 'card' } }),
       createRefund: jest.fn().mockResolvedValue({ success: true, data: { refundId: 're_1' } }),
     };
@@ -188,17 +185,17 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       await activate(lease);
 
       const [rent] = await paymentsOf(lease._id, PaymentRecordType.RENT);
-      expect(rent.gatewayPaymentId).toMatch(/^in_test_/);
+      expect(rent.gatewayPaymentId).toMatch(/^pi_test_/);
       expect(rent.status).toBe(PaymentRecordStatus.PENDING);
       expect(rent.tenant.toString()).toBe(tenantProfileId.toString());
       expect(rent.baseAmount).toBe(RENT);
 
       const [deposit] = await paymentsOf(lease._id, PaymentRecordType.SECURITY_DEPOSIT);
-      expect(deposit.gatewayPaymentId).toMatch(/^in_test_/);
+      expect(deposit.gatewayPaymentId).toMatch(/^pi_test_/);
       expect(deposit.baseAmount).toBe(SECURITY_DEPOSIT + PET_DEPOSIT);
       expect(deposit.tenant.toString()).toBe(tenantProfileId.toString());
       expect(deposit.applicationFee).toBe(0);
-      expect(paymentGatewayService.createInvoice).toHaveBeenCalledTimes(2);
+      expect(paymentGatewayService.createCharge).toHaveBeenCalledTimes(2);
     });
 
     it('does not invoice the deposit again for a renewal lease', async () => {
@@ -209,7 +206,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
       expect(await paymentsOf(renewal._id, PaymentRecordType.RENT)).toHaveLength(1);
       expect(await paymentsOf(renewal._id, PaymentRecordType.SECURITY_DEPOSIT)).toHaveLength(0);
-      expect(paymentGatewayService.createInvoice).toHaveBeenCalledTimes(1);
+      expect(paymentGatewayService.createCharge).toHaveBeenCalledTimes(1);
     });
 
     it('records payable charges without an invoice when Stripe onboarding is unfinished', async () => {
@@ -226,7 +223,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       const [deposit] = await paymentsOf(lease._id, PaymentRecordType.SECURITY_DEPOSIT);
       expect(deposit.baseAmount).toBe(SECURITY_DEPOSIT + PET_DEPOSIT);
       expect(deposit.tenant.toString()).toBe(tenantProfileId.toString());
-      expect(paymentGatewayService.createInvoice).not.toHaveBeenCalled();
+      expect(paymentGatewayService.createCharge).not.toHaveBeenCalled();
     });
 
     it('pro-rates the first month of a cash lease that starts mid-month', async () => {
@@ -288,7 +285,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
       const { data: replacement } = await createRent(lease);
 
-      expect(paymentGatewayService.voidInvoice).toHaveBeenCalledWith(
+      expect(paymentGatewayService.cancelCharge).toHaveBeenCalledWith(
         expect.anything(),
         first.gatewayPaymentId
       );
@@ -307,7 +304,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
       const { data } = await createRent(lease);
 
-      const feesInvoiceCall = paymentGatewayService.createInvoice.mock.calls.find(([, input]) =>
+      const feesInvoiceCall = paymentGatewayService.createCharge.mock.calls.find(([, input]) =>
         input.description.startsWith('Fees for')
       );
       const expectedFeesSplitFee = subscriptionPlanConfig.calculateAchApplicationFee(petFee);
@@ -333,7 +330,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
       const { data } = await createRent(lease);
 
-      expect(paymentGatewayService.createInvoice).toHaveBeenCalledTimes(1);
+      expect(paymentGatewayService.createCharge).toHaveBeenCalledTimes(1);
       expect(data.splitInvoices ?? []).toHaveLength(0);
     });
 
@@ -414,7 +411,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       const result = await service.payPendingCharge(cuid, rent.pytuid, tenantUserId.toString());
 
       expect(result.success).toBe(true);
-      expect(paymentGatewayService.payInvoice).toHaveBeenCalledWith(
+      expect(paymentGatewayService.payCharge).toHaveBeenCalledWith(
         expect.anything(),
         rent.gatewayPaymentId,
         expect.objectContaining({ paymentMethod: 'pm_card_1' })
@@ -431,11 +428,11 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       const result = await service.payPendingCharge(cuid, deposit.pytuid, tenantUserId.toString());
 
       expect(result.success).toBe(true);
-      expect(paymentGatewayService.createInvoice).toHaveBeenCalledWith(
+      expect(paymentGatewayService.createCharge).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({ applicationFeeAmountInCents: 0 })
       );
-      expect(paymentGatewayService.payInvoice).toHaveBeenCalled();
+      expect(paymentGatewayService.payCharge).toHaveBeenCalled();
     });
   });
 

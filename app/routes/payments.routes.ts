@@ -70,6 +70,18 @@ router.post(
   })
 );
 
+// Tenant's own PDF receipt (line items) for a paid charge; the service scopes it to the caller.
+router.get(
+  '/:cuid/:pytuid/receipt',
+  basicLimiter(),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.downloadMyReceipt(req, res);
+  })
+);
+
 router.get(
   '/:cuid/:pytuid',
   basicLimiter(),

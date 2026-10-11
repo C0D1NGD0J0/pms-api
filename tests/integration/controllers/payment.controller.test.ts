@@ -76,8 +76,7 @@ describe('PaymentController Integration Tests', () => {
   const mockPaymentGatewayService = {
     createRefund: mockCreateRefund,
     createCustomer: jest.fn(),
-    createInvoice: jest.fn(),
-    finalizeInvoice: jest.fn(),
+    createCharge: jest.fn(),
     verifyWebhook: jest.fn(),
   } as unknown as PaymentGatewayService;
 

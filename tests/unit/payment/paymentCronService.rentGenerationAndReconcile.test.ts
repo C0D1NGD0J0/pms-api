@@ -47,8 +47,7 @@ const makeService = () => {
   };
   const profileDAO = { findFirst: jest.fn().mockResolvedValue(tenantProfile) };
   const paymentGatewayService = {
-    getInvoice: jest.fn(),
-    getInvoicePaymentDetails: jest.fn(),
+    getChargeDetails: jest.fn(),
     retrievePaymentMethod: jest
       .fn()
       .mockResolvedValue({ success: true, data: { type: 'acss_debit', last4: '6789' } }),
@@ -357,17 +356,15 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
       makeService();
     const payment = processingPayment();
     paymentDAO.list.mockResolvedValueOnce({ items: [payment] });
-    paymentGatewayService.getInvoice.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
       data: {
         status: 'paid',
         paidAt: new Date('2026-10-01T10:00:00Z'),
-        hostedInvoiceUrl: 'https://x/inv',
+        receiptUrl: 'https://x/inv',
+        chargeId: 'ch_1',
+        paymentMethodType: 'acss_debit',
       },
-    });
-    paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
-      success: true,
-      data: { chargeId: 'ch_1', paymentMethodType: 'acss_debit' },
     });
 
     await service.reconcileStaleProcessingPayments();
@@ -406,16 +403,15 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
         }),
       ],
     });
-    paymentGatewayService.getInvoice.mockResolvedValue({ success: true, data: { status: 'open' } });
-    paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
-      data: { paymentMethodType: 'acss_debit' },
+      data: { status: 'open', paymentMethodType: 'acss_debit' },
     });
 
     await service.reconcileStaleProcessingPayments();
 
-    expect(paymentGatewayService.getInvoice).toHaveBeenCalledTimes(1);
-    expect(paymentGatewayService.getInvoice).toHaveBeenCalledWith('stripe', 'in_fees');
+    expect(paymentGatewayService.getChargeDetails).toHaveBeenCalledWith('stripe', 'in_fees');
+    expect(paymentGatewayService.getChargeDetails).not.toHaveBeenCalledWith('stripe', 'in_rent');
     expect(paymentDAO.update).not.toHaveBeenCalled();
     expect(emitterService.emit).not.toHaveBeenCalled();
   });
@@ -429,10 +425,9 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
       ],
     });
     paymentDAO.list.mockResolvedValueOnce({ items: [payment] });
-    paymentGatewayService.getInvoice.mockResolvedValue({ success: true, data: { status: 'paid' } });
-    paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
-      data: { chargeId: 'ch_rent' },
+      data: { status: 'paid', chargeId: 'ch_rent' },
     });
 
     await service.reconcileStaleProcessingPayments();
@@ -448,7 +443,7 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
   it('notifies PAYMENT_FAILED when the invoice is uncollectible (M3)', async () => {
     const { service, paymentDAO, paymentGatewayService, emitterService } = makeService();
     paymentDAO.list.mockResolvedValueOnce({ items: [processingPayment()] });
-    paymentGatewayService.getInvoice.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
       data: { status: 'uncollectible' },
     });
@@ -471,10 +466,9 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
   it('notifies PAYMENT_FAILED when an open invoice has a failed payment (M3)', async () => {
     const { service, paymentDAO, paymentGatewayService, emitterService } = makeService();
     paymentDAO.list.mockResolvedValueOnce({ items: [processingPayment()] });
-    paymentGatewayService.getInvoice.mockResolvedValue({ success: true, data: { status: 'open' } });
-    paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
-      data: { lastPaymentError: { message: 'insufficient funds' } },
+      data: { status: 'open', lastPaymentError: { message: 'insufficient funds' } },
     });
 
     await service.reconcileStaleProcessingPayments();
@@ -490,10 +484,9 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
     paymentDAO.list.mockResolvedValueOnce({
       items: [processingPayment({ chargedAt: dayjs().subtract(4, 'day').toDate() })],
     });
-    paymentGatewayService.getInvoice.mockResolvedValue({ success: true, data: { status: 'open' } });
-    paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
-      data: { paymentMethodType: 'acss_debit' },
+      data: { status: 'open', paymentMethodType: 'acss_debit' },
     });
 
     await service.reconcileStaleProcessingPayments();
@@ -507,7 +500,7 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
     paymentDAO.list
       .mockResolvedValueOnce({ items: firstPage })
       .mockResolvedValueOnce({ items: [processingPayment()] });
-    paymentGatewayService.getInvoice.mockResolvedValue({
+    paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
       data: { status: 'draft' },
     });
@@ -515,7 +508,7 @@ describe('PaymentCronService — reconcileStaleProcessingPayments', () => {
     await service.reconcileStaleProcessingPayments();
 
     expect(paymentDAO.list).toHaveBeenCalledTimes(2);
-    expect(paymentGatewayService.getInvoice).toHaveBeenCalledTimes(201);
+    expect(paymentGatewayService.getChargeDetails).toHaveBeenCalledTimes(201);
   });
 });
 

@@ -271,12 +271,11 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         inspectionDate: new Date(inspectionData.inspectionDate),
       };
 
+      // $max: back-filling an older inspection must not move the latest date backwards
       const updateOperation = {
         $push: { inspections: newInspection },
-        $set: {
-          lastInspectionDate: new Date(inspectionData.inspectionDate),
-          lastModifiedBy: new Types.ObjectId(userId),
-        },
+        $max: { lastInspectionDate: newInspection.inspectionDate },
+        $set: { lastModifiedBy: new Types.ObjectId(userId) },
       };
 
       return await this.updateById(unitId, updateOperation);

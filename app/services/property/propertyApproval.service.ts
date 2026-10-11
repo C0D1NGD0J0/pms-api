@@ -1,13 +1,14 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
-import { PropertyDAO } from '@dao/index';
 import { PropertyCache } from '@caching/index';
 import { type QueryFilter, Types } from 'mongoose';
 import { createSafeMongoUpdate } from '@utils/index';
+import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
 import type { MediaUploadService } from '@services/mediaUpload';
 import { IPropertyDocument } from '@interfaces/property.interface';
+import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PROPERTY_APPROVAL_ROLES, convertUserRoleToEnum, createLogger } from '@utils/index';
 import { ISuccessReturnData, IPaginationQuery, IPaginateResult } from '@interfaces/utils.interface';
@@ -17,6 +18,7 @@ import { cleanUpRemovedPropertyMedia, getOriginalRequesterId } from './propertyH
 interface IConstructor {
   notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
+  propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
   propertyDAO: PropertyDAO;
 }
@@ -24,6 +26,7 @@ interface IConstructor {
 export class PropertyApprovalService {
   private readonly log: Logger;
   private readonly propertyDAO: PropertyDAO;
+  private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly propertyCache: PropertyCache;
   private readonly notificationService: NotificationService;
   private readonly mediaUploadService: MediaUploadService;
@@ -31,11 +34,13 @@ export class PropertyApprovalService {
   constructor({
     propertyDAO,
     propertyCache,
+    propertyUnitDAO,
     notificationService,
     mediaUploadService,
   }: IConstructor) {
     this.mediaUploadService = mediaUploadService;
     this.propertyDAO = propertyDAO;
+    this.propertyUnitDAO = propertyUnitDAO;
     this.propertyCache = propertyCache;
     this.notificationService = notificationService;
     this.log = createLogger('PropertyApprovalService');
@@ -45,7 +50,13 @@ export class PropertyApprovalService {
     cuid: string,
     currentuser: ICurrentUser,
     pagination: IPaginationQuery
-  ): Promise<ISuccessReturnData<{ items: IPropertyDocument[]; pagination?: IPaginateResult }>> {
+  ): Promise<
+    ISuccessReturnData<{
+      items: IPropertyDocument[];
+      pagination?: IPaginateResult;
+      pendingUnits: IPropertyUnitDocument[];
+    }>
+  > {
     const userRole = currentuser.client.role;
     if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
       throw new InvalidRequestError({
@@ -68,12 +79,22 @@ export class PropertyApprovalService {
     };
 
     const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
+    // Staff edits to existing units wait for approval too; listed alongside the properties
+    const pendingUnits = await this.propertyUnitDAO.list(
+      { cuid, deletedAt: null, approvalStatus: 'pending', pendingChanges: { $ne: null } },
+      {
+        limit: 100,
+        sort: { updatedAt: -1 },
+        populate: { path: 'propertyId', select: 'pid name' },
+      }
+    );
 
     return {
       success: true,
       data: {
         items: properties.items,
         pagination: properties.pagination,
+        pendingUnits: pendingUnits.items,
       },
       message: t('common.success.retrieved', { resource: 'Pending approvals' }),
     };
@@ -290,18 +311,20 @@ export class PropertyApprovalService {
       updateData.$push = { approvalDetails: rejectionEntry };
     }
 
-    // If property has pending changes, clear them and keep status as approved (using old data)
+    // If property has pending changes, clear them; the live data is still the approved version.
+    // Staff submissions set approvalStatus to 'pending', so it must be reset explicitly.
     if (property.pendingChanges) {
       updateData.pendingChanges = null;
-      // Keep approvalStatus as 'approved' since we're keeping the old approved data
+      updateData.approvalStatus = 'approved';
     } else {
       // If no pending changes, this is a new property being rejected
       updateData.approvalStatus = 'rejected';
     }
 
+    // Same shape as approveProperty: plain fields are $set, and $push stays a top-level operator
     const updatedProperty = await this.propertyDAO.update(
       { pid, cuid, deletedAt: null },
-      { $set: updateData }
+      updateData
     );
 
     if (!updatedProperty) {

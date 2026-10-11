@@ -129,7 +129,18 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
   'specifications.totalArea',
   'currentLease',
   'floor', // if changing floor affects rent
+  'unitType',
+  'fees.currency',
+  'specifications.maxOccupants',
+  'isActive', // takes the unit on/off the market, like status
+  'managedBy',
 ];
+
+/**
+ * Unit floor range. Negative floors are basements (B1 = -1), 0 is the ground floor.
+ * The lower bound matches the pms-ui unit form.
+ */
+export const UNIT_FLOOR_RANGE = { min: -4, max: 100 } as const;
 
 /**
  * Unit fields that can be modified without approval (operational changes)
@@ -137,7 +148,6 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
 export const OPERATIONAL_UNIT_FIELDS = [
   'notes',
   'description',
-  'inspections',
   'documents',
   'media.photos',
   'amenities',

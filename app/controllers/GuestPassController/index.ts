@@ -19,15 +19,21 @@ export class GuestPassController {
     return res.status(200).json(result);
   };
 
+  getPass = async (req: AppRequest, res: Response) => {
+    const { vpuid } = req.params;
+    const result = await this.guestPassService.getPass(req.context, vpuid);
+    return res.status(200).json(result);
+  };
+
   revokePass = async (req: AppRequest, res: Response) => {
     const { vpuid } = req.params;
-    const result = await this.guestPassService.revokePass(req.context, vpuid);
+    const result = await this.guestPassService.revokePass(req.context, vpuid, req.body?.reason);
     return res.status(200).json(result);
   };
 
   getStats = async (req: AppRequest, res: Response) => {
-    const { pid } = req.query as { pid?: string };
-    const result = await this.guestPassService.getStats(req.context, pid);
+    const { propertyId } = req.query as { propertyId?: string };
+    const result = await this.guestPassService.getStats(req.context, propertyId);
     return res.status(200).json(result);
   };
 

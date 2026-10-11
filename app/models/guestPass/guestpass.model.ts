@@ -60,11 +60,36 @@ const GuestPassSchema = new Schema<IGuestPassDocument>(
       },
       _id: false,
     },
+    purpose: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+    },
+    // Host's note for security, set at creation (entryNotes is written by the guard at validation)
+    hostNotes: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
     createdBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
       index: true,
+    },
+    // Set when staff issue a pass on a resident's behalf; otherwise the creator is the host
+    hostInfo: {
+      name: {
+        type: String,
+        trim: true,
+        maxlength: 100,
+      },
+      phone: {
+        type: String,
+        trim: true,
+        maxlength: 20,
+      },
+      _id: false,
     },
     validUntil: {
       type: Date,
@@ -87,6 +112,7 @@ const GuestPassSchema = new Schema<IGuestPassDocument>(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+    usedAt: Date,
     entryNotes: {
       type: String,
       trim: true,
@@ -118,6 +144,11 @@ const GuestPassSchema = new Schema<IGuestPassDocument>(
       ref: 'User',
     },
     revokedAt: Date,
+    revokedReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+    },
     revokedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',

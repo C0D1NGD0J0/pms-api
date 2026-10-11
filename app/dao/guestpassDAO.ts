@@ -132,11 +132,13 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
   async acknowledgePass(
     cuid: string,
     vpuid: string,
-    acknowledgedBy: string
+    acknowledgedBy: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
   ): Promise<IGuestPassDocument | null> {
     try {
       return await this.update(
         {
+          ...visibilityFilter,
           vpuid,
           cuid,
           isAcknowledged: false,
@@ -156,10 +158,16 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async bulkAcknowledge(cuid: string, vpuids: string[], acknowledgedBy: string): Promise<number> {
+  async bulkAcknowledge(
+    cuid: string,
+    vpuids: string[],
+    acknowledgedBy: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<number> {
     try {
       const result = await this.updateMany(
         {
+          ...visibilityFilter,
           vpuid: { $in: vpuids },
           cuid,
           isAcknowledged: false,
@@ -180,11 +188,16 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async getUnacknowledgedPasses(cuid: string, propertyId: string): Promise<IGuestPassDocument[]> {
+  async getUnacknowledgedPasses(
+    cuid: string,
+    propertyId: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<IGuestPassDocument[]> {
     try {
       const now = new Date();
       const result = await this.list(
         {
+          ...visibilityFilter,
           cuid,
           propertyId: new Types.ObjectId(propertyId),
           status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
@@ -203,10 +216,15 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async getUnacknowledgedCount(cuid: string, propertyId?: string): Promise<number> {
+  async getUnacknowledgedCount(
+    cuid: string,
+    propertyId?: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<number> {
     try {
       const now = new Date();
       const query: QueryFilter<IGuestPassDocument> = {
+        ...visibilityFilter,
         cuid,
         status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
         isAcknowledged: false,

@@ -86,19 +86,24 @@ export async function handleGuestPassCreated(
       );
     }
 
-    // SSE broadcast for real-time UI updates
-    ctx.sseService.broadcastToClient(
-      cuid,
-      {
-        vpuid,
-        visitorName,
-        propertyName,
-        propertyId,
-      },
-      'guest-pass-created',
-      undefined,
-      securityStaffIds.length > 0 ? securityStaffIds : []
-    );
+    // Real-time UI update for the same audience as the notification above
+    const liveEvent = { vpuid, visitorName, propertyName, propertyId };
+    if (securityStaffIds.length > 0) {
+      await Promise.all(
+        securityStaffIds.map((staffId) =>
+          ctx.sseService.sendToUser(staffId, cuid, liveEvent, 'guest-pass-created')
+        )
+      );
+    } else {
+      await ctx.sseService.broadcastToClient(
+        cuid,
+        liveEvent,
+        'guest-pass-created',
+        undefined,
+        [...STAFF_ROLES],
+        [...SECURITY_DEPARTMENTS]
+      );
+    }
   } catch (err) {
     ctx.log.error({ err, vpuid, cuid }, 'Failed to handle guest pass created notification');
   }

@@ -878,6 +878,10 @@ export class MaintenanceRequestService {
       }
     }
 
+    if (data.technician?.userId) {
+      await this.assertTechnicianOnVendorTeam(request, cuid, data.technician.userId);
+    }
+
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
       if (!data.technician?.userId) {
@@ -1306,6 +1310,49 @@ export class MaintenanceRequestService {
     currentuser: any
   ): Promise<void> {
     await assertVendorAuthorized(this.vendorDAO, currentuser, request);
+  }
+
+  /**
+   * The technician must be the assigned (primary) vendor user or a connected team member of
+   * that vendor in this client. Team members store linkedVendorUid as either the vendor's vuid
+   * or the primary account holder's User._id, depending on the invitation path.
+   */
+  private async assertTechnicianOnVendorTeam(
+    request: { vendorId?: any },
+    cuid: string,
+    technicianUserId: string
+  ): Promise<void> {
+    const notOnTeamError = new ForbiddenError({
+      message: 'Selected technician is not a member of your team',
+    });
+    const primaryVendorUserId = request.vendorId?.toString();
+    if (!primaryVendorUserId || !Types.ObjectId.isValid(technicianUserId)) throw notOnTeamError;
+    if (technicianUserId === primaryVendorUserId) return;
+
+    const vendor = await this.vendorDAO.findFirst({
+      connectedClients: {
+        $elemMatch: {
+          cuid,
+          isConnected: true,
+          primaryAccountHolderUserId: new Types.ObjectId(primaryVendorUserId),
+        },
+      },
+      deletedAt: null,
+    });
+    if (!vendor) throw notOnTeamError;
+
+    const teamMember = await this.userDAO.findFirst({
+      _id: new Types.ObjectId(technicianUserId),
+      deletedAt: null,
+      cuids: {
+        $elemMatch: {
+          cuid,
+          isConnected: true,
+          linkedVendorUid: { $in: [vendor.vuid, primaryVendorUserId] },
+        },
+      },
+    });
+    if (!teamMember) throw notOnTeamError;
   }
 
   private buildUnassignUpdate() {

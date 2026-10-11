@@ -83,6 +83,16 @@ export const MaintenanceSchemas = {
           options: z.array(z.nativeEnum(AvailabilityWindow)).optional().default([]),
         })
         .optional(),
+      // Staff-only extras (the service ignores them for tenants). Multipart sends every
+      // field as a string: parseJsonFields converts "true"/"false", numbers need coercion.
+      setMaintenanceStatus: z.boolean().optional(),
+      vendorVuid: z.string().trim().min(1).optional(),
+      scheduledDate: z
+        .string()
+        .refine((d) => !isNaN(Date.parse(d)), 'Invalid date')
+        .refine((d) => new Date(d) > new Date(), 'Scheduled date must be in the future')
+        .optional(),
+      estimatedCost: z.coerce.number().positive().optional(),
     })
     .superRefine(async (data, ctx) => {
       if (data.puid && data.pid) {
@@ -156,6 +166,10 @@ export const MaintenanceSchemas = {
       reason: z.string().max(500).optional(),
       technician: z
         .object({
+          userId: z
+            .string()
+            .regex(/^[a-f\d]{24}$/i, 'Technician user ID must be a valid ID')
+            .optional(),
           name: z.string().min(1).max(100),
           phone: z.string().max(20).optional(),
           email: z.string().email().optional(),
@@ -223,8 +237,12 @@ export const MaintenanceSchemas = {
     externalInvoiceUrl: z.string().url().optional(),
     attachment: z
       .object({
-        url: z.string().url(),
-        key: z.string().min(1),
+        // https only — the URL is rendered as a link, so javascript:/data: schemes are rejected
+        url: z
+          .string()
+          .url()
+          .refine((u) => u.startsWith('https://'), 'Attachment URL must use https'),
+        key: z.string().min(1).max(1024),
       })
       .optional(),
   }),

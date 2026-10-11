@@ -1162,6 +1162,7 @@ describe('GuestPassService', () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
 
       await GuestPassModel.create({
         cuid: client.cuid,
@@ -1345,6 +1346,7 @@ describe('GuestPassService', () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
 
       const pass = await GuestPassModel.create({
         cuid: client.cuid,
@@ -1376,6 +1378,7 @@ describe('GuestPassService', () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
 
       const pass = await GuestPassModel.create({
         cuid: client.cuid,
@@ -1440,6 +1443,7 @@ describe('GuestPassService', () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
 
       const pass1 = await GuestPassModel.create({
         cuid: client.cuid,
@@ -1483,6 +1487,7 @@ describe('GuestPassService', () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
 
       const pass1 = await GuestPassModel.create({
         cuid: client.cuid,
@@ -1844,6 +1849,7 @@ describe('GuestPassService', () => {
         const otherClient = await createTestClient();
         const property = await createTestProperty(client.cuid, client._id);
         const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
         const single = await seedPass(client.cuid, property._id);
         const bulk = await seedPass(client.cuid, property._id);
         const foreign = await seedPass(otherClient.cuid, property._id);
@@ -1896,6 +1902,103 @@ describe('GuestPassService', () => {
         await expect(service.getMyPasses(ctx, { propertyId: 'unknown-pid' })).rejects.toThrow(
           /not found/i
         );
+      });
+    });
+
+    describe('visibility scoping on acknowledge, unacknowledged and validate', () => {
+      const setupScopedStaff = async () => {
+        const client = await createTestClient();
+        const assigned = await createTestProperty(client.cuid, client._id);
+        const unassigned = await createTestProperty(client.cuid, client._id);
+        const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        await Property.updateOne({ _id: assigned._id }, { $set: { assignedStaff: [staff._id] } });
+        const ctx = mockRequestContext(staff, client.cuid) as any;
+        return { client, assigned, unassigned, staff, ctx };
+      };
+
+      it('stops staff acknowledging a pass for a property they are not assigned to', async () => {
+        const { client, assigned, unassigned, ctx } = await setupScopedStaff();
+        const visible = await seedPass(client.cuid, assigned._id);
+        const hidden = await seedPass(client.cuid, unassigned._id);
+        const { service } = setupService();
+
+        expect((await service.acknowledgePass(ctx, visible.vpuid)).data.isAcknowledged).toBe(true);
+        await expect(service.acknowledgePass(ctx, hidden.vpuid)).rejects.toThrow();
+        expect((await GuestPassModel.findById(hidden._id))!.isAcknowledged).toBe(false);
+      });
+
+      it('only bulk-acknowledges passes for the staff member’s assigned properties', async () => {
+        const { client, assigned, unassigned, ctx } = await setupScopedStaff();
+        const visible = await seedPass(client.cuid, assigned._id);
+        const hidden = await seedPass(client.cuid, unassigned._id);
+        const { service } = setupService();
+
+        const result = await service.bulkAcknowledgePasses(ctx, [visible.vpuid, hidden.vpuid]);
+
+        expect(result.data.acknowledged).toBe(1);
+        expect((await GuestPassModel.findById(hidden._id))!.isAcknowledged).toBe(false);
+      });
+
+      it('forbids staff reading unacknowledged passes for an unassigned property', async () => {
+        const { client, assigned, unassigned, ctx } = await setupScopedStaff();
+        await seedPass(client.cuid, assigned._id);
+        await seedPass(client.cuid, unassigned._id);
+        const { service } = setupService();
+
+        expect(
+          (await service.getUnacknowledgedPasses(ctx, assigned._id.toString())).data
+        ).toHaveLength(1);
+        await expect(
+          service.getUnacknowledgedPasses(ctx, unassigned._id.toString())
+        ).rejects.toThrow(ForbiddenError);
+      });
+
+      it('counts only unacknowledged passes the staff member can see', async () => {
+        const { client, assigned, unassigned, ctx } = await setupScopedStaff();
+        await seedPass(client.cuid, assigned._id);
+        await seedPass(client.cuid, unassigned._id);
+        const { service } = setupService();
+
+        expect((await service.getUnacknowledgedCount(ctx)).data.count).toBe(1);
+        await expect(
+          service.getUnacknowledgedCount(ctx, unassigned._id.toString())
+        ).rejects.toThrow(ForbiddenError);
+      });
+
+      it("never shows a tenant another tenant's unacknowledged passes", async () => {
+        const client = await createTestClient();
+        const property = await createTestProperty(client.cuid, client._id);
+        const tenant = await createTestUser(client.cuid, { roles: [ROLES.TENANT] });
+        const other = await createTestUser(client.cuid, { roles: [ROLES.TENANT] });
+        const own = await seedPass(client.cuid, property._id, { createdBy: tenant._id });
+        await seedPass(client.cuid, property._id, { createdBy: other._id });
+        const { service } = setupService();
+        const ctx = mockRequestContext(tenant, client.cuid) as any;
+
+        const passes = (await service.getUnacknowledgedPasses(ctx, property._id.toString())).data;
+
+        expect(passes.map((p) => p.vpuid)).toEqual([own.vpuid]);
+        expect((await service.getUnacknowledgedCount(ctx)).data.count).toBe(1);
+      });
+
+      it('forbids staff validating a code at a property they are not assigned to', async () => {
+        const { client, unassigned, ctx } = await setupScopedStaff();
+        const pass = await seedPass(client.cuid, unassigned._id, { code: '616161' });
+        const { service } = setupService();
+
+        await expect(
+          service.validateCode(ctx, { code: '616161', propertyId: unassigned.pid })
+        ).rejects.toThrow(ForbiddenError);
+        expect((await GuestPassModel.findById(pass._id))!.status).toBe(GuestPassStatus.ACTIVE);
+      });
+
+      it('does not let staff revoke a pass for an unassigned property', async () => {
+        const { client, unassigned, ctx } = await setupScopedStaff();
+        const pass = await seedPass(client.cuid, unassigned._id);
+        const { service } = setupService();
+
+        await expect(service.revokePass(ctx, pass.vpuid)).rejects.toThrow(/not found/i);
+        expect((await GuestPassModel.findById(pass._id))!.status).toBe(GuestPassStatus.ACTIVE);
       });
     });
 

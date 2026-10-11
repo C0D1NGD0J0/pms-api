@@ -1,7 +1,7 @@
 import { Document, Types } from 'mongoose';
 
-import { IInvoice } from './invoice.interface';
 import { MediaDocumentStatus } from './property.interface';
+import { IInvoiceAttachment, IInvoice } from './invoice.interface';
 
 export enum MaintenanceCategory {
   PEST_CONTROL = 'pest_control',
@@ -240,6 +240,17 @@ export interface IInvoiceWebhookPayload {
   cuid: string;
 }
 
+export interface ISubmitInvoicePayload {
+  attachment?: IInvoiceAttachment;
+  lineItems?: IInvoiceLineItem[];
+  externalInvoiceUrl?: string;
+  externalInvoiceId?: string;
+  source?: InvoiceSource;
+  description: string;
+  currency?: string;
+  amount: number;
+}
+
 export interface IRespondToAssignmentPayload {
   technician?: { name: string; phone?: string; email?: string; userId?: string }; // optional on accept
   action: 'accept' | 'decline';
@@ -264,16 +275,6 @@ export interface MaintenanceRequestMedia {
   uploadedAt: Date;
   key?: string;
   url: string;
-}
-
-export interface ISubmitInvoicePayload {
-  lineItems?: IInvoiceLineItem[];
-  externalInvoiceUrl?: string;
-  externalInvoiceId?: string;
-  source?: InvoiceSource;
-  description: string;
-  currency?: string;
-  amount: number;
 }
 
 export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {

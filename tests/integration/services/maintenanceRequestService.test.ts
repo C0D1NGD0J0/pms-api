@@ -164,6 +164,36 @@ beforeEach(async () => {
 
 describe('MaintenanceRequestService', () => {
   describe('createRequest', () => {
+    it('assigns a vendor with schedule and estimate when created by staff', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+      const scheduledDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+
+      const service = setupService();
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+
+      const result = await service.createRequest(ctx, {
+        pid: property.pid,
+        title: 'Create with vendor test',
+        description: { text: 'Request created with vendor, schedule and estimate' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+        vendorVuid: vendorRecord.vuid,
+        scheduledDate: scheduledDate as any,
+        estimatedCost: 120.5,
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid: result.data.mruid }).lean();
+      expect(stored?.status).toBe(MaintenanceRequestStatus.ASSIGNED);
+      expect(stored?.vendorId?.toString()).toBe(vendorUser._id.toString());
+      expect(stored?.estimatedCost).toBe(12050);
+      expect(stored?.scheduledDate?.toISOString()).toBe(scheduledDate);
+    });
+
     it('should create a maintenance request with valid pid', async () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
@@ -687,6 +717,93 @@ describe('MaintenanceRequestService', () => {
   });
 
   describe('acceptAssignment / declineAssignment', () => {
+    const setupAssignedRequest = async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Technician selection test',
+        description: { text: 'Request to test technician selection on accept' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+
+      return { client, service, vendorCtx, vendorRecord, vendorUser, mruid: created.data.mruid };
+    };
+
+    it('assigns the selected team member as technician on accept', async () => {
+      const { client, service, vendorCtx, vendorRecord, mruid } = await setupAssignedRequest();
+      const teamMember = await createTestUser(client.cuid, {
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.VENDOR],
+            isConnected: true,
+            clientDisplayName: 'Vendor Tech',
+            linkedVendorUid: vendorRecord.vuid,
+          },
+        ] as any,
+      });
+
+      await service.acceptAssignment(vendorCtx, mruid, {
+        action: 'accept',
+        technician: { name: 'Team Tech', userId: teamMember._id.toString() },
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored?.assignedTechnician?.userId?.toString()).toBe(teamMember._id.toString());
+      expect(stored?.assignedTechnician?.name).toBe('Team Tech');
+    });
+
+    it('rejects a technician who is not on the vendor team', async () => {
+      const { client, service, vendorCtx, mruid } = await setupAssignedRequest();
+      const otherVendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const otherVendor = await createTestVendor(client.cuid, otherVendorUser._id);
+      const outsider = await createTestUser(client.cuid, {
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.VENDOR],
+            isConnected: true,
+            clientDisplayName: 'Vendor Tech',
+            linkedVendorUid: otherVendor.vuid,
+          },
+        ] as any,
+      });
+
+      await expect(
+        service.acceptAssignment(vendorCtx, mruid, {
+          action: 'accept',
+          technician: { name: 'Outsider', userId: outsider._id.toString() },
+        })
+      ).rejects.toThrow('Selected technician is not a member of your team');
+
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored?.status).toBe(MaintenanceRequestStatus.ASSIGNED);
+    });
+
+    it('accepts the primary vendor user as technician', async () => {
+      const { service, vendorCtx, vendorUser, mruid } = await setupAssignedRequest();
+
+      await service.acceptAssignment(vendorCtx, mruid, {
+        action: 'accept',
+        technician: { name: 'Owner', userId: vendorUser._id.toString() },
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored?.assignedTechnician?.userId?.toString()).toBe(vendorUser._id.toString());
+    });
+
     it('vendor should accept assignment and transition to in_progress', async () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
@@ -967,6 +1084,52 @@ describe('MaintenanceRequestService', () => {
   });
 
   describe('submitInvoice / approveInvoice / rejectInvoice', () => {
+    it('persists the invoice attachment', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Invoice attachment test',
+        description: { text: 'Request to test invoice attachment persistence' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+      await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
+      await (service as any).maintenanceInvoiceService.submitWorkOrder(
+        vendorCtx,
+        created.data.mruid,
+        { scope: 'Fixed the plumbing issue', estimatedCostInCents: 25000 }
+      );
+      await (service as any).maintenanceInvoiceService.reviewWorkOrder(
+        managerCtx,
+        created.data.mruid,
+        { action: 'approve' }
+      );
+
+      const attachment = {
+        url: 'https://bucket.s3.amazonaws.com/invoices/inv-1.pdf',
+        key: 'invoices/inv-1.pdf',
+      };
+      const result = await (service as any).maintenanceInvoiceService.submitInvoice(
+        vendorCtx,
+        created.data.mruid,
+        { amount: 25000, description: 'Fixed the plumbing issue', attachment }
+      );
+
+      const stored = await InvoiceModel.findById(result.data._id).lean();
+      expect(stored?.attachment).toEqual(attachment);
+    });
+
     it('vendor should submit invoice and manager should approve it', async () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);

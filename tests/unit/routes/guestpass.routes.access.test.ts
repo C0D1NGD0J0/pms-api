@@ -47,6 +47,12 @@ const mockController = {
   bulkAcknowledge: jest.fn((req: Request, res: Response) =>
     res.status(200).json({ body: req.body })
   ),
+  getUnacknowledged: jest.fn((req: Request, res: Response) =>
+    res.status(200).json({ params: req.params })
+  ),
+  getUnacknowledgedCount: jest.fn((req: Request, res: Response) =>
+    res.status(200).json({ query: req.query })
+  ),
 };
 
 const permissionService = new PermissionService();
@@ -263,6 +269,43 @@ describe('guest pass routes — acknowledge by vpuid', () => {
 
     expect(res.status).toBe(422);
     expect(mockController.bulkAcknowledge).not.toHaveBeenCalled();
+  });
+});
+
+// Tenants hold guest_pass list:mine, so these routes let them through — the service scopes
+// the results to their own passes (see guestPassService integration tests).
+describe('guest pass routes — unacknowledged passes access control', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const PROPERTY_ID = '64b7f0c2a1b2c3d4e5f60718';
+
+  it.each([{ role: ROLES.TENANT }, { role: ROLES.STAFF, department: 'security' }])(
+    'lets $role reach the unacknowledged list for the service to scope',
+    async (as) => {
+      const res = await asRole(
+        request(app).get(`/api/v1/guest-passes/${CUID}/property/${PROPERTY_ID}/unacknowledged`),
+        as
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockController.getUnacknowledged).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('forbids vendors from the unacknowledged list and count', async () => {
+    const vendor = { role: ROLES.VENDOR };
+    const list = await asRole(
+      request(app).get(`/api/v1/guest-passes/${CUID}/property/${PROPERTY_ID}/unacknowledged`),
+      vendor
+    );
+    const count = await asRole(
+      request(app).get(`/api/v1/guest-passes/${CUID}/unacknowledged-count`),
+      vendor
+    );
+
+    expect(list.status).toBe(403);
+    expect(count.status).toBe(403);
+    expect(mockController.getUnacknowledged).not.toHaveBeenCalled();
+    expect(mockController.getUnacknowledgedCount).not.toHaveBeenCalled();
   });
 });
 

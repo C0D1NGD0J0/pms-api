@@ -899,6 +899,9 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
       status: MaintenanceRequestStatus.IN_PROGRESS,
     });
 
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+    mockUserDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(teamMemberSub) });
+
     const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
     await service.acceptAssignment(ctx as IRequestContext, 'MR001', {
       action: 'accept',
@@ -909,6 +912,35 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     const setPayload = updateCall[1].$set;
     // userId is stored as an ObjectId, compare via toString()
     expect(setPayload.assignedTechnician.userId.toString()).toBe(teamMemberSub);
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cuids: {
+          $elemMatch: expect.objectContaining({
+            cuid: testCuid,
+            isConnected: true,
+            linkedVendorUid: { $in: [primaryVendorUid, primaryVendorObjectId.toString()] },
+          }),
+        },
+      })
+    );
+  });
+
+  it('acceptAssignment: rejects a technician userId that is not on the vendor team', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: primaryVendorObjectId,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+    mockUserDAO.findFirst.mockResolvedValue(null);
+
+    const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
+    await expect(
+      service.acceptAssignment(ctx as IRequestContext, 'MR001', {
+        action: 'accept',
+        technician: { name: 'Stranger', userId: new Types.ObjectId().toString() },
+      })
+    ).rejects.toThrow(ForbiddenError);
+    expect(mockDAO.updateById).not.toHaveBeenCalled();
   });
 
   it('acceptAssignment: defaults assignedTechnician.userId to caller sub when not provided', async () => {

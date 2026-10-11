@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import request from 'supertest';
+import { Types } from 'mongoose';
 import { asValue } from 'awilix';
 import { Application } from 'express';
 import { QueueFactory } from '@services/queue';
@@ -265,6 +266,163 @@ describe('Lease document upload (create/update) — property-documents pipeline'
       return lease?.leaseDocuments?.some((doc) => doc.filename === originalName) ?? false;
     });
     expect(persisted).toBe(true);
+  });
+
+  describe('uploaded document type follows the first signature', () => {
+    const SIGNED_AGREEMENT_KEY = 'lease/existing/signed-agreement.pdf';
+
+    const createLeaseWithAgreement = async () =>
+      Lease.create({
+        luid: `lease-doc-type-${Date.now()}`,
+        cuid: testClient.cuid,
+        tenantId: testTenant._id,
+        property: {
+          id: testProperty._id,
+          unitId: testUnit._id,
+          address: testProperty.address.fullAddress,
+        },
+        duration: { startDate: new Date('2026-01-01'), endDate: new Date('2026-12-31') },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 150000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.DRAFT,
+        approvalStatus: 'approved',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-DOCTYPE-${Date.now()}`,
+        createdBy: testTenant._id,
+        leaseDocuments: [
+          {
+            documentType: 'lease_agreement',
+            status: 'active',
+            filename: 'signed-agreement.pdf',
+            url: 'https://mock-bucket.s3.amazonaws.com/signed-agreement.pdf',
+            key: SIGNED_AGREEMENT_KEY,
+            uploadedBy: testTenant._id,
+          },
+        ],
+      });
+
+    // Mirrors markAsManualySigned (a direct update, as the service does)
+    const markLeaseSigned = (leaseId: Types.ObjectId) =>
+      Lease.updateOne(
+        { _id: leaseId },
+        {
+          $set: { status: LeaseStatus.ACTIVE, signingMethod: 'manual', signedDate: new Date() },
+          $push: {
+            signatures: {
+              userId: testTenant._id,
+              role: 'tenant',
+              signatureMethod: 'manual',
+              signedAt: new Date(),
+            },
+          },
+        }
+      );
+
+    const documentsOf = async (leaseId: Types.ObjectId) =>
+      (await Lease.findById(leaseId).lean())!.leaseDocuments!;
+
+    const patchWithDocument = (luid: string, originalName: string) =>
+      request(app)
+        .patch(`/api/v1/leases/${testClient.cuid}/${luid}`)
+        .set('Cookie', authCookie(managerToken))
+        .set('idempotency-key', `update-doctype-${Date.now()}`)
+        .attach('leaseDocument[0].file', PDF_BYTES, {
+          filename: originalName,
+          contentType: 'application/pdf',
+        });
+
+    const postStandaloneDocument = (luid: string, originalName: string) =>
+      request(app)
+        .post(`/api/v1/leases/${testClient.cuid}/${luid}/document`)
+        .set('Cookie', authCookie(managerToken))
+        .set('idempotency-key', `standalone-doctype-${Date.now()}`)
+        .attach('document', PDF_BYTES, { filename: originalName, contentType: 'application/pdf' });
+
+    it('an upload before signing becomes the active lease_agreement and retires the previous one', async () => {
+      const lease = await createLeaseWithAgreement();
+      const originalName = `replacement-${Date.now()}.pdf`;
+
+      const response = await patchWithDocument(lease.luid, originalName);
+      expect(response.status).toBe(200);
+      await runUploadWorkerOnQueuedJob();
+
+      expect(
+        await waitFor(async () =>
+          (await documentsOf(lease._id)).some((doc) => doc.filename === originalName)
+        )
+      ).toBe(true);
+      const docs = await documentsOf(lease._id);
+      expect(docs.find((doc) => doc.filename === originalName)).toMatchObject({
+        documentType: 'lease_agreement',
+        status: 'active',
+      });
+      expect(docs.find((doc) => doc.key === SIGNED_AGREEMENT_KEY)!.status).toBe('inactive');
+    });
+
+    it('an upload that lands after signing is stored as other and keeps the signed agreement active', async () => {
+      const lease = await createLeaseWithAgreement();
+      const originalName = `after-signing-${Date.now()}.pdf`;
+
+      const response = await patchWithDocument(lease.luid, originalName);
+      expect(response.status).toBe(200);
+      // Signing completes between the upload request and the worker persisting it
+      await markLeaseSigned(lease._id);
+      await runUploadWorkerOnQueuedJob();
+
+      expect(
+        await waitFor(async () =>
+          (await documentsOf(lease._id)).some((doc) => doc.filename === originalName)
+        )
+      ).toBe(true);
+      const docs = await documentsOf(lease._id);
+      expect(docs.find((doc) => doc.filename === originalName)).toMatchObject({
+        documentType: 'other',
+        status: 'active',
+      });
+      expect(docs.find((doc) => doc.key === SIGNED_AGREEMENT_KEY)).toMatchObject({
+        documentType: 'lease_agreement',
+        status: 'active',
+      });
+    });
+
+    it('POST /:luid/document replaces the agreement before signing', async () => {
+      const lease = await createLeaseWithAgreement();
+      const originalName = `standalone-unsigned-${Date.now()}.pdf`;
+
+      const response = await postStandaloneDocument(lease.luid, originalName);
+
+      expect(response.status).toBe(200);
+      const docs = await documentsOf(lease._id);
+      expect(docs.find((doc) => doc.filename === originalName)).toMatchObject({
+        documentType: 'lease_agreement',
+        status: 'active',
+      });
+      expect(docs.find((doc) => doc.key === SIGNED_AGREEMENT_KEY)!.status).toBe('inactive');
+    });
+
+    it('POST /:luid/document after signing stores other and leaves the agreement active', async () => {
+      const lease = await createLeaseWithAgreement();
+      await markLeaseSigned(lease._id);
+      const originalName = `standalone-signed-${Date.now()}.pdf`;
+
+      const response = await postStandaloneDocument(lease.luid, originalName);
+
+      expect(response.status).toBe(200);
+      const docs = await documentsOf(lease._id);
+      expect(docs.find((doc) => doc.filename === originalName)).toMatchObject({
+        documentType: 'other',
+        status: 'active',
+      });
+      expect(docs.find((doc) => doc.key === SIGNED_AGREEMENT_KEY)).toMatchObject({
+        documentType: 'lease_agreement',
+        status: 'active',
+      });
+    });
   });
 
   it('does not upload anything and removes the temp file when the lease write is rejected', async () => {

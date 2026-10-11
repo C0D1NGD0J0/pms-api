@@ -32,6 +32,7 @@ import {
 import {
   SIGNATURE_INVALIDATING_LEASE_FIELDS,
   EDITABLE_FIELDS_BY_LEASE_STATUS,
+  LIFECYCLE_MANAGED_LEASE_FIELDS,
   HIGH_IMPACT_LEASE_FIELDS,
   PROPERTY_APPROVAL_ROLES,
   IMMUTABLE_LEASE_FIELDS,
@@ -57,6 +58,23 @@ export const validateImmutableFields = (updateData: Partial<ILeaseFormData>): vo
       errorInfo: {
         fields: immutableFieldsAttempted.map(
           (f) => `Field '${f}' cannot be modified after creation`
+        ),
+      },
+    });
+  }
+};
+
+export const validateLifecycleManagedFields = (updateData: Partial<ILeaseFormData>): void => {
+  const lifecycleFieldsAttempted = Object.keys(updateData).filter((field) =>
+    LIFECYCLE_MANAGED_LEASE_FIELDS.includes(field)
+  );
+
+  if (lifecycleFieldsAttempted.length > 0) {
+    throw new ValidationRequestError({
+      message: 'Lease status, approval and signature fields can only change through lease actions',
+      errorInfo: {
+        fields: lifecycleFieldsAttempted.map(
+          (f) => `Field '${f}' cannot be modified through a lease update`
         ),
       },
     });
@@ -1318,6 +1336,51 @@ export const findActiveLeasePDF = (lease: ILeaseDocument) =>
   lease.leaseDocuments?.find(
     (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
   );
+
+// Statuses a lease can only reach after its contract was executed (the model requires
+// signedDate + signatures for ACTIVE, and the others are only entered from ACTIVE).
+const SIGNED_LEASE_STATUSES: LeaseStatus[] = [
+  LeaseStatus.ACTIVE,
+  LeaseStatus.EXPIRED,
+  LeaseStatus.TERMINATED,
+  LeaseStatus.COMPLETED,
+];
+
+/**
+ * True once the lease contract has been fully signed at least once — manual signing sets
+ * signedDate, a completed e-signature sets eSignature.status 'signed', and manual activation
+ * moves the lease to ACTIVE. A partially signed envelope does not count: a decline/expiry
+ * reverts the lease to draft with those signatures still recorded.
+ */
+export const hasLeaseBeenSigned = (
+  lease: Pick<ILeaseDocument, 'signedDate' | 'eSignature' | 'status'>
+): boolean =>
+  !!lease.signedDate ||
+  lease.eSignature?.status === ILeaseESignatureStatusEnum.SIGNED ||
+  SIGNED_LEASE_STATUSES.includes(lease.status);
+
+/**
+ * Type for a document uploaded to a lease. Before the first signature the upload is the
+ * contract itself (replaces the active lease_agreement); afterwards it is a supporting
+ * document and must never replace the signed agreement.
+ */
+export const resolveUploadedLeaseDocumentType = (
+  lease: Pick<ILeaseDocument, 'signedDate' | 'eSignature' | 'status'>
+): 'lease_agreement' | 'other' => (hasLeaseBeenSigned(lease) ? 'other' : 'lease_agreement');
+
+/**
+ * Stamps the documentType on lease upload results that don't carry one (user uploads).
+ * Results with an explicit type — the system-generated agreement PDF — are kept as-is.
+ */
+export const assignUploadedLeaseDocumentTypes = <T extends { documentType?: string }>(
+  lease: Pick<ILeaseDocument, 'signedDate' | 'eSignature' | 'status'>,
+  uploadResults: T[]
+): T[] => {
+  const defaultType = resolveUploadedLeaseDocumentType(lease);
+  return uploadResults.map((upload) =>
+    upload.documentType ? upload : { ...upload, documentType: defaultType }
+  );
+};
 
 /**
  * Builds BoldSign sender info from client profile.

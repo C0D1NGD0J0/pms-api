@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
 import { LeaseService } from '@services/lease/lease.service';
+import { ValidationRequestError } from '@shared/customErrors';
 import { VendorService } from '@services/vendor/vendor.service';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
 import { LeaseRenewalService } from '@services/lease/leaseRenewal.service';
@@ -721,6 +722,78 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const updatedLease = await Lease.findOne({ luid: lease.luid });
       expect(updatedLease?.petPolicy?.deposit).toBe(25000);
       expect(updatedLease?.petPolicy?.monthlyFee).toBe(3550);
+    });
+
+    describe('lifecycle-managed fields', () => {
+      const setupDraftLease = async () => {
+        const client = await createTestClient();
+        const admin = await createTestAdminUser(client.cuid, client._id);
+        const tenant = await createTestTenantUser(client.cuid, client._id);
+        const property = await createTestProperty(client.cuid, client._id, {
+          propertyType: 'house',
+        });
+
+        const lease = await Lease.create({
+          luid: `lease-lifecycle-${Date.now()}`,
+          cuid: client.cuid,
+          tenantId: tenant._id,
+          property: { id: property._id, address: property.address.fullAddress },
+          duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-01-01') },
+          fees: {
+            rentAmount: 150000,
+            securityDeposit: 300000,
+            rentDueDay: 1,
+            currency: 'USD',
+            acceptedPaymentMethod: 'e-transfer',
+          },
+          status: LeaseStatus.DRAFT,
+          approvalStatus: 'approved',
+          type: LeaseType.FIXED_TERM,
+          leaseNumber: `LEASE-LC-${Date.now()}`,
+          createdBy: admin._id,
+        } as any);
+
+        const adminContext = {
+          request: { params: { cuid: client.cuid } },
+          currentuser: {
+            uid: admin.uid,
+            sub: admin._id.toString(),
+            client: { cuid: client.cuid, role: ROLES.ADMIN },
+          },
+        } as any;
+
+        return { lease, adminContext };
+      };
+
+      it('should not let an admin move a draft lease to active through the generic update', async () => {
+        const { lease, adminContext } = await setupDraftLease();
+
+        await expect(
+          leaseService.updateLease(adminContext, lease.luid, { status: LeaseStatus.ACTIVE } as any)
+        ).rejects.toThrow(ValidationRequestError);
+
+        const unchangedLease = await Lease.findOne({ luid: lease.luid });
+        expect(unchangedLease?.status).toBe(LeaseStatus.DRAFT);
+      });
+
+      it.each([
+        ['eSignature', { status: 'signed', envelopeId: 'forged-envelope' }],
+        ['signedDate', new Date()],
+        ['approvalStatus', 'rejected'],
+        ['signatures', [{ signatureMethod: 'manual', signedAt: new Date() }]],
+      ])('should reject %s on the generic update', async (field, value) => {
+        const { lease, adminContext } = await setupDraftLease();
+
+        await expect(
+          leaseService.updateLease(adminContext, lease.luid, { [field]: value } as any)
+        ).rejects.toThrow(ValidationRequestError);
+
+        const unchangedLease = (await Lease.findOne({ luid: lease.luid }).lean()) as any;
+        expect(unchangedLease.status).toBe(LeaseStatus.DRAFT);
+        expect(unchangedLease.approvalStatus).toBe('approved');
+        expect(unchangedLease.signedDate).toBeUndefined();
+        expect(unchangedLease.eSignature?.status).not.toBe('signed');
+      });
     });
 
     it('should block updates to immutable fields on active lease', async () => {

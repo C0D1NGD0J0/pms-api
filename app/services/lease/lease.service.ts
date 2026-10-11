@@ -82,6 +82,7 @@ import { assertESignatureEntitlement } from './leaseEntitlements';
 import {
   enforceLeaseApprovalRequirement,
   validateLeaseReadyForActivation,
+  validateLifecycleManagedFields,
   generatePendingChangesPreview,
   handlePendingSignatureUpdate,
   calculateFinancialSummary,
@@ -728,6 +729,10 @@ export class LeaseService {
         throw new ForbiddenError({ message: 'You are not authorized to update leases.' });
       }
 
+      // Status/approval/signature changes must go through the lifecycle endpoints so their
+      // checks and side effects (invoicing, events, notifications) can't be bypassed
+      validateLifecycleManagedFields(updateData);
+
       const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
       if (!lease) {
         throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
@@ -1211,13 +1216,13 @@ export class LeaseService {
 
       if (charge.gatewayPaymentId) {
         const voidResult = this.paymentGatewayService
-          ? await this.paymentGatewayService.voidInvoice(
+          ? await this.paymentGatewayService.cancelCharge(
               IPaymentGatewayProvider.STRIPE,
               charge.gatewayPaymentId
             )
           : { success: false, message: 'Payment gateway unavailable' };
         if (!voidResult.success) {
-          this.log.error('Could not void invoice for charge after termination — left open', {
+          this.log.error('Could not cancel Stripe charge after termination — left open', {
             pytuid: charge.pytuid,
             invoiceId: charge.gatewayPaymentId,
             message: voidResult.message,

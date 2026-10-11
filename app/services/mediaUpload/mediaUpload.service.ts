@@ -522,6 +522,8 @@ export class MediaUploadService {
       resourceContext?: ResourceContext;
       /** Optional field name override — used to route to a custom resourceName (e.g. 'invoiceDocument'). */
       fieldName?: string;
+      /** Optional document type carried onto the upload result (e.g. 'lease_agreement'). */
+      documentType?: string;
     }
   ): Promise<MediaOperationResult> {
     try {
@@ -555,6 +557,7 @@ export class MediaUploadService {
         status: 'pending',
         uploadedAt: new Date(),
         uploadedBy: context.uploadedBy,
+        ...(context.documentType && { documentType: context.documentType }),
       };
 
       // Use existing grouping logic to determine resource routing

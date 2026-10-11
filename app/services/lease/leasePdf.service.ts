@@ -24,9 +24,13 @@ import {
   EventTypes,
 } from '@interfaces/events.interface';
 
-import { buildLandlordInfo } from './leaseHelpers';
 import { LeaseTemplateService } from './leaseTemplateService';
 import { hasESignatureEntitlement } from './leaseEntitlements';
+import {
+  assignUploadedLeaseDocumentTypes,
+  hasLeaseBeenSigned,
+  buildLandlordInfo,
+} from './leaseHelpers';
 
 interface IConstructor {
   leaseTemplateService: LeaseTemplateService;
@@ -169,6 +173,8 @@ export class LeasePdfService {
           primaryResourceId: leaseId,
           uploadedBy: lease.createdBy?.toString() || 'system',
           resourceContext: ResourceContext.LEASE,
+          // the generated contract is always the agreement, signed or not
+          documentType: 'lease_agreement',
         })
         .catch((bufferError) => {
           this.log.error(
@@ -667,6 +673,20 @@ export class LeasePdfService {
    * Mark lease documents as failed
    */
   private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
+    // updateLeaseDocumentStatus flags every document on the lease; once signed, a failed
+    // upload could only have been a supporting document, so the signed agreement stays intact.
+    const query = Types.ObjectId.isValid(leaseId)
+      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
+      : { luid: leaseId, deletedAt: null };
+    const lease = await this.leaseDAO.findFirst(query);
+    if (lease && hasLeaseBeenSigned(lease)) {
+      this.log.warn('Lease document upload failed on a signed lease; existing documents kept', {
+        leaseId,
+        errorMessage,
+      });
+      return;
+    }
+
     this.log.warn('Marking lease documents as failed', {
       leaseId,
       errorMessage,
@@ -702,7 +722,10 @@ export class LeasePdfService {
     if (!lease) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
-    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
+    // Typed here, when the upload lands, so a signing that completed after the file was
+    // submitted still keeps the signed agreement in place.
+    const typedUploads = assignUploadedLeaseDocumentTypes(lease, uploadResults);
+    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, typedUploads, userId);
     if (!updatedLease) {
       throw new BadRequestError({
         message: t('common.errors.operationFailed', { action: 'update lease documents' }),

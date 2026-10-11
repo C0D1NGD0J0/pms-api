@@ -124,6 +124,21 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
 
       expect(result).toEqual({ [field]: value });
     });
+
+    it('strips lifecycle-managed fields so status/signature only change via lease actions', async () => {
+      const result = await UpdateLeaseSchema.parseAsync({
+        status: 'active',
+        eSignature: { status: 'signed', envelopeId: 'forged-envelope' },
+        signedDate: new Date().toISOString(),
+        approvalStatus: 'approved',
+        signatures: [{ signatureMethod: 'manual' }],
+        internalNotes: [{ note: 'Checked', author: 'Admin', authorId: 'u1' }],
+      });
+
+      expect(result).toEqual({
+        internalNotes: [{ note: 'Checked', author: 'Admin', authorId: 'u1' }],
+      });
+    });
   });
 
   describe('RenewLeaseSchema', () => {

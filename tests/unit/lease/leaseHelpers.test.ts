@@ -1,13 +1,17 @@
-import { LeaseStatus } from '@interfaces/lease.interface';
 import { ValidationRequestError } from '@shared/customErrors';
+import { ILeaseESignatureStatusEnum, LeaseStatus } from '@interfaces/lease.interface';
 import {
+  resolveUploadedLeaseDocumentType,
+  assignUploadedLeaseDocumentTypes,
   hasSignatureInvalidatingChanges,
+  validateLifecycleManagedFields,
   generatePendingChangesPreview,
   calculateRenewalMetadata,
   calculateNextPaymentDate,
   validateImmutableFields,
   validateAllowedFields,
   hasHighImpactChanges,
+  hasLeaseBeenSigned,
 } from '@services/lease/leaseHelpers';
 
 describe('Lease Helpers', () => {
@@ -21,6 +25,23 @@ describe('Lease Helpers', () => {
         ValidationRequestError
       );
     });
+  });
+
+  describe('validateLifecycleManagedFields', () => {
+    it('should pass for ordinary editable fields', () => {
+      expect(() =>
+        validateLifecycleManagedFields({ fees: { rentAmount: 1000 } } as any)
+      ).not.toThrow();
+    });
+
+    it.each(['status', 'approvalStatus', 'eSignature', 'signatures', 'signedDate'])(
+      'should reject %s regardless of lease status',
+      (field) => {
+        expect(() => validateLifecycleManagedFields({ [field]: 'x' } as any)).toThrow(
+          ValidationRequestError
+        );
+      }
+    );
   });
 
   describe('validateAllowedFields', () => {
@@ -146,5 +167,69 @@ describe('generatePendingChangesPreview — pet fees', () => {
       deposit: '250.00',
       monthlyFee: '50.00',
     });
+  });
+});
+
+describe('hasLeaseBeenSigned — uploaded lease document type', () => {
+  const unsigned = { status: LeaseStatus.DRAFT } as any;
+
+  it.each([
+    LeaseStatus.DRAFT,
+    LeaseStatus.READY_FOR_SIGNATURE,
+    LeaseStatus.PENDING_SIGNATURE,
+    LeaseStatus.DRAFT_RENEWAL,
+    LeaseStatus.CANCELLED,
+  ])('is false for an unsigned %s lease', (status) => {
+    expect(hasLeaseBeenSigned({ status } as any)).toBe(false);
+  });
+
+  it.each([LeaseStatus.ACTIVE, LeaseStatus.EXPIRED, LeaseStatus.TERMINATED, LeaseStatus.COMPLETED])(
+    'is true once the lease reached %s',
+    (status) => {
+      expect(hasLeaseBeenSigned({ status } as any)).toBe(true);
+    }
+  );
+
+  it('is true when signedDate is set (manual signing)', () => {
+    expect(hasLeaseBeenSigned({ ...unsigned, signedDate: new Date() })).toBe(true);
+  });
+
+  it('is true when the e-signature completed', () => {
+    expect(
+      hasLeaseBeenSigned({
+        ...unsigned,
+        eSignature: { status: ILeaseESignatureStatusEnum.SIGNED },
+      })
+    ).toBe(true);
+  });
+
+  it('is false for a sent or declined e-signature on a draft lease', () => {
+    expect(
+      hasLeaseBeenSigned({ ...unsigned, eSignature: { status: ILeaseESignatureStatusEnum.SENT } })
+    ).toBe(false);
+    expect(
+      hasLeaseBeenSigned({
+        ...unsigned,
+        eSignature: { status: ILeaseESignatureStatusEnum.DECLINED },
+      })
+    ).toBe(false);
+  });
+
+  it('resolves uploads to lease_agreement before signing and other afterwards', () => {
+    expect(resolveUploadedLeaseDocumentType(unsigned)).toBe('lease_agreement');
+    expect(resolveUploadedLeaseDocumentType({ status: LeaseStatus.ACTIVE } as any)).toBe('other');
+  });
+
+  it('stamps untyped uploads and keeps an explicit type (generated agreement PDF)', () => {
+    const signed = { status: LeaseStatus.ACTIVE } as any;
+    const typed = assignUploadedLeaseDocumentTypes(signed, [
+      { key: 'a' },
+      { key: 'b', documentType: 'lease_agreement' },
+    ]);
+
+    expect(typed).toEqual([
+      { key: 'a', documentType: 'other' },
+      { key: 'b', documentType: 'lease_agreement' },
+    ]);
   });
 });

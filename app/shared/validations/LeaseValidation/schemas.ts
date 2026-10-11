@@ -345,15 +345,15 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
     }
   );
 
+// status and eSignature are deliberately absent: they only change through the lease
+// lifecycle endpoints (activate, signature request, terminate) and signing webhooks
 export const UpdateLeaseSchema = z
   .object({
-    status: LeaseStatusEnum.optional(),
     property: LeasePropertySchema.partial().optional(),
     duration: LeaseDurationSchema.partial().optional(),
     fees: LeaseFeesSchema.partial().optional(),
     type: LeaseTypeEnum.optional(),
     signingMethod: SigningMethodEnum.optional(),
-    eSignature: ESignatureSchema.optional(),
     utilitiesIncluded: z.array(UtilityEnum).optional(),
     coTenants: z.array(CoTenantSchema).optional(),
     petPolicy: PetPolicySchema.partial().optional(),

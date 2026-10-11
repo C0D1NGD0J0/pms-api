@@ -174,3 +174,54 @@ describe('MediaUploadService.removeUploadedFiles', () => {
     expect(s3Service.deleteFiles).toHaveBeenCalledWith(['payment/r.jpg']);
   });
 });
+
+describe('MediaUploadService.handleBuffer', () => {
+  const leaseContext = {
+    primaryResourceId: '507f1f77bcf86cd799439011',
+    uploadedBy: 'user-1',
+    resourceContext: ResourceContext.LEASE,
+  };
+  const uniquePdfName = () => `lease-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+
+  it('carries the documentType onto the file sent to S3, so a generated lease PDF stays the agreement', async () => {
+    const { service, s3Service } = makeService();
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'document' }))
+    );
+
+    const outcome = await service.handleBuffer(Buffer.from('%PDF-1.4'), uniquePdfName(), {
+      ...leaseContext,
+      documentType: 'lease_agreement',
+    });
+
+    expect(outcome.totalQueued).toBe(1);
+    expect(s3Service.uploadFiles).toHaveBeenCalledWith(
+      [expect.objectContaining({ documentType: 'lease_agreement' })],
+      expect.anything()
+    );
+  });
+
+  it('sends no documentType when the caller does not set one', async () => {
+    const { service, s3Service } = makeService();
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'document' }))
+    );
+
+    await service.handleBuffer(Buffer.from('%PDF-1.4'), uniquePdfName(), leaseContext);
+
+    const [[sentFiles]] = s3Service.uploadFiles.mock.calls;
+    expect(sentFiles[0].documentType).toBeUndefined();
+  });
+
+  it('removes the temporary file after uploading', async () => {
+    const { service, s3Service } = makeService();
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'document' }))
+    );
+    const fileName = uniquePdfName();
+
+    await service.handleBuffer(Buffer.from('%PDF-1.4'), fileName, leaseContext);
+
+    expect(fs.existsSync(path.join(process.cwd(), 'uploads', fileName))).toBe(false);
+  });
+});

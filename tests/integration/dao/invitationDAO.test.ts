@@ -201,15 +201,36 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const found = await invitationDAO.findByToken('test-token-123');
+      const found = await invitationDAO.findByToken('test-token-123', testClientId.toString());
 
       expect(found).not.toBeNull();
       expect(found?.iuid).toBe(created.iuid);
       expect(found?.inviteeEmail).toBe('token@example.com');
     });
 
+    it('should return null when the token belongs to another client', async () => {
+      await Invitation.create({
+        invitedBy: testInviterId,
+        inviteeEmail: 'scoped-token@example.com',
+        clientId: testClientId,
+        role: IUserRole.STAFF,
+        status: 'pending',
+        invitationToken: 'scoped-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        personalInfo: { firstName: 'Scoped', lastName: 'Token' },
+        metadata: { remindersSent: 0 },
+      });
+
+      const found = await invitationDAO.findByToken(
+        'scoped-token-123',
+        new Types.ObjectId().toString()
+      );
+
+      expect(found).toBeNull();
+    });
+
     it('should return null for non-existent token', async () => {
-      const found = await invitationDAO.findByToken('non-existent-token');
+      const found = await invitationDAO.findByToken('non-existent-token', testClientId.toString());
 
       expect(found).toBeNull();
     });

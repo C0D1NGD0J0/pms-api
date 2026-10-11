@@ -370,14 +370,14 @@ export class InvitationService {
     cuid: string,
     token: string
   ): Promise<{ invitation: IInvitationDocument; client: any; linkedVendorUid?: string }> {
-    const invitation = await this.invitationDAO.findByToken(token);
-    if (!invitation || !invitation.isValid()) {
-      throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
-    }
-
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+    }
+
+    const invitation = await this.invitationDAO.findByToken(token, client.id);
+    if (!invitation || !invitation.isValid()) {
+      throw new BadRequestError({ message: t('invitation.errors.invalidOrExpired') });
     }
 
     const linkedVendorUid =
@@ -648,20 +648,15 @@ export class InvitationService {
       client: any;
     }>
   > {
-    const [invitation, client] = await Promise.all([
-      this.invitationDAO.findByToken(token),
-      this.clientDAO.findFirst({ cuid }),
-    ]);
-    if (!invitation) {
-      throw new NotFoundError({ message: t('invitation.errors.notFound') });
-    }
-
+    const client = await this.clientDAO.findFirst({ cuid });
     if (!client) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
-    if (invitation.clientId.toString() !== client.id.toString()) {
-      throw new ForbiddenError({ message: t('invitation.errors.invalidClient') });
+    // A token used on another client's cuid reads as unknown, not as forbidden
+    const invitation = await this.invitationDAO.findByToken(token, client.id);
+    if (!invitation) {
+      throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }
 
     const isValid = invitation.isValid();
@@ -735,7 +730,8 @@ export class InvitationService {
       reason?: string;
     }
   ): Promise<ISuccessReturnData<IInvitationDocument>> {
-    const invitation = await this.invitationDAO.findByToken(data.token);
+    const client = await this.clientDAO.getClientByCuid(cuid);
+    const invitation = client ? await this.invitationDAO.findByToken(data.token, client.id) : null;
     if (!invitation) {
       throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }

@@ -653,6 +653,24 @@ describe('InvitationController Integration Tests', () => {
       expect(invitation?.status).toBe('accepted');
     });
 
+    it("should reject a token accepted on another client's cuid and leave it pending", async () => {
+      const otherClient = await createTestClient();
+      const crossClientInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `crossclient.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/invites/${otherClient.cuid}/accept/${crossClientInvitation.invitationToken}`)
+        .send({ password: 'SecurePassword123!' })
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      const invitation = await Invitation.findById(crossClientInvitation._id);
+      expect(invitation?.status).toBe('pending');
+    });
+
     it('should set proper authentication cookies after acceptance', async () => {
       const acceptData = {
         password: 'SecurePassword123!',

@@ -77,10 +77,10 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  async findByToken(token: string): Promise<IInvitationDocument | null> {
+  async findByToken(token: string, clientId: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
-        { invitationToken: token },
+        { invitationToken: token, clientId },
         {
           populate: [
             {

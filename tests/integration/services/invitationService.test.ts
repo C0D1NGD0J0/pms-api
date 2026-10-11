@@ -3,9 +3,9 @@ import { UserService } from '@services/user/user.service';
 import { VendorService } from '@services/vendor/vendor.service';
 import { ProfileService } from '@services/profile/profile.service';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
-import { BadRequestError, ConflictError } from '@shared/customErrors';
 import { Invitation, Profile, Client, Lease, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
+import { BadRequestError, ConflictError, NotFoundError } from '@shared/customErrors';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { mockQueueFactory, mockEventEmitter, mockEmailQueue } from '@tests/setup/externalMocks';
 import {
@@ -344,6 +344,71 @@ describe('InvitationService Integration Tests', () => {
             testClient.cuid
           )
         ).rejects.toThrow(BadRequestError);
+      });
+    });
+
+    describe('token lookups are scoped to the URL client', () => {
+      let otherClient: any;
+      let invitation: any;
+
+      beforeEach(async () => {
+        otherClient = await createTestClient();
+        invitation = await createTestInvitation(testClient, adminUser._id, { status: 'pending' });
+      });
+
+      it("should reject accepting a token on another client's cuid like an unknown token", async () => {
+        const acceptance = {
+          token: invitation.invitationToken,
+          password: 'Password123!',
+          confirmPassword: 'Password123!',
+          location: 'Toronto',
+          timeZone: 'America/Toronto',
+          lang: 'en',
+          termsAccepted: true,
+          newsletterOptIn: false,
+        } as any;
+
+        await expect(
+          invitationService.acceptInvitation(otherClient.cuid, acceptance)
+        ).rejects.toThrow(BadRequestError);
+        await expect(
+          invitationService.acceptInvitation(otherClient.cuid, {
+            ...acceptance,
+            token: 'unknown-token',
+          })
+        ).rejects.toThrow(BadRequestError);
+
+        const unchanged = await Invitation.findById(invitation._id);
+        expect(unchanged!.status).toBe('pending');
+        expect(await User.findOne({ email: invitation.inviteeEmail })).toBeNull();
+      });
+
+      it("should reject declining a token on another client's cuid like an unknown token", async () => {
+        await expect(
+          invitationService.declineInvitation(otherClient.cuid, {
+            token: invitation.invitationToken,
+          })
+        ).rejects.toThrow(NotFoundError);
+
+        const unchanged = await Invitation.findById(invitation._id);
+        expect(unchanged!.status).toBe('pending');
+        expect(unchanged!.invitationToken).toBe(invitation.invitationToken);
+      });
+
+      it("should decline a token on the invitation's own cuid", async () => {
+        const result = await invitationService.declineInvitation(testClient.cuid, {
+          token: invitation.invitationToken,
+        });
+
+        expect(result.success).toBe(true);
+        const declined = await Invitation.findById(invitation._id);
+        expect(declined!.status).toBe('declined');
+      });
+
+      it("should report a token validated on another client's cuid as not found", async () => {
+        await expect(
+          invitationService.validateInvitationByToken(otherClient.cuid, invitation.invitationToken)
+        ).rejects.toThrow(NotFoundError);
       });
     });
   }); // End Write Operations

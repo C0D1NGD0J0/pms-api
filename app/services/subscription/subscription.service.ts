@@ -256,6 +256,7 @@ export class SubscriptionService {
         displayOrder: config.displayOrder,
         transactionFeePercent: config.transactionFeePercent,
         achPercentRate: subscriptionPlanConfig.getAchPercentRate(),
+        achFeeCapCents: subscriptionPlanConfig.getAchFeeCapCents(),
         isCustomPricing: config.isCustomPricing,
         seatPricing: config.seatPricing,
         limits: config.limits,
@@ -274,7 +275,9 @@ export class SubscriptionService {
             priceInCents: annualPriceInCents,
             displayPrice: this.formatPrice(annualPriceInCents || 0, cur),
             savingsPercent: config.pricing.annual.savingsPercent,
-            savingsDisplay: `Save ${config.pricing.annual.savingsPercent}%`,
+            savingsDisplay: config.pricing.annual.savingsPercent
+              ? `Save ${config.pricing.annual.savingsPercent}%`
+              : '',
             lookUpKey: stripeData?.annual.lookUpKey || null,
           },
         },

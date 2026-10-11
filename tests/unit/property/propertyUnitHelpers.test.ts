@@ -87,6 +87,21 @@ describe('validateUnitLeaseImmutableFields', () => {
     ).rejects.toThrow(ValidationRequestError);
   });
 
+  it('allows locked fields resent with their current values (full-form edits)', async () => {
+    const leaseDAO = makeLeaseDAO(true);
+    const unit = makeUnit({ currentLease: new Types.ObjectId(), unitNumber: '101', floor: 1 });
+
+    await expect(
+      validateUnitLeaseImmutableFields(
+        unit,
+        'client-123',
+        { unitNumber: '101', floor: 1, status: 'occupied' } as any,
+        leaseDAO
+      )
+    ).resolves.toBeUndefined();
+    expect(leaseDAO.hasNonDraftLeaseForUnit).not.toHaveBeenCalled();
+  });
+
   it('uses fast path (no DB call) when currentLease is set', async () => {
     const leaseDAO = makeLeaseDAO(false);
     const unit = makeUnit({ currentLease: new Types.ObjectId() });

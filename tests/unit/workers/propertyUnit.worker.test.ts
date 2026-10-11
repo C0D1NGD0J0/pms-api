@@ -227,6 +227,7 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
 
     expect(mockPropertyDAO.syncPropertyOccupancyWithUnits).not.toHaveBeenCalled();
     expect(result.data.successfullyCreated).toBe(0);
+    expect(result.success).toBe(false);
   });
 
   it('propagates errors thrown from within the transaction', async () => {

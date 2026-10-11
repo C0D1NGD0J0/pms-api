@@ -658,6 +658,55 @@ describe('AuthController Integration Tests', () => {
       expect(response.status).toBeGreaterThanOrEqual(400);
       expect(response.body.success).toBeFalsy();
     });
+
+    describe('step 1 responses (no credentials yet)', () => {
+      const STEP_ONE_RESPONSE_KEYS = ['loginType', 'msg', 'step', 'success'];
+
+      const createRegisteredEmail = async () => {
+        const client = await createTestClient();
+        const email = `step-one-${Date.now()}@example.com`;
+        await createTestUser(client.cuid, { email, password: 'TestPassword123!', isActive: true });
+        return email;
+      };
+
+      it('returns only step fields and sets no cookies for an email-only request', async () => {
+        const email = await createRegisteredEmail();
+
+        const response = await request(app)
+          .post(LOGIN_PATH)
+          .send({ email })
+          .expect(httpStatusCodes.OK);
+
+        expect(Object.keys(response.body).sort()).toEqual(STEP_ONE_RESPONSE_KEYS);
+        expect(response.body.step).toBe('password_required');
+        expect(response.headers['set-cookie']).toBeUndefined();
+      });
+
+      it('responds identically for registered and unregistered emails', async () => {
+        const email = await createRegisteredEmail();
+
+        const registered = await request(app).post(LOGIN_PATH).send({ email });
+        const unregistered = await request(app)
+          .post(LOGIN_PATH)
+          .send({ email: 'nobody-here@example.com' });
+
+        expect(registered.status).toBe(unregistered.status);
+        expect(registered.body).toEqual(unregistered.body);
+      });
+
+      it('returns only step fields when an OTP is requested, without exposing the phone', async () => {
+        const email = await createRegisteredEmail();
+
+        const response = await request(app)
+          .post(LOGIN_PATH)
+          .send({ email, requestOtp: true })
+          .expect(httpStatusCodes.OK);
+
+        expect(Object.keys(response.body).sort()).toEqual(STEP_ONE_RESPONSE_KEYS);
+        expect(response.body.step).toBe('otp_sent');
+        expect(response.headers['set-cookie']).toBeUndefined();
+      });
+    });
   });
 
   describe('GET /api/v1/auth/:cuid/me', () => {

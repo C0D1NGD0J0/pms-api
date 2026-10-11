@@ -175,8 +175,9 @@ export class PropertyUnitWorker {
         `Completed unit batch creation job ${job.id} for property ${pid}: ${result.createdUnits.length}/${units.length} successful`
       );
 
+      const everyUnitFailed = result.createdUnits.length === 0 && result.errors.length > 0;
       return {
-        success: true,
+        success: !everyUnitFailed,
         processId: job.id,
         data: {
           totalProcessed: units.length,

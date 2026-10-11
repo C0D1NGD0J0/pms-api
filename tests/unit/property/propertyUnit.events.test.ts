@@ -110,6 +110,8 @@ const makeService = (mocks: ReturnType<typeof makeMocks>) =>
     ...mocks,
     profileDAO: {} as any,
     clientDAO: {} as any,
+    userDAO: {} as any,
+    notificationService: {} as any,
     queueFactory: { getQueue: jest.fn() } as any,
     leaseDAO: { list: jest.fn(), hasNonDraftLeaseForUnit: jest.fn() } as any,
   });

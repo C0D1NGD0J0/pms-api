@@ -1,17 +1,21 @@
 import { Types } from 'mongoose';
 import { ROLES } from '@shared/constants/roles.constants';
-import { PropertyUnit, Property, Client } from '@models/index';
+import { PropertyUnit, Property, Client, User } from '@models/index';
 import { PropertyUnitService } from '@services/property/propertyUnit.service';
-import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
-import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO } from '@dao/index';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
+import { PropertyApprovalService } from '@services/property/propertyApproval.service';
+import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
+import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
 import {
   createTestPropertyUnit,
+  createTestManagerUser,
+  createTestTenantUser,
   createTestAdminUser,
   createTestProperty,
   clearTestDatabase,
   createTestClient,
+  createTestUser,
 } from '@tests/helpers';
 
 // Mock PropertyCache
@@ -20,6 +24,12 @@ const mockPropertyCache = {
   invalidatePropertyLists: jest.fn().mockResolvedValue(undefined),
   getProperty: jest.fn().mockResolvedValue(null),
   setProperty: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockNotificationService = {
+  notifyApprovalNeeded: jest.fn().mockResolvedValue(undefined),
+  notifyApprovalDecision: jest.fn().mockResolvedValue(undefined),
+  notifyPendingChangesOverridden: jest.fn().mockResolvedValue(undefined),
 };
 
 describe('PropertyUnitService Integration Tests', () => {
@@ -69,9 +79,11 @@ describe('PropertyUnitService Integration Tests', () => {
       propertyDAO,
       profileDAO,
       clientDAO,
+      userDAO: new UserDAO({ userModel: User }),
       queueFactory: mockQueueFactory as any,
       propertyCache: mockPropertyCache as any,
       emitterService: mockEventEmitter as any,
+      notificationService: mockNotificationService as any,
       unitNumberingService,
       subscriptionDAO: {
         findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
@@ -236,13 +248,75 @@ describe('PropertyUnitService Integration Tests', () => {
           fullname: 'Admin User',
         });
 
+        // Every unit failed, so the request must fail rather than report success
+        await expect(
+          propertyUnitService.addPropertyUnit(context as any, unitData as any)
+        ).rejects.toMatchObject({
+          statusCode: 422,
+          errorInfo: { 'units.0.unitNumber': [expect.stringContaining('101')] },
+        });
+        expect(await PropertyUnit.countDocuments({ propertyId: testProperty._id })).toBe(1);
+      });
+
+      it('should default managedBy to the property manager when omitted', async () => {
+        const unitData = {
+          units: [
+            {
+              unitNumber: '101',
+              unitType: 'residential',
+              floor: 1,
+              specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
+              fees: { rentAmount: 1500, currency: 'USD' },
+              status: 'available' as const,
+            },
+          ],
+          cuid: testClient.cuid,
+          pid: testProperty.pid,
+        };
+        const context = createMockContext(testClient.cuid, testProperty.pid, undefined, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
+
         const result = await propertyUnitService.addPropertyUnit(context as any, unitData as any);
 
-        // Should return with errors
         expect(result.success).toBe(true);
-        expect((result as any).errors).toBeDefined();
-        expect(Object.keys((result as any).errors)).toHaveLength(1);
-        expect(result.data).toHaveLength(0);
+        const savedUnit = await PropertyUnit.findOne({ propertyId: testProperty._id });
+        expect(savedUnit!.managedBy.toString()).toBe(testProperty.managedBy.toString());
+      });
+
+      it('should reject a managedBy user who is not an employee of this client', async () => {
+        const tenantUser = await createTestTenantUser(testClient.cuid);
+        const otherClient = await createTestClient();
+        const foreignAdmin = await createTestAdminUser(otherClient.cuid);
+        const context = createMockContext(testClient.cuid, testProperty.pid, undefined, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
+
+        for (const managerId of [tenantUser._id, foreignAdmin._id]) {
+          const unitData = {
+            units: [
+              {
+                unitNumber: '101',
+                unitType: 'residential',
+                floor: 1,
+                specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
+                fees: { rentAmount: 1500, currency: 'USD' },
+                status: 'available' as const,
+                managedBy: managerId.toString(),
+              },
+            ],
+            cuid: testClient.cuid,
+            pid: testProperty.pid,
+          };
+          await expect(
+            propertyUnitService.addPropertyUnit(context as any, unitData as any)
+          ).rejects.toThrow(BadRequestError);
+        }
+        expect(await PropertyUnit.countDocuments({ propertyId: testProperty._id })).toBe(0);
       });
 
       it('should enforce maxAllowedUnits limit', async () => {
@@ -442,6 +516,28 @@ describe('PropertyUnitService Integration Tests', () => {
         expect(updatedUnit!.unitNumber).toBe('202');
       });
 
+      it('should accept an unchanged unit number resent by the edit form', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: '201',
+          floor: 2,
+        });
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
+
+        const result = await propertyUnitService.updatePropertyUnit(context as any, {
+          unitNumber: '201',
+          floor: 2,
+          description: 'Corner unit',
+        });
+
+        expect(result.success).toBe(true);
+        const updatedUnit = await PropertyUnit.findById(unit._id);
+        expect(updatedUnit!.description).toBe('Corner unit');
+      });
+
       it('should reject unit number conflict on update', async () => {
         // Create two units
         const unit1 = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
@@ -472,6 +568,566 @@ describe('PropertyUnitService Integration Tests', () => {
         // Verify unit number was NOT changed
         const unchangedUnit = await PropertyUnit.findById(unit1._id);
         expect(unchangedUnit!.unitNumber).toBe('201');
+      });
+    });
+
+    describe('updatePropertyUnit - previously dropped fields', () => {
+      const asUser = (puid: string, user: any, role: string) =>
+        createMockContext(testClient.cuid, testProperty.pid, puid, {
+          sub: user._id.toString(),
+          client: { role },
+          fullname: 'Test User',
+        });
+
+      it('saves unitType, isActive, maxOccupants, currency and managedBy', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: '201',
+          floor: 2,
+        });
+        const managerUser = await createTestManagerUser(testClient.cuid);
+
+        await propertyUnitService.updatePropertyUnit(asUser(unit.puid, adminUser, ROLES.ADMIN), {
+          unitType: 'commercial',
+          isActive: false,
+          specifications: { maxOccupants: 4 } as any,
+          fees: { currency: 'USD' } as any,
+          managedBy: managerUser._id.toString() as any,
+        });
+
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.unitType).toBe('commercial');
+        expect(saved!.isActive).toBe(false);
+        expect(saved!.specifications.maxOccupants).toBe(4);
+        expect(saved!.fees.currency).toBe('USD');
+        expect(saved!.managedBy.toString()).toBe(managerUser._id.toString());
+        // dot-notation update: sibling fields are untouched
+        expect(saved!.specifications.totalArea).toBe(unit.specifications.totalArea);
+        expect(saved!.fees.rentAmount).toBe(unit.fees.rentAmount);
+      });
+
+      it('lets a manager (non-admin approver) apply the same edit', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        const managerUser = await createTestManagerUser(testClient.cuid);
+
+        await propertyUnitService.updatePropertyUnit(
+          asUser(unit.puid, managerUser, ROLES.MANAGER),
+          { unitType: 'storage', isActive: false }
+        );
+
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.unitType).toBe('storage');
+        expect(saved!.isActive).toBe(false);
+      });
+
+      it('rejects a managedBy outside this client whatever the caller role', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        const tenantUser = await createTestTenantUser(testClient.cuid);
+        const foreignAdmin = await createTestAdminUser((await createTestClient()).cuid);
+        const managerUser = await createTestManagerUser(testClient.cuid);
+        const staffUser = await createTestUser(testClient.cuid, { roles: [ROLES.STAFF] });
+        const callers = [
+          [adminUser, ROLES.ADMIN],
+          [managerUser, ROLES.MANAGER],
+          [staffUser, ROLES.STAFF],
+        ] as const;
+
+        for (const [caller, role] of callers) {
+          for (const outsider of [tenantUser, foreignAdmin, { _id: new Types.ObjectId() }]) {
+            await expect(
+              propertyUnitService.updatePropertyUnit(asUser(unit.puid, caller, role), {
+                managedBy: outsider._id.toString() as any,
+              })
+            ).rejects.toThrow(BadRequestError);
+          }
+        }
+
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.managedBy.toString()).toBe(unit.managedBy.toString());
+        expect(saved!.pendingChanges).toBeFalsy();
+      });
+
+      it('rejects a currency that differs from the property currency', async () => {
+        await Property.updateOne({ _id: testProperty._id }, { 'fees.currency': 'CAD' });
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+
+        await expect(
+          propertyUnitService.updatePropertyUnit(asUser(unit.puid, adminUser, ROLES.ADMIN), {
+            fees: { currency: 'EUR' } as any,
+          })
+        ).rejects.toMatchObject({
+          errorInfo: { 'fees.currency': [expect.stringContaining('CAD')] },
+        });
+
+        // aligning a legacy unit with the property currency is allowed
+        await propertyUnitService.updatePropertyUnit(asUser(unit.puid, adminUser, ROLES.ADMIN), {
+          fees: { currency: 'CAD' } as any,
+        });
+        expect((await PropertyUnit.findById(unit._id))!.fees.currency).toBe('CAD');
+      });
+
+      it('accepts the stored currency resent unchanged even if it differs from the property', async () => {
+        await Property.updateOne({ _id: testProperty._id }, { 'fees.currency': 'CAD' });
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id); // USD
+
+        const result = await propertyUnitService.updatePropertyUnit(
+          asUser(unit.puid, adminUser, ROLES.ADMIN),
+          { fees: { currency: 'USD', rentAmount: 2100 } as any }
+        );
+
+        expect(result.success).toBe(true);
+        expect((await PropertyUnit.findById(unit._id))!.fees.rentAmount).toBe(2100);
+      });
+
+      it('does not apply the new high-impact fields directly for staff', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        const staffUser = await createTestUser(testClient.cuid, { roles: [ROLES.STAFF] });
+
+        await propertyUnitService.updatePropertyUnit(asUser(unit.puid, staffUser, ROLES.STAFF), {
+          unitType: 'commercial',
+        });
+
+        const saved = await PropertyUnit.findById(unit._id);
+        // staff high-impact edits go through the approval path, not straight to the unit
+        expect(saved!.unitType).toBe('residential');
+      });
+    });
+
+    describe('staff high-impact edits — approval workflow', () => {
+      let staffUser: any;
+      let otherStaffUser: any;
+      let managerUser: any;
+
+      const asUser = (puid: string, user: any, role: string, fullname: string) =>
+        createMockContext(testClient.cuid, testProperty.pid, puid, {
+          sub: user._id.toString(),
+          client: { cuid: testClient.cuid, role },
+          fullname,
+          displayName: fullname,
+        }) as any;
+      const asStaff = (puid: string) => asUser(puid, staffUser, ROLES.STAFF, 'Sam Staff');
+      const asManager = (puid: string) => asUser(puid, managerUser, ROLES.MANAGER, 'Mia Manager');
+
+      beforeEach(async () => {
+        staffUser = await createTestUser(testClient.cuid, {
+          roles: [ROLES.STAFF],
+          email: 'staff-one@test.com',
+        });
+        otherStaffUser = await createTestUser(testClient.cuid, {
+          roles: [ROLES.STAFF],
+          email: 'staff-two@test.com',
+        });
+        managerUser = await createTestUser(testClient.cuid, {
+          roles: [ROLES.MANAGER],
+          email: 'manager@test.com',
+        });
+      });
+
+      const submitStaffEdit = async (unit: any) =>
+        propertyUnitService.updatePropertyUnit(asStaff(unit.puid), {
+          unitType: 'commercial',
+          fees: { rentAmount: 1850, currency: 'USD' } as any,
+          description: 'Freshly painted',
+        });
+
+      it('stores a staff high-impact edit as pending without applying it', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          rentAmount: 1500,
+        });
+
+        const result = await submitStaffEdit(unit);
+
+        expect(result.message).toBe('Unit changes submitted for approval');
+        const saved = await PropertyUnit.findById(unit._id).lean();
+        expect(saved!.unitType).toBe('residential');
+        expect(saved!.approvalStatus).toBe('pending');
+        expect(saved!.pendingChanges).toMatchObject({
+          unitType: 'commercial',
+          fees: { rentAmount: 1850 },
+          displayName: 'Sam Staff',
+        });
+        expect(saved!.pendingChanges!.updatedBy.toString()).toBe(staffUser._id.toString());
+        // the unchanged currency resent by the form is not held for approval
+        expect(saved!.pendingChanges!.fees).not.toHaveProperty('currency');
+        // operational fields still apply straight away
+        expect(saved!.description).toBe('Freshly painted');
+        expect(mockNotificationService.notifyApprovalNeeded).toHaveBeenCalledWith(
+          expect.objectContaining({ resourceUid: testProperty.pid }),
+          staffUser._id.toString(),
+          'Sam Staff',
+          testClient.cuid,
+          expect.anything(),
+          expect.objectContaining({ puid: unit.puid })
+        );
+      });
+
+      it('does not create pending changes when staff resend unchanged values', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: '305',
+          floor: 3,
+        });
+
+        await propertyUnitService.updatePropertyUnit(asStaff(unit.puid), {
+          unitNumber: '305',
+          floor: 3,
+          unitType: 'residential',
+          fees: { currency: 'USD' } as any,
+        });
+
+        const saved = await PropertyUnit.findById(unit._id).lean();
+        expect(saved!.pendingChanges).toBeNull();
+        expect(saved!.approvalStatus).toBe('approved');
+        expect(mockNotificationService.notifyApprovalNeeded).not.toHaveBeenCalled();
+      });
+
+      it('returns the pending changes to approvers and the submitter, not other staff', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        await submitStaffEdit(unit);
+
+        const forManager = await propertyUnitService.getPropertyUnit(asManager(unit.puid));
+        expect(forManager.data).toMatchObject({
+          approvalStatus: 'pending',
+          pendingChanges: expect.objectContaining({ unitType: 'commercial' }),
+          pendingChangesPreview: {
+            changes: { unitType: 'commercial', 'fees.rentAmount': 1850 },
+            displayName: 'Sam Staff',
+          },
+        });
+
+        const forSubmitter = await propertyUnitService.getPropertyUnit(asStaff(unit.puid));
+        expect((forSubmitter.data as any).pendingChangesPreview).toBeDefined();
+
+        const forOtherStaff = await propertyUnitService.getPropertyUnit(
+          asUser(unit.puid, otherStaffUser, ROLES.STAFF, 'Olive Other')
+        );
+        expect((forOtherStaff.data as any).pendingChangesPreview).toBeUndefined();
+
+        const list = await propertyUnitService.getPropertyUnits(
+          createMockContext(testClient.cuid, testProperty.pid, undefined, {
+            sub: managerUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.MANAGER },
+          }) as any,
+          { page: 1, limit: 10 } as any
+        );
+        const listed = (list.data.items as any[]).find((item) => item.puid === unit.puid);
+        expect(listed.approvalStatus).toBe('pending');
+        expect(listed.pendingChangesPreview.updatedFields).toEqual(
+          expect.arrayContaining(['unitType', 'fees.rentAmount'])
+        );
+      });
+
+      it('lists units with pending changes alongside pending properties', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        await submitStaffEdit(unit);
+        const propertyApprovalService = new PropertyApprovalService({
+          propertyDAO,
+          propertyUnitDAO,
+          propertyCache: mockPropertyCache as any,
+          notificationService: mockNotificationService as any,
+          mediaUploadService: {} as any,
+        });
+
+        const result = await propertyApprovalService.getPendingApprovals(
+          testClient.cuid,
+          { sub: managerUser._id.toString(), client: { role: ROLES.MANAGER } } as any,
+          { page: 1, limit: 10 }
+        );
+
+        expect(result.data.pendingUnits.map((u: any) => u.puid)).toEqual([unit.puid]);
+        expect((result.data.pendingUnits[0] as any).propertyId.pid).toBe(testProperty.pid);
+      });
+
+      it('applies the pending changes when an approver approves them', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          rentAmount: 1500,
+        });
+        await submitStaffEdit(unit);
+
+        const result = await propertyUnitService.approveUnitChanges(
+          asManager(unit.puid),
+          'Matches the new lease rates'
+        );
+
+        expect(result.success).toBe(true);
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.unitType).toBe('commercial');
+        expect(saved!.fees.rentAmount).toBe(1850);
+        expect(saved!.pendingChanges).toBeNull();
+        expect(saved!.approvalStatus).toBe('approved');
+        const approval = saved!.approvalDetails!.at(-1)!;
+        expect(approval).toMatchObject({
+          action: 'approved',
+          notes: 'Matches the new lease rates',
+        });
+        expect(approval.actor.toString()).toBe(managerUser._id.toString());
+        expect(mockNotificationService.notifyApprovalDecision).toHaveBeenCalledWith(
+          expect.objectContaining({ resourceUid: testProperty.pid }),
+          managerUser._id.toString(),
+          testClient.cuid,
+          'approved',
+          staffUser._id.toString(),
+          'Matches the new lease rates',
+          expect.objectContaining({ puid: unit.puid })
+        );
+      });
+
+      it('re-validates pending changes on approval and keeps them if they no longer pass', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: '101',
+          floor: 1,
+        });
+        await propertyUnitService.updatePropertyUnit(asStaff(unit.puid), { unitNumber: '102' });
+        // another unit takes the number while the change waits for approval
+        await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: '102',
+          floor: 1,
+        });
+
+        await expect(propertyUnitService.approveUnitChanges(asManager(unit.puid))).rejects.toThrow(
+          ValidationRequestError
+        );
+
+        const saved = await PropertyUnit.findById(unit._id).lean();
+        expect(saved!.unitNumber).toBe('101');
+        expect(saved!.pendingChanges).toMatchObject({ unitNumber: '102' });
+      });
+
+      it('re-applies the lease lock on approval', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        await submitStaffEdit(unit);
+        // a lease was signed for the unit while the unitType change waited for approval
+        (propertyUnitService as any).leaseDAO.hasNonDraftLeaseForUnit.mockReturnValueOnce(
+          Promise.resolve(true)
+        );
+
+        await expect(propertyUnitService.approveUnitChanges(asManager(unit.puid))).rejects.toThrow(
+          /structural fields/
+        );
+        expect((await PropertyUnit.findById(unit._id))!.unitType).toBe('residential');
+      });
+
+      it('re-checks the unit manager is still an employee on approval', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        await propertyUnitService.updatePropertyUnit(asStaff(unit.puid), {
+          managedBy: otherStaffUser._id.toString() as any,
+        });
+        await User.updateOne(
+          { _id: otherStaffUser._id, 'cuids.cuid': testClient.cuid },
+          { $set: { 'cuids.$.isConnected': false } }
+        );
+
+        await expect(propertyUnitService.approveUnitChanges(asManager(unit.puid))).rejects.toThrow(
+          BadRequestError
+        );
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.managedBy.toString()).toBe(unit.managedBy.toString());
+      });
+
+      it('clears the pending changes and records the reason when rejected', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          rentAmount: 1500,
+        });
+        await submitStaffEdit(unit);
+
+        await expect(
+          propertyUnitService.rejectUnitChanges(asManager(unit.puid), '   ')
+        ).rejects.toThrow(BadRequestError);
+
+        await propertyUnitService.rejectUnitChanges(asManager(unit.puid), 'Rent is above market');
+
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.unitType).toBe('residential');
+        expect(saved!.fees.rentAmount).toBe(1500);
+        expect(saved!.pendingChanges).toBeNull();
+        expect(saved!.approvalStatus).toBe('approved');
+        expect(saved!.approvalDetails!.at(-1)).toMatchObject({
+          action: 'rejected',
+          rejectionReason: 'Rent is above market',
+        });
+        expect(mockNotificationService.notifyApprovalDecision).toHaveBeenCalledWith(
+          expect.anything(),
+          managerUser._id.toString(),
+          testClient.cuid,
+          'rejected',
+          staffUser._id.toString(),
+          'Rent is above market',
+          expect.anything()
+        );
+      });
+
+      it('blocks another staff member from overwriting pending changes', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        await submitStaffEdit(unit);
+
+        await expect(
+          propertyUnitService.updatePropertyUnit(
+            asUser(unit.puid, otherStaffUser, ROLES.STAFF, 'Olive Other'),
+            { unitType: 'storage' }
+          )
+        ).rejects.toThrow(/locked for editing/);
+
+        // the submitter may revise their own pending changes
+        await propertyUnitService.updatePropertyUnit(asStaff(unit.puid), { unitType: 'storage' });
+        const saved = await PropertyUnit.findById(unit._id).lean();
+        expect(saved!.pendingChanges).toMatchObject({ unitType: 'storage' });
+        expect(saved!.pendingChanges!.updatedBy.toString()).toBe(staffUser._id.toString());
+      });
+
+      it("lets a manager's direct edit override pending changes", async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        await submitStaffEdit(unit);
+
+        const result = await propertyUnitService.updatePropertyUnit(asManager(unit.puid), {
+          unitType: 'storage',
+        });
+
+        expect(result.message).toContain('overriding pending changes from Sam Staff');
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.unitType).toBe('storage');
+        expect(saved!.pendingChanges).toBeNull();
+        expect(saved!.approvalStatus).toBe('approved');
+        expect(saved!.approvalDetails!.at(-1)!.action).toBe('overridden');
+        expect(mockNotificationService.notifyPendingChangesOverridden).toHaveBeenCalledWith(
+          testProperty.pid,
+          expect.stringContaining(`Unit ${unit.unitNumber}`),
+          managerUser._id.toString(),
+          'Mia Manager',
+          staffUser._id.toString(),
+          testClient.cuid,
+          expect.anything()
+        );
+      });
+
+      it('only lets approval roles review, and only when there is something to review', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+
+        await expect(propertyUnitService.approveUnitChanges(asManager(unit.puid))).rejects.toThrow(
+          BadRequestError
+        );
+
+        await submitStaffEdit(unit);
+        await expect(propertyUnitService.approveUnitChanges(asStaff(unit.puid))).rejects.toThrow(
+          ForbiddenError
+        );
+        await expect(
+          propertyUnitService.rejectUnitChanges(asStaff(unit.puid), 'Not mine to reject')
+        ).rejects.toThrow(ForbiddenError);
+
+        const saved = await PropertyUnit.findById(unit._id).lean();
+        expect(saved!.approvalStatus).toBe('pending');
+      });
+    });
+
+    describe('setupInspection', () => {
+      const inspection = (date: string, status: string) => ({
+        inspectionDate: new Date(date),
+        inspector: { name: 'Jane Inspector', contact: '416-555-0100' },
+        status,
+      });
+
+      it('appends inspections, keeping history and the latest inspection date', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
+
+        await propertyUnitService.setupInspection(
+          context as any,
+          inspection('2026-06-01', 'passed')
+        );
+        await propertyUnitService.setupInspection(
+          context as any,
+          inspection('2026-09-01', 'needs_repair')
+        );
+        // back-filled older record must not move lastInspectionDate backwards
+        await propertyUnitService.setupInspection(
+          context as any,
+          inspection('2026-01-15', 'failed')
+        );
+
+        const saved = await PropertyUnit.findById(unit._id);
+        expect(saved!.inspections!.map((i: any) => i.status)).toEqual([
+          'passed',
+          'needs_repair',
+          'failed',
+        ]);
+        expect(saved!.lastInspectionDate!.toISOString()).toBe(new Date('2026-09-01').toISOString());
+      });
+
+      it('rejects a unit from another property', async () => {
+        const otherProperty = await createTestProperty(testClient.cuid, testClient._id);
+        const unit = await createTestPropertyUnit(testClient.cuid, otherProperty._id);
+        const context = createMockContext(testClient.cuid, testProperty.pid, unit.puid, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+        });
+
+        await expect(
+          propertyUnitService.setupInspection(context as any, inspection('2026-06-01', 'passed'))
+        ).rejects.toThrow(BadRequestError);
+      });
+    });
+
+    describe('basement and ground floors', () => {
+      const adminContext = (puid?: string) =>
+        createMockContext(testClient.cuid, testProperty.pid, puid, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
+      const unitInput = (unitNumber: string, floor: number) => ({
+        unitNumber,
+        unitType: 'residential',
+        floor,
+        specifications: { totalArea: 500, bedrooms: 1, bathrooms: 1 },
+        fees: { rentAmount: 900, currency: 'USD' },
+        status: 'available' as const,
+      });
+
+      it('creates units on basement and ground floors', async () => {
+        const result = await propertyUnitService.addPropertyUnit(
+          adminContext() as any,
+          {
+            units: [unitInput('B1-01', -1), unitInput('G-01', 0), unitInput('101', 1)],
+            cuid: testClient.cuid,
+            pid: testProperty.pid,
+          } as any
+        );
+
+        expect(result.data).toHaveLength(3);
+        const saved = await PropertyUnit.find({ propertyId: testProperty._id }).sort({
+          floor: 1,
+        });
+        expect(saved.map((u) => [u.unitNumber, u.floor])).toEqual([
+          ['B1-01', -1],
+          ['G-01', 0],
+          ['101', 1],
+        ]);
+      });
+
+      it('moves a unit to the ground floor (0 is not treated as missing)', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: '7',
+          floor: 2,
+        });
+
+        await propertyUnitService.updatePropertyUnit(adminContext(unit.puid) as any, { floor: 0 });
+
+        expect((await PropertyUnit.findById(unit._id))!.floor).toBe(0);
+      });
+
+      it('suggests a basement label when a floor-encoded number is moved below grade', async () => {
+        const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id, {
+          unitNumber: 'A-101',
+          floor: 1,
+        });
+
+        await expect(
+          propertyUnitService.updatePropertyUnit(adminContext(unit.puid) as any, { floor: -1 })
+        ).rejects.toMatchObject({
+          errorInfo: { unitNumber: expect.arrayContaining(['Suggested unit number: B1-01']) },
+        });
       });
     });
 

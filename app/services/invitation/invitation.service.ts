@@ -419,9 +419,11 @@ export class InvitationService {
     result: { user: any; invitation: IInvitationDocument },
     cuid: string
   ): Promise<void> {
+    const vendorEntityData = await this.buildVendorEntityDataForAcceptance(result);
     const metadata = {
       employeeInfo: result.invitation.metadata?.employeeInfo,
       vendorInfo: result.invitation.metadata?.vendorInfo,
+      ...(vendorEntityData && { isPrimaryVendor: true, vendorEntityData }),
     };
 
     await this.profileService.initializeRoleInfo(
@@ -448,6 +450,36 @@ export class InvitationService {
     } catch (err) {
       this.log.warn({ err, cuid }, 'Cache invalidation failed after invitation finalization');
     }
+  }
+
+  /**
+   * A primary-vendor invitation (no linkedVendorUid) carries the business details entered by the
+   * inviter in metadata.vendorInfo — map them onto the vendor entity created at acceptance.
+   * Skipped for team members and for users who already own a vendor entity.
+   */
+  private async buildVendorEntityDataForAcceptance(result: {
+    user: any;
+    invitation: IInvitationDocument;
+  }): Promise<Record<string, unknown> | undefined> {
+    const { invitation, user } = result;
+    const vendorInfo = invitation.metadata?.vendorInfo as Record<string, any> | undefined;
+    if (invitation.role !== ROLES.VENDOR || invitation.linkedVendorUid) return undefined;
+    if (!vendorInfo?.companyName) return undefined;
+
+    const existingVendor = await this.vendorService.getVendorByUserId(user._id.toString());
+    if (existingVendor) return undefined;
+
+    return {
+      companyName: vendorInfo.companyName,
+      businessType: vendorInfo.businessType || 'professional_services',
+      registrationNumber: vendorInfo.registrationNumber,
+      taxId: vendorInfo.taxId,
+      yearsInBusiness: vendorInfo.yearsInBusiness,
+      servicesOffered: vendorInfo.servicesOffered,
+      serviceAreas: vendorInfo.serviceAreas,
+      insuranceInfo: vendorInfo.insuranceInfo,
+      contactPerson: vendorInfo.contactPerson,
+    };
   }
 
   private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {

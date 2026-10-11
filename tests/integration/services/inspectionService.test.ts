@@ -6,6 +6,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ROLES } from '@shared/constants/roles.constants';
+import { EventTypes } from '@interfaces/events.interface';
 import { mockEventEmitter } from '@tests/setup/externalMocks';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { InspectionService } from '@services/inspection/inspection.service';
@@ -508,6 +509,129 @@ describe('InspectionService Integration Tests', () => {
       });
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('Room media on update', () => {
+    const storedMedia = (key: string) => ({
+      key,
+      url: `https://bucket.s3.amazonaws.com/${key}`,
+      status: 'active',
+      filename: `${key}.jpg`,
+      uploadedAt: new Date(),
+    });
+
+    const scheduleWithRoomMedia = async () => {
+      const { cuid, admin, lease } = await setupScenario();
+      const adminId = admin._id.toString();
+      const scheduled = await inspectionService.scheduleInspection(cuid, adminId, {
+        type: InspectionType.MOVE_IN,
+        leaseId: lease.luid,
+        scheduledDate: new Date(Date.now() + 86400000).toISOString(),
+      });
+      const iuid = (scheduled.data as any).iuid;
+      await Inspection.updateOne(
+        { iuid },
+        {
+          $set: {
+            'rooms.0.media': [
+              storedMedia('room0-a'),
+              storedMedia('room0-b'),
+              storedMedia('room0-c'),
+            ],
+            'rooms.1.media': [storedMedia('room1-a')],
+          },
+        }
+      );
+      const stored = await Inspection.findOne({ iuid }).lean();
+      const echoRooms = () =>
+        (stored!.rooms as any[]).map((room) => ({
+          name: room.name,
+          condition: room.condition,
+          items: room.items,
+          media: room.media.map((m: any) => ({
+            key: m.key,
+            url: `${m.url}?X-Amz-Signature=signed`,
+            status: m.status,
+            filename: m.filename,
+          })),
+        }));
+      return { cuid, adminId, iuid, echoRooms };
+    };
+
+    const deletedKeys = () =>
+      mockEventEmitter.emit.mock.calls
+        .filter(([event]: any[]) => event === EventTypes.DELETE_REMOTE_ASSET)
+        .flatMap(([, keys]: any[]) => keys);
+
+    it('keeps saved room photos on a draft save and stores the original (unsigned) URLs', async () => {
+      const { cuid, adminId, iuid, echoRooms } = await scheduleWithRoomMedia();
+
+      await inspectionService.updateInspection(cuid, adminId, 'admin', iuid, {
+        rooms: echoRooms(),
+      });
+
+      const doc = await Inspection.findOne({ iuid }).lean();
+      expect(doc!.rooms[0].media.map((m: any) => m.key)).toEqual(['room0-a', 'room0-b', 'room0-c']);
+      expect(doc!.rooms[0].media[0].url).toBe('https://bucket.s3.amazonaws.com/room0-a');
+      expect(doc!.rooms[1].media.map((m: any) => m.key)).toEqual(['room1-a']);
+      expect(deletedKeys()).toEqual([]);
+    });
+
+    it('ignores media keys that are not already stored on the inspection', async () => {
+      const { cuid, adminId, iuid, echoRooms } = await scheduleWithRoomMedia();
+      const rooms = echoRooms();
+      rooms[0].media.push({
+        key: 'other-client/secret.pdf',
+        url: 'https://bucket.s3.amazonaws.com/other-client/secret.pdf',
+        status: 'active',
+        filename: 'secret.pdf',
+      });
+
+      await inspectionService.updateInspection(cuid, adminId, 'admin', iuid, {
+        rooms,
+        mediaToRemove: [{ roomIndex: 0, mediaIndex: 3 }],
+      });
+
+      const doc = await Inspection.findOne({ iuid }).lean();
+      const storedKeys = doc!.rooms.flatMap((r: any) => r.media.map((m: any) => m.key));
+      expect(storedKeys).not.toContain('other-client/secret.pdf');
+      expect(deletedKeys()).toEqual([]);
+    });
+
+    it('removes exactly the photos the UI removed, replaying its splice order', async () => {
+      const { cuid, adminId, iuid, echoRooms } = await scheduleWithRoomMedia();
+      // UI removes index 0 (room0-a), then index 1 of the shifted list (room0-c),
+      // and sends rooms with both already spliced out.
+      const rooms = echoRooms();
+      rooms[0].media = [rooms[0].media[1]];
+
+      await inspectionService.updateInspection(cuid, adminId, 'admin', iuid, {
+        rooms,
+        mediaToRemove: [
+          { roomIndex: 0, mediaIndex: 0 },
+          { roomIndex: 0, mediaIndex: 1 },
+        ],
+      });
+
+      const doc = await Inspection.findOne({ iuid }).lean();
+      expect(doc!.rooms[0].media.map((m: any) => m.key)).toEqual(['room0-b']);
+      expect(doc!.rooms[1].media.map((m: any) => m.key)).toEqual(['room1-a']);
+      expect(deletedKeys()).toEqual(['room0-a', 'room0-c']);
+    });
+
+    it('keeps stored photos the payload does not mention (e.g. uploaded after the page loaded)', async () => {
+      const { cuid, adminId, iuid, echoRooms } = await scheduleWithRoomMedia();
+      const rooms = echoRooms();
+      rooms[0].media = [];
+      delete (rooms[1] as any).media;
+
+      await inspectionService.updateInspection(cuid, adminId, 'admin', iuid, { rooms });
+
+      const doc = await Inspection.findOne({ iuid }).lean();
+      expect(doc!.rooms[0].media.map((m: any) => m.key)).toEqual(['room0-a', 'room0-b', 'room0-c']);
+      expect(doc!.rooms[1].media.map((m: any) => m.key)).toEqual(['room1-a']);
+      expect(deletedKeys()).toEqual([]);
     });
   });
 });

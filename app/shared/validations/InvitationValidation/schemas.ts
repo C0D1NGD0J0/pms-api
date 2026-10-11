@@ -8,6 +8,17 @@ import { safeString } from '../UtilsValidation';
 // Letters in any script (é, ñ, ü, …) plus spaces, hyphens, apostrophes and dots
 const PERSON_NAME_REGEX = /^[\p{L}\s\-'.]+$/u;
 
+// The send flow parses the body in the route and again in InvitationService, so a date that
+// was already transformed on the first pass must still be accepted on the second
+const dateTimeInput = (message: string) =>
+  z.preprocess(
+    (value) => (value instanceof Date ? value.toISOString() : value),
+    z
+      .string()
+      .datetime(message)
+      .transform((str) => new Date(str))
+  );
+
 const employeeInfoSchema = z
   .object({
     permissions: z.array(z.string()).optional(),
@@ -15,11 +26,7 @@ const employeeInfoSchema = z
     employeeId: z.string().max(50, 'Employee ID must be less than 50 characters').optional(),
     reportsTo: z.string().max(100, 'Reports to must be less than 100 characters').optional(),
     jobTitle: z.string().max(100, 'Job title must be less than 100 characters').optional(),
-    startDate: z
-      .string()
-      .datetime('Please provide a valid start date')
-      .transform((str) => new Date(str))
-      .optional(),
+    startDate: dateTimeInput('Please provide a valid start date').optional(),
   })
   .optional();
 
@@ -165,11 +172,7 @@ const vendorInfoSchema = z
     insuranceInfo: z
       .object({
         coverageAmount: z.number().positive('Coverage amount must be positive').optional(),
-        expirationDate: z
-          .string()
-          .datetime('Please provide a valid expiration date')
-          .transform((str) => new Date(str))
-          .optional(),
+        expirationDate: dateTimeInput('Please provide a valid expiration date').optional(),
         policyNumber: z
           .string()
           .max(100, 'Policy number must be less than 100 characters')
@@ -258,17 +261,18 @@ export const invitationDataSchema = z.object({
         .max(500, 'Invitation message must be less than 500 characters')
         .optional(),
 
-      expectedStartDate: z
-        .string()
-        .datetime('Please provide a valid date')
-        .transform((str) => new Date(str))
-        .optional(),
+      expectedStartDate: dateTimeInput('Please provide a valid date').optional(),
 
       employeeInfo: employeeInfoSchema,
       vendorInfo: vendorInfoSchema,
       tenantInfo: tenantInfoSchema,
     })
     .optional(),
+
+  // The invite form sends role info top-level; InvitationController moves it into metadata
+  employeeInfo: employeeInfoSchema,
+  vendorInfo: vendorInfoSchema,
+  tenantInfo: tenantInfoSchema,
 
   status: z
     .enum(['draft', 'pending'], {
@@ -330,6 +334,11 @@ export const acceptInvitationSchema = z
     headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
 
     policies: policiesSchema.optional(),
+
+    termsAccepted: z.literal(true, {
+      errorMap: () => ({ message: 'You must accept the terms of service and privacy policy' }),
+    }),
+    newsletterOptIn: z.boolean().optional(),
 
     firstName: z.string().min(2, 'First name must be at least 2 characters').max(50).optional(),
     lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50).optional(),
@@ -410,6 +419,8 @@ export const invitationTokenSchema = z.object({
 export const iuidSchema = z.object({
   iuid: z.string().min(10, 'Invalid invitation ID').max(255, 'Invalid invitation ID'),
 });
+
+export const cuidAndIuidSchema = iuidSchema.merge(validateTokenAndCuidSchema.pick({ cuid: true }));
 
 export const invitationCsvSchema = z
   .object({

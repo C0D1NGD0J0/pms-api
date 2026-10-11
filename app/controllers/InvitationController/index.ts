@@ -71,9 +71,20 @@ export class InvitationController {
       });
     }
 
+    const { employeeInfo, vendorInfo, tenantInfo, ...invitationFields } = req.body;
+    const providedRoleInfo = Object.fromEntries(
+      Object.entries({ employeeInfo, vendorInfo, tenantInfo }).filter(
+        ([, roleInfo]) => roleInfo !== undefined
+      )
+    );
+    const invitationData = {
+      ...invitationFields,
+      metadata: { ...invitationFields.metadata, ...providedRoleInfo },
+    };
+
     const result = await this.invitationService.updateInvitation(
       req.context,
-      req.body,
+      invitationData,
       currentuser
     );
     res.status(httpStatusCodes.OK).json(result);
@@ -89,10 +100,10 @@ export class InvitationController {
   };
 
   acceptInvitation = async (req: AppRequest, res: Response) => {
-    const { cuid } = req.params;
-    const data = req.body;
+    const { cuid, token } = req.params;
+    const invitationData = { ...req.body, token };
 
-    const result = await this.invitationService.acceptInvitation(cuid, data);
+    const result = await this.invitationService.acceptInvitation(cuid, invitationData);
     const loginResult = await this.authService.loginAfterInvitationSignup(
       result.data.user._id.toString(),
       cuid

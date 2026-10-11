@@ -47,6 +47,7 @@ import {
   ICreateInspection,
   IUpdateInspection,
   InspectionStatus,
+  IInspectionMedia,
   IInspectionRoom,
   ConditionRating,
   InspectionType,
@@ -619,23 +620,14 @@ export class InspectionService implements ICronProvider {
       }
     }
 
-    const { mediaToRemove, ...rest } = data;
+    const { mediaToRemove, rooms, ...rest } = data;
     const updates: Record<string, any> = { ...rest };
 
-    // Handle room media removal — collect S3 keys, then splice from rooms
-    const s3KeysToDelete: string[] = [];
-    if (mediaToRemove?.length && updates.rooms) {
-      // Process in reverse order so splice indices stay valid
-      const sorted = [...mediaToRemove].sort((a, b) =>
-        a.roomIndex !== b.roomIndex ? b.roomIndex - a.roomIndex : b.mediaIndex - a.mediaIndex
-      );
-      for (const { roomIndex, mediaIndex } of sorted) {
-        const room = updates.rooms[roomIndex];
-        if (!room?.media?.[mediaIndex]) continue;
-        const item = room.media[mediaIndex];
-        if (item.key) s3KeysToDelete.push(item.key);
-        room.media.splice(mediaIndex, 1);
-      }
+    let s3KeysToDelete: string[] = [];
+    if (rooms) {
+      const merged = this._mergeRoomMedia(inspection.rooms ?? [], rooms, mediaToRemove ?? []);
+      updates.rooms = merged.rooms;
+      s3KeysToDelete = merged.removedKeys;
     }
 
     if (s3KeysToDelete.length > 0) {
@@ -1834,6 +1826,60 @@ export class InspectionService implements ICronProvider {
     if (!allowed || !allowed.includes(next)) {
       throw new BadRequestError({ message: `Cannot transition from ${current} to ${next}` });
     }
+  }
+
+  /**
+   * Builds the rooms to persist on update without trusting client-sent media: every media entry
+   * comes from the stored inspection, matched by S3 key, so a client can neither inject keys
+   * (which would later be signed or deleted) nor persist expiring signed URLs.
+   *
+   * mediaToRemove indices are recorded by the UI as it splices its local copy, so they are
+   * replayed in order against the stored lists. New uploads are appended at the end, so earlier
+   * indices stay valid. Stored media the payload omits (e.g. uploaded after the page loaded)
+   * stays in its room; only explicitly removed media is dropped and its S3 key returned.
+   */
+  private _mergeRoomMedia(
+    storedRooms: IInspectionRoom[],
+    submittedRooms: Partial<IInspectionRoom>[],
+    mediaToRemove: { roomIndex: number; mediaIndex: number }[]
+  ): { rooms: Partial<IInspectionRoom>[]; removedKeys: string[] } {
+    const toPlain = (m: any): IInspectionMedia =>
+      typeof m?.toObject === 'function' ? m.toObject() : m;
+    const remainingByRoom = storedRooms.map((room) => (room.media ?? []).map(toPlain));
+
+    const removedKeys: string[] = [];
+    for (const { roomIndex, mediaIndex } of mediaToRemove) {
+      const roomMedia = remainingByRoom[roomIndex];
+      if (!roomMedia?.[mediaIndex]) continue;
+      const [removed] = roomMedia.splice(mediaIndex, 1);
+      if (removed.key) removedKeys.push(removed.key);
+    }
+
+    const storedByKey = new Map<string, IInspectionMedia>();
+    for (const item of remainingByRoom.flat()) {
+      if (item.key) storedByKey.set(item.key, item);
+    }
+
+    const claimedKeys = new Set<string>();
+    const roomsWithClaimedMedia = submittedRooms.map((room) => {
+      const claimed: IInspectionMedia[] = [];
+      for (const { key } of room.media ?? []) {
+        const storedItem = key ? storedByKey.get(key) : undefined;
+        if (!storedItem || claimedKeys.has(key!)) continue;
+        claimedKeys.add(key!);
+        claimed.push(storedItem);
+      }
+      return { room, claimed };
+    });
+
+    const rooms = roomsWithClaimedMedia.map(({ room, claimed }, index) => {
+      const unclaimedStored = (remainingByRoom[index] ?? []).filter(
+        (item) => !item.key || !claimedKeys.has(item.key)
+      );
+      return { ...room, media: [...claimed, ...unclaimedStored] };
+    });
+
+    return { rooms, removedKeys };
   }
 
   private _averageConditionScore(rooms: IInspectionRoom[]): number | null {

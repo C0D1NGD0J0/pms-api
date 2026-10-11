@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import { Invitation } from '@models/index';
-import { hashGenerator } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/index';
 import { type QueryFilter, ClientSession, Types } from 'mongoose';
+import { createSafeMongoUpdate, hashGenerator } from '@utils/index';
 import {
   IInvitationListQuery,
   IInvitationDocument,
@@ -184,24 +184,23 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
+      // Dotted metadata paths so a partial edit keeps saved role info it doesn't resend
       const updateData: any = {
         $set: {
           inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
           role: invitationData.role,
           status: invitationData.status,
           personalInfo: invitationData.personalInfo,
-          metadata: {
-            ...invitationData.metadata,
-            remindersSent: 0,
-            lastReminderSent: undefined,
-          },
+          ...createSafeMongoUpdate({ metadata: invitationData.metadata ?? {} }),
+          'metadata.remindersSent': 0,
         },
+        $unset: { 'metadata.lastReminderSent': 1 },
       };
 
       if (invitationData.linkedVendorUid) {
         updateData.$set.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
       } else {
-        updateData.$unset = { linkedVendorUid: 1 };
+        updateData.$unset.linkedVendorUid = 1;
       }
 
       return await this.update({ iuid, clientId }, updateData, { session });

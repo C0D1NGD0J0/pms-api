@@ -49,6 +49,7 @@ describe('InvitationController Integration Tests', () => {
   let adminUser: any;
   let managerUser: any;
   let testInvitation: any;
+  const initializeRoleInfo = jest.fn().mockResolvedValue(undefined);
 
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
@@ -166,7 +167,7 @@ describe('InvitationController Integration Tests', () => {
       vendorService,
       queueFactory: mockQueueFactoryLocal as any,
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
-      profileService: { initializeRoleInfo: jest.fn().mockResolvedValue(undefined) } as any,
+      profileService: { initializeRoleInfo } as any,
       userService: mockUserService as any,
       userCache: {
         invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
@@ -224,8 +225,6 @@ describe('InvitationController Integration Tests', () => {
           contextUser: () => adminUser,
           handler: (req, res) => {
             req.context = mockUnauthenticatedContext() as any;
-            // Controller reads token from req.body, so merge params.token into body
-            req.body.token = req.params.token;
             return invitationController.acceptInvitation(req, res);
           },
         },
@@ -308,6 +307,7 @@ describe('InvitationController Integration Tests', () => {
   beforeEach(async () => {
     await clearTestDatabase();
     resetContextOverrides();
+    initializeRoleInfo.mockClear();
 
     // Create test client and users
     testClient = await createTestClient();
@@ -531,6 +531,64 @@ describe('InvitationController Integration Tests', () => {
       expect(user?.isActive).toBe(true);
     });
 
+    it('should carry vendorInfo.serviceAreas from send through accept into the vendor entity data', async () => {
+      const inviteeEmail = `vendor.areas.${Date.now()}@test.com`;
+      await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}`)
+        .send({
+          inviteeEmail,
+          role: ROLES.VENDOR,
+          status: 'pending',
+          personalInfo: { firstName: 'Area', lastName: 'Vendor' },
+          vendorInfo: {
+            companyName: 'Area Plumbing Ltd',
+            businessType: 'Plumbing',
+            registrationNumber: 'REG-AREA-001',
+            serviceAreas: { maxDistance: 25 },
+          },
+        })
+        .expect(httpStatusCodes.OK);
+
+      const savedInvitation = await Invitation.findOne({ inviteeEmail });
+      expect(savedInvitation?.metadata?.vendorInfo).toMatchObject({
+        serviceAreas: { maxDistance: 25 },
+      });
+
+      await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${savedInvitation!.invitationToken}`)
+        .send({
+          password: 'SecurePassword123!',
+          personalInfo: { firstName: 'Area', lastName: 'Vendor' },
+        })
+        .expect(httpStatusCodes.OK);
+
+      expect(initializeRoleInfo).toHaveBeenCalledTimes(1);
+      const [, cuid, role, linkedVendorUid, metadata] = initializeRoleInfo.mock.calls[0] as any[];
+      expect(cuid).toBe(testClient.cuid);
+      expect(role).toBe(ROLES.VENDOR);
+      expect(linkedVendorUid).toBeUndefined();
+      expect(metadata.isPrimaryVendor).toBe(true);
+      expect(metadata.vendorEntityData).toMatchObject({
+        companyName: 'Area Plumbing Ltd',
+        registrationNumber: 'REG-AREA-001',
+        serviceAreas: { maxDistance: 25 },
+      });
+    });
+
+    it('should not build vendor entity data for non-vendor invitations', async () => {
+      await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${testInvitation.invitationToken}`)
+        .send({
+          password: 'SecurePassword123!',
+          personalInfo: { firstName: 'Staff', lastName: 'Member' },
+        })
+        .expect(httpStatusCodes.OK);
+
+      const [, , , , metadata] = initializeRoleInfo.mock.calls[0] as any[];
+      expect(metadata).not.toHaveProperty('vendorEntityData');
+      expect(metadata).not.toHaveProperty('isPrimaryVendor');
+    });
+
     it('should reject acceptance with weak password', async () => {
       // Create a separate invitation for this test
       const weakPwInvitation = await createTestInvitation(testClient._id, adminUser._id, {
@@ -576,6 +634,23 @@ describe('InvitationController Integration Tests', () => {
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.success).toBe(false);
+    });
+
+    it('should accept using the URL token and ignore a token in the body', async () => {
+      const urlTokenInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `urltoken.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${urlTokenInvitation.invitationToken}`)
+        .send({ password: 'SecurePassword123!', token: 'some-other-token' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      const invitation = await Invitation.findById(urlTokenInvitation._id);
+      expect(invitation?.status).toBe('accepted');
     });
 
     it('should set proper authentication cookies after acceptance', async () => {
@@ -867,6 +942,41 @@ describe('InvitationController Integration Tests', () => {
       // Verify update persisted
       const invitation = await Invitation.findById(draftInvitation._id);
       expect(invitation?.personalInfo.firstName).toBe('UpdatedFirst');
+    });
+
+    it('should save top-level role info into metadata without wiping saved fields', async () => {
+      const draftInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `draft.roleinfo.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'draft',
+      });
+      await Invitation.updateOne(
+        { _id: draftInvitation._id },
+        {
+          $set: {
+            'metadata.inviteMessage': 'Welcome aboard',
+            'metadata.employeeInfo': { department: 'operations', jobTitle: 'Coordinator' },
+          },
+        }
+      );
+
+      await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/${draftInvitation.iuid}`)
+        .send({
+          inviteeEmail: draftInvitation.inviteeEmail,
+          role: ROLES.STAFF,
+          status: 'draft',
+          personalInfo: { firstName: 'Role', lastName: 'Info' },
+          employeeInfo: { jobTitle: 'Senior Coordinator' },
+        })
+        .expect(httpStatusCodes.OK);
+
+      const invitation = await Invitation.findById(draftInvitation._id).lean();
+      expect(invitation?.metadata.employeeInfo).toEqual({
+        department: 'operations',
+        jobTitle: 'Senior Coordinator',
+      });
+      expect(invitation?.metadata.inviteMessage).toBe('Welcome aboard');
     });
 
     it('should reject updating accepted invitation', async () => {

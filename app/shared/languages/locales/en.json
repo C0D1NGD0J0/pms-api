@@ -184,14 +184,18 @@
       "duplicateUnitNumbers": "Duplicate unit numbers found in batch: {{unitNumbers}}",
       "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
       "unitNumberAlreadyExists": "A unit with number '{{unitNumber}}' already exists for this property",
-      "unitSuggestion": "Suggested unit number: {{suggestion}}"
+      "unitSuggestion": "Suggested unit number: {{suggestion}}",
+      "noPendingChanges": "This unit has no pending changes to review",
+      "pendingChangesModified": "The pending changes were updated while you were reviewing them. Reload the unit and review again."
     },
     "success": {
       "unitCreationQueued": "Unit creation job queued successfully",
       "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
       "allUnitsCreated": "All {{count}} units created successfully",
       "csvValidated": "Property units CSV file validated successfully",
-      "csvImported": "Property units imported successfully from CSV file"
+      "csvImported": "Property units imported successfully from CSV file",
+      "changesApproved": "Unit changes approved and applied",
+      "changesRejected": "Unit changes rejected. The unit keeps its current details."
     }
   },
   "validation": {

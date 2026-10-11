@@ -68,7 +68,7 @@ export enum PermissionResource {
   NOTIFICATION = 'notification',
   MAINTENANCE = 'maintenance',
   INSPECTION = 'inspection',
-  GUEST_PASS = 'guest-pass',
+  GUEST_PASS = 'guest_pass', // must match the resource key in permissions.json
   INVITATION = 'invitation',
   PROPERTY = 'property',
   EXPENSE = 'expense',

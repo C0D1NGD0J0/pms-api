@@ -9,7 +9,6 @@ import {
   type QueryFilter,
   PopulateOptions,
   PipelineStage,
-  MongooseError,
   ClientSession,
   ModifyResult,
   UpdateQuery,
@@ -27,8 +26,9 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     this.logger = createLogger('BaseDAO');
   }
 
-  throwErrorHandler(error: Error | MongooseError | any): never {
-    const result = handleMongoError(error);
+  throwErrorHandler(error: unknown): never {
+    const err = error instanceof Error ? error : new Error(String(error));
+    const result = handleMongoError(err);
     this.logger.error({ error: result }, 'DAO error');
     throw result;
   }

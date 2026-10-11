@@ -177,14 +177,18 @@
       "duplicateUnitNumbers": "Numéros d'unité en double trouvés dans le lot: {{unitNumbers}}",
       "patternInconsistency": "Incohérence de modèle détectée: {{recommendation}}",
       "unitNumberAlreadyExists": "Une unité avec le numéro '{{unitNumber}}' existe déjà pour cette propriété",
-      "unitSuggestion": "Numéro d'unité suggéré: {{suggestion}}"
+      "unitSuggestion": "Numéro d'unité suggéré: {{suggestion}}",
+      "noPendingChanges": "Cette unité n'a aucune modification en attente à examiner",
+      "pendingChangesModified": "Les modifications en attente ont été mises à jour pendant votre examen. Rechargez l'unité et examinez-les à nouveau."
     },
     "success": {
       "unitCreationQueued": "Tâche de création d'unité mise en file d'attente avec succès",
       "unitsCreated": "{{created}} unités créées avec succès, {{failed}} ont échoué",
       "allUnitsCreated": "Toutes les {{count}} unités créées avec succès",
       "csvValidated": "Fichier CSV des unités de propriété validé avec succès",
-      "csvImported": "Unités de propriété importées avec succès depuis le fichier CSV"
+      "csvImported": "Unités de propriété importées avec succès depuis le fichier CSV",
+      "changesApproved": "Modifications de l'unité approuvées et appliquées",
+      "changesRejected": "Modifications de l'unité refusées. L'unité conserve ses informations actuelles."
     }
   },
   "validation": {

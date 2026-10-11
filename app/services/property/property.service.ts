@@ -91,6 +91,7 @@ import {
   validateOccupancyStatusChange,
   cleanUpRemovedPropertyMedia,
   filterPropertyByDepartment,
+  withoutPendingUploads,
   isFinancialRestricted,
   canViewInspections,
   canViewMaintenance,
@@ -406,8 +407,11 @@ export class PropertyService implements ICronProvider {
       }
     }
 
-    if (cleanPropertyData.fees) {
-      cleanPropertyData.fees = MoneyUtils.parseMoneyInput(cleanPropertyData.fees);
+    if (cleanPropertyData.documents) {
+      cleanPropertyData.documents = withoutPendingUploads(cleanPropertyData.documents);
+    }
+    if (cleanPropertyData.images) {
+      cleanPropertyData.images = withoutPendingUploads(cleanPropertyData.images);
     }
 
     const validationResult = PropertyValidationService.validateProperty(cleanPropertyData);
@@ -450,6 +454,11 @@ export class PropertyService implements ICronProvider {
     }
 
     this.propertyTypeValidation(cleanPropertyData);
+
+    // Fee limits above are in major units (dollars), so convert to cents only after validating
+    if (cleanPropertyData.fees) {
+      cleanPropertyData.fees = MoneyUtils.parseMoneyInput(cleanPropertyData.fees);
+    }
 
     let approvalStatus: PropertyApprovalStatusEnum;
     let approvalDetails: any[];
@@ -518,6 +527,14 @@ export class PropertyService implements ICronProvider {
       cleanPropertyData.managedBy = accountAdminId
         ? new Types.ObjectId(accountAdminId)
         : new Types.ObjectId(currentuser.sub); // last resort fallback
+    }
+
+    if (cleanPropertyData.assignedStaff?.length) {
+      cleanPropertyData.assignedStaff = await this.resolveInitialAssignedStaff(
+        cuid,
+        cleanPropertyData.assignedStaff.map(String),
+        cleanPropertyData.managedBy.toString()
+      );
     }
 
     // Get subscription and check limits
@@ -608,6 +625,37 @@ export class PropertyService implements ICronProvider {
     }
 
     return { success: true, data: result, message };
+  }
+
+  /**
+   * Applies the assign-staff endpoint's rules to staff picked at creation: every
+   * user must be connected to this client, the primary manager is not repeated,
+   * and at most 10 staff are assigned.
+   */
+  private async resolveInitialAssignedStaff(
+    cuid: string,
+    requestedUserIds: string[],
+    managedById: string
+  ): Promise<Types.ObjectId[]> {
+    const userIds = [...new Set(requestedUserIds)].filter((id) => id !== managedById);
+    if (userIds.length > 10) {
+      throw new BadRequestError({
+        message: 'Cannot assign more than 10 staff members to a property',
+      });
+    }
+    if (userIds.length === 0) return [];
+
+    const staffIds = userIds.map((id) => new Types.ObjectId(id));
+    const connectedCount = await this.userDAO.countDocuments({
+      _id: { $in: staffIds },
+      cuids: { $elemMatch: { cuid, isConnected: true } },
+    });
+    if (connectedCount !== staffIds.length) {
+      throw new BadRequestError({
+        message: t('common.errors.notFound', { resource: 'User' }),
+      });
+    }
+    return staffIds;
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
@@ -1417,10 +1465,14 @@ export class PropertyService implements ICronProvider {
     // Asset cleanup runs only once the change is actually applied (below for
     // direct updates, on approval for staff edits).
     if (images !== undefined) {
-      cleanUpdateData.images = images.filter((item) => item.status !== 'deleted');
+      cleanUpdateData.images = withoutPendingUploads(
+        images.filter((item) => item.status !== 'deleted')
+      );
     }
     if (documents !== undefined) {
-      cleanUpdateData.documents = documents.filter((item) => item.status !== 'deleted');
+      cleanUpdateData.documents = withoutPendingUploads(
+        documents.filter((item) => item.status !== 'deleted')
+      );
     }
 
     // Validate occupancy status change

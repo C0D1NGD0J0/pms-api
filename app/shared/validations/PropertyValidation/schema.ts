@@ -172,7 +172,19 @@ const CommunityAmenitiesSchema = z.object({
   doorman: coerceBool.default(false),
 });
 
+const ObjectIdString = z.string().regex(/^[a-f\d]{24}$/i, 'Must be a valid ID');
+
+const emptyToUndefined = (v: unknown) => (v === '' || v === null ? undefined : v);
+
+// Multipart entries for files being uploaded in this request carry only metadata
+// (e.g. documentType) — the file is in req.files and url/uploadedBy are set
+// server-side after upload. Index gaps (an entry with nothing but a file) are
+// filled with {} so item indexes keep matching the file field names.
+const mediaArray = <T extends z.ZodTypeAny>(arraySchema: z.ZodArray<T>) =>
+  z.preprocess((v) => (Array.isArray(v) ? Array.from(v, (item) => item ?? {}) : v), arraySchema);
+
 const PropertyMediaDocumentSchema = z.object({
+  _id: ObjectIdString.optional(),
   documentType: z
     .enum([
       'deed',
@@ -186,10 +198,13 @@ const PropertyMediaDocumentSchema = z.object({
       'management_agreement',
     ])
     .optional(),
-  url: z.string().url('Invalid URL format for document'),
+  url: z.string().url('Invalid URL format for document').optional(),
   key: z.string().optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
-  externalUrl: z.string().url('Invalid external URL format').optional(),
+  externalUrl: z.preprocess(
+    emptyToUndefined,
+    z.string().url('Invalid external URL format').optional()
+  ),
   uploadedAt: z.coerce
     .date({
       errorMap: (issue, { defaultError }) => ({
@@ -200,13 +215,14 @@ const PropertyMediaDocumentSchema = z.object({
       }),
     })
     .default(() => new Date()),
-  uploadedBy: z.string(),
+  uploadedBy: z.string().optional(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
   documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
 });
 
 const PropertyImageSchema = z.object({
-  url: z.string().url('Invalid URL format for image'),
+  _id: ObjectIdString.optional(),
+  url: z.string().url('Invalid URL format for image').optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   filename: z.string().optional(),
   key: z.string().optional(),
@@ -220,7 +236,7 @@ const PropertyImageSchema = z.object({
       }),
     })
     .default(() => new Date()),
-  uploadedBy: z.string(),
+  uploadedBy: z.string().optional(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
 });
 
@@ -248,7 +264,7 @@ const AuthorizationSchema = z.object({
     .optional(),
 });
 
-const CreatePropertySchema = z.object({
+export const CreatePropertySchema = z.object({
   name: z
     .string()
     .min(3, 'Property name must be at least 3 characters')
@@ -256,6 +272,11 @@ const CreatePropertySchema = z.object({
   propertyType: PropertyTypeEnum,
   operationalStatus: PropertyStatusEnum.default('available'),
   managedBy: z.string(),
+  // Same cap as the assign-staff endpoint and the model validator.
+  assignedStaff: z
+    .array(ObjectIdString)
+    .max(10, 'Cannot assign more than 10 staff members to a property')
+    .optional(),
   yearBuilt: z.coerce
     .number()
     .int()
@@ -291,15 +312,19 @@ const CreatePropertySchema = z.object({
     state: z.string().optional(),
     postCode: z.union([z.string().min(1, 'Post code cannot be empty'), z.number()]).optional(),
     country: z.string().optional(),
+    unitNumber: z.string().trim().max(50, 'Unit number must be at most 50 characters').optional(),
   }),
   utilities: UtilitiesSchema.optional(),
   interiorAmenities: InteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
-  documents: z.array(PropertyMediaDocumentSchema).optional(),
-  images: z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images').optional(),
+  documents: mediaArray(z.array(PropertyMediaDocumentSchema)).optional(),
+  images: mediaArray(
+    z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images')
+  ).optional(),
   notes: z
     .array(
       z.object({
+        _id: ObjectIdString.optional(),
         text: z
           .string()
           .trim()
@@ -336,9 +361,13 @@ export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefi
   }
 );
 
-export const UpdatePropertySchema = CreatePropertySchema.partial().omit({ cuid: true }).extend({
-  id: z.string().optional(),
-});
+// assignedStaff changes after creation go through the assign/unassign endpoints,
+// which verify each user belongs to the client.
+export const UpdatePropertySchema = CreatePropertySchema.partial()
+  .omit({ cuid: true, assignedStaff: true })
+  .extend({
+    id: z.string().optional(),
+  });
 
 export const PropertySearchSchema = z.object({
   query: z.string().optional(),

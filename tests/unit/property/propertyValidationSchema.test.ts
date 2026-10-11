@@ -1,4 +1,7 @@
-import { UpdatePropertySchema } from '@shared/validations/PropertyValidation/schema';
+import {
+  CreatePropertySchema,
+  UpdatePropertySchema,
+} from '@shared/validations/PropertyValidation/schema';
 
 // UpdatePropertySchema is CreatePropertySchema.partial() with no async superRefine,
 // so it exercises the same coercion logic without touching the DB uniqueness check.
@@ -145,6 +148,135 @@ describe('PropertyValidation schema — FormData coercion', () => {
       });
 
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('multipart media entries for files uploaded in the request', () => {
+    it('accepts document entries without url/uploadedBy and keeps their documentType', () => {
+      const result = UpdatePropertySchema.safeParse({
+        documents: [{ documentType: 'deed', externalUrl: '' }],
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.documents?.[0]).toEqual(
+          expect.objectContaining({ documentType: 'deed', status: 'active' })
+        );
+        expect(result.data.documents?.[0].url).toBeUndefined();
+        expect(result.data.documents?.[0].externalUrl).toBeUndefined();
+      }
+    });
+
+    it('fills index gaps left by entries that only carried a file', () => {
+      const documents: any[] = [];
+      documents[1] = { documentType: 'tax' };
+
+      const result = UpdatePropertySchema.safeParse({ documents });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.documents).toHaveLength(2);
+        expect(result.data.documents?.[1].documentType).toBe('tax');
+      }
+    });
+
+    it('still validates url when present', () => {
+      const result = UpdatePropertySchema.safeParse({
+        images: [{ url: 'not-a-url' }],
+      });
+
+      expect(result.success).toBe(false);
+    });
+
+    it('still caps images at 5', () => {
+      const images = Array.from({ length: 6 }, () => ({ url: 'https://cdn.example.com/a.png' }));
+
+      expect(UpdatePropertySchema.safeParse({ images }).success).toBe(false);
+    });
+
+    it('keeps an _id on existing images, documents and notes', () => {
+      const _id = '507f1f77bcf86cd799439011';
+      const result = UpdatePropertySchema.safeParse({
+        images: [{ _id, url: 'https://cdn.example.com/a.png' }],
+        documents: [{ _id, url: 'https://cdn.example.com/d.pdf' }],
+        notes: [{ _id, text: 'hello', author: { uid: 'u1', name: 'Ana' } }],
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.images?.[0]._id).toBe(_id);
+        expect(result.data.documents?.[0]._id).toBe(_id);
+        expect(result.data.notes?.[0]._id).toBe(_id);
+      }
+    });
+
+    it('rejects a malformed _id', () => {
+      expect(
+        UpdatePropertySchema.safeParse({
+          images: [{ _id: 'abc', url: 'https://cdn.example.com/a.png' }],
+        }).success
+      ).toBe(false);
+    });
+  });
+
+  describe('address.unitNumber', () => {
+    it('is kept on update', () => {
+      const result = UpdatePropertySchema.safeParse({
+        address: { fullAddress: '12 Elm Street, Toronto', streetNumber: '12', unitNumber: ' 4B ' },
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.address?.unitNumber).toBe('4B');
+      }
+    });
+  });
+
+  describe('assignedStaff on create', () => {
+    const baseCreate = {
+      name: 'Elm Street',
+      propertyType: 'house',
+      managedBy: '507f1f77bcf86cd799439011',
+      description: { text: 'Nice' },
+      cuid: 'client-1',
+      specifications: {},
+      fees: {},
+      address: { fullAddress: '12 Elm Street, Toronto', streetNumber: '12', unitNumber: '4B' },
+    };
+    const staffId = (n: number) => `507f1f77bcf86cd7994390${String(n).padStart(2, '0')}`;
+
+    it('keeps assignedStaff and address.unitNumber', () => {
+      const result = CreatePropertySchema.safeParse({
+        ...baseCreate,
+        assignedStaff: [staffId(20), staffId(21)],
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.assignedStaff).toEqual([staffId(20), staffId(21)]);
+        expect(result.data.address.unitNumber).toBe('4B');
+      }
+    });
+
+    it('rejects non-ObjectId staff ids', () => {
+      expect(
+        CreatePropertySchema.safeParse({ ...baseCreate, assignedStaff: ['nope'] }).success
+      ).toBe(false);
+    });
+
+    it('rejects more than 10 staff', () => {
+      const assignedStaff = Array.from({ length: 11 }, (_, i) => staffId(i + 20));
+
+      expect(CreatePropertySchema.safeParse({ ...baseCreate, assignedStaff }).success).toBe(false);
+    });
+
+    it('is not accepted on update (assign/unassign endpoints own it)', () => {
+      const result = UpdatePropertySchema.safeParse({ assignedStaff: [staffId(20)] });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).not.toHaveProperty('assignedStaff');
+      }
     });
   });
 });

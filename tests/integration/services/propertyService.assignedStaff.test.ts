@@ -146,6 +146,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
     const propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,
       propertyCache: mockPropertyCache,
       notificationService: mockNotificationService,

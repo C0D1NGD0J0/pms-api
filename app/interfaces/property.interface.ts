@@ -280,6 +280,18 @@ export interface CommunityAmenities {
   parking: boolean;
 }
 
+export interface AddressDetails {
+  streetNumber?: string;
+  fullAddress?: string;
+  unitNumber?: string;
+  latAndlon?: string;
+  postCode?: string;
+  country?: string;
+  street?: string;
+  state?: string;
+  city?: string;
+}
+
 export interface PropertyImageItem {
   status: MediaDocumentStatus;
   uploadedBy: Types.ObjectId;
@@ -319,17 +331,6 @@ export interface IVerificationDetailEntry {
   actor: Types.ObjectId;
   timestamp: Date;
   notes?: string;
-}
-
-export interface AddressDetails {
-  streetNumber?: string;
-  fullAddress?: string;
-  latAndlon?: string;
-  postCode?: string;
-  country?: string;
-  street?: string;
-  state?: string;
-  city?: string;
 }
 
 export interface InteriorAmenities {

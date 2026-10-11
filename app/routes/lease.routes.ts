@@ -117,7 +117,7 @@ router
     requireVerifiedClient,
     requireActiveSubscription,
     idempotency,
-    diskUpload(['document']),
+    diskUpload(['leaseDocument[*].file']),
     scanFile,
     validateRequest({
       params: UtilsValidations.cuid,
@@ -204,7 +204,7 @@ router
     basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     requireActiveSubscription,
-    diskUpload(['document']),
+    diskUpload(['leaseDocument[*].file']),
     scanFile,
     idempotency,
     validateRequest({

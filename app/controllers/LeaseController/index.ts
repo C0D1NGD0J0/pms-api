@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { PdfQueue } from '@queues/index';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
-import { AppRequest } from '@interfaces/utils.interface';
+import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { LeaseTemplateService, MediaUploadService, LeaseService } from '@services/index';
 
 export class LeaseController {
@@ -34,11 +34,36 @@ export class LeaseController {
   createLease = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const result = await this.leaseService.createLease(cuid, req.body, req.context);
+    const uploadResult = await this.attachUploadedLeaseDocuments(req, result.data);
 
     res.status(httpStatusCodes.OK).json({
       success: true,
       data: result,
+      ...uploadResult,
     });
+  };
+
+  /**
+   * Same pipeline as property documents: upload the scanned `leaseDocument[i].file` parts to S3,
+   * then queue persistence onto lease.leaseDocuments (upload worker → LeasePdfService).
+   * Runs after the lease write so a rejected create/update never uploads anything; temp files
+   * are removed by uploadFilesToS3 on success and by the error handler if the write throws.
+   */
+  private attachUploadedLeaseDocuments = async (
+    req: AppRequest,
+    lease: { _id: { toString(): string } } | undefined
+  ): Promise<{ fileUpload?: string; processedFiles?: Record<string, unknown> }> => {
+    if (!lease?._id) return {};
+
+    const uploadResult = await this.mediaUploadService.handleFiles(req, {
+      primaryResourceId: lease._id.toString(),
+      uploadedBy: req.context.currentuser!.sub,
+      resourceContext: ResourceContext.LEASE,
+    });
+
+    return uploadResult.hasFiles
+      ? { fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
+      : {};
   };
 
   getFilteredLeases = async (req: AppRequest, res: Response) => {
@@ -96,8 +121,9 @@ export class LeaseController {
 
     this.log.info(`Updating lease ${luid}`);
     const result = await this.leaseService.updateLease(cxt, luid, updateData);
+    const uploadResult = await this.attachUploadedLeaseDocuments(req, result.data?.lease);
 
-    res.status(httpStatusCodes.OK).json(result);
+    res.status(httpStatusCodes.OK).json({ ...result, ...uploadResult });
   };
 
   deleteLease = async (req: AppRequest, res: Response) => {

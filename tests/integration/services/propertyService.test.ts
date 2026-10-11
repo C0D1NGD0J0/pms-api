@@ -127,6 +127,7 @@ describe('PropertyService Integration Tests', () => {
     // Initialize real extracted services
     propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,
       propertyCache,
       notificationService: mockNotificationService,
@@ -419,6 +420,96 @@ describe('PropertyService Integration Tests', () => {
         // Verify no property was created
         const properties = await Property.find({ cuid: testClient.cuid });
         expect(properties).toHaveLength(0);
+      });
+
+      describe('assignedStaff and pending uploads', () => {
+        const buildHouse = (overrides: Record<string, unknown> = {}) => ({
+          name: `Staffed House ${Date.now()}`,
+          propertyType: 'house' as const,
+          maxAllowedUnits: 1,
+          address: {
+            street: '12 Elm St',
+            city: 'Austin',
+            state: 'TX',
+            postCode: '78701',
+            country: 'USA',
+            unitNumber: '4B',
+            fullAddress: '12 Elm St, Austin, TX 78701',
+          },
+          description: { text: 'House with staff assigned at creation' },
+          specifications: { bedrooms: 3, bathrooms: 2, totalArea: 1800 },
+          fees: { rentAmount: '950', currency: 'USD' },
+          occupancyStatus: 'vacant' as const,
+          computedLocation: { type: 'Point', coordinates: [-97.7431, 30.2672] },
+          ...overrides,
+        });
+
+        it('stores assignedStaff as ObjectIds, deduped and without the manager', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+          const staffId = staffUser._id.toString();
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            buildHouse({
+              managedBy: adminUser._id.toString(),
+              assignedStaff: [staffId, staffId, adminUser._id.toString()],
+            }) as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.assignedStaff).toHaveLength(1);
+          expect(saved!.assignedStaff![0]).toBeInstanceOf(Types.ObjectId);
+          expect(saved!.assignedStaff![0].toString()).toBe(staffId);
+          expect(saved!.address.unitNumber).toBe('4B');
+        });
+
+        it('accepts rent and management fees above $1000/$500 and stores them in cents', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            buildHouse({
+              fees: { rentAmount: '1200', managementFees: '750', currency: 'USD' },
+            }) as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.fees.rentAmount).toBe(120000);
+          expect(saved!.fees.managementFees).toBe(75000);
+        });
+
+        it('rejects staff who are not connected to the client', async () => {
+          const otherClient = await createTestClient();
+          const outsider = await createTestUser(otherClient.cuid, {
+            roles: [ROLES.STAFF],
+            email: `outsider-${Date.now()}@test.com`,
+          });
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          await expect(
+            propertyService.addProperty(
+              ctx as any,
+              buildHouse({ assignedStaff: [outsider._id.toString()] }) as any
+            )
+          ).rejects.toThrow(BadRequestError);
+          expect(await Property.countDocuments({ cuid: testClient.cuid })).toBe(0);
+        });
+
+        it('does not persist media entries that only describe a file being uploaded', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            buildHouse({
+              documents: [{ documentType: 'deed', status: 'active', uploadedAt: new Date() }],
+              images: [{ status: 'active', uploadedAt: new Date() }],
+            }) as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.documents).toHaveLength(0);
+          expect(saved!.images).toHaveLength(0);
+        });
       });
     }); // End addProperty
 
@@ -747,9 +838,12 @@ describe('PropertyService Integration Tests', () => {
         const rejectedProperty = await Property.findById(property._id);
         expect(rejectedProperty!.name).toBe('Property to Reject'); // Original name
         expect(rejectedProperty!.pendingChanges).toBeNull();
-        // Note: Service currently keeps status as 'pending' after rejecting pending changes
-        // This might be a bug - ideally it should revert to 'approved'
-        expect(rejectedProperty!.approvalStatus).toBe('pending');
+        // The live data is still the approved version, so it leaves the pending list
+        expect(rejectedProperty!.approvalStatus).toBe('approved');
+        expect(rejectedProperty!.approvalDetails?.at(-1)).toMatchObject({
+          action: 'rejected',
+          rejectionReason: 'Does not meet standards',
+        });
       });
 
       it('should reject new property creation', async () => {

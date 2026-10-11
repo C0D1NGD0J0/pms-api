@@ -14,6 +14,16 @@ import {
 } from '@utils/index';
 
 /**
+ * Drops media entries that only describe a file uploaded in this request
+ * (e.g. { documentType } for a multipart document). Those files are attached by
+ * the upload worker once stored, so persisting the descriptor would leave an
+ * empty media entry behind.
+ */
+export const withoutPendingUploads = <T extends { url?: string; externalUrl?: string }>(
+  media: T[]
+): T[] => media.filter((item) => item.url || item.externalUrl);
+
+/**
  * Soft-delete (or hard-delete) the assets for any images / documents that an
  * applied property update removed. Only media arrays present in `applied` are
  * compared — an absent array means that list wasn't touched.
@@ -67,7 +77,7 @@ export const getOriginalRequesterId = (approvalDetails: any[]): string | undefin
  */
 export const shouldShowPendingChanges = (
   currentUser: ICurrentUser,
-  property: IPropertyDocument
+  property: { pendingChanges?: unknown }
 ): boolean => {
   if (!property.pendingChanges) {
     return false;

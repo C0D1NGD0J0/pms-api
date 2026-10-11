@@ -22,7 +22,27 @@ export class PropertyController {
     this.mediaUploadService = mediaUploadService;
   }
 
+  /**
+   * Copies each document's documentType from the form body onto its uploaded
+   * file (matched by the "documents[i]" field-name index) so it isn't saved as 'other'.
+   */
+  private applyDocumentTypesToUploads(req: AppRequest) {
+    if (!req.scannedFiles || !Array.isArray(req.body?.documents)) return;
+
+    const bodyDocs = req.body.documents;
+    for (const file of req.scannedFiles) {
+      const match = file.fieldName.match(/^documents\[(\d+)\]/);
+      if (match) {
+        const idx = parseInt(match[1], 10);
+        if (bodyDocs[idx]?.documentType) {
+          file.documentType = bodyDocs[idx].documentType;
+        }
+      }
+    }
+  }
+
   create = async (req: AppRequest, res: Response) => {
+    this.applyDocumentTypesToUploads(req);
     const newProperty = await this.propertyService.addProperty(req.context, req.body);
 
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
@@ -189,19 +209,7 @@ export class PropertyController {
       });
     }
 
-    // Enrich document files with documentType from the form body
-    if (req.scannedFiles && req.body?.documents) {
-      const bodyDocs = Array.isArray(req.body.documents) ? req.body.documents : [];
-      for (const file of req.scannedFiles) {
-        const match = file.fieldName.match(/^documents\[(\d+)\]/);
-        if (match) {
-          const idx = parseInt(match[1], 10);
-          if (bodyDocs[idx]?.documentType) {
-            file.documentType = bodyDocs[idx].documentType;
-          }
-        }
-      }
-    }
+    this.applyDocumentTypesToUploads(req);
 
     const hardDelete = req.query['hard-delete'] === 'true';
     const uploadResult = await this.mediaUploadService.handleFiles(req, {

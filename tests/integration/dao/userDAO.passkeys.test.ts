@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { UserDAO } from '@dao/userDAO';
 import { User as UserModel } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
@@ -145,6 +146,14 @@ describe('UserDAO Passkey Methods (Integration)', () => {
       const found = await dao.findByPasskeyCredentialId('deleted-user-cred');
       expect(found).toBeNull();
     });
+
+    it('excludes inactive users, matching password and OTP login', async () => {
+      const user = await UserModel.create(makeUserDoc({ isActive: false }));
+      await dao.addPasskey(user._id.toString(), makePasskey({ credentialId: 'inactive-cred' }));
+
+      const found = await dao.findByPasskeyCredentialId('inactive-cred');
+      expect(found).toBeNull();
+    });
   });
 
   describe('removePasskey', () => {
@@ -197,6 +206,21 @@ describe('UserDAO Passkey Methods (Integration)', () => {
       const found = await dao.findFirst({ _id: user._id });
       // passkeys should be undefined because select: false
       expect(found?.passkeys).toBeUndefined();
+    });
+  });
+
+  describe('verifyCredentials', () => {
+    it('returns null for an unknown email after the same bcrypt work as a real account', async () => {
+      const compare = jest.spyOn(bcrypt, 'compare');
+
+      const found = await dao.verifyCredentials('nobody@example.com', 'SomePassword1');
+
+      expect(found).toBeNull();
+      expect(compare).toHaveBeenCalledWith(
+        'SomePassword1',
+        expect.stringMatching(/^\$2[aby]\$10\$/)
+      );
+      compare.mockRestore();
     });
   });
 });

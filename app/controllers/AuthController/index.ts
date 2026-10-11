@@ -32,16 +32,13 @@ export class AuthController {
   login = async (req: Request, res: Response) => {
     const result = await this.authService.login(req.body);
 
-    // step 1 responses (password_required / otp_sent / passkey_available) have no tokens
+    // step 1 responses (password_required / otp_sent) have no tokens and nothing account-specific
     if (result.data.step !== 'authenticated') {
       return res.status(httpStatusCodes.OK).json({
         success: true,
         msg: result.message,
         step: result.data.step,
         loginType: result.data.loginType,
-        maskedPhone: result.data.maskedPhone,
-        fallbackLoginType: result.data.fallbackLoginType,
-        passkeyOptions: result.data.passkeyOptions,
       });
     }
 

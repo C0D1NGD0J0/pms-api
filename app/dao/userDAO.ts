@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import crypto from 'crypto';
 import Logger from 'bunyan';
+import bcrypt from 'bcryptjs';
 import { Lease } from '@models/index';
 import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
 import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
@@ -12,6 +13,11 @@ import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/role
 import { BaseDAO } from './baseDAO';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
 import { IUserFilterOptions, IUserDAO } from './interfaces/userDAO.interface';
+
+// Hashed once, with the same cost as real passwords (user.model.ts genSalt(10))
+let timingSafeDummyHash: Promise<string> | null = null;
+const getTimingSafeDummyHash = () =>
+  (timingSafeDummyHash ??= bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10));
 
 export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   protected logger: Logger;
@@ -144,7 +150,11 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   async verifyCredentials(email: string, password: string): Promise<IUserDocument | null> {
     try {
       const user = await this.getActiveUserByEmail(email, { select: '+password' });
-      if (!user) return null;
+      if (!user) {
+        // Same bcrypt cost as a real account, so response time doesn't reveal unknown emails
+        await bcrypt.compare(password, await getTimingSafeDummyHash());
+        return null;
+      }
 
       const isValid = await user.validatePassword(password);
       return isValid ? user : null;
@@ -1375,6 +1385,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       {
         'passkeys.credentialId': credentialId,
         deletedAt: null,
+        isActive: true,
       } as QueryFilter<IUserDocument>,
       { select: '+passkeys' }
     );

@@ -56,6 +56,7 @@
       "accountActivated": "Compte activé avec succès.",
       "activationEmailSent": "Vérifiez votre email ({{email}}) pour un lien d'activation afin de vérifier votre compte. Si vous ne le voyez pas, vérifiez votre dossier de spam.",
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
+      "otpRequested": "Si la connexion par SMS est configurée pour ce compte, nous avons envoyé un code de vérification à son téléphone.",
       "logoutSuccessful": "Déconnexion réussie.",
       "onboardingCompleted": "Intégration complétée avec succès."
     }
@@ -107,7 +108,8 @@
       "invalidDepartment": "[FR] Invalid department value.",
       "departmentEmployeeOnly": "[FR] Departments can only be assigned to employee roles.",
       "verificationFailed": "[FR] Failed to verify account.",
-      "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided."
+      "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided.",
+      "immutableFieldLocked": "Ce champ est verrouillé et ne peut pas être modifié. Veuillez contacter le support si une mise à jour est nécessaire."
     },
     "success": {
       "roleAssigned": "Rôle {{role}} assigné avec succès",

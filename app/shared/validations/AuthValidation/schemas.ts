@@ -61,6 +61,16 @@ export const UserSignupSchema = z
         message: 'Please enter a valid city or country',
       }),
     phoneNumber: z.string().optional(),
+    // validateRequest replaces req.body with the parsed result, so every field signup reads
+    // must be declared here or it is silently dropped
+    displayName: z
+      .string()
+      .trim()
+      .min(2, 'Display name must be at least 2 characters')
+      .max(45, 'Display name must be at most 45 characters'),
+    termsAccepted: z.literal(true, {
+      errorMap: () => ({ message: 'You must accept the terms of service and privacy policy' }),
+    }),
     accountType: z
       .object({
         planId: z.string(),
@@ -109,6 +119,7 @@ export const UserSignupSchema = z
             { message: 'Invalid company phone number' }
           ),
         legalEntityName: z.string().min(2, 'Legal entity name is required'),
+        companyAddress: z.string().trim().min(5, 'Company address is required'),
         contactInfo: z
           .object({
             email: z.string().email('Invalid company email'),
@@ -123,7 +134,10 @@ export const UserSignupSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.accountType.isEnterpriseAccount) {
+    // The signup service derives isEnterpriseAccount from category, so check both
+    const isBusinessAccount =
+      data.accountType.category === 'business' || data.accountType.isEnterpriseAccount;
+    if (isBusinessAccount) {
       if (!data.companyProfile) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -146,6 +160,14 @@ export const UserSignupSchema = z
           code: z.ZodIssueCode.custom,
           message: 'Legal entity name is required for business accounts',
           path: ['companyProfile', 'legalEntityName'],
+        });
+      }
+
+      if (!data.companyProfile.companyAddress) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Company address is required for business accounts',
+          path: ['companyProfile', 'companyAddress'],
         });
       }
     }
@@ -321,7 +343,7 @@ export const LoginSchema = z.object({
     .max(20, { message: 'Invalid password value provided.' })
     .optional(),
   otp: z.string().length(6, { message: 'Verification code must be 6 digits.' }).optional(),
-  passkeyResponse: z.record(z.unknown()).optional(),
+  requestOtp: z.boolean().optional(),
   rememberMe: z.boolean().optional(),
 });
 

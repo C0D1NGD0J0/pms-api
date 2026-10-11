@@ -58,6 +58,7 @@
       "loginSuccessful": "Login successful.",
       "loginTypeResolved": "Please enter your password.",
       "otpSent": "Verification code sent to your phone.",
+      "otpRequested": "If SMS sign-in is set up for this account, we've sent a verification code to its phone.",
       "accountSelected": "Success.",
       "accountActivated": "Account activated successfully.",
       "activationLinkSent": "Activation link has been sent to {{email}}.",

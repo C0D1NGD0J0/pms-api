@@ -32,7 +32,7 @@ const makeSignupData = (overrides: Record<string, any> = {}): ISignupData => ({
     category: 'individual',
     planName: 'essential',
     planId: 'price_essential',
-    planLookUpKey: 'essential_monthly',
+    lookUpKey: 'essential_monthly',
     billingInterval: 'monthly',
     totalMonthlyPrice: 0,
     isEnterpriseAccount: false,
@@ -143,6 +143,19 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
     const emittedPayload = mocks.emitterService.emit.mock.calls[0][1];
     expect(emittedPayload.userId).toBeDefined();
     expect(typeof emittedPayload.userId).toBe('string');
+  });
+
+  it('should create the subscription with the lookUpKey the signup form sends', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks);
+
+    await service.signup(makeSignupData());
+
+    expect(mocks.subscriptionService.createSubscription).toHaveBeenCalledWith(
+      CLIENT_ID.toString(),
+      expect.objectContaining({ planLookUpKey: 'essential_monthly' }),
+      expect.anything()
+    );
   });
 
   it('should NOT emit event when subscription creation fails', async () => {

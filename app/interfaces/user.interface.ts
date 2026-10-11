@@ -446,7 +446,7 @@ export interface IPasskeyCredential {
 export interface ISignupAccountType extends IAccountType {
   billingInterval: 'monthly' | 'annual';
   totalMonthlyPrice?: number;
-  planLookUpKey?: string;
+  lookUpKey?: string;
   planName: string;
   planId: string;
 }

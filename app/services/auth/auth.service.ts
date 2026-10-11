@@ -16,7 +16,6 @@ import { IActiveAccountInfo } from '@interfaces/client.interface';
 import { PaymentService } from '@services/payments/payments.service';
 import { IUserDocument, ISignupData } from '@interfaces/user.interface';
 import { TwilioService } from '@services/external/twilio/twilio.service';
-import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { UserDisconnectedPayload, EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
@@ -392,7 +391,7 @@ export class AuthService {
       const subscriptionResult = await this.subscriptionService.createSubscription(
         client._id.toString(),
         {
-          planLookUpKey: signupData.accountType.planLookUpKey || '',
+          planLookUpKey: signupData.accountType.lookUpKey || '',
           planName: signupData.accountType.planName as PlanName,
           billingInterval: signupData.accountType.billingInterval as 'monthly' | 'annual',
           planId: signupData.accountType.planId,
@@ -415,7 +414,7 @@ export class AuthService {
         subscriptionId: subscriptionResult.data?._id?.toString() || '',
         planName: signupData.accountType.planName,
         planId: signupData.accountType.planId,
-        planLookUpKey: signupData.accountType.planLookUpKey,
+        planLookUpKey: signupData.accountType.lookUpKey,
         billingInterval: signupData.accountType.billingInterval,
         emailData: {
           to: user.email,
@@ -456,91 +455,70 @@ export class AuthService {
     email: string;
     password?: string;
     otp?: string;
-    passkeyResponse?: AuthenticationResponseJSON;
+    requestOtp?: boolean;
     rememberMe?: boolean;
   }): Promise<ISuccessReturnData> {
-    const { email, password, otp, passkeyResponse, rememberMe = false } = data;
+    const { email, password, otp, requestOtp, rememberMe = false } = data;
 
     if (!email) {
       throw new BadRequestError({ message: t('auth.errors.emailPasswordRequired') });
     }
 
-    // Step 1: email only — determine login type and send OTP if needed
-    if (!password && !otp && !passkeyResponse) {
-      return this.resolveLoginType(email);
+    // Every login response and error below is identical whether or not the email has an
+    // account, so the login form can't be used to discover who is registered.
+    if (requestOtp) {
+      return this.requestLoginOTP(email);
     }
 
-    // Step 2c: passkey authentication
-    if (passkeyResponse) {
-      return this.loginWithPasskey(email, passkeyResponse, rememberMe);
-    }
-
-    // Step 2a: password login
     if (password) {
       return this.loginWithPassword(email, password, rememberMe);
     }
 
-    // Step 2b: OTP login
-    return this.loginWithOTP(email, otp!, rememberMe);
+    if (otp) {
+      return this.loginWithOTP(email, otp, rememberMe);
+    }
+
+    // Step 1: email only. Passkey sign-in uses the discoverable flow (no email), and SMS
+    // codes are sent only when the user asks for one.
+    return {
+      success: true,
+      data: { step: 'password_required', loginType: 'password' },
+      message: t('auth.success.loginTypeResolved'),
+    };
   }
 
-  private async resolveLoginType(email: string): Promise<ISuccessReturnData> {
-    const user = await this.userDAO.getActiveUserByEmail(email);
-    if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
-    }
+  private invalidCredentials() {
+    return new NotFoundError({ message: t('auth.errors.invalidCredentials') });
+  }
 
-    if (!user.isActive) {
-      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
-    }
-
-    const profile = await this.profileDAO.findFirst({ user: user._id });
-    const loginType = profile?.settings?.loginType ?? 'password';
-
+  /** The verified phone if this account can sign in with an SMS code, otherwise null */
+  private async getOTPLoginPhone(userId: IUserDocument['_id']): Promise<string | null> {
+    const profile = await this.profileDAO.findFirst({ user: userId });
+    const phoneVerification = profile?.settings?.phoneVerification;
     const canUseOTP =
-      loginType === 'otp' &&
+      profile?.settings?.loginType === 'otp' &&
       this.featureFlagService.isEnabled(FeatureFlag.SMS) &&
-      profile?.settings?.phoneVerification?.verified &&
-      profile?.settings?.phoneVerification?.verifiedPhone;
+      phoneVerification?.verified &&
+      phoneVerification?.verifiedPhone;
 
-    if (loginType === 'passkey' && (await this.userDAO.hasPasskeys(email))) {
-      const passkeyOptions = await this.webAuthnService.generateAuthenticationOptions(email);
-      const phone = profile?.settings?.phoneVerification?.verifiedPhone;
-      return {
-        success: true,
-        data: {
-          step: 'passkey_available',
-          loginType: 'passkey',
-          fallbackLoginType: canUseOTP ? 'otp' : 'password',
-          passkeyOptions,
-          ...(canUseOTP && phone && { maskedPhone: phone.replace(/.(?=.{4})/g, '*') }),
-        },
-        message: t('auth.success.loginTypeResolved'),
-      };
+    return canUseOTP ? phoneVerification!.verifiedPhone! : null;
+  }
+
+  private async requestLoginOTP(email: string): Promise<ISuccessReturnData> {
+    const user = await this.userDAO.getActiveUserByEmail(email);
+    const phone = user ? await this.getOTPLoginPhone(user._id) : null;
+
+    if (phone) {
+      // Not awaited: waiting on the SMS provider would make eligible accounts measurably slower
+      this.twilioService.sendOTP(phone).catch((error) => {
+        this.log.error({ error }, 'Failed to send login OTP');
+      });
     }
-
-    if (!canUseOTP) {
-      return {
-        success: true,
-        data: { step: 'password_required', loginType: 'password' },
-        message:
-          loginType === 'otp'
-            ? t('auth.errors.otpUnavailable')
-            : t('auth.success.loginTypeResolved'),
-      };
-    }
-
-    const phone = profile!.settings!.phoneVerification!.verifiedPhone!;
-    await this.twilioService.sendOTP(phone);
 
     return {
       success: true,
-      data: {
-        step: 'otp_sent',
-        loginType: 'otp',
-        maskedPhone: phone.replace(/.(?=.{4})/g, '*'),
-      },
-      message: t('auth.success.otpSent'),
+      data: { step: 'otp_sent', loginType: 'otp' },
+      message: t('auth.success.otpRequested'),
     };
   }
 
@@ -549,18 +527,9 @@ export class AuthService {
     password: string,
     rememberMe: boolean
   ): Promise<ISuccessReturnData> {
-    let user = await this.userDAO.getActiveUserByEmail(email);
+    const user = await this.userDAO.verifyCredentials(email, password);
     if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
-    }
-
-    if (!user.isActive) {
-      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
-    }
-
-    user = await this.userDAO.verifyCredentials(email, password);
-    if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
+      throw this.invalidCredentials();
     }
 
     return this.completeLogin(user, rememberMe);
@@ -572,42 +541,16 @@ export class AuthService {
     rememberMe: boolean
   ): Promise<ISuccessReturnData> {
     const user = await this.userDAO.getActiveUserByEmail(email);
-    if (!user) {
-      throw new NotFoundError({ message: t('auth.errors.invalidCredentials') });
-    }
-
-    if (!user.isActive) {
-      throw new InvalidRequestError({ message: t('auth.errors.accountVerificationPending') });
-    }
-
-    const profile = await this.profileDAO.findFirst({ user: user._id });
-    const loginType = profile?.settings?.loginType ?? 'password';
-    const phone = profile?.settings?.phoneVerification?.verifiedPhone;
-    const phoneVerified = profile?.settings?.phoneVerification?.verified;
-
-    if (
-      loginType !== 'otp' ||
-      !this.featureFlagService.isEnabled(FeatureFlag.SMS) ||
-      !phoneVerified ||
-      !phone
-    ) {
-      throw new BadRequestError({ message: t('auth.errors.otpUnavailable') });
+    const phone = user ? await this.getOTPLoginPhone(user._id) : null;
+    if (!user || !phone) {
+      throw this.invalidCredentials();
     }
 
     const result = await this.twilioService.verifyOTP(phone, otp);
     if (!result.valid) {
-      throw new UnauthorizedError({ message: t('auth.errors.otpVerificationFailed') });
+      throw this.invalidCredentials();
     }
 
-    return this.completeLogin(user, rememberMe);
-  }
-
-  private async loginWithPasskey(
-    email: string,
-    passkeyResponse: AuthenticationResponseJSON,
-    rememberMe: boolean
-  ): Promise<ISuccessReturnData> {
-    const user = await this.webAuthnService.verifyAuthentication(email, passkeyResponse);
     return this.completeLogin(user, rememberMe);
   }
 

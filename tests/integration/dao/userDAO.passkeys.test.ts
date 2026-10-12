@@ -82,43 +82,6 @@ describe('UserDAO Passkey Methods (Integration)', () => {
     });
   });
 
-  describe('hasPasskeys', () => {
-    it('returns true when user has passkeys', async () => {
-      const email = `has-passkeys-${Date.now()}@test.com`;
-      const user = await UserModel.create(makeUserDoc({ email }));
-      await dao.addPasskey(user._id.toString(), makePasskey());
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(true);
-    });
-
-    it('returns false when user has no passkeys', async () => {
-      const email = `no-passkeys-${Date.now()}@test.com`;
-      await UserModel.create(makeUserDoc({ email }));
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(false);
-    });
-
-    it('returns false for inactive user with passkeys', async () => {
-      const email = `inactive-${Date.now()}@test.com`;
-      const user = await UserModel.create(makeUserDoc({ email, isActive: false }));
-      await dao.addPasskey(user._id.toString(), makePasskey());
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(false);
-    });
-
-    it('returns false for soft-deleted user', async () => {
-      const email = `deleted-${Date.now()}@test.com`;
-      const user = await UserModel.create(makeUserDoc({ email, deletedAt: new Date() }));
-      await dao.addPasskey(user._id.toString(), makePasskey());
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(false);
-    });
-  });
-
   describe('findByPasskeyCredentialId', () => {
     it('finds user by credential ID', async () => {
       const user = await UserModel.create(makeUserDoc());

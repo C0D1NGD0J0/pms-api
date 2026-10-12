@@ -1,28 +1,15 @@
 import { z } from 'zod';
 import dayjs from 'dayjs';
 import { User } from '@models/index';
+import type { UserDAO } from '@dao/userDAO';
 import { isValidPhoneNumber, isValidLocation } from '@utils/index';
 import { IUserRelationshipsEnum } from '@interfaces/user.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
-const isUniqueEmail = async (value: string) => {
-  try {
-    const existingUser = await User.findOne({
-      email: value,
-    });
-
-    if (existingUser) {
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Error checking email uniqueness', error);
-    if (error instanceof Error && error.message.includes('buffering timed out')) {
-      throw new Error('Database connection timeout. Please try again.');
-    }
-    return false;
-  }
+const isEmailAvailable = async (email: string) => {
+  const { container } = await import('@di/setup');
+  const { userDAO }: { userDAO: UserDAO } = container.cradle;
+  return !(await userDAO.isEmailTaken(email));
 };
 
 export const UserSignupSchema = z
@@ -38,13 +25,7 @@ export const UserSignupSchema = z
     email: z
       .string()
       .email('Invalid email address')
-      .refine(
-        async (email) => {
-          const isUsed = await isUniqueEmail(email);
-          return isUsed;
-        },
-        { message: 'Email already in use.' }
-      ),
+      .refine(isEmailAvailable, { message: 'Email already in use.' }),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
@@ -238,6 +219,13 @@ export const AccountActivationSchema = z.object({
         message: 'Token is invalid or has expired',
       }
     ),
+});
+
+export const EmailChangeTokenSchema = z.object({
+  t: z
+    .string()
+    .trim()
+    .regex(/^[a-f0-9]{64}$/, { message: 'Invalid token provided' }),
 });
 
 export const ConsentBodySchema = z.object({

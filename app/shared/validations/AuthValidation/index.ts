@@ -4,6 +4,7 @@ import {
   SetupPaymentIntentSchema,
   completeOnboardingSchema,
   AccountActivationSchema,
+  EmailChangeTokenSchema,
   ResendActivationSchema,
   PasskeyRegVerifySchema,
   ForgotPasswordSchema,
@@ -18,6 +19,7 @@ import {
 
 export class AuthValidations {
   static activationToken = AccountActivationSchema;
+  static emailChangeToken = EmailChangeTokenSchema;
   static consentBody = ConsentBodySchema;
   static resendActivation = ResendActivationSchema;
   static switchClientAccount = SwitchClientAccountSchema;

@@ -1,7 +1,8 @@
 import { UserSignupSchema } from '@shared/validations/AuthValidation/schemas';
 
-jest.mock('@models/index', () => ({
-  User: { findOne: jest.fn().mockResolvedValue(null) },
+jest.mock('@models/index', () => ({ User: { findOne: jest.fn() } }));
+jest.mock('@di/setup', () => ({
+  container: { cradle: { userDAO: { isEmailTaken: jest.fn().mockResolvedValue(false) } } },
 }));
 jest.mock('@utils/index', () => ({
   isValidPhoneNumber: () => true,

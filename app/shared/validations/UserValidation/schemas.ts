@@ -6,6 +6,10 @@ export const UserUidParamSchema = z.object({
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters'),
 });
 
+export const EmailChangeRequestSchema = z.object({
+  newEmail: z.string().trim().toLowerCase().email('Invalid email format').max(254),
+});
+
 export const UserIdParamSchema = z.object({
   uid: z.string().trim().min(8, 'User ID must be at least 8 characters').optional(),
 });

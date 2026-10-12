@@ -44,7 +44,7 @@ const makeMocks = () => {
   const userDAO = {
     startSession: jest.fn().mockReturnValue(Promise.resolve({ endSession: jest.fn() })),
     withTransaction: jest.fn().mockImplementation(async (_session: any, fn: any) => fn(_session)),
-    findFirst: jest.fn().mockReturnValue(Promise.resolve(null)), // no duplicate
+    isEmailTaken: jest.fn().mockReturnValue(Promise.resolve(false)),
     insert: jest.fn().mockReturnValue(
       Promise.resolve({
         _id: USER_ID,
@@ -228,7 +228,7 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
 
   it('should NOT emit event when user already exists', async () => {
     const mocks = makeMocks();
-    mocks.userDAO.findFirst.mockReturnValue(Promise.resolve({ _id: USER_ID, email: TEST_EMAIL }));
+    mocks.userDAO.isEmailTaken.mockReturnValue(Promise.resolve(true));
     const service = makeService(mocks);
 
     await expect(service.signup(makeSignupData())).rejects.toThrow();

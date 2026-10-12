@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
+import { phoneNumber } from '../UtilsValidation';
 import { personalInfoSchema } from '../ProfileValidation';
 
 const TenantFeaturesSchema = z.object({
@@ -46,7 +47,8 @@ export const ClientSettingsSchema = z.object({
     .regex(/^[a-z]{2}(-[A-Z]{2})?$/, 'Invalid language code format')
     .optional(),
   vendorPayoutMode: z.enum(['express', 'platform_hold']).optional(),
-  tenantFeatures: TenantFeaturesSchema.optional(),
+  // tenantFeatures are not settable here: PATCH /settings/tenant-features (UpdateTenantFeaturesSchema)
+  // enforces the SMS feature flag and refreshes tenant sessions.
   defaultCurrency: z
     .string()
     .trim()
@@ -68,19 +70,11 @@ export const CompanyProfileSchema = z.object({
   registrationNumber: z.string().trim().optional(),
   website: z.string().url('Invalid website URL').optional(),
   logo: z.string().trim().optional(),
-  companyPhone: z
-    .string()
-    .trim()
-    .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
-    .optional(),
+  companyPhone: phoneNumber.optional(),
   contactInfo: z
     .object({
       email: z.string().email('Invalid email format').optional(),
-      phoneNumber: z
-        .string()
-        .trim()
-        .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
-        .optional(),
+      phoneNumber: phoneNumber.optional(),
       contactPerson: z.string().trim().optional(),
     })
     .optional(),
@@ -222,12 +216,7 @@ export const UpdateTenantProfileSchema = z.object({
     .extend({
       firstName: z.string().trim().min(1, 'First name is required').optional(),
       lastName: z.string().trim().min(1, 'Last name is required').optional(),
-      email: z.string().email('Invalid email format').optional(),
-      phoneNumber: z
-        .string()
-        .trim()
-        .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
-        .optional(),
+      phoneNumber: phoneNumber.optional(),
     })
     .optional(),
   tenantInfo: z
@@ -268,11 +257,7 @@ export const UpdateTenantProfileSchema = z.object({
       emergencyContact: z
         .object({
           name: z.string().trim().min(1, 'Emergency contact name is required').optional(),
-          phone: z
-            .string()
-            .trim()
-            .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format')
-            .optional(),
+          phone: phoneNumber.optional(),
           relationship: z.string().trim().optional(),
           email: z.string().email('Invalid email format').optional(),
         })

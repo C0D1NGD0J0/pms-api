@@ -62,6 +62,8 @@ interface IConstructor {
   leaseDAO: any;
 }
 
+const RESENDABLE_INVITATION_STATUSES: string[] = ['draft', 'pending', 'sent'];
+
 export class InvitationService {
   private readonly log: Logger;
   private readonly invitationDAO: InvitationDAO;
@@ -648,14 +650,15 @@ export class InvitationService {
       client: any;
     }>
   > {
-    const client = await this.clientDAO.findFirst({ cuid });
+    const [client, invitation] = await Promise.all([
+      this.clientDAO.findFirst({ cuid }),
+      this.invitationDAO.findByToken(token),
+    ]);
     if (!client) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
-
     // A token used on another client's cuid reads as unknown, not as forbidden
-    const invitation = await this.invitationDAO.findByToken(token, client.id);
-    if (!invitation) {
+    if (!invitation || invitation.clientId.toString() !== client.id.toString()) {
       throw new NotFoundError({ message: t('invitation.errors.notFound') });
     }
 
@@ -761,20 +764,18 @@ export class InvitationService {
     cuid: string
   ): Promise<ISuccessReturnData<ISendInvitationResult>> {
     try {
-      const validatedData = InvitationValidations.resendInvitation.parse(
-        data
-      ) as IResendInvitationData;
-
       let invitation = await this.findClientInvitation(data.iuid, cuid);
       if (!invitation) {
         throw new NotFoundError({ message: t('invitation.errors.notFound') });
       }
 
-      if (!['draft'].includes(invitation.status)) {
+      // Drafts are sent for the first time; pending/sent invitations get a reminder.
+      // Revoked, declined, accepted and expired invitations are final.
+      if (!RESENDABLE_INVITATION_STATUSES.includes(invitation.status)) {
         throw new BadRequestError({ message: t('invitation.errors.cannotResend') });
       }
 
-      // If the draft has expired, extend it rather than blocking — resend is a reactivation
+      // If the invitation has lapsed but not been expired yet, extend it rather than blocking
       if (invitation.expiresAt <= new Date()) {
         const newExpiresAt = dayjs().add(1, 'day').toDate();
         await this.invitationDAO.update(
@@ -800,7 +801,6 @@ export class InvitationService {
       }
 
       const isDraftInvitation = invitation.status === 'draft';
-      const isReactivation = invitation.status === 'revoked';
 
       const emailData = {
         client: {
@@ -824,13 +824,13 @@ export class InvitationService {
           inviteeName: invitation.inviteeFullName,
           resenderName: resender?.profile?.fullname || 'Team Member',
           inviterName: resender?.profile?.fullname || resender?.email || 'Team Member',
-          customMessage: validatedData.customMessage || invitation.metadata?.inviteMessage || '',
+          customMessage: data.customMessage || invitation.metadata?.inviteMessage || '',
           companyName: client?.displayName || client?.companyProfile?.legalEntityName || 'Company',
           invitationUrl: `${envVariables.FRONTEND.URL}/invite/${client?.cuid}/?token=${invitation.invitationToken}`,
         },
       };
 
-      if (isReactivation || isDraftInvitation) {
+      if (isDraftInvitation) {
         invitation = await this.invitationDAO.updateInvitationStatus(
           invitation._id.toString(),
           invitation.clientId.toString(),
@@ -840,7 +840,10 @@ export class InvitationService {
           throw new BadRequestError({ message: t('invitation.errors.reactivationFailed') });
         }
       } else {
-        await this.invitationDAO.incrementReminderCount(data.iuid, invitation.clientId.toString());
+        await this.invitationDAO.incrementReminderCount(
+          invitation._id.toString(),
+          invitation.clientId.toString()
+        );
       }
 
       const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
@@ -850,17 +853,15 @@ export class InvitationService {
       } as any);
 
       this.log.info(
-        `Invitation ${isReactivation ? 'reactivated and sent' : isDraftInvitation ? 'activated and sent' : 'reminder sent'} for ${invitation.inviteeEmail}`
+        `Invitation ${isDraftInvitation ? 'activated and sent' : 'reminder sent'} for ${invitation.inviteeEmail}`
       );
 
       return {
         success: true,
         data: { invitation, emailData },
-        message: isReactivation
-          ? t('invitation.success.reactivated', { email: invitation.inviteeEmail })
-          : isDraftInvitation
-            ? t('invitation.success.sent', { email: invitation.inviteeEmail })
-            : t('invitation.success.resent', { email: invitation.inviteeEmail }),
+        message: isDraftInvitation
+          ? t('invitation.success.sent', { email: invitation.inviteeEmail })
+          : t('invitation.success.resent', { email: invitation.inviteeEmail }),
       };
     } catch (error) {
       this.log.error('Error resending invitation:', error);

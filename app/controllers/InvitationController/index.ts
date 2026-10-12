@@ -43,7 +43,7 @@ export class InvitationController {
       });
     }
 
-    const result = await this.invitationService.sendInvitation(
+    const result = await this.invitationService.dispatchInvitation(
       currentuser.sub,
       cuid,
       invitationData

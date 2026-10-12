@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ClientController } from '@controllers/ClientController';
 import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
 import {
-  requireRolePermission,
   requireUserManagement,
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  requireRole,
   idempotency,
 } from '@shared/middlewares';
 
@@ -28,13 +29,13 @@ router.get(
   })
 );
 
-// Admins (client:settings) may save; super-admin-only fields are enforced in
-// ClientService.updateClientDetails. Role grants only, so the management staff
-// department's client:settings (meant for /settings/tenant-features) doesn't open this route.
+// Super-admin-only fields are enforced in ClientService.updateClientDetails. The role check keeps
+// the management department's client:settings grant (meant for /settings/tenant-features) out.
 router.patch(
   '/:cuid',
   basicLimiter(),
-  requireRolePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
+  requireRole([ROLES.ROOT_ADMIN, ROLES.SUPER_ADMIN, ROLES.ADMIN]),
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam,

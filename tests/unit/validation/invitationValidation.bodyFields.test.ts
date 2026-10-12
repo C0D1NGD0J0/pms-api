@@ -65,28 +65,6 @@ describe('InvitationValidations — fields the invite form sends', () => {
       );
     });
   });
-
-  it('accepts its own output, since InvitationService re-parses the controller data', async () => {
-    const schema = InvitationValidations.sendInvitation;
-    const firstPass = await schema.parseAsync({ ...baseInvitation, ...topLevelRoleInfo });
-    const controllerShapedData = {
-      ...baseInvitation,
-      metadata: {
-        employeeInfo: firstPass.employeeInfo,
-        vendorInfo: firstPass.vendorInfo,
-        tenantInfo: firstPass.tenantInfo,
-      },
-    };
-
-    const secondPass = await schema.parseAsync(controllerShapedData);
-
-    expect(secondPass.metadata?.employeeInfo?.startDate).toEqual(
-      new Date('2026-11-01T00:00:00.000Z')
-    );
-    expect(secondPass.metadata?.vendorInfo?.insuranceInfo?.expirationDate).toEqual(
-      new Date('2027-01-01T00:00:00.000Z')
-    );
-  });
 });
 
 describe('InvitationValidations — vendor serviceAreas', () => {

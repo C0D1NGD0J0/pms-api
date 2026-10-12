@@ -59,7 +59,7 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
   getInvitationsByEmail(clientId: string, email: string): Promise<IInvitationDocument[]>;
 
   /** Scoped to the client so a token only resolves on its own client's routes. */
-  findByToken(token: string, clientId: string): Promise<IInvitationDocument | null>;
+  findByToken(token: string, clientId?: string): Promise<IInvitationDocument | null>;
 
   findByIuid(iuid: string, clientId: string): Promise<IInvitationDocument | null>;
 

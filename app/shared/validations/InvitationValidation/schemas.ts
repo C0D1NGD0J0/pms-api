@@ -8,16 +8,11 @@ import { safeString } from '../UtilsValidation';
 // Letters in any script (é, ñ, ü, …) plus spaces, hyphens, apostrophes and dots
 const PERSON_NAME_REGEX = /^[\p{L}\s\-'.]+$/u;
 
-// The send flow parses the body in the route and again in InvitationService, so a date that
-// was already transformed on the first pass must still be accepted on the second
 const dateTimeInput = (message: string) =>
-  z.preprocess(
-    (value) => (value instanceof Date ? value.toISOString() : value),
-    z
-      .string()
-      .datetime(message)
-      .transform((str) => new Date(str))
-  );
+  z
+    .string()
+    .datetime(message)
+    .transform((str) => new Date(str));
 
 const employeeInfoSchema = z
   .object({

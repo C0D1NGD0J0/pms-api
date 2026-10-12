@@ -412,7 +412,6 @@ describe('ClientService Integration Tests - Write Operations', () => {
           timeZone: 'America/Vancouver',
           lang: 'fr',
           notificationPreferences: { sms: true },
-          tenantFeatures: { guestPass: true },
         },
       };
 
@@ -451,7 +450,6 @@ describe('ClientService Integration Tests - Write Operations', () => {
         expect(updated?.displayName).toBe('Admin Renamed');
         expect(updated?.companyProfile?.contactInfo?.contactPerson).toBe('Jane Ops');
         expect(updated?.settings?.lang).toBe('fr');
-        expect(updated?.settings?.tenantFeatures?.guestPass).toBe(true);
       });
 
       it.each([ROLES.SUPER_ADMIN, ROLES.ROOT_ADMIN])(

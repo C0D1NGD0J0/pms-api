@@ -1,6 +1,6 @@
-import { ZodError } from 'zod';
 import request from 'supertest';
 import { Application } from 'express';
+import { ZodTypeAny, ZodError } from 'zod';
 import { httpStatusCodes } from '@utils/constants';
 import { ROLES } from '@shared/constants/roles.constants';
 import { AuthService } from '@services/auth/auth.service';
@@ -11,6 +11,7 @@ import { Invitation, Profile, Client, Vendor, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
+import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import { InvitationDAO, ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import {
   mockUnauthenticatedContext,
@@ -22,14 +23,12 @@ import {
   createTestUser,
 } from '@tests/helpers';
 
-/**
- * Wraps a handler to catch ZodError and return 400 instead of letting it
- * reach errorHandlerMiddleware (which doesn't map ZodError to 400).
- */
-const withZodErrorHandler =
-  (handler: (req: any, res: any) => Promise<any>) => async (req: any, res: any) => {
+// Mirrors validateRequest for the body: the service trusts route-validated input
+const withValidatedBody =
+  (schema: ZodTypeAny, handler: (req: any, res: any) => Promise<any>) =>
+  async (req: any, res: any) => {
     try {
-      return await handler(req, res);
+      req.body = await schema.parseAsync(req.body);
     } catch (err) {
       if (err instanceof ZodError) {
         return res.status(400).json({
@@ -40,6 +39,7 @@ const withZodErrorHandler =
       }
       throw err;
     }
+    return handler(req, res);
   };
 
 describe('InvitationController Integration Tests', () => {
@@ -208,7 +208,9 @@ describe('InvitationController Integration Tests', () => {
           method: 'post',
           path: SEND_INVITE_PATH,
           contextUser: () => adminUser,
-          handler: withZodErrorHandler((req, res) => invitationController.sendInvitation(req, res)),
+          handler: withValidatedBody(InvitationValidations.sendInvitation, (req, res) =>
+            invitationController.sendInvitation(req, res)
+          ),
         },
         {
           method: 'get',
@@ -247,7 +249,7 @@ describe('InvitationController Integration Tests', () => {
           method: 'patch',
           path: RESEND_PATH,
           contextUser: () => adminUser,
-          handler: withZodErrorHandler((req, res) =>
+          handler: withValidatedBody(InvitationValidations.resendInvitation, (req, res) =>
             invitationController.resendInvitation(req, res)
           ),
         },
@@ -815,6 +817,65 @@ describe('InvitationController Integration Tests', () => {
       expect(response.body.success).toBe(true);
     });
 
+    it('sends a reminder for a pending invitation and counts it', async () => {
+      const pendingInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `pending.reminder.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+      const otherPending = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `pending.untouched.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+
+      await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/resend/${pendingInvitation.iuid}`)
+        .send({})
+        .expect(httpStatusCodes.OK);
+
+      const reminded = await Invitation.findById(pendingInvitation._id).lean();
+      const untouched = await Invitation.findById(otherPending._id).lean();
+      expect(reminded?.status).toBe('pending');
+      expect(reminded?.metadata?.remindersSent).toBe(1);
+      expect(reminded?.metadata?.lastReminderSent).toBeDefined();
+      expect(untouched?.metadata?.remindersSent ?? 0).toBe(0);
+    });
+
+    it('sends a reminder for an invitation whose email was already delivered (sent)', async () => {
+      const sentInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `sent.reminder.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+      await Invitation.updateOne({ _id: sentInvitation._id }, { $set: { status: 'sent' } });
+
+      await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/resend/${sentInvitation.iuid}`)
+        .send({})
+        .expect(httpStatusCodes.OK);
+
+      const reminded = await Invitation.findById(sentInvitation._id).lean();
+      expect(reminded?.metadata?.remindersSent).toBe(1);
+    });
+
+    it('rejects resending a revoked invitation', async () => {
+      const revokedInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `revoked.resend.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'revoked',
+      });
+
+      const response = await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/resend/${revokedInvitation.iuid}`)
+        .send({})
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      const unchanged = await Invitation.findById(revokedInvitation._id).lean();
+      expect(unchanged?.status).toBe('revoked');
+    });
+
     it('should reject resending already accepted invitation', async () => {
       const acceptedInvitation = await createTestInvitation(testClient._id, adminUser._id, {
         inviteeEmail: `accepted4.${Date.now()}@test.com`,
@@ -1039,6 +1100,27 @@ describe('InvitationController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toBeDefined();
+    });
+
+    it('sends a reminder to every pending invitation', async () => {
+      const pendingBefore = await Invitation.find({
+        clientId: testClient._id,
+        status: 'pending',
+      }).lean();
+
+      const response = await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/process-pending`)
+        .expect(httpStatusCodes.OK);
+
+      const result = response.body.data.data ?? response.body.data;
+      expect(result.failed).toBe(0);
+      expect(result.processed).toBe(pendingBefore.length);
+      expect(result.processed).toBeGreaterThanOrEqual(2);
+
+      const pendingAfter = await Invitation.find({
+        _id: { $in: pendingBefore.map((inv) => inv._id) },
+      }).lean();
+      pendingAfter.forEach((inv) => expect(inv.metadata?.remindersSent).toBe(1));
     });
 
     it('should support dry run mode', async () => {

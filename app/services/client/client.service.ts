@@ -12,7 +12,6 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { SUPER_ADMIN_ONLY_CLIENT_FIELDS, JOB_NAME } from '@utils/index';
 import { PermissionService } from '@services/permission/permission.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
@@ -20,6 +19,7 @@ import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
 import { createSafeMongoUpdate, getRequestDuration, createLogger } from '@utils/index';
+import { SUPER_ADMIN_ONLY_CLIENT_FIELDS, hasValueAtPath, JOB_NAME } from '@utils/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
@@ -58,17 +58,6 @@ import {
   PaymentDisputeWonPayload,
   EventTypes,
 } from '@interfaces/events.interface';
-
-const getValueAtPath = (source: object, path: string): unknown =>
-  path
-    .split('.')
-    .reduce<unknown>(
-      (value, key) =>
-        value !== null && typeof value === 'object'
-          ? (value as Record<string, unknown>)[key]
-          : undefined,
-      source
-    );
 
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
@@ -354,8 +343,8 @@ export class ClientService {
     currentuser: ICurrentUser,
     updateData: Partial<IClientDocument>
   ): Promise<void> {
-    const sentRestrictedFields = SUPER_ADMIN_ONLY_CLIENT_FIELDS.filter(
-      (fieldPath) => getValueAtPath(updateData, fieldPath) !== undefined
+    const sentRestrictedFields = SUPER_ADMIN_ONLY_CLIENT_FIELDS.filter((fieldPath) =>
+      hasValueAtPath(updateData, fieldPath)
     );
     if (sentRestrictedFields.length === 0) return;
 

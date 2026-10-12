@@ -77,10 +77,11 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  async findByToken(token: string, clientId: string): Promise<IInvitationDocument | null> {
+  // Callers that omit clientId must compare invitation.clientId to the request's client themselves
+  async findByToken(token: string, clientId?: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
-        { invitationToken: token, clientId },
+        { invitationToken: token, ...(clientId && { clientId }) },
         {
           populate: [
             {
@@ -413,7 +414,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   ): Promise<IInvitationDocument | null> {
     try {
       return await this.update(
-        { id: invitationId, clientId },
+        { _id: new Types.ObjectId(invitationId), clientId: new Types.ObjectId(clientId) },
         {
           $inc: { 'metadata.remindersSent': 1 },
           $set: { 'metadata.lastReminderSent': new Date() },

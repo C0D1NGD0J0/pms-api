@@ -33,6 +33,16 @@ describe('UpdateTenantProfileSchema', () => {
     expect(parsed.personalInfo).toEqual({ firstName: 'Jane' });
   });
 
+  it('strips personalInfo.email — login email changes use the email-change endpoint', async () => {
+    const parsed = await UpdateTenantProfileSchema.parseAsync({
+      email: 'top-level@test.com',
+      personalInfo: { firstName: 'Jane', email: 'new@test.com' },
+    });
+
+    expect(parsed.personalInfo).toEqual({ firstName: 'Jane' });
+    expect(parsed).not.toHaveProperty('email');
+  });
+
   it('accepts numbers sent as strings by a multipart request', async () => {
     const parsed = await UpdateTenantProfileSchema.parseAsync({
       tenantInfo: {

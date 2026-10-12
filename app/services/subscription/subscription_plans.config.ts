@@ -192,6 +192,17 @@ export class SubscriptionPlanConfig {
     return platformConfig.achFeeCapCents ?? null;
   }
 
+  /**
+   * Instant payout pricing for display. Stripe charges the actual fee (Platform Pricing Tool),
+   * so payout amounts always come from Stripe's balance, never from these numbers.
+   */
+  public getInstantPayoutPricing(): { percentRate: number; minFeeCents: number } {
+    return {
+      percentRate: platformConfig.instantPayout?.percentRate ?? 2.5,
+      minFeeCents: platformConfig.instantPayout?.minFeeCents ?? 100,
+    };
+  }
+
   public getAnnualDiscountPercent(): number {
     return platformConfig.annualDiscountPercent ?? 0;
   }

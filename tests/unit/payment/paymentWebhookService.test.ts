@@ -54,6 +54,7 @@ const makeMocks = () => {
     getCharge: jest.fn().mockResolvedValue({ success: true, data: { transfer: 'tr_1' } }),
     getDisputeReversedAmount: jest.fn().mockResolvedValue({ success: true, data: 0 }),
     createTransfer: jest.fn().mockResolvedValue({ success: true, data: { transferId: 'tr_2' } }),
+    refundApplicationFee: jest.fn().mockResolvedValue({ success: true, data: null }),
   };
   const profileDAO = {
     findFirst: jest.fn().mockResolvedValue({ _id: TENANT_PROFILE_ID, user: TENANT_USER_ID }),
@@ -905,5 +906,89 @@ describe('PaymentWebhookService - PaymentIntent tenant charges', () => {
       expect.anything(),
       expect.objectContaining({ skipDestinationTransfer: true })
     );
+  });
+});
+
+describe('PaymentWebhookService - landlord payouts', () => {
+  const payout = (overrides: Record<string, any> = {}) => ({
+    id: 'po_1',
+    status: 'paid' as const,
+    method: 'standard',
+    amount: 97500,
+    currency: 'usd',
+    arrival_date: 1760000000,
+    destination: 'ba_1',
+    ...overrides,
+  });
+
+  it('emits PAYOUT_PAID with the payout method and owner', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({
+      cuid: 'CUID1',
+      accountId: 'acct_pm',
+      ownerType: 'client',
+    });
+
+    await mocks.service.handlePayoutPaid('po_1', payout({ method: 'instant' }), 'acct_pm');
+
+    expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYOUT_PAID,
+      expect.objectContaining({ method: 'instant', ownerType: 'client', amountInCents: 97500 })
+    );
+  });
+
+  it('refunds the platform fee when an instant payout fails', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({
+      cuid: 'CUID1',
+      accountId: 'acct_pm',
+      ownerType: 'client',
+    });
+
+    await mocks.service.handlePayoutFailed(
+      'po_1',
+      payout({ status: 'failed', method: 'instant', application_fee: 'fee_1' }),
+      'acct_pm'
+    );
+
+    expect(mocks.paymentGatewayService.refundApplicationFee).toHaveBeenCalledWith(
+      'stripe',
+      'fee_1',
+      'instant-payout-fee-refund:po_1'
+    );
+    expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYOUT_FAILED,
+      expect.objectContaining({ method: 'instant' })
+    );
+  });
+
+  it('still emits PAYOUT_FAILED when the fee refund fails (e.g. Stripe already refunded it)', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: 'CUID1', accountId: 'acct_pm' });
+    mocks.paymentGatewayService.refundApplicationFee.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'already refunded',
+    });
+
+    await mocks.service.handlePayoutFailed(
+      'po_1',
+      payout({ status: 'failed', method: 'instant', application_fee: { id: 'fee_1' } }),
+      'acct_pm'
+    );
+
+    expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYOUT_FAILED,
+      expect.objectContaining({ method: 'instant', ownerType: 'client' })
+    );
+  });
+
+  it('does not refund anything when a standard payout fails', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: 'CUID1', accountId: 'acct_pm' });
+
+    await mocks.service.handlePayoutFailed('po_1', payout({ status: 'failed' }), 'acct_pm');
+
+    expect(mocks.paymentGatewayService.refundApplicationFee).not.toHaveBeenCalled();
   });
 });

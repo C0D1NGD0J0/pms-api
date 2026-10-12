@@ -23,6 +23,22 @@ import {
   PaymentMethod,
 } from '@interfaces/index';
 
+export interface IStripePayoutWebhookData {
+  status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
+  /** Platform fee on an instant payout (Platform Pricing Tool), as an ApplicationFee id */
+  application_fee?: string | { id: string } | null;
+  method?: 'standard' | 'instant' | string;
+  application_fee_amount?: number | null;
+  failure_message?: string;
+  failure_reason?: string;
+  failure_code?: string;
+  arrival_date: number;
+  destination: string;
+  currency: string;
+  amount: number;
+  id: string;
+}
+
 /**
  * Charge webhook payload. `invoice` exists on acacia endpoint versions only —
  * basil+ payloads omit it, so the invoice is resolved via `payment_intent`.
@@ -59,18 +75,6 @@ export interface IStripeInvoiceWebhookData {
   customer?: string;
   status?: string;
   id?: string;
-}
-
-export interface IStripePayoutWebhookData {
-  status: 'paid' | 'pending' | 'in_transit' | 'canceled' | 'failed';
-  failure_message?: string;
-  failure_reason?: string;
-  failure_code?: string;
-  arrival_date: number;
-  destination: string;
-  currency: string;
-  amount: number;
-  id: string;
 }
 
 export interface IStripeAccountWebhookData {
@@ -2085,8 +2089,11 @@ export class PaymentWebhookService {
         return { success: false, data: undefined, message: 'PaymentProcessor record not found' };
       }
 
-      this.log.info('Vendor payout successfully deposited to bank', {
+      const ownerType = paymentProcessor.ownerType ?? 'client';
+      const method = payoutData.method === 'instant' ? 'instant' : 'standard';
+      this.log.info(`${ownerType} payout successfully deposited to bank`, {
         payoutId,
+        method,
         cuid: paymentProcessor.cuid,
         accountId: connectedAccountId,
         amountInCents: payoutData.amount,
@@ -2096,6 +2103,8 @@ export class PaymentWebhookService {
       this.emitterService.emit(EventTypes.PAYOUT_PAID, {
         cuid: paymentProcessor.cuid,
         payoutId,
+        method,
+        ownerType,
         accountId: connectedAccountId,
         amountInCents: payoutData.amount,
         currency: payoutData.currency,
@@ -2127,8 +2136,11 @@ export class PaymentWebhookService {
         return { success: false, data: undefined, message: 'PaymentProcessor record not found' };
       }
 
-      this.log.warn('Vendor payout failed', {
+      const ownerType = paymentProcessor.ownerType ?? 'client';
+      const method = payoutData.method === 'instant' ? 'instant' : 'standard';
+      this.log.warn(`${ownerType} payout failed`, {
         payoutId,
+        method,
         cuid: paymentProcessor.cuid,
         failureCode: payoutData.failure_code,
         failureReason: payoutData.failure_reason,
@@ -2149,9 +2161,15 @@ export class PaymentWebhookService {
         );
       }
 
+      if (method === 'instant') {
+        await this.refundInstantPayoutFee(payoutId, payoutData);
+      }
+
       this.emitterService.emit(EventTypes.PAYOUT_FAILED, {
         cuid: paymentProcessor.cuid,
         payoutId,
+        method,
+        ownerType,
         accountId: connectedAccountId,
         amountInCents: payoutData.amount,
         currency: payoutData.currency,
@@ -2163,6 +2181,34 @@ export class PaymentWebhookService {
     } catch (error: any) {
       this.log.error('Error handling payout failed', { payoutId, error });
       throw error;
+    }
+  }
+
+  /**
+   * The landlord didn't receive a failed instant payout, so they shouldn't pay its fee.
+   * Best-effort: if Stripe already refunded the fee the call fails harmlessly and is logged.
+   */
+  private async refundInstantPayoutFee(
+    payoutId: string,
+    payoutData: IStripePayoutWebhookData
+  ): Promise<void> {
+    const feeId =
+      typeof payoutData.application_fee === 'string'
+        ? payoutData.application_fee
+        : payoutData.application_fee?.id;
+    if (!feeId) return;
+
+    const result = await this.paymentGatewayService.refundApplicationFee(
+      IPaymentGatewayProvider.STRIPE,
+      feeId,
+      `instant-payout-fee-refund:${payoutId}`
+    );
+    if (!result.success) {
+      this.log.warn('Could not refund fee on failed instant payout', {
+        payoutId,
+        feeId,
+        message: result.message,
+      });
     }
   }
 

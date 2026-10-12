@@ -173,3 +173,74 @@ describe('PaymentGatewayService - tenant charges', () => {
     });
   });
 });
+
+describe('PaymentGatewayService - instant payouts', () => {
+  const payoutInput = {
+    amount: 97500,
+    currency: 'usd',
+    destination: 'card_1',
+    idempotencyKey: 'instant-payout:acct_1:k1',
+  };
+
+  it('creates the instant payout through the provider', async () => {
+    const stripeService = { createInstantPayout: jest.fn().mockResolvedValue({ id: 'po_1' }) };
+    const gateway = makeGateway(stripeService);
+
+    const result = await gateway.createInstantPayout(
+      IPaymentGatewayProvider.STRIPE,
+      'acct_1',
+      payoutInput
+    );
+
+    expect(stripeService.createInstantPayout).toHaveBeenCalledWith('acct_1', payoutInput);
+    expect(result).toEqual({ success: true, data: { id: 'po_1' } });
+  });
+
+  it('returns the Stripe error message instead of throwing', async () => {
+    const gateway = makeGateway({
+      createInstantPayout: jest
+        .fn()
+        .mockRejectedValue(new Error('Debit card does not support instant payouts')),
+    });
+
+    const result = await gateway.createInstantPayout(
+      IPaymentGatewayProvider.STRIPE,
+      'acct_1',
+      payoutInput
+    );
+
+    expect(result).toEqual({
+      success: false,
+      data: null,
+      message: 'Debit card does not support instant payouts',
+    });
+  });
+
+  it('refunds an application fee through the provider', async () => {
+    const stripeService = { refundApplicationFee: jest.fn().mockResolvedValue(undefined) };
+    const gateway = makeGateway(stripeService);
+
+    const result = await gateway.refundApplicationFee(
+      IPaymentGatewayProvider.STRIPE,
+      'fee_1',
+      'refund-key'
+    );
+
+    expect(stripeService.refundApplicationFee).toHaveBeenCalledWith('fee_1', 'refund-key');
+    expect(result).toEqual({ success: true, data: null });
+  });
+
+  it('reports a failed fee refund without throwing', async () => {
+    const gateway = makeGateway({
+      refundApplicationFee: jest.fn().mockRejectedValue(new Error('already refunded')),
+    });
+
+    const result = await gateway.refundApplicationFee(
+      IPaymentGatewayProvider.STRIPE,
+      'fee_1',
+      'refund-key'
+    );
+
+    expect(result).toEqual({ success: false, data: null, message: 'already refunded' });
+  });
+});

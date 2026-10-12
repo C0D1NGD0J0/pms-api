@@ -2075,6 +2075,46 @@ describe('PaymentService - createConnectAccount', () => {
     );
   });
 
+  it.each([
+    ['US', 'full'],
+    ['CA', 'full'],
+    ['NG', 'recipient'],
+  ])(
+    'should create a %s landlord account under %s Stripe terms and record it',
+    async (country, serviceAgreement) => {
+      mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+      mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+      mockProfileDAO.findFirst.mockResolvedValue(null);
+      mockPaymentGatewayService.createConnectAccount.mockResolvedValue(makeGatewayResult() as any);
+      mockPaymentProcessorDAO.insert.mockResolvedValue({} as any);
+
+      await paymentService.createConnectAccount(CUID, { email: 'pm@example.com', country });
+
+      expect(mockPaymentGatewayService.createConnectAccount).toHaveBeenCalledWith(
+        'stripe',
+        expect.objectContaining({ serviceAgreement })
+      );
+      expect(mockPaymentProcessorDAO.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceAgreement })
+      );
+    }
+  );
+
+  it("should ignore a vendor's processor when checking for an existing client account", async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(null);
+    mockPaymentGatewayService.createConnectAccount.mockResolvedValue(makeGatewayResult() as any);
+    mockPaymentProcessorDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.createConnectAccount(CUID, { email: 'pm@example.com', country: 'US' });
+
+    expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledWith({
+      cuid: CUID,
+      ownerType: 'client',
+    });
+  });
+
   it('should throw BadRequestError when a Connect account already exists', async () => {
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: 'acct_existing' } as any);
 
@@ -3037,6 +3077,7 @@ describe('PaymentService - updatePayoutSchedule', () => {
   beforeEach(() => {
     mockPaymentProcessorDAO = {
       findFirst: jest.fn(),
+      update: jest.fn(),
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
       updatePayoutSchedule: jest.fn(),
@@ -3067,27 +3108,40 @@ describe('PaymentService - updatePayoutSchedule', () => {
     );
   });
 
-  it('should update to daily without anchor', async () => {
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+  it('should save the weekday so a paused schedule resumes on the same day', async () => {
+    const processor = makeProcessor();
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(processor as any);
     mockPaymentGatewayService.updatePayoutSchedule.mockResolvedValue({
       success: true,
       data: null,
     } as any);
 
-    await paymentService.updatePayoutSchedule(CUID, 'daily');
+    await paymentService.updatePayoutSchedule(CUID, 'weekly', 'wednesday');
 
-    expect(mockPaymentGatewayService.updatePayoutSchedule).toHaveBeenCalledWith(
-      'stripe',
-      'acct_test_123',
-      'daily',
-      undefined
+    expect(mockPaymentProcessorDAO.update).toHaveBeenCalledWith(
+      { _id: processor._id },
+      { $set: { payoutWeeklyAnchor: 'wednesday' } }
     );
+  });
+
+  it('should not save the weekday when Stripe rejects the update', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.updatePayoutSchedule.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'Stripe update failed',
+    } as any);
+
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'tuesday')).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentProcessorDAO.update).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestError when no Connect account exists', async () => {
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
 
-    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly')).rejects.toThrow(
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'monday')).rejects.toThrow(
       BadRequestError
     );
     expect(mockPaymentGatewayService.updatePayoutSchedule).not.toHaveBeenCalled();
@@ -3098,7 +3152,7 @@ describe('PaymentService - updatePayoutSchedule', () => {
       makeProcessor({ payoutsEnabled: false }) as any
     );
 
-    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly')).rejects.toThrow(
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'monday')).rejects.toThrow(
       BadRequestError
     );
     expect(mockPaymentGatewayService.updatePayoutSchedule).not.toHaveBeenCalled();
@@ -3112,8 +3166,198 @@ describe('PaymentService - updatePayoutSchedule', () => {
       message: 'Stripe update failed',
     } as any);
 
-    await expect(paymentService.updatePayoutSchedule(CUID, 'monthly')).rejects.toThrow(
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'monday')).rejects.toThrow(
       BadRequestError
+    );
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Instant payouts (getPayoutBalance quote + requestInstantPayout)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - instant payouts', () => {
+  let paymentService: PaymentService;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+  let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
+
+  const makeProcessor = (overrides: Record<string, any> = {}) => ({
+    _id: new Types.ObjectId(),
+    cuid: CUID,
+    accountId: 'acct_landlord_1',
+    serviceAgreement: 'full',
+    payoutsEnabled: true,
+    payoutsBlocked: false,
+    payoutsPaused: false,
+    disputeStats: { total: 0, open: 0 },
+    ...overrides,
+  });
+
+  // $1,000 instant-eligible; the Platform Pricing Tool's 2.5% leaves $975
+  const makeBalance = (overrides: Record<string, any> = {}) => ({
+    available: [{ amount: 100000, currency: 'usd' }],
+    pending: [{ amount: 0, currency: 'usd' }],
+    instant_available: [
+      {
+        amount: 100000,
+        currency: 'usd',
+        net_available: [{ amount: 97500, destination: 'card_debit_1' }],
+      },
+    ],
+    ...overrides,
+  });
+
+  const mockBalance = (balance: Record<string, any>) =>
+    mockPaymentGatewayService.getConnectBalance.mockResolvedValue({
+      success: true,
+      data: balance,
+    } as any);
+
+  beforeEach(() => {
+    mockPaymentProcessorDAO = {
+      findFirst: jest.fn(),
+    } as unknown as jest.Mocked<PaymentProcessorDAO>;
+    mockPaymentGatewayService = {
+      getConnectBalance: jest.fn(),
+      createInstantPayout: jest.fn(),
+    } as unknown as jest.Mocked<PaymentGatewayService>;
+    paymentService = makeServiceWithMocks({
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockPaymentGatewayService,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('should quote the instant payout from Stripe net figures', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockBalance(makeBalance());
+
+    const result = await paymentService.getPayoutBalance(CUID);
+
+    expect(result.data.instant).toEqual({
+      eligible: true,
+      available: 100000,
+      net: 97500,
+      fee: 2500,
+      currency: 'usd',
+      destination: 'card_debit_1',
+    });
+  });
+
+  it.each([
+    ['country_not_supported', { serviceAgreement: 'recipient' }, {}],
+    ['payouts_blocked', { payoutsBlocked: true }, {}],
+    ['payouts_paused', { payoutsPaused: true }, {}],
+    ['open_disputes', { disputeStats: { total: 1, open: 1 } }, {}],
+    ['no_instant_balance', {}, { instant_available: [] }],
+    ['pricing_unavailable', {}, { instant_available: [{ amount: 100000, currency: 'usd' }] }],
+  ])(
+    'should mark instant payout ineligible (%s)',
+    async (reason, processorOverrides, balanceOverrides) => {
+      mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor(processorOverrides) as any);
+      mockBalance(makeBalance(balanceOverrides));
+
+      const result = await paymentService.getPayoutBalance(CUID);
+
+      expect(result.data.instant).toEqual(expect.objectContaining({ eligible: false, reason }));
+    }
+  );
+
+  it('should pay out the net amount to the listed destination with a per-request Stripe key', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockBalance(makeBalance());
+    mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'po_instant_1',
+        amount: 97500,
+        currency: 'usd',
+        application_fee_amount: 2500,
+        arrival_date: 1760000000,
+      },
+    } as any);
+
+    const result = await paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-1');
+
+    expect(mockPaymentGatewayService.createInstantPayout).toHaveBeenCalledWith(
+      'stripe',
+      'acct_landlord_1',
+      {
+        amount: 97500,
+        currency: 'usd',
+        destination: 'card_debit_1',
+        idempotencyKey: 'instant-payout:acct_landlord_1:req-key-1',
+      }
+    );
+    expect(result.data).toEqual(
+      expect.objectContaining({ payoutId: 'po_instant_1', amount: 97500, fee: 2500 })
+    );
+  });
+
+  it("should cap the instant payout at Stripe's per-payout maximum", async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    // $20,000 instant balance, 2.5% fee → $19,500 net, above the $9,999 maximum
+    mockBalance(
+      makeBalance({
+        instant_available: [
+          {
+            amount: 2000000,
+            currency: 'usd',
+            net_available: [{ amount: 1950000, destination: 'card_debit_1' }],
+          },
+        ],
+      })
+    );
+    mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
+      success: true,
+      data: {
+        id: 'po_capped',
+        amount: 999900,
+        currency: 'usd',
+        application_fee_amount: 25638,
+        arrival_date: 1760000000,
+      },
+    } as any);
+
+    const quote = (await paymentService.getPayoutBalance(CUID)).data.instant;
+    expect(quote).toEqual(
+      expect.objectContaining({ eligible: true, capped: true, net: 999900, fee: 25638 })
+    );
+
+    const result = await paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-cap');
+
+    expect(mockPaymentGatewayService.createInstantPayout).toHaveBeenCalledWith(
+      'stripe',
+      'acct_landlord_1',
+      expect.objectContaining({ amount: 999900 })
+    );
+    expect(result.data.amount).toBe(999900);
+  });
+
+  it('should refuse an instant payout when the account is not eligible', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(
+      makeProcessor({ serviceAgreement: 'recipient' }) as any
+    );
+    mockBalance(makeBalance());
+
+    await expect(paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-2')).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentGatewayService.createInstantPayout).not.toHaveBeenCalled();
+  });
+
+  it('should surface a Stripe failure as BadRequestError', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockBalance(makeBalance());
+    mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'Debit card does not support instant payouts',
+    } as any);
+
+    await expect(paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-3')).rejects.toThrow(
+      'Debit card does not support instant payouts'
     );
   });
 });

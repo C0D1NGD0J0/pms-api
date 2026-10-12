@@ -7,6 +7,12 @@
   "achPercentRate": 1.25,
   "achFeeCapCents": 3000,
 
+  "instantPayout": {
+    "percentRate": 2.5,
+    "minFeeCents": 100,
+    "note": "Display only. The fee is charged by Stripe through the Platform Pricing Tool (Dashboard > Connect > Instant Payouts pricing) - keep these values in sync with it. Weekly payouts are free."
+  },
+
   "annualDiscountPercent": 0,
   "annualDiscountNote": "Percent off 12x monthly for annual billing (0 = no discount). Annual priceInCents and savingsPercent are derived from this at load time. The Stripe annual Price objects must be updated to match.",
 

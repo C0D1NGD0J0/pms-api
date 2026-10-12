@@ -56,6 +56,8 @@ const controllerMethods = [
   'listPayments',
   'getPayment',
   'downloadMyReceipt',
+  'requestInstantPayout',
+  'updatePayoutSchedule',
 ] as const;
 
 const mockController = Object.fromEntries(
@@ -300,6 +302,45 @@ describe('payments routes — access control', () => {
       expect(mockController.ensureSelfMaintenanceCharge).not.toHaveBeenCalled();
     });
   });
+});
+
+describe('payout routes', () => {
+  const instantPayoutUrl = `${base}/payout-account/instant-payout`;
+  const scheduleUrl = `${base}/payout-account/schedule`;
+
+  it('lets a billing manager request an instant payout', async () => {
+    const res = await send('post', instantPayoutUrl, { role: ROLES.SUPER_ADMIN });
+    expect(res.status).toBe(200);
+    expect(res.body.handledBy).toBe('requestInstantPayout');
+  });
+
+  it.each([ROLES.TENANT, ROLES.VENDOR])(
+    'forbids a %s from requesting an instant payout',
+    async (role) => {
+      const res = await send('post', instantPayoutUrl, { role });
+      expect(res.status).toBe(403);
+      expect(mockController.requestInstantPayout).not.toHaveBeenCalled();
+    }
+  );
+
+  it('accepts a weekly schedule with a weekday', async () => {
+    const res = await send(
+      'patch',
+      scheduleUrl,
+      { role: ROLES.SUPER_ADMIN },
+      { interval: 'weekly', weeklyAnchor: 'friday' }
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it.each([{ interval: 'daily' }, { interval: 'monthly' }, { interval: 'weekly' }])(
+    'rejects schedule body %o (weekly with a weekday only)',
+    async (body) => {
+      const res = await send('patch', scheduleUrl, { role: ROLES.SUPER_ADMIN }, body);
+      expect(res.status).toBe(422);
+      expect(mockController.updatePayoutSchedule).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('invoice webhook production guard', () => {

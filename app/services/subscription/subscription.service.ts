@@ -262,6 +262,7 @@ export class SubscriptionService {
         transactionFeePercent: config.transactionFeePercent,
         achPercentRate: subscriptionPlanConfig.getAchPercentRate(),
         achFeeCapCents: subscriptionPlanConfig.getAchFeeCapCents(),
+        instantPayout: subscriptionPlanConfig.getInstantPayoutPricing(),
         isCustomPricing: config.isCustomPricing,
         seatPricing: config.seatPricing,
         limits: config.limits,
@@ -1685,7 +1686,11 @@ export class SubscriptionService {
 
   private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      // The client's own processor — vendor processors also carry the inviting client's cuid
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+      });
       if (!paymentProcessor?.accountId) return;
 
       if (
@@ -1700,7 +1705,7 @@ export class SubscriptionService {
           'manual'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: {
               payoutsPaused: true,
@@ -1715,10 +1720,10 @@ export class SubscriptionService {
           IPaymentGatewayProvider.STRIPE,
           paymentProcessor.accountId,
           'weekly',
-          'monday'
+          paymentProcessor.payoutWeeklyAnchor || 'monday'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: { payoutsPaused: false },
             $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },

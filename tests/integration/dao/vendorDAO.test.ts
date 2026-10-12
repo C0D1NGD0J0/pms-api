@@ -624,6 +624,78 @@ describe('VendorDAO Integration Tests', () => {
       expect(updated?.servicesOffered?.hvac).toBe(true);
     });
 
+    it('keeps stored insurance fields that a partial update does not send', async () => {
+      const expirationDate = new Date('2027-06-30T00:00:00.000Z');
+      const created = await Vendor.create({
+        companyName: 'Insured Vendor',
+        businessType: 'Plumbing',
+        registrationNumber: 'REG-INSURED',
+        insuranceInfo: {
+          provider: 'Acme Insurance',
+          policyNumber: 'POL-1',
+          expirationDate,
+          coverageAmount: 500000,
+        },
+        servicesOffered: { plumbing: true, electrical: true },
+        connectedClients: [
+          { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+        ],
+      });
+
+      const updated = await vendorDAO.updateVendor(created.vuid, {
+        insuranceInfo: { provider: 'New Insurer', policyNumber: 'POL-2' },
+        servicesOffered: { plumbing: false },
+      } as any);
+
+      expect(updated?.insuranceInfo?.provider).toBe('New Insurer');
+      expect(updated?.insuranceInfo?.policyNumber).toBe('POL-2');
+      expect(updated?.insuranceInfo?.expirationDate?.toISOString()).toBe(
+        expirationDate.toISOString()
+      );
+      expect(updated?.insuranceInfo?.coverageAmount).toBe(500000);
+      expect(updated?.servicesOffered?.plumbing).toBe(false);
+      expect(updated?.servicesOffered?.electrical).toBe(true);
+    });
+
+    it('clears an insurance field explicitly sent as null', async () => {
+      const created = await Vendor.create({
+        companyName: 'Clearing Vendor',
+        businessType: 'Plumbing',
+        registrationNumber: 'REG-CLEAR',
+        insuranceInfo: { provider: 'Acme', expirationDate: new Date('2027-01-01') },
+        connectedClients: [
+          { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+        ],
+      });
+
+      const updated = await vendorDAO.updateVendor(created._id, {
+        insuranceInfo: { expirationDate: null },
+      } as any);
+
+      expect(updated?.insuranceInfo?.expirationDate ?? null).toBeNull();
+      expect(updated?.insuranceInfo?.provider).toBe('Acme');
+    });
+
+    it('replaces the address as a whole so stale components of the old address do not linger', async () => {
+      const created = await Vendor.create({
+        companyName: 'Moving Vendor',
+        businessType: 'Plumbing',
+        registrationNumber: 'REG-MOVE',
+        address: { fullAddress: '1 Old Rd, Oldtown', city: 'Oldtown', unitNumber: '4B' },
+        connectedClients: [
+          { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+        ],
+      });
+
+      const updated = await vendorDAO.updateVendor(created._id, {
+        address: { fullAddress: '9 New St, Newtown', city: 'Newtown' },
+      } as any);
+
+      expect(updated?.address?.fullAddress).toBe('9 New St, Newtown');
+      expect(updated?.address?.city).toBe('Newtown');
+      expect(updated?.address?.unitNumber).toBeUndefined();
+    });
+
     it('should return null for non-existent vendor', async () => {
       const fakeId = new Types.ObjectId();
       const updated = await vendorDAO.updateVendor(fakeId, {
@@ -739,6 +811,127 @@ describe('VendorDAO Integration Tests', () => {
 
       expect(result.pagination).toBeDefined();
       expect(result.pagination?.total).toBe(1);
+    });
+
+    it('returns one page of connected vendors with the full total', async () => {
+      await Vendor.insertMany(
+        Array.from({ length: 25 }, (_, i) => ({
+          companyName: `Bulk Vendor ${i}`,
+          businessType: 'Plumbing',
+          registrationNumber: `REG-BULK-${i}`,
+          connectedClients: [
+            { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+          ],
+        }))
+      );
+
+      const result = await vendorDAO.getClientVendors(testCuid);
+
+      expect(result.items).toHaveLength(20);
+      expect(result.pagination?.total).toBe(26);
+      expect(result.pagination?.hasMoreResource).toBe(true);
+    });
+
+    it('excludes a vendor disconnected from this client even if connected to another one', async () => {
+      await Vendor.create({
+        companyName: 'Disconnected Here Connected Elsewhere',
+        businessType: 'Plumbing',
+        registrationNumber: 'REG-MIXED',
+        connectedClients: [
+          { cuid: testCuid, isConnected: false, primaryAccountHolderUserId: testUserId },
+          { cuid: testCuid2, isConnected: true, primaryAccountHolderUserId: testUserId2 },
+        ],
+      });
+
+      const result = await vendorDAO.getClientVendors(testCuid);
+
+      expect(result.items.map((v) => v.companyName)).toEqual(['Client 1 Vendor Active']);
+    });
+  });
+
+  describe('getAllClientVendors', () => {
+    beforeEach(async () => {
+      await Vendor.create({
+        companyName: 'Client 1 Vendor Active',
+        businessType: 'Plumbing',
+        registrationNumber: 'REG-C1-ACTIVE',
+        connectedClients: [
+          { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+        ],
+      });
+    });
+
+    it('returns every connected vendor, beyond the list() default page of 20', async () => {
+      await Vendor.insertMany(
+        Array.from({ length: 25 }, (_, i) => ({
+          companyName: `Bulk Vendor ${i}`,
+          businessType: 'Plumbing',
+          registrationNumber: `REG-BULK-${i}`,
+          connectedClients: [
+            { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+          ],
+        }))
+      );
+
+      const vendors = await vendorDAO.getAllClientVendors(testCuid);
+
+      expect(vendors).toHaveLength(26);
+    });
+
+    it('narrows the roster to vendors offering the requested service', async () => {
+      await Vendor.insertMany(
+        Array.from({ length: 25 }, (_, i) => ({
+          companyName: `Service Vendor ${i}`,
+          businessType: 'Plumbing',
+          registrationNumber: `REG-SVC-${i}`,
+          servicesOffered: i % 2 === 0 ? { plumbing: true } : { electrical: true },
+          connectedClients: [
+            { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+          ],
+        }))
+      );
+
+      const vendors = await vendorDAO.getAllClientVendors(testCuid, { serviceKey: 'plumbing' });
+
+      expect(vendors).toHaveLength(13);
+      expect(vendors.every((v) => v.servicesOffered?.plumbing === true)).toBe(true);
+    });
+
+    it('returns only the projected fields', async () => {
+      const [vendor] = await vendorDAO.getAllClientVendors(testCuid, { projection: 'companyName' });
+
+      expect(vendor.companyName).toBe('Client 1 Vendor Active');
+      expect(vendor.registrationNumber).toBeUndefined();
+    });
+  });
+
+  describe('disconnectAllFromClient', () => {
+    it('disconnects every vendor from the client and leaves other clients connected', async () => {
+      await Vendor.insertMany(
+        Array.from({ length: 25 }, (_, i) => ({
+          companyName: `Shared Vendor ${i}`,
+          businessType: 'Plumbing',
+          registrationNumber: `REG-SHARED-${i}`,
+          connectedClients: [
+            { cuid: testCuid, isConnected: true, primaryAccountHolderUserId: testUserId },
+            { cuid: testCuid2, isConnected: true, primaryAccountHolderUserId: testUserId2 },
+          ],
+        }))
+      );
+
+      const disconnected = await vendorDAO.disconnectAllFromClient(testCuid);
+
+      expect(disconnected).toBe(25);
+      expect(
+        await Vendor.countDocuments({
+          connectedClients: { $elemMatch: { cuid: testCuid, isConnected: true } },
+        })
+      ).toBe(0);
+      expect(
+        await Vendor.countDocuments({
+          connectedClients: { $elemMatch: { cuid: testCuid2, isConnected: true } },
+        })
+      ).toBe(25);
     });
   });
 

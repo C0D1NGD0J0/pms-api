@@ -255,26 +255,14 @@ export class VendorSuggestionService {
       return null;
     }
 
-    const { items: allVendors } = await this.vendorDAO.getClientVendors(cuid);
-    if (!allVendors || allVendors.length === 0) {
-      this.log.info({ cuid }, 'suggestVendor: no vendors connected to client');
-      return null;
-    }
-
-    const qualified = allVendors.filter((v: any) => v.servicesOffered?.[serviceKey] === true);
+    const qualified = await this.vendorDAO.getAllClientVendors(cuid, {
+      serviceKey,
+      projection: 'vuid companyName address.computedLocation serviceAreas',
+    });
     if (qualified.length === 0) {
       this.log.info(
-        {
-          cuid,
-          category,
-          serviceKey,
-          vendorCount: allVendors.length,
-          sample: allVendors.slice(0, 3).map((v: any) => ({
-            vuid: v.vuid,
-            servicesOffered: v.servicesOffered,
-          })),
-        },
-        'suggestVendor: no vendors qualify for service key'
+        { cuid, category, serviceKey },
+        'suggestVendor: no connected vendors offer this service'
       );
       return null;
     }

@@ -32,7 +32,7 @@ const createService = (mocks: {
   serviceAreaService?: Partial<jest.Mocked<ServiceAreaService>>;
 }) => {
   const defaultDAO = {
-    getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [] })),
+    getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([])),
     getByMruid: jest.fn(),
     findFirst: jest.fn(),
     update: jest.fn(),
@@ -44,7 +44,7 @@ const createService = (mocks: {
 
   return new VendorSuggestionService({
     maintenanceRequestDAO: { ...defaultDAO, ...mocks.maintenanceRequestDAO } as any,
-    vendorDAO: { getClientVendors: jest.fn(), ...mocks.vendorDAO } as any,
+    vendorDAO: { getAllClientVendors: jest.fn(), ...mocks.vendorDAO } as any,
     emitterService: { emit: jest.fn(), on: jest.fn() } as any,
     propertyDAO: { findFirst: jest.fn(), ...mocks.propertyDAO } as any,
     aiService: { categorizeMaintenanceRequest: jest.fn(), selectBestVendor: jest.fn() } as any,
@@ -62,23 +62,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
   it('returns null when client has no vendors', async () => {
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [] })),
-      },
-    });
-
-    const result = await service.suggestVendor('CUID1', MaintenanceCategory.PLUMBING);
-    expect(result).toBeNull();
-  });
-
-  it('returns null when no vendors match the category', async () => {
-    const electrician = makeVendor({
-      companyName: 'Sparky Electric',
-      servicesOffered: { electrical: true },
-    });
-
-    const service = createService({
-      vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [electrician] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([])),
       },
     });
 
@@ -94,7 +78,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [newPlumber] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([newPlumber])),
       },
       // empty Map → isNewVendor = true → baseline score 50
     });
@@ -132,9 +116,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest
-          .fn()
-          .mockReturnValue(Promise.resolve({ items: [highRated, lowRated] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([highRated, lowRated])),
       },
       maintenanceRequestDAO: {
         getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
@@ -174,7 +156,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [busy, idle] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([busy, idle])),
       },
       maintenanceRequestDAO: {
         getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
@@ -214,7 +196,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [fast, slow] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([fast, slow])),
       },
       maintenanceRequestDAO: {
         getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
@@ -254,7 +236,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [best, decent] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([best, decent])),
       },
       maintenanceRequestDAO: {
         getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
@@ -284,7 +266,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
     const service = createService({
       vendorDAO: {
-        getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
+        getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([vendor])),
       },
       maintenanceRequestDAO: {
         getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),
@@ -300,16 +282,19 @@ describe('VendorSuggestionService.suggestVendor', () => {
     expect(result!.reasons.some((r) => r.includes('active job'))).toBe(true);
   });
 
-  it('only considers vendors connected to the given cuid', async () => {
-    const mockGetClientVendors = jest.fn().mockReturnValue(Promise.resolve({ items: [] }));
+  it('asks the DAO only for vendors of the given cuid that offer the service', async () => {
+    const mockGetAllClientVendors = jest.fn().mockReturnValue(Promise.resolve([]));
 
     const service = createService({
-      vendorDAO: { getClientVendors: mockGetClientVendors },
+      vendorDAO: { getAllClientVendors: mockGetAllClientVendors },
     });
 
     await service.suggestVendor('SPECIFIC_CUID', MaintenanceCategory.ELECTRICAL);
 
-    expect(mockGetClientVendors).toHaveBeenCalledWith('SPECIFIC_CUID');
+    expect(mockGetAllClientVendors).toHaveBeenCalledWith(
+      'SPECIFIC_CUID',
+      expect.objectContaining({ serviceKey: 'electrical' })
+    );
   });
 
   describe('proximity filtering and scoring', () => {
@@ -323,7 +308,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
+          getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([vendor])),
         },
         serviceAreaService: { isLocationInVendorServiceArea: mockIsInRange },
       });
@@ -342,7 +327,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
+          getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([vendor])),
         },
         propertyDAO: {
           findFirst: jest
@@ -376,7 +361,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
+          getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([vendor])),
         },
         propertyDAO: {
           findFirst: jest
@@ -412,7 +397,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest.fn().mockReturnValue(Promise.resolve({ items: [vendor] })),
+          getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([vendor])),
         },
         propertyDAO: {
           findFirst: jest
@@ -453,9 +438,7 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest
-            .fn()
-            .mockReturnValue(Promise.resolve({ items: [vendor1, vendor2] })),
+          getAllClientVendors: jest.fn().mockReturnValue(Promise.resolve([vendor1, vendor2])),
         },
         propertyDAO: {
           findFirst: jest
@@ -517,9 +500,9 @@ describe('VendorSuggestionService.suggestVendor', () => {
 
       const service = createService({
         vendorDAO: {
-          getClientVendors: jest
+          getAllClientVendors: jest
             .fn()
-            .mockReturnValue(Promise.resolve({ items: [closerVendor, fartherVendor] })),
+            .mockReturnValue(Promise.resolve([closerVendor, fartherVendor])),
         },
         maintenanceRequestDAO: {
           getVendorStatsBatch: jest.fn().mockReturnValue(Promise.resolve(statsMap)),

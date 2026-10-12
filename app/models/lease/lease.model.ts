@@ -433,6 +433,17 @@ const LeaseSchema = new Schema<ILeaseDocument>(
           type: Schema.Types.ObjectId,
           ref: 'User',
         },
+        signerInfo: {
+          name: {
+            type: String,
+            trim: true,
+          },
+          email: {
+            type: String,
+            trim: true,
+            match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
+          },
+        },
         coTenantInfo: {
           name: {
             type: String,

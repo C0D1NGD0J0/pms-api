@@ -237,18 +237,19 @@ export interface IPushSubscription {
   createdAt?: Date;
 }
 
+export interface IProfileEditPersonalInfo extends IPersonalInfo {
+  pendingEmail?: string | null;
+  isActive: boolean;
+  email: string;
+  uid: string;
+}
+
 export interface IPaymentHistoryItem {
   status: PaymentStatus;
   type: PaymentType;
   amount: number;
   dueDate: Date;
   date: Date;
-}
-
-export interface IProfileEditPersonalInfo extends IPersonalInfo {
-  isActive: boolean;
-  email: string;
-  uid: string;
 }
 
 export interface IProfileCompletion {

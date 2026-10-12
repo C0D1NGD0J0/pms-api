@@ -1,8 +1,8 @@
 import dayjs from 'dayjs';
 import { Invitation } from '@models/index';
-import { hashGenerator } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/index';
 import { type QueryFilter, ClientSession, Types } from 'mongoose';
+import { createSafeMongoUpdate, hashGenerator } from '@utils/index';
 import {
   IInvitationListQuery,
   IInvitationDocument,
@@ -77,10 +77,11 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
-  async findByToken(token: string): Promise<IInvitationDocument | null> {
+  // Callers that omit clientId must compare invitation.clientId to the request's client themselves
+  async findByToken(token: string, clientId?: string): Promise<IInvitationDocument | null> {
     try {
       return await this.findFirst(
-        { invitationToken: token },
+        { invitationToken: token, ...(clientId && { clientId }) },
         {
           populate: [
             {
@@ -184,24 +185,23 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     session?: ClientSession
   ): Promise<IInvitationDocument | null> {
     try {
+      // Dotted metadata paths so a partial edit keeps saved role info it doesn't resend
       const updateData: any = {
         $set: {
           inviteeEmail: invitationData.inviteeEmail.toLowerCase(),
           role: invitationData.role,
           status: invitationData.status,
           personalInfo: invitationData.personalInfo,
-          metadata: {
-            ...invitationData.metadata,
-            remindersSent: 0,
-            lastReminderSent: undefined,
-          },
+          ...createSafeMongoUpdate({ metadata: invitationData.metadata ?? {} }),
+          'metadata.remindersSent': 0,
         },
+        $unset: { 'metadata.lastReminderSent': 1 },
       };
 
       if (invitationData.linkedVendorUid) {
         updateData.$set.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
       } else {
-        updateData.$unset = { linkedVendorUid: 1 };
+        updateData.$unset.linkedVendorUid = 1;
       }
 
       return await this.update({ iuid, clientId }, updateData, { session });
@@ -414,7 +414,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
   ): Promise<IInvitationDocument | null> {
     try {
       return await this.update(
-        { id: invitationId, clientId },
+        { _id: new Types.ObjectId(invitationId), clientId: new Types.ObjectId(clientId) },
         {
           $inc: { 'metadata.remindersSent': 1 },
           $set: { 'metadata.lastReminderSent': new Date() },

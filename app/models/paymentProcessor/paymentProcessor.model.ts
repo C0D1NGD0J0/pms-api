@@ -1,5 +1,5 @@
 import { Schema, model } from 'mongoose';
-import { generateShortUID, createLogger } from '@utils/index';
+import { generateShortUID, createLogger, WEEKDAYS } from '@utils/index';
 import {
   PaymentProcessorAccountType,
   IPaymentProcessorDocument,
@@ -77,6 +77,17 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
     },
     payoutsPausedAt: {
       type: Date,
+    },
+    serviceAgreement: {
+      type: String,
+      enum: ['full', 'recipient'],
+      default: 'recipient',
+      immutable: true,
+    },
+    payoutWeeklyAnchor: {
+      type: String,
+      enum: WEEKDAYS,
+      default: 'monday',
     },
     disputeStats: {
       total: { type: Number, default: 0 },

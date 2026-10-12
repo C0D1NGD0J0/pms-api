@@ -38,15 +38,14 @@ const makeMocks = () => {
     withTransaction: jest.fn((session: unknown, cb: (s: unknown) => unknown) => cb(session)),
   };
   const paymentGatewayService = {
-    getInvoicePaymentDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
+    getChargeDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
     getInvoiceIdForPaymentIntent: jest.fn().mockResolvedValue({ success: true, data: null }),
     retrievePaymentMethod: jest.fn().mockResolvedValue({ success: true, data: { type: 'card' } }),
-    voidInvoice: jest.fn().mockResolvedValue({ success: true }),
-    createInvoice: jest
+    cancelCharge: jest.fn().mockResolvedValue({ success: true }),
+    createCharge: jest
       .fn()
-      .mockResolvedValue({ success: true, data: { invoiceId: 'in_card_retry' } }),
-    finalizeInvoice: jest.fn().mockResolvedValue({ success: true }),
-    payInvoice: jest.fn().mockResolvedValue({ success: true }),
+      .mockResolvedValue({ success: true, data: { chargeId: 'pi_card_retry' } }),
+    payCharge: jest.fn().mockResolvedValue({ success: true }),
     updateCustomerDefaultPaymentMethod: jest.fn().mockResolvedValue({ success: true }),
     retrieveSetupIntent: jest.fn().mockResolvedValue({
       success: true,
@@ -55,6 +54,7 @@ const makeMocks = () => {
     getCharge: jest.fn().mockResolvedValue({ success: true, data: { transfer: 'tr_1' } }),
     getDisputeReversedAmount: jest.fn().mockResolvedValue({ success: true, data: 0 }),
     createTransfer: jest.fn().mockResolvedValue({ success: true, data: { transferId: 'tr_2' } }),
+    refundApplicationFee: jest.fn().mockResolvedValue({ success: true, data: null }),
   };
   const profileDAO = {
     findFirst: jest.fn().mockResolvedValue({ _id: TENANT_PROFILE_ID, user: TENANT_USER_ID }),
@@ -131,7 +131,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded status guards', 
   it('reads charge details through paymentGatewayService, not StripeService', async () => {
     const mocks = makeMocks();
     mocks.paymentDAO.findFirst.mockResolvedValue(makePayment());
-    mocks.paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    mocks.paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
       data: { chargeId: 'ch_paid', paymentMethodType: 'acss_debit' },
     });
@@ -169,8 +169,8 @@ describe('PaymentWebhookService - handleInvoicePaymentFailed', () => {
 
       expect(result.success).toBe(true);
       expect(mocks.paymentDAO.update).not.toHaveBeenCalled();
-      expect(mocks.paymentGatewayService.createInvoice).not.toHaveBeenCalled();
-      expect(mocks.paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+      expect(mocks.paymentGatewayService.createCharge).not.toHaveBeenCalled();
+      expect(mocks.paymentGatewayService.payCharge).not.toHaveBeenCalled();
       expect(mocks.emitterService.emit).not.toHaveBeenCalled();
     }
   );
@@ -228,7 +228,7 @@ describe('PaymentWebhookService - handleInvoicePaymentFailed', () => {
         failure: { retryCount: MAX_CHARGE_ATTEMPTS - 1 },
       })
     );
-    mocks.paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    mocks.paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
       data: { lastPaymentError: { message: 'Your card was declined.' } },
     });
@@ -273,9 +273,9 @@ describe('PaymentWebhookService - handleInvoicePaymentFailed', () => {
 
     expect(result.success).toBe(true);
     expect(mocks.stripeService.retrievePaymentMethod).not.toHaveBeenCalled();
-    expect(mocks.paymentGatewayService.payInvoice).toHaveBeenCalledWith(
+    expect(mocks.paymentGatewayService.payCharge).toHaveBeenCalledWith(
       expect.anything(),
-      'in_card_retry',
+      'pi_card_retry',
       { paymentMethod: 'pm_card' }
     );
     expect(mocks.emitterService.emit).toHaveBeenCalledWith(
@@ -310,7 +310,7 @@ describe('PaymentWebhookService - handleInvoicePaymentFailed', () => {
       default_payment_method: 'pm_acss',
     });
 
-    expect(mocks.paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+    expect(mocks.paymentGatewayService.payCharge).not.toHaveBeenCalled();
     expect(statusSetIn(mocks.paymentDAO)).toContain(PaymentRecordStatus.FAILED);
     expect(mocks.emitterService.emit).toHaveBeenCalledWith(
       EventTypes.PAYMENT_FAILED,
@@ -651,7 +651,7 @@ describe('PaymentWebhookService - maintenance invoice stamping', () => {
     mocks.paymentDAO.findFirst.mockResolvedValue(
       makePayment({ paymentType: PaymentRecordType.MAINTENANCE, maintenanceRequestUid: 'MR-1' })
     );
-    mocks.paymentGatewayService.getInvoicePaymentDetails.mockResolvedValue({
+    mocks.paymentGatewayService.getChargeDetails.mockResolvedValue({
       success: true,
       data: { chargeId: 'ch_maint' },
     });
@@ -805,5 +805,190 @@ describe('PaymentWebhookService - disputes', () => {
       expect.anything()
     );
     expect(emittedEvents(mocks.emitterService)).not.toContain(EventTypes.PAYMENT_DISPUTE_WON);
+  });
+});
+
+describe('PaymentWebhookService - PaymentIntent tenant charges', () => {
+  const PI_ID = 'pi_current';
+
+  it('settles a succeeded PaymentIntent and links the charge receipt', async () => {
+    const mocks = makeMocks();
+    mocks.paymentDAO.findFirst.mockResolvedValue(makePayment({ gatewayPaymentId: PI_ID }));
+    mocks.paymentGatewayService.getChargeDetails.mockResolvedValue({
+      success: true,
+      data: {
+        chargeId: 'ch_pi',
+        paymentMethodType: 'acss_debit',
+        receiptUrl: 'https://pay.stripe.com/receipts/ch_pi',
+      },
+    });
+
+    await mocks.service.handlePaymentIntentSucceeded({
+      id: PI_ID,
+      currency: 'cad',
+      metadata: { cuid: CUID },
+    });
+
+    expect(mocks.paymentGatewayService.getChargeDetails).toHaveBeenCalledWith('stripe', PI_ID);
+    expect(mocks.paymentDAO.update).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          status: PaymentRecordStatus.PAID,
+          gatewayChargeId: 'ch_pi',
+          'receipt.url': 'https://pay.stripe.com/receipts/ch_pi',
+        }),
+      })
+    );
+  });
+
+  it('retries a failed bank-debit PaymentIntent with the card on file', async () => {
+    const mocks = makeMocks();
+    mocks.paymentDAO.findFirst.mockResolvedValue(makePayment({ gatewayPaymentId: PI_ID }));
+    mocks.profileDAO.findFirst.mockResolvedValue({
+      _id: TENANT_PROFILE_ID,
+      user: TENANT_USER_ID,
+      tenantInfo: {
+        cardPaymentMethods: new Map([['acct_pm', 'pm_card']]),
+        paymentGatewayCustomers: new Map([['platform', 'cus_1']]),
+      },
+    });
+    mocks.paymentGatewayService.retrievePaymentMethod.mockImplementation(
+      async (_provider: unknown, pmId: string) =>
+        pmId === 'pm_acss'
+          ? { success: true, data: { type: 'acss_debit' } }
+          : { success: true, data: { type: 'card', last4: '4242' } }
+    );
+
+    await mocks.service.handlePaymentIntentFailed({
+      id: PI_ID,
+      currency: 'cad',
+      payment_method: 'pm_acss',
+      metadata: { cuid: CUID },
+    });
+
+    expect(mocks.paymentGatewayService.cancelCharge).toHaveBeenCalledWith('stripe', PI_ID);
+    expect(mocks.paymentGatewayService.payCharge).toHaveBeenCalledWith(
+      expect.anything(),
+      'pi_card_retry',
+      { paymentMethod: 'pm_card' }
+    );
+    expect(emittedEvents(mocks.emitterService)).toContain(EventTypes.PAYMENT_RETRIED_WITH_CARD);
+  });
+
+  it('keeps a maintenance card retry on the platform for the vendor payout', async () => {
+    const mocks = makeMocks();
+    mocks.paymentDAO.findFirst.mockResolvedValue(
+      makePayment({ gatewayPaymentId: PI_ID, paymentType: PaymentRecordType.MAINTENANCE })
+    );
+    mocks.profileDAO.findFirst.mockResolvedValue({
+      _id: TENANT_PROFILE_ID,
+      user: TENANT_USER_ID,
+      tenantInfo: {
+        cardPaymentMethods: new Map([['acct_pm', 'pm_card']]),
+        paymentGatewayCustomers: new Map([['platform', 'cus_1']]),
+      },
+    });
+    mocks.paymentGatewayService.retrievePaymentMethod.mockImplementation(
+      async (_provider: unknown, pmId: string) =>
+        pmId === 'pm_acss'
+          ? { success: true, data: { type: 'acss_debit' } }
+          : { success: true, data: { type: 'card', last4: '4242' } }
+    );
+
+    await mocks.service.handlePaymentIntentFailed({
+      id: PI_ID,
+      payment_method: 'pm_acss',
+      metadata: { cuid: CUID },
+    });
+
+    expect(mocks.paymentGatewayService.createCharge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ skipDestinationTransfer: true })
+    );
+  });
+});
+
+describe('PaymentWebhookService - landlord payouts', () => {
+  const payout = (overrides: Record<string, any> = {}) => ({
+    id: 'po_1',
+    status: 'paid' as const,
+    method: 'standard',
+    amount: 97500,
+    currency: 'usd',
+    arrival_date: 1760000000,
+    destination: 'ba_1',
+    ...overrides,
+  });
+
+  it('emits PAYOUT_PAID with the payout method and owner', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({
+      cuid: 'CUID1',
+      accountId: 'acct_pm',
+      ownerType: 'client',
+    });
+
+    await mocks.service.handlePayoutPaid('po_1', payout({ method: 'instant' }), 'acct_pm');
+
+    expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYOUT_PAID,
+      expect.objectContaining({ method: 'instant', ownerType: 'client', amountInCents: 97500 })
+    );
+  });
+
+  it('refunds the platform fee when an instant payout fails', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({
+      cuid: 'CUID1',
+      accountId: 'acct_pm',
+      ownerType: 'client',
+    });
+
+    await mocks.service.handlePayoutFailed(
+      'po_1',
+      payout({ status: 'failed', method: 'instant', application_fee: 'fee_1' }),
+      'acct_pm'
+    );
+
+    expect(mocks.paymentGatewayService.refundApplicationFee).toHaveBeenCalledWith(
+      'stripe',
+      'fee_1',
+      'instant-payout-fee-refund:po_1'
+    );
+    expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYOUT_FAILED,
+      expect.objectContaining({ method: 'instant' })
+    );
+  });
+
+  it('still emits PAYOUT_FAILED when the fee refund fails (e.g. Stripe already refunded it)', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: 'CUID1', accountId: 'acct_pm' });
+    mocks.paymentGatewayService.refundApplicationFee.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'already refunded',
+    });
+
+    await mocks.service.handlePayoutFailed(
+      'po_1',
+      payout({ status: 'failed', method: 'instant', application_fee: { id: 'fee_1' } }),
+      'acct_pm'
+    );
+
+    expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYOUT_FAILED,
+      expect.objectContaining({ method: 'instant', ownerType: 'client' })
+    );
+  });
+
+  it('does not refund anything when a standard payout fails', async () => {
+    const mocks = makeMocks();
+    mocks.paymentProcessorDAO.findFirst.mockResolvedValue({ cuid: 'CUID1', accountId: 'acct_pm' });
+
+    await mocks.service.handlePayoutFailed('po_1', payout({ status: 'failed' }), 'acct_pm');
+
+    expect(mocks.paymentGatewayService.refundApplicationFee).not.toHaveBeenCalled();
   });
 });

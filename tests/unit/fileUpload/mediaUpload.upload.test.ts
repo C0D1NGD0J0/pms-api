@@ -35,13 +35,14 @@ const makeService = () => {
   const uploadQueue = { addToUploadQueue: jest.fn() };
   const s3Service = { uploadFiles: jest.fn(), deleteFiles: jest.fn().mockResolvedValue(true) };
   const emitterService = { emit: jest.fn() };
+  const assetService = { deleteAssetsByS3Keys: jest.fn().mockResolvedValue(undefined) };
   const service = new MediaUploadService({
-    assetService: {} as any,
+    assetService: assetService as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue(uploadQueue) } as any,
     s3Service: s3Service as any,
     emitterService: emitterService as any,
   });
-  return { service, s3Service, uploadQueue, emitterService };
+  return { service, s3Service, uploadQueue, emitterService, assetService };
 };
 
 const resource = {
@@ -172,5 +173,79 @@ describe('MediaUploadService.removeUploadedFiles', () => {
     ]);
 
     expect(s3Service.deleteFiles).toHaveBeenCalledWith(['payment/r.jpg']);
+  });
+});
+
+describe('MediaUploadService.removeUploadedFiles with deleteAssets', () => {
+  it('deletes the files from S3 and soft-deletes their asset records', async () => {
+    const { service, s3Service, assetService } = makeService();
+
+    await service.removeUploadedFiles([{ key: 'property/a.jpg' }, { key: undefined }], {
+      deleteAssets: true,
+    });
+
+    expect(s3Service.deleteFiles).toHaveBeenCalledWith(['property/a.jpg']);
+    expect(assetService.deleteAssetsByS3Keys).toHaveBeenCalledWith(['property/a.jpg']);
+  });
+
+  it('throws without touching asset records when S3 reports a failure', async () => {
+    const { service, s3Service, assetService } = makeService();
+    s3Service.deleteFiles.mockResolvedValueOnce(false);
+
+    await expect(
+      service.removeUploadedFiles([{ key: 'property/a.jpg' }], { deleteAssets: true })
+    ).rejects.toThrow('Failed to delete');
+    expect(assetService.deleteAssetsByS3Keys).not.toHaveBeenCalled();
+  });
+});
+
+describe('MediaUploadService.handleBuffer', () => {
+  const leaseContext = {
+    primaryResourceId: '507f1f77bcf86cd799439011',
+    uploadedBy: 'user-1',
+    resourceContext: ResourceContext.LEASE,
+  };
+  const uniquePdfName = () => `lease-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+
+  it('carries the documentType onto the file sent to S3, so a generated lease PDF stays the agreement', async () => {
+    const { service, s3Service } = makeService();
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'document' }))
+    );
+
+    const outcome = await service.handleBuffer(Buffer.from('%PDF-1.4'), uniquePdfName(), {
+      ...leaseContext,
+      documentType: 'lease_agreement',
+    });
+
+    expect(outcome.totalQueued).toBe(1);
+    expect(s3Service.uploadFiles).toHaveBeenCalledWith(
+      [expect.objectContaining({ documentType: 'lease_agreement' })],
+      expect.anything()
+    );
+  });
+
+  it('sends no documentType when the caller does not set one', async () => {
+    const { service, s3Service } = makeService();
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'document' }))
+    );
+
+    await service.handleBuffer(Buffer.from('%PDF-1.4'), uniquePdfName(), leaseContext);
+
+    const [[sentFiles]] = s3Service.uploadFiles.mock.calls;
+    expect(sentFiles[0].documentType).toBeUndefined();
+  });
+
+  it('removes the temporary file after uploading', async () => {
+    const { service, s3Service } = makeService();
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'document' }))
+    );
+    const fileName = uniquePdfName();
+
+    await service.handleBuffer(Buffer.from('%PDF-1.4'), fileName, leaseContext);
+
+    expect(fs.existsSync(path.join(process.cwd(), 'uploads', fileName))).toBe(false);
   });
 });

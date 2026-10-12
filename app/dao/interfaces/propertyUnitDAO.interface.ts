@@ -1,4 +1,4 @@
-import { ClientSession } from 'mongoose';
+import { type QueryFilter, ClientSession } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery } from '@interfaces/utils.interface';
 import {
   PropertyUnitInspection,
@@ -39,6 +39,12 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
     userId: string
   ): Promise<IPropertyUnitDocument | null>;
 
+  distinct(
+    field: string,
+    filter: QueryFilter<IPropertyUnitDocument>,
+    session?: ClientSession
+  ): Promise<unknown[]>;
+
   findUnitsByStatus(
     status: PropertyUnitStatus,
     propertyId: string
@@ -50,6 +56,8 @@ export interface IPropertyUnitDAO extends IBaseDAO<IPropertyUnitDocument> {
   ): Promise<IPropertyUnitDocument | null>;
 
   findAvailableUnits(propertyId: string): ListResultWithPagination<IPropertyUnitDocument[]>;
+
+  findPendingUnitChanges(cuid: string, limit?: number): Promise<IPropertyUnitDocument[]>;
 
   getUnitCountsByStatus(propertyId: string): Promise<Record<PropertyUnitStatus, number>>;
 

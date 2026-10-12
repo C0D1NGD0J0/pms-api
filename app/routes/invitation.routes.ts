@@ -175,7 +175,7 @@ router.patch(
   requirePermission(PermissionResource.INVITATION, PermissionAction.UPDATE),
   idempotency,
   validateRequest({
-    params: InvitationValidations.iuid,
+    params: InvitationValidations.cuidAndIuid,
     body: InvitationValidations.updateInvitation,
   }),
   asyncWrapper((req: AppRequest, res) => {

@@ -8,6 +8,7 @@ import { VendorDAO } from '@dao/vendorDAO';
 import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { escapeRegExp } from '@utils/helpers';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { MoneyUtils } from '@utils/money.utils';
 import { S3Service } from '@services/fileUpload';
@@ -21,10 +22,8 @@ import { SMSService } from '@services/smsService/sms.service';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { assertRecordOwnership } from '@utils/authorization.utils';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
-import { convertUserRoleToEnum, escapeRegExp } from '@utils/helpers';
 import ROLES, { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
-import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES } from '@utils/constants';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { ISuccessReturnData, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
@@ -76,6 +75,7 @@ interface IConstructor {
 }
 
 export class MaintenanceRequestService {
+  private static readonly DEFAULT_LIST_LIMIT = 20;
   private readonly log: Logger;
   private readonly userDAO: UserDAO;
   private readonly leaseDAO: LeaseDAO;
@@ -258,7 +258,16 @@ export class MaintenanceRequestService {
     }
 
     if (ROLE_GROUPS.PROPERTY_STAFF_ROLES.includes(currentuser.client.role as any)) {
-      return { assignedBy: new Types.ObjectId(currentuser.sub) };
+      // Staff see the work they are doing (assigned technician), the work they dispatched,
+      // and the requests they filed
+      const staffId = new Types.ObjectId(currentuser.sub);
+      return {
+        $or: [
+          { 'assignedTechnician.userId': staffId },
+          { assignedBy: staffId },
+          { createdBy: staffId },
+        ],
+      };
     }
 
     if (CurrentUser.isPrimaryVendor(currentuser)) {
@@ -384,6 +393,7 @@ export class MaintenanceRequestService {
           propertyId: property._id,
           propertyUnitId: unit?._id,
           managedBy: property.managedBy,
+          createdBy: new Types.ObjectId(currentuser.sub),
           title: data.title,
           description: data.description,
           category: data.category,
@@ -399,37 +409,6 @@ export class MaintenanceRequestService {
         session
       );
     });
-
-    // ── Maintenance status toggle ──────────────────────────────────────────────
-    if (data.setMaintenanceStatus && currentuser.client.role !== ROLES.TENANT) {
-      const userRoleEnum = convertUserRoleToEnum(currentuser.client.role);
-
-      if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
-        // Manager/Admin → apply directly
-        await this.propertyDAO.updateById(property._id.toString(), {
-          $set: { operationalStatus: 'maintenance' },
-        });
-        if (unit) {
-          await (unit as any).prepareForMaintenance(
-            `SR ${request.mruid}: ${data.title}`,
-            currentuser.sub
-          );
-        }
-      } else if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
-        // Staff → submit for approval
-        await this.maintenanceRequestDAO.updateById(request._id.toString(), {
-          $set: {
-            pendingMaintenanceStatus: {
-              propertyId: property._id,
-              unitId: unit?._id,
-              requestedBy: new Types.ObjectId(currentuser.sub),
-              requestedAt: new Date(),
-              displayName: currentuser.fullname || currentuser.displayName,
-            },
-          },
-        });
-      }
-    }
 
     // ── Optional vendor assignment on creation ──────────────────────────────────
     if (data.vendorVuid && currentuser.client.role !== ROLES.TENANT) {
@@ -525,7 +504,8 @@ export class MaintenanceRequestService {
     }
     if (filters.search?.trim()) {
       const searchRegex = { $regex: escapeRegExp(filters.search.trim()), $options: 'i' };
-      baseFilter.$or = [{ title: searchRegex }, { mruid: searchRegex }];
+      // $and, so the search never replaces an $or from the role filter
+      baseFilter.$and = [{ $or: [{ title: searchRegex }, { mruid: searchRegex }] }];
     }
 
     // Resolve resource UIDs to ObjectIds for DB queries
@@ -555,7 +535,10 @@ export class MaintenanceRequestService {
       baseFilter['assignedTechnician.userId'] = new Types.ObjectId(filters.assignedTechnicianSub);
     }
 
-    const result = await this.maintenanceRequestDAO.listWithDetails(baseFilter, pagination);
+    const result = await this.maintenanceRequestDAO.listWithDetails(
+      baseFilter,
+      this.toListQueryOptions(pagination)
+    );
 
     const rawItems: any[] = ((result as any).items || []).map((item: any) =>
       item.toObject ? item.toObject() : { ...item }
@@ -624,6 +607,19 @@ export class MaintenanceRequestService {
     });
 
     return { success: true, data: { ...(result as any), items } };
+  }
+
+  private toListQueryOptions(pagination: IPaginationQuery): IPaginationQuery {
+    const page = pagination.page || 1;
+    const limit = pagination.limit || MaintenanceRequestService.DEFAULT_LIST_LIMIT;
+
+    let sort: Record<string, 1 | -1> = { createdAt: -1, _id: -1 };
+    if (typeof pagination.sort === 'string' && pagination.sort) {
+      const direction = pagination.sort.startsWith('-') ? -1 : 1;
+      sort = { [pagination.sort.replace(/^-/, '')]: direction, _id: direction };
+    }
+
+    return { skip: (page - 1) * limit, limit, sort };
   }
 
   async getRequest(ctx: IRequestContext, mruid: string): Promise<ISuccessReturnData> {
@@ -753,6 +749,7 @@ export class MaintenanceRequestService {
     // Strip internal-only fields not consumed by any frontend view
     delete plain.__v;
     delete plain.assignedBy;
+    delete plain.createdBy;
     if (plain.workOrder) {
       delete plain.workOrder.submittedBy;
       delete plain.workOrder.reviewedBy;
@@ -876,6 +873,10 @@ export class MaintenanceRequestService {
       if (request.workOrder.status === WorkOrderStatus.REJECTED) {
         throw new BadRequestError({ message: t('maintenance.errors.workOrderRejected') });
       }
+    }
+
+    if (data.technician?.userId) {
+      await this.assertTechnicianOnVendorTeam(request, cuid, data.technician.userId);
     }
 
     const session = await this.maintenanceRequestDAO.startSession();
@@ -1306,6 +1307,53 @@ export class MaintenanceRequestService {
     currentuser: any
   ): Promise<void> {
     await assertVendorAuthorized(this.vendorDAO, currentuser, request);
+  }
+
+  /**
+   * The technician must be the assigned (primary) vendor user or a connected team member of
+   * that vendor in this client. Team members store linkedVendorUid as either the vendor's vuid
+   * or the primary account holder's User._id, depending on the invitation path.
+   */
+  private async assertTechnicianOnVendorTeam(
+    request: { vendorId?: any },
+    cuid: string,
+    technicianUserId: string
+  ): Promise<void> {
+    const notOnTeamError = new ForbiddenError({
+      message: 'Selected technician is not a member of your team',
+    });
+    const primaryVendorUserId = request.vendorId?.toString();
+    if (!primaryVendorUserId || !Types.ObjectId.isValid(technicianUserId)) throw notOnTeamError;
+    if (technicianUserId === primaryVendorUserId) return;
+
+    const vendor = await this.vendorDAO.findFirst(
+      {
+        connectedClients: {
+          $elemMatch: {
+            cuid,
+            isConnected: true,
+            primaryAccountHolderUserId: new Types.ObjectId(primaryVendorUserId),
+          },
+        },
+        deletedAt: null,
+      },
+      undefined,
+      { vuid: 1 }
+    );
+    if (!vendor) throw notOnTeamError;
+
+    const teamMember = await this.userDAO.findFirst({
+      _id: new Types.ObjectId(technicianUserId),
+      deletedAt: null,
+      cuids: {
+        $elemMatch: {
+          cuid,
+          isConnected: true,
+          linkedVendorUid: { $in: [vendor.vuid, primaryVendorUserId] },
+        },
+      },
+    });
+    if (!teamMember) throw notOnTeamError;
   }
 
   private buildUnassignUpdate() {

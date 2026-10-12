@@ -12,7 +12,6 @@
       "emailPasswordRequired": "Email and password are required.",
       "invalidCredentials": "Invalid email/password combination.",
       "phoneNotVerified": "Please verify your phone number before enabling OTP login.",
-      "otpVerificationFailed": "Invalid or expired verification code.",
       "otpUnavailable": "OTP login is currently unavailable, please use your password.",
       "userIdRequired": "User ID is required.",
       "userIdAndcuidRequired": "User ID and account cuid are required.",
@@ -58,6 +57,7 @@
       "loginSuccessful": "Login successful.",
       "loginTypeResolved": "Please enter your password.",
       "otpSent": "Verification code sent to your phone.",
+      "otpRequested": "If SMS sign-in is set up for this account, we've sent a verification code to its phone.",
       "accountSelected": "Success.",
       "accountActivated": "Account activated successfully.",
       "activationLinkSent": "Activation link has been sent to {{email}}.",
@@ -114,7 +114,8 @@
       "departmentEmployeeOnly": "Departments can only be assigned to employee roles.",
       "verificationFailed": "Failed to verify account.",
       "noTenantFeaturesProvided": "At least one tenant feature must be provided.",
-      "immutableFieldLocked": "This field is locked and cannot be changed. Please contact support if an update is required."
+      "immutableFieldLocked": "This field is locked and cannot be changed. Please contact support if an update is required.",
+      "restrictedFieldsRequireSuperAdmin": "Only a super-admin can change: {{fields}}."
     },
     "success": {
       "roleAssigned": "Role {{role}} assigned successfully",
@@ -183,14 +184,17 @@
       "duplicateUnitNumbers": "Duplicate unit numbers found in batch: {{unitNumbers}}",
       "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
       "unitNumberAlreadyExists": "A unit with number '{{unitNumber}}' already exists for this property",
-      "unitSuggestion": "Suggested unit number: {{suggestion}}"
+      "noPendingChanges": "This unit has no pending changes to review",
+      "pendingChangesModified": "The pending changes were updated while you were reviewing them. Reload the unit and review again."
     },
     "success": {
       "unitCreationQueued": "Unit creation job queued successfully",
       "unitsCreated": "{{created}} units created successfully, {{failed}} failed",
       "allUnitsCreated": "All {{count}} units created successfully",
       "csvValidated": "Property units CSV file validated successfully",
-      "csvImported": "Property units imported successfully from CSV file"
+      "csvImported": "Property units imported successfully from CSV file",
+      "changesApproved": "Unit changes approved and applied",
+      "changesRejected": "Unit changes rejected. The unit keeps its current details."
     }
   },
   "validation": {
@@ -430,7 +434,6 @@
     "success": {
       "sent": "Invitation sent to {{email}}",
       "resent": "Invitation reminder sent to {{email}}",
-      "reactivated": "Invitation reactivated and sent to {{email}}",
       "revoked": "Invitation revoked successfully",
       "accepted": "Invitation accepted successfully",
       "declined": "Invitation declined successfully",
@@ -498,7 +501,8 @@
       "onlyPrimaryCanUpdate": "You do not have permission to update this information.",
       "notConnectedToClient": "Vendor is not connected to this account.",
       "cannotChangeOwnStatus": "You cannot change your own active status.",
-      "payoutAccountNotFound": "Payout account not found."
+      "payoutAccountNotFound": "Payout account not found.",
+      "notOwnPayoutAccount": "Vendors can only manage their own organisation's payout account"
     }
   },
   "tenant": {
@@ -513,7 +517,6 @@
   "user": {
     "errors": {
       "notFound": "User not found.",
-      "canOnlyUpdateOwnAccount": "You can only update your own account information.",
       "cannotArchiveTenantWithActiveLeases": "Cannot archive tenant. This user has {{count}} active lease(s). Please terminate the lease(s) before archiving.",
       "cannotArchiveManagerWithActiveLeases": "Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
       "notATenant": "This action is only available for tenant accounts.",
@@ -522,6 +525,20 @@
     },
     "success": {
       "tenantDeactivated": "Tenant deactivated successfully."
+    },
+    "emailChange": {
+      "requested": "We sent a confirmation link to {{email}}. The sign-in email changes once it is confirmed.",
+      "resent": "We sent a new confirmation link to {{email}}.",
+      "cancelled": "The pending email change was cancelled.",
+      "confirmed": "Your sign-in email has been updated. Please sign in with your new address.",
+      "sameAsCurrent": "The new email address is the same as the current one.",
+      "emailTaken": "This email address is already in use.",
+      "noPendingChange": "There is no pending email change for this account.",
+      "invalidToken": "This email confirmation link is invalid or has expired.",
+      "tenantOnly": "You can only change the email of a tenant of this account.",
+      "verifySubject": "Confirm your new email address",
+      "noticeSubject": "Your sign-in email is changing",
+      "completedSubject": "Your sign-in email was changed"
     }
   },
   "subscription": {
@@ -553,7 +570,20 @@
       "paymentMethodFailedCardRequired": "Payment could not be processed. An alternate payment method is required.",
       "paymentFailedNoFallback": "Payment failed and no alternate payment method is on file.",
       "retryFailedMissingInfo": "Payment retry failed. Please update your account information.",
-      "paymentFailedAddPaymentMethod": "Payment failed. Please add a payment method to complete payment."
+      "paymentFailedAddPaymentMethod": "Payment failed. Please add a payment method to complete payment.",
+      "instantPayoutUnavailable": "Instant payout is not available: {{reason}}"
+    },
+    "success": {
+      "instantPayoutRequested": "Instant payout requested. Funds usually arrive within 30 minutes."
+    },
+    "instantPayoutReasons": {
+      "country_not_supported": "instant payouts are not offered in your payout account's country",
+      "payouts_not_enabled": "payouts are not enabled for this account yet",
+      "payouts_blocked": "payouts are blocked on this account",
+      "payouts_paused": "payouts are paused until your subscription is active",
+      "open_disputes": "this account has an open payment dispute",
+      "no_instant_balance": "there is no balance eligible for instant payout, or no debit card is linked",
+      "pricing_unavailable": "instant payouts are temporarily unavailable"
     }
   },
   "sms": {
@@ -580,7 +610,10 @@
       "overlappingLease": "Lease dates overlap with an existing active lease for this unit",
       "cannotCreateOwnLease": "Cannot create a lease for yourself as the tenant - conflict of interest",
       "cannotUpdateOwnLease": "Cannot update your own lease information - conflict of interest",
-      "propertyUnderMaintenance": "Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first."
+      "propertyUnderMaintenance": "Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first.",
+      "immutableFields": "Cannot modify immutable fields",
+      "lifecycleManagedFields": "Lease status, approval and signature fields can only change through lease actions",
+      "fieldNotEditable": "Field '{{field}}' cannot be modified through a lease update"
     }
   },
   "common": {
@@ -899,6 +932,22 @@
       "depositRefundFailed": {
         "title": "Deposit Refund Failed",
         "message": "A deposit refund of {{amount}} for payment {{pytuid}} could not be processed. Reason: {{reason}}. Please review it and refund the tenant another way if needed."
+      },
+      "accountPayoutPaid": {
+        "title": "Payout Deposited",
+        "message": "Your payout of {{amount}} has been deposited to your bank account"
+      },
+      "accountInstantPayoutPaid": {
+        "title": "Instant Payout Arrived",
+        "message": "Your instant payout of {{amount}} has arrived in your account"
+      },
+      "accountPayoutFailed": {
+        "title": "Payout Failed",
+        "message": "A payout of {{amount}} to your bank account failed. Reason: {{reason}}"
+      },
+      "accountInstantPayoutFailed": {
+        "title": "Instant Payout Failed",
+        "message": "Your instant payout of {{amount}} failed and the funds were returned to your balance; the instant payout fee is refunded. Reason: {{reason}}"
       }
     },
     "fragments": {
@@ -924,6 +973,11 @@
         "default": "the tenant could not be found"
       },
       "unknownError": "unknown error"
+    }
+  },
+  "report": {
+    "errors": {
+      "tooManyEmailRecipients": "Your plan allows up to {{max}} email recipients"
     }
   }
 }

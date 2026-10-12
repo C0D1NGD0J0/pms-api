@@ -1,22 +1,27 @@
 import dayjs from 'dayjs';
 import crypto from 'crypto';
 import Logger from 'bunyan';
-import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { SmsQueue } from '@queues/sms.queue';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { GuestPassDAO } from '@dao/guestpassDAO';
 import { EmailQueue } from '@queues/email.queue';
+import { type QueryFilter, Types } from 'mongoose';
 import { getRequestDuration } from '@utils/helpers';
 import { PropertyUnitDAO, LeaseDAO } from '@dao/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import { SMSMessageType } from '@interfaces/sms.interface';
+import { PermissionService } from '@services/permission/permission.service';
+import { GUEST_PASS_DISPLAY_POPULATE, GuestPassDAO } from '@dao/guestpassDAO';
+import { getAssignedPropertyFilter } from '@services/property/propertyHelpers';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import {
   PropertyUnitStatusEnum,
   IPromiseReturnedData,
+  PermissionResource,
+  PermissionAction,
+  PermissionScope,
   IRequestContext,
   LeaseStatus,
   EventTypes,
@@ -25,6 +30,7 @@ import {
 } from '@interfaces/index';
 import {
   IGuestPassValidationResult,
+  IGuestPassCheckInProperty,
   IValidateGuestPassRequest,
   IGuestPassListResponse,
   ICreateGuestPassInput,
@@ -36,6 +42,12 @@ import {
   DeliveryMethod,
 } from '@interfaces/guestPass.interface';
 
+interface IGuestPassVisibility {
+  filter: QueryFilter<IGuestPassDocument>;
+  // Set when the caller is limited to some properties (or asked for one)
+  propertyIds?: Types.ObjectId[];
+}
+
 export class GuestPassService {
   private readonly log: Logger;
   private readonly leaseDAO: LeaseDAO;
@@ -45,6 +57,7 @@ export class GuestPassService {
   private readonly guestPassDAO: GuestPassDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly permissionService: PermissionService;
 
   constructor({
     leaseDAO,
@@ -54,6 +67,7 @@ export class GuestPassService {
     guestPassDAO,
     propertyUnitDAO,
     emitterService,
+    permissionService,
   }: {
     leaseDAO: LeaseDAO;
     smsQueue: SmsQueue;
@@ -62,6 +76,7 @@ export class GuestPassService {
     guestPassDAO: GuestPassDAO;
     propertyUnitDAO: PropertyUnitDAO;
     emitterService: EventEmitterService;
+    permissionService: PermissionService;
   }) {
     this.leaseDAO = leaseDAO;
     this.smsQueue = smsQueue;
@@ -70,6 +85,7 @@ export class GuestPassService {
     this.guestPassDAO = guestPassDAO;
     this.propertyUnitDAO = propertyUnitDAO;
     this.emitterService = emitterService;
+    this.permissionService = permissionService;
     this.log = createLogger('GuestPassService');
   }
 
@@ -83,7 +99,7 @@ export class GuestPassService {
 
     try {
       const property = await this.propertyDAO.findFirst({
-        pid: data.propertyInfo.pid,
+        pid: data.propertyId,
         cuid,
         operationalStatus: { $ne: 'inactive' },
         deletedAt: null,
@@ -91,23 +107,10 @@ export class GuestPassService {
       if (!property)
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
 
-      if (currentuser.client.role === ROLES.TENANT) {
-        const activeLease = await this.leaseDAO.findFirst({
-          cuid,
-          tenantId: new Types.ObjectId(currentuser.sub),
-          'property.id': property._id,
-          status: LeaseStatus.ACTIVE,
-          deletedAt: null,
-        });
-        if (!activeLease) {
-          throw new ForbiddenError({ message: t('maintenance.errors.noActiveLease') });
-        }
-      }
-
       let unit = null;
-      if (data.propertyInfo.puid) {
+      if (data.unitId) {
         unit = await this.propertyUnitDAO.findFirst({
-          puid: data.propertyInfo.puid,
+          puid: data.unitId,
           propertyId: property._id,
           isActive: true,
           status: { $ne: PropertyUnitStatusEnum.INACTIVE },
@@ -116,6 +119,29 @@ export class GuestPassService {
         if (!unit)
           throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
       }
+
+      if (currentuser.client.role === ROLES.TENANT) {
+        // A tenant may only issue passes for the property — and unit, when given — they lease
+        const activeLease = await this.leaseDAO.findFirst({
+          cuid,
+          tenantId: new Types.ObjectId(currentuser.sub),
+          'property.id': property._id,
+          ...(unit && {
+            $or: [{ 'property.unitId': unit._id }, { 'property.unitId': null }],
+          }),
+          status: LeaseStatus.ACTIVE,
+          deletedAt: null,
+        });
+        if (!activeLease) {
+          throw new ForbiddenError({ message: t('maintenance.errors.noActiveLease') });
+        }
+      }
+
+      // Staff may issue a pass on a resident's behalf; a tenant is always the host of their own pass
+      const hostInfo =
+        currentuser.client.role !== ROLES.TENANT && (data.hostName || data.hostPhone)
+          ? { name: data.hostName, phone: data.hostPhone }
+          : undefined;
 
       const code = await this.generateUniqueCode(cuid);
       const expiryMinutes = data.expiryMinutes || 15;
@@ -145,6 +171,9 @@ export class GuestPassService {
               phone: data.visitorPhone,
               email: data.visitorEmail,
             },
+            purpose: data.purpose,
+            hostNotes: data.hostNotes,
+            hostInfo,
             createdBy: new Types.ObjectId(currentuser.sub),
             validUntil,
             expiryMinutes,
@@ -207,7 +236,7 @@ export class GuestPassService {
 
       return {
         success: true,
-        data: guestPass,
+        data: await guestPass.populate(GUEST_PASS_DISPLAY_POPULATE),
         message: 'Access code generated and sent to visitor',
       };
     } catch (error) {
@@ -239,55 +268,15 @@ export class GuestPassService {
       const limit = filters.limit || 20;
       const skip = (page - 1) * limit;
 
-      const query: any = { cuid };
-      if (currentuser.client.role === ROLES.TENANT) {
-        query.createdBy = new Types.ObjectId(currentuser.sub);
-      } else if (currentuser.client.role === ROLES.STAFF) {
-        // Staff only see passes for their assigned properties
-        const assignedProperties = await this.propertyDAO.list(
-          { cuid, assignedStaff: new Types.ObjectId(currentuser.sub), deletedAt: null },
-          { projection: '_id' }
-        );
-        const assignedIds = assignedProperties.items.map((p: any) => p._id);
-        if (assignedIds.length === 0) {
-          return {
-            success: true,
-            data: {
-              passes: [],
-              pagination: {
-                hasMoreResource: false,
-                currentPage: 1,
-                totalPages: 0,
-                perPage: limit,
-                total: 0,
-              },
-            },
-          };
-        }
-        query.propertyId = { $in: assignedIds };
-      }
-
+      const visibility = await this.getPassVisibility(ctx, filters.propertyId);
+      const query: any = { ...visibility.filter, cuid };
       if (filters.status) query.status = filters.status;
-      if (filters.propertyId) {
-        // If staff, validate the requested property is in their assigned set
-        if (currentuser.client.role === ROLES.STAFF && query.propertyId?.$in) {
-          const requestedId = new Types.ObjectId(filters.propertyId);
-          if (!query.propertyId.$in.some((id: any) => id.equals(requestedId))) {
-            throw new ForbiddenError({ message: t('common.errors.forbidden') });
-          }
-        }
-        query.propertyId = new Types.ObjectId(filters.propertyId);
-      }
 
       const result = await this.guestPassDAO.list(query, {
         sort: { createdAt: -1 },
         limit,
         skip,
-        populate: [
-          { path: 'propertyId', select: 'name puid' },
-          { path: 'propertyUnitId', select: 'puid unitNumber' },
-          { path: 'createdBy', select: 'email uid' },
-        ],
+        populate: GUEST_PASS_DISPLAY_POPULATE,
       });
 
       this.log.info(
@@ -321,24 +310,68 @@ export class GuestPassService {
     }
   }
 
-  async revokePass(ctx: IRequestContext, vpuid: string): IPromiseReturnedData<IGuestPassDocument> {
+  async getPass(ctx: IRequestContext, vpuid: string): IPromiseReturnedData<IGuestPassDocument> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
     const start = process.hrtime.bigint();
 
     try {
-      const pass = await this.guestPassDAO.findFirst({ vpuid, cuid });
+      const visibility = await this.getPassVisibility(ctx);
+      const pass = await this.guestPassDAO.findFirst(
+        { ...visibility.filter, cuid, vpuid },
+        { populate: GUEST_PASS_DISPLAY_POPULATE }
+      );
       if (!pass) {
         throw new NotFoundError({
           message: t('common.errors.notFound', { resource: 'Guest pass' }),
         });
       }
 
-      if (
-        currentuser.client.role === ROLES.TENANT &&
-        pass.createdBy.toString() !== currentuser.sub
-      ) {
-        throw new ForbiddenError({ message: t('common.errors.forbidden') });
+      this.log.info(
+        {
+          cuid,
+          vpuid,
+          userId: currentuser.sub,
+          requestId: ctx.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Guest pass retrieved'
+      );
+
+      return { success: true, data: pass };
+    } catch (error) {
+      this.log.error(
+        {
+          cuid,
+          vpuid,
+          error,
+          url: ctx.request.url,
+          userId: currentuser.sub,
+          requestId: ctx.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Error retrieving guest pass'
+      );
+      throw error;
+    }
+  }
+
+  async revokePass(
+    ctx: IRequestContext,
+    vpuid: string,
+    reason?: string
+  ): IPromiseReturnedData<IGuestPassDocument> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const start = process.hrtime.bigint();
+
+    try {
+      const visibility = await this.getPassVisibility(ctx);
+      const pass = await this.guestPassDAO.findFirst({ ...visibility.filter, vpuid, cuid });
+      if (!pass) {
+        throw new NotFoundError({
+          message: t('common.errors.notFound', { resource: 'Guest pass' }),
+        });
       }
 
       const isExpired =
@@ -354,7 +387,8 @@ export class GuestPassService {
       const updated = await this.guestPassDAO.revokePass(
         pass._id.toString(),
         cuid,
-        currentuser.sub
+        currentuser.sub,
+        reason
       );
 
       this.emitterService.emit(EventTypes.GUEST_PASS_REVOKED, {
@@ -403,58 +437,9 @@ export class GuestPassService {
     const start = process.hrtime.bigint();
 
     try {
-      let propertyId: string | string[] | undefined;
-      let createdBy: string | undefined;
-
-      if (pid) {
-        const property = await this.propertyDAO.findFirst({
-          pid,
-          cuid,
-          operationalStatus: { $ne: 'inactive' },
-          deletedAt: null,
-        });
-        if (!property) {
-          throw new NotFoundError({
-            message: t('common.errors.notFound', { resource: 'Property' }),
-          });
-        }
-        propertyId = property._id.toString();
-      }
-
-      const role = currentuser.client.role;
-      if (role === ROLES.TENANT) {
-        createdBy = currentuser.sub;
-      } else if (role === ROLES.STAFF) {
-        // Staff (e.g. security) only see stats for properties they're assigned to
-        const assignedProperties = await this.propertyDAO.list(
-          { cuid, assignedStaff: new Types.ObjectId(currentuser.sub), deletedAt: null },
-          { projection: '_id' }
-        );
-        const assignedIds = assignedProperties.items.map((p: any) => p._id.toString());
-        if (assignedIds.length === 0) {
-          // Unassigned staff — return empty stats
-          return {
-            success: true,
-            data: {
-              total: 0,
-              active: 0,
-              expired: 0,
-              revoked: 0,
-              used: 0,
-              unacknowledged: 0,
-              pending: 0,
-            },
-          };
-        }
-        if (pid && propertyId) {
-          // Verify the requested property is in their assigned set
-          if (!assignedIds.includes(propertyId as string)) {
-            throw new ForbiddenError({ message: t('common.errors.forbidden') });
-          }
-        } else {
-          propertyId = assignedIds;
-        }
-      }
+      const visibility = await this.getPassVisibility(ctx, pid);
+      const createdBy = visibility.filter.createdBy?.toString();
+      const propertyId = visibility.propertyIds?.map((id) => id.toString());
 
       await this.guestPassDAO.expireOldPasses(cuid);
       const stats = await this.guestPassDAO.getStats(cuid, propertyId, createdBy);
@@ -508,7 +493,8 @@ export class GuestPassService {
     const start = process.hrtime.bigint();
 
     try {
-      const pass = await this.guestPassDAO.findByCode(data.code, cuid);
+      const visibility = await this.getPassVisibility(ctx);
+      const pass = await this.guestPassDAO.findByCode(data.code, cuid, visibility.filter);
 
       if (!pass) {
         return {
@@ -517,14 +503,9 @@ export class GuestPassService {
         };
       }
 
-      // Verify the code belongs to the requested property
-      const property = await this.propertyDAO.findFirst({
-        _id: pass.propertyId,
-        pid: data.propertyId,
-        cuid,
-        deletedAt: null,
-      });
-      if (!property) {
+      // findByCode populates propertyId with the pass's property
+      const passProperty = pass.propertyId as unknown as { pid: string };
+      if (passProperty?.pid !== data.propertyId) {
         return {
           success: true,
           data: { valid: false, reason: 'Code is not valid for this property' },
@@ -550,15 +531,24 @@ export class GuestPassService {
           vpuid: pass.vpuid,
           userId: currentuser.sub,
           requestId: ctx.requestId,
-          propertyId: property.pid,
+          propertyId: data.propertyId,
           duration: getRequestDuration(start).durationInMs,
         },
         'Guest pass validated'
       );
 
+      if (updated) {
+        pass.set({
+          status: updated.status,
+          usedAt: updated.usedAt,
+          validatedBy: updated.validatedBy,
+          entryNotes: updated.entryNotes,
+        });
+      }
+
       return {
         success: true,
-        data: { valid: true, pass: updated || pass },
+        data: { valid: true, pass },
         message: 'Code is valid. Visitor authorized to enter.',
       };
     } catch (error) {
@@ -591,49 +581,13 @@ export class GuestPassService {
       const limit = filters.limit || 20;
       const skip = (page - 1) * limit;
 
+      const visibility = await this.getPassVisibility(ctx, filters.propertyId);
       const query: any = {
+        ...visibility.filter,
         cuid,
         status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.PENDING] },
         validUntil: { $gt: now.toDate() },
       };
-
-      if (currentuser.client.role === ROLES.TENANT) {
-        query.createdBy = new Types.ObjectId(currentuser.sub);
-      }
-
-      if (currentuser.client.role === ROLES.STAFF) {
-        const assignedProperties = await this.propertyDAO.list(
-          { cuid, assignedStaff: new Types.ObjectId(currentuser.sub), deletedAt: null },
-          { projection: '_id' }
-        );
-        const assignedIds = assignedProperties.items.map((p: any) => p._id);
-        if (assignedIds.length === 0) {
-          return {
-            success: true,
-            data: {
-              passes: [],
-              pagination: {
-                hasMoreResource: false,
-                currentPage: 1,
-                totalPages: 0,
-                perPage: limit,
-                total: 0,
-              },
-            },
-          };
-        }
-        if (filters.propertyId) {
-          const requestedId = new Types.ObjectId(filters.propertyId);
-          if (!assignedIds.some((id: any) => id.equals(requestedId))) {
-            throw new ForbiddenError({ message: t('common.errors.forbidden') });
-          }
-          query.propertyId = requestedId;
-        } else {
-          query.propertyId = { $in: assignedIds };
-        }
-      } else if (filters.propertyId) {
-        query.propertyId = new Types.ObjectId(filters.propertyId);
-      }
 
       if (filters.timeWindow === 'next_hour') {
         query.validUntil = { $gt: now.toDate(), $lte: now.add(1, 'hour').toDate() };
@@ -645,11 +599,7 @@ export class GuestPassService {
         sort: { createdAt: -1 },
         limit,
         skip,
-        populate: [
-          { path: 'propertyId', select: 'name address puid' },
-          { path: 'propertyUnitId', select: 'puid unitNumber floor' },
-          { path: 'createdBy', select: 'email uid' },
-        ],
+        populate: GUEST_PASS_DISPLAY_POPULATE,
       });
 
       this.log.info(
@@ -685,14 +635,20 @@ export class GuestPassService {
 
   async acknowledgePass(
     ctx: IRequestContext,
-    passId: string
+    vpuid: string
   ): IPromiseReturnedData<IGuestPassDocument> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
     const start = process.hrtime.bigint();
 
     try {
-      const updated = await this.guestPassDAO.acknowledgePass(cuid, passId, currentuser.sub);
+      const visibility = await this.getPassVisibility(ctx);
+      const updated = await this.guestPassDAO.acknowledgePass(
+        cuid,
+        vpuid,
+        currentuser.sub,
+        visibility.filter
+      );
       if (!updated) {
         throw new BadRequestError({
           message: 'Pass not found, already acknowledged, or not active',
@@ -708,7 +664,7 @@ export class GuestPassService {
       this.log.info(
         {
           cuid,
-          passId,
+          vpuid,
           userId: currentuser.sub,
           requestId: ctx.requestId,
           duration: getRequestDuration(start).durationInMs,
@@ -725,7 +681,7 @@ export class GuestPassService {
       this.log.error(
         {
           cuid,
-          passId,
+          vpuid,
           error,
           url: ctx.request.url,
           userId: currentuser.sub,
@@ -740,14 +696,20 @@ export class GuestPassService {
 
   async bulkAcknowledgePasses(
     ctx: IRequestContext,
-    passIds: string[]
+    vpuids: string[]
   ): IPromiseReturnedData<{ acknowledged: number }> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
     const start = process.hrtime.bigint();
 
     try {
-      const count = await this.guestPassDAO.bulkAcknowledge(cuid, passIds, currentuser.sub);
+      const visibility = await this.getPassVisibility(ctx);
+      const count = await this.guestPassDAO.bulkAcknowledge(
+        cuid,
+        vpuids,
+        currentuser.sub,
+        visibility.filter
+      );
 
       this.log.info(
         {
@@ -790,12 +752,18 @@ export class GuestPassService {
     const start = process.hrtime.bigint();
 
     try {
-      const passes = await this.guestPassDAO.getUnacknowledgedPasses(cuid, propertyId);
+      const visibility = await this.getPassVisibility(ctx, propertyId);
+      const passes = await this.guestPassDAO.getUnacknowledgedPasses(
+        cuid,
+        visibility.propertyIds![0].toString(),
+        visibility.filter
+      );
 
       this.log.info(
         {
           cuid,
           propertyId,
+          userId: currentuser.sub,
           requestId: ctx.requestId,
           count: passes.length,
           duration: getRequestDuration(start).durationInMs,
@@ -821,6 +789,56 @@ export class GuestPassService {
     }
   }
 
+  async getCheckInProperties(
+    ctx: IRequestContext
+  ): IPromiseReturnedData<IGuestPassCheckInProperty[]> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const start = process.hrtime.bigint();
+
+    try {
+      const scope = await this.resolvePassScope(ctx);
+      if (scope !== PermissionScope.ANY && scope !== PermissionScope.ASSIGNED) {
+        throw new ForbiddenError({ message: t('common.errors.forbidden') });
+      }
+
+      const accessFilter =
+        scope === PermissionScope.ASSIGNED ? getAssignedPropertyFilter(currentuser.sub) : {};
+      const result = await this.propertyDAO.list(
+        { cuid, deletedAt: null, ...accessFilter },
+        { projection: 'pid name', sort: { name: 1 }, limit: 1000 },
+        true
+      );
+      const properties = result.items.map(({ pid, name }) => ({ pid, name }));
+
+      this.log.info(
+        {
+          cuid,
+          userId: currentuser.sub,
+          requestId: ctx.requestId,
+          count: properties.length,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Guest pass check-in properties retrieved'
+      );
+
+      return { success: true, data: properties };
+    } catch (error) {
+      this.log.error(
+        {
+          cuid,
+          error,
+          url: ctx.request.url,
+          userId: currentuser.sub,
+          requestId: ctx.requestId,
+          duration: getRequestDuration(start).durationInMs,
+        },
+        'Error getting guest pass check-in properties'
+      );
+      throw error;
+    }
+  }
+
   async getUnacknowledgedCount(
     ctx: IRequestContext,
     propertyId?: string
@@ -830,7 +848,12 @@ export class GuestPassService {
     const start = process.hrtime.bigint();
 
     try {
-      const count = await this.guestPassDAO.getUnacknowledgedCount(cuid, propertyId);
+      const visibility = await this.getPassVisibility(ctx, propertyId);
+      const count = await this.guestPassDAO.getUnacknowledgedCount(
+        cuid,
+        undefined,
+        visibility.filter
+      );
 
       this.log.info(
         {
@@ -917,6 +940,72 @@ export class GuestPassService {
       );
       throw error;
     }
+  }
+
+  /**
+   * The one visibility rule every guest-pass read and action goes through, taken from the caller's
+   * guest_pass grant: :any sees every pass in the client, :assigned only passes for properties the
+   * user is assigned to or manages, :mine (tenants) only their own passes, anything else none.
+   * With a pid, passes are narrowed to that property, which must be visible.
+   */
+  private async getPassVisibility(
+    ctx: IRequestContext,
+    pid?: string
+  ): Promise<IGuestPassVisibility> {
+    const currentuser = ctx.currentuser;
+    const { cuid } = ctx.request.params;
+    const scope = await this.resolvePassScope(ctx);
+    if (!scope) throw new ForbiddenError({ message: t('common.errors.forbidden') });
+
+    const ownPasses =
+      scope === PermissionScope.MINE ? { createdBy: new Types.ObjectId(currentuser.sub) } : {};
+    const accessFilter =
+      scope === PermissionScope.ASSIGNED ? getAssignedPropertyFilter(currentuser.sub) : null;
+
+    if (pid) {
+      const property = await this.propertyDAO.findFirst(
+        { pid, cuid, deletedAt: null, ...accessFilter },
+        { projection: '_id' }
+      );
+      if (!property) {
+        throw accessFilter
+          ? new ForbiddenError({ message: t('common.errors.forbidden') })
+          : new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+      }
+      const propertyId = property._id as Types.ObjectId;
+      return { filter: { ...ownPasses, propertyId }, propertyIds: [propertyId] };
+    }
+
+    if (!accessFilter) return { filter: ownPasses };
+
+    const propertyIds = await this.propertyDAO.findPropertyIds({
+      cuid,
+      deletedAt: null,
+      ...accessFilter,
+    });
+    return { filter: { propertyId: { $in: propertyIds } }, propertyIds };
+  }
+
+  private async resolvePassScope(ctx: IRequestContext): Promise<PermissionScope | null> {
+    const currentuser = ctx.currentuser;
+    const staffScope = this.permissionService.resolveStaffScope(
+      currentuser,
+      PermissionResource.GUEST_PASS,
+      PermissionAction.READ
+    );
+    if (staffScope) return staffScope;
+
+    for (const scope of [PermissionScope.ANY, PermissionScope.MINE]) {
+      const { granted } = await this.permissionService.checkPermission({
+        role: currentuser.client.role,
+        resource: PermissionResource.GUEST_PASS,
+        action: PermissionAction.READ,
+        scope,
+        context: { clientId: currentuser.client.cuid, userId: currentuser.sub },
+      });
+      if (granted) return scope;
+    }
+    return null;
   }
 
   private async generateUniqueCode(cuid: string, maxRetries = 5): Promise<string> {

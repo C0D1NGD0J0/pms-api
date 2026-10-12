@@ -244,6 +244,8 @@ export async function handlePaymentFailed(
       return;
     }
 
+    const payUrl = hostedInvoiceUrl || buildTenantPaymentsUrl(cuid, tenant, pytuid);
+
     const notice = failureReason
       ? getFormattedNotification('payment.failedTenantWithReason', {
           amount: fmt,
@@ -252,7 +254,7 @@ export async function handlePaymentFailed(
       : getFormattedNotification('payment.failedTenant', { amount: fmt });
     await notifyTenantInApp(ctx, cuid, tenant, notice, {
       pytuid,
-      ...(hostedInvoiceUrl && { hostedInvoiceUrl }),
+      ...(payUrl && { hostedInvoiceUrl: payUrl }),
     });
 
     if (!tenant.email) return;
@@ -266,7 +268,7 @@ export async function handlePaymentFailed(
           tenantName: tenant.firstName,
           amount: fmt,
           failureReason: failureReason || '',
-          hostedInvoiceUrl: hostedInvoiceUrl || '',
+          hostedInvoiceUrl: payUrl,
           reference: pytuid,
         },
       });
@@ -694,6 +696,65 @@ export async function handlePaymentCancelled(
   }
 }
 
+export async function handlePayoutFailed(
+  ctx: INotificationContext,
+  payload: PayoutFailedPayload
+): Promise<void> {
+  try {
+    const { cuid, amountInCents, currency, reason } = payload;
+    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
+    const messageKey =
+      payload.ownerType === 'vendor'
+        ? 'payment.payoutFailed'
+        : payload.method === 'instant'
+          ? 'payment.accountInstantPayoutFailed'
+          : 'payment.accountPayoutFailed';
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      messageKey,
+      { amount: fmt, reason: reason || 'unknown error' },
+      MGMT_ROLES,
+      { payoutId: payload.payoutId, accountId: payload.accountId },
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS,
+      true
+    );
+  } catch (error) {
+    ctx.log.error('Error sending payout failed notification', { error, payload });
+  }
+}
+
+export async function handlePayoutPaid(
+  ctx: INotificationContext,
+  payload: PayoutPaidPayload
+): Promise<void> {
+  try {
+    const { cuid, amountInCents, currency } = payload;
+    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
+    const messageKey =
+      payload.ownerType === 'vendor'
+        ? 'payment.payoutPaid'
+        : payload.method === 'instant'
+          ? 'payment.accountInstantPayoutPaid'
+          : 'payment.accountPayoutPaid';
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      messageKey,
+      { amount: fmt },
+      MGMT_ROLES,
+      { payoutId: payload.payoutId, accountId: payload.accountId },
+      NotificationPriorityEnum.MEDIUM,
+      FINANCE_DEPARTMENTS
+    );
+  } catch (error) {
+    ctx.log.error('Error sending payout paid notification', { error, payload });
+  }
+}
+
 export async function handleInvoiceOverdue(
   ctx: INotificationContext,
   payload: InvoiceOverduePayload
@@ -716,53 +777,6 @@ export async function handleInvoiceOverdue(
     );
   } catch (error) {
     ctx.log.error('Error sending invoice overdue notification', { error, payload });
-  }
-}
-
-export async function handlePayoutFailed(
-  ctx: INotificationContext,
-  payload: PayoutFailedPayload
-): Promise<void> {
-  try {
-    const { cuid, amountInCents, currency, reason } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
-    await notifyAnnouncement(
-      ctx,
-      cuid,
-      NotificationTypeEnum.PAYMENT,
-      'payment.payoutFailed',
-      { amount: fmt, reason: reason || 'unknown error' },
-      MGMT_ROLES,
-      { payoutId: payload.payoutId, accountId: payload.accountId },
-      NotificationPriorityEnum.HIGH,
-      FINANCE_DEPARTMENTS,
-      true
-    );
-  } catch (error) {
-    ctx.log.error('Error sending payout failed notification', { error, payload });
-  }
-}
-
-export async function handlePayoutPaid(
-  ctx: INotificationContext,
-  payload: PayoutPaidPayload
-): Promise<void> {
-  try {
-    const { cuid, amountInCents, currency } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
-    await notifyAnnouncement(
-      ctx,
-      cuid,
-      NotificationTypeEnum.PAYMENT,
-      'payment.payoutPaid',
-      { amount: fmt },
-      MGMT_ROLES,
-      { payoutId: payload.payoutId, accountId: payload.accountId },
-      NotificationPriorityEnum.MEDIUM,
-      FINANCE_DEPARTMENTS
-    );
-  } catch (error) {
-    ctx.log.error('Error sending payout paid notification', { error, payload });
   }
 }
 

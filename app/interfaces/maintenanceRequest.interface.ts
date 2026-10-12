@@ -1,7 +1,7 @@
 import { Document, Types } from 'mongoose';
 
-import { IInvoice } from './invoice.interface';
 import { MediaDocumentStatus } from './property.interface';
+import { IInvoiceAttachment, IInvoice } from './invoice.interface';
 
 export enum MaintenanceCategory {
   PEST_CONTROL = 'pest_control',
@@ -55,13 +55,6 @@ export enum InvoiceStatus {
 }
 
 export interface IMaintenanceRequest {
-  pendingMaintenanceStatus?: {
-    propertyId: Types.ObjectId;
-    unitId?: Types.ObjectId;
-    requestedBy: Types.ObjectId;
-    requestedAt: Date;
-    displayName: string;
-  };
   availabilityInfo?: {
     preferredDate?: Date; // specific dates tenant prefers
     options: AvailabilityWindow[]; // when tenant is available
@@ -80,6 +73,7 @@ export interface IMaintenanceRequest {
   propertyUnitId?: Types.ObjectId | string;
   priority: MaintenanceRequestPriority;
   assignedBy?: Types.ObjectId | string; // User who assigned the request
+  createdBy?: Types.ObjectId | string; // User who filed the request (absent on older records)
   managedBy?: Types.ObjectId | string;
   propertyId: Types.ObjectId | string;
   tenantId?: Types.ObjectId | string; // User with role=tenant
@@ -119,7 +113,6 @@ export interface ICreateMaintenanceRequest {
   };
   priority?: MaintenanceRequestPriority;
   media: MaintenanceRequestMedia[];
-  setMaintenanceStatus?: boolean; // Take property/unit offline for maintenance
   category: MaintenanceCategory;
   locationDescription?: string;
   permissionToEnter: boolean;
@@ -240,6 +233,17 @@ export interface IInvoiceWebhookPayload {
   cuid: string;
 }
 
+export interface ISubmitInvoicePayload {
+  attachment?: IInvoiceAttachment;
+  lineItems?: IInvoiceLineItem[];
+  externalInvoiceUrl?: string;
+  externalInvoiceId?: string;
+  source?: InvoiceSource;
+  description: string;
+  currency?: string;
+  amount: number;
+}
+
 export interface IRespondToAssignmentPayload {
   technician?: { name: string; phone?: string; email?: string; userId?: string }; // optional on accept
   action: 'accept' | 'decline';
@@ -264,16 +268,6 @@ export interface MaintenanceRequestMedia {
   uploadedAt: Date;
   key?: string;
   url: string;
-}
-
-export interface ISubmitInvoicePayload {
-  lineItems?: IInvoiceLineItem[];
-  externalInvoiceUrl?: string;
-  externalInvoiceId?: string;
-  source?: InvoiceSource;
-  description: string;
-  currency?: string;
-  amount: number;
 }
 
 export interface IMaintenanceRequestDocument extends IMaintenanceRequest, Document {

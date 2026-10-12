@@ -658,14 +658,14 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockPaymentGatewayService.getSubscriptionWithItems).not.toHaveBeenCalled();
-      // totalMonthlyPrice = growth annual base (76800) + 2 seats * 799 (1598) = 78398
+      // totalMonthlyPrice = growth annual base (83988) + 2 seats * 799 (1598) = 85586
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         expect.objectContaining({
           $set: expect.objectContaining({
             'seats.additional': 2,
             'seats.additionalCost': 1598,
-            totalMonthlyPrice: 78398,
+            totalMonthlyPrice: 85586,
             'billing.seatItemId': 'si_seat123',
           }),
         })
@@ -704,14 +704,14 @@ describe('SubscriptionService - Webhook Handlers', () => {
 
       expect(result.success).toBe(true);
       expect(mockPaymentGatewayService.getSubscriptionWithItems).not.toHaveBeenCalled();
-      // totalMonthlyPrice = growth monthly base (7999) + 0 seats = 7999
+      // totalMonthlyPrice = growth monthly base (6999) + 0 seats = 6999
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
         { _id: mockSubscription._id },
         expect.objectContaining({
           $set: expect.objectContaining({
             'seats.additional': 0,
             'seats.additionalCost': 0,
-            totalMonthlyPrice: 7999,
+            totalMonthlyPrice: 6999,
           }),
         })
       );

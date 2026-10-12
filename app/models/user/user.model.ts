@@ -44,6 +44,10 @@ const UserSchema = new Schema<IUserDocument>(
     deletedAt: { type: Date, default: null, select: false },
     activationTokenExpiresAt: { type: Date, default: null, select: false },
     passwordResetTokenExpiresAt: { type: Number, default: null, select: false },
+    pendingEmail: { type: String, lowercase: true, trim: true, default: undefined },
+    emailChangeToken: { type: String, select: false, default: undefined },
+    emailChangeTokenExpiresAt: { type: Date, select: false, default: undefined },
+    emailChangeRequestedBy: { type: String, default: undefined },
     consent: {
       acceptedOn: { type: Date, default: null },
       acceptedBy: { type: String, default: '' },
@@ -79,6 +83,8 @@ const UserSchema = new Schema<IUserDocument>(
         delete ret.passwordResetToken;
         delete ret.activationTokenExpiresAt;
         delete ret.passwordResetTokenExpiresAt;
+        delete ret.emailChangeToken;
+        delete ret.emailChangeTokenExpiresAt;
         return ret;
       },
     },
@@ -123,6 +129,8 @@ UserSchema.methods.validatePassword = async function (pwd: string): Promise<bool
 };
 
 UserSchema.index({ 'passkeys.credentialId': 1 });
+UserSchema.index({ pendingEmail: 1 }, { sparse: true });
+UserSchema.index({ emailChangeToken: 1 }, { sparse: true });
 
 const UserModel = model<IUserDocument>('User', UserSchema);
 

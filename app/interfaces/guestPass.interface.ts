@@ -79,6 +79,10 @@ export interface IGuestPass {
     phone?: string;
     email?: string;
   };
+  hostInfo?: {
+    name?: string;
+    phone?: string;
+  };
   acknowledgedBy?: Types.ObjectId;
   propertyUnitId?: Types.ObjectId;
   validatedBy?: Types.ObjectId;
@@ -88,19 +92,18 @@ export interface IGuestPass {
   sentVia: DeliveryMethod[];
   status: GuestPassStatus;
   isAcknowledged: boolean;
+  revokedReason?: string;
   expiryMinutes: number;
   acknowledgedAt?: Date;
   entryNotes?: string;
+  hostNotes?: string;
   revokedAt?: Date;
-  note?: string;
+  purpose?: string;
+  usedAt?: Date;
   code: string;
 }
 
 export interface ICreateGuestPassInput {
-  propertyInfo: {
-    pid: string;
-    puid?: string;
-  };
   notifySecurity?: boolean;
   expiryMinutes?: number;
   visitorPhone?: string;
@@ -108,10 +111,12 @@ export interface ICreateGuestPassInput {
   sendViaEmail: boolean;
   visitorName: string;
   sendViaSms: boolean;
+  propertyId: string; // property pid (the UI sends pid; a Mongo _id is also accepted)
+  hostNotes?: string;
   hostPhone?: string;
+  hostName?: string;
   purpose?: string;
-  hostName: string;
-  unitId?: string;
+  unitId?: string; // unit puid (or Mongo _id)
 }
 
 export interface IGuestPassDocument extends IGuestPass, Document {
@@ -162,4 +167,9 @@ export interface IValidateGuestPassRequest {
   entryNotes?: string;
   propertyId: string;
   code: string;
+}
+
+export interface IGuestPassCheckInProperty {
+  name: string;
+  pid: string;
 }

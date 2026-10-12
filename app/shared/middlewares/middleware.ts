@@ -3,6 +3,7 @@ import { container } from '@di/index';
 import { t } from '@shared/languages';
 import { UAParser } from 'ua-parser-js';
 import ProfileDAO from '@dao/profileDAO';
+import { PropertyDAO } from '@dao/propertyDAO';
 import { AuthCache } from '@caching/auth.cache';
 import { ClamScannerService } from '@shared/config';
 export { preventTenantConflict } from '@utils/helpers';
@@ -553,10 +554,6 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
 };
 
 /**
- * check if user has specific permission
- * Includes client context validation for client-specific resources
- */
-/**
  * Checks whether the role holds \`<action>:mine\` on the resource. Used as an opt-in fallback
  * for roles that only hold the \`:mine\` grant (e.g. manager on property create) — there is no
  * existing record to check ownership against yet, so holding the grant is enough.
@@ -645,23 +642,31 @@ export const requirePermission = (
 };
 
 /**
- * Restrict access to primary vendor users only.
- * Must be placed after isAuthenticated.
+ * Restrict access to primary vendor users. With `matchParam`, the route param must also be the
+ * caller's own vuid (resolved server-side), so a primary vendor can't act on another vendor's records.
  */
-export const requirePrimaryVendor = (req: Request, _res: Response, next: NextFunction) => {
-  const currentUser = req.context?.currentuser;
-  if (!currentUser?.vendorInfo?.isPrimaryVendor) {
-    return next(
-      new ForbiddenError({
-        message: t('common.errors.insufficientPermissions', {
-          resource: 'payout',
-          action: 'manage',
-          reason: 'Only primary vendor account holders can manage payout settings',
-        }),
-      })
-    );
-  }
-  next();
+export const requirePrimaryVendor = ({ matchParam }: { matchParam?: 'vuid' } = {}) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const vendorInfo = req.context?.currentuser?.vendorInfo;
+    let reason: string | undefined;
+    if (!vendorInfo?.isPrimaryVendor) {
+      reason = 'Only primary vendor account holders can manage payout settings';
+    } else if (matchParam && (!vendorInfo.vuid || vendorInfo.vuid !== req.params[matchParam])) {
+      reason = t('vendor.errors.notOwnPayoutAccount');
+    }
+    if (reason) {
+      return next(
+        new ForbiddenError({
+          message: t('common.errors.insufficientPermissions', {
+            resource: 'payout',
+            action: 'manage',
+            reason,
+          }),
+        })
+      );
+    }
+    next();
+  };
 };
 
 /**
@@ -837,17 +842,21 @@ export const requireUserManagement = () => {
   ]);
 };
 
+interface IResourceContext {
+  assignedUsers?: string[];
+  resourceId?: string;
+  ownerId?: string;
+}
+
 /**
- * Enhanced permission middleware with resource context validation
+ * Enhanced permission middleware with resource context validation.
+ * Ownership (ownerId/assignedUsers) must come from the server — the URL or a database lookup —
+ * never from the request body, or any caller could claim ownership and pass a MINE check.
  */
 export const requirePermissionWithContext = (
   resource: PermissionResource | string,
   action: PermissionAction | string,
-  contextExtractor?: (req: Request) => {
-    resourceId?: string;
-    ownerId?: string;
-    assignedUsers?: string[];
-  }
+  contextExtractor?: (req: Request) => IResourceContext | Promise<IResourceContext>
 ) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
@@ -865,7 +874,7 @@ export const requirePermissionWithContext = (
       let scope: PermissionScope | undefined;
       if (contextExtractor) {
         try {
-          const extractedContext = contextExtractor(req);
+          const extractedContext = await contextExtractor(req);
           // Auto-determine scope: if ownerId matches the current user, use MINE scope
           const ownerId = extractedContext?.ownerId;
           const isOwner = ownerId
@@ -890,9 +899,19 @@ export const requirePermissionWithContext = (
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
 
+      // No ownership to go on: staff are checked against the scope their department holds
+      // (maintenance holds :assigned). Writes only fall back when the record's assignees are known.
+      if (!scope) {
+        scope = permissionService.resolveStaffScope(currentuser, resource, action, {
+          assignmentVerifiable:
+            Array.isArray(context.assignedUsers) && context.assignedUsers.length > 0,
+        });
+      }
+
       // Use enhanced permission check with context
-      const permissionCheck: IPermissionCheck = {
+      const permissionCheck: { department?: string } & IPermissionCheck = {
         role: currentuser.client.role,
+        department: currentuser.employeeInfo?.department,
         resource: resource as PermissionResource,
         action: action as string,
         scope: scope ?? PermissionScope.ANY,
@@ -926,26 +945,42 @@ export const requirePermissionWithContext = (
 };
 
 /**
- * Property-specific middleware - validates property ownership/assignment
+ * Property-specific middleware. Ownership comes from the stored property (scoped to the
+ * client in the URL): the property's manager owns it, so a manager with `create:mine`
+ * can add units to the properties they manage and nowhere else.
  */
 export const requirePropertyPermission = (action: PermissionAction | string) => {
-  return requirePermissionWithContext(PermissionResource.PROPERTY, action, (req: Request) => ({
-    resourceId: req.params.propertyId || req.params.pid,
-    // These would typically come from database lookups in real implementation
-    ownerId: req.body?.ownerId,
-    assignedUsers: req.body?.assignedUsers || [],
-  }));
-};
+  return requirePermissionWithContext(PermissionResource.PROPERTY, action, async (req: Request) => {
+    const pid = req.params.propertyId || req.params.pid;
+    const cuid = req.params.cuid;
+    if (!pid || !cuid) return { resourceId: pid };
 
-/**
- * Maintenance-specific middleware - validates maintenance request access
- */
-export const requireMaintenancePermission = (action: PermissionAction | string) => {
-  return requirePermissionWithContext(PermissionResource.MAINTENANCE, action, (req: Request) => ({
-    resourceId: req.params.maintenanceId || req.params.mid,
-    ownerId: req.body?.requestedBy,
-    assignedUsers: req.body?.assignedTo ? [req.body.assignedTo] : [],
-  }));
+    const { propertyDAO, permissionService } = (req as AppRequest).container.cradle as {
+      permissionService: PermissionService;
+      propertyDAO: PropertyDAO;
+    };
+    const currentuser = (req as AppRequest).context.currentuser!;
+    // :any covers every property, so the ownership/assignment lookup can't change the outcome
+    const { granted: holdsAnyScope } = await permissionService.checkPermission({
+      role: currentuser.client.role,
+      department: currentuser.employeeInfo?.department,
+      resource: PermissionResource.PROPERTY,
+      action: action as string,
+      scope: PermissionScope.ANY,
+      context: { clientId: currentuser.client.cuid, userId: currentuser.sub },
+    });
+    if (holdsAnyScope) return { resourceId: pid };
+
+    const property = await propertyDAO.findFirst(
+      { pid, cuid, deletedAt: null },
+      { projection: { managedBy: 1, assignedStaff: 1 } }
+    );
+    return {
+      resourceId: pid,
+      ownerId: property?.managedBy?.toString(),
+      assignedUsers: (property?.assignedStaff ?? []).map((staffId) => staffId.toString()),
+    };
+  });
 };
 
 /**

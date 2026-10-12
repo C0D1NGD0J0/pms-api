@@ -164,6 +164,36 @@ beforeEach(async () => {
 
 describe('MaintenanceRequestService', () => {
   describe('createRequest', () => {
+    it('assigns a vendor with schedule and estimate when created by staff', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+      const scheduledDate = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+
+      const service = setupService();
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+
+      const result = await service.createRequest(ctx, {
+        pid: property.pid,
+        title: 'Create with vendor test',
+        description: { text: 'Request created with vendor, schedule and estimate' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+        vendorVuid: vendorRecord.vuid,
+        scheduledDate: scheduledDate as any,
+        estimatedCost: 120.5,
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid: result.data.mruid }).lean();
+      expect(stored?.status).toBe(MaintenanceRequestStatus.ASSIGNED);
+      expect(stored?.vendorId?.toString()).toBe(vendorUser._id.toString());
+      expect(stored?.estimatedCost).toBe(12050);
+      expect(stored?.scheduledDate?.toISOString()).toBe(scheduledDate);
+    });
+
     it('should create a maintenance request with valid pid', async () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
@@ -186,6 +216,27 @@ describe('MaintenanceRequestService', () => {
       expect(result.data.mruid).toBeDefined();
       expect(result.data.status).toBe(MaintenanceRequestStatus.OPEN);
       expect(result.data.propertyId.toString()).toBe(property._id.toString());
+    });
+
+    it('records the creating user as createdBy', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+
+      const service = setupService();
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+
+      const result = await service.createRequest(ctx, {
+        pid: property.pid,
+        title: 'Squeaky front door',
+        description: { text: 'The front door hinge squeaks every time it opens' },
+        category: MaintenanceCategory.GENERAL,
+        permissionToEnter: true,
+        media: [],
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid: result.data.mruid }).lean();
+      expect(stored?.createdBy?.toString()).toBe(managerUser._id.toString());
     });
 
     it("should set managedBy from the property's manager", async () => {
@@ -544,6 +595,185 @@ describe('MaintenanceRequestService', () => {
     });
   });
 
+  describe('listRequests — server-side pagination and sort', () => {
+    const seedRequests = (cuid: string, propertyId: Types.ObjectId, count: number) =>
+      MaintenanceRequest.insertMany(
+        Array.from({ length: count }, (_, i) => ({
+          cuid,
+          propertyId,
+          title: `Request ${String(i).padStart(2, '0')}`,
+          description: { text: 'Seeded maintenance request description' },
+          category: MaintenanceCategory.GENERAL,
+          priority: MaintenanceRequestPriority.MEDIUM,
+          status: MaintenanceRequestStatus.OPEN,
+          permissionToEnter: true,
+          createdAt: new Date(Date.UTC(2026, 0, 1, 0, i)),
+        }))
+      );
+
+    it('returns the requested page and matching pagination metadata', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+      await seedRequests(client.cuid, property._id, 25);
+      const service = setupService();
+
+      const page1 = await service.listRequests(ctx, {}, { page: 1, limit: 10 });
+      const page2 = await service.listRequests(ctx, {}, { page: 2, limit: 10 });
+      const page3 = await service.listRequests(ctx, {}, { page: 3, limit: 10 });
+
+      expect(page1.data.items).toHaveLength(10);
+      expect(page2.data.items).toHaveLength(10);
+      expect(page3.data.items).toHaveLength(5);
+      const allMruids = [...page1.data.items, ...page2.data.items, ...page3.data.items].map(
+        (item: any) => item.mruid
+      );
+      expect(new Set(allMruids).size).toBe(25);
+      expect(page2.data.pagination).toMatchObject({
+        total: 25,
+        perPage: 10,
+        totalPages: 3,
+        currentPage: 2,
+        hasMoreResource: true,
+      });
+      expect(page3.data.pagination.hasMoreResource).toBe(false);
+    });
+
+    it('reports the page size actually used when no limit is sent', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+      await seedRequests(client.cuid, property._id, 25);
+      const service = setupService();
+
+      const result = await service.listRequests(ctx, {}, {});
+
+      expect(result.data.items).toHaveLength(20);
+      expect(result.data.pagination).toMatchObject({ perPage: 20, totalPages: 2, currentPage: 1 });
+    });
+
+    it('applies the requested sort', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+      await seedRequests(client.cuid, property._id, 25);
+      const service = setupService();
+
+      const oldestFirst = await service.listRequests(
+        ctx,
+        {},
+        { page: 1, limit: 5, sort: 'createdAt' }
+      );
+      const titleDesc = await service.listRequests(ctx, {}, { page: 1, limit: 5, sort: '-title' });
+
+      expect(oldestFirst.data.items[0].title).toBe('Request 00');
+      expect(titleDesc.data.items[0].title).toBe('Request 24');
+    });
+  });
+
+  describe('staff visibility (assigned technician, assigned by them, or created by them)', () => {
+    const insertRequest = (cuid: string, propertyId: Types.ObjectId, extra: object) =>
+      MaintenanceRequest.create({
+        cuid,
+        propertyId,
+        title: 'Staff visibility request',
+        description: { text: 'Staff visibility request description' },
+        category: MaintenanceCategory.GENERAL,
+        priority: MaintenanceRequestPriority.MEDIUM,
+        status: MaintenanceRequestStatus.IN_PROGRESS,
+        permissionToEnter: true,
+        ...extra,
+      });
+
+    it('lists and opens only requests where the staff member is the technician or the assigner', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, {
+        roles: [ROLES.STAFF],
+        email: 'staff-visibility@test.com',
+      });
+      const otherStaff = await createTestUser(client.cuid, {
+        roles: [ROLES.STAFF],
+        email: 'other-staff-visibility@test.com',
+      });
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+
+      const asTechnician = await insertRequest(client.cuid, property._id, {
+        title: 'Fix the boiler',
+        assignedTechnician: { userId: staff._id, name: 'Staff Tech' },
+      });
+      const assignedByStaff = await insertRequest(client.cuid, property._id, {
+        title: 'Fix the fence',
+        assignedBy: staff._id,
+      });
+      const someoneElses = await insertRequest(client.cuid, property._id, {
+        title: 'Fix the boiler too',
+        assignedBy: otherStaff._id,
+        assignedTechnician: { userId: otherStaff._id, name: 'Other Tech' },
+      });
+      const service = setupService();
+
+      const listed = await service.listRequests(ctx, {}, { page: 1, limit: 10 });
+      expect(listed.data.items.map((i: any) => i.mruid).sort()).toEqual(
+        [asTechnician.mruid, assignedByStaff.mruid].sort()
+      );
+
+      // A search adds its own $or — it must not replace the visibility filter
+      const searched = await service.listRequests(
+        ctx,
+        { search: 'boiler' },
+        { page: 1, limit: 10 }
+      );
+      expect(searched.data.items.map((i: any) => i.mruid)).toEqual([asTechnician.mruid]);
+
+      await expect(service.getRequest(ctx, asTechnician.mruid)).resolves.toMatchObject({
+        success: true,
+      });
+      await expect(service.getRequest(ctx, assignedByStaff.mruid)).resolves.toMatchObject({
+        success: true,
+      });
+      await expect(service.getRequest(ctx, someoneElses.mruid)).rejects.toThrow();
+    });
+
+    it('lists and opens requests the staff member created, but not ones other staff created', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const staff = await createTestUser(client.cuid, {
+        roles: [ROLES.STAFF],
+        email: 'staff-creator@test.com',
+      });
+      const otherStaff = await createTestUser(client.cuid, {
+        roles: [ROLES.STAFF],
+        email: 'other-staff-creator@test.com',
+      });
+      const service = setupService();
+      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const otherCtx = mockRequestContext(otherStaff, client.cuid) as any;
+      const newRequest = (title: string) => ({
+        pid: property.pid,
+        title,
+        description: { text: `${title} — reported during a walkthrough` },
+        category: MaintenanceCategory.GENERAL,
+        permissionToEnter: true,
+        media: [],
+      });
+
+      const created = await service.createRequest(ctx, newRequest('Hallway light out'));
+      const createdByOther = await service.createRequest(otherCtx, newRequest('Lobby door stuck'));
+
+      const listed = await service.listRequests(ctx, {}, { page: 1, limit: 10 });
+      expect(listed.data.items.map((i: any) => i.mruid)).toEqual([created.data.mruid]);
+
+      await expect(service.getRequest(ctx, created.data.mruid)).resolves.toMatchObject({
+        success: true,
+      });
+      await expect(service.getRequest(ctx, createdByOther.data.mruid)).rejects.toThrow();
+    });
+  });
+
   describe('getRequest', () => {
     it('should return a single maintenance request by mruid', async () => {
       const client = await createTestClient();
@@ -687,6 +917,93 @@ describe('MaintenanceRequestService', () => {
   });
 
   describe('acceptAssignment / declineAssignment', () => {
+    const setupAssignedRequest = async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Technician selection test',
+        description: { text: 'Request to test technician selection on accept' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+
+      return { client, service, vendorCtx, vendorRecord, vendorUser, mruid: created.data.mruid };
+    };
+
+    it('assigns the selected team member as technician on accept', async () => {
+      const { client, service, vendorCtx, vendorRecord, mruid } = await setupAssignedRequest();
+      const teamMember = await createTestUser(client.cuid, {
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.VENDOR],
+            isConnected: true,
+            clientDisplayName: 'Vendor Tech',
+            linkedVendorUid: vendorRecord.vuid,
+          },
+        ] as any,
+      });
+
+      await service.acceptAssignment(vendorCtx, mruid, {
+        action: 'accept',
+        technician: { name: 'Team Tech', userId: teamMember._id.toString() },
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored?.assignedTechnician?.userId?.toString()).toBe(teamMember._id.toString());
+      expect(stored?.assignedTechnician?.name).toBe('Team Tech');
+    });
+
+    it('rejects a technician who is not on the vendor team', async () => {
+      const { client, service, vendorCtx, mruid } = await setupAssignedRequest();
+      const otherVendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const otherVendor = await createTestVendor(client.cuid, otherVendorUser._id);
+      const outsider = await createTestUser(client.cuid, {
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.VENDOR],
+            isConnected: true,
+            clientDisplayName: 'Vendor Tech',
+            linkedVendorUid: otherVendor.vuid,
+          },
+        ] as any,
+      });
+
+      await expect(
+        service.acceptAssignment(vendorCtx, mruid, {
+          action: 'accept',
+          technician: { name: 'Outsider', userId: outsider._id.toString() },
+        })
+      ).rejects.toThrow('Selected technician is not a member of your team');
+
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored?.status).toBe(MaintenanceRequestStatus.ASSIGNED);
+    });
+
+    it('accepts the primary vendor user as technician', async () => {
+      const { service, vendorCtx, vendorUser, mruid } = await setupAssignedRequest();
+
+      await service.acceptAssignment(vendorCtx, mruid, {
+        action: 'accept',
+        technician: { name: 'Owner', userId: vendorUser._id.toString() },
+      });
+
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored?.assignedTechnician?.userId?.toString()).toBe(vendorUser._id.toString());
+    });
+
     it('vendor should accept assignment and transition to in_progress', async () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);
@@ -967,6 +1284,52 @@ describe('MaintenanceRequestService', () => {
   });
 
   describe('submitInvoice / approveInvoice / rejectInvoice', () => {
+    it('persists the invoice attachment', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const vendorUser = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      const vendorRecord = await createTestVendor(client.cuid, vendorUser._id);
+
+      const service = setupService();
+      const managerCtx = mockRequestContext(managerUser, client.cuid) as any;
+      const vendorCtx = mockRequestContext(vendorUser, client.cuid) as any;
+
+      const created = await service.createRequest(managerCtx, {
+        pid: property.pid,
+        title: 'Invoice attachment test',
+        description: { text: 'Request to test invoice attachment persistence' },
+        category: MaintenanceCategory.PLUMBING,
+        permissionToEnter: true,
+        media: [],
+      });
+      await service.assignVendor(managerCtx, created.data.mruid, { vuid: vendorRecord.vuid });
+      await service.acceptAssignment(vendorCtx, created.data.mruid, { action: 'accept' });
+      await (service as any).maintenanceInvoiceService.submitWorkOrder(
+        vendorCtx,
+        created.data.mruid,
+        { scope: 'Fixed the plumbing issue', estimatedCostInCents: 25000 }
+      );
+      await (service as any).maintenanceInvoiceService.reviewWorkOrder(
+        managerCtx,
+        created.data.mruid,
+        { action: 'approve' }
+      );
+
+      const attachment = {
+        url: 'https://bucket.s3.amazonaws.com/invoices/inv-1.pdf',
+        key: 'invoices/inv-1.pdf',
+      };
+      const result = await (service as any).maintenanceInvoiceService.submitInvoice(
+        vendorCtx,
+        created.data.mruid,
+        { amount: 25000, description: 'Fixed the plumbing issue', attachment }
+      );
+
+      const stored = await InvoiceModel.findById(result.data._id).lean();
+      expect(stored?.attachment).toEqual(attachment);
+    });
+
     it('vendor should submit invoice and manager should approve it', async () => {
       const client = await createTestClient();
       const property = await createTestProperty(client.cuid, client._id);

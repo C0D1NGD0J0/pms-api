@@ -529,6 +529,43 @@ describe('ProfileService Integration Tests - Write Operations', () => {
       expect(hasConnection).toBe(true);
     });
 
+    it('should create the vendor entity, including serviceAreas, from invitation vendor data', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, { roles: [ROLES.VENDOR] });
+      await Profile.create({
+        user: user._id,
+        puid: `puid-${Date.now()}-${Math.random()}`,
+        personalInfo: {
+          firstName: 'Area',
+          lastName: 'Vendor',
+          displayName: 'Area Vendor',
+          location: 'Toronto, ON',
+        },
+      });
+
+      await profileService.initializeRoleInfo(
+        user._id.toString(),
+        client.cuid,
+        ROLES.VENDOR,
+        undefined,
+        {
+          isPrimaryVendor: true,
+          vendorEntityData: {
+            companyName: `Area Plumbing ${Date.now()}`,
+            businessType: 'Plumbing',
+            registrationNumber: `REG-${Date.now()}`,
+            serviceAreas: { maxDistance: 25 },
+          },
+        }
+      );
+
+      const vendor = await Vendor.findOne({
+        'connectedClients.primaryAccountHolderUserId': user._id,
+      }).lean();
+      expect(vendor?.serviceAreas?.maxDistance).toBe(25);
+      expect(vendor?.connectedClients[0].cuid).toBe(client.cuid);
+    });
+
     it('should throw NotFoundError when client not found', async () => {
       const client = await createTestClient();
       const user = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });

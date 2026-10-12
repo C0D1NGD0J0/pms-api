@@ -55,6 +55,16 @@ router.patch(
 );
 
 router.patch(
+  '/email_change/confirm',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  validateRequest({ query: AuthValidations.emailChangeToken }),
+  asyncWrapper((req, res) => {
+    const authController = req.container.resolve<AuthController>('authController');
+    return authController.confirmEmailChange(req, res);
+  })
+);
+
+router.patch(
   '/resend_activation_link',
   basicLimiter({ max: 3, windowMs: 15 * 60 * 1000 }),
   validateRequest({

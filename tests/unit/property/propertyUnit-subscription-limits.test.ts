@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError as _BadRequestError } from '@shared/customErrors';
 import { PropertyUnitService } from '@services/property/propertyUnit.service';
+import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 
 describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
   let propertyUnitService: PropertyUnitService;
@@ -221,6 +222,48 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
 
       // Should clean up CSV file
       expect(mockEmitterService.emit).toHaveBeenCalled();
+    });
+  });
+  describe('unarchivePropertyUnit — subscription unit limit', () => {
+    const unarchiveContext = () =>
+      ({
+        ...createMockContext(testCuid, testPid),
+        request: {
+          ...createMockContext(testCuid, testPid).request,
+          params: { cuid: testCuid, pid: testPid, puid: 'UNIT-1' },
+        },
+      }) as any;
+
+    const arrangeArchivedUnit = (activeUnits: number, maxUnits: number) => {
+      jest.spyOn(subscriptionPlanConfig, 'getConfig').mockReturnValue({
+        limits: { maxUnits },
+      } as any);
+      mockSubscriptionDAO.findFirst.mockResolvedValue({ planName: 'enterprise' });
+      mockPropertyUnitDAO.findFirst = jest
+        .fn()
+        .mockResolvedValue({ id: new Types.ObjectId().toString(), puid: 'UNIT-1' });
+      mockPropertyUnitDAO.list.mockResolvedValue({ items: [], pagination: { total: activeUnits } });
+      mockPropertyUnitDAO.updateById = jest.fn().mockResolvedValue({ puid: 'UNIT-1' });
+    };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('should unarchive when the plan allows unlimited (-1) units', async () => {
+      arrangeArchivedUnit(750, -1);
+
+      const result = await propertyUnitService.unarchivePropertyUnit(unarchiveContext());
+
+      expect(result.success).toBe(true);
+      expect(mockPropertyUnitDAO.updateById).toHaveBeenCalled();
+    });
+
+    it('should still reject when a finite unit limit is reached', async () => {
+      arrangeArchivedUnit(5, 5);
+
+      await expect(propertyUnitService.unarchivePropertyUnit(unarchiveContext())).rejects.toThrow(
+        'Cannot unarchive unit'
+      );
+      expect(mockPropertyUnitDAO.updateById).not.toHaveBeenCalled();
     });
   });
 });

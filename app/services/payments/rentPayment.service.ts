@@ -647,10 +647,11 @@ export class RentPaymentService {
       const paymentMethodId = tenantProfile.tenantInfo?.paymentMethods?.get(
         paymentProcessor.accountId
       );
+      const mandateId = tenantProfile.tenantInfo?.paymentMandates?.get(paymentProcessor.accountId);
 
       // Split ACSS payments that exceed the per-transaction limit into rent vs fees, so each
       // bank debit stays under the limit. When the rent alone is over the limit a split can't
-      // help, so one invoice is created: the bank rejects the debit at charge time and the
+      // help, so one charge is created: the bank rejects the debit at charge time and the
       // existing ACSS-limit handling (payPendingCharge → retryPaymentWithCard) moves it to card.
       const acssLimit = envVariables.STRIPE.ACSS_PER_TXN_LIMIT;
       const rentItems = lineItems.filter((li) => li.description.toLowerCase().includes('rent'));
@@ -671,17 +672,16 @@ export class RentPaymentService {
         );
       }
 
-      let invoiceId: string;
-      let hostedInvoiceUrl: string | undefined;
+      let chargeId: string;
       let splitInvoices: typeof payment.splitInvoices;
 
       const invoiceOpts = {
         tenantCustomerId,
         connectedAccountId: paymentProcessor.accountId,
         currency: leaseFees.currency.toLowerCase(),
-        dueDate: data.dueDate,
         cuid,
         paymentMethodId,
+        mandateId,
         leaseUid: lease.luid,
       };
       const invoiceKey = (part: string) =>
@@ -700,7 +700,7 @@ export class RentPaymentService {
           platformNetRevenue: rentSplitFees.platformNetRevenue + feesSplitFees.platformNetRevenue,
         };
 
-        const rentInvoice = await this.createAndFinalizeInvoice({
+        const rentCharge = await this.createTenantCharge({
           ...invoiceOpts,
           applicationFee: rentSplitFees.applicationFee,
           description: `Rent for ${data.period?.month}/${data.period?.year}`,
@@ -708,7 +708,7 @@ export class RentPaymentService {
           idempotencyKey: invoiceKey('rent'),
         });
 
-        const feesInvoice = await this.createAndFinalizeInvoice({
+        const feesCharge = await this.createTenantCharge({
           ...invoiceOpts,
           applicationFee: feesSplitFees.applicationFee,
           description: `Fees for ${data.period?.month}/${data.period?.year}`,
@@ -716,18 +716,18 @@ export class RentPaymentService {
           idempotencyKey: invoiceKey('fees'),
         });
 
-        invoiceId = rentInvoice.invoiceId;
-        hostedInvoiceUrl = rentInvoice.hostedInvoiceUrl;
+        chargeId = rentCharge.chargeId;
+        // splitInvoices predates PaymentIntents: invoiceId holds the charge id of each half.
         splitInvoices = [
           {
-            invoiceId: rentInvoice.invoiceId,
+            invoiceId: rentCharge.chargeId,
             amount: rentSplitAmount,
             applicationFee: rentSplitFees.applicationFee,
             category: 'rent' as const,
             status: 'pending' as const,
           },
           {
-            invoiceId: feesInvoice.invoiceId,
+            invoiceId: feesCharge.chargeId,
             amount: feesSplitAmount,
             applicationFee: feesSplitFees.applicationFee,
             category: 'fees' as const,
@@ -735,15 +735,14 @@ export class RentPaymentService {
           },
         ];
       } else {
-        const result = await this.createAndFinalizeInvoice({
+        const result = await this.createTenantCharge({
           ...invoiceOpts,
           applicationFee: feeBreakdown.applicationFee,
           description: data.description || `Rent for ${data.period?.month}/${data.period?.year}`,
           lineItems,
           idempotencyKey: invoiceKey('full'),
         });
-        invoiceId = result.invoiceId;
-        hostedInvoiceUrl = result.hostedInvoiceUrl;
+        chargeId = result.chargeId;
       }
 
       const payment = await this.paymentDAO.insert({
@@ -756,7 +755,7 @@ export class RentPaymentService {
         processingFee: feeBreakdown.gatewayProcessingFee,
         applicationFee: feeBreakdown.applicationFee,
         platformRevenue: feeBreakdown.platformNetRevenue,
-        gatewayPaymentId: invoiceId,
+        gatewayPaymentId: chargeId,
         currency: leaseFees.currency,
         status: PaymentRecordStatus.PENDING,
         dueDate: data.dueDate,
@@ -768,7 +767,6 @@ export class RentPaymentService {
           description,
           amountInCents,
         })),
-        ...(hostedInvoiceUrl && { receipt: { url: hostedInvoiceUrl } }),
         ...(splitInvoices && { splitInvoices }),
       });
 
@@ -788,6 +786,7 @@ export class RentPaymentService {
         try {
           await this.createDepositInvoice({
             ...invoiceOpts,
+            dueDate: data.dueDate,
             leaseId: lease._id.toString(),
             tenantProfileId: tenantProfile._id,
             deposits: leaseFees.deposits,
@@ -905,14 +904,14 @@ export class RentPaymentService {
 
           if (paymentMethodResult.data?.type && bankDebitTypes.has(paymentMethodResult.data.type)) {
             if (activeInvoiceId) {
-              const voidResult = await this.paymentGatewayService.voidInvoice(
+              const cancelResult = await this.paymentGatewayService.cancelCharge(
                 IPaymentGatewayProvider.STRIPE,
                 activeInvoiceId
               );
-              if (!voidResult.success) {
+              if (!cancelResult.success) {
                 this.log.warn(
-                  { pytuid, invoiceId: activeInvoiceId, message: voidResult.message },
-                  '[RentPaymentService] Failed to void invoice for bank method without mandate'
+                  { pytuid, chargeId: activeInvoiceId, message: cancelResult.message },
+                  '[RentPaymentService] Failed to cancel charge for bank method without mandate'
                 );
               }
             }
@@ -949,8 +948,8 @@ export class RentPaymentService {
         }
 
         if (!activeInvoiceId) {
-          // PM-initiated request created a PENDING record without a Stripe invoice.
-          // Lazily create + finalize it now so we can charge immediately.
+          // PM-initiated request created a PENDING record without a Stripe charge.
+          // Lazily create it now so we can charge immediately.
           if (!payment.lineItems?.length) {
             throw new BadRequestError({
               message:
@@ -972,27 +971,26 @@ export class RentPaymentService {
             : 0;
           const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
 
-          const { invoiceId, hostedInvoiceUrl: hostedUrl } = await this.createAndFinalizeInvoice({
+          const { chargeId } = await this.createTenantCharge({
             tenantCustomerId,
             connectedAccountId: paymentProcessor.accountId,
             applicationFee: feeBreakdown.applicationFee,
             currency: (payment.currency ?? 'USD').toLowerCase(),
             description: payment.description || `Rent payment ${pytuid}`,
-            dueDate: dayjs().toDate(),
             lineItems: payment.lineItems as { description: string; amountInCents: number }[],
             cuid,
             paymentMethodId,
+            mandateId,
           });
 
-          activeInvoiceId = invoiceId;
+          activeInvoiceId = chargeId;
 
           await this.paymentDAO.updateById(payment._id.toString(), {
             gatewayPaymentId: activeInvoiceId,
-            ...(hostedUrl && { 'receipt.url': hostedUrl }),
           });
         }
 
-        const payResult = await this.paymentGatewayService.payInvoice(
+        const payResult = await this.paymentGatewayService.payCharge(
           IPaymentGatewayProvider.STRIPE,
           activeInvoiceId,
           paymentMethodId
@@ -1090,7 +1088,7 @@ export class RentPaymentService {
       let activeInvoiceId = payment.gatewayPaymentId;
 
       if (!activeInvoiceId) {
-        const { invoiceId, hostedInvoiceUrl: hostedUrl } = await this.createAndFinalizeInvoice({
+        const { chargeId } = await this.createTenantCharge({
           tenantCustomerId,
           connectedAccountId: paymentProcessor.accountId,
           // Deposits are held for the tenant and refunded in full — the platform takes no fee.
@@ -1099,7 +1097,6 @@ export class RentPaymentService {
           description:
             payment.description ||
             (isDeposit ? 'Security & Pet Deposit' : `Maintenance charge ${pytuid}`),
-          dueDate: dayjs().toDate(),
           lineItems: payment.lineItems?.length
             ? (payment.lineItems as { description: string; amountInCents: number }[])
             : [
@@ -1110,20 +1107,20 @@ export class RentPaymentService {
               ],
           cuid,
           paymentMethodId,
+          mandateId,
           skipDestinationTransfer: payment.paymentType === PaymentRecordType.MAINTENANCE,
         });
 
-        activeInvoiceId = invoiceId;
+        activeInvoiceId = chargeId;
 
         await this.paymentDAO.updateById(payment._id.toString(), {
           gatewayPaymentId: activeInvoiceId,
-          ...(hostedUrl && { 'receipt.url': hostedUrl }),
         });
       }
 
       const updated = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
 
-      const payResult = await this.paymentGatewayService.payInvoice(
+      const payResult = await this.paymentGatewayService.payCharge(
         IPaymentGatewayProvider.STRIPE,
         activeInvoiceId!,
         {
@@ -1290,6 +1287,7 @@ export class RentPaymentService {
     leaseId: string;
     tenantProfileId: Types.ObjectId;
     paymentMethodId?: string;
+    mandateId?: string;
     leaseUid?: string;
     deposits: { security: number; pet: number; total: number };
     idempotencyKey?: string;
@@ -1304,16 +1302,16 @@ export class RentPaymentService {
       return;
     }
 
-    const { invoiceId, hostedInvoiceUrl } = await this.createAndFinalizeInvoice({
+    const { chargeId } = await this.createTenantCharge({
       tenantCustomerId: opts.tenantCustomerId,
       connectedAccountId: opts.connectedAccountId,
       applicationFee: 0,
       currency: opts.currency,
       description: 'Security & Pet Deposit',
-      dueDate: dayjs(opts.dueDate).toDate(),
       lineItems: depositLineItems,
       cuid: opts.cuid,
       paymentMethodId: opts.paymentMethodId,
+      mandateId: opts.mandateId,
       leaseUid: opts.leaseUid,
       idempotencyKey: opts.idempotencyKey,
     });
@@ -1328,70 +1326,58 @@ export class RentPaymentService {
       processingFee: 0,
       applicationFee: 0,
       platformRevenue: 0,
-      gatewayPaymentId: invoiceId,
+      gatewayPaymentId: chargeId,
       currency: opts.currency,
       status: PaymentRecordStatus.PENDING,
       dueDate: dayjs(opts.dueDate).toDate(),
       description: 'Security & Pet Deposit',
       isManualEntry: false,
       lineItems: depositLineItems,
-      ...(hostedInvoiceUrl && { receipt: { url: hostedInvoiceUrl } }),
     });
 
     this.log.info(
       { cuid: opts.cuid, leaseId: opts.leaseId, amount: opts.deposits.total },
-      'Security deposit invoice created'
+      'Security deposit charge created'
     );
   }
 
-  async createAndFinalizeInvoice(opts: {
+  /**
+   * Creates the Stripe charge for a tenant payment, unconfirmed: the autopay cron or the
+   * tenant charges it later via payCharge. Returns the PaymentIntent id stored as
+   * gatewayPaymentId.
+   */
+  private async createTenantCharge(opts: {
     tenantCustomerId: string;
     connectedAccountId: string;
     applicationFee: number;
     currency: string;
     description: string;
-    dueDate: Date;
     lineItems: { description: string; amountInCents: number }[];
     cuid: string;
     paymentMethodId?: string;
+    mandateId?: string;
     leaseUid?: string;
     skipDestinationTransfer?: boolean;
     idempotencyKey?: string;
-  }): Promise<{ invoiceId: string; hostedInvoiceUrl?: string }> {
-    const invoiceResult = await this.paymentGatewayService.createInvoice(
-      IPaymentGatewayProvider.STRIPE,
-      {
-        tenantCustomerId: opts.tenantCustomerId,
-        connectedAccountId: opts.connectedAccountId,
-        applicationFeeAmountInCents: opts.applicationFee,
-        currency: opts.currency,
-        description: opts.description,
-        autoChargeDueDate: opts.dueDate,
-        lineItems: opts.lineItems,
-        cuid: opts.cuid,
-        paymentMethodId: opts.paymentMethodId,
-        leaseUid: opts.leaseUid,
-        skipDestinationTransfer: opts.skipDestinationTransfer,
-        idempotencyKey: opts.idempotencyKey,
-      }
-    );
-    if (!invoiceResult.success || !invoiceResult.data) {
-      throw new Error(invoiceResult.message || 'Failed to create invoice');
+  }): Promise<{ chargeId: string }> {
+    const result = await this.paymentGatewayService.createCharge(IPaymentGatewayProvider.STRIPE, {
+      tenantCustomerId: opts.tenantCustomerId,
+      connectedAccountId: opts.connectedAccountId,
+      applicationFeeAmountInCents: opts.applicationFee,
+      currency: opts.currency,
+      description: opts.description,
+      lineItems: opts.lineItems,
+      cuid: opts.cuid,
+      paymentMethodId: opts.paymentMethodId,
+      mandateId: opts.mandateId,
+      leaseUid: opts.leaseUid,
+      skipDestinationTransfer: opts.skipDestinationTransfer,
+      idempotencyKey: opts.idempotencyKey,
+    });
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to create charge');
     }
-
-    const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
-      IPaymentGatewayProvider.STRIPE,
-      invoiceResult.data.invoiceId,
-      opts.idempotencyKey && `${opts.idempotencyKey}:finalize`
-    );
-    if (!finalizeResult.success) {
-      throw new Error(finalizeResult.message || 'Failed to finalize invoice');
-    }
-
-    return {
-      invoiceId: invoiceResult.data.invoiceId,
-      hostedInvoiceUrl: finalizeResult.data?.hostedInvoiceUrl,
-    };
+    return { chargeId: result.data.chargeId };
   }
 
   private static readonly TENANT_PAYABLE_TYPES = new Set<PaymentRecordType>([
@@ -1464,28 +1450,29 @@ export class RentPaymentService {
   }
 
   /**
-   * Voids every Stripe invoice still attached to a record that is about to be replaced, so the
-   * tenant can no longer pay a charge we stop tracking. An invoice that can't be voided is
-   * usually already void (e.g. after a card retry); it is logged for reconciliation in case it
-   * was paid instead, and the replacement still goes ahead so the month is billed.
+   * Cancels every Stripe charge (PaymentIntent, or legacy invoice) still attached to a record
+   * that is about to be replaced, so the tenant can no longer pay a charge we stop tracking.
+   * A charge that can't be cancelled is usually already cancelled (e.g. after a card retry);
+   * it is logged for reconciliation in case it was paid instead, and the replacement still
+   * goes ahead so the month is billed.
    */
   private async voidOpenInvoices(payment: IPaymentDocument): Promise<void> {
-    const invoiceIds = [
+    const chargeIds = [
       ...new Set(
         [payment.gatewayPaymentId, ...(payment.splitInvoices ?? []).map((s) => s.invoiceId)].filter(
-          (id): id is string => !!id && id.startsWith('in_')
+          (id): id is string => !!id && (id.startsWith('in_') || id.startsWith('pi_'))
         )
       ),
     ];
-    for (const invoiceId of invoiceIds) {
-      const voidResult = await this.paymentGatewayService.voidInvoice(
+    for (const chargeId of chargeIds) {
+      const cancelResult = await this.paymentGatewayService.cancelCharge(
         IPaymentGatewayProvider.STRIPE,
-        invoiceId
+        chargeId
       );
-      if (!voidResult.success) {
+      if (!cancelResult.success) {
         this.log.error(
-          { pytuid: payment.pytuid, invoiceId, message: voidResult.message },
-          'Could not void the invoice of the payment being replaced — check it was not paid'
+          { pytuid: payment.pytuid, chargeId, message: cancelResult.message },
+          'Could not cancel the charge of the payment being replaced — check it was not paid'
         );
       }
     }

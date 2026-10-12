@@ -34,8 +34,13 @@ import {
   PlanName,
 } from '@interfaces/index';
 
-import { subscriptionPlanConfig } from './subscription_plans.config';
 import { SubscriptionWebhookService } from './subscriptionWebhook.service';
+import {
+  subscriptionPlanConfig,
+  isWithinLimit,
+  remainingFor,
+  overageFor,
+} from './subscription_plans.config';
 
 interface IConstructor {
   subscriptionWebhookService: SubscriptionWebhookService;
@@ -256,6 +261,8 @@ export class SubscriptionService {
         displayOrder: config.displayOrder,
         transactionFeePercent: config.transactionFeePercent,
         achPercentRate: subscriptionPlanConfig.getAchPercentRate(),
+        achFeeCapCents: subscriptionPlanConfig.getAchFeeCapCents(),
+        instantPayout: subscriptionPlanConfig.getInstantPayoutPricing(),
         isCustomPricing: config.isCustomPricing,
         seatPricing: config.seatPricing,
         limits: config.limits,
@@ -274,7 +281,9 @@ export class SubscriptionService {
             priceInCents: annualPriceInCents,
             displayPrice: this.formatPrice(annualPriceInCents || 0, cur),
             savingsPercent: config.pricing.annual.savingsPercent,
-            savingsDisplay: `Save ${config.pricing.annual.savingsPercent}%`,
+            savingsDisplay: config.pricing.annual.savingsPercent
+              ? `Save ${config.pricing.annual.savingsPercent}%`
+              : '',
             lookUpKey: stripeData?.annual.lookUpKey || null,
           },
         },
@@ -824,8 +833,11 @@ export class SubscriptionService {
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
       const maxAllowedSeats = config.seatPricing.includedSeats + subscription.seats.additional;
       const isLimitReached = {
-        properties: subscription.resourceTracker.propertyCount >= config.limits.maxProperties,
-        units: subscription.resourceTracker.unitCount >= config.limits.maxUnits,
+        properties: !isWithinLimit(
+          subscription.resourceTracker.propertyCount,
+          config.limits.maxProperties
+        ),
+        units: !isWithinLimit(subscription.resourceTracker.unitCount, config.limits.maxUnits),
         seats: subscription.resourceTracker.seatCount >= maxAllowedSeats,
       };
 
@@ -868,11 +880,11 @@ export class SubscriptionService {
           const count = subscription.manualRecords?.countThisPeriod ?? 0;
           const quota = subscriptionPlanConfig.getManualRecordQuota(subscription.planName);
           const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
-          const overageCount = Math.max(0, count - quota);
+          const overageCount = overageFor(count, quota);
           return {
             countThisPeriod: count,
             quota,
-            remaining: Math.max(0, quota - count),
+            remaining: remainingFor(count, quota),
             overageFeeCents: feeCents,
             overageCount,
             projectedOverageCents: overageCount * feeCents,
@@ -896,7 +908,7 @@ export class SubscriptionService {
           return {
             countThisPeriod: count,
             quota,
-            remaining: Math.max(0, quota - count),
+            remaining: remainingFor(count, quota),
             percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
           };
         })(),
@@ -1674,7 +1686,11 @@ export class SubscriptionService {
 
   private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      // The client's own processor — vendor processors also carry the inviting client's cuid
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+      });
       if (!paymentProcessor?.accountId) return;
 
       if (
@@ -1689,7 +1705,7 @@ export class SubscriptionService {
           'manual'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: {
               payoutsPaused: true,
@@ -1704,10 +1720,10 @@ export class SubscriptionService {
           IPaymentGatewayProvider.STRIPE,
           paymentProcessor.accountId,
           'weekly',
-          'monday'
+          paymentProcessor.payoutWeeklyAnchor || 'monday'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: { payoutsPaused: false },
             $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },

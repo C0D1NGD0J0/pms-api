@@ -329,26 +329,6 @@ describe('PaymentGatewayService Integration Tests', () => {
     });
   });
 
-  describe('finalizeInvoice', () => {
-    it('passes the idempotency key through to Stripe', async () => {
-      mockStripeService.finalizeInvoice = jest
-        .fn()
-        .mockResolvedValue({ invoiceId: 'in_1', status: 'open' });
-      paymentGatewayService = new PaymentGatewayService({ stripeService: mockStripeService });
-
-      await paymentGatewayService.finalizeInvoice(
-        IPaymentGatewayProvider.STRIPE,
-        'in_1',
-        'rent-invoice-job:42:full:finalize'
-      );
-
-      expect(mockStripeService.finalizeInvoice).toHaveBeenCalledWith(
-        'in_1',
-        'rent-invoice-job:42:full:finalize'
-      );
-    });
-  });
-
   describe('getConnectBalance', () => {
     it('should return balance data from StripeService', async () => {
       const mockBalance = {

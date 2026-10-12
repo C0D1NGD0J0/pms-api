@@ -1,17 +1,24 @@
 import dayjs from 'dayjs';
 import crypto from 'crypto';
 import Logger from 'bunyan';
+import bcrypt from 'bcryptjs';
 import { Lease } from '@models/index';
-import { UnauthorizedError, NotFoundError } from '@shared/customErrors';
+import { t } from '@shared/languages';
 import { type QueryFilter, PipelineStage, Types, Model } from 'mongoose';
 import { hashGenerator, createLogger, escapeRegExp } from '@utils/index';
 import { IPasskeyCredential, IUserDocument } from '@interfaces/user.interface';
 import { ListResultWithPagination, IInvitationDocument } from '@interfaces/index';
+import { UnauthorizedError, ConflictError, NotFoundError } from '@shared/customErrors';
 import { resolveHighestRole, IUserRoleType, ROLES } from '@shared/constants/roles.constants';
 
 import { BaseDAO } from './baseDAO';
 import { IFindOptions, dynamic } from './interfaces/baseDAO.interface';
 import { IUserFilterOptions, IUserDAO } from './interfaces/userDAO.interface';
+
+// Hashed once, with the same cost as real passwords (user.model.ts genSalt(10))
+let timingSafeDummyHash: Promise<string> | null = null;
+const getTimingSafeDummyHash = () =>
+  (timingSafeDummyHash ??= bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10));
 
 export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   protected logger: Logger;
@@ -33,6 +40,8 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       passwordResetToken: 0,
       activationTokenExpiresAt: 0,
       passwordResetTokenExpiresAt: 0,
+      emailChangeToken: 0,
+      emailChangeTokenExpiresAt: 0,
       'profile.__v': 0,
     },
   };
@@ -144,7 +153,11 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
   async verifyCredentials(email: string, password: string): Promise<IUserDocument | null> {
     try {
       const user = await this.getActiveUserByEmail(email, { select: '+password' });
-      if (!user) return null;
+      if (!user) {
+        // Same bcrypt cost as a real account, so response time doesn't reveal unknown emails
+        await bcrypt.compare(password, await getTimingSafeDummyHash());
+        return null;
+      }
 
       const isValid = await user.validatePassword(password);
       return isValid ? user : null;
@@ -385,16 +398,6 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
-  async isEmailUnique(email: string): Promise<boolean> {
-    try {
-      const user = await this.getActiveUserByEmail(email);
-      return !user;
-    } catch (error) {
-      this.logger.error(error.message || error);
-      throw this.throwErrorHandler(error);
-    }
-  }
-
   async removeClientAssociation(userId: string, clientId: string): Promise<boolean> {
     try {
       const result = await this.update(
@@ -508,6 +511,96 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
 
       return user;
     } catch (error) {
+      this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /** Checks both login emails and emails reserved by an in-flight email change. */
+  async isEmailTaken(email: string, excludeUserId?: string): Promise<boolean> {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const filter: QueryFilter<IUserDocument> = {
+        $or: [{ email: normalizedEmail }, { pendingEmail: normalizedEmail }],
+      };
+      if (excludeUserId) {
+        filter._id = { $ne: new Types.ObjectId(excludeUserId) };
+      }
+      return !!(await this.findFirst(filter, { select: '_id' }));
+    } catch (error) {
+      this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async setPendingEmail(
+    userId: string,
+    pendingChange: { pendingEmail: string; tokenHash: string; expiresAt: Date; requestedBy: string }
+  ): Promise<IUserDocument | null> {
+    try {
+      return await this.updateById(userId, {
+        $set: {
+          pendingEmail: pendingChange.pendingEmail,
+          emailChangeToken: pendingChange.tokenHash,
+          emailChangeTokenExpiresAt: pendingChange.expiresAt,
+          emailChangeRequestedBy: pendingChange.requestedBy,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async clearPendingEmail(userId: string): Promise<IUserDocument | null> {
+    try {
+      return await this.updateById(userId, {
+        $unset: {
+          pendingEmail: 1,
+          emailChangeToken: 1,
+          emailChangeTokenExpiresAt: 1,
+          emailChangeRequestedBy: 1,
+        },
+      });
+    } catch (error) {
+      this.logger.error(error.message || error);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  /**
+   * Swaps the login email for the pending one in a single atomic write, so a token can only be
+   * redeemed once. Returns the user as it was before the swap (email = previous address).
+   * A unique-index clash on `email` (someone else took the address meanwhile) becomes a 409.
+   */
+  async confirmPendingEmail(tokenHash: string): Promise<IUserDocument | null> {
+    try {
+      const swapEmailPipeline = [
+        { $set: { email: '$pendingEmail' } },
+        {
+          $unset: [
+            'pendingEmail',
+            'emailChangeToken',
+            'emailChangeTokenExpiresAt',
+            'emailChangeRequestedBy',
+          ],
+        },
+      ];
+      return await this.update(
+        {
+          emailChangeToken: tokenHash,
+          emailChangeTokenExpiresAt: { $gt: new Date() },
+          pendingEmail: { $exists: true, $nin: [null, ''] },
+          deletedAt: null,
+        },
+        swapEmailPipeline as any,
+        { returnDocument: 'before', updatePipeline: true, runValidators: false }
+      );
+    } catch (error) {
+      const mongoCode = error?.code ?? error?.originalError?.code;
+      if (mongoCode === 11000) {
+        throw new ConflictError({ message: t('user.emailChange.emailTaken') });
+      }
       this.logger.error(error.message || error);
       throw this.throwErrorHandler(error);
     }
@@ -1130,6 +1223,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
             _id: 1,
             uid: 1,
             email: 1,
+            pendingEmail: 1,
             isActive: 1,
             createdAt: 1,
             profileId: '$profile._id',
@@ -1360,21 +1454,12 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     return (user?.passkeys as IPasskeyCredential[]) || [];
   }
 
-  async hasPasskeys(email: string): Promise<boolean> {
-    const count = await this.countDocuments({
-      email,
-      deletedAt: null,
-      isActive: true,
-      'passkeys.0': { $exists: true },
-    } as QueryFilter<IUserDocument>);
-    return count > 0;
-  }
-
   async findByPasskeyCredentialId(credentialId: string): Promise<IUserDocument | null> {
     return this.findFirst(
       {
         'passkeys.credentialId': credentialId,
         deletedAt: null,
+        isActive: true,
       } as QueryFilter<IUserDocument>,
       { select: '+passkeys' }
     );

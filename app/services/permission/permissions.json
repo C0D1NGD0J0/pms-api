@@ -77,7 +77,6 @@
       "payment": ["read:any", "list:any"],
       "report": ["read:any", "list:any"],
       "expense": ["read:any", "list:any"],
-      "guest_pass": ["read:any", "list:any"],
       "departments": {
         "accounting": {
           "payment": ["read:any", "list:any", "create:any", "update:any"],
@@ -85,14 +84,16 @@
           "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "lease": ["read:any", "list:any"],
           "tenant": ["read:any", "list:any"],
-          "user": ["read:any", "list:any", "delete:mine"],
+          "property": ["read:any", "list:any"],
+          "user": ["read:any", "list:any", "read:mine", "update:mine", "delete:mine"],
           "client": ["read:mine"]
         },
         "maintenance": {
-          "maintenance": ["create:assigned", "read:assigned", "update:assigned", "list:assigned"],
-          "property": ["read:assigned"],
-          "user": ["read:mine", "update:mine"],
+          "maintenance": ["read:assigned", "update:assigned", "list:assigned"],
+          "property": ["read:assigned", "list:assigned"],
+          "user": ["read:mine", "update:mine", "delete:mine"],
           "inspection": ["read:any", "list:any"],
+          "vendor": ["read:any", "list:any"],
           "client": ["read:mine"]
         },
         "operations": {
@@ -101,7 +102,8 @@
           "lease": ["read:any", "update:assigned", "list:any"],
           "tenant": ["read:any", "list:any"],
           "payment": ["read:any", "list:any"],
-          "user": ["read:any", "list:any", "delete:mine"],
+          "user": ["read:any", "list:any", "read:mine", "update:mine", "delete:mine"],
+          "vendor": ["read:any", "list:any"],
           "inspection": ["read:any", "list:any"],
           "report": ["read:any"],
           "expense": ["read:any", "list:any"],
@@ -120,7 +122,8 @@
           "lease": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "tenant": ["read:any", "update:any", "list:any"],
           "payment": ["read:any", "list:any", "create:any"],
-          "user": ["read:any", "update:any", "list:any", "delete:mine"],
+          "user": ["read:any", "update:any", "list:any", "read:mine", "update:mine", "delete:mine"],
+          "vendor": ["read:any", "list:any"],
           "inspection": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
           "report": ["read:any", "create:any", "list:any"],
           "expense": ["create:any", "read:any", "update:any", "delete:any", "list:any"],
@@ -128,8 +131,8 @@
         },
         "security": {
           "property": ["read:any", "list:any"],
-          "guest_pass": ["read:any", "list:any", "update:any"],
-          "user": ["read:mine", "update:mine"],
+          "guest_pass": ["read:assigned", "list:assigned", "update:assigned"],
+          "user": ["read:mine", "update:mine", "delete:mine"],
           "client": ["read:mine"]
         }
       }

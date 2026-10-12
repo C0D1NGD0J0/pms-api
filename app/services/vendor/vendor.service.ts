@@ -195,7 +195,11 @@ export class VendorService {
 
         if (newConnections.length > 0) {
           existingVendor.connectedClients.push(...newConnections);
-          await this.vendorDAO.updateVendor(existingVendor._id, existingVendor, session);
+          await this.vendorDAO.updateVendor(
+            existingVendor._id,
+            { connectedClients: existingVendor.connectedClients },
+            session
+          );
         }
 
         return {

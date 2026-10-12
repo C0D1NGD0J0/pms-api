@@ -140,6 +140,9 @@ export class MaintenanceInvoiceService {
             currency: (data.currency || fallbackCurrency).toUpperCase(),
             description: data.description,
             lineItems: data.lineItems,
+            ...(data.attachment && {
+              attachment: { url: data.attachment.url, key: data.attachment.key },
+            }),
             status: InvoiceStatus.PENDING,
             source: {
               type: data.source || 'manual',

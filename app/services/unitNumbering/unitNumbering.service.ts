@@ -34,12 +34,32 @@ export interface UnitFormValues {
   floor: number;
 }
 
+/**
+ * Below-grade units can't be expressed by floor-encoding patterns (floor * 100 + n, A = floor 1),
+ * so they use their own labels: basements B{level}-{nn} (B1-01 is floor -1), ground floor G-{nn}.
+ * G is limited to two digits so it never collides with alpha_numeric (G-101 = floor 7).
+ */
+const BASEMENT_UNIT_REGEX = /^B([1-9])-(\d{2,3})$/;
+const GROUND_FLOOR_UNIT_REGEX = /^G-(\d{2})$/;
+const BELOW_GRADE_PATTERN = 'below_grade';
+const FLOOR_ENCODING_PATTERNS = new Set([
+  BELOW_GRADE_PATTERN,
+  'alpha_numeric',
+  'building_unit',
+  'floor_based',
+  'wing_unit',
+]);
+
 export class UnitNumberingService {
   /**
    * Detect the numbering pattern of a unit number
    */
   detectNumberingPattern(unitNumber: string): string {
     if (!unitNumber) return 'numeric';
+
+    if (BASEMENT_UNIT_REGEX.test(unitNumber) || GROUND_FLOOR_UNIT_REGEX.test(unitNumber)) {
+      return BELOW_GRADE_PATTERN;
+    }
 
     // compare with predefined patterns
     for (const [patternId, pattern] of Object.entries(UNIT_NUMBER_PATTERNS)) {
@@ -66,6 +86,12 @@ export class UnitNumberingService {
     const pattern = this.detectNumberingPattern(unitNumber);
 
     switch (pattern) {
+      case BELOW_GRADE_PATTERN: {
+        // B1-01 -> -1, B2-03 -> -2, G-01 -> 0
+        const basementMatch = unitNumber.match(BASEMENT_UNIT_REGEX);
+        return basementMatch ? -parseInt(basementMatch[1]) : 0;
+      }
+
       case 'alpha_numeric': {
         // A-1001 -> 1, B-2005 -> 2 (letter determines floor)
         const alphaMatch = unitNumber.match(/^([A-Z])-(\d+)$/);
@@ -139,6 +165,7 @@ export class UnitNumberingService {
 
     const patternNames: Record<string, string> = {
       alpha_numeric: 'alphabetic pattern',
+      below_grade: 'basement/ground-floor format',
       building_unit: 'building-unit format',
       custom: 'custom pattern',
       floor_based: 'floor-based pattern',
@@ -259,6 +286,10 @@ export class UnitNumberingService {
       };
     }
 
+    if (currentFloor <= 0 && FLOOR_ENCODING_PATTERNS.has(pattern)) {
+      return this.generateBelowGradeUnitNumber(existingUnits, currentFloor);
+    }
+
     // Default first unit
     if (existingUnits.length === 0) {
       const defaultNumbers: Record<string, string> = {
@@ -366,6 +397,34 @@ export class UnitNumberingService {
   }
 
   /**
+   * Next free label on a basement (B1-01, B1-02, ...) or the ground floor (G-01, ...)
+   */
+  private generateBelowGradeUnitNumber(
+    existingUnits: UnitFormValues[],
+    floor: number
+  ): UnitNumberSuggestion {
+    const prefix = floor === 0 ? 'G' : `B${Math.abs(floor)}`;
+    const usedNumbers = existingUnits
+      .filter(
+        (unit) =>
+          this.detectNumberingPattern(unit.unitNumber) === BELOW_GRADE_PATTERN &&
+          this.extractExpectedFloorFromUnitNumber(unit.unitNumber) === floor
+      )
+      .map((unit) => parseInt(unit.unitNumber.split('-')[1]));
+    const nextNumber = usedNumbers.length > 0 ? Math.max(...usedNumbers) + 1 : 1;
+
+    return {
+      isConsistent: true,
+      nextNumber: `${prefix}-${nextNumber.toString().padStart(2, '0')}`,
+      pattern: BELOW_GRADE_PATTERN,
+      recommendation:
+        floor === 0
+          ? 'Following ground-floor pattern'
+          : `Following basement pattern for level B${Math.abs(floor)}`,
+    };
+  }
+
+  /**
    * Validate pattern consistency across multiple units
    */
   validatePatternConsistency(units: UnitFormValues[]): {
@@ -381,10 +440,13 @@ export class UnitNumberingService {
       };
     }
 
-    const patterns = units.map((unit) => this.detectNumberingPattern(unit.unitNumber));
+    // basement/ground-floor labels sit alongside whatever pattern the upper floors use
+    const patterns = units
+      .map((unit) => this.detectNumberingPattern(unit.unitNumber))
+      .filter((pattern) => pattern !== BELOW_GRADE_PATTERN);
     const uniquePatterns = [...new Set(patterns)];
 
-    if (uniquePatterns.length === 1) {
+    if (uniquePatterns.length <= 1) {
       return {
         detectedPatterns: uniquePatterns,
         isConsistent: true,
@@ -426,7 +488,9 @@ export class UnitNumberingService {
 
     if (conflict) {
       const pattern = this.detectNumberingPattern(unitNumber);
-      const suggestion = this.generateNextUnitNumber(existingUnits, pattern, 1).nextNumber;
+      const floor =
+        pattern === BELOW_GRADE_PATTERN ? this.extractExpectedFloorFromUnitNumber(unitNumber)! : 1;
+      const suggestion = this.generateNextUnitNumber(existingUnits, pattern, floor).nextNumber;
 
       return {
         hasConflict: true,

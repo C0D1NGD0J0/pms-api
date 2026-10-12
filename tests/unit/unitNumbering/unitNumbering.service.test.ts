@@ -146,4 +146,75 @@ describe('UnitNumberingService', () => {
       expect(emptyResult.hasConflict).toBe(false);
     });
   });
+
+  describe('basement and ground floors', () => {
+    const unitsOnFloor = (floor: number, numbers: string[]) =>
+      numbers.map((unitNumber) => ({ unitNumber, unitType: 'residential', floor }));
+
+    it('detects B{level}-{nn} and G-{nn} as below-grade and maps them to floors', () => {
+      expect(service.detectNumberingPattern('B1-01')).toBe('below_grade');
+      expect(service.detectNumberingPattern('G-01')).toBe('below_grade');
+      expect(service.extractExpectedFloorFromUnitNumber('B1-01')).toBe(-1);
+      expect(service.extractExpectedFloorFromUnitNumber('B4-12')).toBe(-4);
+      expect(service.extractExpectedFloorFromUnitNumber('G-03')).toBe(0);
+    });
+
+    it('does not reinterpret existing alpha/building numbers', () => {
+      expect(service.detectNumberingPattern('B-1001')).toBe('alpha_numeric');
+      expect(service.detectNumberingPattern('G-101')).toBe('alpha_numeric');
+      expect(service.detectNumberingPattern('B1U01')).toBe('building_unit');
+    });
+
+    it('suggests basement labels instead of negative or symbol numbers', () => {
+      const existing = unitsOnFloor(1, ['A-101', 'A-102']);
+
+      for (const pattern of ['alpha_numeric', 'floor_based', 'wing_unit', 'building_unit']) {
+        expect(service.generateNextUnitNumber(existing, pattern, -1).nextNumber).toBe('B1-01');
+        expect(service.generateNextUnitNumber(existing, pattern, 0).nextNumber).toBe('G-01');
+      }
+      expect(
+        service.generateNextUnitNumber(
+          [...existing, ...unitsOnFloor(-2, ['B2-01', 'B2-02'])],
+          'floor_based',
+          -2
+        ).nextNumber
+      ).toBe('B2-03');
+    });
+
+    it('accepts below-grade labels on their floor and flags them elsewhere', () => {
+      expect(service.validateUnitNumberFloorCorrelation('B1-01', -1).isValid).toBe(true);
+      expect(service.validateUnitNumberFloorCorrelation('G-01', 0).isValid).toBe(true);
+      expect(service.validateUnitNumberFloorCorrelation('B1-01', 2)).toMatchObject({
+        isValid: false,
+        suggestedFloor: -1,
+      });
+    });
+
+    it('suggests a basement label when a floor-encoded number is put below grade', () => {
+      const result = service.validateUnitNumberUpdate('A-101', -1, unitsOnFloor(1, ['A-102']));
+
+      expect(result.isValid).toBe(false);
+      expect(result.suggestion).toBe('B1-01');
+    });
+
+    it('suggests the next basement label on conflict', () => {
+      const result = service.validateUnitNumberUpdate(
+        'B1-01',
+        -1,
+        unitsOnFloor(-1, ['B1-01', 'B1-02'])
+      );
+
+      expect(result).toMatchObject({ isValid: false, conflict: true, suggestion: 'B1-03' });
+    });
+
+    it('treats below-grade labels as compatible with the upper-floor pattern', () => {
+      const batch = [
+        ...unitsOnFloor(-1, ['B1-01']),
+        ...unitsOnFloor(0, ['G-01']),
+        ...unitsOnFloor(1, ['A-101', 'A-102']),
+      ];
+
+      expect(service.validatePatternConsistency(batch).isConsistent).toBe(true);
+    });
+  });
 });

@@ -5,12 +5,13 @@ import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
 import { LeaseCache } from '@caching/index';
 import { UserService } from '@services/index';
+import { QueueFactory } from '@services/queue';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
-import { IPropertyDocument, ICronJob } from '@interfaces/index';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
+import { IPropertyDocument, ICurrentUser, ICronJob } from '@interfaces/index';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
 import { ILeaseDocument, ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 import { EventEmitterService, NotificationService, InvitationService } from '@services/index';
@@ -35,7 +36,12 @@ import {
   MoneyUtils,
 } from '@utils/index';
 
-import { calculateRenewalMetadata, createSystemContext, findActiveLeasePDF } from './leaseHelpers';
+import {
+  calculateRenewalMetadata,
+  createSystemContext,
+  findActiveLeasePDF,
+  queueLeasePdf,
+} from './leaseHelpers';
 
 interface IConstructor {
   notificationService: NotificationService;
@@ -43,6 +49,7 @@ interface IConstructor {
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   invitationDAO: InvitationDAO;
+  queueFactory: QueueFactory;
   userService: UserService;
   propertyDAO: PropertyDAO;
   leaseCache: LeaseCache;
@@ -61,6 +68,7 @@ export class LeaseRenewalService {
   private readonly leaseCache: LeaseCache;
   private readonly propertyDAO: PropertyDAO;
   private readonly userService: UserService;
+  private readonly queueFactory: QueueFactory;
   private readonly invitationDAO: InvitationDAO;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly emitterService: EventEmitterService;
@@ -80,6 +88,7 @@ export class LeaseRenewalService {
     leaseDAO,
     userDAO,
     leaseCache,
+    queueFactory,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.leaseDAO = leaseDAO;
@@ -88,6 +97,7 @@ export class LeaseRenewalService {
     this.leaseCache = leaseCache;
     this.propertyDAO = propertyDAO;
     this.userService = userService;
+    this.queueFactory = queueFactory;
     this.invitationDAO = invitationDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
@@ -379,6 +389,8 @@ export class LeaseRenewalService {
       const autoApprove = isSystemCall && existingLease.renewalOptions?.autoApproveRenewal === true;
       if (autoApprove) {
         newLeaseData.approvalStatus = 'approved';
+        // No one reviews an auto-approved renewal, so it keeps the original lease's signing method
+        newLeaseData.signingMethod = existingLease.signingMethod;
         newLeaseData.approvalDetails.push({
           action: 'approved',
           actor: systemId,
@@ -582,35 +594,18 @@ export class LeaseRenewalService {
           );
 
           if (renewalResult.success) {
-            // If auto-approve, validate and update status to ready_for_signature
-            if (autoApprove) {
-              // Check if lease documents exist before setting ready_for_signature
-              if (
-                !renewalResult.data.leaseDocuments ||
-                renewalResult.data.leaseDocuments.length === 0
-              ) {
-                this.log.warn(
-                  `Renewal ${renewalResult.data.luid} requires approval but has no lease documents yet. ` +
-                    'Will remain in draft_renewal until PDF is generated.'
-                );
-              } else {
-                await this.leaseDAO.updateById(renewalResult.data._id.toString(), {
-                  status: 'ready_for_signature',
-                  approvalStatus: 'approved',
-                  $push: {
-                    approvalDetails: {
-                      action: 'auto_approved',
-                      actor: new Types.ObjectId('000000000000000000000000'),
-                      timestamp: new Date(),
-                      notes: 'Auto-approved via renewalOptions.autoApproveRenewal=true',
-                    },
-                  },
-                });
+            // Auto-approved renewals follow the manual approval path: ready for signature now,
+            // PDF queued so the auto-send cron can send it once the document exists.
+            // The approval itself was recorded in approvalDetails when the renewal was created.
+            if (autoApprove && renewalResult.data.status === LeaseStatus.DRAFT_RENEWAL) {
+              await this.leaseDAO.updateById(renewalResult.data._id.toString(), {
+                status: LeaseStatus.READY_FOR_SIGNATURE,
+              });
+              await this.queueRenewalPdfGeneration(renewalResult.data, 'system');
 
-                this.log.info(
-                  `Auto-approved renewal ${renewalResult.data.luid} - ready for signature`
-                );
-              }
+              this.log.info(
+                `Auto-approved renewal ${renewalResult.data.luid} - ready for signature`
+              );
             }
 
             createdCount++;
@@ -706,7 +701,11 @@ export class LeaseRenewalService {
           previousLeaseId: { $exists: true },
           deletedAt: null,
         },
-        { populate: ['previousLeaseId', 'tenantInfo', 'propertyInfo'] }
+        {
+          populate: ['previousLeaseId', 'tenantInfo', 'propertyInfo'],
+          // eSignature.provider is select:false on the schema
+          projection: '+eSignature.provider',
+        }
       );
 
       let checkedCount = 0;
@@ -861,217 +860,140 @@ export class LeaseRenewalService {
     }
   }
 
-  /**
-   * Approve a draft renewal for signature
-   * Called by admin/property manager to approve a draft renewal
-   */
   async approveRenewalForSignature(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
-    ctx: IRequestContext
-  ): IPromiseReturnedData<ILeaseDocument | null> {
+    currentuser: ICurrentUser,
+    renewalData: Partial<ILeaseFormData> = {}
+  ): Promise<ISuccessReturnData<ILeaseDocument>> {
     this.log.info(`Approving renewal ${luid} for signature`);
 
-    try {
-      // Find the renewal lease
-      const renewal = await this.leaseDAO.findFirst({
-        luid,
-        cuid,
-        deletedAt: null,
-      });
-
-      if (!renewal) {
-        return {
-          data: null,
-          success: false,
-          error: 'Renewal lease not found',
-          message: 'Renewal lease not found',
-        };
-      }
-
-      // Validate status
-      if (renewal.status !== 'draft_renewal') {
-        return {
-          data: null,
-          success: false,
-          error: `Cannot approve renewal with status ${renewal.status}. Must be draft_renewal.`,
-          message: `Cannot approve renewal with status ${renewal.status}`,
-        };
-      }
-
-      // If renewalData is provided, validate and apply updates before approving
-      const updateData: any = {
-        status: 'ready_for_signature',
-        approvalStatus: 'approved',
-        $push: {
-          approvalDetails: {
-            action: 'approved',
-            timestamp: new Date(),
-            actor: ctx?.currentuser.sub,
-            notes:
-              renewalData && Object.keys(renewalData).length > 0
-                ? 'Approved for signature with modifications by admin/property manager'
-                : 'Approved for signature by admin/property manager',
-          },
-          lastModifiedBy: {
-            action: 'approved_for_signature',
-            userId: ctx?.currentuser.sub || 'system',
-            name: ctx?.currentuser.fullname || 'Admin',
-            date: new Date(),
-          },
-        },
-      };
-
-      // Apply renewalData updates if provided
-      if (renewalData && Object.keys(renewalData).length > 0) {
-        // Sanitize legalTerms HTML/text content if provided
-        if (renewalData.legalTerms) {
-          renewalData.legalTerms = {
-            text: renewalData.legalTerms.text
-              ? sanitizeHtml(renewalData.legalTerms.text)
-              : undefined,
-            html: renewalData.legalTerms.html
-              ? sanitizeHtml(renewalData.legalTerms.html)
-              : undefined,
-            url: renewalData.legalTerms.url,
-          };
-        }
-
-        // Validate renewal updates before applying
-        // Check duration dates are valid
-        if (renewalData.duration) {
-          const { startDate, endDate } = renewalData.duration;
-          if (startDate && endDate) {
-            if (new Date(startDate) >= new Date(endDate)) {
-              return {
-                success: false,
-                error: 'Renewal start date must be before end date',
-                message: 'Invalid renewal duration',
-                data: null,
-              };
-            }
-            // Renewal should start after original lease ends
-            const originalLease = await this.leaseDAO.findFirst({ _id: renewal.previousLeaseId });
-            if (originalLease && new Date(startDate) <= originalLease.duration.endDate) {
-              return {
-                success: false,
-                error: 'Renewal start date must be after original lease end date',
-                message: 'Invalid renewal start date',
-                data: null,
-              };
-            }
-          }
-        }
-
-        // Validate fee amounts if provided
-        if (renewalData.fees) {
-          if (renewalData.fees.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
-            return {
-              success: false,
-              error: 'Monthly rent cannot be negative',
-              message: 'Invalid renewal fees',
-              data: null,
-            };
-          }
-          if (
-            renewalData.fees.securityDeposit !== undefined &&
-            renewalData.fees.securityDeposit < 0
-          ) {
-            return {
-              success: false,
-              error: 'Security deposit cannot be negative',
-              message: 'Invalid renewal fees',
-              data: null,
-            };
-          }
-        }
-
-        // Extract fields we DON'T want to update during approval
-        const { property, tenantInfo, leaseNumber, fees, petPolicy, ...allowedUpdates } =
-          renewalData;
-
-        // Merge all allowed updates into updateData at once
-        Object.assign(updateData, allowedUpdates);
-
-        // Money input is in major units; set per-field so a partial edit keeps the other fees
-        if (fees) {
-          for (const [field, value] of Object.entries(MoneyUtils.parseMoneyInput(fees))) {
-            updateData[`fees.${field}`] = value;
-          }
-        }
-        if (petPolicy) {
-          for (const [field, value] of Object.entries(MoneyUtils.parsePetPolicyFees(petPolicy))) {
-            updateData[`petPolicy.${field}`] = value;
-          }
-        }
-
-        this.log.info(`Applying renewal data updates to ${luid}`, {
-          updatedFields: Object.keys(allowedUpdates),
-        });
-      }
-
-      // Update status to ready_for_signature (with optional data updates)
-      const updated = await this.leaseDAO.updateById(renewal._id.toString(), updateData);
-
-      if (!updated) {
-        return {
-          data: null,
-          success: false,
-          error: 'Failed to update renewal status',
-          message: 'Failed to update renewal status',
-        };
-      }
-
-      // Get original lease for context
-      if (!renewal.previousLeaseId) {
-        throw new Error('Previous lease ID is missing on renewal');
-      }
-
-      const originalLease = await this.leaseDAO.findById(renewal.previousLeaseId?.toString());
-
-      await this.notificationService.notifyLeaseLifecycleEvent({
-        eventType: 'renewal_approved',
-        lease: {
-          luid: renewal.luid,
-          leaseNumber: renewal.leaseNumber,
-          cuid: renewal.cuid,
-          tenantId: renewal.tenantId.toString(),
-          propertyAddress:
-            (typeof renewal.property?.address === 'string'
-              ? renewal.property?.address
-              : renewal.property?.address?.fullAddress) || 'Property',
-          endDate: renewal.duration.endDate,
-          startDate: renewal.duration.startDate,
-        },
-        recipients: {
-          tenant: true,
-          propertyManager: renewal.propertyInfo?.managedBy?.toString(),
-          createdBy: originalLease?.createdBy?.toString(),
-        },
-        metadata: {
-          approvedBy: ctx?.currentuser.fullname || 'Admin',
-          approvedAt: new Date().toISOString(),
-          originalLeaseId: originalLease?.luid,
-        },
-      });
-
-      this.log.info(`Renewal ${luid} approved for signature`);
-
-      return {
-        success: true,
-        data: updated,
-        message: 'Renewal approved for signature',
-      };
-    } catch (error: any) {
-      this.log.error(`Error approving renewal ${luid}`, error);
-      return {
-        data: null,
-        success: false,
-        error: error.message || 'Failed to approve renewal',
-        message: 'Failed to approve renewal for signature',
-      };
+    const renewal = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
+    if (!renewal) {
+      throw new BadRequestError({ message: 'Renewal lease not found' });
     }
+    if (renewal.status !== LeaseStatus.DRAFT_RENEWAL) {
+      throw new BadRequestError({
+        message: `Cannot approve renewal with status ${renewal.status}. Must be draft_renewal.`,
+      });
+    }
+
+    const hasModifications = Object.keys(renewalData).length > 0;
+    const updateData: any = {
+      status: 'ready_for_signature',
+      approvalStatus: 'approved',
+      $push: {
+        approvalDetails: {
+          action: 'approved',
+          timestamp: new Date(),
+          actor: currentuser.sub,
+          notes: hasModifications
+            ? 'Approved for signature with modifications by admin/property manager'
+            : 'Approved for signature by admin/property manager',
+        },
+        lastModifiedBy: {
+          // lastModifiedBy has no 'approved' action; the approval itself is in approvalDetails
+          action: 'updated',
+          userId: currentuser.sub || 'system',
+          name: currentuser.fullname || 'Admin',
+          date: new Date(),
+        },
+      },
+    };
+
+    if (hasModifications) {
+      if (renewalData.legalTerms) {
+        renewalData.legalTerms = {
+          text: renewalData.legalTerms.text ? sanitizeHtml(renewalData.legalTerms.text) : undefined,
+          html: renewalData.legalTerms.html ? sanitizeHtml(renewalData.legalTerms.html) : undefined,
+          url: renewalData.legalTerms.url,
+        };
+      }
+
+      if (renewalData.duration) {
+        const { startDate, endDate } = renewalData.duration;
+        if (startDate && endDate) {
+          if (new Date(startDate) >= new Date(endDate)) {
+            throw new BadRequestError({ message: 'Renewal start date must be before end date' });
+          }
+          const originalLease = await this.leaseDAO.findFirst({ _id: renewal.previousLeaseId });
+          if (originalLease && new Date(startDate) <= originalLease.duration.endDate) {
+            throw new BadRequestError({
+              message: 'Renewal start date must be after original lease end date',
+            });
+          }
+        }
+      }
+
+      if (renewalData.fees?.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
+        throw new BadRequestError({ message: 'Monthly rent cannot be negative' });
+      }
+      if (renewalData.fees?.securityDeposit !== undefined && renewalData.fees.securityDeposit < 0) {
+        throw new BadRequestError({ message: 'Security deposit cannot be negative' });
+      }
+
+      // property, tenant and lease number never change on approval
+      const { property, tenantInfo, leaseNumber, fees, petPolicy, ...allowedUpdates } = renewalData;
+      Object.assign(updateData, allowedUpdates);
+
+      // Money input is in major units; set per-field so a partial edit keeps the other fees
+      if (fees) {
+        for (const [field, value] of Object.entries(MoneyUtils.parseMoneyInput(fees))) {
+          updateData[`fees.${field}`] = value;
+        }
+      }
+      if (petPolicy) {
+        for (const [field, value] of Object.entries(MoneyUtils.parsePetPolicyFees(petPolicy))) {
+          updateData[`petPolicy.${field}`] = value;
+        }
+      }
+
+      this.log.info(`Applying renewal data updates to ${luid}`, {
+        updatedFields: Object.keys(allowedUpdates),
+      });
+    }
+
+    const updated = await this.leaseDAO.updateById(renewal._id.toString(), updateData);
+    if (!updated) {
+      throw new BadRequestError({ message: 'Failed to update renewal status' });
+    }
+
+    if (!renewal.previousLeaseId) {
+      throw new Error('Previous lease ID is missing on renewal');
+    }
+
+    await this.queueRenewalPdfGeneration(updated, currentuser.sub || 'system');
+
+    const originalLease = await this.leaseDAO.findById(renewal.previousLeaseId.toString());
+
+    await this.notificationService.notifyLeaseLifecycleEvent({
+      eventType: 'renewal_approved',
+      lease: {
+        luid: renewal.luid,
+        leaseNumber: renewal.leaseNumber,
+        cuid: renewal.cuid,
+        tenantId: renewal.tenantId.toString(),
+        propertyAddress:
+          (typeof renewal.property?.address === 'string'
+            ? renewal.property?.address
+            : renewal.property?.address?.fullAddress) || 'Property',
+        endDate: renewal.duration.endDate,
+        startDate: renewal.duration.startDate,
+      },
+      recipients: {
+        tenant: true,
+        propertyManager: renewal.propertyInfo?.managedBy?.toString(),
+        createdBy: originalLease?.createdBy?.toString(),
+      },
+      metadata: {
+        approvedBy: currentuser.fullname || 'Admin',
+        approvedAt: new Date().toISOString(),
+        originalLeaseId: originalLease?.luid,
+      },
+    });
+
+    this.log.info(`Renewal ${luid} approved for signature`);
+    return { success: true, data: updated, message: 'Renewal approved for signature' };
   }
 
   /**
@@ -1090,6 +1012,21 @@ export class LeaseRenewalService {
     ) => Promise<{ hasErrors: boolean; errors: any }>
   ): IPromiseReturnedData<ILeaseDocument> {
     return await this.createDraftLeaseRenewal(cuid, luid, renewalData, ctx, validateLeaseDataFn);
+  }
+
+  /**
+   * Renewals are created without documents; generate the agreement once approved so it can be
+   * sent for signature (auto-send skips renewals that have no active PDF).
+   */
+  private async queueRenewalPdfGeneration(renewal: ILeaseDocument, actorId: string): Promise<void> {
+    try {
+      await queueLeasePdf(this.queueFactory, renewal, actorId);
+    } catch (error) {
+      this.log.error('Failed to queue renewal PDF generation', {
+        renewalId: renewal.luid,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
   }
 
   /**

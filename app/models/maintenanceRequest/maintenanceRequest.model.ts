@@ -60,6 +60,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
     propertyId: { type: Schema.Types.ObjectId, ref: 'Property', required: true, index: true },
     propertyUnitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit', index: true },
     managedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', immutable: true },
     locationDescription: { type: String, maxlength: 500 },
     title: { type: String, required: true, maxlength: 200 },
     description: {
@@ -103,14 +104,6 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       rating: { type: Number, min: 1, max: 5 },
       comment: { type: String, maxlength: 1000 },
       submittedAt: { type: Date },
-      _id: false,
-    },
-    pendingMaintenanceStatus: {
-      propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
-      unitId: { type: Schema.Types.ObjectId, ref: 'PropertyUnit' },
-      requestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-      requestedAt: { type: Date },
-      displayName: { type: String },
       _id: false,
     },
     aiAnalysis: {
@@ -220,6 +213,8 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
 
 MaintenanceRequestSchema.index({ cuid: 1, status: 1 });
 MaintenanceRequestSchema.index({ cuid: 1, propertyId: 1 });
+MaintenanceRequestSchema.index({ cuid: 1, assignedBy: 1 });
+MaintenanceRequestSchema.index({ cuid: 1, createdBy: 1 });
 MaintenanceRequestSchema.index({ vendorId: 1, status: 1 });
 MaintenanceRequestSchema.index({ 'assignedTechnician.userId': 1, status: 1 });
 

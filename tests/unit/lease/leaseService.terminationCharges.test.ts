@@ -16,7 +16,7 @@ describe('LeaseService - charges after a lease termination', () => {
 
   let leaseService: LeaseService;
   let mockPaymentDAO: { list: jest.Mock; updateMany: jest.Mock };
-  let mockPaymentGatewayService: { voidInvoice: jest.Mock };
+  let mockPaymentGatewayService: { cancelCharge: jest.Mock };
 
   const makeCharge = (overrides: Record<string, any> = {}) => ({
     _id: new Types.ObjectId(),
@@ -37,7 +37,7 @@ describe('LeaseService - charges after a lease termination', () => {
       updateMany: jest.fn().mockResolvedValue({ modifiedCount: 0 }),
     };
     mockPaymentGatewayService = {
-      voidInvoice: jest.fn().mockResolvedValue({ success: true, data: null }),
+      cancelCharge: jest.fn().mockResolvedValue({ success: true, data: null }),
     };
     leaseService = new LeaseService({
       paymentDAO: mockPaymentDAO,
@@ -70,8 +70,8 @@ describe('LeaseService - charges after a lease termination', () => {
 
     await cancelCharges();
 
-    expect(mockPaymentGatewayService.voidInvoice).toHaveBeenCalledWith('stripe', 'in_rent');
-    expect(mockPaymentGatewayService.voidInvoice).toHaveBeenCalledWith('stripe', 'in_late');
+    expect(mockPaymentGatewayService.cancelCharge).toHaveBeenCalledWith('stripe', 'in_rent');
+    expect(mockPaymentGatewayService.cancelCharge).toHaveBeenCalledWith('stripe', 'in_late');
     expect(cancelledIds()).toEqual([rent._id.toString(), lateFee._id.toString()]);
     expect(mockPaymentDAO.updateMany.mock.calls[0][1]).toEqual({
       $set: { status: PaymentRecordStatus.CANCELLED, cancelledAt: expect.any(Date) },
@@ -84,7 +84,7 @@ describe('LeaseService - charges after a lease termination', () => {
 
     await cancelCharges();
 
-    expect(mockPaymentGatewayService.voidInvoice).not.toHaveBeenCalled();
+    expect(mockPaymentGatewayService.cancelCharge).not.toHaveBeenCalled();
     expect(cancelledIds()).toEqual([manualCharge._id.toString()]);
   });
 
@@ -92,7 +92,7 @@ describe('LeaseService - charges after a lease termination', () => {
     const unvoidable = makeCharge({ gatewayPaymentId: 'in_paid_meanwhile' });
     const voidable = makeCharge({ gatewayPaymentId: 'in_ok' });
     mockPaymentDAO.list.mockResolvedValue({ items: [unvoidable, voidable] });
-    mockPaymentGatewayService.voidInvoice.mockImplementation((_provider: string, id: string) =>
+    mockPaymentGatewayService.cancelCharge.mockImplementation((_provider: string, id: string) =>
       Promise.resolve(
         id === 'in_paid_meanwhile'
           ? { success: false, message: 'Invoice is already paid' }
@@ -114,7 +114,7 @@ describe('LeaseService - charges after a lease termination', () => {
 
     await cancelCharges();
 
-    expect(mockPaymentGatewayService.voidInvoice).not.toHaveBeenCalled();
+    expect(mockPaymentGatewayService.cancelCharge).not.toHaveBeenCalled();
     expect(mockPaymentDAO.updateMany).not.toHaveBeenCalled();
   });
 });

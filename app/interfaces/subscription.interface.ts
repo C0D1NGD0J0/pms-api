@@ -94,6 +94,14 @@ export interface ISubscriptionPlansConfig {
 }
 
 export interface ISubscriptionPlanUsage {
+  manualRecords: {
+    countThisPeriod: number;
+    quota: number; // -1 = unlimited
+    remaining: number | null; // null when unlimited
+    overageFeeCents: number;
+    overageCount: number;
+    projectedOverageCents: number;
+  };
   seatInfo: {
     includedSeats: number;
     additionalSeats: number;
@@ -110,14 +118,6 @@ export interface ISubscriptionPlanUsage {
     resetDate: Date | null;
     enabled: boolean; // derived from smsQuota > 0
   };
-  manualRecords: {
-    countThisPeriod: number;
-    quota: number;
-    remaining: number;
-    overageFeeCents: number;
-    overageCount: number;
-    projectedOverageCents: number;
-  };
   verification: {
     isVerified: boolean;
     requiresVerification: boolean;
@@ -125,18 +125,18 @@ export interface ISubscriptionPlanUsage {
     daysRemaining: number | null;
     accountCreatedAt: Date;
   };
+  reportGenerationUsage: {
+    countThisPeriod: number;
+    quota: number; // -1 = unlimited
+    remaining: number | null; // null when unlimited
+    percentUsed: number;
+  };
   plan: {
     name: PlanName;
     status: ISubscriptionStatus;
     billingInterval: 'monthly' | 'annual';
     startDate: Date;
     endDate: Date | null;
-  };
-  reportGenerationUsage: {
-    countThisPeriod: number;
-    quota: number;
-    remaining: number;
-    percentUsed: number;
   };
   isLimitReached: {
     properties: boolean;

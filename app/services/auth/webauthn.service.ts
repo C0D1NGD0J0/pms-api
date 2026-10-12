@@ -73,7 +73,8 @@ export class WebAuthnService {
       userDisplayName: displayName,
       attestationType: 'none',
       authenticatorSelection: {
-        residentKey: 'preferred',
+        // Login only uses the discoverable (no-email) flow, so the key must be discoverable
+        residentKey: 'required',
         userVerification: 'preferred',
       },
       excludeCredentials: existingPasskeys.map((pk) => ({
@@ -141,83 +142,6 @@ export class WebAuthnService {
 
     const { publicKey: _pk, ...safeCredential } = passkeyCredential;
     return safeCredential;
-  }
-
-  async generateAuthenticationOptions(
-    email: string
-  ): Promise<PublicKeyCredentialRequestOptionsJSON> {
-    const user = await this.userDAO.getActiveUserByEmail(email);
-    if (!user) {
-      throw new NotFoundError({ message: 'User not found' });
-    }
-
-    const passkeys = await this.userDAO.getUserPasskeys(user._id.toString());
-    if (passkeys.length === 0) {
-      throw new BadRequestError({ message: 'No passkeys registered for this account.' });
-    }
-
-    const options = await generateAuthenticationOptions({
-      rpID: this.rpID,
-      allowCredentials: passkeys.map((pk) => ({
-        id: pk.credentialId,
-        transports: pk.transports,
-      })),
-      userVerification: 'preferred',
-    });
-
-    await this.authCache.saveWebAuthnAuthChallenge(email, options.challenge);
-
-    return options;
-  }
-
-  async verifyAuthentication(
-    email: string,
-    response: AuthenticationResponseJSON
-  ): Promise<IUserDocument> {
-    const expectedChallenge = await this.authCache.getAndDeleteWebAuthnAuthChallenge(email);
-    if (!expectedChallenge) {
-      throw new BadRequestError({
-        message: 'Authentication challenge expired or not found. Please try again.',
-      });
-    }
-
-    const credentialId = response.id;
-    const user = await this.userDAO.findByPasskeyCredentialId(credentialId);
-    if (!user) {
-      throw new UnauthorizedError({ message: 'Passkey not recognized.' });
-    }
-
-    const storedPasskey = user.passkeys?.find((pk) => pk.credentialId === credentialId);
-    if (!storedPasskey) {
-      throw new UnauthorizedError({ message: 'Passkey not recognized.' });
-    }
-
-    const verification = await verifyAuthenticationResponse({
-      response,
-      expectedChallenge,
-      expectedOrigin: this.rpOrigin,
-      expectedRPID: [this.rpID],
-      credential: {
-        id: storedPasskey.credentialId,
-        publicKey: isoBase64URL.toBuffer(storedPasskey.publicKey),
-        counter: storedPasskey.counter,
-        transports: storedPasskey.transports,
-      },
-    });
-
-    if (!verification.verified) {
-      throw new UnauthorizedError({ message: 'Passkey authentication failed.' });
-    }
-
-    await this.userDAO.updatePasskeyCounter(
-      user._id.toString(),
-      credentialId,
-      verification.authenticationInfo.newCounter
-    );
-
-    this.log.info({ userId: user._id, credentialId }, 'Passkey authentication successful');
-
-    return user;
   }
 
   async generateDiscoverableAuthOptions(): Promise<{

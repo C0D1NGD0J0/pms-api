@@ -377,6 +377,37 @@ router
     })
   );
 
+// Login email change: self-service (own :uid) or staff acting on a tenant (the service re-checks
+// tenant-of-client). POSTing the address already pending re-sends the confirmation link.
+const EMAIL_CHANGE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
+router
+  .route('/:cuid/users/:uid/email-change')
+  .post(
+    basicLimiter(EMAIL_CHANGE_LIMIT),
+    isAuthenticated,
+    requireUserPermission(PermissionAction.UPDATE),
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+      body: UserValidations.emailChangeRequest,
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.requestEmailChange(req, res);
+    })
+  )
+  .delete(
+    basicLimiter(EMAIL_CHANGE_LIMIT),
+    isAuthenticated,
+    requireUserPermission(PermissionAction.UPDATE),
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.cancelEmailChange(req, res);
+    })
+  );
+
 // Catch-all single user — must come AFTER all specific /:cuid/<literal> GET routes
 router.get(
   '/:cuid/:uid',

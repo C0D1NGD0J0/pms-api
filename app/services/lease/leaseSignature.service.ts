@@ -5,9 +5,9 @@ import { t } from '@shared/languages';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
+import { ESignatureQueue } from '@queues/index';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { BadRequestError } from '@shared/customErrors';
-import { ESignatureQueue, PdfQueue } from '@queues/index';
 import { EventTypes } from '@interfaces/events.interface';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { OwnershipType } from '@interfaces/property.interface';
@@ -43,6 +43,7 @@ import {
   validateUserRole,
   fetchLeaseByLuid,
   buildSenderInfo,
+  queueLeasePdf,
 } from './leaseHelpers';
 
 interface IConstructor {
@@ -185,17 +186,7 @@ export class LeaseSignatureService {
 
     const leasePDF = findActiveLeasePDF(lease);
     if (!leasePDF || !leasePDF.key) {
-      const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
-      await pdfGeneratorQueue.addToPdfQueue({
-        resource: {
-          resourceId: lease._id.toString(),
-          resourceName: 'lease',
-          actorId: cxt.currentuser?.sub || 'system',
-          resourceType: 'document',
-          fieldName: 'leaseDocument',
-        },
-        cuid,
-        templateType: lease.property.propertyType || 'residential-single-family',
+      await queueLeasePdf(this.queueFactory, lease, cxt.currentuser?.sub || 'system', {
         senderInfo,
       });
 
@@ -254,14 +245,20 @@ export class LeaseSignatureService {
     }
 
     const now = new Date();
-    const signatures = signedBy.map((signer) => ({
-      signatureMethod: 'manual' as const,
-      userId: new Types.ObjectId(userId),
-      role: signer.role,
-      signedAt: now,
-      landlordInfo:
-        signer.role === 'landlord' ? { name: signer.name, email: signer.email } : undefined,
-    }));
+    const signatures = signedBy.map((signer) => {
+      const signerInfo = { name: signer.name, email: signer.email };
+      return {
+        signatureMethod: 'manual' as const,
+        // Only the tenant and the recording manager have accounts on the lease;
+        // co-tenants and external landlords are identified by name/email alone.
+        userId: this.resolveManualSignerUserId(lease, signer.role, userId),
+        role: signer.role,
+        signedAt: now,
+        signerInfo,
+        coTenantInfo: signer.role === 'co_tenant' ? signerInfo : undefined,
+        landlordInfo: signer.role === 'landlord' ? signerInfo : undefined,
+      };
+    });
 
     const updated = await this.leaseDAO.update(
       { _id: lease._id },
@@ -287,6 +284,16 @@ export class LeaseSignatureService {
       'Lease marked as manually signed'
     );
     return { success: true, data: updated };
+  }
+
+  private resolveManualSignerUserId(
+    lease: ILeaseDocument,
+    role: string,
+    recordedByUserId: string
+  ): Types.ObjectId | undefined {
+    if (role === 'tenant') return new Types.ObjectId(lease.tenantId.toString());
+    if (role === 'property_manager') return new Types.ObjectId(recordedByUserId);
+    return undefined;
   }
 
   /**

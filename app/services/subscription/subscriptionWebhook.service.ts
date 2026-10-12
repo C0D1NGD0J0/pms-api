@@ -21,7 +21,11 @@ import {
   MailType,
 } from '@interfaces/index';
 
-import { subscriptionPlanConfig, SubscriptionPlanConfig } from './subscription_plans.config';
+import {
+  subscriptionPlanConfig,
+  SubscriptionPlanConfig,
+  overageFor,
+} from './subscription_plans.config';
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -392,9 +396,9 @@ export class SubscriptionWebhookService {
 
     const quota = subscriptionPlanConfig.getManualRecordQuota(previousPeriod.planName);
     const previousCount = previousPeriod.manualRecords?.countThisPeriod ?? 0;
-    if (previousCount <= quota || !previousPeriod.billing?.customerId) return;
+    const overageCount = overageFor(previousCount, quota);
+    if (overageCount === 0 || !previousPeriod.billing?.customerId) return;
 
-    const overageCount = previousCount - quota;
     const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
     const totalCents = overageCount * feeCents;
 
@@ -862,7 +866,11 @@ export class SubscriptionWebhookService {
    */
   private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      // The client's own processor — vendor processors also carry the inviting client's cuid
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+      });
       if (!paymentProcessor?.accountId) return;
 
       if (
@@ -877,7 +885,7 @@ export class SubscriptionWebhookService {
           'manual'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: {
               payoutsPaused: true,
@@ -892,10 +900,10 @@ export class SubscriptionWebhookService {
           IPaymentGatewayProvider.STRIPE,
           paymentProcessor.accountId,
           'weekly',
-          'monday'
+          paymentProcessor.payoutWeeklyAnchor || 'monday'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: { payoutsPaused: false },
             $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },

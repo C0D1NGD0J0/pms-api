@@ -62,6 +62,16 @@ export class PropertyUnitController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  approveUnitChanges = async (req: AppRequest, res: Response) => {
+    const result = await this.propertyUnitService.approveUnitChanges(req.context, req.body.notes);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  rejectUnitChanges = async (req: AppRequest, res: Response) => {
+    const result = await this.propertyUnitService.rejectUnitChanges(req.context, req.body.reason);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   archiveUnit = async (req: AppRequest, res: Response) => {
     const result = await this.propertyUnitService.archiveUnit(req.context);
     res.status(httpStatusCodes.OK).json(result);

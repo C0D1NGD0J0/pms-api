@@ -26,6 +26,10 @@ export interface IUserDAO {
     linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument | null>;
+  setPendingEmail(
+    userId: string,
+    pendingChange: { pendingEmail: string; tokenHash: string; expiresAt: Date; requestedBy: string }
+  ): Promise<IUserDocument | null>;
   getUsersByFilteredType(
     cuid: string,
     filterOptions: IUserFilterOptions,
@@ -73,9 +77,11 @@ export interface IUserDAO {
   getUserByUId(uid: string, opts?: dynamic): Promise<IUserDocument | null>;
   searchUsers(query: string, clientId: string): Promise<IUserDocument[]>;
   createPasswordResetToken(email: string): Promise<IUserDocument | null>;
+  isEmailTaken(email: string, excludeUserId?: string): Promise<boolean>;
+  confirmPendingEmail(tokenHash: string): Promise<IUserDocument | null>;
   clearOnboardingFlag(userId: string, cuid: string): Promise<void>;
+  clearPendingEmail(userId: string): Promise<IUserDocument | null>;
   getUserClientAssociations(userId: string): Promise<any[]>;
-  isEmailUnique(email: string): Promise<boolean>;
 }
 
 export interface IUserFilterOptions {

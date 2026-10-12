@@ -318,12 +318,12 @@ describe('PaymentService - cancelPayment', () => {
     mockClientDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<ClientDAO>;
     mockProfileDAO = { findById: jest.fn() } as unknown as jest.Mocked<ProfileDAO>;
     mockPaymentGatewayService = {
-      voidInvoice: jest.fn(),
+      cancelCharge: jest.fn(),
     } as unknown as jest.Mocked<PaymentGatewayService>;
     mockEmitterService = { emit: jest.fn(), on: jest.fn() };
 
     mockProfileDAO.findById.mockResolvedValue(mockTenantProfile as any);
-    mockPaymentGatewayService.voidInvoice.mockResolvedValue({ success: true, data: null } as any);
+    mockPaymentGatewayService.cancelCharge.mockResolvedValue({ success: true, data: null } as any);
 
     paymentService = makeServiceWithMocks({
       paymentDAO: mockPaymentDAO,
@@ -443,7 +443,7 @@ describe('PaymentService - cancelPayment', () => {
           },
         })
       );
-      expect(mockPaymentGatewayService.voidInvoice).not.toHaveBeenCalled();
+      expect(mockPaymentGatewayService.cancelCharge).not.toHaveBeenCalled();
     });
 
     it('rejects staff and callers without a role', async () => {
@@ -519,7 +519,7 @@ describe('PaymentService - cancelPayment', () => {
 
     await paymentService.cancelPayment(CUID, PYTUID);
 
-    expect(mockPaymentGatewayService.voidInvoice).toHaveBeenCalledWith('stripe', 'in_test_abc123');
+    expect(mockPaymentGatewayService.cancelCharge).toHaveBeenCalledWith('stripe', 'in_test_abc123');
   });
 
   it('should skip Stripe void when no gatewayPaymentId exists', async () => {
@@ -533,7 +533,7 @@ describe('PaymentService - cancelPayment', () => {
 
     await paymentService.cancelPayment(CUID, PYTUID);
 
-    expect(mockPaymentGatewayService.voidInvoice).not.toHaveBeenCalled();
+    expect(mockPaymentGatewayService.cancelCharge).not.toHaveBeenCalled();
   });
 
   it('should still cancel locally when Stripe void fails', async () => {
@@ -544,7 +544,7 @@ describe('PaymentService - cancelPayment', () => {
       ...payment,
       status: PaymentRecordStatus.CANCELLED,
     } as any);
-    mockPaymentGatewayService.voidInvoice.mockResolvedValue({
+    mockPaymentGatewayService.cancelCharge.mockResolvedValue({
       success: false,
       data: null,
       message: 'Stripe error',
@@ -2075,6 +2075,46 @@ describe('PaymentService - createConnectAccount', () => {
     );
   });
 
+  it.each([
+    ['US', 'full'],
+    ['CA', 'full'],
+    ['NG', 'recipient'],
+  ])(
+    'should create a %s landlord account under %s Stripe terms and record it',
+    async (country, serviceAgreement) => {
+      mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+      mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+      mockProfileDAO.findFirst.mockResolvedValue(null);
+      mockPaymentGatewayService.createConnectAccount.mockResolvedValue(makeGatewayResult() as any);
+      mockPaymentProcessorDAO.insert.mockResolvedValue({} as any);
+
+      await paymentService.createConnectAccount(CUID, { email: 'pm@example.com', country });
+
+      expect(mockPaymentGatewayService.createConnectAccount).toHaveBeenCalledWith(
+        'stripe',
+        expect.objectContaining({ serviceAgreement })
+      );
+      expect(mockPaymentProcessorDAO.insert).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceAgreement })
+      );
+    }
+  );
+
+  it("should ignore a vendor's processor when checking for an existing client account", async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(null);
+    mockPaymentGatewayService.createConnectAccount.mockResolvedValue(makeGatewayResult() as any);
+    mockPaymentProcessorDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.createConnectAccount(CUID, { email: 'pm@example.com', country: 'US' });
+
+    expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledWith({
+      cuid: CUID,
+      ownerType: 'client',
+    });
+  });
+
   it('should throw BadRequestError when a Connect account already exists', async () => {
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: 'acct_existing' } as any);
 
@@ -2354,7 +2394,7 @@ describe('PaymentService - handleInvoicePaymentSucceeded', () => {
       paymentDAO: mockPaymentDAO,
       emitterService: mockEmitterService,
       paymentGatewayService: {
-        getInvoicePaymentDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
+        getChargeDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
       } as unknown as jest.Mocked<PaymentGatewayService>,
     });
   });
@@ -3037,6 +3077,7 @@ describe('PaymentService - updatePayoutSchedule', () => {
   beforeEach(() => {
     mockPaymentProcessorDAO = {
       findFirst: jest.fn(),
+      update: jest.fn(),
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
       updatePayoutSchedule: jest.fn(),
@@ -3067,27 +3108,40 @@ describe('PaymentService - updatePayoutSchedule', () => {
     );
   });
 
-  it('should update to daily without anchor', async () => {
-    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+  it('should save the weekday so a paused schedule resumes on the same day', async () => {
+    const processor = makeProcessor();
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(processor as any);
     mockPaymentGatewayService.updatePayoutSchedule.mockResolvedValue({
       success: true,
       data: null,
     } as any);
 
-    await paymentService.updatePayoutSchedule(CUID, 'daily');
+    await paymentService.updatePayoutSchedule(CUID, 'weekly', 'wednesday');
 
-    expect(mockPaymentGatewayService.updatePayoutSchedule).toHaveBeenCalledWith(
-      'stripe',
-      'acct_test_123',
-      'daily',
-      undefined
+    expect(mockPaymentProcessorDAO.update).toHaveBeenCalledWith(
+      { _id: processor._id },
+      { $set: { payoutWeeklyAnchor: 'wednesday' } }
     );
+  });
+
+  it('should not save the weekday when Stripe rejects the update', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.updatePayoutSchedule.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'Stripe update failed',
+    } as any);
+
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'tuesday')).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentProcessorDAO.update).not.toHaveBeenCalled();
   });
 
   it('should throw BadRequestError when no Connect account exists', async () => {
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
 
-    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly')).rejects.toThrow(
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'monday')).rejects.toThrow(
       BadRequestError
     );
     expect(mockPaymentGatewayService.updatePayoutSchedule).not.toHaveBeenCalled();
@@ -3098,7 +3152,7 @@ describe('PaymentService - updatePayoutSchedule', () => {
       makeProcessor({ payoutsEnabled: false }) as any
     );
 
-    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly')).rejects.toThrow(
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'monday')).rejects.toThrow(
       BadRequestError
     );
     expect(mockPaymentGatewayService.updatePayoutSchedule).not.toHaveBeenCalled();
@@ -3112,8 +3166,198 @@ describe('PaymentService - updatePayoutSchedule', () => {
       message: 'Stripe update failed',
     } as any);
 
-    await expect(paymentService.updatePayoutSchedule(CUID, 'monthly')).rejects.toThrow(
+    await expect(paymentService.updatePayoutSchedule(CUID, 'weekly', 'monday')).rejects.toThrow(
       BadRequestError
+    );
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Instant payouts (getPayoutBalance quote + requestInstantPayout)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - instant payouts', () => {
+  let paymentService: PaymentService;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+  let mockPaymentGatewayService: jest.Mocked<PaymentGatewayService>;
+
+  const makeProcessor = (overrides: Record<string, any> = {}) => ({
+    _id: new Types.ObjectId(),
+    cuid: CUID,
+    accountId: 'acct_landlord_1',
+    serviceAgreement: 'full',
+    payoutsEnabled: true,
+    payoutsBlocked: false,
+    payoutsPaused: false,
+    disputeStats: { total: 0, open: 0 },
+    ...overrides,
+  });
+
+  // $1,000 instant-eligible; the Platform Pricing Tool's 2.5% leaves $975
+  const makeBalance = (overrides: Record<string, any> = {}) => ({
+    available: [{ amount: 100000, currency: 'usd' }],
+    pending: [{ amount: 0, currency: 'usd' }],
+    instant_available: [
+      {
+        amount: 100000,
+        currency: 'usd',
+        net_available: [{ amount: 97500, destination: 'card_debit_1' }],
+      },
+    ],
+    ...overrides,
+  });
+
+  const mockBalance = (balance: Record<string, any>) =>
+    mockPaymentGatewayService.getConnectBalance.mockResolvedValue({
+      success: true,
+      data: balance,
+    } as any);
+
+  beforeEach(() => {
+    mockPaymentProcessorDAO = {
+      findFirst: jest.fn(),
+    } as unknown as jest.Mocked<PaymentProcessorDAO>;
+    mockPaymentGatewayService = {
+      getConnectBalance: jest.fn(),
+      createInstantPayout: jest.fn(),
+    } as unknown as jest.Mocked<PaymentGatewayService>;
+    paymentService = makeServiceWithMocks({
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockPaymentGatewayService,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('should quote the instant payout from Stripe net figures', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockBalance(makeBalance());
+
+    const result = await paymentService.getPayoutBalance(CUID);
+
+    expect(result.data.instant).toEqual({
+      eligible: true,
+      available: 100000,
+      net: 97500,
+      fee: 2500,
+      currency: 'usd',
+      destination: 'card_debit_1',
+    });
+  });
+
+  it.each([
+    ['country_not_supported', { serviceAgreement: 'recipient' }, {}],
+    ['payouts_blocked', { payoutsBlocked: true }, {}],
+    ['payouts_paused', { payoutsPaused: true }, {}],
+    ['open_disputes', { disputeStats: { total: 1, open: 1 } }, {}],
+    ['no_instant_balance', {}, { instant_available: [] }],
+    ['pricing_unavailable', {}, { instant_available: [{ amount: 100000, currency: 'usd' }] }],
+  ])(
+    'should mark instant payout ineligible (%s)',
+    async (reason, processorOverrides, balanceOverrides) => {
+      mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor(processorOverrides) as any);
+      mockBalance(makeBalance(balanceOverrides));
+
+      const result = await paymentService.getPayoutBalance(CUID);
+
+      expect(result.data.instant).toEqual(expect.objectContaining({ eligible: false, reason }));
+    }
+  );
+
+  it('should pay out the net amount to the listed destination with a per-request Stripe key', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockBalance(makeBalance());
+    mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
+      success: true,
+      data: {
+        payoutId: 'po_instant_1',
+        amount: 97500,
+        currency: 'usd',
+        applicationFeeAmount: 2500,
+        arrivalDate: new Date(1760000000 * 1000),
+      },
+    } as any);
+
+    const result = await paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-1');
+
+    expect(mockPaymentGatewayService.createInstantPayout).toHaveBeenCalledWith(
+      'stripe',
+      'acct_landlord_1',
+      {
+        amount: 97500,
+        currency: 'usd',
+        destination: 'card_debit_1',
+        idempotencyKey: 'instant-payout:acct_landlord_1:req-key-1',
+      }
+    );
+    expect(result.data).toEqual(
+      expect.objectContaining({ payoutId: 'po_instant_1', amount: 97500, fee: 2500 })
+    );
+  });
+
+  it("should cap the instant payout at Stripe's per-payout maximum", async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    // $20,000 instant balance, 2.5% fee → $19,500 net, above the $9,999 maximum
+    mockBalance(
+      makeBalance({
+        instant_available: [
+          {
+            amount: 2000000,
+            currency: 'usd',
+            net_available: [{ amount: 1950000, destination: 'card_debit_1' }],
+          },
+        ],
+      })
+    );
+    mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
+      success: true,
+      data: {
+        payoutId: 'po_capped',
+        amount: 999900,
+        currency: 'usd',
+        applicationFeeAmount: 25638,
+        arrivalDate: new Date(1760000000 * 1000),
+      },
+    } as any);
+
+    const quote = (await paymentService.getPayoutBalance(CUID)).data.instant;
+    expect(quote).toEqual(
+      expect.objectContaining({ eligible: true, capped: true, net: 999900, fee: 25638 })
+    );
+
+    const result = await paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-cap');
+
+    expect(mockPaymentGatewayService.createInstantPayout).toHaveBeenCalledWith(
+      'stripe',
+      'acct_landlord_1',
+      expect.objectContaining({ amount: 999900 })
+    );
+    expect(result.data.amount).toBe(999900);
+  });
+
+  it('should refuse an instant payout when the account is not eligible', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(
+      makeProcessor({ serviceAgreement: 'recipient' }) as any
+    );
+    mockBalance(makeBalance());
+
+    await expect(paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-2')).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentGatewayService.createInstantPayout).not.toHaveBeenCalled();
+  });
+
+  it('should surface a Stripe failure as BadRequestError', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockBalance(makeBalance());
+    mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'Debit card does not support instant payouts',
+    } as any);
+
+    await expect(paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-3')).rejects.toThrow(
+      'Debit card does not support instant payouts'
     );
   });
 });
@@ -3558,7 +3802,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
 
     mockGateway = {
-      payInvoice: jest.fn(),
+      payCharge: jest.fn(),
       retrievePaymentMethod: jest.fn().mockResolvedValue({ success: true, data: { type: 'card' } }),
     } as unknown as jest.Mocked<PaymentGatewayService>;
 
@@ -3577,7 +3821,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    expect(mockGateway.payInvoice).not.toHaveBeenCalled();
+    expect(mockGateway.payCharge).not.toHaveBeenCalled();
   });
 
   it('queries only PENDING/OVERDUE rent with a gatewayPaymentId due by the end of the client-local day', async () => {
@@ -3597,19 +3841,19 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     expect(query.dueDate.$lt).toBeInstanceOf(Date);
   });
 
-  it('calls payInvoice for each due payment with the connected account id', async () => {
+  it('calls payCharge for each due payment with the connected account id', async () => {
     const p1 = makeDueRentPayment({ gatewayPaymentId: 'in_aaa' });
     const p2 = makeDueRentPayment({ gatewayPaymentId: 'in_bbb' });
     mockPaymentDAO.list.mockResolvedValue({ items: [p1, p2], total: 2 } as any);
     mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
-    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+    mockGateway.payCharge.mockResolvedValue({ success: true } as any);
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(2);
-    expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), 'in_aaa');
-    expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), 'in_bbb');
+    expect(mockGateway.payCharge).toHaveBeenCalledTimes(2);
+    expect(mockGateway.payCharge).toHaveBeenCalledWith(expect.anything(), 'in_aaa');
+    expect(mockGateway.payCharge).toHaveBeenCalledWith(expect.anything(), 'in_bbb');
   });
 
   it('handles OVERDUE payments as well as PENDING', async () => {
@@ -3617,11 +3861,11 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     mockPaymentDAO.list.mockResolvedValue({ items: [overdue], total: 1 } as any);
     mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
-    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+    mockGateway.payCharge.mockResolvedValue({ success: true } as any);
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(1);
+    expect(mockGateway.payCharge).toHaveBeenCalledTimes(1);
   });
 
   it('skips payments when online payments are disabled for the client', async () => {
@@ -3631,7 +3875,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    expect(mockGateway.payInvoice).not.toHaveBeenCalled();
+    expect(mockGateway.payCharge).not.toHaveBeenCalled();
     expect(mockPaymentProcessorDAO.findFirst).not.toHaveBeenCalled();
   });
 
@@ -3640,7 +3884,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     mockPaymentDAO.list.mockResolvedValue({ items: payments, total: 3 } as any);
     mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
-    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+    mockGateway.payCharge.mockResolvedValue({ success: true } as any);
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
@@ -3656,7 +3900,7 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    expect(mockGateway.payInvoice).not.toHaveBeenCalled();
+    expect(mockGateway.payCharge).not.toHaveBeenCalled();
   });
 
   it('continues processing remaining payments after one Stripe charge fails', async () => {
@@ -3665,13 +3909,13 @@ describe('PaymentService - autoChargeDueRentPayments', () => {
     mockPaymentDAO.list.mockResolvedValue({ items: [p1, p2], total: 2 } as any);
     mockClientDAO.getClientByCuid.mockResolvedValue(makeClient() as any);
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: ACCOUNT_ID } as any);
-    mockGateway.payInvoice
+    mockGateway.payCharge
       .mockRejectedValueOnce(new Error('card_declined'))
       .mockResolvedValueOnce({ success: true } as any);
 
     await (paymentService as any).paymentCronService.autoChargeDueRentPayments();
 
-    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(2);
+    expect(mockGateway.payCharge).toHaveBeenCalledTimes(2);
   });
 
   it('is registered in getCronJobs with the correct schedule and service name', async () => {
@@ -4555,9 +4799,8 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockSubscriptionDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<SubscriptionDAO>;
     mockGateway = {
-      createInvoice: jest.fn(),
-      finalizeInvoice: jest.fn(),
-      payInvoice: jest.fn(),
+      createCharge: jest.fn(),
+      payCharge: jest.fn(),
     } as unknown as jest.Mocked<PaymentGatewayService>;
 
     const mockPlanConfig = {
@@ -4582,12 +4825,11 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
       chargesEnabled: true,
     } as any);
     mockSubscriptionDAO.findFirst.mockResolvedValue({ planName: 'basic', deletedAt: null } as any);
-    mockGateway.createInvoice.mockResolvedValue({
+    mockGateway.createCharge.mockResolvedValue({
       success: true,
-      data: { invoiceId: INVOICE_ID },
+      data: { chargeId: INVOICE_ID },
     } as any);
-    mockGateway.finalizeInvoice.mockResolvedValue({ success: true } as any);
-    mockGateway.payInvoice.mockResolvedValue({ success: true } as any);
+    mockGateway.payCharge.mockResolvedValue({ success: true } as any);
     mockPaymentDAO.updateById.mockResolvedValue({} as any);
   });
 
@@ -4596,8 +4838,8 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
   it('creates invoice lazily and charges when gatewayPaymentId is null', async () => {
     const result = await paymentService.payPendingCharge(CUID, 'PYT-LAZY-001', TENANT_USER_ID);
 
-    expect(mockGateway.createInvoice).toHaveBeenCalledTimes(1);
-    expect(mockGateway.createInvoice).toHaveBeenCalledWith(
+    expect(mockGateway.createCharge).toHaveBeenCalledTimes(1);
+    expect(mockGateway.createCharge).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantCustomerId: PLATFORM_CUSTOMER,
@@ -4607,12 +4849,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
         paymentMethodId: 'pm_xyz',
       })
     );
-    expect(mockGateway.finalizeInvoice).toHaveBeenCalledWith(
-      expect.anything(),
-      INVOICE_ID,
-      undefined
-    );
-    expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), INVOICE_ID, {
+    expect(mockGateway.payCharge).toHaveBeenCalledWith(expect.anything(), INVOICE_ID, {
       paymentMethod: 'pm_xyz',
       mandate: 'mandate_abc',
     });
@@ -4629,7 +4866,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
       paymentService.payPendingCharge(CUID, 'PYT-LAZY-001', TENANT_USER_ID)
     ).rejects.toThrow(BadRequestError);
 
-    expect(mockGateway.createInvoice).not.toHaveBeenCalled();
+    expect(mockGateway.createCharge).not.toHaveBeenCalled();
   });
 
   it('skips invoice creation and pays directly when gatewayPaymentId already exists', async () => {
@@ -4640,9 +4877,8 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
 
     const result = await paymentService.payPendingCharge(CUID, 'PYT-LAZY-001', TENANT_USER_ID);
 
-    expect(mockGateway.createInvoice).not.toHaveBeenCalled();
-    expect(mockGateway.finalizeInvoice).not.toHaveBeenCalled();
-    expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), existingInvoiceId, {
+    expect(mockGateway.createCharge).not.toHaveBeenCalled();
+    expect(mockGateway.payCharge).toHaveBeenCalledWith(expect.anything(), existingInvoiceId, {
       paymentMethod: 'pm_xyz',
       mandate: 'mandate_abc',
     });
@@ -4661,7 +4897,7 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
 
     const result = await paymentService.payPendingCharge(CUID, 'PYT-LAZY-001', TENANT_USER_ID);
 
-    expect(mockGateway.createInvoice).toHaveBeenCalledWith(
+    expect(mockGateway.createCharge).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         tenantCustomerId: PLATFORM_CUSTOMER,
@@ -4670,15 +4906,10 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
         lineItems: [{ description: 'Late fee for April', amountInCents: 15000 }],
       })
     );
-    expect(mockGateway.finalizeInvoice).toHaveBeenCalledWith(
-      expect.anything(),
-      INVOICE_ID,
-      undefined
-    );
     expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
       gatewayPaymentId: INVOICE_ID,
     });
-    expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), INVOICE_ID, {
+    expect(mockGateway.payCharge).toHaveBeenCalledWith(expect.anything(), INVOICE_ID, {
       paymentMethod: 'pm_xyz',
       mandate: 'mandate_abc',
     });
@@ -4697,9 +4928,8 @@ describe('PaymentService - payPendingCharge (RENT lazy invoice)', () => {
 
     const result = await paymentService.payPendingCharge(CUID, 'PYT-LAZY-001', TENANT_USER_ID);
 
-    expect(mockGateway.createInvoice).not.toHaveBeenCalled();
-    expect(mockGateway.finalizeInvoice).not.toHaveBeenCalled();
-    expect(mockGateway.payInvoice).toHaveBeenCalledWith(expect.anything(), existingInvoiceId, {
+    expect(mockGateway.createCharge).not.toHaveBeenCalled();
+    expect(mockGateway.payCharge).toHaveBeenCalledWith(expect.anything(), existingInvoiceId, {
       paymentMethod: 'pm_xyz',
       mandate: 'mandate_abc',
     });
@@ -5483,13 +5713,12 @@ describe('PaymentService - payPendingCharge (ACSS per-transaction limit)', () =>
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockSubscriptionDAO = { findFirst: jest.fn() } as unknown as jest.Mocked<SubscriptionDAO>;
     mockGateway = {
-      createInvoice: jest
+      createCharge: jest
         .fn()
-        .mockResolvedValue({ success: true, data: { invoiceId: INVOICE_ID } } as any),
-      finalizeInvoice: jest.fn().mockResolvedValue({ success: true } as any),
-      payInvoice: jest.fn().mockResolvedValue({ success: true } as any),
+        .mockResolvedValue({ success: true, data: { chargeId: INVOICE_ID } } as any),
+      payCharge: jest.fn().mockResolvedValue({ success: true } as any),
       retrievePaymentMethod: jest.fn(),
-      voidInvoice: jest.fn(),
+      cancelCharge: jest.fn(),
     } as unknown as jest.Mocked<PaymentGatewayService>;
 
     paymentService = makeServiceWithMocks({
@@ -5534,8 +5763,8 @@ describe('PaymentService - payPendingCharge (ACSS per-transaction limit)', () =>
 
     expect(result.success).toBe(true);
     expect(result.routeToCard).toBeUndefined();
-    expect(mockGateway.createInvoice).toHaveBeenCalledTimes(1);
-    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(1);
+    expect(mockGateway.createCharge).toHaveBeenCalledTimes(1);
+    expect(mockGateway.payCharge).toHaveBeenCalledTimes(1);
   });
 
   it('proceeds normally when ACSS mandate exists but amount is within limit', async () => {
@@ -5545,8 +5774,8 @@ describe('PaymentService - payPendingCharge (ACSS per-transaction limit)', () =>
     const result = await paymentService.payPendingCharge(CUID, 'PYT-ACSS-001', TENANT_USER_ID);
 
     expect(result.routeToCard).toBeUndefined();
-    expect(mockGateway.createInvoice).toHaveBeenCalledTimes(1);
-    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(1);
+    expect(mockGateway.createCharge).toHaveBeenCalledTimes(1);
+    expect(mockGateway.payCharge).toHaveBeenCalledTimes(1);
   });
 
   it('proceeds normally when amount is exactly at the limit', async () => {
@@ -5556,7 +5785,7 @@ describe('PaymentService - payPendingCharge (ACSS per-transaction limit)', () =>
     const result = await paymentService.payPendingCharge(CUID, 'PYT-ACSS-001', TENANT_USER_ID);
 
     expect(result.routeToCard).toBeUndefined();
-    expect(mockGateway.payInvoice).toHaveBeenCalledTimes(1);
+    expect(mockGateway.payCharge).toHaveBeenCalledTimes(1);
   });
 
   it('skips ACSS limit check when no mandate exists (card payment path)', async () => {
@@ -5795,7 +6024,7 @@ describe('PaymentService - createCardPaymentSession', () => {
     const mockStripe = {
       createPaymentCheckoutSession: jest.fn().mockResolvedValue(d.stripeSession),
     };
-    const mockGateway = { voidInvoice: jest.fn().mockResolvedValue({ success: true }) };
+    const mockGateway = { cancelCharge: jest.fn().mockResolvedValue({ success: true }) };
     const paymentDAO = {
       findFirst: jest.fn().mockResolvedValue(payment),
       updateById: jest.fn().mockResolvedValue({}),
@@ -5811,14 +6040,14 @@ describe('PaymentService - createCardPaymentSession', () => {
 
     await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID);
 
-    expect(mockGateway.voidInvoice.mock.calls.map((call: any[]) => call[1])).toEqual([
+    expect(mockGateway.cancelCharge.mock.calls.map((call: any[]) => call[1])).toEqual([
       'in_rent_1',
       'in_fees_1',
     ]);
     expect(paymentDAO.updateById).toHaveBeenCalledWith(payment._id.toString(), {
       $unset: { gatewayPaymentId: 1, splitInvoices: 1 },
     });
-    expect(mockGateway.voidInvoice.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mockGateway.cancelCharge.mock.invocationCallOrder[0]).toBeLessThan(
       mockStripe.createPaymentCheckoutSession.mock.invocationCallOrder[0]
     );
   });
@@ -5835,7 +6064,7 @@ describe('PaymentService - createCardPaymentSession', () => {
       profileDAO: { findFirst: jest.fn().mockResolvedValue(d.profile) } as any,
       userDAO: { findFirst: jest.fn().mockResolvedValue(d.tenantUser) } as any,
       paymentGatewayService: {
-        voidInvoice: jest.fn().mockResolvedValue({ success: false, message: 'invoice is paid' }),
+        cancelCharge: jest.fn().mockResolvedValue({ success: false, message: 'invoice is paid' }),
       } as any,
       stripeService: mockStripe,
     });
@@ -6060,8 +6289,8 @@ describe('PaymentService — calculateRentFees fee model', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  it('uses ACH gateway fee ($0.80 flat) when paymentMethodType is auto-debit', () => {
-    // 1.99% on $1,500 = $29.85 applicationFee; gateway cost = $0.80; platformRevenue = $29.05
+  it('uses the bank-debit gateway fee (1% + $0.40, max $5) when paymentMethodType is auto-debit', () => {
+    // 1.99% on $1,500 = $29.85 applicationFee; gateway cost = 1% + $0.40 capped at $5; platform nets $24.85
     const result = (paymentService as any).rentPaymentService.calculateRentFees(
       150000,
       1.99,
@@ -6071,8 +6300,8 @@ describe('PaymentService — calculateRentFees fee model', () => {
 
     expect(result.baseAmount).toBe(150000);
     expect(result.applicationFee).toBe(2985); // 1.99% of $1,500 in cents
-    expect(result.gatewayProcessingFee).toBe(80); // ACSS flat $0.80
-    expect(result.platformNetRevenue).toBe(2985 - 80); // $29.05
+    expect(result.gatewayProcessingFee).toBe(500); // $15.40 before the $5 cap
+    expect(result.platformNetRevenue).toBe(2985 - 500); // $24.85
   });
 
   it('uses card gateway fee (2.9% + $0.30) when paymentMethodType is card', () => {
@@ -6248,7 +6477,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
 
     webhookService = new PaymentWebhookService({
       paymentGatewayService: {
-        getInvoicePaymentDetails: jest
+        getChargeDetails: jest
           .fn()
           .mockResolvedValue({ success: true, data: { chargeId: CHARGE_ID } }),
       } as any,
@@ -6297,7 +6526,7 @@ describe('PaymentWebhookService - handleInvoicePaymentSucceeded - MAINTENANCE in
     // Override the gateway mock to return no chargeId for this test
     webhookService = new PaymentWebhookService({
       paymentGatewayService: {
-        getInvoicePaymentDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
+        getChargeDetails: jest.fn().mockResolvedValue({ success: true, data: {} }),
       } as any,
       paymentProcessorDAO: {} as any,
       subscriptionPlanConfig: {
@@ -6570,7 +6799,7 @@ describe('PaymentService - createCardPaymentSession — session expiry and retur
       updateById: jest.fn().mockResolvedValue({}),
     };
     const gateway = {
-      voidInvoice: jest.fn().mockResolvedValue({ success: true }),
+      cancelCharge: jest.fn().mockResolvedValue({ success: true }),
       expireCheckoutSession: jest.fn().mockResolvedValue({
         success: true,
         data: { status: 'expired' },

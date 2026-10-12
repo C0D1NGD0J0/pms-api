@@ -14,10 +14,39 @@ import { IPropertyUnitDAO } from './interfaces/propertyUnitDAO.interface';
 
 export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements IPropertyUnitDAO {
   protected logger: Logger;
+  private readonly propertyUnitModel: Model<IPropertyUnitDocument>;
 
   constructor({ propertyUnitModel }: { propertyUnitModel: Model<IPropertyUnitDocument> }) {
     super(propertyUnitModel);
+    this.propertyUnitModel = propertyUnitModel;
     this.logger = createLogger('PropertyUnitDAO');
+  }
+
+  async distinct(
+    field: string,
+    filter: QueryFilter<IPropertyUnitDocument>,
+    session?: ClientSession
+  ): Promise<unknown[]> {
+    try {
+      let query = this.propertyUnitModel.distinct(field, filter);
+      if (session) query = query.session(session);
+      return await query.exec();
+    } catch (error) {
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async findPendingUnitChanges(cuid: string, limit = 100): Promise<IPropertyUnitDocument[]> {
+    try {
+      return await this.propertyUnitModel
+        .find({ cuid, deletedAt: null, approvalStatus: 'pending', pendingChanges: { $ne: null } })
+        .sort({ updatedAt: -1 })
+        .limit(limit)
+        .populate({ path: 'propertyId', select: 'pid name' })
+        .exec();
+    } catch (error) {
+      throw this.throwErrorHandler(error);
+    }
   }
 
   async findUnitsByPropertyId(
@@ -53,6 +82,7 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
       const updatedOpts = {
         ...opts,
         sort: sortOption,
+        projection: '-approvalDetails -inspections',
         populate: [
           {
             path: 'currentLease',
@@ -271,12 +301,11 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         inspectionDate: new Date(inspectionData.inspectionDate),
       };
 
+      // $max: back-filling an older inspection must not move the latest date backwards
       const updateOperation = {
         $push: { inspections: newInspection },
-        $set: {
-          lastInspectionDate: new Date(inspectionData.inspectionDate),
-          lastModifiedBy: new Types.ObjectId(userId),
-        },
+        $max: { lastInspectionDate: newInspection.inspectionDate },
+        $set: { lastModifiedBy: new Types.ObjectId(userId) },
       };
 
       return await this.updateById(unitId, updateOperation);
@@ -378,15 +407,12 @@ export class PropertyUnitDAO extends BaseDAO<IPropertyUnitDocument> implements I
         throw new Error('Property ID is required');
       }
 
-      const units = await this.list(
-        {
-          propertyId: new Types.ObjectId(propertyId),
-          deletedAt: null,
-        },
-        { limit: 1000, projection: 'unitNumber' }
-      );
+      const unitNumbers = await this.distinct('unitNumber', {
+        propertyId: new Types.ObjectId(propertyId),
+        deletedAt: null,
+      });
 
-      return units.items.map((unit: any) => unit.unitNumber).filter(Boolean);
+      return unitNumbers.filter(Boolean) as string[];
     } catch (error) {
       this.logger.error(`Error getting existing unit numbers for property ${propertyId}:`, error);
       throw this.throwErrorHandler(error);

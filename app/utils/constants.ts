@@ -116,6 +116,8 @@ export const PROPERTY_VERIFICATION_ROLES = [
  */
 export const PROPERTY_STAFF_ROLES = [IUserRole.STAFF];
 
+export const MAX_ASSIGNED_STAFF = 10;
+
 /**
  * Unit fields that require approval when modified (high-impact changes)
  */
@@ -129,7 +131,18 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
   'specifications.totalArea',
   'currentLease',
   'floor', // if changing floor affects rent
+  'unitType',
+  'fees.currency',
+  'specifications.maxOccupants',
+  'isActive', // takes the unit on/off the market, like status
+  'managedBy',
 ];
+
+/**
+ * Unit floor range. Negative floors are basements (B1 = -1), 0 is the ground floor.
+ * The lower bound matches the pms-ui unit form.
+ */
+export const UNIT_FLOOR_RANGE = { min: -4, max: 100 } as const;
 
 /**
  * Unit fields that can be modified without approval (operational changes)
@@ -137,7 +150,6 @@ export const HIGH_IMPACT_UNIT_FIELDS = [
 export const OPERATIONAL_UNIT_FIELDS = [
   'notes',
   'description',
-  'inspections',
   'documents',
   'media.photos',
   'amenities',
@@ -181,6 +193,28 @@ export const IMMUTABLE_LEASE_FIELDS = [
   'createdAt',
   'createdBy',
   'tenantInfo',
+];
+
+/**
+ * Lease fields owned by the lifecycle endpoints (activate, send for signature, approve,
+ * terminate, renew, signing webhooks) — never writable through the generic lease update,
+ * whatever the lease status, so those flows' checks and side effects can't be skipped.
+ */
+export const LIFECYCLE_MANAGED_LEASE_FIELDS = [
+  'status',
+  'approvalStatus',
+  'approvalDetails',
+  'pendingChanges',
+  'eSignature',
+  'signatures',
+  'signedDate',
+  'previousLeaseId',
+  'renewalRequest',
+  'vacateRequest',
+  'terminationReason',
+  'leaseDocuments',
+  'deletedAt',
+  'deletedBy',
 ];
 
 /**
@@ -257,6 +291,21 @@ export const IMMUTABLE_MAINTENANCE_REQUEST_FIELDS_WHEN_CLOSED = [
   'unitId',
   'requestType',
   'priority',
+] as const;
+
+/**
+ * Account (client) fields only callers holding client:update (super-admin and above) may send to
+ * PATCH /clients/:cuid. Callers with client:settings only (admin) get a 403 if any are present.
+ * Dot-notation paths into the update payload.
+ */
+export const SUPER_ADMIN_ONLY_CLIENT_FIELDS = [
+  'companyProfile.legalEntityName',
+  'companyProfile.registrationNumber',
+  'companyProfile.companyAddress',
+  'settings.defaultCurrency',
+  'settings.vendorPayoutMode',
+  'settings.requireDepositRefundApproval',
+  'dataProcessingConsent',
 ] as const;
 
 /**
@@ -357,3 +406,28 @@ export const CATEGORY_TO_VENDOR_SERVICE: Record<MaintenanceCategory, keyof Vendo
   };
 
 export const MAX_CHARGE_ATTEMPTS = 2;
+
+export const WEEKDAYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
+export type Weekday = (typeof WEEKDAYS)[number];
+
+/**
+ * Landlord payout accounts in these countries are created under Stripe's full terms of service,
+ * which instant payouts require. Other countries stay on recipient terms (weekly payouts only).
+ * Stripe can't change an account's terms after creation.
+ */
+export const INSTANT_PAYOUT_COUNTRIES = ['US', 'CA'] as const;
+
+/** Stripe's maximum for a single instant payout, in cents, per payout currency */
+export const INSTANT_PAYOUT_MAX_CENTS: Record<string, number> = {
+  usd: 999900,
+  cad: 999900,
+};

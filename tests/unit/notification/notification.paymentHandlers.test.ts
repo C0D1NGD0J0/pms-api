@@ -1,6 +1,7 @@
 import ejs from 'ejs';
 import path from 'path';
 import { Types } from 'mongoose';
+import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { RecipientTypeEnum } from '@interfaces/notification.interface';
@@ -226,6 +227,48 @@ describe('handlePaymentFailed', () => {
     );
     expect(html).toContain('Account closed');
     expect(text).toContain('Reason: Account closed');
+  });
+
+  describe('Pay Now link', () => {
+    const frontend = envVariables.FRONTEND as { URL: string };
+    const originalUrl = frontend.URL;
+    beforeEach(() => {
+      frontend.URL = 'https://app.test';
+    });
+    afterEach(() => {
+      frontend.URL = originalUrl;
+    });
+
+    it('links the charge in the tenant portal when there is no Stripe-hosted page', async () => {
+      const ctx = buildCtx();
+      await handlePaymentFailed(ctx, {
+        cuid: CUID,
+        pytuid: 'PYT1',
+        invoiceId: 'pi_1',
+        amount: 150000,
+        tenantId: tenantUserId.toString(),
+      });
+
+      expect(emailCall(ctx, 'paymentFailed').data.hostedInvoiceUrl).toBe(
+        `https://app.test/tenants/${CUID}/TENANT-UID/payments/PYT1`
+      );
+    });
+
+    it('keeps the Stripe-hosted page for legacy invoice charges', async () => {
+      const ctx = buildCtx();
+      await handlePaymentFailed(ctx, {
+        cuid: CUID,
+        pytuid: 'PYT1',
+        invoiceId: 'in_1',
+        amount: 150000,
+        hostedInvoiceUrl: 'https://invoice.stripe.com/i/in_1',
+        tenantId: tenantUserId.toString(),
+      });
+
+      expect(emailCall(ctx, 'paymentFailed').data.hostedInvoiceUrl).toBe(
+        'https://invoice.stripe.com/i/in_1'
+      );
+    });
   });
 });
 

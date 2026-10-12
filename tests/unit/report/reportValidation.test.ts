@@ -100,8 +100,8 @@ describe('ReportValidations', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should accept up to 10 email recipients', () => {
-      const recipients = Array.from({ length: 10 }, (_, i) => `user${i}@test.com`);
+    it('should accept up to 25 email recipients (highest plan limit)', () => {
+      const recipients = Array.from({ length: 25 }, (_, i) => `user${i}@test.com`);
       const result = ReportValidations.generateBody.safeParse({
         period: 'last_30_days',
         emailRecipients: recipients,
@@ -109,8 +109,8 @@ describe('ReportValidations', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should reject more than 10 email recipients', () => {
-      const recipients = Array.from({ length: 11 }, (_, i) => `user${i}@test.com`);
+    it('should reject more than 25 email recipients', () => {
+      const recipients = Array.from({ length: 26 }, (_, i) => `user${i}@test.com`);
       const result = ReportValidations.generateBody.safeParse({
         period: 'last_30_days',
         emailRecipients: recipients,
@@ -164,6 +164,15 @@ describe('ReportValidations', () => {
       expect(result.success).toBe(false);
     });
 
+    it('should accept 25 email recipients (highest plan limit)', () => {
+      const recipients = Array.from({ length: 25 }, (_, i) => `user${i}@test.com`);
+      const result = ReportValidations.scheduleBody.safeParse({
+        frequency: 'monthly',
+        emailRecipients: recipients,
+      });
+      expect(result.success).toBe(true);
+    });
+
     it('should reject invalid frequency', () => {
       const result = ReportValidations.scheduleBody.safeParse({
         frequency: 'weekly',
@@ -171,8 +180,8 @@ describe('ReportValidations', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should reject more than 10 email recipients', () => {
-      const recipients = Array.from({ length: 11 }, (_, i) => `user${i}@test.com`);
+    it('should reject more than 25 email recipients', () => {
+      const recipients = Array.from({ length: 26 }, (_, i) => `user${i}@test.com`);
       const result = ReportValidations.scheduleBody.safeParse({
         frequency: 'monthly',
         emailRecipients: recipients,

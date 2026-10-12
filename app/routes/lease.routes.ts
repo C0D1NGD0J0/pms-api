@@ -117,7 +117,7 @@ router
     requireVerifiedClient,
     requireActiveSubscription,
     idempotency,
-    diskUpload(['document']),
+    diskUpload(['leaseDocument[*].file']),
     scanFile,
     validateRequest({
       params: UtilsValidations.cuid,
@@ -204,7 +204,7 @@ router
     basicLimiter(),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     requireActiveSubscription,
-    diskUpload(['document']),
+    diskUpload(['leaseDocument[*].file']),
     scanFile,
     idempotency,
     validateRequest({
@@ -344,22 +344,6 @@ router
       return controller.getSignatureDetails(req, res);
     })
   );
-
-// PDF Generation Routes
-router.post(
-  '/:cuid/:luid/pdf',
-  // Generate PDF from lease JSON data using Puppeteer + EJS template
-  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  idempotency,
-  validateRequest({
-    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.generateLeasePDF(req, res);
-  })
-);
 
 router.get(
   '/:cuid/:luid/pdf/download',

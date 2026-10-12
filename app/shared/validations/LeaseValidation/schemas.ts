@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { LeaseTerminationReasonCode } from '@interfaces/lease.interface';
 
-import { getContainer, calendarDate } from '../UtilsValidation';
+import { optionalBlank, getContainer, calendarDate } from '../UtilsValidation';
 
 export const isValidProperty = async (propertyId: string, cuid: string) => {
   try {
@@ -87,6 +88,31 @@ export const ESignatureProviderEnum = z.enum(['hellosign', 'boldsign', 'docusign
 
 export const ESignatureStatusEnum = z.enum(['draft', 'sent', 'signed', 'declined', 'voided']);
 
+// Mirrors the templateType enum on the lease model
+export const LeaseTemplateTypeEnum = z.enum([
+  'generic',
+  'residential-single-family',
+  'residential-apartment',
+  'commercial-office',
+  'commercial-retail',
+  'short-term-rental',
+]);
+
+const OptionalTemplateTypeSchema = optionalBlank(LeaseTemplateTypeEnum);
+
+// Lease-level toggles persisted on the lease model (read by PDF generation, payments, inspections)
+const LeaseOptionFlagsSchema = z.object({
+  includeManagementFee: z.boolean().optional(),
+  includeParkingInfo: z.boolean().optional(),
+  generateFirstPaymentOnActivation: z.boolean().optional(),
+  autoScheduleInspection: z
+    .object({
+      moveIn: z.boolean(),
+      moveOut: z.boolean(),
+    })
+    .optional(),
+});
+
 // Nested Object Schemas
 export const LeaseFeesSchema = z.object({
   rentAmount: z.coerce.number().positive('Monthly rent must be a positive number'),
@@ -101,7 +127,7 @@ export const LeaseFeesSchema = z.object({
     .min(0, 'Late fee percentage must be non-negative')
     .max(100, 'Late fee percentage cannot exceed 100')
     .optional(),
-  acceptedPaymentMethod: PaymentMethodEnum.optional(),
+  acceptedPaymentMethod: optionalBlank(PaymentMethodEnum),
 });
 
 export const LeaseDurationSchema = z.object({
@@ -189,35 +215,6 @@ export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, 
   }
 });
 
-export const RenewLeaseSchema = z.object({
-  duration: z
-    .object({
-      startDate: calendarDate().optional(),
-      endDate: calendarDate().optional(),
-    })
-    .optional(),
-
-  fees: z
-    .object({
-      rentAmount: z
-        .number({ invalid_type_error: 'Monthly rent must be a number' })
-        .min(0, 'Monthly rent must be a positive number')
-        .optional(),
-      lateFeeType: z.enum(['fixed', 'percentage']).optional(),
-      lateFeeAmount: z.number().min(0).optional(),
-      lateFeePercentage: z.number().min(0).max(100).optional(),
-      lateFeeDays: z.number().int().min(0).optional(),
-    })
-    .optional(),
-
-  petPolicy: z
-    .object({
-      deposit: z.number().min(0, 'Pet deposit must be a positive number').optional(),
-      monthlyFee: z.number().min(0, 'Pet monthly fee must be a positive number').optional(),
-    })
-    .optional(),
-});
-
 export const InternalNoteSchema = z.object({
   note: z
     .string()
@@ -236,9 +233,28 @@ export const LegalTermsSchema = z.object({
   url: z.string().url('Invalid URL format for legal terms').optional(),
 });
 
+// Renewal payload mirrors the renewal form data (GET lease_renewal); money is in major units and
+// converted to cents by the service. Currency is omitted — a renewal keeps the original lease currency.
+export const RenewLeaseSchema = z.object({
+  duration: LeaseDurationSchema.pick({ startDate: true, endDate: true, moveInDate: true })
+    .partial()
+    .optional(),
+  fees: LeaseFeesSchema.omit({ currency: true }).partial().optional(),
+  petPolicy: PetPolicySchema.optional(),
+  renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
+  utilitiesIncluded: z.array(UtilityEnum).optional(),
+  coTenants: z.array(CoTenantSchema).optional(),
+  legalTerms: optionalBlank(LegalTermsSchema),
+  // Renewal takes a single free-text note; the service wraps it into an internal note entry
+  internalNotes: z.string().trim().max(2000, 'Note text cannot exceed 2000 characters').optional(),
+});
+
+// firstName/lastName are required by the service only when inviting a new tenant by email
 export const TenantInfoSchema = z.object({
   id: z.string().min(1, 'Tenant ID must be provided').nullable().optional(),
   email: z.string().email('Invalid email format').or(z.literal('')).nullable().optional(),
+  firstName: z.string().trim().max(50, 'First name must be at most 50 characters').optional(),
+  lastName: z.string().trim().max(50, 'Last name must be at most 50 characters').optional(),
 });
 
 export const LeaseDocumentItemSchema = z.object({
@@ -281,12 +297,8 @@ const BaseLeaseSchemaObject = z.object({
   legalTerms: LegalTermsSchema.optional(),
   internalNotes: z.array(InternalNoteSchema).optional(),
   leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
-  autoScheduleInspection: z
-    .object({
-      moveIn: z.boolean(),
-      moveOut: z.boolean(),
-    })
-    .optional(),
+  templateType: OptionalTemplateTypeSchema,
+  ...LeaseOptionFlagsSchema.shape,
 });
 
 export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
@@ -328,15 +340,15 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
     }
   );
 
+// status and eSignature are deliberately absent: they only change through the lease
+// lifecycle endpoints (activate, signature request, terminate) and signing webhooks
 export const UpdateLeaseSchema = z
   .object({
-    status: LeaseStatusEnum.optional(),
     property: LeasePropertySchema.partial().optional(),
     duration: LeaseDurationSchema.partial().optional(),
     fees: LeaseFeesSchema.partial().optional(),
     type: LeaseTypeEnum.optional(),
     signingMethod: SigningMethodEnum.optional(),
-    eSignature: ESignatureSchema.optional(),
     utilitiesIncluded: z.array(UtilityEnum).optional(),
     coTenants: z.array(CoTenantSchema).optional(),
     petPolicy: PetPolicySchema.partial().optional(),
@@ -344,15 +356,8 @@ export const UpdateLeaseSchema = z
     legalTerms: LegalTermsSchema.optional(),
     internalNotes: z.array(InternalNoteSchema).optional(),
     leaseDocument: z.array(LeaseDocumentItemSchema).optional(),
-    templateType: z
-      .enum([
-        'residential-single-family',
-        'residential-apartment',
-        'commercial-office',
-        'commercial-retail',
-        'short-term-rental',
-      ])
-      .optional(),
+    templateType: OptionalTemplateTypeSchema,
+    ...LeaseOptionFlagsSchema.shape,
   })
   .refine(
     (data) => {
@@ -456,6 +461,8 @@ export const TerminateLeaseSchema = z
       .string()
       .min(10, 'Termination reason must be at least 10 characters')
       .max(500, 'Termination reason must be at most 500 characters'),
+    // Drives notice-period exemptions; terminationReason stays free text for the record
+    reasonCode: z.nativeEnum(LeaseTerminationReasonCode).optional(),
     notes: z.string().max(1000, 'Notes must be at most 1000 characters').optional(),
   })
   .refine(
@@ -473,9 +480,17 @@ export const TerminateLeaseSchema = z
     }
   );
 
+// Signers recorded when a lease is marked as manually signed (action: 'manual')
+export const ManualSignerSchema = z.object({
+  name: z.string().trim().min(1, 'Signer name is required').max(100),
+  email: z.string().email('Invalid signer email format'),
+  role: SignatureRoleEnum,
+});
+
 // Signature Action Schema
 export const SignatureActionSchema = z.object({
   action: SignatureActionEnum,
+  signedBy: z.array(ManualSignerSchema).max(20, 'Too many signers').optional(),
 });
 
 export const ExpiringLeasesQuerySchema = z.object({

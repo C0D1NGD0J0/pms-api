@@ -186,38 +186,6 @@ export class CronService {
     return this.cronJobs.get(jobName);
   }
 
-  async enableCronJob(jobName: string): Promise<void> {
-    const job = this.cronJobs.get(jobName);
-    if (!job) {
-      throw new Error(`Cron job not found: ${jobName}`);
-    }
-
-    if (job.enabled) {
-      this.log.warn(`Cron job already enabled: ${jobName}`);
-      return;
-    }
-
-    job.enabled = true;
-    this.scheduleCronJob(job);
-    this.log.info(`Enabled cron job: ${jobName}`);
-  }
-
-  async disableCronJob(jobName: string): Promise<void> {
-    const job = this.cronJobs.get(jobName);
-    if (!job) {
-      throw new Error(`Cron job not found: ${jobName}`);
-    }
-
-    if (!job.enabled) {
-      this.log.warn(`Cron job already disabled: ${jobName}`);
-      return;
-    }
-
-    job.enabled = false;
-    const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;
-    await cronQueue.removeRepeatable(jobName, job.schedule);
-  }
-
   async getNextExecutions(): Promise<Array<{ job: string; nextRun: Date }>> {
     const executions: Array<{ job: string; nextRun: Date }> = [];
     const cronQueue = this.queueFactory.getQueue('cronQueue') as CronQueue;

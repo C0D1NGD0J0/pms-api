@@ -1,6 +1,7 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { EmailQueue, UserQueue } from '@queues/index';
@@ -16,19 +17,25 @@ import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { PermissionService } from '@services/permission/permission.service';
 import { LeaseExpiredPayload, IProfileDocument, EventTypes } from '@interfaces/index';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
-  assertRecordOwnership,
-  calcDaysElapsed,
-  createLogger,
-  JOB_NAME,
-  daysInMs,
-} from '@utils/index';
+  BadRequestError,
+  ForbiddenError,
+  ConflictError,
+  NotFoundError,
+} from '@shared/customErrors/index';
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   getDisabledCategories,
 } from '@services/notification/notificationPolicy';
+import {
+  calcDaysElapsed,
+  hashGenerator,
+  createLogger,
+  hashToken,
+  JOB_NAME,
+  daysInMs,
+} from '@utils/index';
 import {
   ISuccessReturnData,
   PermissionResource,
@@ -64,6 +71,15 @@ import {
   ICurrentUser,
   IUserStats,
 } from '@interfaces/user.interface';
+
+const EMAIL_CHANGE_TTL_HOURS = 24;
+
+export interface IEmailChangeStatus {
+  pendingEmail: string | null;
+  expiresAt: Date | null;
+  email: string;
+  uid: string;
+}
 
 interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
@@ -535,6 +551,7 @@ export class UserService implements ICronProvider {
         avatar: personalInfo.avatar || '',
         phoneNumber: personalInfo.phoneNumber || contactInfo.phoneNumber || '',
         email: user.email,
+        pendingEmail: user.pendingEmail || null,
         roles: roles,
         uid: user.uid,
         id: user.id,
@@ -1341,7 +1358,7 @@ export class UserService implements ICronProvider {
         seesAllDepartments: roles.some((role: string) =>
           (ROLE_GROUPS.MANAGEMENT_ROLES as readonly string[]).includes(role)
         ),
-        disabledCategories: getDisabledCategories(notificationPrefs),
+        disabledCategories: getDisabledCategories(notificationPrefs, { roles, department }),
         inAppDisabled: notificationPrefs?.inAppNotifications === false,
       };
     } catch (error) {
@@ -1350,76 +1367,204 @@ export class UserService implements ICronProvider {
     }
   }
 
-  async updateUserInfo(
-    userId: string,
-    userInfo: { email?: string },
-    currentuser: ICurrentUser
-  ): Promise<ISuccessReturnData<any>> {
-    try {
-      if (!userId) {
-        throw new BadRequestError({ message: t('common.errors.required', { field: 'User ID' }) });
-      }
+  /**
+   * Starts a login-email change. The address only becomes the login email once the link sent to
+   * it is confirmed (AuthService.confirmEmailChange). Self-service, or staff acting on a tenant.
+   * Requesting the address already pending re-sends the confirmation link.
+   */
+  async requestEmailChange(
+    cuid: string,
+    actor: ICurrentUser,
+    targetUser: string | IUserDocument,
+    newEmail: string
+  ): Promise<ISuccessReturnData<IEmailChangeStatus>> {
+    const pendingEmail = newEmail.trim().toLowerCase();
+    const target = await this.getEmailChangeTarget(cuid, actor, targetUser);
 
-      // Check if user exists
-      const existingUser = await this.userDAO.findFirst({ uid: userId });
-      if (!existingUser) {
-        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
-      }
-
-      // Ownership: currentuser.sub is the MongoDB _id; compare against the fetched user's _id
-      assertRecordOwnership(currentuser, existingUser._id, {
-        bypassRoles: ROLE_GROUPS.MANAGEMENT_ROLES,
-        errorMessage: t('user.errors.canOnlyUpdateOwnAccount'),
-      });
-
-      // If email is being updated, check for uniqueness
-      if (userInfo.email && userInfo.email !== existingUser.email) {
-        const emailExists = await this.userDAO.findFirst({ email: userInfo.email });
-        if (emailExists) {
-          throw new BadRequestError({
-            message: t('common.errors.alreadyExists', { resource: 'Email' }),
-          });
-        }
-
-        // ── Immutable field guard: block email change while subscription with billing exists ──
-        const cuids = existingUser.cuids?.map((c: any) => c.cuid) ?? [];
-        if (cuids.length > 0) {
-          const subscription = await this.subscriptionDAO.findFirst({
-            cuid: { $in: cuids },
-            'billing.customerId': { $exists: true, $ne: '' },
-          });
-          if (subscription) {
-            throw new BadRequestError({
-              message: t('client.errors.immutableFieldLocked'),
-            });
-          }
-        }
-      }
-
-      // Update user information
-      const updatedUser = await this.userDAO.updateById(existingUser._id.toString(), userInfo);
-
-      if (!updatedUser) {
-        throw new NotFoundError({
-          message: t('common.errors.operationFailed', { action: 'update user' }),
-        });
-      }
-
-      this.log.info(`User info updated for user ${userId}`, { userInfo });
-
-      return {
-        success: true,
-        data: {
-          uid: updatedUser.uid,
-          email: updatedUser.email,
-          isActive: updatedUser.isActive,
-        },
-        message: t('common.success.updated', { resource: 'User information' }),
-      };
-    } catch (error) {
-      this.log.error(`Error updating user info for ${userId}:`, error);
-      throw error;
+    if (pendingEmail === target.email.trim().toLowerCase()) {
+      throw new BadRequestError({ message: t('user.emailChange.sameAsCurrent') });
     }
+    await Promise.all([
+      this.assertEmailAvailable(pendingEmail, target),
+      this.assertEmailNotBillingLocked(target),
+    ]);
+
+    const isResend = pendingEmail === target.pendingEmail;
+    const status = await this.issueEmailChangeToken(target, pendingEmail, actor, cuid);
+    if (!isResend) {
+      this.queueEmailChangeNotice(target, pendingEmail, actor);
+    }
+
+    return {
+      success: true,
+      data: status,
+      message: t(isResend ? 'user.emailChange.resent' : 'user.emailChange.requested', {
+        email: pendingEmail,
+      }),
+    };
+  }
+
+  async cancelEmailChange(
+    cuid: string,
+    actor: ICurrentUser,
+    targetUid: string
+  ): Promise<ISuccessReturnData<IEmailChangeStatus>> {
+    const target = await this.getEmailChangeTarget(cuid, actor, targetUid);
+    if (!target.pendingEmail) {
+      throw new BadRequestError({ message: t('user.emailChange.noPendingChange') });
+    }
+
+    await this.userDAO.clearPendingEmail(target._id.toString());
+    await this.invalidateUserDetailEverywhere(target);
+    this.log.info('Email change cancelled', { uid: target.uid, cancelledBy: actor.uid });
+
+    return {
+      success: true,
+      data: { uid: target.uid, email: target.email, pendingEmail: null, expiresAt: null },
+      message: t('user.emailChange.cancelled'),
+    };
+  }
+
+  /**
+   * Self-service is always allowed. Otherwise the actor needs USER update rights in `cuid` and the
+   * target must be a connected tenant there holding no staff/vendor role anywhere — a privileged
+   * login must never be re-pointed by someone else.
+   */
+  private async getEmailChangeTarget(
+    cuid: string,
+    actor: ICurrentUser,
+    targetUser: string | IUserDocument
+  ): Promise<IUserDocument> {
+    const target =
+      typeof targetUser === 'string'
+        ? await this.userDAO.findFirst(
+            { uid: targetUser, deletedAt: null },
+            { populate: 'profile' }
+          )
+        : targetUser;
+    if (!target || target.deletedAt) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
+    }
+    if (target.uid === actor.uid) {
+      return target;
+    }
+
+    const connection = target.cuids?.find((c) => c.cuid === cuid);
+    if (actor.client?.cuid !== cuid || !connection?.isConnected) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'User' }) });
+    }
+
+    const holdsOnlyTenantRoles = (target.cuids ?? []).every((c) =>
+      (c.roles ?? []).every((role) => role === ROLES.TENANT)
+    );
+    if (!connection.roles.includes(ROLES.TENANT) || !holdsOnlyTenantRoles) {
+      throw new ForbiddenError({ message: t('user.emailChange.tenantOnly') });
+    }
+
+    const canUpdate = await this.permissionService.canAccessResource(
+      actor,
+      PermissionResource.USER,
+      PermissionAction.UPDATE,
+      target
+    );
+    if (!canUpdate) {
+      throw new ForbiddenError({
+        message: t('common.errors.insufficientPermissions', { action: 'update', resource: 'user' }),
+      });
+    }
+    return target;
+  }
+
+  private async assertEmailAvailable(email: string, target: IUserDocument): Promise<void> {
+    if (await this.userDAO.isEmailTaken(email, target._id.toString())) {
+      throw new ConflictError({ message: t('user.emailChange.emailTaken') });
+    }
+  }
+
+  /** The account owner's email is the billing contact, so it is frozen once billing exists. */
+  private async assertEmailNotBillingLocked(target: IUserDocument): Promise<void> {
+    const ownedClients = await this.clientDAO.aggregate([
+      { $match: { accountAdmin: target._id } },
+      { $project: { cuid: 1 } },
+    ]);
+    if (!ownedClients.length) return;
+
+    const billedSubscription = await this.subscriptionDAO.findFirst({
+      cuid: { $in: ownedClients.map((client) => client.cuid) },
+      'billing.customerId': { $exists: true, $ne: '' },
+    });
+    if (billedSubscription) {
+      throw new BadRequestError({ message: t('client.errors.immutableFieldLocked') });
+    }
+  }
+
+  private async issueEmailChangeToken(
+    target: IUserDocument,
+    pendingEmail: string,
+    actor: ICurrentUser,
+    cuid: string
+  ): Promise<IEmailChangeStatus> {
+    const plainToken = hashGenerator({ byteLength: 32 });
+    const expiresAt = new Date(Date.now() + EMAIL_CHANGE_TTL_HOURS * 60 * 60 * 1000);
+
+    await this.userDAO.setPendingEmail(target._id.toString(), {
+      pendingEmail,
+      tokenHash: hashToken(plainToken),
+      expiresAt,
+      requestedBy: actor.uid,
+    });
+    await this.invalidateUserDetailEverywhere(target);
+
+    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, {
+      to: pendingEmail,
+      subject: t('user.emailChange.verifySubject'),
+      emailType: MailType.EMAIL_CHANGE_VERIFICATION,
+      data: {
+        fullname: target.profile?.fullname || target.email,
+        newEmail: pendingEmail,
+        requestedByName: this.getEmailChangeRequesterName(target, actor),
+        confirmUrl: `${envVariables.FRONTEND.URL}/email_change/confirm?t=${plainToken}`,
+        expiresInHours: EMAIL_CHANGE_TTL_HOURS,
+      },
+    });
+    this.log.info('Email change requested', { uid: target.uid, requestedBy: actor.uid, cuid });
+
+    return { uid: target.uid, email: target.email, pendingEmail, expiresAt };
+  }
+
+  private queueEmailChangeNotice(
+    target: IUserDocument,
+    pendingEmail: string,
+    actor: ICurrentUser
+  ): void {
+    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, {
+      to: target.email,
+      subject: t('user.emailChange.noticeSubject'),
+      emailType: MailType.EMAIL_CHANGE_NOTICE,
+      data: {
+        fullname: target.profile?.fullname || target.email,
+        newEmail: pendingEmail,
+        requestedByName: this.getEmailChangeRequesterName(target, actor),
+        stage: 'requested',
+      },
+    });
+  }
+
+  private getEmailChangeRequesterName(target: IUserDocument, actor: ICurrentUser): string {
+    if (target.uid === actor.uid) return '';
+    return actor.fullname || actor.displayName || '';
+  }
+
+  private async invalidateUserDetailEverywhere(user: IUserDocument): Promise<void> {
+    await Promise.all(
+      (user.cuids ?? []).map((connection) =>
+        this.userCache.invalidateUserDetail(connection.cuid, user.uid).catch((error: unknown) => {
+          this.log.warn('Failed to invalidate user detail cache', { uid: user.uid, error });
+        })
+      )
+    );
   }
 
   /**
@@ -1800,6 +1945,7 @@ export class UserService implements ICronProvider {
           avatar: (rawTenantDetails as any).avatar?.url || (rawTenantDetails as any).avatar || '',
           phoneNumber: (rawTenantDetails as any).phoneNumber || '',
           email: (rawTenantDetails as any).email || '',
+          pendingEmail: (rawTenantDetails as any).pendingEmail || null,
           location: (rawTenantDetails as any).location || '',
           dob: (rawTenantDetails as any).dob || null,
           headline: (rawTenantDetails as any).headline || '',
@@ -1957,7 +2103,7 @@ export class UserService implements ICronProvider {
       const canAccess = await this.permissionService.canAccessResource(
         currentUser,
         PermissionResource.USER,
-        PermissionAction.READ,
+        PermissionAction.UPDATE,
         user
       );
       if (!canAccess) {
@@ -1986,7 +2132,9 @@ export class UserService implements ICronProvider {
       const profileUpdateFields: Record<string, any> = {};
 
       if (updateData.personalInfo) {
-        for (const [key, value] of Object.entries(updateData.personalInfo)) {
+        // Login email changes go through requestEmailChange (verified), never through this edit
+        const { email: _ignoredEmail, ...personalInfo } = updateData.personalInfo;
+        for (const [key, value] of Object.entries(personalInfo)) {
           profileUpdateFields[`personalInfo.${key}`] = value;
         }
       }
@@ -2009,30 +2157,6 @@ export class UserService implements ICronProvider {
         await this.profileDAO.updateById(user.profile._id.toString(), {
           $set: profileUpdateFields,
         });
-      }
-
-      // Update user email if provided
-      if (updateData.email && updateData.email !== user.email) {
-        // Check if email is already in use
-        const emailExists = await this.userDAO.findFirst({ email: updateData.email });
-        if (emailExists && emailExists.uid !== uid) {
-          throw new BadRequestError({
-            message: t('common.errors.alreadyExists', { resource: 'Email' }),
-          });
-        }
-
-        // ── Immutable field guard: block email change while subscription with billing exists ──
-        const subscription = await this.subscriptionDAO.findFirst({
-          cuid,
-          'billing.customerId': { $exists: true, $ne: '' },
-        });
-        if (subscription) {
-          throw new BadRequestError({
-            message: t('client.errors.immutableFieldLocked'),
-          });
-        }
-
-        await this.userDAO.updateById(user._id.toString(), { email: updateData.email });
       }
 
       // Invalidate caches

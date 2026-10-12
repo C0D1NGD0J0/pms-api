@@ -481,6 +481,50 @@ describe('PropertyUnitDAO Integration Tests', () => {
       expect(result?.lastInspectionDate).toBeDefined();
     });
 
+    it('keeps earlier inspections when a new one is added', async () => {
+      const unit = await PropertyUnit.findOne({ unitNumber: '101' });
+      const inspect = (inspectionDate: Date, notes: string) =>
+        propertyUnitDAO.addInspection(
+          unit!._id.toString(),
+          {
+            inspectionDate,
+            status: PropertyUnitInspectionStatusEnum.PASSED,
+            inspector: { name: 'John Doe', contact: '555-0100' },
+            notes,
+          },
+          testUserId.toString()
+        );
+
+      await inspect(new Date('2026-01-10'), 'first');
+      const result = await inspect(new Date('2026-03-10'), 'second');
+
+      expect(result?.inspections?.map((inspection) => inspection.notes)).toEqual([
+        'first',
+        'second',
+      ]);
+    });
+
+    it('does not move lastInspectionDate backwards when an older inspection is back-filled', async () => {
+      const unit = await PropertyUnit.findOne({ unitNumber: '101' });
+      const latest = new Date('2026-05-01');
+      const inspect = (inspectionDate: Date) =>
+        propertyUnitDAO.addInspection(
+          unit!._id.toString(),
+          {
+            inspectionDate,
+            status: PropertyUnitInspectionStatusEnum.PASSED,
+            inspector: { name: 'John Doe', contact: '555-0100' },
+          },
+          testUserId.toString()
+        );
+
+      await inspect(latest);
+      const result = await inspect(new Date('2025-11-01'));
+
+      expect(result?.inspections).toHaveLength(2);
+      expect(result?.lastInspectionDate?.toISOString()).toBe(latest.toISOString());
+    });
+
     it('should use current date if inspection date not provided', async () => {
       const unit = await PropertyUnit.findOne({ unitNumber: '101' });
       const inspectionData = {

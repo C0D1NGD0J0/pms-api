@@ -1,0 +1,25 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= fullname %></strong>,</p>
+      <% if (typeof requestedByName !== 'undefined' && requestedByName) { %>
+      <p>
+        <strong><%= requestedByName %></strong> asked to change the sign-in email on your PropertyDesk account to <strong><%= newEmail %></strong>.
+      </p>
+      <% } else { %>
+      <p>
+        You asked to change the sign-in email on your PropertyDesk account to <strong><%= newEmail %></strong>.
+      </p>
+      <% } %>
+      <p>
+        Confirm this address to finish the change. Until you do, you'll keep signing in with your current email.
+      </p>
+      <%- include("../shared/html/_notice", { text: 'This link expires in <strong>' + expiresInHours + ' hours</strong>. If you didn\'t expect this email, you can safely ignore it — nothing will change.', type: 'expiry' }) %>
+    </td>
+  </tr>
+  <tr>
+    <td class="cta">
+      <%- include("../shared/html/_button", { url: confirmUrl, label: "Confirm New Email" }) %>
+    </td>
+  </tr>
+</table>

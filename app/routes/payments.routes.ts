@@ -70,6 +70,18 @@ router.post(
   })
 );
 
+// Tenant's own PDF receipt (line items) for a paid charge; the service scopes it to the caller.
+router.get(
+  '/:cuid/:pytuid/receipt',
+  basicLimiter(),
+  requirePermission(PermissionResource.PAYMENT, PermissionAction.READ),
+  validateRequest({ params: UtilsValidations.cuid.merge(UtilsValidations.pytuid) }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.downloadMyReceipt(req, res);
+  })
+);
+
 router.get(
   '/:cuid/:pytuid',
   basicLimiter(),
@@ -404,6 +416,22 @@ router.patch(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.updatePayoutSchedule(req, res);
+  })
+);
+
+// Pays out the whole instant-eligible balance (platform fee taken by Stripe); no body — the
+// amount is always Stripe's net figure, never chosen by the caller.
+router.post(
+  '/:cuid/payout-account/instant-payout',
+  basicLimiter({ max: 3, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.requestInstantPayout(req, res);
   })
 );
 

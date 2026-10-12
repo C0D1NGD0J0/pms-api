@@ -42,7 +42,7 @@ router.get(
 router.get(
   '/:cuid',
   basicLimiter(),
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermission(PermissionResource.VENDOR, PermissionAction.LIST),
   subscriptionEntitlements,
   requireFeature('vendorManagement'),
   validateRequest({
@@ -234,11 +234,11 @@ router.get(
 // ── Payout account endpoints ──────────────────────────────────────────────────
 
 // Initiate payout account onboarding (creates provider account record)
-// Restricted to primary vendor account holders only
+// Restricted to the primary account holder of the vendor identified by :vuid
 router.post(
   '/:cuid/vendor/:vuid/payout_account/initiate',
   basicLimiter(),
-  requirePrimaryVendor,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
@@ -248,11 +248,11 @@ router.post(
 );
 
 // Get provider-hosted KYC onboarding link
-// Restricted to primary vendor account holders only
+// Restricted to the primary account holder of the vendor identified by :vuid
 router.get(
   '/:cuid/vendor/:vuid/payout_account/link',
   basicLimiter(),
-  requirePrimaryVendor,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
@@ -261,11 +261,11 @@ router.get(
 );
 
 // Sync payout account status from provider
-// Restricted to primary vendor account holders only
+// Restricted to the primary account holder of the vendor identified by :vuid
 router.post(
   '/:cuid/vendor/:vuid/payout_account/sync',
   basicLimiter(),
-  requirePrimaryVendor,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
@@ -275,11 +275,11 @@ router.post(
 );
 
 // Get Stripe Express Dashboard login link for payout management
-// Restricted to primary vendor account holders only
+// Restricted to the primary account holder of the vendor identified by :vuid
 router.get(
   '/:cuid/vendor/:vuid/payout_account/dashboard',
   basicLimiter(),
-  requirePrimaryVendor,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');

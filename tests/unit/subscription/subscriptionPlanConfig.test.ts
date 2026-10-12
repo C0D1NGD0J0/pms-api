@@ -70,17 +70,17 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
     it('should calculate growth plan monthly price', () => {
       const price = subscriptionPlanConfig.calculatePrice('growth', 'monthly', 0);
-      expect(price).toBe(7999); // $79.99/month
+      expect(price).toBe(6999); // $69.99/month
     });
 
     it('should calculate growth plan annual price', () => {
       const price = subscriptionPlanConfig.calculatePrice('growth', 'annual', 0);
-      expect(price).toBe(76800); // $768/year
+      expect(price).toBe(83988); // 12 × $69.99, no annual discount
     });
 
     it('should calculate growth plan with additional seats', () => {
       const price = subscriptionPlanConfig.calculatePrice('growth', 'monthly', 5);
-      expect(price).toBe(11994); // 7999 + (5 * 799)
+      expect(price).toBe(10994); // 6999 + (5 * 799)
     });
 
     it('should calculate portfolio plan monthly price', () => {
@@ -90,7 +90,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
     it('should calculate portfolio plan annual price', () => {
       const price = subscriptionPlanConfig.calculatePrice('portfolio', 'annual', 0);
-      expect(price).toBe(144000); // $1440/year
+      expect(price).toBe(179988); // 12 × $149.99, no annual discount
     });
 
     it('should calculate portfolio plan with additional seats', () => {
@@ -128,11 +128,11 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
     });
 
     it('should format growth plan monthly price with decimals', () => {
-      expect(subscriptionPlanConfig.getFormattedPrice('growth', 'monthly')).toBe('$79.99');
+      expect(subscriptionPlanConfig.getFormattedPrice('growth', 'monthly')).toBe('$69.99');
     });
 
     it('should format growth plan annual price with decimals', () => {
-      expect(subscriptionPlanConfig.getFormattedPrice('growth', 'annual')).toBe('$768.00');
+      expect(subscriptionPlanConfig.getFormattedPrice('growth', 'annual')).toBe('$839.88');
     });
 
     it('should format portfolio plan monthly price with decimals', () => {
@@ -140,7 +140,7 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
     });
 
     it('should format portfolio plan annual price with decimals', () => {
-      expect(subscriptionPlanConfig.getFormattedPrice('portfolio', 'annual')).toBe('$1440.00');
+      expect(subscriptionPlanConfig.getFormattedPrice('portfolio', 'annual')).toBe('$1799.88');
     });
   });
 
@@ -167,6 +167,37 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
 
     it('should return null for empty string', () => {
       expect(subscriptionPlanConfig.resolvePlanByLookupKey('')).toBeNull();
+    });
+  });
+
+  describe('annual discount', () => {
+    it('derives annual prices from monthly with no discount by default', () => {
+      expect(subscriptionPlanConfig.getAnnualDiscountPercent()).toBe(0);
+      for (const plan of ['growth', 'portfolio', 'enterprise'] as const) {
+        const config = subscriptionPlanConfig.getConfig(plan);
+        expect(config.pricing.annual.priceInCents).toBe(config.pricing.monthly.priceInCents * 12);
+        expect(config.pricing.annual.savingsPercent).toBe(0);
+      }
+    });
+  });
+
+  describe('ACH fees', () => {
+    it('charges the ACH percentage below the cap', () => {
+      expect(subscriptionPlanConfig.calculateAchApplicationFee(100000)).toBe(1250); // 1.25% of $1,000
+    });
+
+    it('caps the ACH application fee at $30', () => {
+      expect(subscriptionPlanConfig.getAchFeeCapCents()).toBe(3000);
+      expect(subscriptionPlanConfig.calculateAchApplicationFee(350000)).toBe(3000); // $3,500 rent
+    });
+
+    it('caps the bank-debit gateway estimate at $5', () => {
+      expect(
+        subscriptionPlanConfig.calculatePaymentGatewayFee(100000, 'stripe', 'auto-debit')
+      ).toBe(500); // 1% + $0.40 = $10.40, capped
+      expect(subscriptionPlanConfig.calculatePaymentGatewayFee(20000, 'stripe', 'auto-debit')).toBe(
+        240
+      ); // 1% of $200 + $0.40
     });
   });
 });

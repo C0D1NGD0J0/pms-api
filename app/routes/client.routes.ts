@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ClientController } from '@controllers/ClientController';
 import { ClientValidations, validateRequest } from '@shared/validations';
 import { PermissionResource, PermissionAction } from '@interfaces/utils.interface';
@@ -8,6 +9,7 @@ import {
   requirePermission,
   isAuthenticated,
   basicLimiter,
+  requireRole,
   idempotency,
 } from '@shared/middlewares';
 
@@ -27,10 +29,13 @@ router.get(
   })
 );
 
+// Super-admin-only fields are enforced in ClientService.updateClientDetails. The role check keeps
+// the management department's client:settings grant (meant for /settings/tenant-features) out.
 router.patch(
   '/:cuid',
   basicLimiter(),
-  requirePermission(PermissionResource.CLIENT, PermissionAction.UPDATE),
+  requirePermission(PermissionResource.CLIENT, PermissionAction.SETTINGS),
+  requireRole([ROLES.ROOT_ADMIN, ROLES.SUPER_ADMIN, ROLES.ADMIN]),
   idempotency,
   validateRequest({
     params: ClientValidations.clientIdParam,

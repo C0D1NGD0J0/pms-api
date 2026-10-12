@@ -37,7 +37,7 @@ jest.mock('@shared/middlewares', () => {
     requirePropertyPermission: passthroughFactory,
     requireAnyPermission: passthroughFactory,
     requireAllPermissions: passthroughFactory,
-    requirePrimaryVendor: passthrough,
+    requirePrimaryVendor: passthroughFactory,
     requireVerifiedClient: passthrough,
   };
 });

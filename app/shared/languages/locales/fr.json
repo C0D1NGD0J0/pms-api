@@ -56,6 +56,7 @@
       "accountActivated": "Compte activé avec succès.",
       "activationEmailSent": "Vérifiez votre email ({{email}}) pour un lien d'activation afin de vérifier votre compte. Si vous ne le voyez pas, vérifiez votre dossier de spam.",
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
+      "otpRequested": "Si la connexion par SMS est configurée pour ce compte, nous avons envoyé un code de vérification à son téléphone.",
       "logoutSuccessful": "Déconnexion réussie.",
       "onboardingCompleted": "Intégration complétée avec succès."
     }
@@ -107,7 +108,9 @@
       "invalidDepartment": "[FR] Invalid department value.",
       "departmentEmployeeOnly": "[FR] Departments can only be assigned to employee roles.",
       "verificationFailed": "[FR] Failed to verify account.",
-      "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided."
+      "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided.",
+      "immutableFieldLocked": "Ce champ est verrouillé et ne peut pas être modifié. Veuillez contacter le support si une mise à jour est nécessaire.",
+      "restrictedFieldsRequireSuperAdmin": "Seul un super-administrateur peut modifier : {{fields}}."
     },
     "success": {
       "roleAssigned": "Rôle {{role}} assigné avec succès",
@@ -175,14 +178,17 @@
       "duplicateUnitNumbers": "Numéros d'unité en double trouvés dans le lot: {{unitNumbers}}",
       "patternInconsistency": "Incohérence de modèle détectée: {{recommendation}}",
       "unitNumberAlreadyExists": "Une unité avec le numéro '{{unitNumber}}' existe déjà pour cette propriété",
-      "unitSuggestion": "Numéro d'unité suggéré: {{suggestion}}"
+      "noPendingChanges": "Cette unité n'a aucune modification en attente à examiner",
+      "pendingChangesModified": "Les modifications en attente ont été mises à jour pendant votre examen. Rechargez l'unité et examinez-les à nouveau."
     },
     "success": {
       "unitCreationQueued": "Tâche de création d'unité mise en file d'attente avec succès",
       "unitsCreated": "{{created}} unités créées avec succès, {{failed}} ont échoué",
       "allUnitsCreated": "Toutes les {{count}} unités créées avec succès",
       "csvValidated": "Fichier CSV des unités de propriété validé avec succès",
-      "csvImported": "Unités de propriété importées avec succès depuis le fichier CSV"
+      "csvImported": "Unités de propriété importées avec succès depuis le fichier CSV",
+      "changesApproved": "Modifications de l'unité approuvées et appliquées",
+      "changesRejected": "Modifications de l'unité refusées. L'unité conserve ses informations actuelles."
     }
   },
   "validation": {
@@ -422,7 +428,6 @@
     "success": {
       "sent": "Invitation envoyée à {{email}}",
       "resent": "Rappel d'invitation envoyé à {{email}}",
-      "reactivated": "Invitation réactivée et envoyée à {{email}}",
       "revoked": "Invitation révoquée avec succès",
       "accepted": "Invitation acceptée avec succès",
       "declined": "Invitation déclinée avec succès",
@@ -490,7 +495,8 @@
       "onlyPrimaryCanUpdate": "[FR] You do not have permission to update this information.",
       "notConnectedToClient": "[FR] Vendor is not connected to this account.",
       "cannotChangeOwnStatus": "[FR] You cannot change your own active status.",
-      "payoutAccountNotFound": "Compte de paiement introuvable."
+      "payoutAccountNotFound": "Compte de paiement introuvable.",
+      "notOwnPayoutAccount": "Les fournisseurs ne peuvent gérer que le compte de versement de leur propre organisation"
     }
   },
   "tenant": {
@@ -505,7 +511,6 @@
   "user": {
     "errors": {
       "notFound": "[FR] User not found.",
-      "canOnlyUpdateOwnAccount": "[FR] You can only update your own account information.",
       "cannotArchiveTenantWithActiveLeases": "[FR] Cannot archive tenant. This user has {{count}} active lease(s). Please terminate the lease(s) before archiving.",
       "cannotArchiveManagerWithActiveLeases": "[FR] Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
       "notATenant": "[FR] This action is only available for tenant accounts.",
@@ -514,6 +519,20 @@
     },
     "success": {
       "tenantDeactivated": "[FR] Tenant deactivated successfully."
+    },
+    "emailChange": {
+      "requested": "Nous avons envoyé un lien de confirmation à {{email}}. L'adresse de connexion sera modifiée dès sa confirmation.",
+      "resent": "Nous avons envoyé un nouveau lien de confirmation à {{email}}.",
+      "cancelled": "La modification d'adresse courriel en attente a été annulée.",
+      "confirmed": "Votre adresse courriel de connexion a été mise à jour. Veuillez vous connecter avec votre nouvelle adresse.",
+      "sameAsCurrent": "La nouvelle adresse courriel est identique à l'adresse actuelle.",
+      "emailTaken": "Cette adresse courriel est déjà utilisée.",
+      "noPendingChange": "Aucune modification d'adresse courriel n'est en attente pour ce compte.",
+      "invalidToken": "Ce lien de confirmation est invalide ou a expiré.",
+      "tenantOnly": "Vous ne pouvez modifier l'adresse courriel que d'un locataire de ce compte.",
+      "verifySubject": "Confirmez votre nouvelle adresse courriel",
+      "noticeSubject": "Votre adresse courriel de connexion est en cours de modification",
+      "completedSubject": "Votre adresse courriel de connexion a été modifiée"
     }
   },
   "subscription": {
@@ -545,7 +564,20 @@
       "paymentMethodFailedCardRequired": "Le paiement n'a pas pu être traité. Un autre mode de paiement est requis.",
       "paymentFailedNoFallback": "Le paiement a échoué et aucun autre mode de paiement n'est enregistré.",
       "retryFailedMissingInfo": "La nouvelle tentative de paiement a échoué. Veuillez mettre à jour les renseignements de votre compte.",
-      "paymentFailedAddPaymentMethod": "Le paiement a échoué. Veuillez ajouter un mode de paiement pour effectuer le paiement."
+      "paymentFailedAddPaymentMethod": "Le paiement a échoué. Veuillez ajouter un mode de paiement pour effectuer le paiement.",
+      "instantPayoutUnavailable": "Le versement instantané n'est pas disponible : {{reason}}"
+    },
+    "success": {
+      "instantPayoutRequested": "Versement instantané demandé. Les fonds arrivent généralement en moins de 30 minutes."
+    },
+    "instantPayoutReasons": {
+      "country_not_supported": "les versements instantanés ne sont pas offerts dans le pays de votre compte de versement",
+      "payouts_not_enabled": "les versements ne sont pas encore activés pour ce compte",
+      "payouts_blocked": "les versements sont bloqués sur ce compte",
+      "payouts_paused": "les versements sont suspendus jusqu'à ce que votre abonnement soit actif",
+      "open_disputes": "ce compte a un litige de paiement en cours",
+      "no_instant_balance": "aucun solde n'est admissible au versement instantané, ou aucune carte de débit n'est liée",
+      "pricing_unavailable": "les versements instantanés sont temporairement indisponibles"
     }
   },
   "sms": {
@@ -572,7 +604,10 @@
       "overlappingLease": "Les dates du bail chevauchent un bail actif existant pour cette unité",
       "cannotCreateOwnLease": "Impossible de créer un bail pour vous-même en tant que locataire - conflit d'intérêts",
       "cannotUpdateOwnLease": "Impossible de mettre à jour vos propres informations de bail - conflit d'intérêts",
-      "propertyUnderMaintenance": "[FR] Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first."
+      "propertyUnderMaintenance": "[FR] Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first.",
+      "immutableFields": "Impossible de modifier des champs immuables",
+      "lifecycleManagedFields": "Le statut, l'approbation et les signatures du bail ne peuvent changer que via les actions du bail",
+      "fieldNotEditable": "Le champ '{{field}}' ne peut pas être modifié par une mise à jour du bail"
     }
   },
   "common": {
@@ -887,6 +922,22 @@
       "depositRefundFailed": {
         "title": "Échec du remboursement du dépôt de garantie",
         "message": "Le remboursement du dépôt de garantie de {{amount}} pour le paiement {{pytuid}} n'a pas pu être traité. Motif : {{reason}}. Veuillez vérifier la situation et rembourser le locataire autrement au besoin."
+      },
+      "accountPayoutPaid": {
+        "title": "Versement déposé",
+        "message": "Votre versement de {{amount}} a été déposé dans votre compte bancaire"
+      },
+      "accountInstantPayoutPaid": {
+        "title": "Versement instantané reçu",
+        "message": "Votre versement instantané de {{amount}} est arrivé dans votre compte"
+      },
+      "accountPayoutFailed": {
+        "title": "Échec du versement",
+        "message": "Un versement de {{amount}} vers votre compte bancaire a échoué. Raison : {{reason}}"
+      },
+      "accountInstantPayoutFailed": {
+        "title": "Échec du versement instantané",
+        "message": "Votre versement instantané de {{amount}} a échoué et les fonds ont été remis dans votre solde; les frais de versement instantané sont remboursés. Raison : {{reason}}"
       }
     },
     "fragments": {
@@ -912,6 +963,11 @@
         "default": "le locataire est introuvable"
       },
       "unknownError": "erreur inconnue"
+    }
+  },
+  "report": {
+    "errors": {
+      "tooManyEmailRecipients": "Votre forfait autorise jusqu'à {{max}} destinataires de courriel"
     }
   }
 }

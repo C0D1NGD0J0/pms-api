@@ -1,6 +1,11 @@
 import { ClientSession, Types } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
-import { IVendorDocument, NewVendor, IVendor } from '@interfaces/vendor.interface';
+import {
+  VendorServicesOffered,
+  IVendorDocument,
+  NewVendor,
+  IVendor,
+} from '@interfaces/vendor.interface';
 
 import { IFindOptions } from './baseDAO.interface';
 
@@ -24,6 +29,10 @@ export interface IVendorDAO {
     updateData: Partial<IVendor>,
     session?: ClientSession
   ): Promise<IVendorDocument | null>;
+  getAllClientVendors(
+    cuid: string,
+    opts?: { serviceKey?: keyof VendorServicesOffered; projection?: string }
+  ): Promise<IVendorDocument[]>;
   getVendorByprimaryAccountHolderUserId(
     userId: string | Types.ObjectId
   ): Promise<IVendorDocument | null>;
@@ -34,6 +43,7 @@ export interface IVendorDAO {
   disconnectClient(vendorId: string, cuid: string): Promise<void>;
   getVendorByVuid(vuid: string): Promise<IVendorDocument | null>;
   reconnectClient(vendorId: string, cuid: string): Promise<void>;
+  disconnectAllFromClient(cuid: string): Promise<number>;
 }
 
 export interface IVendorFilterOptions {

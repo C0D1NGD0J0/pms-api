@@ -9,7 +9,6 @@ import {
   type QueryFilter,
   PopulateOptions,
   PipelineStage,
-  MongooseError,
   ClientSession,
   ModifyResult,
   UpdateQuery,
@@ -27,8 +26,9 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
     this.logger = createLogger('BaseDAO');
   }
 
-  throwErrorHandler(error: Error | MongooseError | any): never {
-    const result = handleMongoError(error);
+  throwErrorHandler(error: unknown): never {
+    const err = error instanceof Error ? error : new Error(String(error));
+    const result = handleMongoError(err);
     this.logger.error({ error: result }, 'DAO error');
     throw result;
   }
@@ -88,11 +88,14 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
         query = query.lean();
       }
 
+      // sort accepts an object or a mongoose string such as '-createdAt'
       query = query.sort(options?.sort || { createdAt: -1 });
-      if (options?.skip) query = query.skip(options.skip);
       // Always enforce a limit to prevent unbounded queries on free-tier MongoDB.
       // Callers can pass up to 1000; if omitted, defaults to 20.
       const safeLimit = Math.min(options?.limit || 20, 1000);
+      const skip =
+        options?.skip ?? (options?.page && options.page > 1 ? (options.page - 1) * safeLimit : 0);
+      if (skip) query = query.skip(skip);
       query = query.limit(safeLimit);
       if (options?.projection) query = query.select(options.projection);
 
@@ -112,7 +115,7 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
       if (session) countQuery = countQuery.session(session);
       const count = await countQuery.exec();
       const result = await query.exec();
-      const pagination = paginateResult(count, options?.skip, options?.limit);
+      const pagination = paginateResult(count, skip, safeLimit);
 
       return {
         items: result,

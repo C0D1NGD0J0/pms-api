@@ -12,7 +12,24 @@ import {
   PermissionScope,
 } from '@interfaces/utils.interface';
 
-import permissionConfig from './permissions.json';
+import { permissionConfig, resolveGrantSet } from './permissionGrants';
+
+/** Broadest first: a staff member is checked against the widest scope they actually hold. */
+const STAFF_SCOPE_PREFERENCE = [
+  PermissionScope.ANY,
+  PermissionScope.ASSIGNED,
+  PermissionScope.MINE,
+];
+
+/**
+ * Actions where a narrower staff grant (:assigned/:mine) may stand in for :any without a record
+ * to validate against — the services scope staff reads/lists to their own records. Writes only
+ * fall back when the caller supplies the record's assignment (see resolveStaffScope).
+ */
+const UNVERIFIED_SCOPE_FALLBACK_ACTIONS: string[] = [PermissionAction.READ, PermissionAction.LIST];
+
+/** Resources whose service scopes every action (writes included) to the caller's grant. */
+const SERVICE_SCOPED_RESOURCES: string[] = [PermissionResource.GUEST_PASS];
 
 export class PermissionService {
   private readonly log: bunyan;
@@ -20,13 +37,7 @@ export class PermissionService {
 
   constructor() {
     this.log = createLogger('PermissionService');
-
-    try {
-      this.permissionConfig = permissionConfig as unknown as IPermissionConfig;
-    } catch (error) {
-      this.log.error('Failed to initialize PermissionService:', error);
-      throw error;
-    }
+    this.permissionConfig = permissionConfig;
   }
 
   async checkPermission(
@@ -115,8 +126,8 @@ export class PermissionService {
         return false;
       }
 
-      // Check direct permissions
-      const rolePermissions = roleConfig[resource];
+      // Staff department grants replace the base staff grants (see resolveGrantSet)
+      const rolePermissions = resolveGrantSet(roleConfig, department)[resource];
       if (Array.isArray(rolePermissions) && rolePermissions.includes(permission)) {
         return true;
       }
@@ -126,25 +137,6 @@ export class PermissionService {
         const anyEquivalent = permission.replace(':mine', ':any');
         if (Array.isArray(rolePermissions) && rolePermissions.includes(anyEquivalent)) {
           return true;
-        }
-      }
-
-      // Check department-level permissions for staff
-      if (department && roleConfig.departments) {
-        const deptConfig = (roleConfig.departments as Record<string, Record<string, string[]>>)[
-          department
-        ];
-        if (deptConfig) {
-          const deptPermissions = deptConfig[resource];
-          if (Array.isArray(deptPermissions) && deptPermissions.includes(permission)) {
-            return true;
-          }
-          if (permission.endsWith(':mine')) {
-            const anyEquivalent = permission.replace(':mine', ':any');
-            if (Array.isArray(deptPermissions) && deptPermissions.includes(anyEquivalent)) {
-              return true;
-            }
-          }
         }
       }
 
@@ -205,7 +197,6 @@ export class PermissionService {
     if (
       scope === PermissionScope.ANY &&
       resource !== PermissionResource.USER &&
-      resource !== PermissionResource.CLIENT &&
       RoleHelpers.isExternalRole(userRole as any)
     ) {
       const roleConfig = this.permissionConfig.roles[userRole];
@@ -218,6 +209,12 @@ export class PermissionService {
           scope = match.split(':')[1] as PermissionScope;
         }
       }
+    }
+
+    // Staff department grants can be narrower than :any (maintenance holds list:assigned).
+    // CLIENT is always checked at :mine; USER keeps :any so a :mine grant can't stand in for other users.
+    if (scope === PermissionScope.ANY && resource !== PermissionResource.USER) {
+      scope = this.resolveStaffScope(currentUser, resource, action) ?? scope;
     }
 
     const permissionCheckData = {
@@ -257,40 +254,35 @@ export class PermissionService {
   }
 
   /**
-   * Get department-specific permissions for a role
-   * @param role - The user's role
-   * @param department - The user's department
-   * @returns Permission object for the department or empty object if not found
+   * For staff, the broadest scope (any → assigned → mine) they hold for resource:action, so a
+   * route that asks for `<action>:any` checks the grant the department actually has.
+   * Without a record to validate against, :assigned/:mine only stand in for reads/lists;
+   * pass `assignmentVerifiable` when the caller supplies the record's assigned users.
+   * Returns undefined for non-staff roles or when no scope is held.
    */
-  private getDepartmentPermissions(
-    role: string,
-    department: EmployeeDepartment
-  ): Record<string, string[]> {
-    try {
-      const roleConfig = this.permissionConfig.roles[role];
-      if (!roleConfig) {
-        this.log.debug(`No role config found for role: ${role}`);
-        return {};
-      }
+  resolveStaffScope(
+    currentUser: Pick<ICurrentUser, 'client' | 'employeeInfo'>,
+    resource: PermissionResource | string,
+    action: PermissionAction | string,
+    { assignmentVerifiable = false }: { assignmentVerifiable?: boolean } = {}
+  ): PermissionScope | undefined {
+    if (currentUser.client.role !== ROLES.STAFF) return undefined;
 
-      // Access departments explicitly from the config
-      const departments = (roleConfig as any).departments;
-      if (!departments || typeof departments !== 'object') {
-        this.log.debug(`No departments config found for role: ${role}`);
-        return {};
-      }
+    const grants =
+      resolveGrantSet(
+        this.permissionConfig.roles[ROLES.STAFF],
+        currentUser.employeeInfo?.department
+      )[resource as string] ?? [];
+    const canUseNarrowerScope =
+      assignmentVerifiable ||
+      SERVICE_SCOPED_RESOURCES.includes(resource as string) ||
+      UNVERIFIED_SCOPE_FALLBACK_ACTIONS.includes(action as string);
 
-      const deptPerms = departments[department];
-      if (!deptPerms || typeof deptPerms !== 'object') {
-        this.log.debug(`No permissions found for ${role}:${department}`);
-        return {};
-      }
-
-      return deptPerms as Record<string, string[]>;
-    } catch (error) {
-      this.log.error(`Error getting department permissions for ${role}:${department}`, error);
-      return {};
-    }
+    return STAFF_SCOPE_PREFERENCE.find(
+      (scope) =>
+        grants.includes(`${action}:${scope}`) &&
+        (scope === PermissionScope.ANY || canUseNarrowerScope)
+    );
   }
 
   getAvailableResources(): string[] {
@@ -687,22 +679,19 @@ export class PermissionService {
       return this.getRolePermissions(role);
     }
 
-    // Staff with department: Use department permissions if found
-    if (role === ROLES.STAFF && department) {
-      const deptPermissions = this.getDepartmentPermissions(role, department);
-      if (deptPermissions && Object.keys(deptPermissions).length > 0) {
-        return deptPermissions;
+    if (role === ROLES.STAFF) {
+      const staffConfig = this.permissionConfig.roles[role];
+      if (!department) {
+        this.log.warn(
+          'Staff user has no department assigned. Using base role permissions (restricted access).'
+        );
+      } else if (!staffConfig?.departments?.[department]) {
+        this.log.warn(
+          `No department permissions found for ${role}:${department}, using base role permissions`
+        );
       }
-      this.log.warn(
-        `No department permissions found for ${role}:${department}, using base role permissions`
-      );
-    }
-
-    // Staff without department: warn user (will use base role permissions below)
-    if (role === ROLES.STAFF && !department) {
-      this.log.warn(
-        '⚠️  Staff user has no department assigned. Using base role permissions (restricted access).'
-      );
+      // Same resolution as hasPermissionWithInheritance, so the UI list and API checks agree
+      return resolveGrantSet(staffConfig, department);
     }
 
     // Return base role permissions from permissions.json

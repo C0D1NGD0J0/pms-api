@@ -29,7 +29,7 @@ describe('SubscriptionService Integration Tests', () => {
               },
               annual: {
                 priceId: 'price_portfolio_annual',
-                amount: 144000,
+                amount: 179988,
                 lookUpKey: 'portfolio_annual',
               },
             },
@@ -54,12 +54,12 @@ describe('SubscriptionService Integration Tests', () => {
             {
               monthly: {
                 priceId: 'price_growth_monthly',
-                amount: 7999,
+                amount: 6999,
                 lookUpKey: 'growth_monthly',
               },
               annual: {
                 priceId: 'price_growth_annual',
-                amount: 76800,
+                amount: 83988,
                 lookUpKey: 'growth_annual',
               },
             },
@@ -68,9 +68,9 @@ describe('SubscriptionService Integration Tests', () => {
       ),
       getProductPrice: jest.fn().mockImplementation((priceId: string) => {
         if (priceId.includes('annual')) {
-          return Promise.resolve({ unit_amount: 76800 });
+          return Promise.resolve({ unit_amount: 83988 });
         }
-        return Promise.resolve({ unit_amount: 7999 });
+        return Promise.resolve({ unit_amount: 6999 });
       }),
       createCheckoutSession: jest.fn().mockResolvedValue({
         success: true,
@@ -155,16 +155,17 @@ describe('SubscriptionService Integration Tests', () => {
 
       const growthPlan = result.data.find((p) => p.planName === 'growth');
       expect(growthPlan).toBeDefined();
-      expect(growthPlan?.pricing.monthly.priceInCents).toBe(7999); // $79.99 CAD
-      expect(growthPlan?.pricing.monthly.displayPrice).toBe('$79.99');
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(6999); // $69.99 CAD
+      expect(growthPlan?.pricing.monthly.displayPrice).toBe('$69.99');
     });
 
-    it('should calculate annual pricing with 20% discount', async () => {
+    it('should price annual billing at 12x monthly when no annual discount is configured', async () => {
       const result = await subscriptionService.getSubscriptionPlans();
 
       const growthPlan = result.data.find((p) => p.planName === 'growth');
-      expect(growthPlan?.pricing.annual.priceInCents).toBe(76800); // $768 CAD/year
-      expect(growthPlan?.pricing.annual.savingsPercent).toBe(20);
+      expect(growthPlan?.pricing.annual.priceInCents).toBe(83988); // $839.88 CAD/year (no annual discount)
+      expect(growthPlan?.pricing.annual.savingsPercent).toBe(0);
+      expect(growthPlan?.pricing.annual.savingsDisplay).toBe('');
     });
 
     it('should return subscription prices NOT seat prices', async () => {
@@ -173,13 +174,13 @@ describe('SubscriptionService Integration Tests', () => {
       const growthPlan = result.data.find((p) => p.planName === 'growth');
       const portfolioPlan = result.data.find((p) => p.planName === 'portfolio');
 
-      // Growth: $79.99/month subscription (NOT $7.99 seat price)
-      expect(growthPlan?.pricing.monthly.priceInCents).toBe(7999);
-      expect(growthPlan?.pricing.annual.priceInCents).toBe(76800);
+      // Growth: $69.99/month subscription (NOT $7.99 seat price)
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(6999);
+      expect(growthPlan?.pricing.annual.priceInCents).toBe(83988);
 
       // Portfolio: $149.99/month subscription (NOT $5.99 seat price)
       expect(portfolioPlan?.pricing.monthly.priceInCents).toBe(14999);
-      expect(portfolioPlan?.pricing.annual.priceInCents).toBe(144000);
+      expect(portfolioPlan?.pricing.annual.priceInCents).toBe(179988);
     });
 
     it('should return seat pricing separately from subscription pricing', async () => {
@@ -209,7 +210,7 @@ describe('SubscriptionService Integration Tests', () => {
       // Should still return plans with config prices
       const growthPlan = result.data.find((p) => p.planName === 'growth');
       expect(growthPlan).toBeDefined();
-      expect(growthPlan?.pricing.monthly.priceInCents).toBe(7999);
+      expect(growthPlan?.pricing.monthly.priceInCents).toBe(6999);
     });
 
     it('should include plan metadata and features', async () => {

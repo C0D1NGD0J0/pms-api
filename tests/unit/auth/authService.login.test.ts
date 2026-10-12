@@ -1,10 +1,5 @@
+import { NotFoundError } from '@shared/customErrors';
 import { AuthService } from '@services/auth/auth.service';
-import {
-  InvalidRequestError,
-  UnauthorizedError,
-  BadRequestError,
-  NotFoundError,
-} from '@shared/customErrors';
 
 // ── Mock factories ──────────────────────────────────────────────────────────
 
@@ -35,7 +30,6 @@ const makeService = (mocks: Record<string, any> = {}) => {
     getActiveUserByEmail: jest.fn(),
     verifyCredentials: jest.fn(),
     updateById: jest.fn(),
-    hasPasskeys: jest.fn().mockResolvedValue(false),
     ...mocks.userDAO,
   };
 
@@ -91,170 +85,127 @@ const makeService = (mocks: Record<string, any> = {}) => {
     paymentGatewayService: {} as any,
     subscriptionService: {} as any,
     paymentService: {} as any,
-    webAuthnService: {
-      generateAuthenticationOptions: jest.fn().mockResolvedValue({ challenge: 'ch' }),
-      ...mocks.webAuthnService,
-    } as any,
+    webAuthnService: { ...mocks.webAuthnService } as any,
   } as any);
 };
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
+const otpProfile = () =>
+  makeProfile({
+    settings: {
+      loginType: 'otp',
+      phoneVerification: { verified: true, verifiedPhone: '+14165551234' },
+    },
+  });
+
+const INVALID_CREDENTIALS = 'auth.errors.invalidCredentials';
+
+// The login form must not reveal whether an email has an account: every step answers the
+// same way for unknown emails, and failures share one error.
 describe('AuthService.login', () => {
-  describe('Step 1: resolve login type (email only)', () => {
-    it('returns password_required for password users', async () => {
-      const user = makeUser();
-      const profile = makeProfile();
+  describe('Step 1: email only', () => {
+    it('asks for a password without looking the email up', async () => {
+      const getActiveUserByEmail = jest.fn();
+      const sendOTP = jest.fn();
       const service = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
-        profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
+        userDAO: { getActiveUserByEmail },
+        twilioService: { sendOTP },
       });
 
-      const result = await service.login({ email: 'test@example.com' });
+      const result = await service.login({ email: 'unknown@example.com' });
 
-      expect(result.data.step).toBe('password_required');
-      expect(result.data.loginType).toBe('password');
+      expect(result.data).toEqual({
+        step: 'password_required',
+        loginType: 'password',
+        smsLogin: true,
+      });
+      expect(getActiveUserByEmail).not.toHaveBeenCalled();
+      expect(sendOTP).not.toHaveBeenCalled();
     });
 
-    it('sends OTP and returns otp_sent for verified OTP users', async () => {
-      const user = makeUser();
-      const profile = makeProfile({
-        settings: {
-          loginType: 'otp',
-          phoneVerification: { verified: true, verifiedPhone: '+14165551234' },
-        },
-      });
-      const mockSendOTP = jest.fn().mockResolvedValue({ sid: 'sid-1' });
-      const service = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
-        profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
-        twilioService: { sendOTP: mockSendOTP },
-      });
-
-      const result = await service.login({ email: 'test@example.com' });
-
-      expect(result.data.step).toBe('otp_sent');
-      expect(result.data.loginType).toBe('otp');
-      expect(result.data.maskedPhone).toContain('1234');
-      expect(mockSendOTP).toHaveBeenCalledWith('+14165551234');
-    });
-
-    it('falls back to password when SMS feature flag is disabled', async () => {
-      const user = makeUser();
-      const profile = makeProfile({
-        settings: {
-          loginType: 'otp',
-          phoneVerification: { verified: true, verifiedPhone: '+14165551234' },
-        },
-      });
-      const service = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
-        profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
-        featureFlagService: { isEnabled: jest.fn().mockReturnValue(false) },
-      });
-
-      const result = await service.login({ email: 'test@example.com' });
-
-      expect(result.data.step).toBe('password_required');
-      expect(result.data.loginType).toBe('password');
-    });
-
-    it('falls back to password when phone is not verified', async () => {
-      const user = makeUser();
-      const profile = makeProfile({
-        settings: {
-          loginType: 'otp',
-          phoneVerification: { verified: false, verifiedPhone: null },
-        },
-      });
-      const service = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
-        profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
-      });
-
-      const result = await service.login({ email: 'test@example.com' });
-
-      expect(result.data.step).toBe('password_required');
-      expect(result.data.loginType).toBe('password');
-    });
-
-    it('offers passkey first when loginType is passkey and passkeys exist', async () => {
-      const service = makeService({
-        userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
-          hasPasskeys: jest.fn().mockResolvedValue(true),
-        },
-        profileDAO: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue(makeProfile({ settings: { loginType: 'passkey' } })),
-        },
-      });
-
-      const result = await service.login({ email: 'test@example.com' });
-
-      expect(result.data.step).toBe('passkey_available');
-      expect(result.data.fallbackLoginType).toBe('password');
-    });
-
-    it('respects password loginType even when passkeys are registered', async () => {
-      const service = makeService({
-        userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
-          hasPasskeys: jest.fn().mockResolvedValue(true),
-        },
-        profileDAO: { findFirst: jest.fn().mockResolvedValue(makeProfile()) },
-      });
-
-      const result = await service.login({ email: 'test@example.com' });
-
-      expect(result.data.step).toBe('password_required');
-    });
-
-    it('falls back to password when loginType is passkey but none are registered', async () => {
+    it('answers an OTP or passkey user exactly like an unknown email', async () => {
       const service = makeService({
         userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()) },
-        profileDAO: {
-          findFirst: jest
-            .fn()
-            .mockResolvedValue(makeProfile({ settings: { loginType: 'passkey' } })),
-        },
+        profileDAO: { findFirst: jest.fn().mockResolvedValue(otpProfile()) },
       });
 
-      const result = await service.login({ email: 'test@example.com' });
+      const known = await service.login({ email: 'test@example.com' });
+      const unknown = await service.login({ email: 'unknown@example.com' });
 
-      expect(result.data.step).toBe('password_required');
+      expect(known).toEqual(unknown);
     });
 
-    it('throws NotFoundError for unknown email', async () => {
+    it.each([true, false])(
+      'reports platform-wide SMS sign-in (%s) without looking at the account',
+      async (enabled) => {
+        const getActiveUserByEmail = jest.fn();
+        const service = makeService({
+          userDAO: { getActiveUserByEmail },
+          featureFlagService: { isEnabled: jest.fn().mockReturnValue(enabled) },
+        });
+
+        const result = await service.login({ email: 'test@example.com' });
+
+        expect(result.data.smsLogin).toBe(enabled);
+        expect(getActiveUserByEmail).not.toHaveBeenCalled();
+      }
+    );
+  });
+
+  describe('Requesting an SMS code', () => {
+    it('sends a code to an account set up for SMS sign-in', async () => {
+      const sendOTP = jest.fn().mockResolvedValue({ sid: 'sid-1' });
       const service = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(null) },
+        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()) },
+        profileDAO: { findFirst: jest.fn().mockResolvedValue(otpProfile()) },
+        twilioService: { sendOTP },
       });
 
-      await expect(service.login({ email: 'unknown@example.com' })).rejects.toThrow(NotFoundError);
+      const result = await service.login({ email: 'test@example.com', requestOtp: true });
+
+      expect(sendOTP).toHaveBeenCalledWith('+14165551234');
+      expect(result.data).toEqual({ step: 'otp_sent', loginType: 'otp' });
     });
 
-    it('throws InvalidRequestError for inactive user', async () => {
-      const user = makeUser({ isActive: false });
+    it.each([
+      ['an unknown email', null, otpProfile(), true],
+      ['a password-only account', makeUser(), makeProfile(), true],
+      ['an unverified phone', makeUser(), makeProfile({ settings: { loginType: 'otp' } }), true],
+      ['SMS switched off', makeUser(), otpProfile(), false],
+    ])('gives the same answer and sends nothing for %s', async (_case, user, profile, sms) => {
+      const sendOTP = jest.fn();
       const service = makeService({
         userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
+        profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
+        featureFlagService: { isEnabled: jest.fn().mockReturnValue(sms) },
+        twilioService: { sendOTP },
       });
 
-      await expect(service.login({ email: 'test@example.com' })).rejects.toThrow(
-        InvalidRequestError
-      );
+      const result = await service.login({ email: 'test@example.com', requestOtp: true });
+
+      expect(sendOTP).not.toHaveBeenCalled();
+      expect(result.data).toEqual({ step: 'otp_sent', loginType: 'otp' });
+    });
+
+    it('does not reveal a failed SMS send', async () => {
+      const service = makeService({
+        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()) },
+        profileDAO: { findFirst: jest.fn().mockResolvedValue(otpProfile()) },
+        twilioService: { sendOTP: jest.fn().mockRejectedValue(new Error('twilio down')) },
+      });
+
+      const result = await service.login({ email: 'test@example.com', requestOtp: true });
+
+      expect(result.data).toEqual({ step: 'otp_sent', loginType: 'otp' });
     });
   });
 
-  describe('Step 2a: password login', () => {
+  describe('Password login', () => {
     it('returns authenticated with tokens on valid password', async () => {
       const user = makeUser();
       const service = makeService({
-        userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(user),
-          verifyCredentials: jest.fn().mockResolvedValue(user),
-          updateById: jest.fn(),
-        },
+        userDAO: { verifyCredentials: jest.fn().mockResolvedValue(user), updateById: jest.fn() },
       });
 
       const result = await service.login({
@@ -269,37 +220,27 @@ describe('AuthService.login', () => {
       expect(result.data.activeAccount.cuid).toBe('CUID1');
     });
 
-    it('throws NotFoundError for wrong password', async () => {
-      const user = makeUser();
+    it('fails with the generic error for a wrong password or unknown email', async () => {
       const service = makeService({
-        userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(user),
-          verifyCredentials: jest.fn().mockResolvedValue(null),
-        },
+        userDAO: { verifyCredentials: jest.fn().mockResolvedValue(null) },
       });
 
-      await expect(
-        service.login({ email: 'test@example.com', password: 'WrongPass123' })
-      ).rejects.toThrow(NotFoundError);
+      const attempt = service.login({ email: 'test@example.com', password: 'WrongPass123' });
+
+      await expect(attempt).rejects.toThrow(NotFoundError);
+      await expect(attempt).rejects.toThrow(INVALID_CREDENTIALS);
     });
   });
 
-  describe('Step 2b: OTP login', () => {
+  describe('OTP login', () => {
     it('returns authenticated with tokens on valid OTP', async () => {
-      const user = makeUser();
-      const profile = makeProfile({
-        settings: {
-          loginType: 'otp',
-          phoneVerification: { verified: true, verifiedPhone: '+14165551234' },
-        },
-      });
       const service = makeService({
         userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(user),
+          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
           updateById: jest.fn(),
         },
         profileDAO: {
-          findFirst: jest.fn().mockResolvedValue(profile),
+          findFirst: jest.fn().mockResolvedValue(otpProfile()),
           generateCurrentUserInfo: jest
             .fn()
             .mockResolvedValue({ sub: 'user-id-1', client: { cuid: 'CUID1' } }),
@@ -317,38 +258,21 @@ describe('AuthService.login', () => {
       expect(result.data.accessToken).toBe('mock-access-token');
     });
 
-    it('throws UnauthorizedError for invalid OTP', async () => {
-      const user = makeUser();
-      const profile = makeProfile({
-        settings: {
-          loginType: 'otp',
-          phoneVerification: { verified: true, verifiedPhone: '+14165551234' },
-        },
-      });
+    it.each([
+      ['a wrong code', makeUser(), otpProfile()],
+      ['an unknown email', null, otpProfile()],
+      ['an account without SMS sign-in', makeUser(), makeProfile()],
+    ])('fails with the generic error for %s', async (_case, user, profile) => {
       const service = makeService({
         userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
         profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
         twilioService: { verifyOTP: jest.fn().mockResolvedValue({ valid: false }) },
       });
 
-      await expect(service.login({ email: 'test@example.com', otp: '000000' })).rejects.toThrow(
-        UnauthorizedError
-      );
-    });
+      const attempt = service.login({ email: 'test@example.com', otp: '000000' });
 
-    it('throws BadRequestError when phone not verified', async () => {
-      const user = makeUser();
-      const profile = makeProfile({
-        settings: { phoneVerification: { verified: false, verifiedPhone: null } },
-      });
-      const service = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(user) },
-        profileDAO: { findFirst: jest.fn().mockResolvedValue(profile) },
-      });
-
-      await expect(service.login({ email: 'test@example.com', otp: '123456' })).rejects.toThrow(
-        BadRequestError
-      );
+      await expect(attempt).rejects.toThrow(NotFoundError);
+      await expect(attempt).rejects.toThrow(INVALID_CREDENTIALS);
     });
   });
 });

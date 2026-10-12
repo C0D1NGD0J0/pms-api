@@ -245,6 +245,23 @@ export class UserController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  requestEmailChange = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, uid } = req.params;
+    const result = await this.userService.requestEmailChange(
+      cuid,
+      req.context.currentuser!,
+      uid,
+      req.body.newEmail
+    );
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
+  cancelEmailChange = async (req: AppRequest, res: Response): Promise<void> => {
+    const { cuid, uid } = req.params;
+    const result = await this.userService.cancelEmailChange(cuid, req.context.currentuser!, uid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   updateTenantProfile = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid, uid } = req.params;
     const uploadResult = await this.mediaUploadService.handleFiles(req, {

@@ -523,6 +523,7 @@ export class ProfileService {
           ...profileDoc.personalInfo,
           uid: targetUid,
           email: userDoc.data.profile.email,
+          pendingEmail: userDoc.data.profile.pendingEmail ?? null,
           isActive: true,
         },
         settings: {
@@ -629,7 +630,8 @@ export class ProfileService {
     userId: string,
     cuid: string,
     userRole: IUserRoleType,
-    currentuser: ICurrentUser
+    currentuser: ICurrentUser,
+    targetUid: string = currentuser.uid
   ): Promise<{ result: IProfileDocument | null; hasUpdates: boolean }> {
     const validation = ProfileValidations.profileUpdate.safeParse(profileData);
     if (!validation.success) {
@@ -650,8 +652,15 @@ export class ProfileService {
         });
       }
 
-      await this.userService.updateUserInfo(userId, userValidation.data, currentuser);
-      hasUpdates = true;
+      // Login email is only ever changed through the verified email-change flow
+      const requestedEmail = userValidation.data.email?.trim().toLowerCase();
+      const targetUser = requestedEmail
+        ? await this.userDAO.findFirst({ uid: targetUid }, { populate: 'profile' })
+        : null;
+      if (requestedEmail && targetUser && requestedEmail !== targetUser.email.toLowerCase()) {
+        await this.userService.requestEmailChange(cuid, currentuser, targetUser, requestedEmail);
+        hasUpdates = true;
+      }
     }
 
     // Validate and collect all profile updates
@@ -825,7 +834,8 @@ export class ProfileService {
         userId,
         cuid,
         userRole,
-        context.currentuser!
+        context.currentuser!,
+        targetUid
       );
 
       const finalProfile =

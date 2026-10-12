@@ -1,28 +1,15 @@
 import { z } from 'zod';
 import dayjs from 'dayjs';
 import { User } from '@models/index';
+import type { UserDAO } from '@dao/userDAO';
 import { isValidPhoneNumber, isValidLocation } from '@utils/index';
 import { IUserRelationshipsEnum } from '@interfaces/user.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
-const isUniqueEmail = async (value: string) => {
-  try {
-    const existingUser = await User.findOne({
-      email: value,
-    });
-
-    if (existingUser) {
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Error checking email uniqueness', error);
-    if (error instanceof Error && error.message.includes('buffering timed out')) {
-      throw new Error('Database connection timeout. Please try again.');
-    }
-    return false;
-  }
+const isEmailAvailable = async (email: string) => {
+  const { container } = await import('@di/setup');
+  const { userDAO }: { userDAO: UserDAO } = container.cradle;
+  return !(await userDAO.isEmailTaken(email));
 };
 
 export const UserSignupSchema = z
@@ -38,13 +25,7 @@ export const UserSignupSchema = z
     email: z
       .string()
       .email('Invalid email address')
-      .refine(
-        async (email) => {
-          const isUsed = await isUniqueEmail(email);
-          return isUsed;
-        },
-        { message: 'Email already in use.' }
-      ),
+      .refine(isEmailAvailable, { message: 'Email already in use.' }),
     password: z
       .string()
       .min(8, 'Password must be at least 8 characters')
@@ -61,6 +42,16 @@ export const UserSignupSchema = z
         message: 'Please enter a valid city or country',
       }),
     phoneNumber: z.string().optional(),
+    // validateRequest replaces req.body with the parsed result, so every field signup reads
+    // must be declared here or it is silently dropped
+    displayName: z
+      .string()
+      .trim()
+      .min(2, 'Display name must be at least 2 characters')
+      .max(45, 'Display name must be at most 45 characters'),
+    termsAccepted: z.literal(true, {
+      errorMap: () => ({ message: 'You must accept the terms of service and privacy policy' }),
+    }),
     accountType: z
       .object({
         planId: z.string(),
@@ -109,6 +100,7 @@ export const UserSignupSchema = z
             { message: 'Invalid company phone number' }
           ),
         legalEntityName: z.string().min(2, 'Legal entity name is required'),
+        companyAddress: z.string().trim().min(5, 'Company address is required'),
         contactInfo: z
           .object({
             email: z.string().email('Invalid company email'),
@@ -123,7 +115,10 @@ export const UserSignupSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.accountType.isEnterpriseAccount) {
+    // The signup service derives isEnterpriseAccount from category, so check both
+    const isBusinessAccount =
+      data.accountType.category === 'business' || data.accountType.isEnterpriseAccount;
+    if (isBusinessAccount) {
       if (!data.companyProfile) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -146,6 +141,14 @@ export const UserSignupSchema = z
           code: z.ZodIssueCode.custom,
           message: 'Legal entity name is required for business accounts',
           path: ['companyProfile', 'legalEntityName'],
+        });
+      }
+
+      if (!data.companyProfile.companyAddress) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Company address is required for business accounts',
+          path: ['companyProfile', 'companyAddress'],
         });
       }
     }
@@ -216,6 +219,13 @@ export const AccountActivationSchema = z.object({
         message: 'Token is invalid or has expired',
       }
     ),
+});
+
+export const EmailChangeTokenSchema = z.object({
+  t: z
+    .string()
+    .trim()
+    .regex(/^[a-f0-9]{64}$/, { message: 'Invalid token provided' }),
 });
 
 export const ConsentBodySchema = z.object({
@@ -321,7 +331,7 @@ export const LoginSchema = z.object({
     .max(20, { message: 'Invalid password value provided.' })
     .optional(),
   otp: z.string().length(6, { message: 'Verification code must be 6 digits.' }).optional(),
-  passkeyResponse: z.record(z.unknown()).optional(),
+  requestOtp: z.boolean().optional(),
   rememberMe: z.boolean().optional(),
 });
 

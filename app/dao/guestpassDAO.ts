@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
-import { type QueryFilter, Types, Model } from 'mongoose';
+import { type PopulateOptions, type QueryFilter, Types, Model } from 'mongoose';
 import {
   IGuestPassDocument,
   GuestPassStatus,
@@ -10,6 +10,20 @@ import {
 import { BaseDAO } from './baseDAO';
 import { IGuestPassDAO } from './interfaces/guestpassDAO.interface';
 
+/**
+ * Display fields every guest-pass read returns: property name/address, unit number and the
+ * host (the pass creator) with their profile name — exposed as `createdBy.fullname`.
+ */
+export const GUEST_PASS_DISPLAY_POPULATE: PopulateOptions[] = [
+  { path: 'propertyId', select: 'name address.fullAddress pid' },
+  { path: 'propertyUnitId', select: 'puid unitNumber floor' },
+  {
+    path: 'createdBy',
+    select: 'email uid',
+    populate: { path: 'profile', select: 'personalInfo.firstName personalInfo.lastName' },
+  },
+];
+
 export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestPassDAO {
   protected logger: Logger;
 
@@ -18,22 +32,22 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     this.logger = createLogger('GuestPassDAO');
   }
 
-  async findByCode(code: string, cuid: string): Promise<IGuestPassDocument | null> {
+  async findByCode(
+    code: string,
+    cuid: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<IGuestPassDocument | null> {
     try {
       const now = new Date();
       return await this.findFirst(
         {
+          ...visibilityFilter,
           code,
           cuid,
           status: GuestPassStatus.ACTIVE,
           validUntil: { $gt: now },
         },
-        {
-          populate: [
-            { path: 'propertyId', select: 'name address puid' },
-            { path: 'propertyUnitId', select: 'puid unitNumber floor' },
-          ],
-        }
+        { populate: GUEST_PASS_DISPLAY_POPULATE }
       );
     } catch (error) {
       this.logger.error('Error finding pass by code:', error);
@@ -59,6 +73,7 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
         {
           $set: {
             status: GuestPassStatus.USED,
+            usedAt: now,
             validatedBy: new Types.ObjectId(validatedBy),
             ...(notes && { entryNotes: notes }),
           },
@@ -73,7 +88,8 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
   async revokePass(
     id: string,
     cuid: string,
-    revokedBy: string
+    revokedBy: string,
+    reason?: string
   ): Promise<IGuestPassDocument | null> {
     try {
       const now = new Date();
@@ -89,6 +105,7 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
             status: GuestPassStatus.REVOKED,
             revokedAt: new Date(),
             revokedBy: new Types.ObjectId(revokedBy),
+            ...(reason && { revokedReason: reason }),
           },
         }
       );
@@ -119,13 +136,15 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
 
   async acknowledgePass(
     cuid: string,
-    passId: string,
-    acknowledgedBy: string
+    vpuid: string,
+    acknowledgedBy: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
   ): Promise<IGuestPassDocument | null> {
     try {
       return await this.update(
         {
-          _id: new Types.ObjectId(passId),
+          ...visibilityFilter,
+          vpuid,
           cuid,
           isAcknowledged: false,
           status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
@@ -144,11 +163,17 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async bulkAcknowledge(cuid: string, passIds: string[], acknowledgedBy: string): Promise<number> {
+  async bulkAcknowledge(
+    cuid: string,
+    vpuids: string[],
+    acknowledgedBy: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<number> {
     try {
       const result = await this.updateMany(
         {
-          _id: { $in: passIds.map((id) => new Types.ObjectId(id)) },
+          ...visibilityFilter,
+          vpuid: { $in: vpuids },
           cuid,
           isAcknowledged: false,
           status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
@@ -168,11 +193,16 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async getUnacknowledgedPasses(cuid: string, propertyId: string): Promise<IGuestPassDocument[]> {
+  async getUnacknowledgedPasses(
+    cuid: string,
+    propertyId: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<IGuestPassDocument[]> {
     try {
       const now = new Date();
       const result = await this.list(
         {
+          ...visibilityFilter,
           cuid,
           propertyId: new Types.ObjectId(propertyId),
           status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
@@ -181,10 +211,7 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
         },
         {
           sort: { createdAt: -1 },
-          populate: [
-            { path: 'propertyUnitId', select: 'puid unitNumber floor' },
-            { path: 'createdBy', select: 'email uid' },
-          ],
+          populate: GUEST_PASS_DISPLAY_POPULATE,
         }
       );
       return result.items;
@@ -194,10 +221,15 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     }
   }
 
-  async getUnacknowledgedCount(cuid: string, propertyId?: string): Promise<number> {
+  async getUnacknowledgedCount(
+    cuid: string,
+    propertyId?: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<number> {
     try {
       const now = new Date();
       const query: QueryFilter<IGuestPassDocument> = {
+        ...visibilityFilter,
         cuid,
         status: { $in: [GuestPassStatus.ACTIVE, GuestPassStatus.USED] },
         isAcknowledged: false,

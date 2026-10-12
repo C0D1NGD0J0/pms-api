@@ -283,6 +283,11 @@ export function asyncWrapper(fn: AsyncRequestHandler) {
   };
 }
 
+/** One-way digest for single-use tokens we store (the plaintext only ever travels in the email link). */
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 /**
  * Extracts and standardizes file information from Multer file objects
  * @param files - A Multer file object or array of file objects
@@ -602,33 +607,67 @@ export const convertTimeToSecondsAndMilliseconds = (
   };
 };
 
+const NESTED_BODY_KEY_PATTERN = /^[^.[\]]+(?:\.[^.[\]]+|\[\d+\])*$/;
+const NESTED_BODY_KEY_SEGMENT = /([^.[\]]+)|\[(\d+)\]/g;
+const UNSAFE_BODY_KEY_SEGMENTS = new Set(['constructor', '__proto__', 'prototype']);
+const MAX_UNFLATTEN_ARRAY_INDEX = 1000;
+
 /**
- * Middleware to parse stringified JSON, booleans, and numbers in req.body
- * Useful for multipart/form-data where nested fields are sent as strings
+ * Splits "documents[0].documentType" into ['documents', 0, 'documentType'].
+ * Returns null for plain keys and for keys that can't be expanded safely
+ * (malformed, prototype-polluting segments, or oversized array indices).
  */
+const parseNestedBodyKey = (key: string): (string | number)[] | null => {
+  if (!NESTED_BODY_KEY_PATTERN.test(key) || (!key.includes('.') && !key.includes('['))) {
+    return null;
+  }
+
+  const segments: (string | number)[] = [];
+  for (const [, name, index] of key.matchAll(NESTED_BODY_KEY_SEGMENT)) {
+    if (name !== undefined) {
+      if (UNSAFE_BODY_KEY_SEGMENTS.has(name)) return null;
+      segments.push(name);
+    } else {
+      const arrayIndex = Number(index);
+      if (arrayIndex > MAX_UNFLATTEN_ARRAY_INDEX) return null;
+      segments.push(arrayIndex);
+    }
+  }
+  return segments;
+};
+
 /**
- * Expands flat dot-notation keys into nested objects, preserving values as-is.
- * "address.city": "Toronto"  →  { address: { city: "Toronto" } }
- * Bracket keys (e.g. "images[0]") pass through unchanged.
+ * Expands flat FormData keys into nested objects/arrays, preserving values as-is.
+ * "address.city": "Toronto"            →  { address: { city: "Toronto" } }
+ * "documents[0].documentType": "deed"  →  { documents: [{ documentType: "deed" }] }
+ * Multer already nests pure-bracket keys ("a[0]", "a[0][b]"); this handles the
+ * dot and mixed bracket+dot keys it leaves flat, merging into what multer built.
  */
 const unflattenBody = (body: Record<string, any>): Record<string, any> => {
   const out: Record<string, any> = {};
   for (const [key, value] of Object.entries(body)) {
-    if (!key.includes('.') || key.includes('[')) {
+    const segments = parseNestedBodyKey(key);
+    if (!segments) {
       out[key] = value;
       continue;
     }
-    const parts = key.split('.');
-    let cur = out;
-    for (let i = 0; i < parts.length - 1; i++) {
-      if (!(parts[i] in cur) || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
-      cur = cur[parts[i]];
+    let cur: Record<string | number, any> = out;
+    for (let i = 0; i < segments.length - 1; i++) {
+      const segment = segments[i];
+      if (cur[segment] === null || typeof cur[segment] !== 'object') {
+        cur[segment] = typeof segments[i + 1] === 'number' ? [] : {};
+      }
+      cur = cur[segment];
     }
-    cur[parts[parts.length - 1]] = value;
+    cur[segments[segments.length - 1]] = value;
   }
   return out;
 };
 
+/**
+ * Middleware to parse stringified JSON, booleans, and numbers in req.body
+ * Useful for multipart/form-data where nested fields are sent as strings
+ */
 export const parseJsonFields = (req: Request) => {
   if (!req.body || typeof req.body !== 'object') return req.body;
 
@@ -702,6 +741,22 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
   }
 
   return result;
+};
+
+export const getValueAtPath = (source: any, path: string): any =>
+  path.split('.').reduce((current, key) => current?.[key], source);
+
+export const hasValueAtPath = (source: any, path: string): boolean =>
+  getValueAtPath(source, path) !== undefined;
+
+export const setValueAtPath = (target: any, path: string, value: unknown): void => {
+  const keys = path.split('.');
+  const lastKey = keys.pop()!;
+  const parent = keys.reduce((current, key) => {
+    if (!current[key]) current[key] = {};
+    return current[key];
+  }, target);
+  parent[lastKey] = value;
 };
 
 /**
@@ -809,6 +864,9 @@ export const parseColumnMappingField = (raw: unknown): Record<string, string> | 
  * A DAO's list() caps each call (20 by default, 1000 max), so cron and bulk jobs that must
  * see every match use this. The _id cursor stays correct even when the caller updates
  * documents so they no longer match the filter.
+ *
+ * @param pageSize - Documents per query, at most 1000 (list()'s cap); larger values are
+ * reduced to 1000 so a capped page is never mistaken for the last one.
  */
 export async function* iterateInPages<T extends { _id: unknown }>(
   dao: { list(filter: any, opts?: any): Promise<{ items: T[] }> },
@@ -816,6 +874,7 @@ export async function* iterateInPages<T extends { _id: unknown }>(
   opts?: { projection?: string | Record<string, any>; populate?: any },
   pageSize: number = 200
 ): AsyncGenerator<T> {
+  pageSize = Math.min(pageSize, 1000);
   let lastId: unknown;
   while (true) {
     const pageFilter = lastId ? { $and: [filter, { _id: { $gt: lastId } }] } : filter;

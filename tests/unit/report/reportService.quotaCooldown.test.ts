@@ -157,7 +157,45 @@ describe('ReportService — Quota & Cooldown', () => {
           period: ReportPeriod.LAST_30_DAYS,
           emailRecipients: ['a@t.com', 'b@t.com', 'c@t.com', 'd@t.com'],
         })
-      ).rejects.toThrow('Your plan allows up to 3 email recipients');
+      ).rejects.toThrow('report.errors.tooManyEmailRecipients');
+    });
+
+    it('should allow 25 email recipients on an enterprise-sized plan with unlimited reports', async () => {
+      mockSubscriptionPlanConfig.getReportLimits.mockReturnValue({
+        maxReportsPerMonth: -1,
+        maxReportSections: 9,
+        maxReportEmails: 25,
+      });
+      mockRedisService.client.get.mockResolvedValue(null);
+      const recipients = Array.from({ length: 25 }, (_, i) => `user${i}@test.com`);
+
+      const result = await service.requestReport(CUID, USER_ID, {
+        period: ReportPeriod.LAST_30_DAYS,
+        emailRecipients: recipients,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockSubscriptionDAO.incrementUsageCounterIfUnder).toHaveBeenCalledWith(
+        CUID,
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+    });
+
+    it('should reject 26 email recipients on an enterprise-sized plan', async () => {
+      mockSubscriptionPlanConfig.getReportLimits.mockReturnValue({
+        maxReportsPerMonth: -1,
+        maxReportSections: 9,
+        maxReportEmails: 25,
+      });
+      const recipients = Array.from({ length: 26 }, (_, i) => `user${i}@test.com`);
+
+      await expect(
+        service.requestReport(CUID, USER_ID, {
+          period: ReportPeriod.LAST_30_DAYS,
+          emailRecipients: recipients,
+        })
+      ).rejects.toThrow('report.errors.tooManyEmailRecipients');
     });
 
     it('should allow sections within plan limit', async () => {

@@ -1,6 +1,5 @@
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
-import { JOB_NAME } from '@utils/index';
 import ProfileDAO from '@dao/profileDAO';
 import { EmailQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
@@ -9,18 +8,20 @@ import { AuthCache } from '@caching/auth.cache';
 import { UserCache } from '@caching/user.cache';
 import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
-import { getRequestDuration, createLogger } from '@utils/index';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { PermissionService } from '@services/permission/permission.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { IIdentitySessionResponse } from '@interfaces/paymentGateway.interface';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { NotificationService } from '@services/notification/notification.service';
+import { createSafeMongoUpdate, getRequestDuration, createLogger } from '@utils/index';
+import { SUPER_ADMIN_ONLY_CLIENT_FIELDS, hasValueAtPath, JOB_NAME } from '@utils/index';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
-import { ISuccessReturnData, IRequestContext, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors/index';
 import { IUserRoleType, RoleHelpers, IUserRole, ROLES } from '@shared/constants/roles.constants';
 import {
@@ -33,6 +34,13 @@ import {
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  PermissionResource,
+  ISuccessReturnData,
+  PermissionAction,
+  IRequestContext,
+  MailType,
+} from '@interfaces/utils.interface';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -57,6 +65,7 @@ interface IConstructor {
   subscriptionService: SubscriptionService;
   notificationService: NotificationService;
   featureFlagService: FeatureFlagService;
+  permissionService: PermissionService;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
   propertyUnitDAO: PropertyUnitDAO;
@@ -89,6 +98,7 @@ export class ClientService {
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly featureFlagService: FeatureFlagService;
+  private readonly permissionService: PermissionService;
   private readonly queueFactory: QueueFactory;
 
   constructor({
@@ -105,6 +115,7 @@ export class ClientService {
     subscriptionService,
     notificationService,
     featureFlagService,
+    permissionService,
     emitterService,
     paymentGatewayService,
     paymentProcessorDAO,
@@ -127,6 +138,7 @@ export class ClientService {
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.featureFlagService = featureFlagService;
+    this.permissionService = permissionService;
     this.queueFactory = queueFactory;
   }
 
@@ -154,7 +166,10 @@ export class ClientService {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
+    await this.assertCanUpdateRestrictedClientFields(currentuser, updateData);
+
     // ── Immutable field guard: block changes once payment infrastructure exists ──
+    // Locked fields must not be sent at all (even unchanged); the UI omits them from the payload.
     const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
     if (processor) {
       const locked: string[] = [];
@@ -285,8 +300,10 @@ export class ClientService {
       const updatedClient = await this.clientDAO.updateById(
         client._id.toString(),
         {
+          // Dot-notation paths so partial nested updates (e.g. one settings flag)
+          // don't replace the whole settings/companyProfile subdocument.
           $set: {
-            ...updateData,
+            ...createSafeMongoUpdate(updateData),
             lastModifiedBy: currentuser.sub,
           },
         },
@@ -316,6 +333,37 @@ export class ClientService {
       data: result.updatedClient,
       message: t('common.success.updated', { resource: 'Client' }),
     };
+  }
+
+  /**
+   * Callers with client:settings only (admin) may not send super-admin-only fields — present at
+   * all counts, even if unchanged. Checked via client:update so role inheritance stays correct.
+   */
+  private async assertCanUpdateRestrictedClientFields(
+    currentuser: ICurrentUser,
+    updateData: Partial<IClientDocument>
+  ): Promise<void> {
+    const sentRestrictedFields = SUPER_ADMIN_ONLY_CLIENT_FIELDS.filter((fieldPath) =>
+      hasValueAtPath(updateData, fieldPath)
+    );
+    if (sentRestrictedFields.length === 0) return;
+
+    const { granted } = await this.permissionService.checkUserPermission(
+      currentuser,
+      PermissionResource.CLIENT,
+      PermissionAction.UPDATE
+    );
+    if (granted) return;
+
+    this.log.warn(
+      { cuid: currentuser.client.cuid, userId: currentuser.sub, sentRestrictedFields },
+      'Rejected super-admin-only client fields'
+    );
+    throw new ForbiddenError({
+      message: t('client.errors.restrictedFieldsRequireSuperAdmin', {
+        fields: sentRestrictedFields.join(', '),
+      }),
+    });
   }
 
   async getClientDetails(

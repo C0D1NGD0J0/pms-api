@@ -180,6 +180,23 @@ export const NotificationMessages = {
       title: 'Vendor Payout Completed',
       message: 'A payout of {{amount}} has been successfully deposited to the vendor bank account',
     },
+    accountPayoutPaid: {
+      title: 'Payout Deposited',
+      message: 'Your payout of {{amount}} has been deposited to your bank account',
+    },
+    accountInstantPayoutPaid: {
+      title: 'Instant Payout Arrived',
+      message: 'Your instant payout of {{amount}} has arrived in your account',
+    },
+    accountPayoutFailed: {
+      title: 'Payout Failed',
+      message: 'A payout of {{amount}} to your bank account failed. Reason: {{reason}}',
+    },
+    accountInstantPayoutFailed: {
+      title: 'Instant Payout Failed',
+      message:
+        'Your instant payout of {{amount}} failed and the funds were returned to your balance; the instant payout fee is refunded. Reason: {{reason}}',
+    },
     invoiceOverdue: {
       title: 'Invoice Overdue',
       message: 'A rent invoice of {{amount}} is overdue',
@@ -426,6 +443,10 @@ export type NotificationMessageKey =
   | 'payment.cancelled'
   | 'payment.payoutFailed'
   | 'payment.payoutPaid'
+  | 'payment.accountPayoutPaid'
+  | 'payment.accountInstantPayoutPaid'
+  | 'payment.accountPayoutFailed'
+  | 'payment.accountInstantPayoutFailed'
   | 'payment.invoiceOverdue'
   | 'payment.subscriptionRenewalUpcoming'
   | 'payment.failedTenant'

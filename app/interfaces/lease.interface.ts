@@ -15,6 +15,16 @@ export enum LeaseStatus {
   DRAFT = 'draft',
 }
 
+// Structured termination reasons; all but OTHER waive the notice period
+export enum LeaseTerminationReasonCode {
+  MUTUAL_AGREEMENT = 'mutual_agreement',
+  LEASE_VIOLATION = 'lease_violation',
+  PROPERTY_SALE = 'property_sale',
+  NON_PAYMENT = 'non_payment',
+  EMERGENCY = 'emergency',
+  OTHER = 'other',
+}
+
 export enum ILeaseESignatureStatusEnum {
   NOT_SENT = 'not-sent',
   DECLINED = 'declined',
@@ -381,6 +391,30 @@ export interface ILeaseListItem {
   luid: string;
 }
 
+export interface ILeaseSignature {
+  landlordInfo?: {
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  coTenantInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+  };
+  // Name/email as recorded when a lease is marked as manually signed
+  signerInfo?: {
+    name: string;
+    email: string;
+  };
+  signatureMethod: 'manual' | 'electronic';
+  userId?: Types.ObjectId | string;
+  providerSignatureId?: string;
+  ipAddress?: string;
+  role: SignerRole;
+  signedAt?: Date;
+}
+
 export interface ILeaseActivityEvent {
   type:
     | 'created'
@@ -440,25 +474,6 @@ export interface IRentRollItem {
   startDate: Date;
   endDate: Date;
   luid: string;
-}
-
-export interface ILeaseSignature {
-  landlordInfo?: {
-    name: string;
-    email: string;
-    phone?: string;
-  };
-  coTenantInfo?: {
-    name: string;
-    email: string;
-    phone: string;
-  };
-  signatureMethod: 'manual' | 'electronic';
-  userId?: Types.ObjectId | string;
-  providerSignatureId?: string;
-  ipAddress?: string;
-  role: SignerRole;
-  signedAt?: Date;
 }
 
 export interface IRentRollReport {
@@ -670,6 +685,14 @@ export interface IESignatureRequestData {
   message?: string;
 }
 
+export interface ILeaseTerminationData {
+  reasonCode?: LeaseTerminationReasonCode | `${LeaseTerminationReasonCode}`;
+  terminationDate: Date | string;
+  moveOutDate?: Date | string;
+  terminationReason: string;
+  notes?: string;
+}
+
 export interface LeaseESignatureFailedPayload {
   jobId: string | number;
   errorDetails?: any;
@@ -753,13 +776,6 @@ export type LeaseTemplateType =
   | 'commercial-office'
   | 'commercial-retail'
   | 'short-term-rental';
-
-export interface ILeaseTerminationData {
-  terminationDate: Date | string;
-  moveOutDate?: Date | string;
-  terminationReason: string;
-  notes?: string;
-}
 
 export interface ILeaseQueryOptions {
   sortOrder?: 'asc' | 'desc';

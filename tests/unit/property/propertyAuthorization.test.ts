@@ -22,6 +22,10 @@ const buildService = () =>
   new PropertyService({
     propertyDAO: mockPropertyDAO,
     notificationService: mockNotificationService,
+    permissionService: {
+      checkUserPermission: jest.fn().mockResolvedValue({ granted: true }),
+      resolveStaffScope: jest.fn().mockReturnValue(undefined),
+    },
     s3Service: mockS3Service,
     clientDAO: mockClientDAO,
     propertyUnitDAO: mockPropertyUnitDAO,

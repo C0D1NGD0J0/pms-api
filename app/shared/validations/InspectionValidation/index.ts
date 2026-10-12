@@ -5,7 +5,7 @@ import {
   InspectionType,
 } from '@interfaces/inspection.interface';
 
-import { UtilsValidations, safeString } from '../UtilsValidation';
+import { UtilsValidations, queryBoolean, safeString } from '../UtilsValidation';
 
 const conditionEnum = z.enum(Object.values(ConditionRating) as [string, ...string[]], {
   errorMap: () => ({ message: 'Please select a valid condition rating' }),
@@ -29,6 +29,16 @@ const inspectionItemSchema = z.object({
   notes: z.string().max(500, 'Item notes cannot exceed 500 characters').optional(),
 });
 
+// Echo of already-saved room media. The service only uses `key` to match entries against the
+// stored inspection; everything else is taken from the database copy.
+const inspectionRoomMediaSchema = z.object({
+  key: z.string().min(1).max(1024).optional(),
+  url: z.string().url().max(4096).optional(),
+  status: z.enum(['pending', 'processing', 'active', 'inactive', 'deleted']).optional(),
+  filename: z.string().max(100).optional(),
+  description: z.string().max(150).optional(),
+});
+
 const inspectionRoomSchema = z.object({
   name: z
     .string()
@@ -37,6 +47,11 @@ const inspectionRoomSchema = z.object({
   condition: conditionEnum.optional(),
   notes: richTextSchema(1000, 'Room notes').optional(),
   items: z.array(inspectionItemSchema).optional(),
+});
+
+// Media can only be echoed back on update; new files arrive as multipart uploads.
+const inspectionRoomUpdateSchema = inspectionRoomSchema.extend({
+  media: z.array(inspectionRoomMediaSchema).max(50).optional(),
 });
 
 export const InspectionValidations = {
@@ -74,7 +89,7 @@ export const InspectionValidations = {
     .object({
       overallCondition: conditionEnum.optional(),
       overallNotes: richTextSchema(2000, 'Overall notes').optional(),
-      rooms: z.array(inspectionRoomSchema).optional(),
+      rooms: z.array(inspectionRoomUpdateSchema).optional(),
       mediaToRemove: z
         .array(
           z.object({
@@ -126,7 +141,7 @@ export const InspectionValidations = {
   }),
 
   reportQuery: z.object({
-    includePhotos: z.enum(['true', 'false']).optional().default('true'),
-    forceRegenerate: z.enum(['true', 'false']).optional().default('false'),
+    includePhotos: queryBoolean.default(true),
+    forceRegenerate: queryBoolean.default(false),
   }),
 };

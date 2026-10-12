@@ -8,6 +8,7 @@ const buildService = () =>
   new PropertyService({
     propertyDAO: {},
     notificationService: {},
+    permissionService: {},
     s3Service: {},
     clientDAO: {},
     propertyUnitDAO: {},

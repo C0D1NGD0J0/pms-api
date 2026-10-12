@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WEEKDAYS } from '@utils/constants';
 
 import { calendarDate, safeString } from '../UtilsValidation';
 import { isAllowedCheckoutReturnUrl } from './checkoutReturnUrl';
@@ -23,7 +24,8 @@ export const cardCheckoutBody = z.object({
 export const chargeForMaintenance = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
   tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
-  amount: z.number().int().positive('Amount must be a positive integer (cents)'),
+  // Optional: the service always charges the approved invoice amount and only logs a mismatch
+  amount: z.number().int().positive('Amount must be a positive integer (cents)').optional(),
   description: z.string().trim().max(500).optional(),
 });
 
@@ -105,11 +107,10 @@ export const payoutHistoryQuery = z.object({
   cursor: z.string().optional(),
 });
 
+// Payouts are weekly (free) or instant (paid, separate endpoint) — daily/monthly aren't offered
 export const updatePayoutScheduleBody = z.object({
-  interval: z.enum(['daily', 'weekly', 'monthly']),
-  weeklyAnchor: z
-    .enum(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])
-    .optional(),
+  interval: z.literal('weekly'),
+  weeklyAnchor: z.enum(WEEKDAYS),
 });
 
 export const listPaymentsQuery = z.object({

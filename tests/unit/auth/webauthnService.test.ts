@@ -79,7 +79,6 @@ const makeService = (mocks: Record<string, Record<string, jest.Mock>> = {}) => {
     getUserById: jest.fn(),
     getActiveUserByEmail: jest.fn(),
     getUserPasskeys: jest.fn().mockResolvedValue([]),
-    hasPasskeys: jest.fn().mockResolvedValue(false),
     findByPasskeyCredentialId: jest.fn(),
     addPasskey: jest.fn(),
     removePasskey: jest.fn(),
@@ -146,6 +145,8 @@ describe('WebAuthnService', () => {
           rpID: 'localhost',
           userName: 'test@example.com',
           attestationType: 'none',
+          // Login only uses the discoverable flow, so new passkeys must be discoverable
+          authenticatorSelection: expect.objectContaining({ residentKey: 'required' }),
         })
       );
     });
@@ -292,61 +293,29 @@ describe('WebAuthnService', () => {
 
   // ── generateAuthenticationOptions ───────────────────────────────────────
 
-  describe('generateAuthenticationOptions', () => {
-    it('generates options with allowCredentials from stored passkeys', async () => {
-      const passkey = makePasskey();
-      const mockOptions = { challenge: 'auth-challenge', rpId: 'localhost' };
-      mockGenerateAuthOptions.mockResolvedValue(mockOptions);
+  describe('generateDiscoverableAuthOptions', () => {
+    it('keys the challenge by a random session ID, not by email', async () => {
+      mockGenerateAuthOptions.mockResolvedValue({ challenge: 'auth-challenge', rpId: 'localhost' });
+      const { service, authCache } = makeService();
 
-      const { service, authCache } = makeService({
-        userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
-          getUserPasskeys: jest.fn().mockResolvedValue([passkey]),
-        } as any,
-      });
+      const first = await service.generateDiscoverableAuthOptions();
+      const second = await service.generateDiscoverableAuthOptions();
 
-      const result = await service.generateAuthenticationOptions('test@example.com');
-
-      expect(result).toEqual(mockOptions);
+      expect(first.sessionId).toMatch(/^[0-9a-f]{64}$/);
+      expect(second.sessionId).not.toBe(first.sessionId);
       expect(authCache.saveWebAuthnAuthChallenge).toHaveBeenCalledWith(
-        'test@example.com',
+        first.sessionId,
         'auth-challenge'
       );
       expect(mockGenerateAuthOptions).toHaveBeenCalledWith(
-        expect.objectContaining({
-          rpID: 'localhost',
-          allowCredentials: [expect.objectContaining({ id: 'cred-abc-123' })],
-        })
-      );
-    });
-
-    it('throws NotFoundError if user not found', async () => {
-      const { service } = makeService({
-        userDAO: { getActiveUserByEmail: jest.fn().mockResolvedValue(null) } as any,
-      });
-
-      await expect(service.generateAuthenticationOptions('nobody@example.com')).rejects.toThrow(
-        NotFoundError
-      );
-    });
-
-    it('throws BadRequestError if user has no passkeys', async () => {
-      const { service } = makeService({
-        userDAO: {
-          getActiveUserByEmail: jest.fn().mockResolvedValue(makeUser()),
-          getUserPasskeys: jest.fn().mockResolvedValue([]),
-        } as any,
-      });
-
-      await expect(service.generateAuthenticationOptions('test@example.com')).rejects.toThrow(
-        BadRequestError
+        expect.not.objectContaining({ allowCredentials: expect.anything() })
       );
     });
   });
 
-  // ── verifyAuthentication ────────────────────────────────────────────────
+  // ── verifyDiscoverableAuthentication ────────────────────────────────────────────────
 
-  describe('verifyAuthentication', () => {
+  describe('verifyDiscoverableAuthentication', () => {
     const mockAuthResponse = {
       id: 'cred-abc-123',
       response: {},
@@ -373,8 +342,8 @@ describe('WebAuthnService', () => {
         } as any,
       });
 
-      const result = await service.verifyAuthentication(
-        'test@example.com',
+      const result = await service.verifyDiscoverableAuthentication(
+        'session-1',
         mockAuthResponse as any
       );
 
@@ -390,7 +359,7 @@ describe('WebAuthnService', () => {
       });
 
       await expect(
-        service.verifyAuthentication('test@example.com', mockAuthResponse as any)
+        service.verifyDiscoverableAuthentication('session-1', mockAuthResponse as any)
       ).rejects.toThrow(BadRequestError);
     });
 
@@ -405,7 +374,7 @@ describe('WebAuthnService', () => {
       });
 
       await expect(
-        service.verifyAuthentication('test@example.com', mockAuthResponse as any)
+        service.verifyDiscoverableAuthentication('session-1', mockAuthResponse as any)
       ).rejects.toThrow(UnauthorizedError);
     });
 
@@ -425,7 +394,7 @@ describe('WebAuthnService', () => {
       });
 
       await expect(
-        service.verifyAuthentication('test@example.com', mockAuthResponse as any)
+        service.verifyDiscoverableAuthentication('session-1', mockAuthResponse as any)
       ).rejects.toThrow(UnauthorizedError);
     });
   });

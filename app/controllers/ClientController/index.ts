@@ -4,9 +4,7 @@ import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
-import { BadRequestError } from '@shared/customErrors/index';
 import { ClientService } from '@services/client/client.service';
-import { UpdateClientDetailsSchema } from '@shared/validations/ClientValidation/schemas';
 
 export class ClientController {
   private readonly log: Logger;
@@ -20,20 +18,10 @@ export class ClientController {
   updateClientProfile = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
 
-    const parsed = UpdateClientDetailsSchema.safeParse(req.body);
-    if (!parsed.success) {
-      throw new BadRequestError({
-        message: parsed.error.errors[0]?.message || 'Invalid update data',
-      });
-    }
-    const updateData = parsed.data;
-
+    // req.body was already parsed against UpdateClientDetailsSchema by validateRequest
     this.log.info(`Updating client profile for cuid: ${cuid}`);
 
-    const updatedClient = await this.clientService.updateClientDetails(
-      req.context,
-      updateData as any
-    );
+    const updatedClient = await this.clientService.updateClientDetails(req.context, req.body);
 
     res.status(httpStatusCodes.OK).json({
       success: true,

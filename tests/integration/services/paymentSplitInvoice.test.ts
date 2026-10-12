@@ -59,7 +59,7 @@ describe('PaymentWebhookService — split invoice handling', () => {
   // Charge details are read through the gateway; delegate to the Stripe mock so
   // each test can stub one place.
   const mockPaymentGatewayService = {
-    getInvoicePaymentDetails: jest.fn(async (_provider: unknown, invoiceId: string) => ({
+    getChargeDetails: jest.fn(async (_provider: unknown, invoiceId: string) => ({
       success: true,
       data: await mockStripeService.getInvoicePaymentDetails(invoiceId),
     })),

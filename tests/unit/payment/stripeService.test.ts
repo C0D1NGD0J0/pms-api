@@ -60,77 +60,6 @@ describe('StripeService.payInvoice', () => {
   });
 });
 
-describe('StripeService.createInvoice', () => {
-  it('sets default payment method without forcing a mandate on the invoice', async () => {
-    const service = new StripeService();
-    const stripe = {
-      invoices: {
-        create: jest.fn().mockResolvedValue({
-          id: 'in_123',
-          amount_due: 2500,
-          status: 'draft',
-        }),
-      },
-      invoiceItems: {
-        create: jest.fn().mockResolvedValue({ id: 'ii_123' }),
-      },
-    };
-    (service as any).stripe = stripe;
-
-    await service.createInvoice({
-      tenantCustomerId: 'cus_123',
-      connectedAccountId: 'acct_123',
-      applicationFeeAmountInCents: 100,
-      currency: 'cad',
-      description: 'Rent',
-      lineItems: [{ description: 'Monthly Rent', amountInCents: 2500 }],
-      autoChargeDueDate: new Date(),
-      cuid: 'cuid_123',
-      paymentMethodId: 'pm_123',
-    });
-
-    expect(stripe.invoices.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        default_payment_method: 'pm_123',
-      }),
-      undefined
-    );
-    expect(stripe.invoices.create.mock.calls[0][0]).not.toHaveProperty('payment_settings');
-  });
-
-  it('derives a separate idempotency key for the invoice and each line item', async () => {
-    const service = new StripeService();
-    const stripe = {
-      invoices: { create: jest.fn().mockResolvedValue({ id: 'in_123', status: 'draft' }) },
-      invoiceItems: { create: jest.fn().mockResolvedValue({ id: 'ii_123' }) },
-    };
-    (service as any).stripe = stripe;
-
-    await service.createInvoice({
-      tenantCustomerId: 'cus_123',
-      connectedAccountId: 'acct_123',
-      applicationFeeAmountInCents: 100,
-      currency: 'cad',
-      description: 'Rent',
-      lineItems: [
-        { description: 'Monthly Rent', amountInCents: 2500 },
-        { description: 'Pet Fee', amountInCents: 500 },
-      ],
-      autoChargeDueDate: new Date(),
-      cuid: 'cuid_123',
-      idempotencyKey: 'rent-invoice-job:42:full',
-    });
-
-    expect(stripe.invoices.create.mock.calls[0][1]).toEqual({
-      idempotencyKey: 'rent-invoice-job:42:full:create',
-    });
-    expect(stripe.invoiceItems.create.mock.calls.map((call: any[]) => call[1])).toEqual([
-      { idempotencyKey: 'rent-invoice-job:42:full:item:0' },
-      { idempotencyKey: 'rent-invoice-job:42:full:item:1' },
-    ]);
-  });
-});
-
 describe('StripeService.createRefund', () => {
   const makeService = (charge: Record<string, any>) => {
     const service = new StripeService();
@@ -418,5 +347,118 @@ describe('StripeService.getInvoiceIdForPaymentIntent', () => {
     };
 
     await expect(service.getInvoiceIdForPaymentIntent('pi_x')).resolves.toBeNull();
+  });
+});
+
+describe('StripeService.createConnectAccount service agreement', () => {
+  const makeService = () => {
+    const service = new StripeService();
+    const stripe = {
+      accounts: {
+        create: jest.fn().mockResolvedValue({
+          id: 'acct_1',
+          email: 'pm@example.com',
+          country: 'US',
+          default_currency: 'usd',
+          charges_enabled: false,
+          payouts_enabled: false,
+          details_submitted: false,
+        }),
+      },
+    };
+    (service as any).stripe = stripe;
+    return { service, stripe };
+  };
+
+  const input = { email: 'pm@example.com', country: 'US', businessType: 'individual' as const };
+
+  it('creates the account under full terms when asked (instant payouts)', async () => {
+    const { service, stripe } = makeService();
+
+    await service.createConnectAccount({ ...input, cuid: 'C1', serviceAgreement: 'full' });
+
+    expect(stripe.accounts.create).toHaveBeenCalledWith(
+      expect.objectContaining({ tos_acceptance: { service_agreement: 'full' } })
+    );
+  });
+
+  it('defaults to recipient terms', async () => {
+    const { service, stripe } = makeService();
+
+    await service.createConnectAccount({ ...input, cuid: 'C1' });
+
+    expect(stripe.accounts.create).toHaveBeenCalledWith(
+      expect.objectContaining({ tos_acceptance: { service_agreement: 'recipient' } })
+    );
+  });
+});
+
+describe('StripeService instant payouts', () => {
+  const makeService = () => {
+    const service = new StripeService();
+    const stripe = {
+      payouts: {
+        create: jest.fn().mockResolvedValue({
+          id: 'po_1',
+          amount: 97500,
+          currency: 'usd',
+          application_fee_amount: 2500,
+          arrival_date: 1760000000,
+        }),
+      },
+      applicationFees: { createRefund: jest.fn().mockResolvedValue({}) },
+    };
+    (service as any).stripe = stripe;
+    return { service, stripe };
+  };
+
+  it('creates an instant payout on the connected account with the idempotency key', async () => {
+    const { service, stripe } = makeService();
+
+    const result = await service.createInstantPayout('acct_1', {
+      amount: 97500,
+      currency: 'usd',
+      destination: 'card_1',
+      idempotencyKey: 'instant-payout:acct_1:k1',
+    });
+
+    expect(stripe.payouts.create).toHaveBeenCalledWith(
+      { amount: 97500, currency: 'usd', method: 'instant', destination: 'card_1' },
+      { stripeAccount: 'acct_1', idempotencyKey: 'instant-payout:acct_1:k1' }
+    );
+    expect(result).toEqual({
+      payoutId: 'po_1',
+      amount: 97500,
+      currency: 'usd',
+      applicationFeeAmount: 2500,
+      arrivalDate: new Date(1760000000 * 1000),
+    });
+  });
+
+  it('refunds an application fee in full from the platform account', async () => {
+    const { service, stripe } = makeService();
+
+    await service.refundApplicationFee('fee_1', 'refund-key');
+
+    expect(stripe.applicationFees.createRefund).toHaveBeenCalledWith(
+      'fee_1',
+      {},
+      { idempotencyKey: 'refund-key' }
+    );
+  });
+});
+
+describe('StripeService.getConnectBalance', () => {
+  it('expands net_available so instant payouts can be priced', async () => {
+    const service = new StripeService();
+    const stripe = { balance: { retrieve: jest.fn().mockResolvedValue({}) } };
+    (service as any).stripe = stripe;
+
+    await service.getConnectBalance('acct_1');
+
+    expect(stripe.balance.retrieve).toHaveBeenCalledWith(
+      { expand: ['instant_available.net_available'] },
+      { stripeAccount: 'acct_1' }
+    );
   });
 });

@@ -7,8 +7,11 @@ import { PropertyUnitCsvProcessor } from '@services/csv';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
+import { NotificationService } from '@services/notification';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
+import { ROLE_GROUPS } from '@shared/constants/roles.constants';
+import { isWithinLimit, isUnlimited } from '@utils/planLimits.utils';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
@@ -26,11 +29,13 @@ import {
   ProfileDAO,
   ClientDAO,
   LeaseDAO,
+  UserDAO,
 } from '@dao/index';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
   IPaginationQuery,
+  ResourceContext,
   IRequestContext,
   UploadResult,
 } from '@interfaces/utils.interface';
@@ -42,14 +47,22 @@ import {
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
   getRequestDuration,
+  getValueAtPath,
+  hasValueAtPath,
+  setValueAtPath,
   createLogger,
   megabytes,
 } from '@utils/index';
 
-import { validateUnitLeaseImmutableFields } from './propertyUnitHelpers';
+import { assertConnectedEmployees } from './propertyHelpers';
+import {
+  generateUnitPendingChangesPreview,
+  validateUnitLeaseImmutableFields,
+} from './propertyUnitHelpers';
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
+  notificationService: NotificationService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   subscriptionDAO: SubscriptionDAO;
@@ -59,6 +72,7 @@ interface IConstructor {
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   leaseDAO: LeaseDAO;
+  userDAO: UserDAO;
 }
 
 interface BatchUnitData {
@@ -71,6 +85,7 @@ export class PropertyUnitService {
   private readonly log: Logger;
   private readonly clientDAO: ClientDAO;
   private readonly leaseDAO: LeaseDAO;
+  private readonly userDAO: UserDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
   private readonly queueFactory: QueueFactory;
@@ -78,11 +93,13 @@ export class PropertyUnitService {
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly emitterService: EventEmitterService;
+  private readonly notificationService: NotificationService;
   private readonly unitNumberingService: UnitNumberingService;
 
   constructor({
     clientDAO,
     leaseDAO,
+    userDAO,
     profileDAO,
     propertyDAO,
     propertyUnitDAO,
@@ -90,10 +107,12 @@ export class PropertyUnitService {
     propertyCache,
     emitterService,
     subscriptionDAO,
+    notificationService,
     unitNumberingService,
   }: IConstructor) {
     this.clientDAO = clientDAO;
     this.leaseDAO = leaseDAO;
+    this.userDAO = userDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
     this.propertyCache = propertyCache;
@@ -101,6 +120,7 @@ export class PropertyUnitService {
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
     this.propertyUnitDAO = propertyUnitDAO;
+    this.notificationService = notificationService;
     this.unitNumberingService = unitNumberingService;
     this.log = createLogger('PropertyUnitService');
   }
@@ -209,53 +229,21 @@ export class PropertyUnitService {
   }
 
   private extractHighImpactUnitChanges(updateData: any): any {
-    const highImpactChanges: any = {};
-    HIGH_IMPACT_UNIT_FIELDS.forEach((field) => {
-      if (this.hasNestedProperty(updateData, field)) {
-        this.setNestedProperty(highImpactChanges, field, this.getNestedProperty(updateData, field));
-      }
-    });
-    return highImpactChanges;
+    return this.pickFields(updateData, HIGH_IMPACT_UNIT_FIELDS);
   }
 
   private extractOperationalUnitChanges(updateData: any): any {
-    const operationalChanges: any = {};
-    OPERATIONAL_UNIT_FIELDS.forEach((field) => {
-      if (this.hasNestedProperty(updateData, field)) {
-        this.setNestedProperty(
-          operationalChanges,
-          field,
-          this.getNestedProperty(updateData, field)
-        );
+    return this.pickFields(updateData, OPERATIONAL_UNIT_FIELDS);
+  }
+
+  private pickFields(source: any, fieldPaths: readonly string[]): any {
+    const picked: any = {};
+    fieldPaths.forEach((field) => {
+      if (hasValueAtPath(source, field)) {
+        setValueAtPath(picked, field, getValueAtPath(source, field));
       }
     });
-    return operationalChanges;
-  }
-
-  private hasNestedProperty(obj: any, path: string): boolean {
-    try {
-      const value = path.split('.').reduce((current, key) => {
-        if (current === null || current === undefined) return undefined;
-        return current[key];
-      }, obj);
-      return value !== undefined;
-    } catch {
-      return false;
-    }
-  }
-
-  private getNestedProperty(obj: any, path: string): any {
-    return path.split('.').reduce((current, key) => current && current[key], obj);
-  }
-
-  private setNestedProperty(obj: any, path: string, value: any): void {
-    const keys = path.split('.');
-    const lastKey = keys.pop()!;
-    const target = keys.reduce((current, key) => {
-      if (!current[key]) current[key] = {};
-      return current[key];
-    }, obj);
-    target[lastKey] = value;
+    return picked;
   }
 
   async addPropertyUnit(cxt: IRequestContext, data: BatchUnitData) {
@@ -294,10 +282,160 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
+    await this.assignUnitManagers(cuid, data.units, property, currentuser.sub);
+
     if (data.units.length <= 5) {
       return this.createUnitsDirectly(cxt, data, property);
     } else {
       return this.createUnitsViaQueue(cxt, data, currentuser.sub);
+    }
+  }
+
+  /**
+   * A unit's manager must be an employee connected to this client. Units without one
+   * inherit the property's manager (falling back to the requesting user).
+   */
+  private async assignUnitManagers(
+    cuid: string,
+    units: IPropertyUnit[],
+    property: IPropertyDocument,
+    currentUserId: string
+  ): Promise<void> {
+    const requestedManagerIds = [
+      ...new Set(units.filter((unit) => unit.managedBy).map((unit) => unit.managedBy.toString())),
+    ];
+    await this.assertUnitManagersAreEmployees(cuid, requestedManagerIds);
+
+    const defaultManagerId = new Types.ObjectId(property.managedBy?.toString() || currentUserId);
+    for (const unit of units) {
+      unit.managedBy = unit.managedBy
+        ? new Types.ObjectId(unit.managedBy.toString())
+        : defaultManagerId;
+    }
+  }
+
+  private assertUnitManagersAreEmployees(cuid: string, managerIds: string[]): Promise<void> {
+    return assertConnectedEmployees(
+      this.userDAO,
+      cuid,
+      managerIds,
+      'Unit manager must be an active employee of this account',
+      ROLE_GROUPS.EMPLOYEE_ROLES
+    );
+  }
+
+  /**
+   * Business rules every high-impact unit change must pass — run on direct updates and again
+   * when an approver applies a staff member's pending changes (the unit, its property or its
+   * leases may have changed since the changes were submitted). Normalizes managedBy to an ObjectId.
+   */
+  private async validateUnitChanges(
+    property: IPropertyDocument,
+    unit: IPropertyUnitDocument,
+    changes: Partial<IPropertyUnit>
+  ): Promise<void> {
+    const cuid = property.cuid;
+
+    await validateUnitLeaseImmutableFields(unit, cuid, changes, this.leaseDAO);
+
+    if (property.operationalStatus === 'inactive' || property.deletedAt) {
+      throw new BadRequestError({
+        message: t('propertyUnit.errors.cannotUpdateDueToStatus', {
+          status: property.operationalStatus,
+        }),
+      });
+    }
+
+    const validationErrors: Record<string, string[]> = {};
+    const addError = (field: string, message: string) => {
+      (validationErrors[field] ??= []).push(message);
+    };
+
+    const newUnitNumber = changes.unitNumber || unit.unitNumber;
+    const newFloor = changes.floor ?? unit.floor ?? 1;
+    const unitNumberChanged = newUnitNumber !== unit.unitNumber;
+    // floor 0 (ground) and negative floors (basements) are valid, so check for presence
+    const floorChanged = changes.floor !== undefined && changes.floor !== unit.floor;
+
+    if (unitNumberChanged || floorChanged) {
+      const otherUnitsFilter = {
+        propertyId: property._id,
+        deletedAt: null,
+        _id: { $ne: unit._id },
+      };
+      const conflictingUnit = unitNumberChanged
+        ? await this.propertyUnitDAO.findFirst(
+            { ...otherUnitsFilter, unitNumber: newUnitNumber },
+            undefined,
+            { _id: 1 }
+          )
+        : null;
+
+      if (conflictingUnit) {
+        addError('unitNumber', `Unit number "${newUnitNumber}" already exists`);
+      } else {
+        const floorValidation = this.unitNumberingService.validateUnitNumberFloorCorrelation(
+          newUnitNumber,
+          newFloor
+        );
+        if (!floorValidation.isValid) addError('unitNumber', floorValidation.message);
+      }
+
+      if (validationErrors.unitNumber) {
+        const floorUnits = await this.propertyUnitDAO.list(
+          { ...otherUnitsFilter, floor: newFloor },
+          { limit: 1000, projection: 'unitNumber unitType floor' },
+          true
+        );
+        const { nextNumber } = this.unitNumberingService.suggestUnitNumberForFloor(
+          newFloor,
+          floorUnits.items as any[],
+          this.unitNumberingService.detectNumberingPattern(newUnitNumber)
+        );
+        if (nextNumber) addError('unitNumber', `Suggested unit number: ${nextNumber}`);
+      }
+    }
+
+    // Leases always bill in the property's currency, so a unit may only switch to it.
+    // An unchanged value resent by the edit form is not a change.
+    const requestedCurrency = changes.fees?.currency;
+    const propertyCurrency = (property.fees as any)?.currency ?? 'USD';
+    if (
+      requestedCurrency &&
+      requestedCurrency !== unit.fees?.currency &&
+      requestedCurrency !== propertyCurrency
+    ) {
+      addError(
+        'fees.currency',
+        `Unit currency must match the property currency (${propertyCurrency})`
+      );
+    }
+
+    if (changes.status === 'occupied') {
+      if (property.operationalStatus !== 'available') {
+        addError(
+          'status',
+          `Cannot set unit as occupied when property is ${property.operationalStatus}`
+        );
+      }
+      if (!unit.fees?.rentAmount && changes.fees?.rentAmount === undefined) {
+        addError('status', 'Occupied units must have a rental amount');
+      }
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      throw new ValidationRequestError({
+        message: t('common.errors.validationFailed'),
+        errorInfo: validationErrors,
+      });
+    }
+
+    if (changes.managedBy) {
+      const requestedManagerId = changes.managedBy.toString();
+      if (requestedManagerId !== unit.managedBy?.toString()) {
+        await this.assertUnitManagersAreEmployees(cuid, [requestedManagerId]);
+      }
+      changes.managedBy = new Types.ObjectId(requestedManagerId);
     }
   }
 
@@ -382,8 +520,16 @@ export class PropertyUnitService {
       }
     }
 
+    const pendingChangesPreview = currentuser
+      ? generateUnitPendingChangesPreview(unitObj, currentuser)
+      : undefined;
+
     return {
-      data: { ...unitObj, currentLease: resolvedLease },
+      data: {
+        ...unitObj,
+        currentLease: resolvedLease,
+        ...(pendingChangesPreview && { pendingChangesPreview }),
+      },
       success: true,
       message: t('common.success.retrieved', { resource: 'Unit' }),
     };
@@ -454,7 +600,8 @@ export class PropertyUnitService {
     );
 
     const enrichedItems = units.items.map((unit: any) => {
-      const unitObj = unit.toObject ? unit.toObject() : { ...unit };
+      // pendingChanges is only read for the preview; the list response omits it
+      const { pendingChanges, ...unitObj } = unit.toObject ? unit.toObject() : { ...unit };
       const activeLease = leaseByUnitId.get(unitObj._id.toString());
       if (activeLease && !unitObj.currentLease) {
         unitObj.currentLease = {
@@ -467,7 +614,10 @@ export class PropertyUnitService {
         };
         unitObj.status = 'occupied';
       }
-      return unitObj;
+      const pendingChangesPreview = currentuser
+        ? generateUnitPendingChangesPreview({ pendingChanges }, currentuser)
+        : undefined;
+      return pendingChangesPreview ? { ...unitObj, pendingChangesPreview } : unitObj;
     });
 
     return {
@@ -537,108 +687,7 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
-    // Enforce lease-history immutability (applies to all roles — no admin bypass)
-    await validateUnitLeaseImmutableFields(unit, cuid, updateData, this.leaseDAO);
-
-    if (property.operationalStatus === 'inactive' || property.deletedAt) {
-      this.log.error(
-        {
-          cuid,
-          pid,
-          unitId,
-          url: cxt.request.url,
-          userId: currentuser?.sub,
-          requestId: cxt.requestId,
-          duration: getRequestDuration(start).durationInMs,
-        },
-        'Cannot update unit for inactive or archived property'
-      );
-      throw new BadRequestError({
-        message: `Cannot update unit, due to property status of ${property.operationalStatus}.`,
-      });
-    }
-
-    const validationErrors: { [key: string]: string[] } = {};
-    let unitNumberSuggestion: string | undefined;
-
-    if (updateData.unitNumber || updateData.floor) {
-      const newUnitNumber = updateData.unitNumber || unit.unitNumber;
-      const newFloor = updateData.floor || unit.floor || 1;
-
-      const existingUnits = await this.propertyDAO.getPropertyUnits(property.id, {
-        limit: 1000,
-        skip: 0,
-        page: 1,
-      });
-      const unitFormValues = existingUnits.items.map((u: any) => ({
-        unitNumber: u.unitNumber,
-        unitType: u.unitType,
-        floor: u.floor || 1,
-      }));
-
-      const validation = this.unitNumberingService.validateUnitNumberUpdate(
-        newUnitNumber,
-        newFloor,
-        unitFormValues,
-        unitId
-      );
-
-      if (!validation.isValid) {
-        if (!validationErrors['unitNumber']) validationErrors['unitNumber'] = [];
-        validationErrors['unitNumber'].push(validation.message);
-        if (validation.suggestion) {
-          unitNumberSuggestion = validation.suggestion;
-        }
-      }
-    }
-
-    if (updateData.fees) {
-      if (updateData.fees.rentAmount !== undefined) {
-        if (isNaN(updateData.fees.rentAmount) || updateData.fees.rentAmount < 0) {
-          if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
-          validationErrors['fees.rentAmount'].push('Rental amount must be a non-negative number');
-        }
-      }
-
-      if (updateData.fees.securityDeposit !== undefined) {
-        if (isNaN(updateData.fees.securityDeposit) || updateData.fees.securityDeposit < 0) {
-          if (!validationErrors['fees.securityDeposit'])
-            validationErrors['fees.securityDeposit'] = [];
-          validationErrors['fees.securityDeposit'].push(
-            'Security deposit must be a non-negative number'
-          );
-        }
-      }
-    }
-
-    if (updateData.status) {
-      if (updateData.status === 'occupied' && property.operationalStatus !== 'available') {
-        if (!validationErrors['status']) validationErrors['status'] = [];
-        validationErrors['status'].push(
-          `Cannot set unit as occupied when property is ${property.operationalStatus}`
-        );
-      }
-
-      if (
-        updateData.status === 'occupied' &&
-        !unit.fees?.rentAmount &&
-        (!updateData.fees || updateData.fees.rentAmount === undefined)
-      ) {
-        if (!validationErrors['status']) validationErrors['status'] = [];
-        validationErrors['status'].push('Occupied units must have a rental amount');
-      }
-    }
-
-    if (Object.keys(validationErrors).length > 0) {
-      if (unitNumberSuggestion && validationErrors['unitNumber']) {
-        validationErrors['unitNumber'].push(`Suggested unit number: ${unitNumberSuggestion}`);
-      }
-
-      throw new ValidationRequestError({
-        message: t('common.errors.validationFailed'),
-        errorInfo: validationErrors,
-      });
-    }
+    await this.validateUnitChanges(property, unit, updateData);
 
     // Smart Approval Workflow for Units
     const userRole = currentuser.client.role;
@@ -673,51 +722,38 @@ export class PropertyUnitService {
     }
 
     // 2. Handle high-impact changes based on user role
-    if (Object.keys(highImpactChanges).length > 0) {
-      if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
-        // Staff: Submit for approval
+    let submittedForApproval = false;
+    if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
+      // The edit form resends the whole unit — only real changes wait for approval
+      const requestedChanges = this.withoutUnchangedUnitFields(highImpactChanges, unit);
+      if (Object.keys(requestedChanges).length > 0) {
         updatedUnit = await this.submitUnitChangesForApproval(
-          cxt,
+          property,
           unit,
-          highImpactChanges,
+          requestedChanges,
           currentuser
         );
+        submittedForApproval = true;
         message = 'Unit changes submitted for approval';
-      } else if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
-        // Admin/Manager: Apply directly with override handling
-        const result = await this.applyUnitChangesDirectly(
-          cxt,
-          unit,
-          highImpactChanges,
-          currentuser
-        );
-        updatedUnit = result.unit;
-        message = result.message;
       }
+    } else if (
+      PROPERTY_APPROVAL_ROLES.includes(userRoleEnum) &&
+      Object.keys(highImpactChanges).length > 0
+    ) {
+      // Admin/Manager: Apply directly with override handling
+      const result = await this.applyUnitChangesDirectly(
+        property,
+        unit,
+        highImpactChanges,
+        currentuser
+      );
+      updatedUnit = result.unit;
+      message = result.message;
     }
 
-    // Emit events for property occupancy sync
-    if (updateData.status || highImpactChanges.status) {
-      this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
-        propertyId: property.id,
-        propertyPid: pid,
-        cuid,
-        unitId,
-        userId: currentuser.sub,
-        changeType: 'status_changed',
-        previousStatus: unit.status,
-        newStatus: updateData.status || highImpactChanges.status,
-      });
-    } else {
-      this.emitterService.emit(EventTypes.UNIT_UPDATED, {
-        propertyId: property.id,
-        propertyPid: pid,
-        cuid,
-        unitId,
-        userId: currentuser.sub,
-        changeType: 'updated',
-      });
-    }
+    // Emit events for property occupancy sync — a status waiting for approval is not applied yet
+    const appliedStatus = submittedForApproval ? undefined : highImpactChanges.status;
+    this.emitUnitChangedEvent(property, unit, appliedStatus, currentuser.sub);
 
     await this.propertyCache.invalidateProperty(cuid, pid);
     await this.propertyCache.invalidatePropertyLists(cuid);
@@ -727,6 +763,35 @@ export class PropertyUnitService {
       data: updatedUnit || unit,
       message,
     };
+  }
+
+  private emitUnitChangedEvent(
+    property: IPropertyDocument,
+    unit: IPropertyUnitDocument,
+    newStatus: string | undefined,
+    userId: string
+  ): void {
+    const basePayload = {
+      propertyId: property.id,
+      propertyPid: property.pid,
+      cuid: property.cuid,
+      unitId: unit.puid,
+      userId,
+    };
+
+    if (newStatus) {
+      this.emitterService.emit(EventTypes.UNIT_STATUS_CHANGED, {
+        ...basePayload,
+        changeType: 'status_changed',
+        previousStatus: unit.status,
+        newStatus,
+      });
+    } else {
+      this.emitterService.emit(EventTypes.UNIT_UPDATED, {
+        ...basePayload,
+        changeType: 'updated',
+      });
+    }
   }
 
   async updateUnitStatus(cxt: IRequestContext, updateData: any) {
@@ -847,7 +912,7 @@ export class PropertyUnitService {
     );
     const activeUnitsCount = activeUnitsResult.pagination?.total || 0;
 
-    if (activeUnitsCount >= maxUnits) {
+    if (!isWithinLimit(activeUnitsCount, maxUnits)) {
       throw new BadRequestError({
         message: `Cannot unarchive unit. Your ${subscription.planName} plan allows ${maxUnits} active units. You currently have ${activeUnitsCount} active. Please archive another unit or upgrade your plan.`,
       });
@@ -884,13 +949,42 @@ export class PropertyUnitService {
     };
   }
 
+  /** Appends an inspection record, keeping the unit's inspection history. */
   async setupInspection(cxt: IRequestContext, inspectionData: any) {
     const currentuser = cxt.currentuser!;
-    const updateData = {
-      inspections: [inspectionData],
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+    const { cuid, pid, puid: unitId } = cxt.request.params;
+
+    const { property, unit } = await this.findPropertyAndUnit(cxt);
+    if (property.operationalStatus === 'inactive') {
+      throw new BadRequestError({
+        message: t('propertyUnit.errors.cannotUpdateDueToStatus', {
+          status: property.operationalStatus,
+        }),
+      });
+    }
+
+    const updatedUnit = await this.propertyUnitDAO.addInspection(
+      unit._id.toString(),
+      inspectionData,
+      currentuser.sub
+    );
+
+    this.emitterService.emit(EventTypes.UNIT_UPDATED, {
+      propertyId: property.id,
+      propertyPid: pid,
+      cuid,
+      unitId,
+      userId: currentuser.sub,
+      changeType: 'updated',
+    });
+    await this.propertyCache.invalidateProperty(cuid, pid);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    return {
+      success: true,
+      data: updatedUnit,
+      message: t('common.success.updated', { resource: 'Unit' }),
     };
-    return this.updatePropertyUnit(cxt, updateData);
   }
 
   /** Adds photos (already uploaded to S3) to the unit's media.photos. */
@@ -963,7 +1057,7 @@ export class PropertyUnitService {
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     if (subscription) {
       const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
-      if (maxUnits !== -1) {
+      if (!isUnlimited(maxUnits)) {
         const currentUnits = subscription.resourceTracker.unitCount;
         if (currentUnits >= maxUnits) {
           throw new BadRequestError({
@@ -1031,7 +1125,7 @@ export class PropertyUnitService {
       const unitFormValues = existingUnits.items.map((u: any) => ({
         unitNumber: u.unitNumber,
         unitType: u.unitType,
-        floor: u.floor || 1,
+        floor: u.floor ?? 1,
       }));
 
       const createdUnits = [];
@@ -1042,7 +1136,7 @@ export class PropertyUnitService {
         try {
           const validation = this.unitNumberingService.validateUnitNumberUpdate(
             unit.unitNumber,
-            unit.floor || 1,
+            unit.floor ?? 1,
             unitFormValues
           );
 
@@ -1052,6 +1146,7 @@ export class PropertyUnitService {
               : validation.message;
 
             errors[`unit-${unit.unitNumber}`] = {
+              unitIndex: i,
               unitNumber: unit.unitNumber,
               error: errorMessage,
             };
@@ -1072,10 +1167,11 @@ export class PropertyUnitService {
           unitFormValues.push({
             unitNumber: unit.unitNumber,
             unitType: unit.unitType,
-            floor: unit.floor || 1,
+            floor: unit.floor ?? 1,
           });
         } catch (error: any) {
           errors[`unit-${unit.unitNumber}`] = {
+            unitIndex: i,
             unitNumber: unit.unitNumber,
             error: error.message || 'Failed to create unit',
           };
@@ -1123,6 +1219,20 @@ export class PropertyUnitService {
 
     await this.propertyCache.invalidateProperty(cuid, pid);
     const errorsArray = Object.keys(result.errors);
+
+    if (result.createdUnits.length === 0 && errorsArray.length > 0) {
+      const errorInfo: Record<string, string[]> = {};
+      for (const unitError of Object.values<any>(result.errors)) {
+        errorInfo[`units.${unitError.unitIndex}.unitNumber`] = [
+          `Unit ${unitError.unitNumber}: ${unitError.error}`,
+        ];
+      }
+      throw new ValidationRequestError({
+        message: `No units were created — all ${errorsArray.length} failed`,
+        errorInfo,
+      });
+    }
+
     return {
       success: true,
       data: result.createdUnits,
@@ -1136,11 +1246,14 @@ export class PropertyUnitService {
   }
 
   private async createUnitsViaQueue(cxt: IRequestContext, data: BatchUnitData, userId: string) {
+    // route params were authorized and the property was resolved from them; the body's
+    // pid/cuid are only existence-checked, so never let them pick the target property
+    const { cuid, pid } = cxt.request.params;
     const propertyUnitQueue = this.queueFactory.getQueue('propertyUnitQueue') as PropertyUnitQueue;
     const jobId = await propertyUnitQueue.addUnitBatchCreationJob({
       units: data.units,
-      pid: data.pid,
-      cuid: data.cuid,
+      pid,
+      cuid,
       userId: userId,
       requestId: cxt.requestId,
     });
@@ -1237,7 +1350,7 @@ export class PropertyUnitService {
     const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
     if (subscription) {
       const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
-      if (maxUnits !== -1 && subscription.resourceTracker.unitCount >= maxUnits) {
+      if (!isWithinLimit(subscription.resourceTracker.unitCount, maxUnits)) {
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
         throw new BadRequestError({
           message: `Unit limit reached. Your ${subscription.planName} plan allows ${maxUnits} units. Upgrade to add more.`,
@@ -1300,15 +1413,36 @@ export class PropertyUnitService {
   }
 
   /**
+   * Drops high-impact fields whose submitted value equals the stored one. Staff edit forms resend
+   * the whole unit, so only what actually changed is held for approval.
+   */
+  private withoutUnchangedUnitFields(changes: any, unit: IPropertyUnitDocument): any {
+    const requestedChanges: any = {};
+    HIGH_IMPACT_UNIT_FIELDS.forEach((field) => {
+      if (!hasValueAtPath(changes, field)) return;
+      const requestedValue = getValueAtPath(changes, field);
+      const currentValue = getValueAtPath(unit, field);
+      const isUnchanged =
+        currentValue !== undefined &&
+        currentValue !== null &&
+        String(requestedValue) === String(currentValue);
+      if (!isUnchanged) {
+        setValueAtPath(requestedChanges, field, requestedValue);
+      }
+    });
+    return requestedChanges;
+  }
+
+  /**
    * Submit unit changes for approval (staff workflow)
    */
   private async submitUnitChangesForApproval(
-    cxt: IRequestContext,
+    property: IPropertyDocument,
     unit: IPropertyUnitDocument,
     highImpactChanges: any,
     currentuser: ICurrentUser
   ): Promise<any> {
-    // Check for existing pending changes
+    // Another staff member's pending changes lock the unit until they are approved or rejected
     if (unit.pendingChanges) {
       const lockedByUserId = unit.pendingChanges.updatedBy?.toString();
       if (lockedByUserId && lockedByUserId !== currentuser.sub) {
@@ -1318,43 +1452,68 @@ export class PropertyUnitService {
       }
     }
 
-    return await this.propertyUnitDAO.update(
-      { _id: new Types.ObjectId(unit._id) },
+    const updatedUnit = await this.propertyUnitDAO.update(
+      { _id: new Types.ObjectId(unit._id), deletedAt: null },
       {
         $set: {
           pendingChanges: {
             ...highImpactChanges,
             updatedBy: new Types.ObjectId(currentuser.sub),
             updatedAt: new Date(),
-            displayName: currentuser.fullname,
+            displayName: currentuser.fullname || currentuser.displayName,
           },
           approvalStatus: 'pending',
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
         },
       }
     );
+
+    if (!updatedUnit) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'submit unit changes' }),
+      });
+    }
+
+    this.safeNotify(`unit ${unit.puid} approval request`, () =>
+      this.notificationService.notifyApprovalNeeded(
+        {
+          resourceId: property.id,
+          resourceUid: property.pid,
+          resourceName: this.getUnitDisplayName(property, unit),
+        },
+        currentuser.sub,
+        currentuser.fullname || currentuser.displayName,
+        property.cuid,
+        ResourceContext.PROPERTY,
+        {
+          address: property.address?.fullAddress,
+          puid: unit.puid,
+          unitNumber: unit.unitNumber,
+          changes: Object.keys(createSafeMongoUpdate(highImpactChanges)),
+        }
+      )
+    );
+
+    return updatedUnit;
   }
 
   /**
    * Apply unit changes directly (admin/manager workflow)
    */
   private async applyUnitChangesDirectly(
-    cxt: IRequestContext,
-    unit: any,
+    property: IPropertyDocument,
+    unit: IPropertyUnitDocument,
     highImpactChanges: any,
     currentuser: ICurrentUser
   ): Promise<{ unit: any; message: string }> {
-    let overrideMessage = '';
-    let _notifyStaffOfOverride = false;
-
-    // Check for override scenario
-    if (unit.pendingChanges) {
-      const pendingChanges = unit.pendingChanges as any;
-      overrideMessage = ` (overriding pending changes from ${pendingChanges.displayName})`;
-      _notifyStaffOfOverride = true;
-    }
+    const pendingChanges = unit.pendingChanges;
+    // An approver's direct edit overrides (and discards) a staff member's pending changes
+    const overrideMessage = pendingChanges
+      ? ` (overriding pending changes from ${pendingChanges.displayName})`
+      : '';
 
     const safeUpdateData = createSafeMongoUpdate(highImpactChanges);
-    const updateQuery: any = {
+    const updateQuery = {
       $set: {
         ...safeUpdateData,
         approvalStatus: 'approved',
@@ -1362,26 +1521,237 @@ export class PropertyUnitService {
         lastModifiedBy: new Types.ObjectId(currentuser.sub),
         updatedAt: new Date(),
       },
-    };
-
-    // Only add $push if we want to track approval history
-    if (unit.approvalDetails || unit.pendingChanges) {
-      updateQuery.$push = {
+      $push: {
         approvalDetails: {
-          action: unit.pendingChanges ? 'overridden' : 'updated',
+          action: pendingChanges ? 'overridden' : 'updated',
           actor: new Types.ObjectId(currentuser.sub),
           timestamp: new Date(),
           ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
         },
-      };
-    }
+      },
+    };
 
     const updatedUnit = await this.propertyUnitDAO.updateById(unit._id.toString(), updateQuery);
 
-    const message = unit.pendingChanges
+    const originalRequesterId = pendingChanges?.updatedBy?.toString();
+    if (originalRequesterId) {
+      this.safeNotify(`unit ${unit.puid} override`, () =>
+        this.notificationService.notifyPendingChangesOverridden(
+          property.pid,
+          this.getUnitDisplayName(property, unit),
+          currentuser.sub,
+          currentuser.displayName,
+          originalRequesterId,
+          property.cuid,
+          {
+            address: property.address?.fullAddress,
+            overriddenAt: new Date(),
+            overrideReason: 'Direct admin update with higher priority',
+          }
+        )
+      );
+    }
+
+    const message = pendingChanges
       ? `Unit updated successfully${overrideMessage}`
       : 'Unit updated successfully';
 
     return { unit: updatedUnit, message };
+  }
+
+  /**
+   * Approve a staff member's pending high-impact unit changes and apply them. The changes are
+   * re-validated with the same rules as a direct update before they are applied.
+   */
+  async approveUnitChanges(cxt: IRequestContext, notes?: string): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const { property, unit } = await this.getUnitForReview(cxt);
+    const pendingChanges = unit.pendingChanges!;
+    const { updatedBy, updatedAt, displayName: _displayName, ...requestedChanges } = pendingChanges;
+
+    await this.validateUnitChanges(property, unit, requestedChanges);
+
+    const changedFields = Object.keys(createSafeMongoUpdate(requestedChanges));
+    // Matching on the submission time keeps a resubmission made meanwhile from being applied unseen
+    const updatedUnit = await this.propertyUnitDAO.update(
+      { _id: unit._id, deletedAt: null, 'pendingChanges.updatedAt': updatedAt },
+      {
+        $set: {
+          ...createSafeMongoUpdate(requestedChanges),
+          approvalStatus: 'approved',
+          pendingChanges: null,
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
+        },
+        $push: {
+          approvalDetails: {
+            action: 'approved',
+            actor: new Types.ObjectId(currentuser.sub),
+            timestamp: new Date(),
+            ...(notes && { notes }),
+            metadata: { requestedBy: updatedBy, changedFields },
+          },
+        },
+      }
+    );
+
+    if (!updatedUnit) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.pendingChangesModified') });
+    }
+
+    this.emitUnitChangedEvent(property, unit, requestedChanges.status, currentuser.sub);
+    await this.propertyCache.invalidateProperty(property.cuid, property.pid);
+    await this.propertyCache.invalidatePropertyLists(property.cuid);
+
+    this.log.info('Unit changes approved', {
+      puid: unit.puid,
+      approvedBy: currentuser.sub,
+      changedFields,
+    });
+
+    this.notifyUnitApprovalDecision(property, unit, currentuser, 'approved', updatedBy, notes);
+
+    return {
+      success: true,
+      data: updatedUnit,
+      message: t('propertyUnit.success.changesApproved'),
+    };
+  }
+
+  /**
+   * Reject a staff member's pending unit changes. The unit keeps its current (approved) data.
+   */
+  async rejectUnitChanges(cxt: IRequestContext, reason: string): Promise<ISuccessReturnData> {
+    const currentuser = cxt.currentuser!;
+    const { property, unit } = await this.getUnitForReview(cxt);
+    const pendingChanges = unit.pendingChanges!;
+
+    const updatedUnit = await this.propertyUnitDAO.update(
+      { _id: unit._id, deletedAt: null, 'pendingChanges.updatedAt': pendingChanges.updatedAt },
+      {
+        $set: {
+          approvalStatus: 'approved',
+          pendingChanges: null,
+          lastModifiedBy: new Types.ObjectId(currentuser.sub),
+        },
+        $push: {
+          approvalDetails: {
+            action: 'rejected',
+            actor: new Types.ObjectId(currentuser.sub),
+            timestamp: new Date(),
+            rejectionReason: reason,
+            metadata: {
+              requestedBy: pendingChanges.updatedBy,
+              changedFields: Object.keys(
+                createSafeMongoUpdate(this.extractHighImpactUnitChanges(pendingChanges))
+              ),
+            },
+          },
+        },
+      }
+    );
+
+    if (!updatedUnit) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.pendingChangesModified') });
+    }
+
+    await this.propertyCache.invalidateProperty(property.cuid, property.pid);
+    await this.propertyCache.invalidatePropertyLists(property.cuid);
+
+    this.log.info('Unit changes rejected', {
+      puid: unit.puid,
+      rejectedBy: currentuser.sub,
+      reason,
+    });
+
+    this.notifyUnitApprovalDecision(
+      property,
+      unit,
+      currentuser,
+      'rejected',
+      pendingChanges.updatedBy,
+      reason
+    );
+
+    return {
+      success: true,
+      data: updatedUnit,
+      message: t('propertyUnit.success.changesRejected'),
+    };
+  }
+
+  private async getUnitForReview(
+    cxt: IRequestContext
+  ): Promise<{ property: IPropertyDocument; unit: IPropertyUnitDocument }> {
+    const { property, unit } = await this.findPropertyAndUnit(cxt);
+    if (!unit.pendingChanges) {
+      throw new BadRequestError({ message: t('propertyUnit.errors.noPendingChanges') });
+    }
+    return { property, unit };
+  }
+
+  private async findPropertyAndUnit(
+    cxt: IRequestContext
+  ): Promise<{ property: IPropertyDocument; unit: IPropertyUnitDocument }> {
+    const { cuid, pid, puid } = cxt.request.params;
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+
+    const unit = await this.propertyUnitDAO.findFirst({
+      puid,
+      propertyId: property._id,
+      deletedAt: null,
+    });
+    if (!unit) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
+    }
+
+    return { property, unit };
+  }
+
+  private notifyUnitApprovalDecision(
+    property: IPropertyDocument,
+    unit: IPropertyUnitDocument,
+    currentuser: ICurrentUser,
+    decision: 'approved' | 'rejected',
+    requesterId: Types.ObjectId | string | undefined,
+    reason?: string
+  ): void {
+    if (!requesterId) return;
+
+    this.safeNotify(`unit ${unit.puid} ${decision}`, () =>
+      this.notificationService.notifyApprovalDecision(
+        {
+          resourceId: property.id,
+          resourceUid: property.pid,
+          resourceName: this.getUnitDisplayName(property, unit),
+        },
+        currentuser.sub,
+        property.cuid,
+        decision,
+        requesterId.toString(),
+        reason,
+        {
+          address: property.address?.fullAddress,
+          puid: unit.puid,
+          unitNumber: unit.unitNumber,
+          hadPendingChanges: true,
+        }
+      )
+    );
+  }
+
+  private safeNotify(label: string, send: () => Promise<unknown>): void {
+    send().catch((error) => {
+      this.log.error(`Failed to send ${label} notification`, {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    });
+  }
+
+  private getUnitDisplayName(property: IPropertyDocument, unit: IPropertyUnitDocument): string {
+    return `${property.name || 'Property'} - Unit ${unit.unitNumber}`;
   }
 }

@@ -419,6 +419,22 @@ router.patch(
   })
 );
 
+// Pays out the whole instant-eligible balance (platform fee taken by Stripe); no body — the
+// amount is always Stripe's net figure, never chosen by the caller.
+router.post(
+  '/:cuid/payout-account/instant-payout',
+  basicLimiter({ max: 3, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requirePayoutAccess,
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.requestInstantPayout(req, res);
+  })
+);
+
 // Unblock payouts — ROOT_ADMIN only (platform admin, not client super admin)
 router.patch(
   '/:cuid/payout-account/unblock',

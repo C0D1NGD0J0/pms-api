@@ -51,11 +51,6 @@ export interface IPaymentProvider {
     cancelUrl: string;
     metadata?: Record<string, string>;
   }): Promise<ICheckoutSession>;
-  updatePayoutSchedule(
-    accountId: string,
-    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
-    weeklyAnchor?: string
-  ): Promise<void>;
   createKycOnboardingLink(params: {
     accountId: string;
     refreshUrl: string;
@@ -75,6 +70,11 @@ export interface IPaymentProvider {
   confirmPaymentIntent(
     paymentIntentId: string,
     opts?: { paymentMethod?: string; mandate?: string }
+  ): Promise<void>;
+  updatePayoutSchedule(
+    accountId: string,
+    interval: 'manual' | 'weekly',
+    weeklyAnchor?: string
   ): Promise<void>;
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
@@ -144,6 +144,8 @@ export interface ICreateConnectAccountInput {
     phone?: string;
     companyName?: string;
   };
+  /** Stripe terms of service; defaults to 'recipient'. Only 'full' accounts can take instant payouts. */
+  serviceAgreement?: 'full' | 'recipient';
   businessType: 'individual' | 'company';
   metadata?: Record<string, string>;
   country: string;

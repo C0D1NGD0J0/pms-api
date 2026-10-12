@@ -1,6 +1,6 @@
 import fs from 'fs';
 import { Response } from 'express';
-import { createLogger } from '@utils/index';
+import { createLogger, Weekday } from '@utils/index';
 import ROLES from '@shared/constants/roles.constants';
 import { AppRequest } from '@interfaces/utils.interface';
 import { CronService } from '@services/cron/cron.service';
@@ -214,11 +214,20 @@ export class PaymentController {
 
   async updatePayoutSchedule(req: AppRequest, res: Response) {
     const { cuid } = req.params;
-    const { interval, weeklyAnchor } = req.body as {
-      interval: 'daily' | 'weekly' | 'monthly';
-      weeklyAnchor?: string;
-    };
+    const { interval, weeklyAnchor } = req.body as { interval: 'weekly'; weeklyAnchor: Weekday };
     const result = await this.paymentService.updatePayoutSchedule(cuid, interval, weeklyAnchor);
+    return res.status(200).json(result);
+  }
+
+  async requestInstantPayout(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    // Required by the idempotency middleware; reused as Stripe's key so a retry can't pay twice
+    const requestKey = req.headers['idempotency-key'] as string;
+    const result = await this.paymentService.requestInstantPayout(
+      cuid,
+      req.context.currentuser!.sub,
+      requestKey
+    );
     return res.status(200).json(result);
   }
 

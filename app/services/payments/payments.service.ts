@@ -4,10 +4,10 @@ import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { MoneyUtils } from '@utils/money.utils';
 import { type QueryFilter, Types } from 'mongoose';
-import { MAX_CHARGE_ATTEMPTS } from '@utils/constants';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PdfGeneratorService } from '@services/pdfGenerator';
+import { MAX_CHARGE_ATTEMPTS, Weekday } from '@utils/constants';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
@@ -2560,10 +2560,14 @@ export class PaymentService implements ICronProvider {
 
   async updatePayoutSchedule(
     cuid: string,
-    interval: 'daily' | 'weekly' | 'monthly',
-    weeklyAnchor?: string
+    interval: 'weekly',
+    weeklyAnchor: Weekday
   ): IPromiseReturnedData<null> {
     return this.payoutAccountService.updatePayoutSchedule(cuid, interval, weeklyAnchor);
+  }
+
+  async requestInstantPayout(cuid: string, actorId: string, requestKey: string) {
+    return this.payoutAccountService.requestInstantPayout(cuid, actorId, requestKey);
   }
 
   async unblockPayouts(cuid: string, userId: string): IPromiseReturnedData<null> {

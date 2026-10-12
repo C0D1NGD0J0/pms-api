@@ -387,6 +387,18 @@ export interface MaintenanceChargeSkippedPayload {
   cuid: string;
 }
 
+export interface PayoutFailedPayload {
+  ownerType?: 'client' | 'vendor';
+  method?: 'standard' | 'instant';
+  amountInCents: number;
+  failureCode?: string;
+  accountId: string;
+  payoutId: string;
+  currency: string;
+  reason?: string;
+  cuid: string;
+}
+
 export interface UploadCompletedPayload {
   senderInfo?: {
     email: string;
@@ -409,6 +421,17 @@ export interface MaintenanceChargeCreatedPayload {
   title: string;
   mruid: string;
   dueDate: Date;
+  cuid: string;
+}
+
+export interface PayoutPaidPayload {
+  ownerType?: 'client' | 'vendor';
+  method?: 'standard' | 'instant';
+  amountInCents: number;
+  accountId: string;
+  arrivalDate: Date;
+  payoutId: string;
+  currency: string;
   cuid: string;
 }
 
@@ -545,7 +568,6 @@ export interface PaymentFailedPayload {
   pytuid: string;
   cuid: string;
 }
-
 export interface MaintenanceInvoiceSubmittedPayload {
   invoiceId?: string;
   requestId: string;
@@ -567,6 +589,7 @@ export interface PaymentDisputeCreatedPayload {
   reason: string;
   cuid: string;
 }
+
 export interface PdfGenerationRequestedPayload {
   senderInfo?: {
     email: string;
@@ -683,16 +706,6 @@ export interface MaintenanceWorkOrderSubmittedPayload {
   requestId: string;
   vendorId: string;
   mruid: string;
-  cuid: string;
-}
-
-export interface PayoutFailedPayload {
-  amountInCents: number;
-  failureCode?: string;
-  accountId: string;
-  payoutId: string;
-  currency: string;
-  reason?: string;
   cuid: string;
 }
 
@@ -823,15 +836,6 @@ export interface PadDebitInitiatedPayload {
   currency: string;
   amount: number;
   pytuid: string;
-  cuid: string;
-}
-
-export interface PayoutPaidPayload {
-  amountInCents: number;
-  accountId: string;
-  arrivalDate: Date;
-  payoutId: string;
-  currency: string;
   cuid: string;
 }
 

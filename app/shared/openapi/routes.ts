@@ -129,6 +129,26 @@ const err422 = {
   },
 } as const;
 
+const err409 = {
+  409: {
+    description: 'Conflict',
+    content: { 'application/json': { schema: StandardErrorSchema } },
+  },
+} as const;
+
+const EmailChangeStatusSchema = z
+  .object({
+    uid: z.string(),
+    email: z.string().email(),
+    pendingEmail: z.string().email().nullable(),
+    expiresAt: z.string().datetime().nullable(),
+  })
+  .openapi('EmailChangeStatus');
+
+const EmailChangeRequestSchema = z
+  .object({ newEmail: z.string().email() })
+  .openapi('EmailChangeRequest');
+
 const paginationQuery = z.object({
   page: z.string().optional(),
   limit: z.string().optional(),
@@ -250,6 +270,16 @@ openApiRegistry.registerPath({
     },
   },
   responses: { ...ok200, ...err400, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'patch',
+  path: '/auth/email_change/confirm',
+  summary: 'Confirm a login email change with the emailed token (signs out every session)',
+  tags: ['Auth'],
+  security: [],
+  request: { query: z.object({ t: z.string().length(64) }) },
+  responses: { ...ok200, ...err400, ...err409, ...err422 },
 });
 
 openApiRegistry.registerPath({
@@ -1302,10 +1332,23 @@ openApiRegistry.registerPath({
 openApiRegistry.registerPath({
   method: 'patch',
   path: '/payments/{cuid}/payout-account/schedule',
-  summary: 'Update payout schedule',
+  summary: 'Update weekly payout day',
+  description:
+    'Payouts are weekly only (daily and monthly are not offered); body sets the weekday.',
   tags: ['Payments'],
   request: { params: cuidParams },
   responses: { ...ok200, ...err401, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/payments/{cuid}/payout-account/instant-payout',
+  summary: 'Request an instant payout',
+  description:
+    'Pays out the whole instant-eligible balance. The platform fee is taken by Stripe; requires an Idempotency-Key header.',
+  tags: ['Payments'],
+  request: { params: cuidParams },
+  responses: { ...ok200, ...err400, ...err401, ...err403 },
 });
 
 openApiRegistry.registerPath({
@@ -1544,6 +1587,37 @@ openApiRegistry.registerPath({
   tags: ['Users'],
   request: { params: z.object({ cuid: z.string(), uid: z.string() }) },
   responses: { ...ok200, ...err401, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/users/{cuid}/users/{uid}/email-change',
+  summary:
+    'Request a login email change for yourself or a tenant (verified via the new address); ' +
+    'posting the address already pending re-sends the link',
+  tags: ['Users'],
+  request: {
+    params: z.object({ cuid: z.string(), uid: z.string() }),
+    body: { content: { 'application/json': { schema: EmailChangeRequestSchema } } },
+  },
+  responses: {
+    ...successWith(EmailChangeStatusSchema, 'EmailChangeStatus'),
+    ...err400,
+    ...err401,
+    ...err403,
+    ...err404,
+    ...err409,
+    ...err422,
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'delete',
+  path: '/users/{cuid}/users/{uid}/email-change',
+  summary: 'Cancel a pending login email change',
+  tags: ['Users'],
+  request: { params: z.object({ cuid: z.string(), uid: z.string() }) },
+  responses: { ...ok200, ...err400, ...err401, ...err403, ...err404 },
 });
 
 openApiRegistry.registerPath({
@@ -2552,6 +2626,15 @@ openApiRegistry.registerPath({
   tags: ['GuestPasses'],
   request: { params: cuidParams, query: paginationQuery },
   responses: { ...ok200, ...err401 },
+});
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/guest-passes/{cuid}/properties',
+  summary: 'List properties the caller can check visitors in at',
+  tags: ['GuestPasses'],
+  request: { params: cuidParams },
+  responses: { ...ok200, ...err401, ...err403 },
 });
 
 openApiRegistry.registerPath({

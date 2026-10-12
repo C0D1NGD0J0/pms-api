@@ -116,6 +116,8 @@ export const PROPERTY_VERIFICATION_ROLES = [
  */
 export const PROPERTY_STAFF_ROLES = [IUserRole.STAFF];
 
+export const MAX_ASSIGNED_STAFF = 10;
+
 /**
  * Unit fields that require approval when modified (high-impact changes)
  */
@@ -404,3 +406,28 @@ export const CATEGORY_TO_VENDOR_SERVICE: Record<MaintenanceCategory, keyof Vendo
   };
 
 export const MAX_CHARGE_ATTEMPTS = 2;
+
+export const WEEKDAYS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
+export type Weekday = (typeof WEEKDAYS)[number];
+
+/**
+ * Landlord payout accounts in these countries are created under Stripe's full terms of service,
+ * which instant payouts require. Other countries stay on recipient terms (weekly payouts only).
+ * Stripe can't change an account's terms after creation.
+ */
+export const INSTANT_PAYOUT_COUNTRIES = ['US', 'CA'] as const;
+
+/** Stripe's maximum for a single instant payout, in cents, per payout currency */
+export const INSTANT_PAYOUT_MAX_CENTS: Record<string, number> = {
+  usd: 999900,
+  cad: 999900,
+};

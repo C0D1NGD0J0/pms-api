@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { IPaymentGatewayProvider } from '@interfaces/index';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
@@ -8,7 +9,54 @@ import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { PaymentProcessorDAO, ProfileDAO, ClientDAO, VendorDAO } from '@dao/index';
 import { IPromiseReturnedData, ISuccessReturnData } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import { getCountryCodeFromLocation, getPaymentProcessorUrls, createLogger } from '@utils/index';
+import {
+  getCountryCodeFromLocation,
+  INSTANT_PAYOUT_MAX_CENTS,
+  INSTANT_PAYOUT_COUNTRIES,
+  getPaymentProcessorUrls,
+  createLogger,
+  Weekday,
+} from '@utils/index';
+
+export interface IInstantPayoutQuote {
+  reason?: InstantPayoutIneligibleReason;
+  destination?: string;
+  /** Instant-eligible balance before the platform fee, in cents */
+  available: number;
+  currency?: string;
+  eligible: boolean;
+  /** True when the balance is above Stripe's per-payout maximum; the rest goes out weekly */
+  capped?: boolean;
+  /** What reaches the bank, in cents */
+  net: number;
+  fee: number;
+}
+
+export type InstantPayoutIneligibleReason =
+  | 'country_not_supported'
+  | 'payouts_not_enabled'
+  | 'payouts_blocked'
+  | 'payouts_paused'
+  | 'open_disputes'
+  | 'no_instant_balance'
+  | 'pricing_unavailable';
+
+interface IStripePayoutEntry {
+  application_fee_amount?: number | null;
+  description?: string | null;
+  arrival_date: number;
+  currency: string;
+  method?: string;
+  created: number;
+  amount: number;
+  status: string;
+  id: string;
+}
+
+interface IStripeInstantBalanceEntry extends IStripeBalanceEntry {
+  /** Present only when the platform sets instant payout pricing (Platform Pricing Tool) */
+  net_available?: { amount: number; destination: string }[];
+}
 
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
@@ -18,17 +66,8 @@ interface IConstructor {
   vendorDAO: VendorDAO;
 }
 
-interface IStripePayoutEntry {
-  description?: string | null;
-  arrival_date: number;
-  currency: string;
-  created: number;
-  amount: number;
-  status: string;
-  id: string;
-}
-
 interface IStripeBalanceData {
+  instant_available?: IStripeInstantBalanceEntry[];
   available: IStripeBalanceEntry[];
   pending: IStripeBalanceEntry[];
 }
@@ -127,7 +166,11 @@ export class PayoutAccountService {
     data: { email: string; country: string }
   ): IPromiseReturnedData<any> {
     try {
-      const existingProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      // Vendor processors carry the inviting client's cuid too — only the client's own counts
+      const existingProcessor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+      });
       if (existingProcessor?.accountId) {
         throw new BadRequestError({
           message: 'Connect account already exists for this client',
@@ -144,12 +187,18 @@ export class PayoutAccountService {
         : null;
 
       const isEnterprise = client.accountType.isEnterpriseAccount;
+      const serviceAgreement = (INSTANT_PAYOUT_COUNTRIES as readonly string[]).includes(
+        data.country
+      )
+        ? 'full'
+        : 'recipient';
       const accountResult = await this.paymentGatewayService.createConnectAccount(
         IPaymentGatewayProvider.STRIPE,
         {
           cuid,
           email: data.email,
           country: data.country,
+          serviceAgreement,
           businessType: isEnterprise ? 'company' : 'individual',
           metadata: { cuid },
           prefill: {
@@ -170,6 +219,7 @@ export class PayoutAccountService {
 
       await this.paymentProcessorDAO.insert({
         cuid,
+        serviceAgreement,
         client: client._id,
         accountId: accountResult.data.accountId,
         chargesEnabled: accountResult.data.chargesEnabled || false,
@@ -258,6 +308,7 @@ export class PayoutAccountService {
         data: {
           available: balance.available.map((b) => ({ amount: b.amount, currency: b.currency })),
           pending: balance.pending.map((b) => ({ amount: b.amount, currency: b.currency })),
+          instant: this.buildInstantPayoutQuote(paymentProcessor, balance),
         },
       };
     } catch (error) {
@@ -298,6 +349,8 @@ export class PayoutAccountService {
           .toDate()
           .toISOString(),
         description: p.description ?? undefined,
+        method: p.method === 'instant' ? 'instant' : 'standard',
+        applicationFeeAmount: p.application_fee_amount ?? undefined,
       }));
 
       return {
@@ -335,8 +388,8 @@ export class PayoutAccountService {
 
   async updatePayoutSchedule(
     cuid: string,
-    interval: 'daily' | 'weekly' | 'monthly',
-    weeklyAnchor?: string
+    interval: 'weekly',
+    weeklyAnchor: Weekday
   ): IPromiseReturnedData<null> {
     try {
       const paymentProcessor = await this.getProcessorOrThrow(cuid);
@@ -356,12 +409,160 @@ export class PayoutAccountService {
         });
       }
 
+      await this.paymentProcessorDAO.update(
+        { _id: paymentProcessor._id },
+        { $set: { payoutWeeklyAnchor: weeklyAnchor } }
+      );
+
       this.log.info({ cuid, interval, weeklyAnchor }, 'Payout schedule updated');
       return { success: true, data: null, message: 'Payout schedule updated successfully' };
     } catch (error) {
       this.log.error('Error updating payout schedule', error);
       throw error;
     }
+  }
+
+  /**
+   * Pays out the whole instant-eligible balance now. The platform fee is taken by Stripe
+   * (Platform Pricing Tool), so the payout amount is Stripe's net figure — the caller can't pick
+   * an amount. Eligibility is re-checked against a fresh balance on every request.
+   */
+  async requestInstantPayout(
+    cuid: string,
+    actorId: string,
+    requestKey: string
+  ): IPromiseReturnedData<{
+    payoutId: string;
+    amount: number;
+    fee: number;
+    currency: string;
+    arrivalDate: string;
+  }> {
+    try {
+      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+
+      const balanceResult = await this.paymentGatewayService.getConnectBalance(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId
+      );
+      if (!balanceResult.success || !balanceResult.data) {
+        throw new BadRequestError({ message: balanceResult.message || 'Failed to fetch balance' });
+      }
+
+      const quote = this.buildInstantPayoutQuote(
+        paymentProcessor,
+        balanceResult.data as IStripeBalanceData
+      );
+      if (!quote.eligible || !quote.currency) {
+        throw new BadRequestError({
+          message: t('payment.errors.instantPayoutUnavailable', {
+            reason: t(`payment.instantPayoutReasons.${quote.reason ?? 'no_instant_balance'}`),
+          }),
+        });
+      }
+
+      const payoutResult = await this.paymentGatewayService.createInstantPayout(
+        IPaymentGatewayProvider.STRIPE,
+        paymentProcessor.accountId,
+        {
+          amount: quote.net,
+          currency: quote.currency,
+          destination: quote.destination,
+          idempotencyKey: `instant-payout:${paymentProcessor.accountId}:${requestKey}`,
+        }
+      );
+      if (!payoutResult.success || !payoutResult.data) {
+        throw new BadRequestError({
+          message: payoutResult.message || 'Failed to create instant payout',
+        });
+      }
+
+      const payout = payoutResult.data as IStripePayoutEntry;
+      this.log.info(
+        { cuid, actorId, payoutId: payout.id, amount: quote.net, fee: quote.fee },
+        'Instant payout requested'
+      );
+
+      return {
+        success: true,
+        data: {
+          payoutId: payout.id,
+          amount: payout.amount,
+          fee: payout.application_fee_amount ?? quote.fee,
+          currency: payout.currency,
+          arrivalDate: dayjs(payout.arrival_date * 1000)
+            .toDate()
+            .toISOString(),
+        },
+        message: t('payment.success.instantPayoutRequested'),
+      };
+    } catch (error) {
+      this.log.error('Error requesting instant payout', error);
+      throw error;
+    }
+  }
+
+  private buildInstantPayoutQuote(
+    processor: {
+      disputeStats?: { open?: number };
+      serviceAgreement?: string;
+      payoutsEnabled: boolean;
+      payoutsBlocked?: boolean;
+      payoutsPaused?: boolean;
+    },
+    balance: IStripeBalanceData
+  ): IInstantPayoutQuote {
+    const ineligible = (reason: InstantPayoutIneligibleReason): IInstantPayoutQuote => ({
+      eligible: false,
+      available: 0,
+      net: 0,
+      fee: 0,
+      reason,
+    });
+
+    if (processor.serviceAgreement !== 'full') return ineligible('country_not_supported');
+    if (!processor.payoutsEnabled) return ineligible('payouts_not_enabled');
+    if (processor.payoutsBlocked) return ineligible('payouts_blocked');
+    // Paused while the subscription is inactive or past due
+    if (processor.payoutsPaused) return ineligible('payouts_paused');
+    // Funds released instantly can't be clawed back if a dispute is lost — losses are the platform's
+    if ((processor.disputeStats?.open ?? 0) > 0) return ineligible('open_disputes');
+
+    // Stripe lists instant balance only when the account has an eligible debit card or bank
+    const instantBalance = balance.instant_available?.find((entry) => entry.amount > 0);
+    if (!instantBalance) return ineligible('no_instant_balance');
+
+    // Without platform pricing Stripe would pay out fee-free while billing the platform its cost
+    const net = instantBalance.net_available?.[0];
+    if (!net) return ineligible('pricing_unavailable');
+    if (net.amount <= 0) return ineligible('no_instant_balance');
+
+    const fee = instantBalance.amount - net.amount;
+    const maxPayout = INSTANT_PAYOUT_MAX_CENTS[instantBalance.currency.toLowerCase()];
+    if (maxPayout && net.amount > maxPayout) {
+      // Stripe rejects a single instant payout above its maximum. Pay out the maximum now and
+      // leave the rest for the weekly payout; the fee shown is pro-rated, and the actual fee
+      // comes back on the payout (application_fee_amount).
+      const cappedFee = Math.round((fee * maxPayout) / net.amount);
+      return {
+        eligible: true,
+        capped: true,
+        available: maxPayout + cappedFee,
+        net: maxPayout,
+        fee: cappedFee,
+        currency: instantBalance.currency,
+        destination: net.destination,
+      };
+    }
+
+    return {
+      eligible: true,
+      available: instantBalance.amount,
+      net: net.amount,
+      fee,
+      currency: instantBalance.currency,
+      destination: net.destination,
+    };
   }
 
   async unblockPayouts(cuid: string, userId: string): IPromiseReturnedData<null> {

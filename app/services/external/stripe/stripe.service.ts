@@ -567,6 +567,7 @@ export class StripeService implements IPaymentProvider {
   async createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse> {
     try {
       const { email, country, businessType, businessProfile, prefill, metadata } = input;
+      const serviceAgreement = input.serviceAgreement ?? 'recipient';
 
       const account = await this.stripe.accounts.create({
         country,
@@ -575,9 +576,10 @@ export class StripeService implements IPaymentProvider {
         capabilities: {
           transfers: { requested: true },
         },
-        // 'recipient' service agreement — only requires 'transfers' capability,
-        // works for all countries including those without full Stripe support (e.g. NG).
-        tos_acceptance: { service_agreement: 'recipient' },
+        // 'recipient' only requires the 'transfers' capability and works in countries without
+        // full Stripe support (e.g. NG). 'full' is needed for instant payouts (US/CA landlords).
+        // Stripe can't change the agreement after the account is created.
+        tos_acceptance: { service_agreement: serviceAgreement },
         controller: {
           fees: {
             payer: 'application',
@@ -652,7 +654,7 @@ export class StripeService implements IPaymentProvider {
 
   async updatePayoutSchedule(
     accountId: string,
-    interval: 'manual' | 'daily' | 'weekly' | 'monthly',
+    interval: 'manual' | 'weekly',
     weeklyAnchor?: string
   ): Promise<void> {
     const schedule: Stripe.AccountUpdateParams.Settings.Payouts.Schedule = { interval };
@@ -693,9 +695,50 @@ export class StripeService implements IPaymentProvider {
 
   async getConnectBalance(accountId: string): Promise<Stripe.Balance> {
     try {
-      return await this.stripe.balance.retrieve({}, { stripeAccount: accountId });
+      // net_available (instant balance after the platform's instant payout fee) is only
+      // returned when expanded; without it instant payouts can't be priced
+      return await this.stripe.balance.retrieve(
+        { expand: ['instant_available.net_available'] },
+        { stripeAccount: accountId }
+      );
     } catch (error) {
       this.log.error({ error, accountId }, 'Error fetching Connect balance');
+      throw error;
+    }
+  }
+
+  /**
+   * Instant payout of the account's whole instant-eligible balance. The platform's fee is set in
+   * the Stripe Platform Pricing Tool and taken by Stripe as an application fee on the payout,
+   * so `amount` must be the net amount (instant_available.net_available) and `destination`
+   * the external account Stripe listed for it.
+   */
+  async createInstantPayout(
+    accountId: string,
+    input: { amount: number; currency: string; destination?: string; idempotencyKey: string }
+  ): Promise<Stripe.Payout> {
+    try {
+      return await this.stripe.payouts.create(
+        {
+          amount: input.amount,
+          currency: input.currency,
+          method: 'instant',
+          ...(input.destination && { destination: input.destination }),
+        },
+        { stripeAccount: accountId, idempotencyKey: input.idempotencyKey }
+      );
+    } catch (error) {
+      this.log.error({ error, accountId }, 'Error creating instant payout');
+      throw error;
+    }
+  }
+
+  /** Refunds a platform application fee in full (e.g. the fee on a failed instant payout). */
+  async refundApplicationFee(applicationFeeId: string, idempotencyKey: string): Promise<void> {
+    try {
+      await this.stripe.applicationFees.createRefund(applicationFeeId, {}, { idempotencyKey });
+    } catch (error) {
+      this.log.error({ error, applicationFeeId }, 'Error refunding application fee');
       throw error;
     }
   }

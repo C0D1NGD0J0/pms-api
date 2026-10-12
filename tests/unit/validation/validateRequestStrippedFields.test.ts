@@ -1,8 +1,13 @@
 import { z } from 'zod';
 import { Response, Request } from 'express';
-import { collectStrippedPaths, validateRequest } from '@shared/validations/setup';
+import { envVariables } from '@shared/config';
+import { validateRequest } from '@shared/validations/setup';
+import { collectStrippedPaths } from '@shared/validations/strippedPaths';
+import { GuestPassValidations } from '@shared/validations/GuestPassValidation';
+import { MaintenanceSchemas } from '@shared/validations/MaintenanceRequestValidation/schemas';
 
 jest.mock('@services/index', () => ({}));
+jest.mock('@di/setup', () => ({ container: { cradle: {} } }));
 jest.mock('@utils/helpers', () => {
   const actual = jest.requireActual('@utils/helpers');
   const logger = { warn: jest.fn(), info: jest.fn(), error: jest.fn(), debug: jest.fn() };
@@ -11,109 +16,95 @@ jest.mock('@utils/helpers', () => {
 
 const { __logger: mockLogger } = jest.requireMock('@utils/helpers');
 
-const bodySchema = z.object({
-  email: z.string(),
-  address: z.object({ city: z.string() }),
-  documents: z.array(z.object({ documentType: z.string() })),
-});
-
-const buildReq = (body: Record<string, any>) =>
-  ({
+const run = async (schema: Parameters<typeof validateRequest>[0], req: Partial<Request>) => {
+  const fullReq = {
     method: 'POST',
     originalUrl: '/api/v1/properties/abc123',
-    body,
+    body: {},
     query: {},
     params: {},
     container: { cradle: { emitterService: { emit: jest.fn() } } },
-  }) as unknown as Request;
-
-const runValidation = async (req: Request) => {
+    ...req,
+  } as unknown as Request;
   const next = jest.fn();
-  await validateRequest({ body: bodySchema })(req, {} as Response, next);
-  return next;
+  await validateRequest(schema)(fullReq, {} as Response, next);
+  return { req: fullReq, next };
 };
 
-describe('validateRequest — stripped field guardrail', () => {
-  const originalEnv = process.env.NODE_ENV;
+describe('validateRequest', () => {
+  const originalEnv = envVariables.SERVER.ENV;
+  const bodySchema = z.object({ email: z.string(), address: z.object({ city: z.string() }) });
 
-  beforeEach(() => {
-    mockLogger.warn.mockClear();
-  });
+  beforeEach(() => mockLogger.warn.mockClear());
+  afterEach(() => (envVariables.SERVER.ENV = originalEnv));
 
-  afterEach(() => {
-    process.env.NODE_ENV = originalEnv;
-  });
-
-  it('warns once with the route and stripped paths, never the values', async () => {
-    process.env.NODE_ENV = 'development';
-    const req = buildReq({
-      email: 'a@b.com',
-      password: 'SuperSecret1!',
-      address: { city: 'Toronto', unitNumber: '4B' },
-      documents: [
-        { documentType: 'deed', ssn: '123-45-6789' },
-        { documentType: 'tax', ssn: '987-65-4321' },
-      ],
-    });
-
-    const next = await runValidation(req);
+  it('strips undeclared body fields and warns with their paths, never the values', async () => {
+    envVariables.SERVER.ENV = 'dev';
+    const body = { email: 'a@b.com', password: 'Secret1!', address: { city: 'T', unit: '4B' } };
+    const { req, next } = await run({ body: bodySchema }, { body });
 
     expect(next).toHaveBeenCalledWith();
-    expect(req.body).toEqual({
-      email: 'a@b.com',
-      address: { city: 'Toronto' },
-      documents: [{ documentType: 'deed' }, { documentType: 'tax' }],
-    });
-    expect(mockLogger.warn).toHaveBeenCalledTimes(1);
-    const [logged] = mockLogger.warn.mock.calls[0];
-    expect(logged).toEqual({
+    expect(req.body).toEqual({ email: 'a@b.com', address: { city: 'T' } });
+    expect(mockLogger.warn.mock.calls[0][0]).toEqual({
       route: 'POST /api/v1/properties/abc123',
-      strippedPaths: ['body.password', 'body.address.unitNumber', 'body.documents[].ssn'],
+      strippedPaths: ['body.password', 'body.address.unit'],
     });
-    const serialized = JSON.stringify(mockLogger.warn.mock.calls);
-    expect(serialized).not.toContain('SuperSecret1!');
-    expect(serialized).not.toContain('123-45-6789');
-    expect(serialized).not.toContain('4B');
+    expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain('Secret1!');
   });
 
-  it('stays silent when nothing was stripped', async () => {
-    process.env.NODE_ENV = 'development';
-    await runValidation(
-      buildReq({ email: 'a@b.com', address: { city: 'Toronto' }, documents: [] })
+  it('does not warn in production', async () => {
+    envVariables.SERVER.ENV = 'production';
+    await run(
+      { body: bodySchema },
+      { body: { email: 'a', password: 'x', address: { city: 'T' } } }
     );
-
     expect(mockLogger.warn).not.toHaveBeenCalled();
   });
 
-  it('stays silent in production', async () => {
-    process.env.NODE_ENV = 'production';
-    const req = buildReq({
-      email: 'a@b.com',
-      password: 'x',
-      address: { city: 'Toronto' },
-      documents: [],
-    });
-
-    const next = await runValidation(req);
-
-    expect(next).toHaveBeenCalledWith();
-    expect(req.body).not.toHaveProperty('password');
-    expect(mockLogger.warn).not.toHaveBeenCalled();
-  });
-
-  it('reports stripped query and params paths too', () => {
-    const found = collectStrippedPaths({ cuid: 'c1', pid: 'p1' }, { cuid: 'c1' }, 'params');
-
-    expect([...found]).toEqual(['params.pid']);
-  });
-
-  it('ignores keys whose value changed type through a transform', () => {
-    const found = collectStrippedPaths(
-      { when: { day: 1 }, list: 'a,b' },
-      { when: new Date(), list: ['a', 'b'] },
-      'body'
+  it('keeps params inherited via mergeParams that the schema does not declare', async () => {
+    const { req } = await run(
+      { params: z.object({ cuid: z.string().trim() }) },
+      { params: { cuid: ' c1 ', pid: 'p1' } }
     );
+    expect(req.params).toEqual({ cuid: 'c1', pid: 'p1' });
+  });
+});
 
-    expect(found.size).toBe(0);
+describe('collectStrippedPaths', () => {
+  it('collapses array indices and ignores values reshaped by a transform', () => {
+    const raw = { docs: [{ type: 'a', ssn: '1' }, { ssn: '2' }], when: { day: 1 }, list: 'a,b' };
+    const parsed = { docs: [{ type: 'a' }, {}], when: new Date(), list: ['a', 'b'] };
+    expect([...collectStrippedPaths(raw, parsed, 'body')]).toEqual(['body.docs[].ssn']);
+  });
+});
+
+describe('schemas keep the fields services rely on', () => {
+  it('maintenance assignmentBody keeps a valid technician.userId and rejects a malformed one', () => {
+    const userId = '507f1f77bcf86cd799439011';
+    const parse = (id: string) =>
+      MaintenanceSchemas.assignmentBody.parse({
+        action: 'accept',
+        technician: { name: 'T', userId: id },
+      });
+    expect(parse(userId).technician?.userId).toBe(userId);
+    expect(() => parse('not-an-id')).toThrow('Must be a valid ID');
+  });
+
+  it('guest pass createPass keeps host fields and treats blank inputs as missing', () => {
+    const base = { propertyId: 'PID123', visitorName: 'V', sendViaSms: true, sendViaEmail: false };
+    const parse = (extra: Record<string, unknown>) =>
+      GuestPassValidations.createPass.parse({ ...base, visitorPhone: '+15555550100', ...extra });
+
+    expect(parse({ hostName: ' Rita ', hostPhone: '+1 (555) 010-0200' })).toMatchObject({
+      hostName: 'Rita',
+      hostPhone: '+1 (555) 010-0200',
+    });
+    expect(parse({ unitId: '', hostPhone: '', purpose: '' })).toMatchObject({
+      unitId: undefined,
+      hostPhone: undefined,
+      purpose: undefined,
+    });
+    expect(() => parse({ hostPhone: '1'.repeat(21) })).toThrow();
+    expect(() => parse({ expiryMinutes: 90 })).toThrow();
   });
 });

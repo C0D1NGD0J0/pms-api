@@ -13,7 +13,13 @@ import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/cus
 import { PROPERTY_APPROVAL_ROLES, convertUserRoleToEnum, createLogger } from '@utils/index';
 import { ISuccessReturnData, IPaginationQuery, IPaginateResult } from '@interfaces/utils.interface';
 
-import { cleanUpRemovedPropertyMedia, getOriginalRequesterId } from './propertyHelpers';
+import {
+  cleanUpRemovedPropertyMedia,
+  getOriginalRequesterId,
+  pendingMediaItems,
+} from './propertyHelpers';
+
+const BULK_DECISION_CONCURRENCY = 5;
 
 interface IConstructor {
   notificationService: NotificationService;
@@ -57,12 +63,7 @@ export class PropertyApprovalService {
       pendingUnits: IPropertyUnitDocument[];
     }>
   > {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: t('common.errors.insufficientPermissions'),
-      });
-    }
+    this.assertApprover(currentuser);
 
     const filter: QueryFilter<IPropertyDocument> = {
       cuid,
@@ -78,23 +79,18 @@ export class PropertyApprovalService {
       skip: ((pagination.page || 1) - 1) * (pagination.limit || 10),
     };
 
-    const properties = await this.propertyDAO.getPropertiesByClientId(cuid, filter, opts);
     // Staff edits to existing units wait for approval too; listed alongside the properties
-    const pendingUnits = await this.propertyUnitDAO.list(
-      { cuid, deletedAt: null, approvalStatus: 'pending', pendingChanges: { $ne: null } },
-      {
-        limit: 100,
-        sort: { updatedAt: -1 },
-        populate: { path: 'propertyId', select: 'pid name' },
-      }
-    );
+    const [properties, pendingUnits] = await Promise.all([
+      this.propertyDAO.getPropertiesByClientId(cuid, filter, opts),
+      this.propertyUnitDAO.findPendingUnitChanges(cuid),
+    ]);
 
     return {
       success: true,
       data: {
         items: properties.items,
         pagination: properties.pagination,
-        pendingUnits: pendingUnits.items,
+        pendingUnits,
       },
       message: t('common.success.retrieved', { resource: 'Pending approvals' }),
     };
@@ -106,18 +102,23 @@ export class PropertyApprovalService {
     currentuser: ICurrentUser,
     notes?: string
   ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: t('common.errors.insufficientPermissions'),
-      });
-    }
-
+    this.assertApprover(currentuser);
     const property = await this.propertyDAO.findFirst(
       { pid, cuid, deletedAt: null },
       { select: '+owner' }
     );
+    const result = await this.applyApproval(cuid, pid, property, currentuser, notes);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+    return result;
+  }
 
+  private async applyApproval(
+    cuid: string,
+    pid: string,
+    property: IPropertyDocument | null | undefined,
+    currentuser: ICurrentUser,
+    notes?: string
+  ): Promise<ISuccessReturnData> {
     if (!property) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
@@ -128,66 +129,9 @@ export class PropertyApprovalService {
       });
     }
 
-    const approvalEntry = {
-      action: 'approved' as const,
-      actor: new Types.ObjectId(currentuser.sub),
-      timestamp: new Date(),
-      ...(notes && { notes }),
-    };
-
-    const updateData: any = {
-      approvalStatus: 'approved',
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    // Defensive check: Ensure approvalDetails is an array before $push
-    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
-      this.log.warn('Fixing approvalDetails type mismatch - initializing as empty array', {
-        propertyId: property.id,
-        pid: property.pid,
-        currentType: property.approvalDetails ? typeof property.approvalDetails : 'undefined',
-        wasArray: Array.isArray(property.approvalDetails),
-      });
-      updateData.approvalDetails = [approvalEntry];
-    } else {
-      updateData.$push = { approvalDetails: approvalEntry };
-    }
-
-    if (property.pendingChanges) {
-      const safeChanges = createSafeMongoUpdate(property.pendingChanges);
-
-      updateData.$set = {
-        ...safeChanges,
-        pendingChanges: null,
-        approvalStatus: 'approved',
-        lastModifiedBy: new Types.ObjectId(currentuser.sub),
-      };
-
-      // Preserve ownership history when owner changes via approval
-      if (property.pendingChanges.owner && property.owner) {
-        updateData.$push = {
-          ...((updateData as any).$push || {}),
-          ownershipHistory: {
-            owner: property.owner,
-            effectiveFrom: property.createdAt || new Date(),
-            effectiveTo: new Date(),
-            transferNote: 'Ownership updated via approval',
-            recordedBy: new Types.ObjectId(currentuser.sub),
-            recordedAt: new Date(),
-          },
-        };
-      }
-
-      this.log.info('Applying pending changes during approval with safe updates', {
-        propertyId: property.id,
-        pendingChanges: Object.keys(property.pendingChanges),
-        safeUpdateFields: Object.keys(safeChanges),
-      });
-    }
-
     const updatedProperty = await this.propertyDAO.update(
       { pid, cuid, deletedAt: null },
-      updateData
+      this.buildApprovalUpdate(property, currentuser, notes)
     );
 
     if (!updatedProperty) {
@@ -197,7 +141,6 @@ export class PropertyApprovalService {
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
-    await this.propertyCache.invalidatePropertyLists(cuid);
 
     // Approved staff edits can remove images/documents — clean up their assets
     // now that the change is applied. Logged, not thrown: approval succeeded.
@@ -223,9 +166,7 @@ export class PropertyApprovalService {
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
-        getOriginalRequesterId(
-          Array.isArray(property.approvalDetails) ? property.approvalDetails : []
-        );
+        getOriginalRequesterId(property.approvalDetails);
 
       if (originalRequesterId) {
         await this.notificationService.notifyApprovalDecision(
@@ -274,57 +215,34 @@ export class PropertyApprovalService {
       });
     }
 
-    // Check if user has permission
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: t('common.errors.insufficientPermissions'),
-      });
-    }
+    this.assertApprover(currentuser);
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    const result = await this.applyRejection(cuid, pid, property, currentuser, reason);
+    await this.propertyCache.invalidatePropertyLists(cuid);
+    return result;
+  }
 
-    const property = await this.propertyDAO.findFirst({
-      pid,
-      cuid,
-      deletedAt: null,
-    });
-
+  private async applyRejection(
+    cuid: string,
+    pid: string,
+    property: IPropertyDocument | null | undefined,
+    currentuser: ICurrentUser,
+    reason: string
+  ): Promise<ISuccessReturnData> {
     if (!property) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
-    // Create new rejection entry for the array
-    const rejectionEntry = {
-      action: 'rejected' as const,
-      actor: new Types.ObjectId(currentuser.sub),
-      timestamp: new Date(),
-      rejectionReason: reason.trim(),
-    };
-
-    // Determine the appropriate status after rejection
-    const updateData: any = {
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    if (!property.approvalDetails || !Array.isArray(property.approvalDetails)) {
-      updateData.approvalDetails = [rejectionEntry];
-    } else {
-      updateData.$push = { approvalDetails: rejectionEntry };
+    // Without this, rejecting a live approved property would mark it 'rejected'
+    if (!property.pendingChanges && property.approvalStatus !== 'pending') {
+      throw new InvalidRequestError({
+        message: 'Property has no pending submission or changes to reject.',
+      });
     }
 
-    // If property has pending changes, clear them; the live data is still the approved version.
-    // Staff submissions set approvalStatus to 'pending', so it must be reset explicitly.
-    if (property.pendingChanges) {
-      updateData.pendingChanges = null;
-      updateData.approvalStatus = 'approved';
-    } else {
-      // If no pending changes, this is a new property being rejected
-      updateData.approvalStatus = 'rejected';
-    }
-
-    // Same shape as approveProperty: plain fields are $set, and $push stays a top-level operator
     const updatedProperty = await this.propertyDAO.update(
       { pid, cuid, deletedAt: null },
-      updateData
+      this.buildRejectionUpdate(property, currentuser, reason)
     );
 
     if (!updatedProperty) {
@@ -334,7 +252,15 @@ export class PropertyApprovalService {
     }
 
     await this.propertyCache.invalidateProperty(cuid, property.id);
-    await this.propertyCache.invalidatePropertyLists(cuid);
+
+    const discardedMedia = pendingMediaItems(property.pendingChanges?.pendingMedia);
+    if (discardedMedia.length) {
+      try {
+        await this.mediaUploadService.removeUploadedFiles(discardedMedia, { deleteAssets: true });
+      } catch (error) {
+        this.log.error('Failed to delete files from rejected pending changes', { pid, error });
+      }
+    }
 
     this.log.info('Property rejected', {
       propertyId: property.id,
@@ -346,9 +272,7 @@ export class PropertyApprovalService {
     try {
       const originalRequesterId =
         property.pendingChanges?.updatedBy?.toString() ||
-        getOriginalRequesterId(
-          Array.isArray(property.approvalDetails) ? property.approvalDetails : []
-        );
+        getOriginalRequesterId(property.approvalDetails);
 
       if (originalRequesterId) {
         await this.notificationService.notifyApprovalDecision(
@@ -385,53 +309,134 @@ export class PropertyApprovalService {
     };
   }
 
+  private buildApprovalUpdate(
+    property: IPropertyDocument,
+    currentuser: ICurrentUser,
+    notes?: string
+  ): Record<string, any> {
+    const pendingMedia = property.pendingChanges?.pendingMedia;
+    const approvalEntry = {
+      action: 'approved' as const,
+      actor: new Types.ObjectId(currentuser.sub),
+      timestamp: new Date(),
+      ...(notes && { notes }),
+    };
+
+    const updateData: any = {
+      approvalStatus: 'approved',
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+      $push: { approvalDetails: approvalEntry },
+    };
+
+    if (property.pendingChanges) {
+      const { pendingMedia: _pendingMedia, ...fieldChanges } = property.pendingChanges;
+      const safeChanges = createSafeMongoUpdate(fieldChanges);
+
+      updateData.$set = {
+        ...safeChanges,
+        pendingChanges: null,
+        approvalStatus: 'approved',
+        lastModifiedBy: new Types.ObjectId(currentuser.sub),
+      };
+
+      // Attach the files the edit uploaded. An edited list in the same change set replaces
+      // the stored one, so the new files go after it; otherwise they are appended.
+      for (const field of ['images', 'documents'] as const) {
+        const uploaded = (pendingMedia?.[field] ?? []) as any[];
+        if (!uploaded.length) continue;
+
+        if (fieldChanges[field] !== undefined) {
+          updateData.$set[field] = [...((fieldChanges[field] as any[]) ?? []), ...uploaded];
+        } else {
+          updateData.$push = { ...(updateData.$push || {}), [field]: { $each: uploaded } };
+        }
+      }
+
+      // Preserve ownership history when owner changes via approval
+      if (property.pendingChanges.owner && property.owner) {
+        updateData.$push = {
+          ...((updateData as any).$push || {}),
+          ownershipHistory: {
+            owner: property.owner,
+            effectiveFrom: property.createdAt || new Date(),
+            effectiveTo: new Date(),
+            transferNote: 'Ownership updated via approval',
+            recordedBy: new Types.ObjectId(currentuser.sub),
+            recordedAt: new Date(),
+          },
+        };
+      }
+
+      this.log.info('Applying pending changes during approval with safe updates', {
+        propertyId: property.id,
+        pendingChanges: Object.keys(property.pendingChanges),
+        safeUpdateFields: Object.keys(safeChanges),
+        pendingMediaCount: pendingMediaItems(pendingMedia).length,
+      });
+    }
+
+    return updateData;
+  }
+
+  private buildRejectionUpdate(
+    property: IPropertyDocument,
+    currentuser: ICurrentUser,
+    reason: string
+  ): Record<string, any> {
+    const rejectionEntry = {
+      action: 'rejected' as const,
+      actor: new Types.ObjectId(currentuser.sub),
+      timestamp: new Date(),
+      rejectionReason: reason.trim(),
+    };
+
+    const updateData: any = {
+      lastModifiedBy: new Types.ObjectId(currentuser.sub),
+      $push: { approvalDetails: rejectionEntry },
+    };
+
+    // If property has pending changes, clear them; the live data is still the approved version.
+    // Staff submissions set approvalStatus to 'pending', so it must be reset explicitly.
+    if (property.pendingChanges) {
+      updateData.pendingChanges = null;
+      updateData.approvalStatus = 'approved';
+    } else {
+      // If no pending changes, this is a new property being rejected
+      updateData.approvalStatus = 'rejected';
+    }
+
+    return updateData;
+  }
+
   async bulkApproveProperties(
     cuid: string,
     propertyIds: string[],
     currentuser: ICurrentUser
   ): Promise<ISuccessReturnData> {
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: t('common.errors.insufficientPermissions'),
-      });
-    }
-
+    this.assertApprover(currentuser);
     if (!propertyIds || propertyIds.length === 0) {
       throw new BadRequestError({
         message: t('common.errors.required', { field: 'Property IDs' }),
       });
     }
 
-    const updateData = {
-      approvalStatus: 'approved',
-      'approvalDetails.approvedBy': new Types.ObjectId(currentuser.sub),
-      'approvalDetails.approvedAt': new Date(),
-      'approvalDetails.requiresReapproval': false,
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    const result = await this.propertyDAO.updateMany(
-      {
-        pid: { $in: propertyIds },
-        cuid,
-        deletedAt: null,
-        approvalStatus: 'pending',
-      },
-      { $set: updateData }
+    const { succeeded, failed } = await this.applyToEach(
+      cuid,
+      propertyIds,
+      '+owner',
+      (pid, property) => this.applyApproval(cuid, pid, property, currentuser)
     );
 
-    await this.propertyCache.invalidatePropertyLists(cuid);
-
     this.log.info('Properties bulk approved', {
-      count: result.modifiedCount,
+      approved: succeeded,
+      failed: failed.length,
       approvedBy: currentuser.sub,
     });
 
     return {
       success: true,
-      data: { approved: result.modifiedCount, total: propertyIds.length },
-      message: `${result.modifiedCount} properties approved successfully`,
+      data: { approved: succeeded, total: propertyIds.length, failed },
+      message: `${succeeded} properties approved successfully`,
     };
   }
 
@@ -447,50 +452,74 @@ export class PropertyApprovalService {
       });
     }
 
-    // Check if user has permission
-    const userRole = currentuser.client.role;
-    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(userRole))) {
-      throw new InvalidRequestError({
-        message: t('common.errors.insufficientPermissions'),
-      });
-    }
-
+    this.assertApprover(currentuser);
     if (!propertyIds || propertyIds.length === 0) {
       throw new BadRequestError({
         message: t('common.errors.required', { field: 'Property IDs' }),
       });
     }
 
-    const updateData = {
-      approvalStatus: 'rejected',
-      'approvalDetails.rejectedBy': new Types.ObjectId(currentuser.sub),
-      'approvalDetails.rejectedAt': new Date(),
-      'approvalDetails.rejectionReason': reason.trim(),
-      lastModifiedBy: new Types.ObjectId(currentuser.sub),
-    };
-
-    const result = await this.propertyDAO.updateMany(
-      {
-        pid: { $in: propertyIds },
-        cuid,
-        deletedAt: null,
-        approvalStatus: 'pending',
-      },
-      { $set: updateData }
+    const { succeeded, failed } = await this.applyToEach(
+      cuid,
+      propertyIds,
+      undefined,
+      (pid, property) => this.applyRejection(cuid, pid, property, currentuser, reason)
     );
 
-    await this.propertyCache.invalidatePropertyLists(cuid);
-
     this.log.info('Properties bulk rejected', {
-      count: result.modifiedCount,
+      rejected: succeeded,
+      failed: failed.length,
       rejectedBy: currentuser.sub,
       reason,
     });
 
     return {
       success: true,
-      data: { rejected: result.modifiedCount, total: propertyIds.length },
-      message: `${result.modifiedCount} properties rejected`,
+      data: { rejected: succeeded, total: propertyIds.length, failed },
+      message: `${succeeded} properties rejected`,
     };
+  }
+
+  private assertApprover(currentuser: ICurrentUser): void {
+    if (!PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(currentuser.client.role))) {
+      throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
+    }
+  }
+
+  private async applyToEach(
+    cuid: string,
+    propertyIds: string[],
+    select: string | undefined,
+    decide: (pid: string, property?: IPropertyDocument) => Promise<ISuccessReturnData>
+  ): Promise<{ succeeded: number; failed: Array<{ pid: string; error: string }> }> {
+    const pids = [...new Set(propertyIds)];
+    const { items } = await this.propertyDAO.list(
+      { cuid, pid: { $in: pids }, deletedAt: null },
+      { limit: pids.length, ...(select && { projection: select }) }
+    );
+    const propertiesByPid = new Map(items.map((property) => [property.pid, property]));
+
+    let succeeded = 0;
+    const failed: Array<{ pid: string; error: string }> = [];
+    for (let i = 0; i < pids.length; i += BULK_DECISION_CONCURRENCY) {
+      const chunk = pids.slice(i, i + BULK_DECISION_CONCURRENCY);
+      const outcomes = await Promise.allSettled(
+        chunk.map((pid) => decide(pid, propertiesByPid.get(pid)))
+      );
+      outcomes.forEach((outcome, index) => {
+        if (outcome.status === 'fulfilled') {
+          succeeded++;
+        } else {
+          const { reason } = outcome;
+          failed.push({
+            pid: chunk[index],
+            error: reason instanceof Error ? reason.message : 'Unknown error',
+          });
+        }
+      });
+    }
+
+    await this.propertyCache.invalidatePropertyLists(cuid);
+    return { succeeded, failed };
   }
 }

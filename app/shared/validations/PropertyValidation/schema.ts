@@ -2,16 +2,20 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
+import { MAX_ASSIGNED_STAFF } from '@utils/constants';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { BaseCSVProcessorService } from '@services/csv/base';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 
-const log = createLogger('PropertyValidation');
+import {
+  emptyToUndefined,
+  objectIdString,
+  optionalBlank,
+  queryBoolean,
+  getContainer,
+} from '../UtilsValidation';
 
-const getContainer = async () => {
-  const { container } = await import('@di/setup');
-  return container;
-};
+const log = createLogger('PropertyValidation');
 
 const isUniqueAddress = async (address: string, clientId: string) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = (await getContainer())
@@ -42,12 +46,8 @@ const PropertyStatusEnum = z.enum(['available', 'maintenance', 'construction', '
 
 const OccupancyStatusEnum = z.enum(['vacant', 'occupied', 'partially_occupied']);
 
-// Use z.coerce for all numeric/boolean fields — FormData sends everything as strings.
-// Empty strings from blank form fields must become undefined so .optional() works.
-const optionalNum = z.preprocess(
-  (v) => (v === '' || v === undefined || v === null ? undefined : v),
-  z.coerce.number().optional()
-);
+// FormData sends everything as strings — coerce numbers and booleans
+const optionalNum = optionalBlank(z.coerce.number());
 
 const SpecificationsSchema = z.object({
   totalArea: optionalNum.pipe(
@@ -124,10 +124,7 @@ const FinancialDetailsSchema = z.object({
 });
 
 const defaultNum = (fallback: number) =>
-  z.preprocess(
-    (v) => (v === '' || v === undefined || v === null ? fallback : v),
-    z.coerce.number()
-  );
+  z.preprocess((v) => emptyToUndefined(v) ?? fallback, z.coerce.number());
 
 const FeesSchema = z.object({
   currency: z.nativeEnum(CURRENCIES).default(CURRENCIES.USD),
@@ -140,41 +137,35 @@ const FeesSchema = z.object({
   ),
 });
 
-const coerceBool = z.union([z.boolean(), z.string().transform((v) => v === 'true')]);
-
 const UtilitiesSchema = z.object({
-  water: coerceBool.default(false),
-  gas: coerceBool.default(false),
-  electricity: coerceBool.default(false),
-  internet: coerceBool.default(false),
-  trash: coerceBool.default(false),
-  cableTV: coerceBool.default(false),
+  water: queryBoolean.default(false),
+  gas: queryBoolean.default(false),
+  electricity: queryBoolean.default(false),
+  internet: queryBoolean.default(false),
+  trash: queryBoolean.default(false),
+  cableTV: queryBoolean.default(false),
 });
 
 const InteriorAmenitiesSchema = z.object({
-  airConditioning: coerceBool.default(false),
-  heating: coerceBool.default(false),
-  washerDryer: coerceBool.default(false),
-  dishwasher: coerceBool.default(false),
-  fridge: coerceBool.default(false),
-  furnished: coerceBool.default(false),
-  storageSpace: coerceBool.default(false),
+  airConditioning: queryBoolean.default(false),
+  heating: queryBoolean.default(false),
+  washerDryer: queryBoolean.default(false),
+  dishwasher: queryBoolean.default(false),
+  fridge: queryBoolean.default(false),
+  furnished: queryBoolean.default(false),
+  storageSpace: queryBoolean.default(false),
 });
 
 const CommunityAmenitiesSchema = z.object({
-  petFriendly: coerceBool.default(false),
-  swimmingPool: coerceBool.default(false),
-  fitnessCenter: coerceBool.default(false),
-  elevator: coerceBool.default(false),
-  parking: coerceBool.default(false),
-  securitySystem: coerceBool.default(false),
-  laundryFacility: coerceBool.default(false),
-  doorman: coerceBool.default(false),
+  petFriendly: queryBoolean.default(false),
+  swimmingPool: queryBoolean.default(false),
+  fitnessCenter: queryBoolean.default(false),
+  elevator: queryBoolean.default(false),
+  parking: queryBoolean.default(false),
+  securitySystem: queryBoolean.default(false),
+  laundryFacility: queryBoolean.default(false),
+  doorman: queryBoolean.default(false),
 });
-
-const ObjectIdString = z.string().regex(/^[a-f\d]{24}$/i, 'Must be a valid ID');
-
-const emptyToUndefined = (v: unknown) => (v === '' || v === null ? undefined : v);
 
 // Multipart entries for files being uploaded in this request carry only metadata
 // (e.g. documentType) — the file is in req.files and url/uploadedBy are set
@@ -184,7 +175,7 @@ const mediaArray = <T extends z.ZodTypeAny>(arraySchema: z.ZodArray<T>) =>
   z.preprocess((v) => (Array.isArray(v) ? Array.from(v, (item) => item ?? {}) : v), arraySchema);
 
 const PropertyMediaDocumentSchema = z.object({
-  _id: ObjectIdString.optional(),
+  _id: objectIdString.optional(),
   documentType: z
     .enum([
       'deed',
@@ -201,10 +192,7 @@ const PropertyMediaDocumentSchema = z.object({
   url: z.string().url('Invalid URL format for document').optional(),
   key: z.string().optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
-  externalUrl: z.preprocess(
-    emptyToUndefined,
-    z.string().url('Invalid external URL format').optional()
-  ),
+  externalUrl: optionalBlank(z.string().url('Invalid external URL format')),
   uploadedAt: z.coerce
     .date({
       errorMap: (issue, { defaultError }) => ({
@@ -221,7 +209,7 @@ const PropertyMediaDocumentSchema = z.object({
 });
 
 const PropertyImageSchema = z.object({
-  _id: ObjectIdString.optional(),
+  _id: objectIdString.optional(),
   url: z.string().url('Invalid URL format for image').optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   filename: z.string().optional(),
@@ -255,7 +243,7 @@ const OwnerSchema = z.object({
 });
 
 const AuthorizationSchema = z.object({
-  isActive: coerceBool.default(true),
+  isActive: queryBoolean.default(true),
   expiresAt: z.union([z.string(), z.date(), z.null()]).optional().nullable(),
   notes: z
     .string()
@@ -272,10 +260,12 @@ export const CreatePropertySchema = z.object({
   propertyType: PropertyTypeEnum,
   operationalStatus: PropertyStatusEnum.default('available'),
   managedBy: z.string(),
-  // Same cap as the assign-staff endpoint and the model validator.
   assignedStaff: z
-    .array(ObjectIdString)
-    .max(10, 'Cannot assign more than 10 staff members to a property')
+    .array(objectIdString)
+    .max(
+      MAX_ASSIGNED_STAFF,
+      `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`
+    )
     .optional(),
   yearBuilt: z.coerce
     .number()
@@ -324,7 +314,7 @@ export const CreatePropertySchema = z.object({
   notes: z
     .array(
       z.object({
-        _id: ObjectIdString.optional(),
+        _id: objectIdString.optional(),
         text: z
           .string()
           .trim()
@@ -591,13 +581,9 @@ const PropertyCsvSchemaBase = z.object({
     .optional()
     .default('company_owned'),
   owner_name: z.string().trim().max(200, 'Owner name must be at most 200 characters').optional(),
-  owner_email: z
-    .string()
-    .trim()
-    .email('Invalid email format for owner email')
-    .transform((val) => (val === '' ? undefined : val))
-    .optional()
-    .transform((val: string | undefined) => val?.toLowerCase()),
+  owner_email: optionalBlank(
+    z.string().trim().email('Invalid email format for owner email').toLowerCase()
+  ),
   owner_phone: z.string().trim().max(20, 'Owner phone must be at most 20 characters').optional(),
   owner_taxId: z.string().trim().max(50, 'Owner tax ID must be at most 50 characters').optional(),
   owner_notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),

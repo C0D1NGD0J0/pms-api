@@ -211,16 +211,21 @@ export class PropertyController {
 
     this.applyDocumentTypesToUploads(req);
 
+    // Update first: a rejected update must not upload anything (the error handler removes
+    // the temp files). A staff edit awaiting approval uploads its files into pendingChanges.
     const hardDelete = req.query['hard-delete'] === 'true';
+    const ctx = { cuid, pid, currentuser, hardDelete, newFiles: req.scannedFiles };
+    const result = await this.propertyService.updateClientProperty(ctx, req.body);
+    if (result.data?.pendingChanges) {
+      return res.status(httpStatusCodes.OK).json(result);
+    }
+
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
       primaryResourceId: pid,
       uploadedBy: currentuser.sub,
       resourceContext: ResourceContext.PROPERTY,
       hardDelete,
     });
-
-    const ctx = { cuid, pid, currentuser, hardDelete };
-    const result = await this.propertyService.updateClientProperty(ctx, req.body);
 
     const response = uploadResult.hasFiles
       ? {

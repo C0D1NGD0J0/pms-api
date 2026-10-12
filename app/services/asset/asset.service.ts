@@ -212,6 +212,11 @@ export class AssetService {
     }
   }
 
+  /** Soft-deletes the asset records whose files were removed from S3. */
+  async deleteAssetsByS3Keys(s3Keys: string[]): Promise<void> {
+    await this.assetDAO.deleteAssetsByS3Keys(s3Keys);
+  }
+
   /**
    * Get asset statistics for a resource
    *

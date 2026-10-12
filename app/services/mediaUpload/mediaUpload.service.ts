@@ -251,11 +251,11 @@ export class MediaUploadService {
 
   /**
    * Uploads the request's scanned files straight to S3, for flows that save the result
-   * themselves during the request (receipts, lease documents, unit photos). Returns []
-   * when the request has no files.
+   * themselves during the request (receipts, lease documents, unit photos, property media
+   * held for approval). Returns [] when the request has no files.
    */
   async uploadRequestFiles(
-    req: AppRequest,
+    req: Pick<AppRequest, 'scannedFiles'>,
     resource: Pick<ResourceInfo, 'resourceName' | 'resourceId' | 'fieldName' | 'actorId'>
   ): Promise<UploadResult[]> {
     const files = req.scannedFiles;
@@ -267,10 +267,21 @@ export class MediaUploadService {
     });
   }
 
-  /** Deletes uploaded files from S3 — used when the record they belong to failed to save. */
-  async removeUploadedFiles(results: UploadResult[]): Promise<void> {
-    const keys = results.map((result) => result.key).filter((key): key is string => !!key);
-    if (keys.length > 0) await this.s3Service.deleteFiles(keys);
+  /**
+   * Deletes uploaded files from S3 — when the record they belong to failed to save, or (with
+   * deleteAssets) when they will never be attached, which also removes their asset records.
+   */
+  async removeUploadedFiles(
+    items: Array<{ key?: string }>,
+    options: { deleteAssets?: boolean } = {}
+  ): Promise<void> {
+    const keys = items.map((item) => item.key).filter((key): key is string => !!key);
+    if (keys.length === 0) return;
+
+    const deleted = await this.s3Service.deleteFiles(keys);
+    if (!options.deleteAssets) return;
+    if (!deleted) throw new Error(`Failed to delete ${keys.length} file(s) from S3`);
+    await this.assetService.deleteAssetsByS3Keys(keys);
   }
 
   /**

@@ -250,7 +250,7 @@ export interface PropertySpecifications {
 }
 
 export interface PropertyApprovalEntry {
-  action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted';
+  action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted' | 'overridden';
   rejectionReason?: string; // Only for rejected actions
   actor: Types.ObjectId;
   timestamp: Date;
@@ -268,6 +268,13 @@ export interface UnitInfo {
   canAddUnit?: boolean;
   totalUnits: number;
 }
+
+export type IPendingChanges = {
+  pendingMedia?: { documents: MediaDocumentItem[]; images: PropertyImageItem[] };
+  updatedAt: Date;
+  updatedBy: Types.ObjectId;
+  displayName: string;
+} & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
 
 export interface CommunityAmenities {
   laundryFacility: boolean;
@@ -363,12 +370,6 @@ export interface IPropertyNote {
   html?: string;
   text: string;
 }
-
-export type IPendingChanges = {
-  updatedAt: Date;
-  updatedBy: Types.ObjectId;
-  displayName: string;
-} & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
 
 export interface PropertyUtilities {
   electricity: boolean;

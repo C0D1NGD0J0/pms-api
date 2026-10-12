@@ -74,10 +74,10 @@ export class PropertyMediaService {
       });
     }
 
-    const property = await this.propertyDAO.findFirst({
-      pid: propertyUid,
-      deletedAt: null,
-    });
+    const property = await this.propertyDAO.findFirst(
+      { pid: propertyUid, deletedAt: null },
+      { projection: { _id: 1 } }
+    );
 
     if (!property) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
@@ -106,7 +106,10 @@ export class PropertyMediaService {
    */
   async markDocumentsAsFailed(propertyId: string, errorMessage: string): Promise<void> {
     try {
-      const property = await this.propertyDAO.findFirst({ pid: propertyId, deletedAt: null });
+      const property = await this.propertyDAO.findFirst(
+        { pid: propertyId, deletedAt: null },
+        { projection: { documents: 1 } }
+      );
       if (!property || !property.documents) return;
 
       const updateOperations: any = {};

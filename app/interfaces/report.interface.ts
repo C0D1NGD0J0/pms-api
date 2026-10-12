@@ -32,7 +32,9 @@ export const REPORT_SECTIONS = [
   'inspections',
 ] as const;
 
-export const MAX_REPORT_EMAIL_RECIPIENTS = 10;
+// Request-level cap = the highest plan's maxReportEmails (Enterprise). The per-plan limit is
+// enforced in ReportService; a test keeps this in sync with platform.config.json.
+export const MAX_REPORT_EMAIL_RECIPIENTS = 25;
 
 export interface IReportDocument extends Document {
   file?: {

@@ -34,8 +34,13 @@ import {
   PlanName,
 } from '@interfaces/index';
 
-import { subscriptionPlanConfig } from './subscription_plans.config';
 import { SubscriptionWebhookService } from './subscriptionWebhook.service';
+import {
+  subscriptionPlanConfig,
+  isWithinLimit,
+  remainingFor,
+  overageFor,
+} from './subscription_plans.config';
 
 interface IConstructor {
   subscriptionWebhookService: SubscriptionWebhookService;
@@ -827,8 +832,11 @@ export class SubscriptionService {
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
       const maxAllowedSeats = config.seatPricing.includedSeats + subscription.seats.additional;
       const isLimitReached = {
-        properties: subscription.resourceTracker.propertyCount >= config.limits.maxProperties,
-        units: subscription.resourceTracker.unitCount >= config.limits.maxUnits,
+        properties: !isWithinLimit(
+          subscription.resourceTracker.propertyCount,
+          config.limits.maxProperties
+        ),
+        units: !isWithinLimit(subscription.resourceTracker.unitCount, config.limits.maxUnits),
         seats: subscription.resourceTracker.seatCount >= maxAllowedSeats,
       };
 
@@ -871,11 +879,11 @@ export class SubscriptionService {
           const count = subscription.manualRecords?.countThisPeriod ?? 0;
           const quota = subscriptionPlanConfig.getManualRecordQuota(subscription.planName);
           const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
-          const overageCount = Math.max(0, count - quota);
+          const overageCount = overageFor(count, quota);
           return {
             countThisPeriod: count,
             quota,
-            remaining: Math.max(0, quota - count),
+            remaining: remainingFor(count, quota),
             overageFeeCents: feeCents,
             overageCount,
             projectedOverageCents: overageCount * feeCents,
@@ -899,7 +907,7 @@ export class SubscriptionService {
           return {
             countThisPeriod: count,
             quota,
-            remaining: Math.max(0, quota - count),
+            remaining: remainingFor(count, quota),
             percentUsed: quota > 0 ? Math.round((count / quota) * 100) : 0,
           };
         })(),

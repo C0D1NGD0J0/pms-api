@@ -285,6 +285,28 @@ describe('SubscriptionWebhookService — manual record overage period (integrati
     expect(mockGateway.createInvoiceItem).toHaveBeenCalledTimes(1);
   });
 
+  it('never bills overage when the plan quota is unlimited (-1), even with zero records', async () => {
+    jest.spyOn(subscriptionPlanConfig, 'getManualRecordQuota').mockReturnValue(-1);
+    await Subscription.collection.updateOne(
+      { cuid: CUID },
+      { $set: { 'manualRecords.countThisPeriod': 0 } }
+    );
+
+    await closePeriod(PERIOD_2);
+
+    expect(mockGateway.createInvoiceItem).not.toHaveBeenCalled();
+    expect(await storedCounter()).toEqual({ countThisPeriod: 0, periodStart: PERIOD_2 });
+  });
+
+  it('never bills overage for many records when the plan quota is unlimited (-1)', async () => {
+    jest.spyOn(subscriptionPlanConfig, 'getManualRecordQuota').mockReturnValue(-1);
+
+    await closePeriod(PERIOD_2);
+
+    expect(mockGateway.createInvoiceItem).not.toHaveBeenCalled();
+    expect(await storedCounter()).toEqual({ countThisPeriod: 0, periodStart: PERIOD_2 });
+  });
+
   it('counts concurrent manual records atomically with $inc', async () => {
     const subscriptionDAO = new SubscriptionDAO();
     await Promise.all([

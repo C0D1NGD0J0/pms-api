@@ -2,7 +2,12 @@ import { Types } from 'mongoose';
 import { ReportDAO } from '@dao/reportDAO';
 import { clearTestDatabase } from '@tests/helpers';
 import { Report as ReportModel } from '@models/index';
-import { REPORT_SECTIONS, ReportPeriod, ReportStatus } from '@interfaces/report.interface';
+import {
+  MAX_REPORT_EMAIL_RECIPIENTS,
+  REPORT_SECTIONS,
+  ReportPeriod,
+  ReportStatus,
+} from '@interfaces/report.interface';
 
 const BASE_CUID = 'TEST_CLIENT_001';
 const USER_ID = new Types.ObjectId();
@@ -60,15 +65,21 @@ describe('ReportDAO Integration Tests', () => {
     });
 
     it('should enforce email recipients max limit', async () => {
-      const tooMany = Array.from({ length: 11 }, (_, i) => `user${i}@test.com`);
+      const tooMany = Array.from(
+        { length: MAX_REPORT_EMAIL_RECIPIENTS + 1 },
+        (_, i) => `user${i}@test.com`
+      );
       await expect(dao.createReport(makeReport({ emailRecipients: tooMany }))).rejects.toThrow();
     });
 
-    it('should allow up to 10 email recipients', async () => {
-      const recipients = Array.from({ length: 10 }, (_, i) => `user${i}@test.com`);
+    it('should allow up to the maximum number of email recipients', async () => {
+      const recipients = Array.from(
+        { length: MAX_REPORT_EMAIL_RECIPIENTS },
+        (_, i) => `user${i}@test.com`
+      );
       const report = await dao.createReport(makeReport({ emailRecipients: recipients }));
 
-      expect(report.emailRecipients).toHaveLength(10);
+      expect(report.emailRecipients).toHaveLength(MAX_REPORT_EMAIL_RECIPIENTS);
     });
 
     it('should default sections to all when not provided', async () => {

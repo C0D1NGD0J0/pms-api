@@ -3,6 +3,14 @@ import * as path from 'path';
 import { calcGatewayFee } from '@utils/financial.utils';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
+export {
+  UNLIMITED_PLAN_LIMIT,
+  isWithinLimit,
+  remainingFor,
+  isUnlimited,
+  overageFor,
+} from '@utils/planLimits.utils';
+
 const CONFIG_PATH = path.join(__dirname, 'platform.config.json');
 let platformConfig: any;
 

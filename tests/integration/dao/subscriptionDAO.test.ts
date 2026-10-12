@@ -107,6 +107,67 @@ describe('SubscriptionDAO - updateResourceCount', () => {
     });
   });
 
+  describe('unlimited (-1) plan limits', () => {
+    it('should increment property count when the plan allows unlimited properties', async () => {
+      const result = await subscriptionDAO.updateResourceCount('property', testClientId, 1, -1);
+
+      expect(result).not.toBeNull();
+      expect(result?.resourceTracker.propertyCount).toBe(3);
+    });
+
+    it('should increment inside a transaction when the limit is unlimited', async () => {
+      const session = await subscriptionDAO.startSession();
+      try {
+        await subscriptionDAO.withTransaction(session, async (txSession) => {
+          const result = await subscriptionDAO.updateResourceCount(
+            'property',
+            testClientId,
+            1,
+            -1,
+            txSession
+          );
+          expect(result).not.toBeNull();
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      const subscription = await Subscription.findOne({ client: testClientId });
+      expect(subscription?.resourceTracker.propertyCount).toBe(3);
+    });
+
+    it('should increment a usage counter when the quota is unlimited', async () => {
+      await Subscription.updateOne(
+        { client: testClientId },
+        { $set: { 'reportGenerationUsage.countThisPeriod': 500 } }
+      );
+
+      const result = await subscriptionDAO.incrementUsageCounterIfUnder(
+        'TEST_CLIENT',
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+
+      expect(result).not.toBeNull();
+      expect(result?.reportGenerationUsage?.countThisPeriod).toBe(501);
+    });
+
+    it('should still refuse a usage counter that reached a finite quota', async () => {
+      await Subscription.updateOne(
+        { client: testClientId },
+        { $set: { 'reportGenerationUsage.countThisPeriod': 10 } }
+      );
+
+      const result = await subscriptionDAO.incrementUsageCounterIfUnder(
+        'TEST_CLIENT',
+        'reportGenerationUsage.countThisPeriod',
+        10
+      );
+
+      expect(result).toBeNull();
+    });
+  });
+
   describe('with MongoDB transactions', () => {
     it('should work within a transaction session', async () => {
       const session = await subscriptionDAO.startSession();

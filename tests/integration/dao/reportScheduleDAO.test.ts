@@ -2,7 +2,11 @@ import { Types } from 'mongoose';
 import { clearTestDatabase } from '@tests/helpers';
 import { ReportScheduleDAO } from '@dao/reportScheduleDAO';
 import { ReportSchedule as ReportScheduleModel } from '@models/index';
-import { ScheduleFrequency, REPORT_SECTIONS } from '@interfaces/report.interface';
+import {
+  MAX_REPORT_EMAIL_RECIPIENTS,
+  ScheduleFrequency,
+  REPORT_SECTIONS,
+} from '@interfaces/report.interface';
 
 const BASE_CUID = 'TEST_CLIENT_001';
 const USER_ID = new Types.ObjectId();
@@ -70,7 +74,10 @@ describe('ReportScheduleDAO Integration Tests', () => {
     });
 
     it('should enforce email recipients max limit', async () => {
-      const tooMany = Array.from({ length: 11 }, (_, i) => `user${i}@test.com`);
+      const tooMany = Array.from(
+        { length: MAX_REPORT_EMAIL_RECIPIENTS + 1 },
+        (_, i) => `user${i}@test.com`
+      );
       await expect(
         dao.upsertSchedule(BASE_CUID, makeSchedule({ emailRecipients: tooMany }))
       ).rejects.toThrow();

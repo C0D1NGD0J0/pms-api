@@ -21,7 +21,11 @@ import {
   MailType,
 } from '@interfaces/index';
 
-import { subscriptionPlanConfig, SubscriptionPlanConfig } from './subscription_plans.config';
+import {
+  subscriptionPlanConfig,
+  SubscriptionPlanConfig,
+  overageFor,
+} from './subscription_plans.config';
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -392,9 +396,9 @@ export class SubscriptionWebhookService {
 
     const quota = subscriptionPlanConfig.getManualRecordQuota(previousPeriod.planName);
     const previousCount = previousPeriod.manualRecords?.countThisPeriod ?? 0;
-    if (previousCount <= quota || !previousPeriod.billing?.customerId) return;
+    const overageCount = overageFor(previousCount, quota);
+    if (overageCount === 0 || !previousPeriod.billing?.customerId) return;
 
-    const overageCount = previousCount - quota;
     const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
     const totalCents = overageCount * feeCents;
 

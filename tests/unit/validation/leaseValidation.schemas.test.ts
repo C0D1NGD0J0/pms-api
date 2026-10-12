@@ -235,6 +235,26 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
       expect(result.terminationReason).toBe('Tenant relocating for work');
     });
 
+    it('accepts a structured reasonCode alongside the free-text reason', async () => {
+      const result = await TerminateLeaseSchema.parseAsync({
+        terminationDate: '2026-06-30',
+        terminationReason: 'Fire made the unit uninhabitable',
+        reasonCode: 'emergency',
+      });
+
+      expect(result.reasonCode).toBe('emergency');
+    });
+
+    it('rejects an unknown reasonCode', async () => {
+      const result = await TerminateLeaseSchema.safeParseAsync({
+        terminationDate: '2026-06-30',
+        terminationReason: 'Fire made the unit uninhabitable',
+        reasonCode: 'tenant_annoying',
+      });
+
+      expect(result.success).toBe(false);
+    });
+
     it('rejects the legacy `reason` field name', async () => {
       const result = await TerminateLeaseSchema.safeParseAsync({
         terminationDate: '2026-06-30',

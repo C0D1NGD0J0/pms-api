@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { LeaseTerminationReasonCode } from '@interfaces/lease.interface';
 
-import { getContainer, calendarDate } from '../UtilsValidation';
+import { optionalBlank, getContainer, calendarDate } from '../UtilsValidation';
 
 export const isValidProperty = async (propertyId: string, cuid: string) => {
   try {
@@ -97,13 +98,7 @@ export const LeaseTemplateTypeEnum = z.enum([
   'short-term-rental',
 ]);
 
-// Form clients send '' for "not selected"; treat it as an omitted value
-const emptyStringToUndefined = (value: unknown) => (value === '' ? undefined : value);
-
-const OptionalTemplateTypeSchema = z.preprocess(
-  emptyStringToUndefined,
-  LeaseTemplateTypeEnum.optional()
-);
+const OptionalTemplateTypeSchema = optionalBlank(LeaseTemplateTypeEnum);
 
 // Lease-level toggles persisted on the lease model (read by PDF generation, payments, inspections)
 const LeaseOptionFlagsSchema = z.object({
@@ -132,7 +127,7 @@ export const LeaseFeesSchema = z.object({
     .min(0, 'Late fee percentage must be non-negative')
     .max(100, 'Late fee percentage cannot exceed 100')
     .optional(),
-  acceptedPaymentMethod: z.preprocess(emptyStringToUndefined, PaymentMethodEnum.optional()),
+  acceptedPaymentMethod: optionalBlank(PaymentMethodEnum),
 });
 
 export const LeaseDurationSchema = z.object({
@@ -249,7 +244,7 @@ export const RenewLeaseSchema = z.object({
   renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
   utilitiesIncluded: z.array(UtilityEnum).optional(),
   coTenants: z.array(CoTenantSchema).optional(),
-  legalTerms: z.preprocess(emptyStringToUndefined, LegalTermsSchema.optional()),
+  legalTerms: optionalBlank(LegalTermsSchema),
   // Renewal takes a single free-text note; the service wraps it into an internal note entry
   internalNotes: z.string().trim().max(2000, 'Note text cannot exceed 2000 characters').optional(),
 });
@@ -466,6 +461,8 @@ export const TerminateLeaseSchema = z
       .string()
       .min(10, 'Termination reason must be at least 10 characters')
       .max(500, 'Termination reason must be at most 500 characters'),
+    // Drives notice-period exemptions; terminationReason stays free text for the record
+    reasonCode: z.nativeEnum(LeaseTerminationReasonCode).optional(),
     notes: z.string().max(1000, 'Notes must be at most 1000 characters').optional(),
   })
   .refine(

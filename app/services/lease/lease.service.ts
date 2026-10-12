@@ -4,7 +4,6 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import sanitizeHtml from 'sanitize-html';
-import { PdfQueue } from '@queues/index';
 import { LeaseCache } from '@caching/index';
 import { MailService } from '@mailer/index';
 import { envVariables } from '@shared/config';
@@ -45,6 +44,7 @@ import {
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
 import {
+  ILeaseTerminationData,
   ILeaseFilterOptions,
   ILeaseDocument,
   ILeaseFormData,
@@ -62,7 +62,9 @@ import {
   MailType,
 } from '@interfaces/utils.interface';
 import {
+  LIFECYCLE_MANAGED_LEASE_FIELDS,
   PROPERTY_APPROVAL_ROLES,
+  IMMUTABLE_LEASE_FIELDS,
   convertUserRoleToEnum,
   preventTenantConflict,
   PROPERTY_STAFF_ROLES,
@@ -82,14 +84,13 @@ import { assertESignatureEntitlement } from './leaseEntitlements';
 import {
   enforceLeaseApprovalRequirement,
   validateLeaseReadyForActivation,
-  validateLifecycleManagedFields,
   generatePendingChangesPreview,
   handlePendingSignatureUpdate,
   calculateFinancialSummary,
   validateLeaseTermination,
   handleClosedStatusUpdate,
   calculateRenewalMetadata,
-  validateImmutableFields,
+  rejectRestrictedFields,
   constructActivityFeed,
   filterDocumentsByRole,
   handleActiveUpdate,
@@ -99,6 +100,7 @@ import {
   filterLeaseByRole,
   handleDraftUpdate,
   fetchLeaseByLuid,
+  queueLeasePdf,
 } from './leaseHelpers';
 
 interface IConstructor {
@@ -731,7 +733,11 @@ export class LeaseService {
 
       // Status/approval/signature changes must go through the lifecycle endpoints so their
       // checks and side effects (invoicing, events, notifications) can't be bypassed
-      validateLifecycleManagedFields(updateData);
+      rejectRestrictedFields(
+        updateData,
+        LIFECYCLE_MANAGED_LEASE_FIELDS,
+        'lease.errors.lifecycleManagedFields'
+      );
 
       const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
       if (!lease) {
@@ -802,7 +808,11 @@ export class LeaseService {
         };
       }
 
-      validateImmutableFields(cleanUpdateData);
+      rejectRestrictedFields(
+        cleanUpdateData,
+        IMMUTABLE_LEASE_FIELDS,
+        'lease.errors.immutableFields'
+      );
       let result = null;
       switch (lease.status) {
         case LeaseStatus.READY_FOR_SIGNATURE:
@@ -1007,6 +1017,7 @@ export class LeaseService {
     cuid: string,
     luid: string,
     terminationData: {
+      reasonCode?: ILeaseTerminationData['reasonCode'];
       terminationDate: Date;
       terminationReason: string;
       moveOutDate?: Date;
@@ -1043,11 +1054,12 @@ export class LeaseService {
     const { warnings } = validateLeaseTermination(
       lease,
       terminationDate,
-      terminationData.terminationReason
+      terminationData.reasonCode
     );
 
     this.log.info(`Terminating lease ${luid}`, {
       terminationDate,
+      reasonCode: terminationData.reasonCode,
       reason: terminationData.terminationReason,
       warnings,
     });
@@ -1261,16 +1273,7 @@ export class LeaseService {
         throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
       }
 
-      const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
-      const job = await pdfGeneratorQueue.addToPdfQueue({
-        resource: {
-          resourceId: leaseId,
-          resourceName: 'lease',
-          actorId: ctx.currentuser?.sub || 'system',
-          resourceType: 'document',
-          fieldName: 'leaseDocument',
-        },
-        cuid,
+      const job = await queueLeasePdf(this.queueFactory, lease, ctx.currentuser?.sub || 'system', {
         templateType,
       });
 
@@ -1627,6 +1630,18 @@ export class LeaseService {
 
     if (!lease) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+
+    // A draft renewal is approved for signature (status change + PDF), not just flagged approved
+    if (lease.status === LeaseStatus.DRAFT_RENEWAL) {
+      const result = await this.leaseRenewalService.approveRenewalForSignature(
+        cuid,
+        leaseId,
+        currentuser
+      );
+      await this.leaseCache.invalidateLease(cuid, leaseId);
+      await this.leaseCache.invalidateLeaseLists(cuid);
+      return result;
     }
 
     if (lease.approvalStatus === 'approved' && !lease.pendingChanges) {
@@ -2064,9 +2079,10 @@ export class LeaseService {
         if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
         validationErrors['tenantInfo.id'].push('Invalid tenant ID format');
       } else {
+        // A tenant can belong to several clients; their active one need not be this client
         const user = await this.userDAO.findFirst({
           _id: new Types.ObjectId(leaseData.tenantInfo.id),
-          activecuid: cuid,
+          'cuids.cuid': cuid,
           deletedAt: null,
         });
 
@@ -2862,15 +2878,6 @@ export class LeaseService {
     return this.leaseRenewalService.autoSendRenewalsForSignature(
       this.sendLeaseForSignature.bind(this)
     );
-  }
-
-  async approveRenewalForSignature(
-    cuid: string,
-    luid: string,
-    renewalData: Partial<ILeaseFormData>,
-    ctx: IRequestContext
-  ): IPromiseReturnedData<ILeaseDocument | null> {
-    return this.leaseRenewalService.approveRenewalForSignature(cuid, luid, renewalData, ctx);
   }
 
   async renewLease(

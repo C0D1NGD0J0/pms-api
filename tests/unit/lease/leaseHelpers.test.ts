@@ -1,45 +1,42 @@
 import { ValidationRequestError } from '@shared/customErrors';
 import { ILeaseESignatureStatusEnum, LeaseStatus } from '@interfaces/lease.interface';
+import { LIFECYCLE_MANAGED_LEASE_FIELDS, IMMUTABLE_LEASE_FIELDS } from '@utils/constants';
 import {
-  resolveUploadedLeaseDocumentType,
   assignUploadedLeaseDocumentTypes,
   hasSignatureInvalidatingChanges,
-  validateLifecycleManagedFields,
   generatePendingChangesPreview,
   calculateRenewalMetadata,
   calculateNextPaymentDate,
-  validateImmutableFields,
+  rejectRestrictedFields,
   validateAllowedFields,
   hasHighImpactChanges,
   hasLeaseBeenSigned,
 } from '@services/lease/leaseHelpers';
 
 describe('Lease Helpers', () => {
-  describe('validateImmutableFields', () => {
-    it('should pass when no immutable fields updated', () => {
-      expect(() => validateImmutableFields({ internalNotes: [] })).not.toThrow();
-    });
-
-    it('should throw error for immutable field updates', () => {
-      expect(() => validateImmutableFields({ tenantId: 'new-id' } as any)).toThrow(
-        ValidationRequestError
+  describe('rejectRestrictedFields', () => {
+    const rejectImmutable = (data: object) =>
+      rejectRestrictedFields(data, IMMUTABLE_LEASE_FIELDS, 'lease.errors.immutableFields');
+    const rejectLifecycle = (data: object) =>
+      rejectRestrictedFields(
+        data,
+        LIFECYCLE_MANAGED_LEASE_FIELDS,
+        'lease.errors.lifecycleManagedFields'
       );
-    });
-  });
 
-  describe('validateLifecycleManagedFields', () => {
     it('should pass for ordinary editable fields', () => {
-      expect(() =>
-        validateLifecycleManagedFields({ fees: { rentAmount: 1000 } } as any)
-      ).not.toThrow();
+      expect(() => rejectImmutable({ internalNotes: [] })).not.toThrow();
+      expect(() => rejectLifecycle({ fees: { rentAmount: 1000 } })).not.toThrow();
+    });
+
+    it('should throw for immutable field updates', () => {
+      expect(() => rejectImmutable({ tenantId: 'new-id' })).toThrow(ValidationRequestError);
     });
 
     it.each(['status', 'approvalStatus', 'eSignature', 'signatures', 'signedDate'])(
-      'should reject %s regardless of lease status',
+      'should reject lifecycle-managed %s regardless of lease status',
       (field) => {
-        expect(() => validateLifecycleManagedFields({ [field]: 'x' } as any)).toThrow(
-          ValidationRequestError
-        );
+        expect(() => rejectLifecycle({ [field]: 'x' })).toThrow(ValidationRequestError);
       }
     );
   });
@@ -215,9 +212,10 @@ describe('hasLeaseBeenSigned — uploaded lease document type', () => {
     ).toBe(false);
   });
 
-  it('resolves uploads to lease_agreement before signing and other afterwards', () => {
-    expect(resolveUploadedLeaseDocumentType(unsigned)).toBe('lease_agreement');
-    expect(resolveUploadedLeaseDocumentType({ status: LeaseStatus.ACTIVE } as any)).toBe('other');
+  it('types untyped uploads as lease_agreement before signing', () => {
+    expect(
+      assignUploadedLeaseDocumentTypes(unsigned, [{ key: 'a' } as { documentType?: string }])
+    ).toEqual([{ key: 'a', documentType: 'lease_agreement' }]);
   });
 
   it('stamps untyped uploads and keeps an explicit type (generated agreement PDF)', () => {

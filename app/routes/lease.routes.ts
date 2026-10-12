@@ -345,22 +345,6 @@ router
     })
   );
 
-// PDF Generation Routes
-router.post(
-  '/:cuid/:luid/pdf',
-  // Generate PDF from lease JSON data using Puppeteer + EJS template
-  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
-  requirePermission(PermissionResource.LEASE, PermissionAction.READ),
-  idempotency,
-  validateRequest({
-    params: UtilsValidations.cuid.merge(UtilsValidations.luid),
-  }),
-  asyncWrapper(async (req: AppRequest, res) => {
-    const controller = req.container.resolve<LeaseController>('leaseController');
-    return controller.generateLeasePDF(req, res);
-  })
-);
-
 router.get(
   '/:cuid/:luid/pdf/download',
   // Download generated PDF (triggers browser download)

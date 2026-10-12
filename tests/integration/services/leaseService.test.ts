@@ -17,6 +17,7 @@ import {
   mockSubscriptionService,
   mockQueueFactory,
   mockEmailQueue,
+  mockQueue,
 } from '@tests/setup/externalMocks';
 import {
   PropertyUnitDAO,
@@ -165,7 +166,8 @@ const setupServices = () => {
     leaseDAO,
     userDAO,
     leaseCache,
-  });
+    queueFactory: mockQueueFactory as any,
+  } as any);
 
   const leaseDocumentService = new LeaseDocumentService({
     leaseDAO,
@@ -240,6 +242,7 @@ const setupServices = () => {
 
   return {
     leaseService,
+    leaseRenewalService,
     leaseDAO,
     userDAO,
     clientDAO,
@@ -1522,7 +1525,8 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const terminationData = {
         terminationDate: new Date('2026-10-15'), // Future mid-lease termination
-        terminationReason: 'mutual_agreement', // Reason that allows immediate termination
+        terminationReason: 'Both parties agreed to end the lease',
+        reasonCode: 'mutual_agreement', // Reason that allows immediate termination
       };
 
       const result = await leaseService.terminateLease(
@@ -2376,15 +2380,12 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       expect(updatedRenewal!.autoSendInfo?.failedAt).toBeUndefined();
     });
 
-    it('should skip auto-send for renewals without e-signature provider', async () => {
-      // Update lease to have no provider
+    it('should not flag renewals without a stored provider as no_provider (schema default applies)', async () => {
       await Lease.findByIdAndUpdate(activeLeaseForRenewal._id, {
         'renewalOptions.autoApproveRenewal': true,
         'renewalOptions.enableAutoSendForSignature': true,
-        eSignature: undefined,
       });
 
-      // Create auto-approved renewal
       const renewalResult = await leaseService.createDraftLeaseRenewal(
         testClient.cuid,
         activeLeaseForRenewal.luid,
@@ -2392,19 +2393,295 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         null
       );
 
-      // Manually update renewal to ready_for_signature without provider
+      // An `undefined` value is dropped from updates, so the provider must be unset explicitly
       await Lease.findByIdAndUpdate(renewalResult.data._id, {
         status: 'ready_for_signature',
         signingMethod: 'electronic',
-        eSignature: undefined,
+        $unset: { 'eSignature.provider': '' },
       });
 
-      // Attempt auto-send (should skip with error)
       await leaseService.autoSendRenewalsForSignature();
 
-      // Check autoSendInfo was updated
+      // Hydration fills in the 'boldsign' default once the cron selects the provider
       const updatedRenewal = await Lease.findById(renewalResult.data._id);
-      expect(updatedRenewal!.autoSendInfo?.failureReason).toBe('no_provider');
+      expect(updatedRenewal!.autoSendInfo?.failureReason).not.toBe('no_provider');
     });
+  });
+});
+
+describe('LeaseService Integration Tests - Workflow Regressions', () => {
+  let leaseService: LeaseService;
+  let leaseRenewalService: LeaseRenewalService;
+  let client: any;
+  let manager: any;
+  let tenant: any;
+  let property: any;
+  const addToPdfQueue = jest.fn();
+  const daysFromNow = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+  const managerContext = (params: Record<string, string> = {}) =>
+    ({
+      request: { params: { cuid: client.cuid, ...params } },
+      currentuser: {
+        uid: manager.uid,
+        sub: manager._id.toString(),
+        fullname: 'Mia Manager',
+        client: { cuid: client.cuid, role: ROLES.MANAGER },
+      },
+    }) as any;
+
+  const leaseDocument = () => ({
+    url: 'https://test.com/lease.pdf',
+    key: `s3-key-${Date.now()}`,
+    filename: 'lease.pdf',
+    documentType: 'lease_agreement',
+    status: 'active',
+    uploadedAt: new Date(),
+    uploadedBy: manager._id,
+  });
+
+  const createLeaseFixture = (overrides: Record<string, any> = {}): Promise<any> =>
+    Lease.create({
+      cuid: client.cuid,
+      tenantId: tenant._id,
+      property: { id: property._id, address: property.address.fullAddress },
+      duration: { startDate: daysFromNow(-60), endDate: daysFromNow(300) },
+      fees: {
+        rentAmount: 150000,
+        securityDeposit: 300000,
+        rentDueDay: 1,
+        currency: 'USD',
+        acceptedPaymentMethod: 'e-transfer',
+      },
+      status: LeaseStatus.ACTIVE,
+      approvalStatus: 'approved',
+      type: LeaseType.FIXED_TERM,
+      leaseNumber: `LEASE-${new Types.ObjectId().toString()}`,
+      createdBy: manager._id,
+      signedDate: daysFromNow(-61),
+      signingMethod: 'electronic',
+      eSignature: { status: ILeaseESignatureStatusEnum.SIGNED, provider: 'boldsign' },
+      signatures: [
+        { userId: tenant._id, signedAt: new Date(), role: 'tenant', signatureMethod: 'electronic' },
+      ],
+      leaseDocuments: [leaseDocument()],
+      ...overrides,
+    } as any);
+
+  beforeAll(async () => {
+    setupAllExternalMocks();
+    await Lease.init();
+    const services = setupServices();
+    leaseService = services.leaseService;
+    leaseRenewalService = services.leaseRenewalService;
+    (mockQueue as any).addToPdfQueue = addToPdfQueue;
+  });
+
+  afterAll(() => {
+    delete (mockQueue as any).addToPdfQueue;
+  });
+
+  beforeEach(async () => {
+    await clearTestDatabase();
+    addToPdfQueue.mockReset();
+    addToPdfQueue.mockResolvedValue({ id: 'pdf-job-1' });
+    client = await createTestClient();
+    manager = await createTestManagerUser(client.cuid, client._id);
+    tenant = await createTestTenantUser(client.cuid, client._id);
+    property = await createTestProperty(client.cuid, client._id, { propertyType: 'house' });
+  });
+
+  it('queues lease PDF generation with the lease ObjectId, not the luid', async () => {
+    const lease = await createLeaseFixture();
+
+    const result = await leaseService.queueLeasePdfGeneration(
+      lease.luid,
+      client.cuid,
+      managerContext()
+    );
+
+    expect(result.success).toBe(true);
+    expect(addToPdfQueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: expect.objectContaining({ resourceId: lease._id.toString() }),
+      })
+    );
+  });
+
+  it('approves a draft renewal for signature (audit entries pass schema validation)', async () => {
+    const original = await createLeaseFixture();
+    const renewal = await createLeaseFixture({
+      previousLeaseId: original._id,
+      status: LeaseStatus.DRAFT_RENEWAL,
+      approvalStatus: 'pending',
+      duration: { startDate: daysFromNow(301), endDate: daysFromNow(666) },
+      signingMethod: 'electronic',
+      signatures: [],
+      signedDate: undefined,
+      leaseDocuments: [],
+    });
+
+    const result = await leaseRenewalService.approveRenewalForSignature(
+      client.cuid,
+      renewal.luid,
+      managerContext().currentuser
+    );
+
+    expect(result.success).toBe(true);
+    const saved = await Lease.findById(renewal._id).lean();
+    expect(saved!.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
+    expect(saved!.approvalStatus).toBe('approved');
+    expect(saved!.lastModifiedBy!.at(-1)!.action).toBe('updated');
+    expect(addToPdfQueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: expect.objectContaining({ resourceId: renewal._id.toString() }),
+      })
+    );
+  });
+
+  it('auto-send cron reads the e-signature provider of ready renewals', async () => {
+    const original = await createLeaseFixture({
+      duration: { startDate: daysFromNow(-358), endDate: daysFromNow(7) },
+    });
+    const renewal = await createLeaseFixture({
+      previousLeaseId: original._id,
+      status: LeaseStatus.READY_FOR_SIGNATURE,
+      duration: { startDate: daysFromNow(8), endDate: daysFromNow(373) },
+      renewalOptions: { enableAutoSendForSignature: true, daysBeforeExpiryToAutoSendSignature: 14 },
+      eSignature: { status: ILeaseESignatureStatusEnum.NOT_SENT, provider: 'boldsign' },
+      signatures: [],
+      signedDate: undefined,
+    });
+    const sendForSignature = jest.fn().mockResolvedValue({ success: true });
+
+    await leaseRenewalService.autoSendRenewalsForSignature(sendForSignature);
+
+    const saved = await Lease.findById(renewal._id).lean();
+    expect(saved!.autoSendInfo?.failureReason).toBeUndefined();
+    expect(sendForSignature).toHaveBeenCalledTimes(1);
+  });
+
+  it('auto-approved renewals take the original signing method, queue their PDF and become ready for signature', async () => {
+    const original = await createLeaseFixture({
+      duration: { startDate: daysFromNow(-335), endDate: daysFromNow(30) },
+      renewalOptions: {
+        autoRenew: true,
+        autoApproveRenewal: true,
+        renewalTermMonths: 12,
+        noticePeriodDays: 60,
+        daysBeforeExpiryToGenerateRenewal: 30,
+      },
+    });
+
+    await leaseRenewalService.processAutoRenewals();
+
+    const renewal = await Lease.findOne({ previousLeaseId: original._id }).lean();
+    expect(renewal).not.toBeNull();
+    expect(renewal!.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
+    expect(renewal!.approvalStatus).toBe('approved');
+    expect(renewal!.signingMethod).toBe('electronic');
+    expect(renewal!.approvalDetails!.map((entry) => entry.action)).toEqual(['created', 'approved']);
+    expect(addToPdfQueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resource: expect.objectContaining({ resourceId: renewal!._id.toString() }),
+      })
+    );
+  });
+
+  it('applies the immediate-termination exemption from reasonCode', async () => {
+    const lease = await createLeaseFixture();
+    const terminationDate = daysFromNow(5);
+
+    await expect(
+      leaseService.terminateLease(
+        client.cuid,
+        lease.luid,
+        { terminationDate, terminationReason: 'Fire made the unit uninhabitable' },
+        managerContext()
+      )
+    ).rejects.toBeInstanceOf(ValidationRequestError);
+
+    const result = await leaseService.terminateLease(
+      client.cuid,
+      lease.luid,
+      {
+        terminationDate,
+        terminationReason: 'Fire made the unit uninhabitable',
+        reasonCode: 'emergency',
+      },
+      managerContext()
+    );
+
+    expect(result.data.status).toBe(LeaseStatus.TERMINATED);
+  });
+
+  it("records each manual signer's own identity, not the acting manager's", async () => {
+    const lease = await createLeaseFixture({
+      status: LeaseStatus.READY_FOR_SIGNATURE,
+      signingMethod: 'manual',
+      signatures: [],
+      signedDate: undefined,
+    });
+
+    await leaseService.markAsManualySigned(
+      client.cuid,
+      lease.luid,
+      [
+        { name: 'Tia Tenant', email: 'tia@test.com', role: 'tenant' },
+        { name: 'Cole CoTenant', email: 'cole@test.com', role: 'co_tenant' },
+        { name: 'Lou Landlord', email: 'lou@test.com', role: 'landlord' },
+      ],
+      manager._id.toString()
+    );
+
+    const saved = await Lease.findById(lease._id).lean();
+    const byRole = Object.fromEntries(saved!.signatures!.map((sig) => [sig.role, sig]));
+    expect(byRole.tenant.userId?.toString()).toBe(tenant._id.toString());
+    expect(byRole.co_tenant.userId).toBeUndefined();
+    expect(byRole.landlord.userId).toBeUndefined();
+    expect(byRole.tenant.signerInfo).toEqual({ name: 'Tia Tenant', email: 'tia@test.com' });
+    expect(byRole.co_tenant.coTenantInfo).toEqual(
+      expect.objectContaining({ name: 'Cole CoTenant', email: 'cole@test.com' })
+    );
+    expect(byRole.landlord.landlordInfo).toEqual(
+      expect.objectContaining({ name: 'Lou Landlord', email: 'lou@test.com' })
+    );
+  });
+
+  it('finds a tenant of this client whose active client is a different one', async () => {
+    await Property.findByIdAndUpdate(property._id, {
+      approvalStatus: 'approved',
+      owner: { type: 'company_owned' },
+      authorization: { isActive: true },
+    });
+    const multiClientTenant = await createTestUser(client.cuid, {
+      activecuid: 'OTHERCLIENT1',
+      cuids: [
+        { cuid: 'OTHERCLIENT1', roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'A' },
+        { cuid: client.cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'B' },
+      ],
+    });
+    await createTestProfile(multiClientTenant._id, client._id, { type: 'tenant' });
+
+    const result = await leaseService.createLease(
+      client.cuid,
+      {
+        tenantInfo: { id: multiClientTenant._id.toString() },
+        property: { id: property._id.toString(), address: property.address.fullAddress },
+        duration: { startDate: daysFromNow(10), endDate: daysFromNow(375) },
+        fees: {
+          rentAmount: 1500,
+          securityDeposit: 3000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+      } as any,
+      managerContext()
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data.tenantId.toString()).toBe(multiClientTenant._id.toString());
   });
 });

@@ -35,13 +35,14 @@ const makeService = () => {
   const uploadQueue = { addToUploadQueue: jest.fn() };
   const s3Service = { uploadFiles: jest.fn(), deleteFiles: jest.fn().mockResolvedValue(true) };
   const emitterService = { emit: jest.fn() };
+  const assetService = { deleteAssetsByS3Keys: jest.fn().mockResolvedValue(undefined) };
   const service = new MediaUploadService({
-    assetService: {} as any,
+    assetService: assetService as any,
     queueFactory: { getQueue: jest.fn().mockReturnValue(uploadQueue) } as any,
     s3Service: s3Service as any,
     emitterService: emitterService as any,
   });
-  return { service, s3Service, uploadQueue, emitterService };
+  return { service, s3Service, uploadQueue, emitterService, assetService };
 };
 
 const resource = {
@@ -172,6 +173,29 @@ describe('MediaUploadService.removeUploadedFiles', () => {
     ]);
 
     expect(s3Service.deleteFiles).toHaveBeenCalledWith(['payment/r.jpg']);
+  });
+});
+
+describe('MediaUploadService.removeUploadedFiles with deleteAssets', () => {
+  it('deletes the files from S3 and soft-deletes their asset records', async () => {
+    const { service, s3Service, assetService } = makeService();
+
+    await service.removeUploadedFiles([{ key: 'property/a.jpg' }, { key: undefined }], {
+      deleteAssets: true,
+    });
+
+    expect(s3Service.deleteFiles).toHaveBeenCalledWith(['property/a.jpg']);
+    expect(assetService.deleteAssetsByS3Keys).toHaveBeenCalledWith(['property/a.jpg']);
+  });
+
+  it('throws without touching asset records when S3 reports a failure', async () => {
+    const { service, s3Service, assetService } = makeService();
+    s3Service.deleteFiles.mockResolvedValueOnce(false);
+
+    await expect(
+      service.removeUploadedFiles([{ key: 'property/a.jpg' }], { deleteAssets: true })
+    ).rejects.toThrow('Failed to delete');
+    expect(assetService.deleteAssetsByS3Keys).not.toHaveBeenCalled();
   });
 });
 

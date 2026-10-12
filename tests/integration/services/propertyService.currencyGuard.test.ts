@@ -7,6 +7,7 @@ import { BadRequestError } from '@shared/customErrors';
  */
 import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyService } from '@services/property/property.service';
+import { PermissionService } from '@services/permission/permission.service';
 import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
@@ -121,6 +122,7 @@ describe('PropertyService — currency guard on country update', () => {
       mediaUploadService: mockMediaUploadService,
       geoCoderService: mockGeoCoderService,
       notificationService: mockNotificationService,
+      permissionService: new PermissionService(),
       propertyCsvProcessor: mockPropertyCsvProcessor,
       propertyApprovalService,
       propertyStatsService,

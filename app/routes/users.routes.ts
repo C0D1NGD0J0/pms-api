@@ -335,6 +335,48 @@ router.get(
   })
 );
 
+router
+  .route('/:cuid/tenants/:uid')
+  .get(
+    basicLimiter(),
+    isAuthenticated,
+    requirePermission(PermissionResource.USER, PermissionAction.READ),
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.getTenantUserInfo(req, res);
+    })
+  )
+  .patch(
+    basicLimiter(),
+    isAuthenticated,
+    requireUserPermission(PermissionAction.UPDATE),
+    diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+    scanFile,
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+      body: ClientValidations.updateTenantProfile,
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.updateTenantProfile(req, res);
+    })
+  )
+  .delete(
+    basicLimiter(),
+    isAuthenticated,
+    requirePermission(PermissionResource.USER, PermissionAction.DELETE),
+    validateRequest({
+      params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),
+    }),
+    asyncWrapper((req, res) => {
+      const userController = req.container.resolve<UserController>('userController');
+      return userController.deactivateTenant(req, res);
+    })
+  );
+
 // Login email change: self-service (own :uid) or staff acting on a tenant (the service re-checks
 // tenant-of-client). POSTing the address already pending re-sends the confirmation link.
 const EMAIL_CHANGE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
@@ -365,6 +407,21 @@ router
       return userController.cancelEmailChange(req, res);
     })
   );
+
+// Catch-all single user — must come AFTER all specific /:cuid/<literal> GET routes
+router.get(
+  '/:cuid/:uid',
+  basicLimiter(),
+  isAuthenticated,
+  requireUserPermission(PermissionAction.READ),
+  validateRequest({
+    params: UserValidations.userUidParam,
+  }),
+  asyncWrapper((req, res) => {
+    const userController = req.container.resolve<UserController>('userController');
+    return userController.getClientUserInfo(req, res);
+  })
+);
 
 router.delete(
   '/:cuid/:uid',

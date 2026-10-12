@@ -111,6 +111,12 @@ export class AuthController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
+  confirmEmailChange = async (req: Request, res: Response) => {
+    const { t: token } = req.query;
+    const data = await this.authService.confirmEmailChange(token as string);
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
   sendActivationLink = async (req: Request, res: Response) => {
     const { email } = req.body;
     const data = await this.authService.sendActivationLink(email);

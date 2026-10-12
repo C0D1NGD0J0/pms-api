@@ -42,6 +42,7 @@ import {
   hashGenerator,
   JWT_KEY_NAMES,
   createLogger,
+  hashToken,
   JOB_NAME,
 } from '@utils/index';
 
@@ -282,13 +283,7 @@ export class AuthService {
       const _userId = new Types.ObjectId();
       const clientUid = generateShortUID();
 
-      const alreadyExists = await this.userDAO.findFirst(
-        { email: signupData.email },
-        undefined,
-        undefined,
-        session
-      );
-      if (alreadyExists) {
+      if (await this.userDAO.isEmailTaken(signupData.email)) {
         throw new ValidationRequestError({
           message: t('common.errors.validationFailed'),
           errorInfo: {
@@ -817,6 +812,48 @@ export class AuthService {
       data: emailData,
       message: t('auth.success.activationEmailSent', { email: emailData.to }),
     };
+  }
+
+  /**
+   * Redeems an email-change link: one atomic write swaps the login email for the pending one, then
+   * every session is revoked (the old email may have been compromised) and the old address is told.
+   */
+  async confirmEmailChange(token: string): Promise<ISuccessReturnData> {
+    const userBeforeChange = await this.userDAO.confirmPendingEmail(hashToken(token));
+    if (!userBeforeChange?.pendingEmail) {
+      throw new BadRequestError({ message: t('user.emailChange.invalidToken') });
+    }
+
+    const userId = userBeforeChange._id.toString();
+    const previousEmail = userBeforeChange.email;
+    const newEmail = userBeforeChange.pendingEmail;
+
+    const cacheResults = await Promise.allSettled(
+      (userBeforeChange.cuids ?? []).flatMap((connection) => [
+        this.authCache.invalidateUserSession(userId, connection.cuid),
+        this.userCache.invalidateUserDetail(connection.cuid, userBeforeChange.uid),
+      ])
+    );
+    if (cacheResults.some((result) => result.status === 'rejected')) {
+      this.log.warn({ userId }, 'Some sessions could not be invalidated after email change');
+    }
+
+    const profile = await this.profileDAO.getProfileByUserId(userId).catch(() => null);
+    const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
+    emailQueue.addToEmailQueue(JOB_NAME.ACCOUNT_ACTIVATION_JOB, {
+      to: previousEmail,
+      subject: t('user.emailChange.completedSubject'),
+      emailType: MailType.EMAIL_CHANGE_NOTICE,
+      data: {
+        fullname: profile?.fullname || previousEmail,
+        newEmail,
+        stage: 'completed',
+        changedAt: dayjs().format('MMMM D, YYYY [at] h:mm A'),
+      },
+    });
+
+    this.log.info({ userId, uid: userBeforeChange.uid }, 'Login email changed');
+    return { success: true, data: null, message: t('user.emailChange.confirmed') };
   }
 
   async forgotPassword(email: string): Promise<ISuccessReturnData> {

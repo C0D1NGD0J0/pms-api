@@ -1,0 +1,12 @@
+Confirm Your New Email
+======================
+
+Hi <%= fullname %>,
+
+<% if (typeof requestedByName !== 'undefined' && requestedByName) { %><%= requestedByName %> asked to change the sign-in email on your PropertyDesk account to <%= newEmail %>.<% } else { %>You asked to change the sign-in email on your PropertyDesk account to <%= newEmail %>.<% } %>
+
+Confirm this address to finish the change. Until you do, you'll keep signing in with your current email.
+
+Confirm here: <%= confirmUrl %>
+
+This link expires in <%= expiresInHours %> hours. If you didn't expect this email, you can safely ignore it — nothing will change.

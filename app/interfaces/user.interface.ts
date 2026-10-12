@@ -178,7 +178,16 @@ export interface IVendorDetailInfo {
 }
 
 export interface IClientTenantDetails {
-  profile: Pick<
+  profile: {
+    pendingEmail?: string | null;
+    userType: 'tenant';
+    location?: string;
+    dob?: Date | string | null;
+    headline?: string;
+    bio?: string;
+    settings?: Record<string, any>;
+    policies?: Record<string, any>;
+  } & Pick<
     IBaseUserProfile,
     | 'firstName'
     | 'lastName'
@@ -191,15 +200,7 @@ export interface IClientTenantDetails {
     | 'uid'
     | 'id'
     | 'isActive'
-  > & {
-    userType: 'tenant';
-    location?: string;
-    dob?: Date | string | null;
-    headline?: string;
-    bio?: string;
-    settings?: Record<string, any>;
-    policies?: Record<string, any>;
-  };
+  >;
   tenantMetrics?: {
     onTimePaymentRate: number;
     averagePaymentDelay: number;
@@ -244,6 +245,31 @@ export interface IEmployeeDetailInfo {
   tenure: string;
 }
 
+export interface IUserDetailResponse {
+  profile: Pick<
+    IBaseUserProfile,
+    | 'firstName'
+    | 'lastName'
+    | 'fullName'
+    | 'avatar'
+    | 'email'
+    | 'phoneNumber'
+    | 'roles'
+    | 'uid'
+    | 'id'
+    | 'isActive'
+  > & {
+    contact: Pick<IBaseContactInfo, 'email'> & { phone: string };
+    pendingEmail?: string | null;
+    userType: UserType;
+    about: string;
+  };
+  employeeInfo?: IEmployeeDetailInfo;
+  tenantInfo?: ITenantDetailInfo;
+  vendorInfo?: IVendorDetailInfo;
+  status: UserStatus;
+}
+
 export interface ITenantStats {
   backgroundCheckDistribution: {
     notRequired: number;
@@ -269,28 +295,19 @@ export interface ITenantStats {
   total: number;
 }
 
-export interface IUserDetailResponse {
-  profile: Pick<
-    IBaseUserProfile,
-    | 'firstName'
-    | 'lastName'
-    | 'fullName'
-    | 'avatar'
-    | 'email'
-    | 'phoneNumber'
-    | 'roles'
-    | 'uid'
-    | 'id'
-    | 'isActive'
-  > & {
-    contact: Pick<IBaseContactInfo, 'email'> & { phone: string };
-    userType: UserType;
-    about: string;
-  };
-  employeeInfo?: IEmployeeDetailInfo;
-  tenantInfo?: ITenantDetailInfo;
-  vendorInfo?: IVendorDetailInfo;
-  status: UserStatus;
+export interface IUser {
+  passwordResetTokenExpiresAt: Date | number | null;
+  activationTokenExpiresAt: Date | number | null;
+  emailChangeTokenExpiresAt?: Date | null;
+  passkeys?: IPasskeyCredential[];
+  emailChangeRequestedBy?: string;
+  passwordResetToken?: string;
+  emailChangeToken?: string;
+  activationToken?: string;
+  consent?: IUserConsent;
+  pendingEmail?: string;
+  password: string;
+  email: string;
 }
 
 export interface IUserDocument extends Document, IUser {
@@ -387,17 +404,6 @@ export type ISignupData = {
   email: string;
   lang: string;
 };
-
-export interface IUser {
-  passwordResetTokenExpiresAt: Date | number | null;
-  activationTokenExpiresAt: Date | number | null;
-  passkeys?: IPasskeyCredential[];
-  passwordResetToken?: string;
-  activationToken?: string;
-  consent?: IUserConsent;
-  password: string;
-  email: string;
-}
 
 export interface IIdentificationType {
   identityVerification?: {

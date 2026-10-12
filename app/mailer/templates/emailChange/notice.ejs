@@ -1,0 +1,23 @@
+<table role="presentation" width="100%">
+  <tr>
+    <td class="content">
+      <p>Hi <strong><%= fullname %></strong>,</p>
+      <% if (stage === 'completed') { %>
+      <p>
+        The sign-in email on your PropertyDesk account was changed to <strong><%= newEmail %></strong> on <strong><%= changedAt %></strong>. From now on, sign in with the new address.
+      </p>
+      <p>
+        You've been signed out of your active sessions as a precaution.
+      </p>
+      <% } else { %>
+      <p>
+        <% if (typeof requestedByName !== 'undefined' && requestedByName) { %><strong><%= requestedByName %></strong> requested<% } else { %>Someone requested<% } %> a change of the sign-in email on your PropertyDesk account to <strong><%= newEmail %></strong>.
+      </p>
+      <p>
+        Nothing changes until the new address is confirmed. You can keep signing in with this email in the meantime.
+      </p>
+      <% } %>
+      <%- include("../shared/html/_notice", { text: '<strong>Wasn\'t you?</strong> Contact our support team at <a href="mailto:support@propertydesk.live" style="color: #92400e;">support@propertydesk.live</a> right away.', type: 'warning' }) %>
+    </td>
+  </tr>
+</table>

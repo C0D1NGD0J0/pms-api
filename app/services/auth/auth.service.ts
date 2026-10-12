@@ -474,10 +474,15 @@ export class AuthService {
     }
 
     // Step 1: email only. Passkey sign-in uses the discoverable flow (no email), and SMS
-    // codes are sent only when the user asks for one.
+    // codes are sent only when the user asks for one. smsLogin is the platform-wide flag,
+    // never per account, so the response is identical for every email.
     return {
       success: true,
-      data: { step: 'password_required', loginType: 'password' },
+      data: {
+        step: 'password_required',
+        loginType: 'password',
+        smsLogin: this.featureFlagService.isEnabled(FeatureFlag.SMS),
+      },
       message: t('auth.success.loginTypeResolved'),
     };
   }

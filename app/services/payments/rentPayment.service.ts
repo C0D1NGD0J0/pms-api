@@ -1346,7 +1346,7 @@ export class RentPaymentService {
    * tenant charges it later via payCharge. Returns the PaymentIntent id stored as
    * gatewayPaymentId.
    */
-  async createTenantCharge(opts: {
+  private async createTenantCharge(opts: {
     tenantCustomerId: string;
     connectedAccountId: string;
     applicationFee: number;

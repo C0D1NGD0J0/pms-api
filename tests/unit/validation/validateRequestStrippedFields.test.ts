@@ -40,7 +40,8 @@ describe('validateRequest', () => {
 
   it('strips undeclared body fields and warns with their paths, never the values', async () => {
     envVariables.SERVER.ENV = 'dev';
-    const body = { email: 'a@b.com', password: 'Secret1!', address: { city: 'T', unit: '4B' } };
+    const strippedValue = 'redacted-test-value-not-a-secret';
+    const body = { email: 'a@b.com', password: strippedValue, address: { city: 'T', unit: '4B' } };
     const { req, next } = await run({ body: bodySchema }, { body });
 
     expect(next).toHaveBeenCalledWith();
@@ -49,7 +50,7 @@ describe('validateRequest', () => {
       route: 'POST /api/v1/properties/abc123',
       strippedPaths: ['body.password', 'body.address.unit'],
     });
-    expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain('Secret1!');
+    expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain(strippedValue);
   });
 
   it('does not warn in production', async () => {

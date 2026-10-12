@@ -9,7 +9,13 @@ jest.mock('@shared/middlewares', () => {
   return {
     ...actual,
     isAuthenticated: next,
-    basicLimiter: () => next,
+    // Return a distinct middleware per route tagged with the limiter config so tests can assert
+    // which routes carry the stricter email-change window.
+    basicLimiter: (options?: unknown) => {
+      const limiter = (_req: unknown, _res: unknown, done: () => void) => done();
+      (limiter as any).limitOptions = options;
+      return limiter;
+    },
   };
 });
 
@@ -124,6 +130,26 @@ describe('email change routes', () => {
         expect(res.body.params.uid).toBe(`${role}-uid`);
 
         expect((await request(app).delete(ownUrl).set('x-test-role', role)).status).toBe(200);
+      }
+    );
+  });
+
+  describe('rate limiting', () => {
+    const EMAIL_CHANGE_PATH = '/:cuid/users/:uid/email-change';
+    const EMAIL_CHANGE_LIMIT = { max: 5, windowMs: 15 * 60 * 1000 };
+
+    const limiterOptionsFor = (path: string, method: string) => {
+      const route = (usersRoutes as any).stack.find(
+        (layer: any) => layer.route?.path === path
+      )?.route;
+      const handler = route?.stack.find((layer: any) => layer.method === method)?.handle;
+      return handler?.limitOptions;
+    };
+
+    it.each(['post', 'delete'])(
+      'applies the stricter email-change window to the %s handler',
+      (method) => {
+        expect(limiterOptionsFor(EMAIL_CHANGE_PATH, method)).toEqual(EMAIL_CHANGE_LIMIT);
       }
     );
   });

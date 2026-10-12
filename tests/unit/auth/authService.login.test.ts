@@ -115,7 +115,11 @@ describe('AuthService.login', () => {
 
       const result = await service.login({ email: 'unknown@example.com' });
 
-      expect(result.data).toEqual({ step: 'password_required', loginType: 'password' });
+      expect(result.data).toEqual({
+        step: 'password_required',
+        loginType: 'password',
+        smsLogin: true,
+      });
       expect(getActiveUserByEmail).not.toHaveBeenCalled();
       expect(sendOTP).not.toHaveBeenCalled();
     });
@@ -131,6 +135,22 @@ describe('AuthService.login', () => {
 
       expect(known).toEqual(unknown);
     });
+
+    it.each([true, false])(
+      'reports platform-wide SMS sign-in (%s) without looking at the account',
+      async (enabled) => {
+        const getActiveUserByEmail = jest.fn();
+        const service = makeService({
+          userDAO: { getActiveUserByEmail },
+          featureFlagService: { isEnabled: jest.fn().mockReturnValue(enabled) },
+        });
+
+        const result = await service.login({ email: 'test@example.com' });
+
+        expect(result.data.smsLogin).toBe(enabled);
+        expect(getActiveUserByEmail).not.toHaveBeenCalled();
+      }
+    );
   });
 
   describe('Requesting an SMS code', () => {

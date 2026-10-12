@@ -39,6 +39,7 @@ export class AuthController {
         msg: result.message,
         step: result.data.step,
         loginType: result.data.loginType,
+        smsLogin: result.data.smsLogin,
       });
     }
 

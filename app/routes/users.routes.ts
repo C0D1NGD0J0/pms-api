@@ -396,7 +396,7 @@ router
     })
   )
   .delete(
-    basicLimiter(),
+    basicLimiter(EMAIL_CHANGE_LIMIT),
     isAuthenticated,
     requireUserPermission(PermissionAction.UPDATE),
     validateRequest({

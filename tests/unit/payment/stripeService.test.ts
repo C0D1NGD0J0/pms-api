@@ -397,7 +397,15 @@ describe('StripeService instant payouts', () => {
   const makeService = () => {
     const service = new StripeService();
     const stripe = {
-      payouts: { create: jest.fn().mockResolvedValue({ id: 'po_1' }) },
+      payouts: {
+        create: jest.fn().mockResolvedValue({
+          id: 'po_1',
+          amount: 97500,
+          currency: 'usd',
+          application_fee_amount: 2500,
+          arrival_date: 1760000000,
+        }),
+      },
       applicationFees: { createRefund: jest.fn().mockResolvedValue({}) },
     };
     (service as any).stripe = stripe;
@@ -407,7 +415,7 @@ describe('StripeService instant payouts', () => {
   it('creates an instant payout on the connected account with the idempotency key', async () => {
     const { service, stripe } = makeService();
 
-    await service.createInstantPayout('acct_1', {
+    const result = await service.createInstantPayout('acct_1', {
       amount: 97500,
       currency: 'usd',
       destination: 'card_1',
@@ -418,6 +426,13 @@ describe('StripeService instant payouts', () => {
       { amount: 97500, currency: 'usd', method: 'instant', destination: 'card_1' },
       { stripeAccount: 'acct_1', idempotencyKey: 'instant-payout:acct_1:k1' }
     );
+    expect(result).toEqual({
+      payoutId: 'po_1',
+      amount: 97500,
+      currency: 'usd',
+      applicationFeeAmount: 2500,
+      arrivalDate: new Date(1760000000 * 1000),
+    });
   });
 
   it('refunds an application fee in full from the platform account', async () => {

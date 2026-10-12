@@ -183,7 +183,14 @@ describe('PaymentGatewayService - instant payouts', () => {
   };
 
   it('creates the instant payout through the provider', async () => {
-    const stripeService = { createInstantPayout: jest.fn().mockResolvedValue({ id: 'po_1' }) };
+    const payout = {
+      payoutId: 'po_1',
+      amount: 97500,
+      currency: 'usd',
+      applicationFeeAmount: 2500,
+      arrivalDate: new Date(),
+    };
+    const stripeService = { createInstantPayout: jest.fn().mockResolvedValue(payout) };
     const gateway = makeGateway(stripeService);
 
     const result = await gateway.createInstantPayout(
@@ -193,7 +200,7 @@ describe('PaymentGatewayService - instant payouts', () => {
     );
 
     expect(stripeService.createInstantPayout).toHaveBeenCalledWith('acct_1', payoutInput);
-    expect(result).toEqual({ success: true, data: { id: 'po_1' } });
+    expect(result).toEqual({ success: true, data: payout });
   });
 
   it('returns the Stripe error message instead of throwing', async () => {

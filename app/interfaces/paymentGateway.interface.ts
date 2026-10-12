@@ -76,6 +76,10 @@ export interface IPaymentProvider {
     interval: 'manual' | 'weekly',
     weeklyAnchor?: string
   ): Promise<void>;
+  createInstantPayout(
+    accountId: string,
+    input: ICreateInstantPayoutInput
+  ): Promise<IInstantPayoutResponse>;
   createIdentityVerificationSession(
     input: ICreateIdentitySessionInput
   ): Promise<IIdentitySessionResponse>;
@@ -86,6 +90,7 @@ export interface IPaymentProvider {
   retrieveIdentityVerificationSession(sessionId: string): Promise<IIdentityVerificationReport>;
   createPaymentIntent(input: ICreateTenantChargeInput): Promise<ICreateTenantChargeResponse>;
   createConnectAccount(input: ICreateConnectAccountInput): Promise<IConnectAccountResponse>;
+  refundApplicationFee(applicationFeeId: string, idempotencyKey: string): Promise<void>;
   getCustomerInvoices(customerId: string, limit?: number): Promise<Stripe.Invoice[]>;
   /** Total reversed from a transfer by reversals tagged with this dispute ID. */
   getDisputeReversedAmount(transferId: string, disputeId: string): Promise<number>;
@@ -180,6 +185,23 @@ export interface IRefundParams {
   chargeId: string;
   /** Free-text explanation, stored in the refund's metadata. */
   note?: string;
+}
+
+export interface IInstantPayoutResponse {
+  /** Platform fee the provider took on the payout, in cents */
+  applicationFeeAmount: number | null;
+  arrivalDate: Date;
+  currency: string;
+  payoutId: string;
+  amount: number;
+}
+
+export interface ICreateInstantPayoutInput {
+  idempotencyKey: string;
+  destination?: string;
+  currency: string;
+  /** Net amount in cents (after the platform's instant payout fee) */
+  amount: number;
 }
 
 export interface IConnectAccountResponse {

@@ -477,22 +477,20 @@ export class PayoutAccountService {
         });
       }
 
-      const payout = payoutResult.data as IStripePayoutEntry;
+      const payout = payoutResult.data;
       this.log.info(
-        { cuid, actorId, payoutId: payout.id, amount: quote.net, fee: quote.fee },
+        { cuid, actorId, payoutId: payout.payoutId, amount: quote.net, fee: quote.fee },
         'Instant payout requested'
       );
 
       return {
         success: true,
         data: {
-          payoutId: payout.id,
+          payoutId: payout.payoutId,
           amount: payout.amount,
-          fee: payout.application_fee_amount ?? quote.fee,
+          fee: payout.applicationFeeAmount ?? quote.fee,
           currency: payout.currency,
-          arrivalDate: dayjs(payout.arrival_date * 1000)
-            .toDate()
-            .toISOString(),
+          arrivalDate: payout.arrivalDate.toISOString(),
         },
         message: t('payment.success.instantPayoutRequested'),
       };

@@ -8,11 +8,13 @@ import {
   ICreateIdentitySessionInput,
   ICreateTenantChargeResponse,
   ICreateConnectAccountInput,
+  ICreateInstantPayoutInput,
   IIdentitySessionResponse,
   ICreateTenantChargeInput,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
   StripePaymentMethodType,
+  IInstantPayoutResponse,
   ICreateCustomerInput,
   ICreateCheckoutInput,
   ITenantChargeDetails,
@@ -576,21 +578,22 @@ export class PaymentGatewayService {
   async createInstantPayout(
     provider: IPaymentGatewayProvider,
     accountId: string,
-    input: { amount: number; currency: string; destination?: string; idempotencyKey: string }
-  ): IPromiseReturnedData<any> {
+    input: ICreateInstantPayoutInput
+  ): IPromiseReturnedData<IInstantPayoutResponse | null> {
     try {
       const providerInstance = this.getProvider(provider);
-      if (!('createInstantPayout' in providerInstance)) {
-        throw new Error(`Provider ${provider} does not support instant payouts`);
-      }
-      const payout = await (providerInstance as any).createInstantPayout(accountId, input);
+      const payout = await providerInstance.createInstantPayout(accountId, input);
       return { success: true, data: payout };
     } catch (error) {
       this.log.error({ error, provider, accountId }, 'Error creating instant payout');
+      // Provider errors (e.g. card not eligible, daily limit reached) are shown to the landlord
       return {
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : 'Failed to create instant payout',
+        message:
+          error instanceof CustomError
+            ? error.message
+            : (error as Error)?.message || 'Failed to create instant payout',
       };
     }
   }
@@ -602,17 +605,17 @@ export class PaymentGatewayService {
   ): IPromiseReturnedData<null> {
     try {
       const providerInstance = this.getProvider(provider);
-      if (!('refundApplicationFee' in providerInstance)) {
-        throw new Error(`Provider ${provider} does not support application fee refunds`);
-      }
-      await (providerInstance as any).refundApplicationFee(applicationFeeId, idempotencyKey);
+      await providerInstance.refundApplicationFee(applicationFeeId, idempotencyKey);
       return { success: true, data: null };
     } catch (error) {
       this.log.error({ error, provider, applicationFeeId }, 'Error refunding application fee');
       return {
         success: false,
         data: null,
-        message: error instanceof Error ? error.message : 'Failed to refund application fee',
+        message:
+          error instanceof CustomError
+            ? error.message
+            : (error as Error)?.message || 'Failed to refund application fee',
       };
     }
   }

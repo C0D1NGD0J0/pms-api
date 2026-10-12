@@ -8,11 +8,13 @@ import {
   ICreateIdentitySessionInput,
   ICreateTenantChargeResponse,
   ICreateConnectAccountInput,
+  ICreateInstantPayoutInput,
   IIdentitySessionResponse,
   ICreateTenantChargeInput,
   IConnectAccountResponse,
   IOnboardingLinkResponse,
   StripePaymentMethodType,
+  IInstantPayoutResponse,
   ICreateCheckoutInput,
   ICreateCustomerInput,
   ITenantChargeDetails,
@@ -715,10 +717,10 @@ export class StripeService implements IPaymentProvider {
    */
   async createInstantPayout(
     accountId: string,
-    input: { amount: number; currency: string; destination?: string; idempotencyKey: string }
-  ): Promise<Stripe.Payout> {
+    input: ICreateInstantPayoutInput
+  ): Promise<IInstantPayoutResponse> {
     try {
-      return await this.stripe.payouts.create(
+      const payout = await this.stripe.payouts.create(
         {
           amount: input.amount,
           currency: input.currency,
@@ -727,6 +729,13 @@ export class StripeService implements IPaymentProvider {
         },
         { stripeAccount: accountId, idempotencyKey: input.idempotencyKey }
       );
+      return {
+        payoutId: payout.id,
+        amount: payout.amount,
+        currency: payout.currency,
+        applicationFeeAmount: payout.application_fee_amount ?? null,
+        arrivalDate: new Date(payout.arrival_date * 1000),
+      };
     } catch (error) {
       this.log.error({ error, accountId }, 'Error creating instant payout');
       throw error;

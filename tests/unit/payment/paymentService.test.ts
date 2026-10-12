@@ -3270,11 +3270,11 @@ describe('PaymentService - instant payouts', () => {
     mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
       success: true,
       data: {
-        id: 'po_instant_1',
+        payoutId: 'po_instant_1',
         amount: 97500,
         currency: 'usd',
-        application_fee_amount: 2500,
-        arrival_date: 1760000000,
+        applicationFeeAmount: 2500,
+        arrivalDate: new Date(1760000000 * 1000),
       },
     } as any);
 
@@ -3312,11 +3312,11 @@ describe('PaymentService - instant payouts', () => {
     mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
       success: true,
       data: {
-        id: 'po_capped',
+        payoutId: 'po_capped',
         amount: 999900,
         currency: 'usd',
-        application_fee_amount: 25638,
-        arrival_date: 1760000000,
+        applicationFeeAmount: 25638,
+        arrivalDate: new Date(1760000000 * 1000),
       },
     } as any);
 

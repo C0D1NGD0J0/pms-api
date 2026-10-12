@@ -37,6 +37,11 @@ export class GuestPassController {
     return res.status(200).json(result);
   };
 
+  getCheckInProperties = async (req: AppRequest, res: Response) => {
+    const result = await this.guestPassService.getCheckInProperties(req.context);
+    return res.status(200).json(result);
+  };
+
   validateCode = async (req: AppRequest, res: Response) => {
     const result = await this.guestPassService.validateCode(req.context, req.body);
     return res.status(200).json(result);

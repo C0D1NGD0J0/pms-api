@@ -12,10 +12,7 @@ import {
 } from '@interfaces/events.interface';
 
 import { INotificationContext } from './notification.types';
-import { notifyAnnouncement } from './notification.helpers';
-
-const SECURITY_DEPARTMENTS = ['security'] as const;
-const STAFF_ROLES = ['staff'] as const;
+import { notifyAnnouncement, MGMT_ROLES } from './notification.helpers';
 
 export async function handleGuestPassCreated(
   ctx: INotificationContext,
@@ -72,17 +69,16 @@ export async function handleGuestPassCreated(
         });
       }
     } else {
-      // Fallback: broadcast to all security staff in cuid
+      // No security staff assigned to the property: the account's managers handle the visitor
       await notifyAnnouncement(
         ctx,
         cuid,
         NotificationTypeEnum.GUESTPASS,
         'guestPass.created' as any,
         { visitorName, propertyName },
-        STAFF_ROLES,
-        { vpuid, propertyId, visitorName, targetDepartment: 'security' },
-        NotificationPriorityEnum.HIGH,
-        SECURITY_DEPARTMENTS
+        MGMT_ROLES,
+        { vpuid, propertyId, visitorName },
+        NotificationPriorityEnum.HIGH
       );
     }
 
@@ -95,14 +91,9 @@ export async function handleGuestPassCreated(
         )
       );
     } else {
-      await ctx.sseService.broadcastToClient(
-        cuid,
-        liveEvent,
-        'guest-pass-created',
-        undefined,
-        [...STAFF_ROLES],
-        [...SECURITY_DEPARTMENTS]
-      );
+      await ctx.sseService.broadcastToClient(cuid, liveEvent, 'guest-pass-created', undefined, [
+        ...MGMT_ROLES,
+      ]);
     }
   } catch (err) {
     ctx.log.error({ err, vpuid, cuid }, 'Failed to handle guest pass created notification');
@@ -164,10 +155,9 @@ export async function handleGuestPassRevoked(
         NotificationTypeEnum.GUESTPASS,
         'guestPass.revoked' as any,
         { visitorName: pass.visitorInfo.name, propertyName },
-        STAFF_ROLES,
-        { vpuid, propertyId: pass.propertyId.toString(), revokedBy, targetDepartment: 'security' },
-        NotificationPriorityEnum.MEDIUM,
-        SECURITY_DEPARTMENTS
+        MGMT_ROLES,
+        { vpuid, propertyId: pass.propertyId.toString(), revokedBy },
+        NotificationPriorityEnum.MEDIUM
       );
     }
 

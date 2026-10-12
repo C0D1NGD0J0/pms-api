@@ -168,3 +168,8 @@ export interface IValidateGuestPassRequest {
   propertyId: string;
   code: string;
 }
+
+export interface IGuestPassCheckInProperty {
+  name: string;
+  pid: string;
+}

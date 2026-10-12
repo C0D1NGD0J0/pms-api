@@ -52,6 +52,21 @@ router.get(
   })
 );
 
+// Properties the caller can check visitors in at (the validate dropdown)
+router.get(
+  '/:cuid/properties',
+  basicLimiter(),
+  requirePermission(PermissionResource.GUEST_PASS, PermissionAction.UPDATE),
+  requireActiveTenant('guestPass'),
+  subscriptionEntitlements,
+  requireFeature('guestPassService'),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<GuestPassController>('guestPassController');
+    return controller.getCheckInProperties(req, res);
+  })
+);
+
 router.get(
   '/:cuid/unacknowledged-count',
   basicLimiter(),

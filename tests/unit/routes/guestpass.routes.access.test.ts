@@ -53,6 +53,9 @@ const mockController = {
   getUnacknowledgedCount: jest.fn((req: Request, res: Response) =>
     res.status(200).json({ query: req.query })
   ),
+  getExpectedVisitors: jest.fn((_req: Request, res: Response) => res.status(200).json({})),
+  getMyPasses: jest.fn((_req: Request, res: Response) => res.status(200).json({})),
+  getCheckInProperties: jest.fn((_req: Request, res: Response) => res.status(200).json({})),
 };
 
 const permissionService = new PermissionService();
@@ -336,5 +339,73 @@ describe('guest pass routes — DELETE /:cuid/:vpuid (revoke) reason', () => {
     }).send({ reason: 'A'.repeat(501) });
 
     expect(res.status).toBe(422);
+  });
+});
+
+// Only the security department holds guest_pass grants among staff (:assigned — the service
+// narrows to their assigned properties); base staff and other departments are refused outright.
+describe('guest pass routes — staff department access control', () => {
+  beforeEach(() => jest.clearAllMocks());
+  const PROPERTY_ID = '64b7f0c2a1b2c3d4e5f60718';
+
+  const staffRequests = () => [
+    request(app).get(`/api/v1/guest-passes/${CUID}`),
+    request(app).get(`/api/v1/guest-passes/${CUID}/stats`),
+    request(app).get(`/api/v1/guest-passes/${CUID}/expected`),
+    request(app).get(`/api/v1/guest-passes/${CUID}/properties`),
+    request(app).get(`/api/v1/guest-passes/${CUID}/unacknowledged-count`),
+    request(app).get(`/api/v1/guest-passes/${CUID}/property/${PROPERTY_ID}/unacknowledged`),
+    request(app).get(`/api/v1/guest-passes/${CUID}/${VPUID}`),
+    request(app).patch(`/api/v1/guest-passes/${CUID}/${VPUID}/acknowledge`),
+    request(app)
+      .post(`/api/v1/guest-passes/${CUID}/validate`)
+      .send({ code: '123456', propertyId: 'PID123ABCDEF' }),
+    request(app)
+      .post(`/api/v1/guest-passes/${CUID}/bulk-acknowledge`)
+      .send({ passIds: [VPUID] }),
+  ];
+
+  it('lets security staff reach every read and check-in route', async () => {
+    for (const req of staffRequests()) {
+      const res = await asRole(req, { role: ROLES.STAFF, department: 'security' });
+      expect(res.status).toBe(200);
+    }
+  });
+
+  it.each([undefined, 'operations', 'management', 'maintenance', 'accounting'])(
+    'forbids staff with department %s',
+    async (department) => {
+      for (const req of staffRequests()) {
+        const res = await asRole(req, { role: ROLES.STAFF, department });
+        expect(res.status).toBe(403);
+      }
+    }
+  );
+
+  it('serves the check-in property list to managers and security, not tenants or vendors', async () => {
+    const allowed = [{ role: ROLES.MANAGER }, { role: ROLES.STAFF, department: 'security' }];
+    for (const as of allowed) {
+      const res = await asRole(request(app).get(`/api/v1/guest-passes/${CUID}/properties`), as);
+      expect(res.status).toBe(200);
+    }
+    expect(mockController.getCheckInProperties).toHaveBeenCalledTimes(2);
+    expect(mockController.getPass).not.toHaveBeenCalled();
+
+    for (const role of [ROLES.TENANT, ROLES.VENDOR]) {
+      const res = await asRole(request(app).get(`/api/v1/guest-passes/${CUID}/properties`), {
+        role,
+      });
+      expect(res.status).toBe(403);
+    }
+  });
+
+  it('forbids security staff from revoking a pass', async () => {
+    const res = await asRole(request(app).delete(`/api/v1/guest-passes/${CUID}/${VPUID}`), {
+      role: ROLES.STAFF,
+      department: 'security',
+    });
+
+    expect(res.status).toBe(403);
+    expect(mockController.revokePass).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,11 @@ export interface IGuestPassDAO {
     propertyId?: string,
     visibilityFilter?: QueryFilter<IGuestPassDocument>
   ): Promise<number>;
+  findByCode(
+    code: string,
+    cuid: string,
+    visibilityFilter?: QueryFilter<IGuestPassDocument>
+  ): Promise<IGuestPassDocument | null>;
   markAsUsed(
     id: string,
     cuid: string,
@@ -41,6 +46,5 @@ export interface IGuestPassDAO {
     propertyId?: string | string[],
     createdBy?: string
   ): Promise<IGuestPassStats>;
-  findByCode(code: string, cuid: string): Promise<IGuestPassDocument | null>;
   expireOldPasses(cuid?: string): Promise<number>;
 }

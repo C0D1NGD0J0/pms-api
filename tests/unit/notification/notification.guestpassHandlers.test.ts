@@ -52,21 +52,37 @@ describe('handleGuestPassCreated live event targeting', () => {
       'guest-pass-created'
     );
     expect(ctx.sseService.broadcastToClient).not.toHaveBeenCalled();
+    expect(ctx.createNotification).toHaveBeenCalledTimes(1);
+    expect(ctx.createNotification.mock.calls[0][2]).toMatchObject({
+      recipient: securityGuardId.toString(),
+      recipientType: 'individual',
+    });
   });
 
-  it('falls back to security-department staff, not everyone in the client', async () => {
-    const ctx = buildCtx([]);
+  it.each([
+    ['no staff are assigned', []],
+    ['only non-security staff are assigned', [maintenanceStaffId]],
+  ])(
+    'falls back to the account managers, not every security guard, when %s',
+    async (_case, assigned) => {
+      const ctx = buildCtx(assigned);
 
-    await handleGuestPassCreated(ctx, payload);
+      await handleGuestPassCreated(ctx, payload);
 
-    expect(ctx.sseService.sendToUser).not.toHaveBeenCalled();
-    expect(ctx.sseService.broadcastToClient).toHaveBeenCalledWith(
-      CUID,
-      expect.objectContaining({ vpuid: payload.vpuid }),
-      'guest-pass-created',
-      undefined,
-      ['staff'],
-      ['security']
-    );
-  });
+      expect(ctx.sseService.sendToUser).not.toHaveBeenCalled();
+      expect(ctx.sseService.broadcastToClient).toHaveBeenCalledWith(
+        CUID,
+        expect.objectContaining({ vpuid: payload.vpuid }),
+        'guest-pass-created',
+        undefined,
+        ['super-admin', 'admin', 'manager']
+      );
+      const announcement = ctx.createNotification.mock.calls[0][2];
+      expect(announcement).toMatchObject({
+        recipientType: 'announcement',
+        targetRoles: ['super-admin', 'admin', 'manager'],
+      });
+      expect(announcement).not.toHaveProperty('targetDepartments');
+    }
+  );
 });

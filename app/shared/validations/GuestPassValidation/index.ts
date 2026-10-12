@@ -1,20 +1,11 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
 import { GuestPassStatus } from '@interfaces/index';
 
-const objectId = z.string().refine((val) => Types.ObjectId.isValid(val), {
-  message: 'Must be a valid ID',
-});
+import { objectIdString, optionalBlank, phoneNumber } from '../UtilsValidation';
+
 const statuses = Object.values(GuestPassStatus) as [string, ...string[]];
-// pid/puid as sent by the UI (a Mongo _id is also accepted by the service)
+// pid / puid
 const resourceId = z.string().trim().min(1).max(64);
-// Form inputs left blank arrive as "" — treat them as not provided
-const blankToUndefined = (value: unknown) => (value === '' ? undefined : value);
-const phoneNumber = z
-  .string()
-  .trim()
-  .max(20, 'Phone number is too long')
-  .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format');
 const vpuid = z
   .string()
   .min(10, 'Visitor pass ID is corrupted')
@@ -24,20 +15,20 @@ export const GuestPassValidations = {
   createPass: z
     .object({
       propertyId: resourceId.describe('Property ID is missing or invalid'),
-      unitId: z.preprocess(blankToUndefined, resourceId.optional()),
+      unitId: optionalBlank(resourceId),
       visitorName: z.string().min(1, 'Visitor name is required').max(100),
-      visitorPhone: z.preprocess(blankToUndefined, z.string().optional()),
-      visitorEmail: z.preprocess(blankToUndefined, z.string().email('Invalid email').optional()),
-      purpose: z.preprocess(blankToUndefined, z.string().trim().max(200).optional()),
+      visitorPhone: optionalBlank(z.string()),
+      visitorEmail: optionalBlank(z.string().email('Invalid email')),
+      purpose: optionalBlank(z.string().trim().max(200)),
       // GuestPass model caps expiryMinutes at 60
       expiryMinutes: z.coerce.number().int().min(15).max(60).default(30),
       sendViaSms: z.boolean(),
       sendViaEmail: z.boolean(),
       // Host's note for security — visible to the host and to staff/security for the property
-      hostNotes: z.preprocess(blankToUndefined, z.string().trim().max(500).optional()),
+      hostNotes: optionalBlank(z.string().trim().max(500)),
       // Host the visitor is coming to see, when staff issue the pass on someone's behalf
-      hostName: z.preprocess(blankToUndefined, z.string().trim().max(100).optional()),
-      hostPhone: z.preprocess(blankToUndefined, phoneNumber.optional()),
+      hostName: optionalBlank(z.string().trim().max(100)),
+      hostPhone: optionalBlank(phoneNumber.max(20, 'Phone number is too long')),
     })
     .refine((data) => data.sendViaSms || data.sendViaEmail, {
       message: 'At least one delivery method (SMS or email) must be selected',
@@ -84,7 +75,7 @@ export const GuestPassValidations = {
   // DELETE requests usually carry no body — default it so the reason stays optional
   revokePass: z
     .object({
-      reason: z.preprocess(blankToUndefined, z.string().trim().max(500).optional()),
+      reason: optionalBlank(z.string().trim().max(500)),
     })
     .default({}),
 
@@ -93,10 +84,10 @@ export const GuestPassValidations = {
   }),
 
   propertyIdParam: z.object({
-    propertyId: objectId.describe('Property ID is missing or invalid'),
+    propertyId: objectIdString.describe('Property ID is missing or invalid'),
   }),
 
   unacknowledgedCountQuery: z.object({
-    propertyId: objectId.optional(),
+    propertyId: objectIdString.optional(),
   }),
 };

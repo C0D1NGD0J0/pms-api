@@ -32,11 +32,16 @@ export class GuestPassDAO extends BaseDAO<IGuestPassDocument> implements IGuestP
     this.logger = createLogger('GuestPassDAO');
   }
 
-  async findByCode(code: string, cuid: string): Promise<IGuestPassDocument | null> {
+  async findByCode(
+    code: string,
+    cuid: string,
+    visibilityFilter: QueryFilter<IGuestPassDocument> = {}
+  ): Promise<IGuestPassDocument | null> {
     try {
       const now = new Date();
       return await this.findFirst(
         {
+          ...visibilityFilter,
           code,
           cuid,
           status: GuestPassStatus.ACTIVE,

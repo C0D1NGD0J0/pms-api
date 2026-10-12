@@ -12,6 +12,7 @@ import { PropertyUnit, Property, Lease } from '@models/index';
 import GuestPassModel from '@models/guestPass/guestpass.model';
 import { GuestPassStatus } from '@interfaces/guestPass.interface';
 import { GuestPassService } from '@services/guestpass/guestpass.service';
+import { PermissionService } from '@services/permission/permission.service';
 import { EventEmitterService } from '@services/eventEmitter/eventsEmitter.service';
 
 import { mockRequestContext } from '../../helpers/mockRequestContext';
@@ -54,6 +55,7 @@ const setupService = () => {
     emitterService,
     smsQueue,
     emailQueue,
+    permissionService: new PermissionService(),
   });
 
   return { service, emitterService, smsQueue, emailQueue };
@@ -107,6 +109,14 @@ const baseGuestPassInput = (pid: string, puid?: string) => ({
   expiryMinutes: 30,
 });
 
+const staffContext = (user: any, cuid: string, department?: string) => {
+  const ctx = mockRequestContext(user, cuid) as any;
+  if (department) ctx.currentuser.employeeInfo = { department };
+  return ctx;
+};
+
+const securityContext = (user: any, cuid: string) => staffContext(user, cuid, 'security');
+
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
@@ -145,7 +155,7 @@ describe('GuestPassService', () => {
       expect(result.data).toBeDefined();
       expect(result.data.vpuid).toBeDefined();
       expect(result.data.cuid).toBe(client.cuid);
-      expect(result.data.propertyId.toString()).toBe(property._id.toString());
+      expect((result.data.propertyId as any).pid).toBe(property.pid);
       expect(result.data.status).toBe(GuestPassStatus.ACTIVE);
     });
 
@@ -161,7 +171,7 @@ describe('GuestPassService', () => {
       const result = await service.createGuestPass(ctx, baseGuestPassInput(property.pid));
 
       expect(result.success).toBe(true);
-      expect(result.data.createdBy.toString()).toBe(tenant._id.toString());
+      expect((result.data.createdBy as any)._id.toString()).toBe(tenant._id.toString());
     });
 
     it('should reject tenant without an active lease', async () => {
@@ -217,28 +227,10 @@ describe('GuestPassService', () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.propertyUnitId?.toString()).toBe(unit._id.toString());
+      expect((result.data.propertyUnitId as any).puid).toBe(unit.puid);
     });
 
-    it('should resolve property and unit when the UI falls back to Mongo _ids', async () => {
-      const client = await createTestClient();
-      const property = await createTestProperty(client.cuid, client._id);
-      const unit = await createTestPropertyUnit(client.cuid, property._id);
-      const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
-
-      const { service } = setupService();
-      const ctx = mockRequestContext(manager, client.cuid) as any;
-
-      const result = await service.createGuestPass(
-        ctx,
-        baseGuestPassInput(property._id.toString(), unit._id.toString())
-      );
-
-      expect(result.data.propertyId.toString()).toBe(property._id.toString());
-      expect(result.data.propertyUnitId?.toString()).toBe(unit._id.toString());
-    });
-
-    it('should not resolve a property from another client by _id', async () => {
+    it('should not resolve a property from another client', async () => {
       const client = await createTestClient();
       const otherClient = await createTestClient();
       const otherProperty = await createTestProperty(otherClient.cuid, otherClient._id);
@@ -248,7 +240,7 @@ describe('GuestPassService', () => {
       const ctx = mockRequestContext(manager, client.cuid) as any;
 
       await expect(
-        service.createGuestPass(ctx, baseGuestPassInput(otherProperty._id.toString()))
+        service.createGuestPass(ctx, baseGuestPassInput(otherProperty.pid))
       ).rejects.toThrow();
     });
 
@@ -345,7 +337,7 @@ describe('GuestPassService', () => {
         baseGuestPassInput(property.pid, unit.puid)
       );
 
-      expect(result.data.propertyUnitId?.toString()).toBe(unit._id.toString());
+      expect((result.data.propertyUnitId as any)._id.toString()).toBe(unit._id.toString());
     });
 
     it("should forbid a tenant from creating a pass for another tenant's unit", async () => {
@@ -409,7 +401,7 @@ describe('GuestPassService', () => {
         hostNotes: 'Buzz unit 4B',
       });
 
-      const securityCtx = mockRequestContext(securityStaff, client.cuid) as any;
+      const securityCtx = securityContext(securityStaff, client.cuid);
       const expected = await service.getExpectedVisitors(securityCtx, { timeWindow: 'all' });
       expect(expected.data.passes[0]).toMatchObject({
         purpose: 'Personal visit',
@@ -581,7 +573,7 @@ describe('GuestPassService', () => {
       const ctx = mockRequestContext(manager, client.cuid) as any;
 
       const result = await service.getMyPasses(ctx, {
-        propertyId: property1._id.toString(),
+        propertyId: property1.pid,
       });
 
       expect(result.data.passes).toHaveLength(1);
@@ -949,13 +941,11 @@ describe('GuestPassService', () => {
       expect(result.data.active).toBe(1);
     });
 
-    it('should scope stats to assigned properties for staff', async () => {
+    it('should scope stats to assigned properties for security staff', async () => {
       const client = await createTestClient();
       const property1 = await createTestProperty(client.cuid, client._id);
       const property2 = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
-
-      // Assign staff to property1 only
       await Property.updateOne({ _id: property1._id }, { $set: { assignedStaff: [staff._id] } });
 
       await GuestPassModel.create({
@@ -982,12 +972,11 @@ describe('GuestPassService', () => {
       });
 
       const { service } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       const result = await service.getStats(ctx);
 
       expect(result.success).toBe(true);
-      // Staff should only see stats for property1 (their assigned property)
       expect(result.data.total).toBe(1);
       expect(result.data.active).toBe(1);
     });
@@ -1177,7 +1166,7 @@ describe('GuestPassService', () => {
       });
 
       const { service, emitterService } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       await service.validateCode(ctx, {
         code: '776655',
@@ -1237,13 +1226,11 @@ describe('GuestPassService', () => {
       expect(result.data.passes[0].visitorInfo.name).toBe('Expected Visitor');
     });
 
-    it('should scope staff to assigned properties only', async () => {
+    it('should scope security staff to assigned properties only', async () => {
       const client = await createTestClient();
       const property1 = await createTestProperty(client.cuid, client._id);
       const property2 = await createTestProperty(client.cuid, client._id);
       const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
-
-      // Assign staff to property1 only
       await Property.updateOne({ _id: property1._id }, { $set: { assignedStaff: [staff._id] } });
 
       await GuestPassModel.create({
@@ -1270,7 +1257,7 @@ describe('GuestPassService', () => {
       });
 
       const { service } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       const result = await service.getExpectedVisitors(ctx, {});
 
@@ -1361,7 +1348,7 @@ describe('GuestPassService', () => {
       });
 
       const { service } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       const result = await service.acknowledgePass(ctx, pass.vpuid);
 
@@ -1393,7 +1380,7 @@ describe('GuestPassService', () => {
       });
 
       const { service, emitterService } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       await service.acknowledgePass(ctx, pass.vpuid);
 
@@ -1427,7 +1414,7 @@ describe('GuestPassService', () => {
       });
 
       const { service } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       await expect(service.acknowledgePass(ctx, pass.vpuid)).rejects.toThrow(
         /not found.*acknowledged|already acknowledged|not active/i
@@ -1469,7 +1456,7 @@ describe('GuestPassService', () => {
       });
 
       const { service } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       const result = await service.bulkAcknowledgePasses(ctx, [pass1.vpuid, pass2.vpuid]);
 
@@ -1515,7 +1502,7 @@ describe('GuestPassService', () => {
       });
 
       const { service } = setupService();
-      const ctx = mockRequestContext(staff, client.cuid) as any;
+      const ctx = securityContext(staff, client.cuid);
 
       const result = await service.bulkAcknowledgePasses(ctx, [pass1.vpuid, pass2.vpuid]);
 
@@ -1814,7 +1801,7 @@ describe('GuestPassService', () => {
         await expect(service.getPass(ctx, theirs.vpuid)).rejects.toThrow(/not found/i);
       });
 
-      it('limits staff to passes for their assigned properties', async () => {
+      it('limits security staff to passes for their assigned properties', async () => {
         const client = await createTestClient();
         const assigned = await createTestProperty(client.cuid, client._id);
         const unassigned = await createTestProperty(client.cuid, client._id);
@@ -1823,10 +1810,49 @@ describe('GuestPassService', () => {
         const visible = await seedPass(client.cuid, assigned._id);
         const hidden = await seedPass(client.cuid, unassigned._id);
         const { service } = setupService();
-        const ctx = mockRequestContext(staff, client.cuid) as any;
+        const ctx = securityContext(staff, client.cuid);
 
         expect((await service.getPass(ctx, visible.vpuid)).data.vpuid).toBe(visible.vpuid);
         await expect(service.getPass(ctx, hidden.vpuid)).rejects.toThrow(/not found/i);
+        expect((await service.getMyPasses(ctx, {})).data.passes.map((p) => p.vpuid)).toEqual([
+          visible.vpuid,
+        ]);
+      });
+
+      it('lets security staff see passes on a property they manage', async () => {
+        const client = await createTestClient();
+        const managed = await createTestProperty(client.cuid, client._id);
+        const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        await Property.updateOne({ _id: managed._id }, { $set: { managedBy: staff._id } });
+        const pass = await seedPass(client.cuid, managed._id);
+        const { service } = setupService();
+
+        const result = await service.getPass(securityContext(staff, client.cuid), pass.vpuid);
+
+        expect(result.data.vpuid).toBe(pass.vpuid);
+      });
+
+      it('forbids staff with no department or a non-security department, even when assigned', async () => {
+        const client = await createTestClient();
+        const property = await createTestProperty(client.cuid, client._id);
+        const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        await Property.updateOne({ _id: property._id }, { $set: { assignedStaff: [staff._id] } });
+        const pass = await seedPass(client.cuid, property._id);
+        const { service } = setupService();
+
+        for (const department of [undefined, 'operations', 'management', 'maintenance']) {
+          const ctx = staffContext(staff, client.cuid, department);
+
+          await expect(service.getPass(ctx, pass.vpuid)).rejects.toThrow(ForbiddenError);
+          await expect(service.getMyPasses(ctx, {})).rejects.toThrow(ForbiddenError);
+          await expect(service.getUnacknowledgedPasses(ctx, property.pid)).rejects.toThrow(
+            ForbiddenError
+          );
+          await expect(
+            service.validateCode(ctx, { code: pass.code, propertyId: property.pid })
+          ).rejects.toThrow(ForbiddenError);
+        }
+        expect((await GuestPassModel.findById(pass._id))!.status).toBe(GuestPassStatus.ACTIVE);
       });
 
       it('does not return a pass from another client', async () => {
@@ -1854,7 +1880,7 @@ describe('GuestPassService', () => {
         const bulk = await seedPass(client.cuid, property._id);
         const foreign = await seedPass(otherClient.cuid, property._id);
         const { service } = setupService();
-        const ctx = mockRequestContext(staff, client.cuid) as any;
+        const ctx = securityContext(staff, client.cuid);
 
         expect((await service.acknowledgePass(ctx, single.vpuid)).data.isAcknowledged).toBe(true);
         const bulkResult = await service.bulkAcknowledgePasses(ctx, [bulk.vpuid, foreign.vpuid]);
@@ -1865,23 +1891,8 @@ describe('GuestPassService', () => {
       });
     });
 
-    describe('property ids sent by the UI (pid or _id)', () => {
-      it('validateCode accepts the property _id as well as the pid', async () => {
-        const client = await createTestClient();
-        const property = await createTestProperty(client.cuid, client._id);
-        const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
-        await seedPass(client.cuid, property._id, { code: '515151' });
-        const { service } = setupService();
-
-        const result = await service.validateCode(mockRequestContext(manager, client.cuid) as any, {
-          code: '515151',
-          propertyId: property._id.toString(),
-        });
-
-        expect(result.data.valid).toBe(true);
-      });
-
-      it('getStats and getMyPasses filter by pid or _id', async () => {
+    describe('property pid sent by the UI', () => {
+      it('getStats and getMyPasses filter by pid', async () => {
         const client = await createTestClient();
         const property = await createTestProperty(client.cuid, client._id);
         const otherProperty = await createTestProperty(client.cuid, client._id);
@@ -1891,7 +1902,6 @@ describe('GuestPassService', () => {
         const { service } = setupService();
         const ctx = mockRequestContext(manager, client.cuid) as any;
 
-        expect((await service.getStats(ctx, property._id.toString())).data.total).toBe(1);
         expect((await service.getStats(ctx, property.pid)).data.total).toBe(1);
         expect(
           (await service.getMyPasses(ctx, { propertyId: property.pid })).data.passes
@@ -1912,11 +1922,11 @@ describe('GuestPassService', () => {
         const unassigned = await createTestProperty(client.cuid, client._id);
         const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
         await Property.updateOne({ _id: assigned._id }, { $set: { assignedStaff: [staff._id] } });
-        const ctx = mockRequestContext(staff, client.cuid) as any;
+        const ctx = securityContext(staff, client.cuid);
         return { client, assigned, unassigned, staff, ctx };
       };
 
-      it('stops staff acknowledging a pass for a property they are not assigned to', async () => {
+      it('stops security staff acknowledging a pass for a property they are not assigned to', async () => {
         const { client, assigned, unassigned, ctx } = await setupScopedStaff();
         const visible = await seedPass(client.cuid, assigned._id);
         const hidden = await seedPass(client.cuid, unassigned._id);
@@ -1939,18 +1949,16 @@ describe('GuestPassService', () => {
         expect((await GuestPassModel.findById(hidden._id))!.isAcknowledged).toBe(false);
       });
 
-      it('forbids staff reading unacknowledged passes for an unassigned property', async () => {
+      it('forbids security staff reading unacknowledged passes for an unassigned property', async () => {
         const { client, assigned, unassigned, ctx } = await setupScopedStaff();
         await seedPass(client.cuid, assigned._id);
         await seedPass(client.cuid, unassigned._id);
         const { service } = setupService();
 
-        expect(
-          (await service.getUnacknowledgedPasses(ctx, assigned._id.toString())).data
-        ).toHaveLength(1);
-        await expect(
-          service.getUnacknowledgedPasses(ctx, unassigned._id.toString())
-        ).rejects.toThrow(ForbiddenError);
+        expect((await service.getUnacknowledgedPasses(ctx, assigned.pid)).data).toHaveLength(1);
+        await expect(service.getUnacknowledgedPasses(ctx, unassigned.pid)).rejects.toThrow(
+          ForbiddenError
+        );
       });
 
       it('counts only unacknowledged passes the staff member can see', async () => {
@@ -1960,9 +1968,23 @@ describe('GuestPassService', () => {
         const { service } = setupService();
 
         expect((await service.getUnacknowledgedCount(ctx)).data.count).toBe(1);
-        await expect(
-          service.getUnacknowledgedCount(ctx, unassigned._id.toString())
-        ).rejects.toThrow(ForbiddenError);
+        await expect(service.getUnacknowledgedCount(ctx, unassigned.pid)).rejects.toThrow(
+          ForbiddenError
+        );
+      });
+
+      it('gives managers every pass in the account', async () => {
+        const client = await createTestClient();
+        const assigned = await createTestProperty(client.cuid, client._id);
+        const unassigned = await createTestProperty(client.cuid, client._id);
+        const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+        await seedPass(client.cuid, assigned._id);
+        await seedPass(client.cuid, unassigned._id);
+        const { service } = setupService();
+        const ctx = mockRequestContext(manager, client.cuid) as any;
+
+        expect((await service.getMyPasses(ctx, {})).data.passes).toHaveLength(2);
+        expect((await service.getUnacknowledgedCount(ctx)).data.count).toBe(2);
       });
 
       it("never shows a tenant another tenant's unacknowledged passes", async () => {
@@ -1975,20 +1997,23 @@ describe('GuestPassService', () => {
         const { service } = setupService();
         const ctx = mockRequestContext(tenant, client.cuid) as any;
 
-        const passes = (await service.getUnacknowledgedPasses(ctx, property._id.toString())).data;
+        const passes = (await service.getUnacknowledgedPasses(ctx, property.pid)).data;
 
         expect(passes.map((p) => p.vpuid)).toEqual([own.vpuid]);
         expect((await service.getUnacknowledgedCount(ctx)).data.count).toBe(1);
       });
 
-      it('forbids staff validating a code at a property they are not assigned to', async () => {
+      it('does not validate a code at a property the security staff member is not assigned to', async () => {
         const { client, unassigned, ctx } = await setupScopedStaff();
         const pass = await seedPass(client.cuid, unassigned._id, { code: '616161' });
         const { service } = setupService();
 
-        await expect(
-          service.validateCode(ctx, { code: '616161', propertyId: unassigned.pid })
-        ).rejects.toThrow(ForbiddenError);
+        const result = await service.validateCode(ctx, {
+          code: '616161',
+          propertyId: unassigned.pid,
+        });
+
+        expect(result.data.valid).toBe(false);
         expect((await GuestPassModel.findById(pass._id))!.status).toBe(GuestPassStatus.ACTIVE);
       });
 
@@ -1999,6 +2024,56 @@ describe('GuestPassService', () => {
 
         await expect(service.revokePass(ctx, pass.vpuid)).rejects.toThrow(/not found/i);
         expect((await GuestPassModel.findById(pass._id))!.status).toBe(GuestPassStatus.ACTIVE);
+      });
+    });
+
+    describe('getCheckInProperties', () => {
+      it('lists only the properties security staff are assigned to or manage', async () => {
+        const client = await createTestClient();
+        const assigned = await createTestProperty(client.cuid, client._id);
+        const managed = await createTestProperty(client.cuid, client._id);
+        await createTestProperty(client.cuid, client._id);
+        const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        await Property.updateOne({ _id: assigned._id }, { $set: { assignedStaff: [staff._id] } });
+        await Property.updateOne({ _id: managed._id }, { $set: { managedBy: staff._id } });
+        const { service } = setupService();
+
+        const result = await service.getCheckInProperties(securityContext(staff, client.cuid));
+
+        expect(result.data.map((p) => p.pid).sort()).toEqual([assigned.pid, managed.pid].sort());
+        expect(result.data[0]).toEqual({ pid: expect.any(String), name: expect.any(String) });
+      });
+
+      it('lists every property in the account for managers', async () => {
+        const client = await createTestClient();
+        const otherClient = await createTestClient();
+        await createTestProperty(client.cuid, client._id);
+        await createTestProperty(client.cuid, client._id);
+        await createTestProperty(otherClient.cuid, otherClient._id);
+        const manager = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+        const { service } = setupService();
+
+        const result = await service.getCheckInProperties(
+          mockRequestContext(manager, client.cuid) as any
+        );
+
+        expect(result.data).toHaveLength(2);
+      });
+
+      it('forbids tenants and staff without the security department', async () => {
+        const client = await createTestClient();
+        const tenant = await createTestUser(client.cuid, { roles: [ROLES.TENANT] });
+        const staff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        const { service } = setupService();
+
+        await expect(
+          service.getCheckInProperties(mockRequestContext(tenant, client.cuid) as any)
+        ).rejects.toThrow(ForbiddenError);
+        for (const department of [undefined, 'operations']) {
+          await expect(
+            service.getCheckInProperties(staffContext(staff, client.cuid, department))
+          ).rejects.toThrow(ForbiddenError);
+        }
       });
     });
 

@@ -150,6 +150,20 @@ describe('GuestPassDAO Integration Tests', () => {
       const found = await dao.findByCode('USED01', testCuid);
       expect(found).toBeNull();
     });
+
+    it('should only match passes inside the visibility filter', async () => {
+      await createPass({ code: 'VIS001', propertyId: propertyId2 });
+
+      const outside = await dao.findByCode('VIS001', testCuid, {
+        propertyId: { $in: [propertyId] },
+      });
+      const inside = await dao.findByCode('VIS001', testCuid, {
+        propertyId: { $in: [propertyId2] },
+      });
+
+      expect(outside).toBeNull();
+      expect(inside).not.toBeNull();
+    });
   });
 
   // ---------------------------------------------------------------------------

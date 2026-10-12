@@ -1,7 +1,5 @@
-import { t } from '@shared/languages';
+import { Router } from 'express';
 import { asyncWrapper } from '@utils/index';
-import { ForbiddenError } from '@shared/customErrors';
-import { NextFunction, Response, Router } from 'express';
 import { VendorController } from '@controllers/VendorController';
 import { PermissionResource, PermissionAction, AppRequest } from '@interfaces/utils.interface';
 import {
@@ -25,27 +23,6 @@ import {
 const router = Router();
 router.use(isAuthenticated);
 
-/**
- * Payout accounts belong to a single vendor organisation. The caller's own vuid is resolved
- * server-side (currentuser.vendorInfo.vuid), so a primary vendor cannot act on another
- * vendor's payout account by swapping :vuid. Must be placed after requirePrimaryVendor.
- */
-const requireOwnVendorPayoutAccount = (req: AppRequest, _res: Response, next: NextFunction) => {
-  const ownVuid = req.context?.currentuser?.vendorInfo?.vuid;
-  if (!ownVuid || ownVuid !== req.params.vuid) {
-    return next(
-      new ForbiddenError({
-        message: t('common.errors.insufficientPermissions', {
-          resource: 'payout',
-          action: 'manage',
-          reason: "Vendors can only manage their own organisation's payout account",
-        }),
-      })
-    );
-  }
-  next();
-};
-
 router.get(
   '/:cuid/vendors/stats',
   basicLimiter(),
@@ -65,7 +42,7 @@ router.get(
 router.get(
   '/:cuid',
   basicLimiter(),
-  requirePermission(PermissionResource.USER, PermissionAction.READ),
+  requirePermission(PermissionResource.VENDOR, PermissionAction.LIST),
   subscriptionEntitlements,
   requireFeature('vendorManagement'),
   validateRequest({
@@ -261,8 +238,7 @@ router.get(
 router.post(
   '/:cuid/vendor/:vuid/payout_account/initiate',
   basicLimiter(),
-  requirePrimaryVendor,
-  requireOwnVendorPayoutAccount,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
@@ -276,8 +252,7 @@ router.post(
 router.get(
   '/:cuid/vendor/:vuid/payout_account/link',
   basicLimiter(),
-  requirePrimaryVendor,
-  requireOwnVendorPayoutAccount,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');
@@ -290,8 +265,7 @@ router.get(
 router.post(
   '/:cuid/vendor/:vuid/payout_account/sync',
   basicLimiter(),
-  requirePrimaryVendor,
-  requireOwnVendorPayoutAccount,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   idempotency,
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
@@ -305,8 +279,7 @@ router.post(
 router.get(
   '/:cuid/vendor/:vuid/payout_account/dashboard',
   basicLimiter(),
-  requirePrimaryVendor,
-  requireOwnVendorPayoutAccount,
+  requirePrimaryVendor({ matchParam: 'vuid' }),
   validateRequest({ params: ClientValidations.clientIdParam.merge(UtilsValidations.vuid) }),
   asyncWrapper((req, res) => {
     const vendorController = req.container.resolve<VendorController>('vendorController');

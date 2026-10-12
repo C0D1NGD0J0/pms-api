@@ -553,15 +553,6 @@ const validateUserAndConnection = (req: Request, next: NextFunction): ICurrentUs
   return currentuser;
 };
 
-interface IPermissionMiddlewareOptions {
-  allowMineFallback?: boolean;
-  roleGrantsOnly?: boolean;
-}
-
-/**
- * check if user has specific permission
- * Includes client context validation for client-specific resources
- */
 /**
  * Checks whether the role holds \`<action>:mine\` on the resource. Used as an opt-in fallback
  * for roles that only hold the \`:mine\` grant (e.g. manager on property create) — there is no
@@ -587,23 +578,7 @@ export const requirePermission = (
   resource: PermissionResource | string,
   action: PermissionAction | string,
   allowMineFallback?: boolean
-) => buildPermissionMiddleware(resource, action, { allowMineFallback });
-
-/**
- * Like requirePermission, but staff department grants are ignored — only the role's own
- * (and inherited) grants count. Use when a department grant (e.g. management → client:settings)
- * is meant for a narrower route and must not open this one.
- */
-export const requireRolePermission = (
-  resource: PermissionResource | string,
-  action: PermissionAction | string
-) => buildPermissionMiddleware(resource, action, { roleGrantsOnly: true });
-
-function buildPermissionMiddleware(
-  resource: PermissionResource | string,
-  action: PermissionAction | string,
-  { allowMineFallback, roleGrantsOnly }: IPermissionMiddlewareOptions
-) {
+) => {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       const currentuser = validateUserAndConnection(req, next);
@@ -630,11 +605,8 @@ function buildPermissionMiddleware(
       }
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
-      const userToCheck = roleGrantsOnly
-        ? { ...currentuser, employeeInfo: undefined }
-        : currentuser;
       let hasPermission = await permissionService.checkUserPermission(
-        userToCheck,
+        currentuser,
         resource as PermissionResource,
         action as string
       );
@@ -667,26 +639,34 @@ function buildPermissionMiddleware(
       return next(new ForbiddenError({ message: t('auth.errors.permissionCheckFailed') }));
     }
   };
-}
+};
 
 /**
- * Restrict access to primary vendor users only.
- * Must be placed after isAuthenticated.
+ * Restrict access to primary vendor users. With `matchParam`, the route param must also be the
+ * caller's own vuid (resolved server-side), so a primary vendor can't act on another vendor's records.
  */
-export const requirePrimaryVendor = (req: Request, _res: Response, next: NextFunction) => {
-  const currentUser = req.context?.currentuser;
-  if (!currentUser?.vendorInfo?.isPrimaryVendor) {
-    return next(
-      new ForbiddenError({
-        message: t('common.errors.insufficientPermissions', {
-          resource: 'payout',
-          action: 'manage',
-          reason: 'Only primary vendor account holders can manage payout settings',
-        }),
-      })
-    );
-  }
-  next();
+export const requirePrimaryVendor = ({ matchParam }: { matchParam?: 'vuid' } = {}) => {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const vendorInfo = req.context?.currentuser?.vendorInfo;
+    let reason: string | undefined;
+    if (!vendorInfo?.isPrimaryVendor) {
+      reason = 'Only primary vendor account holders can manage payout settings';
+    } else if (matchParam && (!vendorInfo.vuid || vendorInfo.vuid !== req.params[matchParam])) {
+      reason = t('vendor.errors.notOwnPayoutAccount');
+    }
+    if (reason) {
+      return next(
+        new ForbiddenError({
+          message: t('common.errors.insufficientPermissions', {
+            resource: 'payout',
+            action: 'manage',
+            reason,
+          }),
+        })
+      );
+    }
+    next();
+  };
 };
 
 /**
@@ -919,6 +899,15 @@ export const requirePermissionWithContext = (
 
       const { permissionService }: { permissionService: PermissionService } = req.container.cradle;
 
+      // No ownership to go on: staff are checked against the scope their department holds
+      // (maintenance holds :assigned). Writes only fall back when the record's assignees are known.
+      if (!scope) {
+        scope = permissionService.resolveStaffScope(currentuser, resource, action, {
+          assignmentVerifiable:
+            Array.isArray(context.assignedUsers) && context.assignedUsers.length > 0,
+        });
+      }
+
       // Use enhanced permission check with context
       const permissionCheck: { department?: string } & IPermissionCheck = {
         role: currentuser.client.role,
@@ -966,8 +955,26 @@ export const requirePropertyPermission = (action: PermissionAction | string) => 
     const cuid = req.params.cuid;
     if (!pid || !cuid) return { resourceId: pid };
 
-    const { propertyDAO }: { propertyDAO: PropertyDAO } = (req as AppRequest).container.cradle;
-    const property = await propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    const { propertyDAO, permissionService } = (req as AppRequest).container.cradle as {
+      permissionService: PermissionService;
+      propertyDAO: PropertyDAO;
+    };
+    const currentuser = (req as AppRequest).context.currentuser!;
+    // :any covers every property, so the ownership/assignment lookup can't change the outcome
+    const { granted: holdsAnyScope } = await permissionService.checkPermission({
+      role: currentuser.client.role,
+      department: currentuser.employeeInfo?.department,
+      resource: PermissionResource.PROPERTY,
+      action: action as string,
+      scope: PermissionScope.ANY,
+      context: { clientId: currentuser.client.cuid, userId: currentuser.sub },
+    });
+    if (holdsAnyScope) return { resourceId: pid };
+
+    const property = await propertyDAO.findFirst(
+      { pid, cuid, deletedAt: null },
+      { projection: { managedBy: 1, assignedStaff: 1 } }
+    );
     return {
       resourceId: pid,
       ownerId: property?.managedBy?.toString(),

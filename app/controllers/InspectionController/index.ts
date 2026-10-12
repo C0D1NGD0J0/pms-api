@@ -213,8 +213,10 @@ export class InspectionController {
 
   async generateReport(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
-    const includePhotos = req.query.includePhotos !== 'false';
-    const forceRegenerate = req.query.forceRegenerate === 'true';
+    const { includePhotos, forceRegenerate } = req.query as unknown as {
+      includePhotos: boolean;
+      forceRegenerate: boolean;
+    };
     const userRole = req.context.currentuser!.client.role;
     const userId = req.context.currentuser!.sub;
     const userDepartment = req.context.currentuser!.employeeInfo?.department;

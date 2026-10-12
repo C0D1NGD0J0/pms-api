@@ -5,7 +5,7 @@ import {
   InspectionType,
 } from '@interfaces/inspection.interface';
 
-import { UtilsValidations, safeString } from '../UtilsValidation';
+import { UtilsValidations, queryBoolean, safeString } from '../UtilsValidation';
 
 const conditionEnum = z.enum(Object.values(ConditionRating) as [string, ...string[]], {
   errorMap: () => ({ message: 'Please select a valid condition rating' }),
@@ -141,7 +141,7 @@ export const InspectionValidations = {
   }),
 
   reportQuery: z.object({
-    includePhotos: z.enum(['true', 'false']).optional().default('true'),
-    forceRegenerate: z.enum(['true', 'false']).optional().default('false'),
+    includePhotos: queryBoolean.default(true),
+    forceRegenerate: queryBoolean.default(false),
   }),
 };

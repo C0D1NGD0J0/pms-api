@@ -283,6 +283,11 @@ export function asyncWrapper(fn: AsyncRequestHandler) {
   };
 }
 
+/** One-way digest for single-use tokens we store (the plaintext only ever travels in the email link). */
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 /**
  * Extracts and standardizes file information from Multer file objects
  * @param files - A Multer file object or array of file objects
@@ -736,6 +741,22 @@ export const buildDotNotation = (obj: any, prefix = ''): Record<string, any> => 
   }
 
   return result;
+};
+
+export const getValueAtPath = (source: any, path: string): any =>
+  path.split('.').reduce((current, key) => current?.[key], source);
+
+export const hasValueAtPath = (source: any, path: string): boolean =>
+  getValueAtPath(source, path) !== undefined;
+
+export const setValueAtPath = (target: any, path: string, value: unknown): void => {
+  const keys = path.split('.');
+  const lastKey = keys.pop()!;
+  const parent = keys.reduce((current, key) => {
+    if (!current[key]) current[key] = {};
+    return current[key];
+  }, target);
+  parent[lastKey] = value;
 };
 
 /**

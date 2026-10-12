@@ -5,8 +5,8 @@ import { ISuccessReturnData, AppRequest } from '@interfaces/utils.interface';
 export class EmailTemplateController {
   private emailTemplateService: EmailTemplateService;
 
-  constructor() {
-    this.emailTemplateService = new EmailTemplateService();
+  constructor({ emailTemplateService }: { emailTemplateService: EmailTemplateService }) {
+    this.emailTemplateService = emailTemplateService;
   }
 
   /**

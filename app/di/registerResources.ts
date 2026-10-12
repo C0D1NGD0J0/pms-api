@@ -19,6 +19,7 @@ import { ServiceAreaService } from '@services/serviceArea/serviceArea.service';
 import { EmailTemplateController } from '@controllers/EmailTemplateController';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { OffboardingService } from '@services/offboarding/offboarding.service';
+import { EmailTemplateService } from '@services/emailTemplate/emailTemplate.service';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import {
   EventsRegistryCache,
@@ -314,6 +315,7 @@ const ServiceResources = {
   maintenanceInvoiceService: asClass(MaintenanceInvoiceService).singleton(),
   subscriptionWebhookService: asClass(SubscriptionWebhookService).singleton(),
   offboardingService: asClass(OffboardingService).singleton(),
+  emailTemplateService: asClass(EmailTemplateService).singleton(),
 };
 
 const DAOResources = {

@@ -55,13 +55,6 @@ export enum InvoiceStatus {
 }
 
 export interface IMaintenanceRequest {
-  pendingMaintenanceStatus?: {
-    propertyId: Types.ObjectId;
-    unitId?: Types.ObjectId;
-    requestedBy: Types.ObjectId;
-    requestedAt: Date;
-    displayName: string;
-  };
   availabilityInfo?: {
     preferredDate?: Date; // specific dates tenant prefers
     options: AvailabilityWindow[]; // when tenant is available
@@ -80,6 +73,7 @@ export interface IMaintenanceRequest {
   propertyUnitId?: Types.ObjectId | string;
   priority: MaintenanceRequestPriority;
   assignedBy?: Types.ObjectId | string; // User who assigned the request
+  createdBy?: Types.ObjectId | string; // User who filed the request (absent on older records)
   managedBy?: Types.ObjectId | string;
   propertyId: Types.ObjectId | string;
   tenantId?: Types.ObjectId | string; // User with role=tenant
@@ -119,7 +113,6 @@ export interface ICreateMaintenanceRequest {
   };
   priority?: MaintenanceRequestPriority;
   media: MaintenanceRequestMedia[];
-  setMaintenanceStatus?: boolean; // Take property/unit offline for maintenance
   category: MaintenanceCategory;
   locationDescription?: string;
   permissionToEnter: boolean;

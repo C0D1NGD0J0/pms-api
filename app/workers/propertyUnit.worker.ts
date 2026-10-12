@@ -2,6 +2,7 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
+import { isUnlimited } from '@utils/planLimits.utils';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { UnitBatchJobData } from '@queues/propertyUnit.queue';
@@ -56,7 +57,7 @@ export class PropertyUnitWorker {
       const subscription = await this.subscriptionDAO.findFirst({ cuid, deletedAt: null });
       if (subscription) {
         const maxUnits = subscriptionPlanConfig.getConfig(subscription.planName).limits.maxUnits;
-        if (maxUnits !== -1) {
+        if (!isUnlimited(maxUnits)) {
           const remaining = maxUnits - subscription.resourceTracker.unitCount;
           if (remaining <= 0) {
             throw new Error(
@@ -99,6 +100,15 @@ export class PropertyUnitWorker {
         throw new Error(`Pattern inconsistency: ${patternConsistency.recommendation}`);
       }
 
+      // A unit number already on the property would hit the unique index inside the
+      // transaction and abort every insert, so duplicates are reported per unit instead
+      const takenUnitNumbers = new Set(
+        await this.propertyUnitDAO.distinct('unitNumber', {
+          propertyId: property._id,
+          deletedAt: null,
+        })
+      );
+
       job.progress(40);
 
       // Process units in transaction
@@ -111,6 +121,15 @@ export class PropertyUnitWorker {
           const unit = units[i];
 
           try {
+            if (takenUnitNumbers.has(unit.unitNumber)) {
+              errors.push({
+                unitIndex: i,
+                unitNumber: unit.unitNumber,
+                error: `Unit number ${unit.unitNumber} already exists on this property`,
+              });
+              continue;
+            }
+
             // Validate floor correlation
             const floorValidation = this.unitNumberingService.validateUnitNumberFloorCorrelation(
               unit.unitNumber,
@@ -138,6 +157,7 @@ export class PropertyUnitWorker {
             // Insert unit
             const createdUnit = await this.propertyUnitDAO.insert(newUnitData, session);
             createdUnits.push(createdUnit);
+            takenUnitNumbers.add(unit.unitNumber);
 
             // Update progress
             const progress = 40 + Math.floor((i / units.length) * 50);
@@ -151,23 +171,26 @@ export class PropertyUnitWorker {
           }
         }
 
-        // Update property occupancy
-        if (createdUnits.length > 0) {
-          await this.propertyDAO.syncPropertyOccupancyWithUnits(property.id, userId);
-        }
-
         return { createdUnits, errors };
       });
 
       job.progress(95);
 
-      // Emit property update event
-      this.emitterService.emit(EventTypes.PROPERTY_CREATED, {
-        propertyId: pid,
-        clientId: cuid,
-        unitsCreated: result.createdUnits.length,
-        maxAllowedUnits: units.length,
-      });
+      if (result.createdUnits.length > 0) {
+        // Runs after commit: the sync reads unit counts outside the transaction session
+        await this.propertyDAO.syncPropertyOccupancyWithUnits(property.id, userId);
+
+        // Listeners are registered in the worker process too (EventListenerSetup):
+        // SubscriptionService bumps the unit counter, PropertyService invalidates the cache
+        this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
+          propertyId: property.id,
+          propertyPid: pid,
+          cuid,
+          userId,
+          unitsCreated: result.createdUnits.length,
+          unitsFailed: result.errors.length,
+        });
+      }
 
       job.progress(100);
 

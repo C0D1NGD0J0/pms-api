@@ -10,7 +10,9 @@ import {
   AvailabilityWindow,
 } from '@interfaces/maintenanceRequest.interface';
 
-import { getContainer } from '../UtilsValidation';
+import { objectIdString, queryBoolean, getContainer } from '../UtilsValidation';
+
+const MAINTENANCE_LIST_SORT_FIELDS = ['createdAt', 'updatedAt', 'scheduledDate', 'title'];
 
 export const MaintenanceSchemas = {
   mruidParam: z.object({
@@ -85,7 +87,6 @@ export const MaintenanceSchemas = {
         .optional(),
       // Staff-only extras (the service ignores them for tenants). Multipart sends every
       // field as a string: parseJsonFields converts "true"/"false", numbers need coercion.
-      setMaintenanceStatus: z.boolean().optional(),
       vendorVuid: z.string().trim().min(1).optional(),
       scheduledDate: z
         .string()
@@ -166,10 +167,7 @@ export const MaintenanceSchemas = {
       reason: z.string().max(500).optional(),
       technician: z
         .object({
-          userId: z
-            .string()
-            .regex(/^[a-f\d]{24}$/i, 'Technician user ID must be a valid ID')
-            .optional(),
+          userId: objectIdString.optional(),
           name: z.string().min(1).max(100),
           phone: z.string().max(20).optional(),
           email: z.string().email().optional(),
@@ -311,13 +309,22 @@ export const MaintenanceSchemas = {
     tenantUid: z.string().optional(),
     managedByUid: z.string().optional(),
     search: z.string().trim().max(100).optional(),
-    isBillable: z.coerce.boolean().optional(),
+    isBillable: queryBoolean.optional(),
     assignedTechnicianSub: z.string().optional(),
     page: z.coerce.number().int().positive().optional(),
     category: z.nativeEnum(MaintenanceCategory).optional(),
     status: z.nativeEnum(MaintenanceRequestStatus).optional(),
     priority: z.nativeEnum(MaintenanceRequestPriority).optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),
+    // Field name, '-' prefix for descending (e.g. '-createdAt')
+    sort: z
+      .enum(
+        MAINTENANCE_LIST_SORT_FIELDS.flatMap((field) => [field, `-${field}`]) as [
+          string,
+          ...string[],
+        ]
+      )
+      .optional(),
   }),
 
   webhookSourceParam: z.object({

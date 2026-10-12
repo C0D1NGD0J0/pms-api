@@ -23,6 +23,7 @@ const mockPropertyUnitDAO = {
   startSession: jest.fn() as any,
   withTransaction: jest.fn() as any,
   insert: jest.fn() as any,
+  distinct: jest.fn() as any,
 };
 
 const mockSubscriptionDAO = {
@@ -72,6 +73,7 @@ beforeEach(() => {
   mockSubscriptionDAO.findFirst.mockReturnValue(Promise.resolve(null));
   mockUnitNumberingService.validatePatternConsistency.mockReturnValue({ isConsistent: true });
   mockUnitNumberingService.validateUnitNumberFloorCorrelation.mockReturnValue({ isValid: true });
+  mockPropertyUnitDAO.distinct.mockReturnValue(Promise.resolve([]));
   mockPropertyUnitDAO.startSession.mockReturnValue(Promise.resolve('mock-session'));
   mockPropertyUnitDAO.withTransaction.mockImplementation(async (_session: any, fn: any) =>
     fn('mock-session')
@@ -200,7 +202,7 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
     ]);
   });
 
-  it('syncs property occupancy and emits PROPERTY_CREATED after inserting units', async () => {
+  it('syncs property occupancy and emits UNIT_BATCH_CREATED after inserting units', async () => {
     const result = await worker.processUnitBatchCreation(
       makeJob([makeUnit('101'), makeUnit('102')]) as any
     );
@@ -210,8 +212,14 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
       USER_ID
     );
     expect(mockEmitterService.emit).toHaveBeenCalledWith(
-      EventTypes.PROPERTY_CREATED,
-      expect.objectContaining({ propertyId: PID, clientId: CUID, unitsCreated: 2 })
+      EventTypes.UNIT_BATCH_CREATED,
+      expect.objectContaining({
+        propertyId: PROPERTY_MONGO_ID,
+        propertyPid: PID,
+        cuid: CUID,
+        unitsCreated: 2,
+        unitsFailed: 0,
+      })
     );
     expect(result.success).toBe(true);
     expect(result.data.createdUnits).toHaveLength(2);

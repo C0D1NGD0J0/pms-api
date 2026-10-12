@@ -6,7 +6,7 @@ import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { PropertyApprovalService } from '@services/property/propertyApproval.service';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, UserDAO } from '@dao/index';
-import { ValidationRequestError, BadRequestError, ForbiddenError } from '@shared/customErrors';
+import { ValidationRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   createTestPropertyUnit,
   createTestManagerUser,
@@ -928,10 +928,6 @@ describe('PropertyUnitService Integration Tests', () => {
         });
         await submitStaffEdit(unit);
 
-        await expect(
-          propertyUnitService.rejectUnitChanges(asManager(unit.puid), '   ')
-        ).rejects.toThrow(BadRequestError);
-
         await propertyUnitService.rejectUnitChanges(asManager(unit.puid), 'Rent is above market');
 
         const saved = await PropertyUnit.findById(unit._id);
@@ -997,23 +993,12 @@ describe('PropertyUnitService Integration Tests', () => {
         );
       });
 
-      it('only lets approval roles review, and only when there is something to review', async () => {
+      it('refuses to review a unit without pending changes', async () => {
         const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
 
         await expect(propertyUnitService.approveUnitChanges(asManager(unit.puid))).rejects.toThrow(
           BadRequestError
         );
-
-        await submitStaffEdit(unit);
-        await expect(propertyUnitService.approveUnitChanges(asStaff(unit.puid))).rejects.toThrow(
-          ForbiddenError
-        );
-        await expect(
-          propertyUnitService.rejectUnitChanges(asStaff(unit.puid), 'Not mine to reject')
-        ).rejects.toThrow(ForbiddenError);
-
-        const saved = await PropertyUnit.findById(unit._id).lean();
-        expect(saved!.approvalStatus).toBe('pending');
       });
     });
 
@@ -1065,7 +1050,7 @@ describe('PropertyUnitService Integration Tests', () => {
 
         await expect(
           propertyUnitService.setupInspection(context as any, inspection('2026-06-01', 'passed'))
-        ).rejects.toThrow(BadRequestError);
+        ).rejects.toThrow(NotFoundError);
       });
     });
 

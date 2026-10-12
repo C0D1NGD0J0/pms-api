@@ -2,6 +2,7 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { createLogger } from '@utils/index';
 import { PropertyCsvProcessor } from '@services/csv';
+import { isUnlimited } from '@utils/planLimits.utils';
 import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
@@ -165,7 +166,7 @@ export class PropertyWorker {
       if (subscription) {
         const config = subscriptionPlanConfig.getConfig(subscription.planName);
         const maxProperties = config.limits.maxProperties;
-        if (maxProperties !== -1) {
+        if (!isUnlimited(maxProperties)) {
           const currentCount = await this.propertyDAO.countDocuments({ cuid, deletedAt: null });
           const remaining = maxProperties - currentCount;
           if (remaining <= 0) {

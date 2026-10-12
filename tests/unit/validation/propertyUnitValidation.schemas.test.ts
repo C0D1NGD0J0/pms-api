@@ -226,4 +226,15 @@ describe('PropertyUnitValidations', () => {
       ).rejects.toThrow();
     });
   });
+
+  describe('rejectUnitChanges', () => {
+    it('rejects a blank reason and trims a real one', async () => {
+      await expect(
+        PropertyUnitValidations.rejectUnitChanges.parseAsync({ reason: '   ' })
+      ).rejects.toThrow('Rejection reason is required');
+      await expect(
+        PropertyUnitValidations.rejectUnitChanges.parseAsync({ reason: '  Too high  ' })
+      ).resolves.toEqual({ reason: 'Too high' });
+    });
+  });
 });

@@ -13,7 +13,6 @@ import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { envVariables } from '@shared/config';
-import sanitizer from 'perfect-express-sanitizer';
 import mongoSanitize from 'express-mongo-sanitize';
 import { generateOpenApiDocument } from '@shared/openapi';
 import { httpStatusCodes, createLogger } from '@utils/index';
@@ -23,6 +22,7 @@ import { rateLimiterFactory } from '@shared/middlewares/rateLimiterFactory';
 import express, { Application, urlencoded, Response, Request } from 'express';
 import {
   errorHandlerMiddleware,
+  requestSanitizer,
   scopedMiddleware,
   setUserLanguage,
   isAuthenticated,
@@ -69,13 +69,7 @@ export class App implements IAppSetup {
     app.set('trust proxy', 1); // Trust Railway's load balancer (1 hop)
     app.use(hpp());
     app.use(helmet());
-    app.use(
-      sanitizer.clean({
-        xss: true,
-        noSql: true,
-        level: 3,
-      })
-    );
+    app.use(requestSanitizer);
     app.use(
       cors({
         credentials: true,

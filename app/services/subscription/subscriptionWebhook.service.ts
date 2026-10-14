@@ -669,7 +669,7 @@ export class SubscriptionWebhookService {
   async handleSubscriptionCanceled(data: {
     stripeSubscriptionId: string;
     canceledAt: number;
-  }): IPromiseReturnedData<ISubscriptionDocument> {
+  }): IPromiseReturnedData<ISubscriptionDocument | null> {
     const session = await this.subscriptionDAO.startSession();
 
     try {
@@ -683,10 +683,9 @@ export class SubscriptionWebhookService {
           cxtsession
         );
 
-        if (!subscription) {
-          this.log.error({ stripeSubscriptionId }, 'Subscription not found for cancellation');
-          throw new BadRequestError({ message: 'Subscription not found' });
-        }
+        // No local record (client removed, or the record now tracks a different Stripe
+        // subscription): there is nothing to cancel, and a retry can never succeed.
+        if (!subscription) return null;
 
         const updatedSubscription = await this.subscriptionDAO.update(
           { _id: subscription._id },
@@ -715,6 +714,14 @@ export class SubscriptionWebhookService {
 
         return updatedSubscription;
       });
+
+      if (!result) {
+        this.log.warn(
+          { stripeSubscriptionId: data.stripeSubscriptionId },
+          'No local subscription for canceled Stripe subscription — acknowledging without changes'
+        );
+        return { data: null, success: true, message: 'No local subscription to cancel' };
+      }
 
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'subscription_canceled',
@@ -837,24 +844,17 @@ export class SubscriptionWebhookService {
         timestamp: new Date().toISOString(),
       };
 
-      const sent = await this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         accountAdminId,
         cuid,
         { ...notificationPayload, resource: 'subscription' },
         'resource-event'
       );
 
-      if (sent) {
-        this.log.info(
-          { cuid, accountAdminId, eventType: eventData.type },
-          'SSE notification sent to account admin'
-        );
-      } else {
-        this.log.debug(
-          { cuid, accountAdminId },
-          'Account admin not connected to SSE, cache invalidated'
-        );
-      }
+      this.log.info(
+        { cuid, accountAdminId, eventType: eventData.type },
+        'SSE notification published to account admin'
+      );
     } catch (error) {
       this.log.error({ error, cuid }, 'Error sending SSE notification to account admin');
       // Don't throw - notification failure shouldn't break webhook processing

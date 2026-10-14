@@ -427,6 +427,70 @@ describe('WebhookController - Stripe Webhooks', () => {
         message: 'Invalid signature',
       });
     });
+
+    it('does not claim or process an event whose signature fails', async () => {
+      mockRequest.headers = { 'stripe-signature': 't=1,v1=bad' };
+      (mockRequest as any).rawBody = Buffer.from(
+        JSON.stringify({ id: 'evt_1', type: 'invoice.paid' })
+      );
+      mockStripeService.verifyWebhookSignature.mockRejectedValue(new Error('No signatures found'));
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockIdempotencyCache.claimWebhookEvent).not.toHaveBeenCalled();
+      expect(mockSubscriptionService.handleInvoicePaid).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signature failures vs processing failures', () => {
+    beforeEach(() => {
+      mockRequest.headers = { 'stripe-signature': 't=1,v1=sig' };
+    });
+
+    it('returns 500 and releases the claim when processing a verified event throws', async () => {
+      mockStripeService.verifyWebhookSignature.mockResolvedValue({
+        id: 'evt_fail',
+        type: 'invoice.paid',
+        data: { object: { id: 'in_1' } },
+      } as any);
+      mockSubscriptionService.handleInvoicePaid.mockRejectedValue(new Error('db down'));
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockIdempotencyCache.releaseWebhookClaim).toHaveBeenCalledWith('evt_fail');
+    });
+
+    it('returns 400 without claiming when a Connect signature fails', async () => {
+      mockStripeService.verifyWebhookSignature.mockRejectedValue(new Error('No signatures found'));
+
+      await webhookController.handleStripeConnectWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockIdempotencyCache.claimWebhookEvent).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when processing a verified Connect event throws', async () => {
+      mockPaymentService.handleAccountUpdated = jest.fn().mockRejectedValue(new Error('db down'));
+      mockStripeService.verifyWebhookSignature.mockResolvedValue({
+        id: 'evt_acct',
+        type: 'account.updated',
+        account: 'acct_1',
+        data: { object: { id: 'acct_1' } },
+      } as any);
+
+      await webhookController.handleStripeConnectWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
+
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockIdempotencyCache.releaseWebhookClaim).toHaveBeenCalledWith('evt_acct');
+    });
   });
 
   describe('handleStripeConnectWebhook', () => {

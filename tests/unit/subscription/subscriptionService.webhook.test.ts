@@ -813,15 +813,21 @@ describe('SubscriptionService - Webhook Handlers', () => {
       );
     });
 
-    it('should throw error if subscription not found for cancellation', async () => {
+    it('acknowledges a canceled Stripe subscription with no local record without side effects', async () => {
       mockSubscriptionDAO.findFirst.mockResolvedValue(null);
 
-      await expect(
-        subscriptionService.handleSubscriptionCanceled({
-          stripeSubscriptionId: 'sub_notfound',
-          canceledAt: 1700000000,
-        })
-      ).rejects.toThrow('Subscription not found');
+      const result = await subscriptionService.handleSubscriptionCanceled({
+        stripeSubscriptionId: 'sub_notfound',
+        canceledAt: 1700000000,
+      });
+
+      expect(result).toEqual({
+        data: null,
+        success: true,
+        message: 'No local subscription to cancel',
+      });
+      expect(mockSubscriptionDAO.update).not.toHaveBeenCalled();
+      expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
     });
 
     it('should throw error if update fails during cancellation', async () => {

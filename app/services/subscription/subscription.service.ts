@@ -164,24 +164,17 @@ export class SubscriptionService {
         timestamp: new Date().toISOString(),
       };
 
-      const sent = await this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         accountAdminId,
         cuid,
         { ...notificationPayload, resource: 'subscription' },
         'resource-event'
       );
 
-      if (sent) {
-        this.log.info(
-          { cuid, accountAdminId, eventType: eventData.type },
-          'SSE notification sent to account admin'
-        );
-      } else {
-        this.log.debug(
-          { cuid, accountAdminId },
-          'Account admin not connected to SSE, cache invalidated'
-        );
-      }
+      this.log.info(
+        { cuid, accountAdminId, eventType: eventData.type },
+        'SSE notification published to account admin'
+      );
     } catch (error) {
       this.log.error({ error, cuid }, 'Error sending SSE notification to account admin');
       // Don't throw - notification failure shouldn't break webhook processing
@@ -1609,7 +1602,7 @@ export class SubscriptionService {
   async handleSubscriptionCanceled(data: {
     stripeSubscriptionId: string;
     canceledAt: number;
-  }): IPromiseReturnedData<ISubscriptionDocument> {
+  }): IPromiseReturnedData<ISubscriptionDocument | null> {
     return this.subscriptionWebhookService.handleSubscriptionCanceled(data);
   }
 

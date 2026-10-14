@@ -1086,24 +1086,62 @@ export class ClientService {
           'identityVerification.verifiedAt': new Date(),
         },
       });
-
-      await this.sseService.sendToUser(
-        client.accountAdmin.toString(),
-        client.cuid,
-        { isVerified: true },
-        EventTypes.IDENTITY_VERIFIED
-      );
     } else {
       await this.clientDAO.updateById(client._id.toString(), {
         $set: { 'identityVerification.sessionStatus': 'requires_input' },
       });
+    }
+
+    await this.notifyAccountAdminOfIdentityStatus(
+      client.cuid,
+      client.accountAdmin?.toString(),
+      status
+    );
+  }
+
+  /**
+   * Side effects only — failures are logged, never thrown, so a notification
+   * problem doesn't fail the Stripe webhook and trigger a duplicate retry.
+   */
+  private async notifyAccountAdminOfIdentityStatus(
+    cuid: string,
+    adminId: string | undefined,
+    status: 'verified' | 'requires_input'
+  ): Promise<void> {
+    if (!adminId) {
+      this.log.warn({ cuid, status }, 'No account admin found for identity verification update');
+      return;
+    }
+
+    const isVerified = status === 'verified';
+    try {
+      // currentuser.client.isVerified is cached — bust it so the refetch sees the new state
+      await this.authCache.invalidateCurrentUser(adminId, cuid);
 
       await this.sseService.sendToUser(
-        client.accountAdmin.toString(),
-        client.cuid,
-        { sessionStatus: 'requires_input' },
-        EventTypes.IDENTITY_REQUIRES_INPUT
+        adminId,
+        cuid,
+        isVerified
+          ? { resource: 'identity', action: 'verified', isVerified: true }
+          : { resource: 'identity', action: 'requires-input', sessionStatus: 'requires_input' },
+        'resource-event'
       );
+
+      await this.notificationService.createNotification(cuid, NotificationTypeEnum.SYSTEM, {
+        type: NotificationTypeEnum.SYSTEM,
+        recipientType: RecipientTypeEnum.INDIVIDUAL,
+        recipient: adminId,
+        priority: NotificationPriorityEnum.HIGH,
+        title: isVerified ? 'Identity Verified' : 'Identity Verification Needs Attention',
+        message: isVerified
+          ? 'Your identity has been verified. Your account is now fully verified.'
+          : 'We could not verify your identity. Please retry verification from your account settings.',
+        actionUrl: `/client/${cuid}/account_settings`,
+        cuid,
+        metadata: {},
+      });
+    } catch (error) {
+      this.log.error({ error, cuid, status }, 'Failed to notify account admin of identity status');
     }
   }
 
@@ -1158,12 +1196,12 @@ export class ClientService {
           recipientId,
           cuid,
           {
-            action: 'REFETCH_CURRENT_USER',
-            eventType: 'payout_account_verified',
+            resource: 'payout',
+            action: 'verified',
             message: 'Your payout account has been verified and is ready to receive payments.',
             timestamp: new Date().toISOString(),
           },
-          'payment_update'
+          'resource-event'
         );
 
         await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
@@ -1199,12 +1237,12 @@ export class ClientService {
         adminId,
         cuid,
         {
-          action: 'REFETCH_CURRENT_USER',
-          eventType: 'payout_account_verified',
+          resource: 'payout',
+          action: 'verified',
           message: 'Your payout account has been verified and is ready to receive payments.',
           timestamp: new Date().toISOString(),
         },
-        'payment_update'
+        'resource-event'
       );
 
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
@@ -1354,12 +1392,12 @@ export class ClientService {
           userId,
           cuid,
           {
-            action: 'REFETCH_CURRENT_USER',
-            eventType: 'tenant_features_updated',
+            resource: 'clientSettings',
+            action: 'tenant-features-updated',
             message: 'Your available features have been updated.',
             timestamp: new Date().toISOString(),
           },
-          'settings_update'
+          'resource-event'
         );
       })
     );

@@ -116,4 +116,126 @@ describe('ClientService - Account Verification', () => {
       await expect(clientService.verifyAccount(mockContext)).rejects.toThrow(BadRequestError);
     });
   });
+
+  describe('handleIdentityWebhookEvent', () => {
+    const sessionId = 'vs_test_123';
+    const accountAdminId = new Types.ObjectId();
+    let mockSSEService: { sendToUser: jest.Mock };
+    let mockNotificationService: { createNotification: jest.Mock };
+    let mockAuthCache: { invalidateCurrentUser: jest.Mock };
+    let mockPaymentGatewayService: { retrieveIdentityVerificationSession: jest.Mock };
+
+    const buildService = () =>
+      new ClientService({
+        clientDAO: mockClientDAO,
+        propertyDAO: {} as any,
+        propertyUnitDAO: {} as any,
+        userDAO: {} as any,
+        profileDAO: {} as any,
+        authCache: mockAuthCache as any,
+        userCache: {} as any,
+        subscriptionDAO: {} as any,
+        subscriptionService: {} as any,
+        emitterService: { emit: jest.fn(), on: jest.fn() } as any,
+        notificationService: mockNotificationService as any,
+        sseService: mockSSEService as any,
+        paymentGatewayService: mockPaymentGatewayService as any,
+        vendorDAO: {} as any,
+        featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+        permissionService: new PermissionService(),
+        queueFactory: { getQueue: jest.fn() } as any,
+        paymentProcessorDAO: {} as any,
+      });
+
+    beforeEach(() => {
+      mockClientDAO = { findFirst: jest.fn(), updateById: jest.fn() } as any;
+      mockSSEService = { sendToUser: jest.fn().mockResolvedValue(true) };
+      mockNotificationService = { createNotification: jest.fn().mockResolvedValue({}) };
+      mockAuthCache = { invalidateCurrentUser: jest.fn().mockResolvedValue({ success: true }) };
+      mockPaymentGatewayService = {
+        retrieveIdentityVerificationSession: jest.fn().mockResolvedValue({
+          data: { documentType: 'passport', issuingCountry: 'CA' },
+        }),
+      };
+      clientService = buildService();
+    });
+
+    const verifiedClient = () =>
+      ({ _id: mockClientId, cuid: 'TEST123', accountAdmin: accountAdminId }) as any;
+
+    it('marks client verified, busts admin cache, pushes SSE and persists a notification', async () => {
+      mockClientDAO.findFirst.mockResolvedValue(verifiedClient());
+
+      await clientService.handleIdentityWebhookEvent('verified', sessionId);
+
+      expect(mockClientDAO.updateById).toHaveBeenCalledWith(
+        mockClientId.toString(),
+        expect.objectContaining({ $set: expect.objectContaining({ isVerified: true }) })
+      );
+      expect(mockAuthCache.invalidateCurrentUser).toHaveBeenCalledWith(
+        accountAdminId.toString(),
+        'TEST123'
+      );
+      expect(mockSSEService.sendToUser).toHaveBeenCalledWith(
+        accountAdminId.toString(),
+        'TEST123',
+        { resource: 'identity', action: 'verified', isVerified: true },
+        'resource-event'
+      );
+      expect(mockNotificationService.createNotification).toHaveBeenCalledWith(
+        'TEST123',
+        'system',
+        expect.objectContaining({
+          recipient: accountAdminId.toString(),
+          title: 'Identity Verified',
+        })
+      );
+    });
+
+    it('pushes an identity requires-input resource event when Stripe needs more input', async () => {
+      mockClientDAO.findFirst.mockResolvedValue(verifiedClient());
+
+      await clientService.handleIdentityWebhookEvent('requires_input', sessionId);
+
+      expect(mockPaymentGatewayService.retrieveIdentityVerificationSession).not.toHaveBeenCalled();
+      expect(mockSSEService.sendToUser).toHaveBeenCalledWith(
+        accountAdminId.toString(),
+        'TEST123',
+        { resource: 'identity', action: 'requires-input', sessionStatus: 'requires_input' },
+        'resource-event'
+      );
+      expect(mockNotificationService.createNotification).toHaveBeenCalled();
+    });
+
+    it('still updates the client but skips notifications when accountAdmin is missing', async () => {
+      mockClientDAO.findFirst.mockResolvedValue({ ...verifiedClient(), accountAdmin: undefined });
+
+      await expect(
+        clientService.handleIdentityWebhookEvent('verified', sessionId)
+      ).resolves.toBeUndefined();
+
+      expect(mockClientDAO.updateById).toHaveBeenCalled();
+      expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
+      expect(mockNotificationService.createNotification).not.toHaveBeenCalled();
+    });
+
+    it('does not throw when SSE delivery fails, so the webhook is not retried', async () => {
+      mockClientDAO.findFirst.mockResolvedValue(verifiedClient());
+      mockSSEService.sendToUser.mockRejectedValue(new Error('redis down'));
+
+      await expect(
+        clientService.handleIdentityWebhookEvent('verified', sessionId)
+      ).resolves.toBeUndefined();
+      expect(mockClientDAO.updateById).toHaveBeenCalled();
+    });
+
+    it('returns early when no client matches the session', async () => {
+      mockClientDAO.findFirst.mockResolvedValue(null);
+
+      await clientService.handleIdentityWebhookEvent('verified', sessionId);
+
+      expect(mockClientDAO.updateById).not.toHaveBeenCalled();
+      expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
+    });
+  });
 });

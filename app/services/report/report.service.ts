@@ -642,8 +642,16 @@ export class ReportService implements ICronProvider {
       await this.sseService.sendToUser(
         userId,
         cuid,
-        { reportId, presignedUrl, expiresAt, filename },
-        'report:ready'
+        {
+          resource: 'report',
+          action: 'ready',
+          resourceUId: reportId,
+          reportId,
+          presignedUrl,
+          expiresAt,
+          filename,
+        },
+        'resource-event'
       );
 
       this.log.info({ reportId, cuid }, 'Report generation completed');

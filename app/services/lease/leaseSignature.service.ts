@@ -9,6 +9,7 @@ import { ESignatureQueue } from '@queues/index';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
+import { IResourceEvent } from '@interfaces/sse.interface';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { OwnershipType } from '@interfaces/property.interface';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
@@ -535,7 +536,7 @@ export class LeaseSignatureService {
 
           // Push real-time SSE refresh signal to both tenant and PM so their
           // lease list / lease detail pages refetch without a manual reload.
-          const ssePayload = {
+          const ssePayload: IResourceEvent = {
             resource: 'lease',
             action: 'status-changed',
             resourceUId: lease.luid,

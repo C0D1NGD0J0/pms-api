@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { envVariables } from '@shared/config';
 import { MoneyUtils } from '@utils/money.utils';
 import { MailType } from '@interfaces/utils.interface';
+import { SSEResource } from '@interfaces/sse.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import {
   ICreateNotificationRequest,
@@ -147,7 +148,7 @@ export async function sendResourceEvent(
   ctx: INotificationContext,
   userId: string | undefined | null,
   cuid: string,
-  resource: string,
+  resource: SSEResource,
   action: string,
   resourceUId: string,
   errorLabel?: string
@@ -175,7 +176,7 @@ export async function sendResourceEventToMany(
   ctx: INotificationContext,
   userIds: (string | undefined | null)[],
   cuid: string,
-  resource: string,
+  resource: SSEResource,
   action: string,
   resourceUId: string,
   errorLabel?: string

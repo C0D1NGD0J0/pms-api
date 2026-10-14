@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { IResourceEvent } from '@interfaces/sse.interface';
 import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
@@ -83,15 +84,23 @@ export async function handleGuestPassCreated(
     }
 
     // Real-time UI update for the same audience as the notification above
-    const liveEvent = { vpuid, visitorName, propertyName, propertyId };
+    const liveEvent: IResourceEvent = {
+      resource: 'guestPass',
+      action: 'created',
+      resourceUId: vpuid,
+      vpuid,
+      visitorName,
+      propertyName,
+      propertyId,
+    };
     if (securityStaffIds.length > 0) {
       await Promise.all(
         securityStaffIds.map((staffId) =>
-          ctx.sseService.sendToUser(staffId, cuid, liveEvent, 'guest-pass-created')
+          ctx.sseService.sendToUser(staffId, cuid, liveEvent, 'resource-event')
         )
       );
     } else {
-      await ctx.sseService.broadcastToClient(cuid, liveEvent, 'guest-pass-created', undefined, [
+      await ctx.sseService.broadcastToClient(cuid, liveEvent, 'resource-event', undefined, [
         ...MGMT_ROLES,
       ]);
     }

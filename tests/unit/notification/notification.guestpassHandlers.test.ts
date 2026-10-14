@@ -48,8 +48,12 @@ describe('handleGuestPassCreated live event targeting', () => {
     expect(ctx.sseService.sendToUser).toHaveBeenCalledWith(
       securityGuardId.toString(),
       CUID,
-      expect.objectContaining({ vpuid: payload.vpuid }),
-      'guest-pass-created'
+      expect.objectContaining({
+        resource: 'guestPass',
+        action: 'created',
+        resourceUId: payload.vpuid,
+      }),
+      'resource-event'
     );
     expect(ctx.sseService.broadcastToClient).not.toHaveBeenCalled();
     expect(ctx.createNotification).toHaveBeenCalledTimes(1);
@@ -72,8 +76,8 @@ describe('handleGuestPassCreated live event targeting', () => {
       expect(ctx.sseService.sendToUser).not.toHaveBeenCalled();
       expect(ctx.sseService.broadcastToClient).toHaveBeenCalledWith(
         CUID,
-        expect.objectContaining({ vpuid: payload.vpuid }),
-        'guest-pass-created',
+        expect.objectContaining({ resource: 'guestPass', resourceUId: payload.vpuid }),
+        'resource-event',
         undefined,
         ['super-admin', 'admin', 'manager']
       );

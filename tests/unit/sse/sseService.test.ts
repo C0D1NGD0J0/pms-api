@@ -86,7 +86,7 @@ describe('SSEService', () => {
   describe('sendToUser', () => {
     it('publishes a user-typed message to the SSE events channel', async () => {
       const data = { id: '123', title: 'Test notification' };
-      await service.sendToUser('user-1', 'cuid-1', data, 'notification');
+      await service.sendToUser('user-1', 'cuid-1', data, 'my-notifications');
 
       expect(mockPublish).toHaveBeenCalledWith(
         'pms:sse:events',
@@ -95,16 +95,42 @@ describe('SSEService', () => {
           userId: 'user-1',
           cuid: 'cuid-1',
           data,
-          eventType: 'notification',
+          eventType: 'my-notifications',
         })
       );
     });
 
-    it('defaults eventType to "notification"', async () => {
-      await service.sendToUser('user-1', 'cuid-1', {});
+    it('publishes resource events under the resource-event name', async () => {
+      await service.sendToUser(
+        'user-1',
+        'cuid-1',
+        { resource: 'identity', action: 'verified' },
+        'resource-event'
+      );
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
-      expect(JSON.parse(raw).eventType).toBe('notification');
+      expect(JSON.parse(raw)).toMatchObject({
+        eventType: 'resource-event',
+        data: { resource: 'identity', action: 'verified' },
+      });
+    });
+
+    it('rejects off-contract event names and resource payloads at compile time', () => {
+      // Type-level guard: these lines must keep failing to compile.
+      const assertTypeErrors = () => {
+        // @ts-expect-error — unknown SSE event name
+        void service.sendToUser('user-1', 'cuid-1', {}, 'identity:verified');
+        // @ts-expect-error — resource-event payload needs a contract resource
+        void service.sendToUser(
+          'user-1',
+          'cuid-1',
+          { resource: 'nope', action: 'x' },
+          'resource-event'
+        );
+        // @ts-expect-error — eventType is required (no silent default)
+        void service.sendToUser('user-1', 'cuid-1', {});
+      };
+      expect(assertTypeErrors).toBeInstanceOf(Function);
     });
 
     it('includes eventId in the published payload when provided', async () => {
@@ -116,7 +142,7 @@ describe('SSEService', () => {
     });
 
     it('omits eventId from the published payload when not provided', async () => {
-      await service.sendToUser('user-1', 'cuid-1', {}, 'notification');
+      await service.sendToUser('user-1', 'cuid-1', {}, 'my-notifications');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventId).toBeUndefined();
@@ -124,7 +150,7 @@ describe('SSEService', () => {
 
     it('serialises Mongoose documents via toObject() before publishing', async () => {
       const mongoDoc = { value: 42, toObject: () => ({ value: 42 }) };
-      await service.sendToUser('user-1', 'cuid-1', mongoDoc);
+      await service.sendToUser('user-1', 'cuid-1', mongoDoc, 'my-notifications');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       const parsed = JSON.parse(raw);
@@ -132,9 +158,10 @@ describe('SSEService', () => {
       expect(parsed.data.toObject).toBeUndefined();
     });
 
-    it('returns true', async () => {
-      const result = await service.sendToUser('user-1', 'cuid-1', {});
-      expect(result).toBe(true);
+    it('resolves once published — it does not report delivery', async () => {
+      await expect(
+        service.sendToUser('user-1', 'cuid-1', {}, 'my-notifications')
+      ).resolves.toBeUndefined();
     });
   });
 
@@ -143,7 +170,7 @@ describe('SSEService', () => {
   describe('broadcastToClient', () => {
     it('publishes a broadcast-typed message to the SSE events channel', async () => {
       const data = { text: 'Scheduled maintenance tonight' };
-      await service.broadcastToClient('cuid-1', data, 'announcement');
+      await service.broadcastToClient('cuid-1', data, 'announcements');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       const parsed = JSON.parse(raw);
@@ -151,7 +178,7 @@ describe('SSEService', () => {
         type: 'broadcast',
         cuid: 'cuid-1',
         data,
-        eventType: 'announcement',
+        eventType: 'announcements',
       });
     });
 
@@ -169,7 +196,7 @@ describe('SSEService', () => {
     });
 
     it('omits targetRoles from the published payload when not provided', async () => {
-      await service.broadcastToClient('cuid-1', {});
+      await service.broadcastToClient('cuid-1', {}, 'announcements');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).targetRoles).toBeUndefined();
@@ -190,17 +217,21 @@ describe('SSEService', () => {
     });
 
     it('omits targetDepartments from the published payload when not provided', async () => {
-      await service.broadcastToClient('cuid-1', {});
+      await service.broadcastToClient('cuid-1', {}, 'announcements');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).targetDepartments).toBeUndefined();
     });
 
-    it('defaults eventType to "announcement"', async () => {
-      await service.broadcastToClient('cuid-1', {});
+    it('broadcasts resource events under the resource-event name', async () => {
+      await service.broadcastToClient(
+        'cuid-1',
+        { resource: 'guestPass', action: 'created', resourceUId: 'vp-1' },
+        'resource-event'
+      );
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
-      expect(JSON.parse(raw).eventType).toBe('announcement');
+      expect(JSON.parse(raw).eventType).toBe('resource-event');
     });
 
     it('includes eventId in the published payload when provided', async () => {
@@ -212,7 +243,7 @@ describe('SSEService', () => {
     });
 
     it('omits eventId from the published payload when not provided', async () => {
-      await service.broadcastToClient('cuid-1', {});
+      await service.broadcastToClient('cuid-1', {}, 'announcements');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       expect(JSON.parse(raw).eventId).toBeUndefined();
@@ -220,7 +251,7 @@ describe('SSEService', () => {
 
     it('serialises Mongoose documents via toObject() before publishing', async () => {
       const mongoDoc = { msg: 'broadcast', toObject: () => ({ msg: 'broadcast' }) };
-      await service.broadcastToClient('cuid-1', mongoDoc);
+      await service.broadcastToClient('cuid-1', mongoDoc, 'announcements');
 
       const [, raw] = mockPublish.mock.calls[0] as [string, string];
       const parsed = JSON.parse(raw);

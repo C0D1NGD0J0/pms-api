@@ -1,7 +1,7 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
 import { PropertyCsvProcessor } from '@services/csv';
+import { createLogger, JOB_NAME } from '@utils/index';
 import { isUnlimited } from '@utils/planLimits.utils';
 import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
@@ -44,6 +44,29 @@ export class PropertyWorker {
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.sseService = sseService;
   }
+
+  /**
+   * Called by PropertyQueue once a CSV job has failed for good — thrown errors, timeouts and
+   * stalled/crashed workers alike — so the import screen and notifications always get a result.
+   */
+  notifyCsvJobFailed = async (job: Job<CsvJobData>, error: Error): Promise<void> => {
+    const isImport = job.name === JOB_NAME.CSV_IMPORT_JOB;
+    await this.sseService.sendToUser(
+      job.data.userId,
+      job.data.clientInfo.cuid,
+      {
+        jobId: job.id.toString(),
+        jobType: isImport ? 'csv_property_import' : 'csv_property_validation',
+        stage: 'failed',
+        progress: 0,
+        message: isImport
+          ? 'CSV file processing encountered a fatal error'
+          : 'CSV file validation encountered a fatal error',
+        error: error.message,
+      },
+      'job-notification'
+    );
+  };
 
   processCsvValidation = async (job: Job<CsvJobData>) => {
     job.progress(10);
@@ -95,19 +118,7 @@ export class PropertyWorker {
       };
     } catch (error) {
       this.log.error(`Error processing CSV validation job ${job.id}:`, error);
-      await this.sseService.sendToUser(
-        userId,
-        cuid,
-        {
-          jobId: job.id.toString(),
-          jobType: 'csv_property_validation',
-          stage: 'failed',
-          progress: 0,
-          message: 'CSV file validation encountered a fatal error',
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'job-notification'
-      );
+      // Reported once, on the final attempt, by the queue's failed hook (notifyCsvJobFailed)
       throw error;
     }
   };
@@ -289,19 +300,7 @@ export class PropertyWorker {
       };
     } catch (error) {
       this.log.error(`Error processing CSV import job ${job.id}:`, error);
-      await this.sseService.sendToUser(
-        userId,
-        cuid,
-        {
-          jobId: job.id.toString(),
-          jobType: 'csv_property_import',
-          stage: 'failed',
-          progress: 0,
-          message: 'CSV file processing encountered a fatal error',
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'job-notification'
-      );
+      // Reported once, on the final attempt, by the queue's failed hook (notifyCsvJobFailed)
       throw error;
     }
   };

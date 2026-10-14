@@ -187,10 +187,10 @@ export interface IPropertyAuthorization {
 export interface CsvJobData {
   // User-confirmed header → field key mapping from the frontend's mapping step.
   columnMapping?: Record<string, string>;
+  /** The uploaded CSV's bytes; the worker writes them to a temp csvFilePath. */
+  csvContentBase64?: string;
   clientInfo: IClientInfo;
   csvFilePath: string;
-  /** Where the API staged the CSV in S3; the worker downloads it to csvFilePath. */
-  csvS3Key?: string;
   jobId?: string;
   userId: string;
 }

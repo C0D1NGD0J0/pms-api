@@ -1,42 +1,48 @@
+import { Job } from 'bull';
 import { CsvJobData } from '@interfaces/index';
 import { QUEUE_NAMES, JOB_NAME } from '@utils/index';
-import { S3Service } from '@services/fileUpload/awsS3';
 import { InvitationWorker } from '@workers/invitation.worker';
 
 import { BaseQueue } from './base.queue';
-import { withStagedCsv, stageCsvInS3 } from './csvFileTransfer';
+import { attachCsvToJob, withCsvFile } from './csvFileTransfer';
 
 interface IConstructor {
   invitationWorker: InvitationWorker;
-  s3Service: S3Service;
 }
 
 export class InvitationQueue extends BaseQueue {
   private readonly invitationWorker: InvitationWorker;
-  private readonly s3Service: S3Service;
 
-  constructor({ invitationWorker, s3Service }: IConstructor) {
+  constructor({ invitationWorker }: IConstructor) {
     super({ queueName: QUEUE_NAMES.INVITATION_QUEUE });
     this.invitationWorker = invitationWorker;
-    this.s3Service = s3Service;
     // CSV operations are heavy — low concurrency prevents BRPOPLPUSH
     // contention on the shared bclient and avoids overwhelming the system.
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_VALIDATION_JOB,
       2,
-      withStagedCsv(s3Service, this.invitationWorker.processCsvValidation)
+      withCsvFile(this.invitationWorker.processCsvValidation)
     );
     this.processQueueJobs(
       JOB_NAME.INVITATION_CSV_IMPORT_JOB,
       1,
-      withStagedCsv(s3Service, this.invitationWorker.processCsvImport)
+      withCsvFile(this.invitationWorker.processCsvImport)
     );
+  }
+
+  protected async onJobFailedPermanently(job: Job<CsvJobData>, error: Error): Promise<void> {
+    if (
+      job.name === JOB_NAME.INVITATION_CSV_VALIDATION_JOB ||
+      job.name === JOB_NAME.INVITATION_CSV_IMPORT_JOB
+    ) {
+      await this.invitationWorker.notifyCsvJobFailed(job, error);
+    }
   }
 
   async addCsvValidationJob(data: CsvJobData) {
     const jobId = await this.addJobToQueue(
       JOB_NAME.INVITATION_CSV_VALIDATION_JOB,
-      await stageCsvInS3(this.s3Service, data),
+      await attachCsvToJob(data),
       {
         attempts: 1, // no retries for CSV validation
         timeout: 60000,
@@ -52,7 +58,7 @@ export class InvitationQueue extends BaseQueue {
   async addCsvImportJob(data: CsvJobData) {
     const jobId = await this.addJobToQueue(
       JOB_NAME.INVITATION_CSV_IMPORT_JOB,
-      await stageCsvInS3(this.s3Service, data),
+      await attachCsvToJob(data),
       {
         // A retry would re-send invites already dispatched, and Bull's timeout doesn't
         // cancel the running handler — so run once, with room for large files.

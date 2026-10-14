@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { JOB_NAME } from '@utils/constants';
 import { PropertyWorker } from '@workers/property.worker';
 
 jest.mock('@services/subscription/subscription_plans.config', () => ({
@@ -118,19 +119,15 @@ describe('PropertyWorker.processCsvValidation', () => {
     );
   });
 
-  it('emits a failed job-notification and rethrows on a fatal error', async () => {
+  it('rethrows a fatal error without notifying — the queue reports the final failure once', async () => {
     mockPropertyCsvProcessor.validateCsv.mockReturnValue(Promise.reject(new Error('boom')));
 
     await expect(worker.processCsvValidation(makeJob() as any)).rejects.toThrow('boom');
 
-    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+    expect(mockSseService.sendToUser).not.toHaveBeenCalledWith(
       USER_ID,
       CUID,
-      expect.objectContaining({
-        jobType: 'csv_property_validation',
-        stage: 'failed',
-        error: 'boom',
-      }),
+      expect.objectContaining({ stage: 'failed' }),
       'job-notification'
     );
   });
@@ -226,15 +223,38 @@ describe('PropertyWorker.processCsvImport', () => {
     );
   });
 
-  it('emits a failed job-notification and rethrows on a fatal error', async () => {
+  it('rethrows a fatal error without notifying — the queue reports the final failure once', async () => {
     mockPropertyCsvProcessor.validateCsv.mockReturnValue(Promise.reject(new Error('fatal')));
 
     await expect(worker.processCsvImport(makeJob() as any)).rejects.toThrow('fatal');
 
+    expect(mockSseService.sendToUser).not.toHaveBeenCalledWith(
+      USER_ID,
+      CUID,
+      expect.objectContaining({ stage: 'failed' }),
+      'job-notification'
+    );
+  });
+});
+
+describe('PropertyWorker.notifyCsvJobFailed', () => {
+  it.each([
+    [JOB_NAME.CSV_VALIDATION_JOB, 'csv_property_validation'],
+    [JOB_NAME.CSV_IMPORT_JOB, 'csv_property_import'],
+  ])('sends a failed notification for a %s that failed for good', async (name, jobType) => {
+    const job = { ...makeJob(), name };
+
+    await worker.notifyCsvJobFailed(job as any, new Error('job timed out'));
+
     expect(mockSseService.sendToUser).toHaveBeenCalledWith(
       USER_ID,
       CUID,
-      expect.objectContaining({ jobType: 'csv_property_import', stage: 'failed', error: 'fatal' }),
+      expect.objectContaining({
+        jobId: 'job-1',
+        jobType,
+        stage: 'failed',
+        error: 'job timed out',
+      }),
       'job-notification'
     );
   });

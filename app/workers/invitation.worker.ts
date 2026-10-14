@@ -1,9 +1,9 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
-import { createLogger } from '@utils/index';
 import { SSEService } from '@services/index';
 import { CsvJobData } from '@interfaces/index';
+import { createLogger, JOB_NAME } from '@utils/index';
 import { IInvalidCsvProperty } from '@interfaces/csv.interface';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { InvitationCsvProcessor, IInvitationCsvData } from '@services/csv';
@@ -36,6 +36,25 @@ export class InvitationWorker {
     this.subscriptionService = subscriptionService;
     this.log = createLogger('InvitationWorker');
   }
+
+  /**
+   * Called by InvitationQueue once a CSV job has failed for good — thrown errors, timeouts and
+   * stalled/crashed workers alike — so the import screen and notifications always get a result.
+   */
+  notifyCsvJobFailed = async (job: Job<CsvJobData>, error: Error): Promise<void> => {
+    const isImport = job.name === JOB_NAME.INVITATION_CSV_IMPORT_JOB;
+    const reason = this.errorMessage(error);
+    await this.notifyJob(job.data.userId, job.data.clientInfo.cuid, {
+      jobId: job.id.toString(),
+      jobType: isImport ? 'csv_invitation_import' : 'csv_invitation_validation',
+      stage: 'failed',
+      progress: 0,
+      message: isImport
+        ? t('invitation.csv.importFailed', { error: reason })
+        : t('invitation.csv.validationFailed', { error: reason }),
+      error: reason,
+    });
+  };
 
   processCsvValidation = async (job: Job<CsvJobData>) => {
     job.progress(10);
@@ -85,15 +104,8 @@ export class InvitationWorker {
       };
     } catch (error) {
       this.log.error(`Error processing invitation CSV validation job ${job.id}:`, error);
-      // Header problems (e.g. missing required columns) land here — tell the user.
-      await this.notifyJob(userId, clientInfo.cuid, {
-        jobId,
-        jobType: 'csv_invitation_validation',
-        stage: 'failed',
-        progress: 0,
-        message: t('invitation.csv.validationFailed', { error: this.errorMessage(error) }),
-        error: this.errorMessage(error),
-      });
+      // Header problems (e.g. missing required columns) land here. The user is told once, on
+      // the final attempt, by the queue's failed hook (notifyCsvJobFailed).
       throw error;
     }
   };
@@ -188,14 +200,7 @@ export class InvitationWorker {
       return { success: true, processId: job.id, createdCount, errors: rowErrors };
     } catch (error) {
       this.log.error(`Error processing invitation CSV import job ${job.id}:`, error);
-      await this.notifyJob(userId, clientInfo.cuid, {
-        jobId,
-        jobType: 'csv_invitation_import',
-        stage: 'failed',
-        progress: 0,
-        message: t('invitation.csv.importFailed', { error: this.errorMessage(error) }),
-        error: this.errorMessage(error),
-      });
+      // Reported once, on the final attempt, by the queue's failed hook (notifyCsvJobFailed)
       throw error;
     }
   };

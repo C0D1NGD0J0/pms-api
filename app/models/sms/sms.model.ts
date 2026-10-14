@@ -56,6 +56,4 @@ SMSLogSchema.index({ cuid: 1, messageType: 1, sentAt: -1 });
 SMSLogSchema.index({ sentAt: 1 }, { expireAfterSeconds: 63072000 });
 
 const SMSLogModel = model<ISMSLogDocument>('SMSLog', SMSLogSchema);
-SMSLogModel.syncIndexes();
-
 export default SMSLogModel;

@@ -155,6 +155,4 @@ SubscriptionSchema.index({ pendingDowngradeAt: 1, status: 1 });
 
 const SubscriptionModel = model<ISubscriptionDocument>('Subscription', SubscriptionSchema);
 SubscriptionModel.cleanIndexes();
-SubscriptionModel.syncIndexes();
-
 export default SubscriptionModel;

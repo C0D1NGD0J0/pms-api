@@ -666,6 +666,4 @@ PropertySchema.pre('validate', async function () {
 
 const PropertyModel = model<IPropertyDocument>('Property', PropertySchema);
 PropertyModel.cleanIndexes();
-PropertyModel.syncIndexes();
-
 export default PropertyModel;

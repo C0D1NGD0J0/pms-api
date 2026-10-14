@@ -419,6 +419,4 @@ PropertyUnitSchema.methods.getAuthorizationStatus = function (this: IPropertyUni
 
 const PropertyUnitModel = model<IPropertyUnitDocument>('PropertyUnit', PropertyUnitSchema);
 PropertyUnitModel.cleanIndexes();
-PropertyUnitModel.syncIndexes();
-
 export default PropertyUnitModel;

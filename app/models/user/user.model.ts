@@ -134,6 +134,4 @@ UserSchema.index({ emailChangeToken: 1 }, { sparse: true });
 
 const UserModel = model<IUserDocument>('User', UserSchema);
 
-UserModel.syncIndexes();
-
 export default UserModel;

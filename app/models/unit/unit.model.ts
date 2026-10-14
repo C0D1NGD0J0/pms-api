@@ -340,6 +340,4 @@ UnitSchema.pre('validate', async function () {
 
 const UnitModel = model<IUnitDocument>('Unit', UnitSchema);
 UnitModel.cleanIndexes();
-UnitModel.syncIndexes();
-
 export default UnitModel;

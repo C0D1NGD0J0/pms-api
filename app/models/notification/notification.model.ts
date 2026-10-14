@@ -234,6 +234,4 @@ NotificationSchema.virtual('timeAgo').get(function (this: INotificationDocument)
 
 const NotificationModel = model<INotificationDocument>('Notification', NotificationSchema);
 NotificationModel.cleanIndexes();
-NotificationModel.syncIndexes();
-
 export default NotificationModel;

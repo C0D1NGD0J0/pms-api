@@ -5,6 +5,7 @@ import { retryAsync } from '@utils/retryAsync';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
 import { RedisService } from './redis-setup';
+import { syncAllIndexes } from './syncIndexes';
 
 export interface IDatabaseService {
   disconnect: (env?: Environments) => Promise<boolean>;
@@ -94,6 +95,11 @@ export class DatabaseService implements IDatabaseService {
 
       this.connected = true;
       this.log.info(`🔗 Connected to ${env} database`);
+
+      // Align every model's indexes once the connection is open. Fire-and-forget so a slow
+      // index build never blocks server start; failures are logged inside syncAllIndexes.
+      void syncAllIndexes();
+
       return true;
     } catch (err) {
       this.log.error(`❌ Database Connection Error for ${env}: `, err);

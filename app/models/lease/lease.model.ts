@@ -981,6 +981,4 @@ LeaseSchema.index(
 
 const LeaseModel = model<ILeaseDocument>('Lease', LeaseSchema);
 
-LeaseModel.syncIndexes();
-
 export default LeaseModel;

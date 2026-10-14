@@ -37,17 +37,12 @@ export const connectTestDatabase = async (): Promise<void> => {
     directConnection: !USE_LOCAL_MONGO,
   });
 
-  // Flush all buffered syncIndexes() calls that fired at model-import time.
-  // Without this, those operations remain pending when tests start, clogging
-  // Mongoose's buffer and causing countDocuments() (unique-validator) to timeout.
+  // Build every model's indexes now that the connection is open, so unique-index validators
+  // (countDocuments) don't time out mid-test. Shares the app's single implementation, imported
+  // lazily so no-DB test runs never pull the model graph into their setup.
   try {
-    await Promise.all(
-      Object.values(mongoose.connection.models).map((model) =>
-        model.syncIndexes().catch((err: Error) => {
-          console.warn(`[testDatabase] syncIndexes failed for ${model.modelName}:`, err.message);
-        })
-      )
-    );
+    const { syncAllIndexes } = await import('@database/syncIndexes');
+    await syncAllIndexes();
   } catch {
     // Non-fatal — tests can still run even if a secondary index sync fails
   }

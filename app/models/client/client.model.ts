@@ -288,6 +288,4 @@ ClientSchema.methods.softDelete = async function (userId: string) {
 
 const ClientModel = model<IClientDocument>('Client', ClientSchema);
 
-ClientModel.syncIndexes();
-
 export default ClientModel;

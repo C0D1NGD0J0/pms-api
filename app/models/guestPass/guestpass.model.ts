@@ -180,6 +180,4 @@ GuestPassSchema.methods.isValid = function (this: IGuestPassDocument): boolean {
 };
 
 const GuestPassModel = model<IGuestPassDocument>('GuestPass', GuestPassSchema);
-GuestPassModel.syncIndexes();
-
 export default GuestPassModel;

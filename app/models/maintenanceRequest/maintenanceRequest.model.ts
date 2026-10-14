@@ -223,6 +223,4 @@ const MaintenanceRequestModel = model<IMaintenanceRequestDocument>(
   MaintenanceRequestSchema
 );
 
-MaintenanceRequestModel.syncIndexes();
-
 export default MaintenanceRequestModel;

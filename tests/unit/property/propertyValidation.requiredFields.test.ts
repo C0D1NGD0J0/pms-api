@@ -64,3 +64,23 @@ describe('PropertyValidationService.validateProperty — required fields on crea
     expect(result.errors).toEqual([]);
   });
 });
+
+describe('PropertyValidationService.validateProperty — money limits follow the currency', () => {
+  const rentErrors = (rentAmount: number, currency: string) =>
+    PropertyValidationService.validateProperty({
+      name: 'Ikoyi Crescent Townhouses',
+      fullAddress: '8 Bourdillon Road, Ikoyi, Lagos',
+      propertyType: 'townhouse',
+      maxAllowedUnits: 1,
+      specifications: { totalArea: 2600, bedrooms: 4, bathrooms: 4 },
+      fees: { rentAmount, currency },
+    } as any).errors.filter((error) => error.field === 'rentAmount');
+
+  it('accepts a realistic naira rent above the dollar limit', () => {
+    expect(rentErrors(1500000, 'NGN')).toEqual([]);
+  });
+
+  it('still rejects the same amount in US dollars', () => {
+    expect(rentErrors(1500000, 'USD')).toHaveLength(1);
+  });
+});

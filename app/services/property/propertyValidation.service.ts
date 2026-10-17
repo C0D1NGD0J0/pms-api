@@ -1,3 +1,4 @@
+import { scaleUsdLimit } from '@utils/currency.utils';
 import { NewPropertyType } from '@interfaces/property.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 
@@ -366,12 +367,16 @@ export class PropertyValidationService {
       }
     }
 
+    // Limits are set in US dollars and scaled to the property's currency, so a realistic
+    // rent in naira or yen isn't rejected as too high
+    const currency = propertyData.fees?.currency;
+
     if (propertyData.financialDetails) {
       if (propertyData.financialDetails.purchasePrice !== undefined) {
         errors.push(
           ...this.validateCurrency(propertyData.financialDetails.purchasePrice, 'purchasePrice', {
             min: 0,
-            max: 100000000,
+            max: scaleUsdLimit(100000000, currency),
           })
         );
       }
@@ -380,7 +385,7 @@ export class PropertyValidationService {
         errors.push(
           ...this.validateCurrency(propertyData.financialDetails.marketValue, 'marketValue', {
             min: 0,
-            max: 100000000,
+            max: scaleUsdLimit(100000000, currency),
           })
         );
       }
@@ -389,7 +394,7 @@ export class PropertyValidationService {
         errors.push(
           ...this.validateCurrency(propertyData.financialDetails.propertyTax, 'propertyTax', {
             min: 0,
-            max: 1000000,
+            max: scaleUsdLimit(1000000, currency),
           })
         );
       }
@@ -427,7 +432,7 @@ export class PropertyValidationService {
       errors.push(
         ...this.validateCurrency(propertyData.fees.rentAmount, 'rentAmount', {
           min: 0,
-          max: 100000,
+          max: scaleUsdLimit(100000, currency),
         })
       );
 
@@ -435,7 +440,7 @@ export class PropertyValidationService {
         errors.push(
           ...this.validateCurrency(propertyData.fees.managementFees, 'managementFees', {
             min: 0,
-            max: 50000,
+            max: scaleUsdLimit(50000, currency),
           })
         );
       }

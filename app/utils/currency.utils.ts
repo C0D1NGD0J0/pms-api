@@ -57,6 +57,30 @@ export function getCurrencyForCountry(countryCode: string): string {
 }
 
 /**
+ * Roughly how many units of each currency make one US dollar. Only used to scale sanity limits
+ * (e.g. the highest believable monthly rent) so they mean the same in every currency — never
+ * for converting amounts. Currencies near parity with USD are left at 1.
+ */
+const UNITS_PER_USD: Record<string, number> = {
+  CAD: 1.4,
+  AUD: 1.5,
+  SGD: 1.4,
+  AED: 3.7,
+  BRL: 5.5,
+  CNY: 7.2,
+  ZAR: 18,
+  MXN: 20,
+  INR: 85,
+  JPY: 150,
+  NGN: 1600,
+};
+
+/** A limit set in US dollars, expressed in the given currency. */
+export function scaleUsdLimit(usdLimit: number, currency?: string): number {
+  return Math.round(usdLimit * (UNITS_PER_USD[currency?.toUpperCase() ?? ''] ?? 1));
+}
+
+/**
  * Currencies supported for subscription billing via Stripe.
  * NGN is not supported for recurring subscriptions — Nigeria falls back to USD.
  */

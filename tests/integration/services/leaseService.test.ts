@@ -45,6 +45,8 @@ import {
   seedTestData,
 } from '../../helpers';
 
+const daysFromToday = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
 const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
   const clientDAO = new ClientDAO({ clientModel: Client, userModel: User });
@@ -1470,9 +1472,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
           id: property._id,
           address: property.address.fullAddress,
         },
+        // Relative to today: termination rules reject past dates and dates after the lease ends
         duration: {
-          startDate: new Date('2025-01-01'),
-          endDate: new Date('2026-12-31'),
+          startDate: daysFromToday(-365),
+          endDate: daysFromToday(365),
         },
         fees: {
           rentAmount: 150000,
@@ -1524,7 +1527,7 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       } as any;
 
       const terminationData = {
-        terminationDate: new Date('2026-10-15'), // Future mid-lease termination
+        terminationDate: daysFromToday(30), // Future mid-lease termination
         terminationReason: 'Both parties agreed to end the lease',
         reasonCode: 'mutual_agreement', // Reason that allows immediate termination
       };

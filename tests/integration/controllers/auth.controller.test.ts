@@ -661,6 +661,9 @@ describe('AuthController Integration Tests', () => {
 
     describe('step 1 responses (no credentials yet)', () => {
       const STEP_ONE_RESPONSE_KEYS = ['loginType', 'msg', 'step', 'success'];
+      // The email-only step also says whether SMS sign-in is offered — a platform-wide flag,
+      // so it's the same for every email
+      const EMAIL_STEP_RESPONSE_KEYS = ['loginType', 'msg', 'smsLogin', 'step', 'success'];
 
       const createRegisteredEmail = async () => {
         const client = await createTestClient();
@@ -677,7 +680,7 @@ describe('AuthController Integration Tests', () => {
           .send({ email })
           .expect(httpStatusCodes.OK);
 
-        expect(Object.keys(response.body).sort()).toEqual(STEP_ONE_RESPONSE_KEYS);
+        expect(Object.keys(response.body).sort()).toEqual(EMAIL_STEP_RESPONSE_KEYS);
         expect(response.body.step).toBe('password_required');
         expect(response.headers['set-cookie']).toBeUndefined();
       });

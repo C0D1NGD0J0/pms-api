@@ -423,6 +423,13 @@ export class PropertyService implements ICronProvider {
       cleanPropertyData.images = withoutPendingUploads(cleanPropertyData.images);
     }
 
+    // Every property is priced in the account's currency (set from the signup country). Set
+    // before validation, whose money limits are scaled to the currency.
+    cleanPropertyData.fees = {
+      ...(cleanPropertyData.fees ?? {}),
+      currency: (client.settings?.defaultCurrency || 'USD') as any,
+    } as any;
+
     const validationResult = PropertyValidationService.validateProperty(cleanPropertyData);
     if (!validationResult.valid) {
       this.log.error(
@@ -571,10 +578,6 @@ export class PropertyService implements ICronProvider {
           message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
         });
       }
-
-      // Every property is priced in the account's currency (set from the signup country)
-      cleanPropertyData.fees = cleanPropertyData.fees ?? {};
-      cleanPropertyData.fees.currency = (client?.settings?.defaultCurrency || 'USD') as any;
 
       // Every new property starts unverified, regardless of ownership type or uploaded
       // documents — only an admin review (PropertyVerificationService) can verify it.

@@ -74,6 +74,20 @@ describe('PropertyCsvProcessor', () => {
       expect(result.specifications.floors).toBe(1);
     });
 
+    it("uses the property type's default unit count when the CSV has no unit column", async () => {
+      const condo = await transform({ name: 'Harbourfront Lofts', propertyType: 'condominium' });
+      const townhouse = await transform({ name: 'Liberty Townhomes', propertyType: 'townhouse' });
+      const explicit = await transform({
+        name: 'Tower',
+        propertyType: 'apartment',
+        maxAllowedUnits: '12',
+      });
+
+      expect(condo.maxAllowedUnits).toBe(4);
+      expect(townhouse.maxAllowedUnits).toBe(1);
+      expect(explicit.maxAllowedUnits).toBe(12);
+    });
+
     it('maps the status column to operationalStatus', async () => {
       const result = await transform({
         name: 'Test Property',
@@ -165,9 +179,11 @@ describe('PropertyCsvProcessor', () => {
       name: 'Test Property',
       fullAddress: '88 Kensington Ave',
       propertyType: 'apartment',
+      // transformPropertyRow sets this from the type's default when the CSV has no unit column
+      maxAllowedUnits: 4,
       address: {},
       fees: { rentAmount: 0, managementFees: 0, currency: 'USD' },
-      specifications: {},
+      specifications: { totalArea: 4000 },
       ...overrides,
     });
 
@@ -188,6 +204,65 @@ describe('PropertyCsvProcessor', () => {
       );
 
       expect(validItems[0].address.unitNumber).toBe('4B');
+    });
+
+    it('stores the location as a GeoJSON Point so the 2dsphere index accepts it', async () => {
+      const result = await (processor as any).postProcessProperties([buildRow()], {
+        cuid,
+        userId,
+      });
+
+      expect(result.validItems[0].computedLocation).toEqual({
+        type: 'Point',
+        coordinates: [-79.4013, 43.6547],
+      });
+    });
+
+    it('leaves the location out rather than inventing [0, 0] when the geocoder has no coordinates', async () => {
+      mockGeoCoderService.parseLocation.mockReturnValue(
+        Promise.resolve({
+          success: true,
+          data: { fullAddress: '1 Normalized Ave, Toronto, ON', city: 'Toronto' },
+        })
+      );
+
+      const result = await (processor as any).postProcessProperties([buildRow()], {
+        cuid,
+        userId,
+      });
+
+      expect(result.validItems[0].computedLocation).toBeUndefined();
+    });
+
+    // Validate and import share this step, so validation reports what the import would reject
+    it('rejects a row that fails the single-creation rules, with its row number', async () => {
+      const result = await (processor as any).postProcessProperties(
+        [buildRow({ _csvRowNumber: 3, name: 'AB' })],
+        { cuid, userId }
+      );
+
+      expect(result.validItems).toHaveLength(0);
+      expect(result.invalidItems).toEqual([
+        {
+          rowNumber: 3,
+          errors: expect.arrayContaining([
+            expect.objectContaining({ error: 'Property name must be at least 3 characters' }),
+          ]),
+        },
+      ]);
+    });
+
+    it('stores the fees in cents, as single creation does', async () => {
+      const { validItems } = await (processor as any).postProcessProperties(
+        [buildRow({ fees: { rentAmount: 3200, securityDeposit: 3200, managementFees: 0 } })],
+        { cuid, userId }
+      );
+
+      expect(validItems[0].fees).toEqual({
+        rentAmount: 320000,
+        securityDeposit: 320000,
+        managementFees: 0,
+      });
     });
 
     it('strips transient fields before returning the valid property', async () => {
@@ -217,6 +292,38 @@ describe('PropertyCsvProcessor', () => {
           errors: [expect.objectContaining({ field: 'address' })],
         }),
       ]);
+    });
+
+    it('tells the user the address was not found when the provider has no match', async () => {
+      mockGeoCoderService.parseLocation.mockReturnValue(
+        Promise.resolve({ success: false, data: null, reason: 'not_found' })
+      );
+
+      const { invalidItems } = await (processor as any).postProcessProperties(
+        [buildRow({ _csvRowNumber: 2, fullAddress: '99999 Nowhere Lane, Atlantis' })],
+        { cuid, userId }
+      );
+
+      expect(invalidItems[0].errors[0].error).toBe(
+        'Address not found: 99999 Nowhere Lane, Atlantis'
+      );
+    });
+
+    it('gives a generic retry message, with no internal details, when the provider is unavailable', async () => {
+      mockGeoCoderService.parseLocation.mockReturnValue(
+        Promise.resolve({ success: false, data: null, reason: 'unavailable' })
+      );
+
+      const { validItems, invalidItems } = await (processor as any).postProcessProperties(
+        [buildRow({ _csvRowNumber: 1 })],
+        { cuid, userId }
+      );
+
+      expect(validItems).toHaveLength(0);
+      const message = invalidItems[0].errors[0].error;
+      expect(message).toMatch(/couldn't verify this address right now/i);
+      expect(message).not.toMatch(/REQUEST_DENIED|api key|referer|quota|provider|google/i);
+      expect(message).not.toMatch(/Address not found/);
     });
 
     it('skips a row whose geocoded address already exists in the database', async () => {
@@ -265,21 +372,36 @@ describe('PropertyCsvProcessor', () => {
 
   describe('validateRequiredHeaders', () => {
     const validate = (headers: string[]) => (processor as any).validateRequiredHeaders(headers);
+    const readyToLease = [
+      'name',
+      'propertyType',
+      'maxAllowedUnits',
+      'occupancyStatus',
+      'specifications_totalArea',
+    ];
 
     it('accepts fullAddress alone', () => {
-      expect(validate(['name', 'propertyType', 'fullAddress']).isValid).toBe(true);
+      expect(validate([...readyToLease, 'fullAddress']).isValid).toBe(true);
     });
 
     it('accepts address_street + address_city without fullAddress', () => {
-      expect(validate(['name', 'propertyType', 'address_street', 'address_city']).isValid).toBe(
-        true
-      );
+      expect(validate([...readyToLease, 'address_street', 'address_city']).isValid).toBe(true);
     });
 
     it('rejects a file missing both fullAddress and the split address columns', () => {
-      const result = validate(['name', 'propertyType']);
+      const result = validate(readyToLease);
       expect(result.isValid).toBe(false);
       expect(result.missingHeaders.join(' ')).toMatch(/fullAddress/);
+    });
+
+    it('rejects a file without the units, occupancy and total area columns', () => {
+      const result = validate(['name', 'propertyType', 'fullAddress']);
+      expect(result.isValid).toBe(false);
+      expect(result.missingHeaders).toEqual([
+        'maxAllowedUnits',
+        'occupancyStatus',
+        'specifications_totalArea',
+      ]);
     });
   });
 
@@ -309,25 +431,40 @@ describe('PropertyCsvProcessor', () => {
   });
 
   describe('getTemplateHeaders / generateTemplateCsv', () => {
-    it('limits the template to the columns every row must have', () => {
-      expect(processor.getTemplateHeaders()).toEqual(['name', 'propertyType', 'fullAddress']);
+    it('carries the required columns plus the ones a single-unit row needs', () => {
+      expect(processor.getTemplateHeaders()).toEqual([
+        'name',
+        'propertyType',
+        'fullAddress',
+        'maxAllowedUnits',
+        'occupancyStatus',
+        'specifications_totalArea',
+        'specifications_bedrooms',
+        'specifications_bathrooms',
+        'fees_rentalAmount',
+        'fees_securityDeposit',
+      ]);
     });
 
     it('still accepts every optional column on import', () => {
       const accepted = processor.getAcceptedHeaders();
       expect(accepted).toEqual(expect.arrayContaining(processor.getTemplateHeaders()));
-      expect(accepted).toContain('fees_securityDeposit');
       expect(accepted).toContain('owner_type');
       expect(accepted).not.toContain('fees_taxamount');
     });
 
-    it('generates a header row and one quoted example row', () => {
-      const csv = processor.generateTemplateCsv();
-      const [headerLine, exampleLine] = csv.trim().split('\n');
+    it('generates a header row and a multi-unit and a single-unit example row', () => {
+      const [headerLine, apartmentLine, houseLine] = processor
+        .generateTemplateCsv()
+        .trim()
+        .split('\n');
 
-      expect(headerLine).toBe('name,propertyType,fullAddress');
-      expect(exampleLine).toBe(
-        'Kensington Terrace,apartment,"88 Kensington Avenue, Toronto, ON M5T 2K2, Canada"'
+      expect(headerLine).toBe(processor.getTemplateHeaders().join(','));
+      expect(apartmentLine).toBe(
+        'Kensington Terrace,apartment,"88 Kensington Avenue, Toronto, ON M5T 2K2, Canada",12,vacant,14000,,,,'
+      );
+      expect(houseLine).toBe(
+        'Riverdale Family Home,house,"45 Withrow Avenue, Toronto, ON M4K 1C8, Canada",1,vacant,1800,3,2,3200,3200'
       );
     });
 
@@ -351,8 +488,8 @@ describe('PropertyCsvProcessor', () => {
     it('parses a real CSV file end to end and returns a geocoded valid property', async () => {
       const csvPath = path.join(tmpDir, 'properties.csv');
       const csvContent = [
-        'name,propertyType,address_street,address_city,address_state,address_postCode,address_country',
-        'Kensington Terrace,apartment,88 Kensington Avenue,Toronto,ON,M5T 2K2,Canada',
+        'name,propertyType,address_street,address_city,address_state,address_postCode,address_country,maxAllowedUnits,occupancyStatus,specifications_totalArea',
+        'Kensington Terrace,apartment,88 Kensington Avenue,Toronto,ON,M5T 2K2,Canada,12,vacant,14000',
       ].join('\n');
       fs.writeFileSync(csvPath, csvContent);
 
@@ -363,6 +500,69 @@ describe('PropertyCsvProcessor', () => {
         '88 Kensington Avenue, Toronto, ON M5T 2K2'
       );
       expect(result.errors).toBeNull();
+    });
+
+    it("prices every imported property in the account's currency", async () => {
+      mockClientDAO.getClientByCuid.mockResolvedValue({
+        cuid,
+        settings: { defaultCurrency: 'CAD' },
+      });
+      const csvPath = path.join(tmpDir, 'properties.csv');
+      fs.writeFileSync(
+        csvPath,
+        [
+          'name,propertyType,fullAddress,maxAllowedUnits,occupancyStatus,specifications_totalArea',
+          'Kensington Terrace,apartment,"88 Kensington Avenue, Toronto",12,vacant,14000',
+        ].join('\n')
+      );
+
+      const result = await processor.validateCsv(csvPath, { cuid, userId });
+
+      expect(result.validProperties[0].fees.currency).toBe('CAD');
+    });
+
+    const validateFile = (lines: string[]) => {
+      const csvPath = path.join(tmpDir, 'properties.csv');
+      fs.writeFileSync(csvPath, lines.join('\n'));
+      return processor.validateCsv(csvPath, { cuid, userId });
+    };
+
+    it('accepts its own downloadable template as is', async () => {
+      mockGeoCoderService.parseLocation
+        .mockResolvedValueOnce(geocodeResultFor('88 Kensington Avenue, Toronto, ON M5T 2K2'))
+        .mockResolvedValueOnce(geocodeResultFor('45 Withrow Avenue, Toronto, ON M4K 1C8'));
+
+      const result = await validateFile(processor.generateTemplateCsv().trim().split('\n'));
+
+      expect(result.errors).toBeNull();
+      expect(result.validProperties).toHaveLength(2);
+    });
+
+    it('reports blank required cells instead of reading them as 0', async () => {
+      const result = await validateFile([
+        'name,propertyType,fullAddress,maxAllowedUnits,occupancyStatus,specifications_totalArea',
+        'Kensington Terrace,apartment,"88 Kensington Avenue, Toronto",,,',
+      ]);
+
+      expect(result.validProperties).toHaveLength(0);
+      expect(result.errors?.[0].errors.map((rowError) => rowError.field)).toEqual(
+        expect.arrayContaining(['maxAllowedUnits', 'occupancyStatus', 'specifications_totalArea'])
+      );
+    });
+
+    it('requires rent, deposit, bedrooms and bathrooms on a single-unit house', async () => {
+      const result = await validateFile([
+        'name,propertyType,fullAddress,maxAllowedUnits,occupancyStatus,specifications_totalArea',
+        'Riverdale Family Home,house,"45 Withrow Avenue, Toronto",1,vacant,1800',
+      ]);
+
+      expect(result.validProperties).toHaveLength(0);
+      expect(result.errors?.[0].errors.map((rowError) => rowError.field)).toEqual([
+        'fees_rentalAmount',
+        'fees_securityDeposit',
+        'specifications_bedrooms',
+        'specifications_bathrooms',
+      ]);
     });
   });
 });

@@ -1,16 +1,12 @@
-import { Types } from 'mongoose';
-import { BadRequestError } from '@shared/customErrors';
 /**
- * Currency guard integration test.
- * Verifies that updating a property's country (which auto-changes currency)
- * is blocked when the property has active leases.
+ * A property is priced in its account's currency, set at creation —
+ * edits to its address or fees never change it.
  */
 import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyService } from '@services/property/property.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
-import { SigningMethod, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import { PropertyApprovalService } from '@services/property/propertyApproval.service';
 import { createTestProperty, clearTestDatabase, createTestClient } from '@tests/helpers';
@@ -52,7 +48,7 @@ const mockPropertyCsvProcessor = {
   processCsv: jest.fn().mockResolvedValue({ success: true }),
 } as any;
 
-describe('PropertyService — currency guard on country update', () => {
+describe('PropertyService — currency stays the same on edit', () => {
   let propertyService: PropertyService;
   let leaseDAO: LeaseDAO;
 
@@ -138,108 +134,42 @@ describe('PropertyService — currency guard on country update', () => {
     jest.clearAllMocks();
   });
 
-  it('blocks country update when an active lease exists on the property', async () => {
+  const updateAsAdmin = (client: any, pid: string, data: any) =>
+    propertyService.updateClientProperty(
+      {
+        cuid: client.cuid,
+        pid,
+        currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
+      },
+      data
+    );
+
+  it('keeps the currency when the address moves to another country', async () => {
     const client = await createTestClient();
     const property = await createTestProperty(client.cuid, client._id);
     await Property.findByIdAndUpdate(property._id, {
-      'address.country': 'US',
-      'fees.currency': 'USD',
+      'address.country': 'Canada',
+      'fees.currency': 'CAD',
     });
 
-    // Create an active lease on this property
-    const leaseTenantId = new Types.ObjectId();
-    await Lease.create({
-      cuid: client.cuid,
-      luid: 'TEST-LUID-GUARD',
-      leaseNumber: 'LN-GUARD',
-      type: LeaseType.FIXED_TERM,
-      status: LeaseStatus.ACTIVE,
-      approvalStatus: 'approved' as const,
-      templateType: 'residential-apartment' as const,
-      signingMethod: SigningMethod.MANUAL,
-      property: { id: property._id, address: property.address },
-      tenantId: leaseTenantId,
-      createdBy: leaseTenantId,
-      fees: {
-        rentAmount: 150000,
-        currency: 'USD',
-        securityDeposit: 0,
-        rentDueDay: 1,
-        acceptedPaymentMethod: 'e-transfer' as const,
-      },
-      signedDate: new Date(),
-      signatures: [
-        {
-          userId: leaseTenantId,
-          signedAt: new Date(),
-          role: 'tenant' as const,
-          signatureMethod: 'manual' as const,
-        },
-      ],
-      leaseDocuments: [
-        {
-          documentType: 'lease_agreement' as const,
-          url: 'https://example.com/doc.pdf',
-          uploadedAt: new Date(),
-          uploadedBy: leaseTenantId,
-          filename: 'lease.pdf',
-          key: 'leases/lease.pdf',
-        },
-      ],
-      duration: {
-        startDate: new Date(),
-        endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-      },
-    });
-
-    // Attempt to change country from US → NG (USD → NGN)
     await expect(
-      propertyService.updateClientProperty(
-        {
-          cuid: client.cuid,
-          pid: property.pid,
-          currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
-        },
-        {
-          address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
-        } as any
-      )
-    ).rejects.toThrow(BadRequestError);
+      updateAsAdmin(client, property.pid, {
+        address: { country: 'Nigeria', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
+      })
+    ).resolves.toMatchObject({ success: true });
 
-    await expect(
-      propertyService.updateClientProperty(
-        {
-          cuid: client.cuid,
-          pid: property.pid,
-          currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
-        },
-        {
-          address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
-        } as any
-      )
-    ).rejects.toThrow('Cannot change property currency while active leases exist.');
+    const updated = await Property.findById(property._id).lean();
+    expect(updated?.fees?.currency).toBe('CAD');
   });
 
-  it('allows country update when no active leases exist', async () => {
+  it('keeps the currency when fees are edited without one', async () => {
     const client = await createTestClient();
     const property = await createTestProperty(client.cuid, client._id);
-    await Property.findByIdAndUpdate(property._id, {
-      'address.country': 'US',
-      'fees.currency': 'USD',
-    });
+    await Property.findByIdAndUpdate(property._id, { 'fees.currency': 'CAD' });
 
-    // No leases — update should succeed
-    await expect(
-      propertyService.updateClientProperty(
-        {
-          cuid: client.cuid,
-          pid: property.pid,
-          currentuser: makeMockCtx(client.cuid, client.accountAdmin.toString()).currentuser as any,
-        },
-        {
-          address: { country: 'NG', street: '1 Victoria Island', city: 'Lagos', state: 'Lagos' },
-        } as any
-      )
-    ).resolves.toMatchObject({ success: true });
+    await updateAsAdmin(client, property.pid, { fees: { rentAmount: 1800, currency: 'USD' } });
+
+    const updated = await Property.findById(property._id).lean();
+    expect(updated?.fees?.currency).toBe('CAD');
   });
 });

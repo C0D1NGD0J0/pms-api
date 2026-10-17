@@ -271,4 +271,47 @@ describe('PropertyTypeManager', () => {
       expect(PropertyTypeManager.allowsBedroomsAtPropertyLevel('commercial')).toBe(false);
     });
   });
+
+  describe('required fields per property type', () => {
+    it.each(['apartment', 'commercial', 'condominium', 'house', 'industrial', 'townhouse'])(
+      'requires total area for %s',
+      (propertyType) => {
+        expect(PropertyTypeManager.isFieldRequired(propertyType, 'specifications.totalArea')).toBe(
+          true
+        );
+      }
+    );
+
+    it.each(['house', 'townhouse'])('requires bedrooms and bathrooms for %s', (propertyType) => {
+      expect(PropertyTypeManager.getRequiredFields(propertyType)).toEqual(
+        expect.arrayContaining(['specifications.bedrooms', 'specifications.bathrooms'])
+      );
+    });
+
+    it.each(['apartment', 'commercial', 'condominium', 'industrial'])(
+      'does not require property-level bedrooms or bathrooms for %s',
+      (propertyType) => {
+        const required = PropertyTypeManager.getRequiredFields(propertyType);
+        expect(required).not.toContain('specifications.bedrooms');
+        expect(required).not.toContain('specifications.bathrooms');
+      }
+    );
+
+    it.each(['apartment', 'commercial', 'condominium'])(
+      'requires the unit count for multi-unit type %s',
+      (propertyType) => {
+        expect(PropertyTypeManager.isFieldRequired(propertyType, 'maxAllowedUnits')).toBe(true);
+      }
+    );
+
+    it('uses specific specification keys instead of the old blanket "specifications" entry', () => {
+      ['apartment', 'commercial', 'condominium', 'house', 'industrial', 'townhouse'].forEach(
+        (propertyType) => {
+          expect(PropertyTypeManager.getRequiredFields(propertyType)).not.toContain(
+            'specifications'
+          );
+        }
+      );
+    });
+  });
 });

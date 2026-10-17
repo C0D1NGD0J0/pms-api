@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { BadRequestError as _BadRequestError } from '@shared/customErrors';
 import { PropertyUnitService } from '@services/property/propertyUnit.service';
+import { PropertyUnitCsvProcessor } from '@services/csv/propertyUnitCsvProcessor';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 
 describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
@@ -224,6 +225,65 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
       expect(mockEmitterService.emit).toHaveBeenCalled();
     });
   });
+  describe('importUnitsFromCsv — saving the validated units', () => {
+    const csvFile = { path: '/tmp/units.csv', fileSize: 1024 } as any;
+    const managerId = new Types.ObjectId();
+
+    beforeEach(() => {
+      mockSubscriptionDAO.findFirst.mockResolvedValue(null);
+      mockPropertyDAO.findFirst.mockResolvedValue({
+        id: new Types.ObjectId().toString(),
+        cuid: testCuid,
+        pid: testPid,
+        managedBy: managerId,
+      });
+      jest.spyOn(PropertyUnitCsvProcessor.prototype, 'validateCsv').mockResolvedValue({
+        validUnits: [{ unitNumber: '101' }, { unitNumber: '102' }] as any,
+        totalRows: 2,
+        finishedAt: new Date(),
+        errors: null,
+      });
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it("gives units without a manager the property's manager (managedBy is required)", async () => {
+      const createSpy = jest
+        .spyOn(propertyUnitService as any, 'createUnitsDirectly')
+        .mockResolvedValue({ data: [], errors: {}, message: 'All 2 units created successfully' });
+
+      await propertyUnitService.importUnitsFromCsv(createMockContext(testCuid, testPid), csvFile);
+
+      const { units } = createSpy.mock.calls[0][1] as any;
+      expect(units.map((u: any) => u.managedBy.toString())).toEqual([
+        managerId.toString(),
+        managerId.toString(),
+      ]);
+    });
+
+    it('reports the real created/failed counts instead of a blanket success message', async () => {
+      jest.spyOn(propertyUnitService as any, 'createUnitsDirectly').mockResolvedValue({
+        data: [{ unitNumber: '101' }],
+        errors: { 'unit-1': { unitIndex: 1, unitNumber: '102', error: 'Duplicate unit number' } },
+        message: '1 units created successfully, 1 failed',
+      });
+
+      const result = await propertyUnitService.importUnitsFromCsv(
+        createMockContext(testCuid, testPid),
+        csvFile
+      );
+
+      expect(result.message).toBe('1 units created successfully, 1 failed');
+      // Same shape a CSV job notification carries, so the upload modal can show it directly
+      expect(result.data).toEqual({
+        totalRows: 2,
+        createdCount: 1,
+        errorCount: 1,
+        errors: [{ rowNumber: 2, errors: [{ field: 'unitNumber', error: 'Duplicate unit number' }] }],
+      });
+    });
+  });
+
   describe('unarchivePropertyUnit — subscription unit limit', () => {
     const unarchiveContext = () =>
       ({

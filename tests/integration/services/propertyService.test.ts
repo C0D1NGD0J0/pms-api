@@ -282,6 +282,36 @@ describe('PropertyService Integration Tests', () => {
         }
       });
 
+      it("prices the property in the account's currency, not the one sent", async () => {
+        await Client.updateOne({ cuid: testClient.cuid }, { 'settings.defaultCurrency': 'CAD' });
+        const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+        const result = await propertyService.addProperty(
+          ctx as any,
+          {
+            name: `Toronto Property ${Date.now()}`,
+            propertyType: 'apartment',
+            maxAllowedUnits: 10,
+            fullAddress: '88 Kensington Ave, Toronto, ON M5T 2K2',
+            address: {
+              street: 'Kensington Ave',
+              city: 'Toronto',
+              state: 'ON',
+              postCode: 'M5T 2K2',
+              country: 'Canada',
+              fullAddress: '88 Kensington Ave, Toronto, ON M5T 2K2',
+            },
+            specifications: { totalArea: 5000 },
+            fees: { rentAmount: '1850', currency: 'USD' },
+            occupancyStatus: 'vacant',
+            computedLocation: { type: 'Point', coordinates: [-79.4013, 43.6547] },
+          } as any
+        );
+
+        const savedProperty = await Property.findOne({ pid: result.data.pid }).lean();
+        expect(savedProperty?.fees?.currency).toBe('CAD');
+      });
+
       it('should create property requiring approval for staff user', async () => {
         // Verify staff user has correct department
         const staffProfile = await Profile.findOne({ user: staffUser._id });

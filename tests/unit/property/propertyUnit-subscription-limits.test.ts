@@ -279,7 +279,9 @@ describe('PropertyUnitService — Subscription Unit Limit Enforcement', () => {
         totalRows: 2,
         createdCount: 1,
         errorCount: 1,
-        errors: [{ rowNumber: 2, errors: [{ field: 'unitNumber', error: 'Duplicate unit number' }] }],
+        errors: [
+          { rowNumber: 2, errors: [{ field: 'unitNumber', error: 'Duplicate unit number' }] },
+        ],
       });
     });
   });

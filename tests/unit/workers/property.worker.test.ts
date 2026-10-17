@@ -225,7 +225,11 @@ describe('PropertyWorker.processCsvImport', () => {
 
   it('imports properties as approved when the importer can approve them (like single creation)', async () => {
     mockPropertyCsvProcessor.validateCsv.mockReturnValue(
-      Promise.resolve({ validProperties: [makeValidProperty('Alpha Tower')], totalRows: 1, errors: null })
+      Promise.resolve({
+        validProperties: [makeValidProperty('Alpha Tower')],
+        totalRows: 1,
+        errors: null,
+      })
     );
     mockPropertyDAO.insertMany.mockImplementation((batch: any[]) => Promise.resolve(batch));
 
@@ -235,14 +239,16 @@ describe('PropertyWorker.processCsvImport', () => {
 
     const [inserted] = mockPropertyDAO.insertMany.mock.calls[0][0];
     expect(inserted.approvalStatus).toBe('approved');
-    expect(inserted.approvalDetails[0]).toEqual(
-      expect.objectContaining({ action: 'approved' })
-    );
+    expect(inserted.approvalDetails[0]).toEqual(expect.objectContaining({ action: 'approved' }));
   });
 
   it('leaves properties for review when the importer cannot approve them', async () => {
     mockPropertyCsvProcessor.validateCsv.mockReturnValue(
-      Promise.resolve({ validProperties: [makeValidProperty('Alpha Tower')], totalRows: 1, errors: null })
+      Promise.resolve({
+        validProperties: [makeValidProperty('Alpha Tower')],
+        totalRows: 1,
+        errors: null,
+      })
     );
     mockPropertyDAO.insertMany.mockImplementation((batch: any[]) => Promise.resolve(batch));
 
@@ -256,7 +262,11 @@ describe('PropertyWorker.processCsvImport', () => {
   it('reports a failure instead of success when no rows were actually saved', async () => {
     mockPropertyCsvProcessor.validateCsv.mockReturnValue(
       Promise.resolve({
-        validProperties: [makeValidProperty('Alpha Tower'), makeValidProperty('Birch Court'), makeValidProperty('Cedar House')],
+        validProperties: [
+          makeValidProperty('Alpha Tower'),
+          makeValidProperty('Birch Court'),
+          makeValidProperty('Cedar House'),
+        ],
         totalRows: 3,
         errors: null,
       })

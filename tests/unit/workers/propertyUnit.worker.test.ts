@@ -285,7 +285,14 @@ describe('PropertyUnitWorker — telling the units form the outcome', () => {
   const job = (overrides: Record<string, any> = {}) => ({
     id: 'job-7',
     progress: jest.fn(),
-    data: { units: [], pid: 'PID1', cuid: 'CUID1', userId: 'user-1', requestId: 'r1', ...overrides },
+    data: {
+      units: [],
+      pid: 'PID1',
+      cuid: 'CUID1',
+      userId: 'user-1',
+      requestId: 'r1',
+      ...overrides,
+    },
   });
 
   it('sends a failed job-notification when the batch fails for good', async () => {
@@ -305,4 +312,3 @@ describe('PropertyUnitWorker — telling the units form the outcome', () => {
     );
   });
 });
-

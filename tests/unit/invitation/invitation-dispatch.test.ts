@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { EventTypes } from '@interfaces/events.interface';
-import { BadRequestError, ForbiddenError } from '@shared/customErrors';
 import { InvitationService } from '@services/invitation/invitation.service';
+import { ServiceUnavailableError, BadRequestError, ForbiddenError } from '@shared/customErrors';
 
 describe('InvitationService.dispatchInvitation — shared single/CSV send path', () => {
   let service: InvitationService;
@@ -39,12 +39,13 @@ describe('InvitationService.dispatchInvitation — shared single/CSV send path',
         invitationToken: 'tok',
         expiresAt: new Date(),
       }),
+      updateById: jest.fn().mockResolvedValue(null),
     };
     userDAO = {
       getUserById: jest.fn().mockResolvedValue(inviterWithRole('manager')),
       getUserWithClientAccess: jest.fn().mockResolvedValue(null),
     };
-    emailQueue = { addToEmailQueue: jest.fn() };
+    emailQueue = { addToEmailQueue: jest.fn().mockResolvedValue(undefined) };
     emitterService = { emit: jest.fn(), on: jest.fn() };
 
     service = new InvitationService({
@@ -119,6 +120,22 @@ describe('InvitationService.dispatchInvitation — shared single/CSV send path',
     expect(emitterService.emit).toHaveBeenCalledWith(
       EventTypes.INVITATION_SENT,
       expect.objectContaining({ role: 'staff', cuid })
+    );
+  });
+
+  it("keeps the invite as a draft and doesn't count a seat when the email can't be queued", async () => {
+    emailQueue.addToEmailQueue.mockRejectedValue(new Error('Redis connection lost'));
+
+    await expect(service.dispatchInvitation(inviterId, cuid, invite())).rejects.toThrow(
+      ServiceUnavailableError
+    );
+
+    expect(invitationDAO.updateById).toHaveBeenCalledWith(expect.any(String), {
+      $set: { status: 'draft' },
+    });
+    expect(emitterService.emit).not.toHaveBeenCalledWith(
+      EventTypes.INVITATION_SENT,
+      expect.anything()
     );
   });
 

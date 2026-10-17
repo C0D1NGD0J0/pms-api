@@ -271,6 +271,17 @@ export function hashGenerator(hashOpts: { byteLength?: number; algorithm?: strin
 }
 
 /**
+ * Returns a valid phone number in E.164 (+15145550123) so stored numbers match the model's format
+ * (e.g. "+1.514.555.0123" passes isValidPhoneNumber but not the model). Invalid or empty input is
+ * returned unchanged for validation to reject.
+ */
+export function toE164PhoneNumber(phoneNumber?: string): string | undefined {
+  if (!phoneNumber || !isValidPhoneNumber(phoneNumber)) return phoneNumber;
+  const trimmed = phoneNumber.trim();
+  return parsePhoneNumber(trimmed.startsWith('+') ? trimmed : `+${trimmed}`).number;
+}
+
+/**
  * Wraps an async Express request handler to properly catch and forward errors to Express error middleware
  * @param fn - The async request handler function to wrap
  * @returns A wrapped function that forwards errors to the next middleware

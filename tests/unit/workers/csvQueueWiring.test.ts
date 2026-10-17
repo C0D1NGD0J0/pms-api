@@ -49,6 +49,10 @@ describe('PropertyQueue CSV handoff', () => {
     await queue.addCsvImportJob(jobData);
 
     expect(attachCsvToJob).toHaveBeenCalledWith(jobData);
+    // A retry would insert the same properties twice, so imports never retry
+    for (const [, , options] of (queue as any).addJobToQueue.mock.calls) {
+      expect(options).toEqual(expect.objectContaining({ attempts: 1 }));
+    }
     for (const [, data] of (queue as any).addJobToQueue.mock.calls) {
       expect(data.csvContentBase64).toBe('Q1NW');
     }

@@ -120,6 +120,32 @@ describe('InvitationCsvProcessor', () => {
       expect(result.validInvitations).toHaveLength(3);
     });
 
+    it("keeps a new vendor's company details where invitation acceptance reads them", async () => {
+      const csvPath = path.join(tmpDir, 'template.csv');
+      fs.writeFileSync(csvPath, processor.generateTemplateCsv());
+
+      const result = await processor.validateCsv(csvPath, { cuid, userId });
+      const vendorRow = result.validInvitations.find((inv: any) => inv.role === 'vendor');
+
+      // The Invitation model only keeps metadata.vendorInfo — anything else is dropped on save
+      expect(vendorRow?.metadata?.vendorInfo).toEqual(
+        expect.objectContaining({ isLinkedAccount: false, companyName: expect.any(String) })
+      );
+      expect(vendorRow?.metadata).not.toHaveProperty('vendorEntityData');
+    });
+
+    it('stores phone numbers in E.164 so they pass the Invitation model', async () => {
+      const csvPath = writeCsv([
+        'inviteeEmail,firstName,lastName,role,phoneNumber',
+        'jane.tenant@example.com,Jane,Tenant,tenant,+1.514.555.0123',
+      ]);
+
+      const result = await processor.validateCsv(csvPath, { cuid, userId });
+
+      expect(result.errors).toBeNull();
+      expect(result.validInvitations[0].personalInfo.phoneNumber).toBe('+15145550123');
+    });
+
     it('applies a column mapping, accepts accented names and keeps row numbers', async () => {
       const csvPath = writeCsv([
         'E-mail,Given name,Surname,Type',

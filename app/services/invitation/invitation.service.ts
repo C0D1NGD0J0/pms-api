@@ -28,6 +28,7 @@ import {
   InvitationCsvProcessor,
 } from '@services/csv';
 import {
+  ServiceUnavailableError,
   UnauthorizedError,
   BadRequestError,
   ForbiddenError,
@@ -252,10 +253,25 @@ export class InvitationService {
       };
 
       const emailQueue = this.queueFactory.getQueue('emailQueue') as EmailQueue;
-      emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
-        ...emailData,
-        invitationId: invitation._id.toString(),
-      } as any);
+      try {
+        await emailQueue.addToEmailQueue(JOB_NAME.INVITATION_JOB, {
+          ...emailData,
+          invitationId: invitation._id.toString(),
+        } as any);
+      } catch (error) {
+        // No email went out, so don't count it as sent (INVITATION_SENT uses a seat). Keep it
+        // as a draft the inviter can resend, and let the caller report it (a row error in CSV).
+        this.log.error(
+          { error, invitationId: invitation._id.toString(), cuid },
+          'Failed to queue invitation email; saved as draft'
+        );
+        await this.invitationDAO.updateById(invitation._id.toString(), {
+          $set: { status: 'draft' },
+        });
+        throw new ServiceUnavailableError({
+          message: t('invitation.errors.emailNotQueued', { email: validatedData.inviteeEmail }),
+        });
+      }
 
       this.emitterService.emit(EventTypes.INVITATION_SENT, {
         invitationId: invitation._id.toString(),

@@ -454,6 +454,7 @@
       "expired": "L'invitation a expiré",
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé. Veuillez sélectionner un fichier pour continuer.",
       "pendingInvitationExists": "Une invitation active existe déjà pour cette adresse email",
+      "emailNotQueued": "L'e-mail d'invitation à {{email}} n'a pas pu être envoyé. Il a été enregistré comme brouillon — veuillez le renvoyer depuis la liste des invitations.",
       "cannotInviteYourself": "Vous ne pouvez pas vous envoyer une invitation",
       "userAlreadyHasAccess": "Cet utilisateur a déjà accès à ce compte",
       "fileTooLarge": "Le fichier est trop volumineux. La taille maximale est de 10 Mo.",

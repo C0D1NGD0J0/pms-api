@@ -460,6 +460,7 @@
       "expired": "Invitation has expired",
       "noCsvFileUploaded": "No CSV file uploaded. Please select a file to continue.",
       "pendingInvitationExists": "An active invitation already exists for this email address",
+      "emailNotQueued": "The invitation email to {{email}} couldn't be sent. It was saved as a draft — please resend it from the invitations list.",
       "cannotInviteYourself": "You can't send an invitation to yourself",
       "userAlreadyHasAccess": "This user already has access to this account",
       "fileTooLarge": "The file is too large. The maximum size is 10 MB.",

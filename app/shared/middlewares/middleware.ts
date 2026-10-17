@@ -209,6 +209,18 @@ export const diskUpload =
   (fieldNames: string[]) => async (req: Request, res: Response, next: NextFunction) => {
     const { diskStorage }: { diskStorage: DiskStorage } = req.container.cradle;
 
+    // Safety net: once the response is done, remove this request's files from uploads/.
+    // Handlers that use them (S3 upload, CSV import) already delete them and every handler
+    // awaits its file work before responding, so this only catches files nobody consumed —
+    // e.g. a request that succeeded without needing them.
+    res.once('close', () => {
+      if (!req.files) return;
+      const leftoverPaths = extractMulterFiles(req.files).map((file) => file.path);
+      diskStorage.deleteFiles(leftoverPaths).catch((error) => {
+        logger.warn({ error }, 'Could not remove leftover uploaded files');
+      });
+    });
+
     const uploadMiddleware = diskStorage.uploadMiddleware(fieldNames);
     uploadMiddleware(req, res, (err: any) => {
       if (err) {

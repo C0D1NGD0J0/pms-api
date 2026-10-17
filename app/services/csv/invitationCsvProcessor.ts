@@ -16,29 +16,20 @@ import {
   INVITATION_IMPORTABLE_FIELDS,
 } from './invitationImportFields';
 
-// Validated CSV row, plus vendor grouping metadata and the source row number
-// (used to point per-row send failures back at the file).
+// Validated CSV row plus the source row number (used to point per-row send failures back at
+// the file). A primary vendor's business details live in metadata.vendorInfo, as with the form.
 export interface IInvitationCsvData extends IInvitationData {
-  metadata?: {
-    isPrimaryVendor?: boolean;
-    isVendorTeamMember?: boolean;
-    csvGroupId?: string;
-    vendorEntityData?: {
-      companyName: string;
-      businessType: string;
-      taxId?: string;
-      registrationNumber?: string;
-      yearsInBusiness?: number;
-      contactPerson: {
-        name: string;
-        jobTitle: string;
-        email: string;
-        phone?: string;
-      };
-    };
-  } & IInvitationData['metadata'];
   csvRowNumber?: number;
 }
+
+type CsvVendorInfo = { companyName?: string; registrationNumber?: string } | undefined;
+const csvVendorInfo = (inv: IInvitationCsvData) => inv.metadata?.vendorInfo as CsvVendorInfo;
+/** A vendor row that creates a new vendor organisation (has business details, not joining one) */
+const isNewVendorRow = (inv: IInvitationCsvData) =>
+  inv.role === ROLES.VENDOR && !inv.linkedVendorUid && !!csvVendorInfo(inv)?.companyName;
+/** A vendor row joining an existing vendor organisation */
+const isVendorTeamMemberRow = (inv: IInvitationCsvData) =>
+  inv.role === ROLES.VENDOR && !!inv.linkedVendorUid;
 
 interface InvitationProcessingContext {
   // User-confirmed "file header → field key" map from the frontend mapping step
@@ -254,7 +245,7 @@ export class InvitationCsvProcessor {
     if (
       transformedData.role === ROLES.VENDOR &&
       !transformedData.linkedVendorUid &&
-      !transformedData.metadata?.vendorEntityData?.companyName
+      !(transformedData.metadata?.vendorInfo as { companyName?: string } | undefined)?.companyName
     ) {
       return this.rowError('vendorInfo_companyName', t('invitation.csv.vendorCompanyRequired'));
     }
@@ -335,8 +326,8 @@ export class InvitationCsvProcessor {
     // A registration number may only appear once among new vendors in the file
     const vendorsByRegistration = new Map<string, IInvitationCsvData[]>();
     for (const invitation of invitations) {
-      const regNum = invitation.metadata?.isPrimaryVendor
-        ? invitation.metadata?.vendorEntityData?.registrationNumber?.trim().toLowerCase()
+      const regNum = isNewVendorRow(invitation)
+        ? csvVendorInfo(invitation)?.registrationNumber?.trim().toLowerCase()
         : undefined;
       if (!regNum) continue;
       vendorsByRegistration.set(regNum, [...(vendorsByRegistration.get(regNum) ?? []), invitation]);
@@ -348,7 +339,7 @@ export class InvitationCsvProcessor {
           vendor,
           'vendorInfo_registrationNumber',
           t('invitation.csv.duplicateRegistrationNumber', {
-            value: vendor.metadata?.vendorEntityData?.registrationNumber ?? '',
+            value: csvVendorInfo(vendor)?.registrationNumber ?? '',
           })
         )
       );
@@ -377,7 +368,7 @@ export class InvitationCsvProcessor {
 
     // New vendors must exist before team members that join them
     const order = (inv: IInvitationCsvData) =>
-      inv.metadata?.isPrimaryVendor ? 0 : inv.metadata?.isVendorTeamMember ? 2 : 1;
+      isNewVendorRow(inv) ? 0 : isVendorTeamMemberRow(inv) ? 2 : 1;
     validItems.sort((a, b) => order(a) - order(b));
 
     return { validItems, invalidItems };

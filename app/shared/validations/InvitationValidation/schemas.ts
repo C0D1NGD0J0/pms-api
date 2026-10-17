@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { isValidPhoneNumber } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+import { isValidPhoneNumber, toE164PhoneNumber } from '@utils/index';
 
 import { safeString } from '../UtilsValidation';
 
@@ -787,7 +787,7 @@ export const invitationCsvSchema = z
               data.tenantInfo_emergencyContactEmail
                 ? {
                     name: data.tenantInfo_emergencyContactName,
-                    phone: data.tenantInfo_emergencyContactPhone,
+                    phone: toE164PhoneNumber(data.tenantInfo_emergencyContactPhone),
                     relationship: data.tenantInfo_emergencyContactRelationship,
                     email: data.tenantInfo_emergencyContactEmail,
                   }
@@ -817,24 +817,29 @@ export const invitationCsvSchema = z
                       data.vendorInfo_contactPerson_name || data.firstName + ' ' + data.lastName,
                     jobTitle: data.vendorInfo_contactPerson_jobTitle || 'Owner',
                     email: data.vendorInfo_contactPerson_email || data.inviteeEmail,
-                    phone: data.vendorInfo_contactPerson_phone || data.phoneNumber,
+                    phone: toE164PhoneNumber(
+                      data.vendorInfo_contactPerson_phone || data.phoneNumber
+                    ),
                   }
                 : {
                     name: data.firstName + ' ' + data.lastName,
                     jobTitle: 'Owner',
                     email: data.inviteeEmail,
-                    phone: data.phoneNumber || '',
+                    phone: toE164PhoneNumber(data.phoneNumber) || '',
                   },
           }
         : undefined;
 
+    // Same shape as the single-invite form: a primary vendor's business details sit flat in
+    // metadata.vendorInfo, which is what invitation acceptance reads to create the vendor.
+    // (The Invitation model has no other vendor fields — anything else is dropped on save.)
     const vendorInfo =
       data.role === 'vendor'
         ? {
             isLinkedAccount: Boolean(isVendorTeamMember),
-            // For primary vendors, linkedVendorUid will be populated after vendor entity creation
-            // For team members, use the CSV linkedVendorUid as a temporary group identifier
+            // Team members join an existing vendor organisation by its vuid
             linkedVendorUid: isVendorTeamMember ? data.linkedVendorUid : undefined,
+            ...(vendorEntityData ?? {}),
           }
         : undefined;
 
@@ -846,7 +851,7 @@ export const invitationCsvSchema = z
       personalInfo: {
         firstName: data.firstName,
         lastName: data.lastName,
-        phoneNumber: data.phoneNumber,
+        phoneNumber: toE164PhoneNumber(data.phoneNumber),
       },
       metadata: {
         inviteMessage: data.inviteMessage,
@@ -854,10 +859,6 @@ export const invitationCsvSchema = z
         employeeInfo,
         vendorInfo,
         tenantInfo,
-        vendorEntityData,
-        isPrimaryVendor,
-        isVendorTeamMember,
-        csvGroupId: data.linkedVendorUid, // CSV group identifier for linking vendors and team members
       },
     };
   });

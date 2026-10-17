@@ -6,6 +6,7 @@ import { MAX_ASSIGNED_STAFF } from '@utils/constants';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { BaseCSVProcessorService } from '@services/csv/base';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 
 import {
   emptyToUndefined,
@@ -437,8 +438,12 @@ const PropertyCsvSchemaBase = z.object({
   address_unitNumber: z.string().optional(),
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
-  occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
-  maxAllowedUnits: z.coerce.number().min(0).max(500).optional(),
+  occupancyStatus: OccupancyStatusEnum,
+  maxAllowedUnits: z.coerce
+    .number({ invalid_type_error: 'Number of units is required and must be a number' })
+    .int()
+    .min(1, 'Number of units must be at least 1')
+    .max(500),
   yearBuilt: z.coerce
     .number()
     .int()
@@ -454,9 +459,8 @@ const PropertyCsvSchemaBase = z.object({
 
   // Specifications
   specifications_totalArea: z.coerce
-    .number()
-    .positive('Total area must be a positive number')
-    .optional(),
+    .number({ invalid_type_error: 'Total area is required and must be a number' })
+    .positive('Total area must be a positive number'),
   specifications_bedrooms: z.coerce
     .number()
     .int()
@@ -486,7 +490,6 @@ const PropertyCsvSchemaBase = z.object({
   fees_rentalAmount: z.coerce.number().min(0).optional(),
   fees_managementFees: z.coerce.number().min(0).optional(),
   fees_securityDeposit: z.coerce.number().min(0).optional(),
-  fees_currency: z.nativeEnum(CURRENCIES).optional().default(CURRENCIES.USD),
 
   // Utilities - using boolean validation
   utilities_water: z
@@ -617,6 +620,33 @@ export const PropertyCsvSchema = PropertyCsvSchemaBase.superRefine((data, ctx) =
       code: z.ZodIssueCode.custom,
       message: 'Provide either fullAddress or both address_street and address_city.',
       path: ['fullAddress'],
+    });
+  }
+
+  // A single-unit property is leased as a whole, so it needs its own rent and deposit
+  // (multi-unit properties get theirs from their units)
+  if (data.maxAllowedUnits !== 1) return;
+  const requireColumn = (column: keyof typeof data, message: string) => {
+    if (data[column] === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [column] });
+    }
+  };
+  requireColumn('fees_rentalAmount', 'Rent amount is required for a single-unit property');
+  requireColumn('fees_securityDeposit', 'Security deposit is required for a single-unit property');
+
+  const { requiredFields } = PropertyTypeManager.getRules(data.propertyType);
+  if (requiredFields.includes('specifications.bedrooms') && !data.specifications_bedrooms) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Bedrooms are required for a single-unit ${data.propertyType}`,
+      path: ['specifications_bedrooms'],
+    });
+  }
+  if (requiredFields.includes('specifications.bathrooms') && !data.specifications_bathrooms) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Bathrooms are required for a single-unit ${data.propertyType}`,
+      path: ['specifications_bathrooms'],
     });
   }
 });

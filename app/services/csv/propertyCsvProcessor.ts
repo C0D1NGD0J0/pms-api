@@ -1,12 +1,15 @@
 import { Types } from 'mongoose';
 import sanitizeHtml from 'sanitize-html';
 import { createLogger } from '@utils/index';
+import { MoneyUtils } from '@utils/money.utils';
 import { GeoCoderService } from '@services/external';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { PropertyDAO, ClientDAO, UserDAO } from '@dao/index';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PropertyValidations } from '@shared/validations/PropertyValidation';
+import { PropertyValidationService } from '@services/property/propertyValidation.service';
 import {
   ICsvHeaderValidationResult,
   ICsvValidationResult,
@@ -27,6 +30,8 @@ interface PropertyProcessingContext {
   // Keyed by the literal file header text, checked before the exact-match fallback.
   columnMapping?: Record<string, string>;
   userId: ICurrentUser['sub'];
+  // The account's currency, set by validateCsv — every imported property is priced in it
+  currency?: CURRENCIES;
   propertyId?: string;
   cuid: string;
 }
@@ -80,7 +85,10 @@ export class PropertyCsvProcessor {
       IProperty,
       PropertyProcessingContext
     >(filePath, {
-      context,
+      context: {
+        ...context,
+        currency: (client.settings?.defaultCurrency || CURRENCIES.USD) as CURRENCIES,
+      },
       headerTransformer: this.createPropertyHeaderTransformer(context.columnMapping),
       validateHeaders: this.validateRequiredHeaders.bind(this),
       validateRow: this.validatePropertyRow,
@@ -100,8 +108,12 @@ export class PropertyCsvProcessor {
     row: any,
     context: PropertyProcessingContext
   ): Promise<ICsvValidationResult> => {
+    // Blank cells count as missing, so required columns are reported instead of read as 0
+    const filledCells = Object.fromEntries(
+      Object.entries(row).filter(([, value]) => !(typeof value === 'string' && value.trim() === ''))
+    );
     const rowWithContext = {
-      ...row,
+      ...filledCells,
       cuid: context.cuid,
     };
     const validationResult = await PropertyValidations.propertyCsv.safeParseAsync(rowWithContext);
@@ -188,7 +200,11 @@ export class PropertyCsvProcessor {
       ...(documents.length > 0 && { documents }),
       operationalStatus: (row.status || 'available') as PropertyStatus,
       occupancyStatus: (row.occupancyStatus || 'vacant') as OccupancyStatus,
-      maxAllowedUnits: row.maxAllowedUnits ? Number(row.maxAllowedUnits) : 0,
+      // No unit-count column: use the property type's default, as the single-property form does
+      // (0 would fail the same validation single creation runs).
+      maxAllowedUnits: row.maxAllowedUnits
+        ? Number(row.maxAllowedUnits)
+        : PropertyTypeManager.getDefaultUnits(row.propertyType),
       yearBuilt: row.yearBuilt ? Number(row.yearBuilt) : undefined,
 
       description: {
@@ -224,7 +240,7 @@ export class PropertyCsvProcessor {
         rentAmount: BaseCSVProcessorService.parseNumber(row.fees_rentalAmount, 0),
         managementFees: BaseCSVProcessorService.parseNumber(row.fees_managementFees, 0),
         securityDeposit: BaseCSVProcessorService.parseNumber(row.fees_securityDeposit, 0),
-        currency: (row.fees_currency || 'USD') as CURRENCIES,
+        currency: context.currency ?? CURRENCIES.USD,
       },
 
       utilities: {
@@ -299,7 +315,8 @@ export class PropertyCsvProcessor {
       // Imported properties start unverified, same as single creation — admin review verifies them
       verificationStatus: VerificationStatusEnum.UNVERIFIED,
 
-      managedBy,
+      // No manager column (or unresolved): the importing user manages it, as with single creation
+      managedBy: managedBy ?? new Types.ObjectId(context.userId),
       cuid: context.cuid,
       createdBy: new Types.ObjectId(context.userId),
     };
@@ -343,13 +360,23 @@ export class PropertyCsvProcessor {
         const geoCode = await this.geoCoderService.parseLocation(property.fullAddress);
 
         if (!geoCode.success) {
-          rowError(rowNumber, 'address', `Invalid address: ${property.fullAddress}`);
+          // Provider failures are logged by GeoCoderService; users only get a retry
+          // prompt, never the underlying cause (keys, quotas, outages are internal).
+          rowError(
+            rowNumber,
+            'address',
+            geoCode.reason === 'unavailable'
+              ? "We couldn't verify this address right now. Please try the upload again in a few minutes."
+              : `Address not found: ${property.fullAddress}`
+          );
           continue;
         }
 
-        property.computedLocation = {
-          coordinates: geoCode.data?.coordinates || [0, 0],
-        };
+        // GeoJSON Point — the 2dsphere index rejects coordinates without a type. No coordinates
+        // means no location rather than a fake [0, 0].
+        if (geoCode.data?.coordinates?.length === 2) {
+          property.computedLocation = { type: 'Point', coordinates: geoCode.data.coordinates };
+        }
 
         property.address = {
           city: geoCode.data?.city,
@@ -393,6 +420,24 @@ export class PropertyCsvProcessor {
         }
 
         property.fullAddress = geoCode.data?.fullAddress;
+
+        // Same business rules as single creation — run here so "Validate" reports exactly what
+        // the import would reject, with the real row number.
+        const ruleCheck = PropertyValidationService.validateProperty(property as any);
+        if (!ruleCheck.valid) {
+          invalidProperties.push({
+            rowNumber: rowNumber ?? 0,
+            errors: ruleCheck.errors.map((ruleError) => ({
+              field: ruleError.field,
+              error: ruleError.message,
+            })),
+          });
+          continue;
+        }
+
+        // Stored in cents, as single creation does after the same rule check
+        property.fees = MoneyUtils.parseMoneyInput(property.fees);
+
         delete property._csvRowNumber;
         delete property._addressUnitNumber;
         validProperties.push(property as IProperty);
@@ -442,7 +487,6 @@ export class PropertyCsvProcessor {
     'fees_rentalAmount',
     'fees_managementFees',
     'fees_securityDeposit',
-    'fees_currency',
     // Utility fields
     'utilities_water',
     'utilities_gas',
@@ -480,9 +524,29 @@ export class PropertyCsvProcessor {
     'owner_bankDetails_bankName',
   ];
 
-  // The downloadable template only carries what every row must have. Any other
-  // allowedHeaders column can be added by the user — the importer accepts them all.
-  private readonly templateHeaders: string[] = ['name', 'propertyType', 'fullAddress'];
+  // Columns every row must have, so an imported property is ready to lease
+  private readonly requiredHeaders: string[] = [
+    'name',
+    'propertyType',
+    'maxAllowedUnits',
+    'occupancyStatus',
+    'specifications_totalArea',
+  ];
+
+  // The downloadable template carries the required columns plus the ones a single-unit row
+  // needs. Any other allowedHeaders column can be added by the user — the importer accepts them all.
+  private readonly templateHeaders: string[] = [
+    'name',
+    'propertyType',
+    'fullAddress',
+    'maxAllowedUnits',
+    'occupancyStatus',
+    'specifications_totalArea',
+    'specifications_bedrooms',
+    'specifications_bathrooms',
+    'fees_rentalAmount',
+    'fees_securityDeposit',
+  ];
 
   getTemplateHeaders(): string[] {
     return [...this.templateHeaders];
@@ -492,19 +556,39 @@ export class PropertyCsvProcessor {
     return [...this.allowedHeaders];
   }
 
-  /** Builds a downloadable CSV template with the required columns and one example row. */
+  /**
+   * Builds a downloadable CSV template with two example rows: a multi-unit building (its rent
+   * and rooms live on its units) and a single-unit house, which needs its own.
+   */
   generateTemplateCsv(): string {
-    const exampleRow: Record<string, string> = {
-      name: 'Kensington Terrace',
-      propertyType: 'apartment',
-      fullAddress: '88 Kensington Avenue, Toronto, ON M5T 2K2, Canada',
-    };
+    const exampleRows: Record<string, string>[] = [
+      {
+        name: 'Kensington Terrace',
+        propertyType: 'apartment',
+        fullAddress: '88 Kensington Avenue, Toronto, ON M5T 2K2, Canada',
+        maxAllowedUnits: '12',
+        occupancyStatus: 'vacant',
+        specifications_totalArea: '14000',
+      },
+      {
+        name: 'Riverdale Family Home',
+        propertyType: 'house',
+        fullAddress: '45 Withrow Avenue, Toronto, ON M4K 1C8, Canada',
+        maxAllowedUnits: '1',
+        occupancyStatus: 'vacant',
+        specifications_totalArea: '1800',
+        specifications_bedrooms: '3',
+        specifications_bathrooms: '2',
+        fees_rentalAmount: '3200',
+        fees_securityDeposit: '3200',
+      },
+    ];
 
     const headerRow = this.templateHeaders.join(',');
-    const dataRow = this.templateHeaders
-      .map((header) => this.csvEscape(exampleRow[header] ?? ''))
-      .join(',');
-    return `${headerRow}\n${dataRow}\n`;
+    const dataRows = exampleRows.map((exampleRow) =>
+      this.templateHeaders.map((header) => this.csvEscape(exampleRow[header] ?? '')).join(',')
+    );
+    return [headerRow, ...dataRows].join('\n') + '\n';
   }
 
   private csvEscape(value: string): string {
@@ -545,8 +629,7 @@ export class PropertyCsvProcessor {
   }
 
   private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
-    const alwaysRequired = ['name', 'propertyType'];
-    const missingHeaders = alwaysRequired.filter((required) => !headers.includes(required));
+    const missingHeaders = this.requiredHeaders.filter((required) => !headers.includes(required));
 
     const hasFullAddress = headers.includes('fullAddress');
     const hasSplitAddress = headers.includes('address_street') && headers.includes('address_city');
@@ -555,7 +638,7 @@ export class PropertyCsvProcessor {
     }
 
     const foundHeaders = headers.filter(
-      (header) => alwaysRequired.includes(header) || header === 'fullAddress'
+      (header) => this.requiredHeaders.includes(header) || header === 'fullAddress'
     );
     const isValid = missingHeaders.length === 0;
 

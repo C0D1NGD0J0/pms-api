@@ -30,7 +30,7 @@ export interface IClientSettings {
   vendorPayoutMode?: 'express' | 'platform_hold';
   tenantFeatures?: ITenantFeatureSettings;
   requireDepositRefundApproval?: boolean; // When true, deposit refunds queue as PENDING_REFUND and require explicit PM/admin release
-  defaultCurrency?: string; // ISO 4217 — display preference and property creation pre-fill
+  defaultCurrency?: string; // ISO 4217 — set from the signup country; every property is priced in it
   timeZone: string;
   lang: string;
 }

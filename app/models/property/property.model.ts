@@ -213,10 +213,11 @@ const PropertySchema = new Schema<IPropertyDocument>(
     specifications: SpecificationsSchema,
     utilities: UtilitiesSchema,
     description: {
+      // Optional (CSV imports and the form both allow it); '' when not provided
       text: {
-        required: true,
         type: String,
         trim: true,
+        default: '',
       },
       html: {
         type: String,

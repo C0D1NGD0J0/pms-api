@@ -334,25 +334,35 @@ export class PropertyValidationService {
         });
       }
 
-      // Only validate required fields during creation
+      // Only validate required fields during creation — the same fields the property form requires
       if (!isUpdate) {
+        const specifications = propertyData.specifications || {};
+        const isSingleUnit = maxAllowedUnits <= 1;
         const requiredFields = PropertyTypeManager.getRules(propertyType).requiredFields;
-        requiredFields.forEach((field) => {
-          if (field === 'totalArea' && !propertyData.specifications?.totalArea) {
+
+        if (requiredFields.includes('specifications.totalArea') && !specifications.totalArea) {
+          errors.push({
+            field: 'totalArea',
+            message: `Total area is required for ${propertyType} properties`,
+            code: 'REQUIRED_FIELD',
+          });
+        }
+        if (requiredFields.includes('specifications.bedrooms') && isSingleUnit) {
+          if (!specifications.bedrooms) {
             errors.push({
-              field: 'totalArea',
-              message: `Total area is required for ${propertyType} properties`,
+              field: 'bedrooms',
+              message: `Bedrooms are required for a single-unit ${propertyType}`,
               code: 'REQUIRED_FIELD',
             });
           }
-          if (field === 'lotSize' && !propertyData.specifications?.lotSize) {
+          if (!specifications.bathrooms) {
             errors.push({
-              field: 'lotSize',
-              message: `Lot size is required for ${propertyType} properties`,
+              field: 'bathrooms',
+              message: `Bathrooms are required for a single-unit ${propertyType}`,
               code: 'REQUIRED_FIELD',
             });
           }
-        });
+        }
       }
     }
 

@@ -124,7 +124,8 @@ export class PropertyController {
       cuid,
       csvFile.path,
       currentuser.sub,
-      columnMapping
+      columnMapping,
+      currentuser.client.role
     );
     res.status(httpStatusCodes.OK).json(result);
   };

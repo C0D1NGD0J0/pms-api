@@ -22,7 +22,13 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'maxAllowedUnits'],
+    requiredFields: [
+      'name',
+      'propertyType',
+      'address',
+      'specifications.totalArea',
+      'maxAllowedUnits',
+    ],
     validationRules: {
       minTotalArea: 500,
       maxUnits: 500,
@@ -45,7 +51,13 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'maxAllowedUnits'],
+    requiredFields: [
+      'name',
+      'propertyType',
+      'address',
+      'specifications.totalArea',
+      'maxAllowedUnits',
+    ],
     validationRules: {
       minTotalArea: 200,
       maxUnits: 100,
@@ -68,7 +80,13 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'maxAllowedUnits'],
+    requiredFields: [
+      'name',
+      'propertyType',
+      'address',
+      'specifications.totalArea',
+      'maxAllowedUnits',
+    ],
     validationRules: {
       minTotalArea: 1000,
       maxUnits: 1000,
@@ -92,7 +110,15 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'specifications'],
+    requiredFields: [
+      'name',
+      'propertyType',
+      'address',
+      'specifications.totalArea',
+      // bedrooms/bathrooms apply only while the property is a single unit
+      'specifications.bedrooms',
+      'specifications.bathrooms',
+    ],
     validationRules: {
       minTotalArea: 500,
       maxUnits: 3, // Houses can be duplexes/triplexes
@@ -115,7 +141,7 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'specifications'],
+    requiredFields: ['name', 'propertyType', 'address', 'specifications.totalArea'],
     validationRules: {
       minTotalArea: 1000,
       maxUnits: 10,
@@ -138,7 +164,15 @@ export const propertyTypeRules: PropertyTypeRules = {
       documents: [],
       unit: [],
     },
-    requiredFields: ['name', 'propertyType', 'address', 'specifications'],
+    requiredFields: [
+      'name',
+      'propertyType',
+      'address',
+      'specifications.totalArea',
+      // bedrooms/bathrooms apply only while the property is a single unit
+      'specifications.bedrooms',
+      'specifications.bathrooms',
+    ],
     validationRules: {
       minTotalArea: 800,
       maxUnits: 4, // Some townhouses can be duplexes/triplexes

@@ -35,12 +35,31 @@ export class PropertyQueue extends BaseQueue {
   }
 
   async addCsvValidationJob(data: CsvJobData) {
-    const jobId = await this.addJobToQueue(JOB_NAME.CSV_VALIDATION_JOB, await attachCsvToJob(data));
+    const jobId = await this.addJobToQueue(
+      JOB_NAME.CSV_VALIDATION_JOB,
+      await attachCsvToJob(data),
+      {
+        // Every row is geocoded, so allow more than the 60s default; the user can just re-run it
+        attempts: 1,
+        timeout: 5 * 60 * 1000,
+        removeOnComplete: 100,
+        removeOnFail: 500,
+        delay: 5000,
+      }
+    );
     return jobId;
   }
 
   async addCsvImportJob(data: CsvJobData) {
-    const jobId = await this.addJobToQueue(JOB_NAME.CSV_IMPORT_JOB, await attachCsvToJob(data));
+    const jobId = await this.addJobToQueue(JOB_NAME.CSV_IMPORT_JOB, await attachCsvToJob(data), {
+      // A retry would insert the same properties again, and Bull's timeout doesn't stop the
+      // first run — so one attempt with room to geocode and insert a large file.
+      attempts: 1,
+      timeout: 15 * 60 * 1000,
+      removeOnComplete: 100,
+      removeOnFail: 500,
+      delay: 5000,
+    });
     return jobId;
   }
 }

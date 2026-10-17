@@ -1,5 +1,6 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { PropertyCsvProcessor } from '@services/csv';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { isUnlimited } from '@utils/planLimits.utils';
@@ -8,6 +9,7 @@ import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionDAO, PropertyDAO, ClientDAO } from '@dao/index';
 import { CsvProcessReturnData, CsvJobData } from '@interfaces/index';
+import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 
 interface IConstructor {
@@ -226,6 +228,17 @@ export class PropertyWorker {
         }
       }
 
+      if (job.data.autoApprove) {
+        const approvedAt = new Date();
+        csvResult.validProperties = csvResult.validProperties.map((property) => ({
+          ...property,
+          approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+          approvalDetails: [
+            { action: 'approved', timestamp: approvedAt, actor: new Types.ObjectId(userId) },
+          ],
+        })) as typeof csvResult.validProperties;
+      }
+
       let totalInserted = 0;
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
@@ -245,17 +258,39 @@ export class PropertyWorker {
         return { totalInserted };
       });
 
+      // insertMany (ordered: false) silently skips rows the model rejects, so compare what was
+      // saved with what passed CSV validation instead of assuming everything went in.
+      const notSavedCount = csvResult.validProperties.length - propertiesResult.totalInserted;
+      if (notSavedCount > 0) {
+        this.log.error(
+          { jobId: job.id, cuid, notSavedCount },
+          'CSV import: some valid rows were rejected by the Property model'
+        );
+        postValidationErrors.push({
+          rowNumber: 0,
+          errors: [
+            {
+              field: 'save',
+              error: `${notSavedCount} of ${csvResult.validProperties.length} properties could not be saved. Please check the data and try again.`,
+            },
+          ],
+        });
+      }
+
       const combinedErrors: CsvProcessReturnData['errors'] = [
         ...(csvResult.errors || []),
         ...postValidationErrors,
       ];
+      const nothingSaved = propertiesResult.totalInserted === 0;
 
       const returnResult = {
         data: [],
         errors: combinedErrors.length ? combinedErrors : null,
-        message: combinedErrors.length
-          ? 'Properties imported with some errors'
-          : 'All properties imported successfully',
+        message: nothingSaved
+          ? 'No properties could be imported'
+          : combinedErrors.length
+            ? `Imported ${propertiesResult.totalInserted} propert${propertiesResult.totalInserted === 1 ? 'y' : 'ies'} with some errors`
+            : `Imported ${propertiesResult.totalInserted} propert${propertiesResult.totalInserted === 1 ? 'y' : 'ies'} successfully`,
       } as CsvProcessReturnData & { message: string };
 
       // Sync subscription.resourceTracker.propertyCount so the atomic gate in addProperty() stays accurate
@@ -276,7 +311,7 @@ export class PropertyWorker {
         {
           jobId: job.id.toString(),
           jobType: 'csv_property_import',
-          stage: 'completed',
+          stage: nothingSaved ? 'failed' : 'completed',
           progress: 100,
           totalItems: csvResult.totalRows,
           createdCount: propertiesResult.totalInserted,
@@ -288,7 +323,7 @@ export class PropertyWorker {
       );
 
       return {
-        success: true,
+        success: !nothingSaved,
         processId: job.id,
         data: {
           totalInserted: propertiesResult.totalInserted,

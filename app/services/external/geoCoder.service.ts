@@ -1,10 +1,24 @@
+import Logger from 'bunyan';
 import { envVariables } from '@shared/config';
 import NodeGeocoder, { Entry } from 'node-geocoder';
 import { CircuitBreaker, createLogger } from '@utils/index';
 
+/**
+ * Why a lookup failed:
+ *   not_found   — the provider answered, but the address doesn't resolve (user-fixable)
+ *   unavailable — the provider couldn't be used: bad/restricted key, quota, outage,
+ *                 network, open circuit. Internal — never surface the cause to users.
+ */
+export type GeocodeFailureReason = 'not_found' | 'unavailable';
+
+// Google statuses that mean "the address itself is the problem"; anything else is
+// treated as the service being unavailable.
+const NOT_FOUND_STATUSES = ['ZERO_RESULTS', 'INVALID_REQUEST'];
+
 export class GeoCoderService {
   private geocoder: NodeGeocoder.Geocoder;
   private readonly breaker: CircuitBreaker;
+  private readonly log: Logger;
 
   constructor() {
     const opts = {
@@ -16,12 +30,15 @@ export class GeoCoderService {
       console.warn('Geocoder initialized without API key - functionality may be limited');
     }
 
+    this.log = createLogger('GeoCoderService');
     this.geocoder = NodeGeocoder(opts);
     this.breaker = new CircuitBreaker({
       name: 'geocoder',
       failureThreshold: 3,
       cooldownMs: 60_000,
-      logger: createLogger('GeoCoderService'),
+      // An address that doesn't resolve is not a provider failure — don't trip the breaker
+      isFailure: (err) => !this.isNotFoundError(err),
+      logger: this.log,
     });
   }
 
@@ -35,6 +52,7 @@ export class GeoCoderService {
     message: string;
     success: boolean;
     data: any;
+    reason?: GeocodeFailureReason;
   }> {
     if (!location || typeof location !== 'string') {
       throw new Error('Invalid location: Location must be a non-empty string');
@@ -44,7 +62,7 @@ export class GeoCoderService {
       const results = await this.breaker.exec(() => this.geocoder.geocode(location));
 
       if (!results || results.length === 0) {
-        throw new Error(`No results found for location: ${location}`);
+        return this.failure('not_found', 'Address not found');
       }
       return {
         data: this.formatAddress(results[0]),
@@ -52,16 +70,26 @@ export class GeoCoderService {
         success: true,
       };
     } catch (error) {
-      if (error instanceof Error) {
-        console.error(`Geocoding failed: ${error.message}`);
+      if (this.isNotFoundError(error)) {
+        return this.failure('not_found', 'Address not found');
       }
-      console.error('Geocoding failed with unknown error');
-      return {
-        message: 'Failed to parse address',
-        success: false,
-        data: null,
-      };
+      // Provider-side problem (key restrictions, quota, outage) — log the real cause
+      // for us, return a generic reason for callers.
+      this.log.error(
+        { err: error instanceof Error ? error.message : String(error) },
+        'Geocoding provider unavailable'
+      );
+      return this.failure('unavailable', 'Address lookup is temporarily unavailable');
     }
+  }
+
+  private failure(reason: GeocodeFailureReason, message: string) {
+    return { success: false, data: null, message, reason };
+  }
+
+  private isNotFoundError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return NOT_FOUND_STATUSES.some((status) => message.includes(status));
   }
 
   /**

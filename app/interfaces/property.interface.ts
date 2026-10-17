@@ -125,6 +125,19 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
+export interface CsvJobData {
+  // User-confirmed header → field key mapping from the frontend's mapping step.
+  columnMapping?: Record<string, string>;
+  /** The uploaded CSV's bytes; the worker writes them to a temp csvFilePath. */
+  csvContentBase64?: string;
+  clientInfo: IClientInfo;
+  /** Importer may approve properties (admin/manager), so imported properties start approved */
+  autoApprove?: boolean;
+  csvFilePath: string;
+  jobId?: string;
+  userId: string;
+}
+
 export interface IAssignableUser {
   employeeInfo?: {
     department?: string;
@@ -182,17 +195,6 @@ export interface IPropertyAuthorization {
   isActive: boolean; // Simple on/off switch
   expiresAt?: Date; // When authorization expires (optional)
   notes?: string; // Internal notes
-}
-
-export interface CsvJobData {
-  // User-confirmed header → field key mapping from the frontend's mapping step.
-  columnMapping?: Record<string, string>;
-  /** The uploaded CSV's bytes; the worker writes them to a temp csvFilePath. */
-  csvContentBase64?: string;
-  clientInfo: IClientInfo;
-  csvFilePath: string;
-  jobId?: string;
-  userId: string;
 }
 
 export interface FinancialDetails {

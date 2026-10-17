@@ -70,7 +70,6 @@ import {
   PROPERTY_APPROVAL_ROLES,
   createSafeMongoUpdate,
   convertUserRoleToEnum,
-  getCurrencyForCountry,
   PROPERTY_STAFF_ROLES,
   MAX_ASSIGNED_STAFF,
   getRequestDuration,
@@ -532,7 +531,6 @@ export class PropertyService implements ICronProvider {
       cleanPropertyData.managedBy = new Types.ObjectId(currentuser.sub);
     } else {
       // fallback to client's accountAdmin
-      const client = await this.clientDAO.findFirst({ cuid });
       const accountAdminId = client?.accountAdmin?.toString();
       cleanPropertyData.managedBy = accountAdminId
         ? new Types.ObjectId(accountAdminId)
@@ -574,12 +572,9 @@ export class PropertyService implements ICronProvider {
         });
       }
 
-      if (cleanPropertyData.address?.country) {
-        cleanPropertyData.fees = cleanPropertyData.fees ?? {};
-        cleanPropertyData.fees.currency = getCurrencyForCountry(
-          cleanPropertyData.address.country
-        ) as any;
-      }
+      // Every property is priced in the account's currency (set from the signup country)
+      cleanPropertyData.fees = cleanPropertyData.fees ?? {};
+      cleanPropertyData.fees.currency = (client?.settings?.defaultCurrency || 'USD') as any;
 
       // Every new property starts unverified, regardless of ownership type or uploaded
       // documents — only an admin review (PropertyVerificationService) can verify it.
@@ -728,7 +723,8 @@ export class PropertyService implements ICronProvider {
     cuid: string,
     csvFilePath: string,
     actorId: string,
-    columnMapping?: Record<string, string>
+    columnMapping?: Record<string, string>,
+    actorRole?: string
   ): Promise<ISuccessReturnData> {
     if (!csvFilePath || !cuid) {
       throw new BadRequestError({ message: t('property.errors.noCsvFile') });
@@ -757,11 +753,14 @@ export class PropertyService implements ICronProvider {
       }
     }
 
+    // Same rule as single creation: admins and managers don't need anyone to approve their own
     const jobData = {
       csvFilePath,
       userId: actorId,
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       columnMapping: this.sanitizeColumnMapping(columnMapping),
+      autoApprove:
+        !!actorRole && PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(actorRole)),
     };
 
     const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
@@ -1408,33 +1407,10 @@ export class PropertyService implements ICronProvider {
       cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
     }
 
-    // Keep currency in sync with country when address changes — but block if active leases exist
-    if (cleanUpdateData.address?.country) {
-      const newCurrency = getCurrencyForCountry(cleanUpdateData.address.country);
-      const existingCurrency = (property.fees as any)?.currency;
-
-      if (newCurrency !== existingCurrency) {
-        const activeLeaseCount = await this.leaseDAO.countDocuments({
-          'property.id': property._id,
-          cuid,
-          deletedAt: null,
-          status: {
-            $in: [
-              LeaseStatus.ACTIVE,
-              LeaseStatus.PENDING_SIGNATURE,
-              LeaseStatus.READY_FOR_SIGNATURE,
-            ],
-          },
-        });
-        if (activeLeaseCount > 0) {
-          throw new BadRequestError({
-            message: 'Cannot change property currency while active leases exist.',
-          });
-        }
-      }
-
-      cleanUpdateData.fees = cleanUpdateData.fees ?? ({} as any);
-      cleanUpdateData.fees!.currency = newCurrency as any;
+    // Currency is the account's, set at creation. Edits keep it: the schema fills in USD
+    // for any fees payload without one, which would otherwise overwrite it.
+    if (cleanUpdateData.fees && property.fees?.currency) {
+      cleanUpdateData.fees.currency = property.fees.currency;
     }
 
     // Sanitize HTML content

@@ -451,193 +451,214 @@ export const BatchPatternValidationSchema = z.object({
 });
 
 // CSV Schema for property unit imports
-export const PropertyUnitCsvSchema = z.object({
-  cuid: z.string().min(1, 'Client ID is required'),
-  pid: z.string().min(1, 'Property ID is required'),
-  unitNumber: z
-    .string()
-    .min(1, 'Unit number must not be empty')
-    .max(20, 'Unit number must be at most 20 characters'),
-  floor: z.coerce
-    .number()
-    .int()
-    .min(UNIT_FLOOR_RANGE.min, `Floor cannot be less than ${UNIT_FLOOR_RANGE.min}`)
-    .max(UNIT_FLOOR_RANGE.max, `Floor cannot be greater than ${UNIT_FLOOR_RANGE.max}`)
-    .default(1),
-  unitType: UnitTypeZodEnum,
-  status: UnitStatusZodEnum.default('available'),
-  description: z.string().max(500, 'Description must be at most 500 characters').optional(),
+export const PropertyUnitCsvSchema = z
+  .object({
+    cuid: z.string().min(1, 'Client ID is required'),
+    pid: z.string().min(1, 'Property ID is required'),
+    unitNumber: z
+      .string()
+      .min(1, 'Unit number must not be empty')
+      .max(20, 'Unit number must be at most 20 characters'),
+    floor: z.coerce
+      .number({ invalid_type_error: 'Floor is required and must be a number' })
+      .int()
+      .min(UNIT_FLOOR_RANGE.min, `Floor cannot be less than ${UNIT_FLOOR_RANGE.min}`)
+      .max(UNIT_FLOOR_RANGE.max, `Floor cannot be greater than ${UNIT_FLOOR_RANGE.max}`),
+    unitType: UnitTypeZodEnum,
+    status: UnitStatusZodEnum,
+    description: z.string().max(500, 'Description must be at most 500 characters').optional(),
 
-  // Specifications
-  specifications_totalArea: z.coerce.number().positive('Total area must be a positive number'),
-  specifications_bedrooms: z.coerce
-    .number()
-    .int()
-    .min(0, 'Bedrooms must be a non-negative integer')
-    .default(1),
-  specifications_bathrooms: z.coerce
-    .number()
-    .min(0, 'Bathrooms must be a non-negative number')
-    .default(1),
-  specifications_maxOccupants: z.coerce
-    .number()
-    .int()
-    .min(1, 'Maximum occupants must be at least 1')
-    .optional(),
+    // Specifications
+    specifications_totalArea: z.coerce
+      .number({ invalid_type_error: 'Total area is required and must be a number' })
+      .positive('Total area must be a positive number'),
+    specifications_bedrooms: z.coerce
+      .number()
+      .int()
+      .min(0, 'Bedrooms must be a non-negative integer')
+      .optional(),
+    specifications_bathrooms: z.coerce
+      .number()
+      .min(0, 'Bathrooms must be a non-negative number')
+      .optional(),
+    specifications_maxOccupants: z.coerce
+      .number()
+      .int()
+      .min(1, 'Maximum occupants must be at least 1')
+      .optional(),
 
-  // Fees
-  fees_currency: z.enum(['USD', 'CAD', 'EUR', 'GBP', 'AUD', 'JPY', 'NGN']).default('USD'),
-  fees_rentAmount: z.coerce.number().min(0, 'Rent amount must be a non-negative number'),
-  fees_securityDeposit: z.coerce
-    .number()
-    .min(0, 'Security deposit must be a non-negative number')
-    .default(0),
+    // Fees
+    fees_rentAmount: z.coerce
+      .number({ invalid_type_error: 'Rent amount is required and must be a number' })
+      .min(0, 'Rent amount must be a non-negative number'),
+    fees_securityDeposit: z.coerce
+      .number({ invalid_type_error: 'Security deposit is required and must be a number' })
+      .min(0, 'Security deposit must be a non-negative number'),
 
-  // Amenities - using boolean validation with transform
-  amenities_airConditioning: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  amenities_washerDryer: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  amenities_dishwasher: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  amenities_parking: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  amenities_cableTV: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  amenities_internet: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  amenities_storage: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
+    // Amenities - using boolean validation with transform
+    amenities_airConditioning: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    amenities_washerDryer: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    amenities_dishwasher: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    amenities_parking: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    amenities_cableTV: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    amenities_internet: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    amenities_storage: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
 
-  // Utilities
-  utilities_water: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  utilities_centralAC: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  utilities_heating: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  utilities_gas: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-  utilities_trash: z
-    .union([z.boolean(), z.string(), z.number()])
-    .optional()
-    .transform((val) => {
-      if (typeof val === 'boolean') return val;
-      if (typeof val === 'string') {
-        const lower = val.toLowerCase();
-        return lower === 'true' || lower === '1' || lower === 'yes';
-      }
-      if (typeof val === 'number') return val === 1;
-      return false;
-    }),
-});
+    // Utilities
+    utilities_water: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    utilities_centralAC: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    utilities_heating: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    utilities_gas: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+    utilities_trash: z
+      .union([z.boolean(), z.string(), z.number()])
+      .optional()
+      .transform((val) => {
+        if (typeof val === 'boolean') return val;
+        if (typeof val === 'string') {
+          const lower = val.toLowerCase();
+          return lower === 'true' || lower === '1' || lower === 'yes';
+        }
+        if (typeof val === 'number') return val === 1;
+        return false;
+      }),
+  })
+  .superRefine((data, ctx) => {
+    // Residential units are leased by their rooms, so the counts must be stated
+    // (a studio is 0 bedrooms); other unit types don't have them
+    if (data.unitType !== 'residential') return;
+    if (data.specifications_bedrooms === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Bedrooms are required for a residential unit (use 0 for a studio)',
+        path: ['specifications_bedrooms'],
+      });
+    }
+    if (data.specifications_bathrooms === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Bathrooms are required for a residential unit',
+        path: ['specifications_bathrooms'],
+      });
+    }
+  });

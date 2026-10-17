@@ -1,4 +1,5 @@
 import { LeaseDAO } from '@dao/index';
+import { MoneyUtils } from '@utils/money.utils';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { ValidationRequestError } from '@shared/customErrors';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
@@ -59,7 +60,11 @@ export const generateUnitPendingChangesPreview = (
   }
 
   const { updatedBy, updatedAt, displayName, ...requestedChanges } = unit.pendingChanges;
-  const changes = createSafeMongoUpdate(requestedChanges);
+  // Shown in dollars, the way the property preview does
+  const changes = createSafeMongoUpdate({
+    ...requestedChanges,
+    ...(requestedChanges.fees && { fees: MoneyUtils.formatMoneyDisplay(requestedChanges.fees) }),
+  });
   const updatedFields = Object.keys(changes);
 
   return {

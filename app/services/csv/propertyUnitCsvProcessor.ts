@@ -2,15 +2,63 @@ import { ObjectId } from 'mongodb';
 import { createLogger } from '@utils/index';
 import { IPropertyUnit } from '@interfaces/propertyUnit.interface';
 import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
-import { ICsvValidationResult, IInvalidCsvProperty } from '@interfaces/csv.interface';
+import {
+  ICsvHeaderValidationResult,
+  ICsvValidationResult,
+  IInvalidCsvProperty,
+} from '@interfaces/csv.interface';
 
 import { BaseCSVProcessorService } from './base';
+import { UNIT_ACCEPTED_FIELD_KEYS, UNIT_REQUIRED_FIELD_KEYS } from './propertyUnitImportFields';
 
 interface PropertyUnitProcessingContext {
+  // User-confirmed header → field key mapping from the frontend's mapping step
+  columnMapping?: Record<string, string>;
   userId: string;
   cuid: string;
   pid: string;
 }
+
+// The template carries every column a residential unit needs, so an imported unit is ready to lease
+const TEMPLATE_HEADERS = [
+  'unitNumber',
+  'unitType',
+  'floor',
+  'status',
+  'specifications_totalArea',
+  'specifications_bedrooms',
+  'specifications_bathrooms',
+  'fees_rentAmount',
+  'fees_securityDeposit',
+];
+
+const TEMPLATE_EXAMPLE_ROWS: Record<string, string>[] = [
+  {
+    unitNumber: '101',
+    unitType: 'residential',
+    floor: '1',
+    status: 'available',
+    specifications_totalArea: '850',
+    specifications_bedrooms: '2',
+    specifications_bathrooms: '1',
+    fees_rentAmount: '1800',
+    fees_securityDeposit: '1800',
+  },
+  {
+    unitNumber: '102',
+    unitType: 'residential',
+    floor: '1',
+    status: 'available',
+    specifications_totalArea: '520',
+    specifications_bedrooms: '0',
+    specifications_bathrooms: '1',
+    fees_rentAmount: '1400',
+    fees_securityDeposit: '1400',
+  },
+];
+
+const csvEscape = (value: string) =>
+  /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
 export class PropertyUnitCsvProcessor {
   private readonly log = createLogger('PropertyUnitCsvProcessor');
@@ -29,6 +77,8 @@ export class PropertyUnitCsvProcessor {
       PropertyUnitProcessingContext
     >(filePath, {
       context,
+      headerTransformer: this.createUnitHeaderTransformer(context.columnMapping),
+      validateHeaders: this.validateRequiredHeaders.bind(this),
       validateRow: this.validateUnitRow,
       transformRow: this.transformUnitRow,
     });
@@ -41,12 +91,61 @@ export class PropertyUnitCsvProcessor {
     };
   }
 
+  generateTemplateCsv(): string {
+    const lines = [
+      TEMPLATE_HEADERS.join(','),
+      ...TEMPLATE_EXAMPLE_ROWS.map((row) =>
+        TEMPLATE_HEADERS.map((header) => csvEscape(row[header] ?? '')).join(',')
+      ),
+    ];
+    return lines.join('\n') + '\n';
+  }
+
+  getTemplateHeaders(): string[] {
+    return [...TEMPLATE_HEADERS];
+  }
+
+  private createUnitHeaderTransformer(columnMapping?: Record<string, string>) {
+    return ({ header }: { header: string }) => {
+      const mappedKey = columnMapping?.[header];
+      if (mappedKey && UNIT_ACCEPTED_FIELD_KEYS.includes(mappedKey)) {
+        return mappedKey;
+      }
+
+      const normalizedHeader = header.toLowerCase().trim().replace(/\./g, '_');
+      const matchingHeader = UNIT_ACCEPTED_FIELD_KEYS.find(
+        (accepted) => accepted.toLowerCase() === normalizedHeader
+      );
+      return matchingHeader ?? null; // csv-parser drops unmapped columns
+    };
+  }
+
+  private validateRequiredHeaders(headers: string[]): ICsvHeaderValidationResult {
+    const missingHeaders = UNIT_REQUIRED_FIELD_KEYS.filter(
+      (required) => !headers.includes(required)
+    );
+    const isValid = missingHeaders.length === 0;
+
+    return {
+      isValid,
+      missingHeaders,
+      foundHeaders: headers.filter((header) => UNIT_ACCEPTED_FIELD_KEYS.includes(header)),
+      errorMessage: isValid
+        ? undefined
+        : `Invalid CSV format. Missing required columns: ${missingHeaders.join(', ')}.`,
+    };
+  }
+
   private validateUnitRow = async (
     row: any,
     context: PropertyUnitProcessingContext
   ): Promise<ICsvValidationResult> => {
+    // Empty cells count as missing, so required columns are reported (z.coerce.number() would turn '' into 0)
+    const filledCells = Object.fromEntries(
+      Object.entries(row).filter(([, value]) => !(typeof value === 'string' && value.trim() === ''))
+    );
     const rowWithContext = {
-      ...row,
+      ...filledCells,
       cuid: context.cuid,
       pid: context.pid,
     };
@@ -57,6 +156,8 @@ export class PropertyUnitCsvProcessor {
       return {
         isValid: true,
         errors: [],
+        // Built from the validated row so coerced numbers are saved
+        transformedData: validationResult.data,
       };
     } else {
       const formattedErrors = validationResult.error.errors.map((err) => ({
@@ -72,9 +173,12 @@ export class PropertyUnitCsvProcessor {
   };
 
   private transformUnitRow = async (
-    row: any,
-    context: PropertyUnitProcessingContext
+    rawRow: any,
+    context: PropertyUnitProcessingContext,
+    _rowNumber?: number,
+    validatedData?: any
   ): Promise<any> => {
+    const row = validatedData ?? rawRow;
     // Return object that matches the actual model schema
     return {
       cid: context.cuid,
@@ -91,7 +195,6 @@ export class PropertyUnitCsvProcessor {
         maxOccupants: row.specifications_maxOccupants,
       },
       fees: {
-        currency: row.fees_currency,
         rentAmount: row.fees_rentAmount,
         securityDeposit: row.fees_securityDeposit,
       },

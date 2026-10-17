@@ -2,6 +2,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { QueueFactory } from '@services/queue';
+import { MoneyUtils } from '@utils/money.utils';
 import { PropertyCache } from '@caching/property.cache';
 import { PropertyUnitCsvProcessor } from '@services/csv';
 import { LeaseStatus } from '@interfaces/lease.interface';
@@ -12,6 +13,7 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { PropertyUnitQueue } from '@queues/propertyUnit.queue';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { isWithinLimit, isUnlimited } from '@utils/planLimits.utils';
+import { getUnitImportFieldsResponse } from '@services/csv/propertyUnitImportFields';
 import { UnitNumberingService } from '@services/unitNumbering/unitNumbering.service';
 import { IPropertyFilterQuery, IPropertyDocument } from '@interfaces/property.interface';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
@@ -629,6 +631,10 @@ export class PropertyUnitService {
 
   async updatePropertyUnit(cxt: IRequestContext, updateData: Partial<IPropertyUnit>) {
     const currentuser = cxt.currentuser!;
+    // Typed in dollars; converted before the unchanged-field check and any pending changes
+    if (updateData.fees) {
+      updateData.fees = MoneyUtils.parseMoneyInput(updateData.fees);
+    }
     const start = process.hrtime.bigint();
     const { cuid, pid, puid: unitId } = cxt.request.params;
 
@@ -1145,7 +1151,7 @@ export class PropertyUnitService {
               ? `${validation.message}. Suggested: ${validation.suggestion}`
               : validation.message;
 
-            errors[`unit-${unit.unitNumber}`] = {
+            errors[`unit-${i}`] = {
               unitIndex: i,
               unitNumber: unit.unitNumber,
               error: errorMessage,
@@ -1155,6 +1161,12 @@ export class PropertyUnitService {
 
           const newUnitData = {
             ...unit,
+            // Typed in dollars, stored in cents like every other amount; billed in the
+            // property's currency, which is the account's
+            fees: {
+              ...MoneyUtils.parseMoneyInput(unit.fees),
+              currency: (property.fees as any)?.currency ?? 'USD',
+            },
             cuid,
             propertyId: new Types.ObjectId(property.id),
             createdBy: new Types.ObjectId(currentuser.sub),
@@ -1170,7 +1182,7 @@ export class PropertyUnitService {
             floor: unit.floor ?? 1,
           });
         } catch (error: any) {
-          errors[`unit-${unit.unitNumber}`] = {
+          errors[`unit-${i}`] = {
             unitIndex: i,
             unitNumber: unit.unitNumber,
             error: error.message || 'Failed to create unit',
@@ -1190,32 +1202,34 @@ export class PropertyUnitService {
         });
       }
 
-      if (createdUnits.length > 0) {
-        // Emit per-unit creation event for property occupancy sync
-        for (const unit of createdUnits) {
-          this.emitterService.emit(EventTypes.UNIT_CREATED, {
-            propertyId: property.id,
-            propertyPid: pid,
-            cuid,
-            unitId: unit.puid,
-            userId: currentuser.sub,
-            changeType: 'created',
-          });
-        }
+      return { createdUnits, errors };
+    });
 
-        // Emit batch unit creation event
-        this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
+    // Emitted only after the transaction commits: UNIT_BATCH_CREATED bumps the subscription's
+    // unit counter, which a rollback (or a transaction retry) would otherwise leave wrong.
+    if (result.createdUnits.length > 0) {
+      // Emit per-unit creation event for property occupancy sync
+      for (const unit of result.createdUnits) {
+        this.emitterService.emit(EventTypes.UNIT_CREATED, {
           propertyId: property.id,
           propertyPid: pid,
           cuid,
+          unitId: unit.puid,
           userId: currentuser.sub,
-          unitsCreated: createdUnits.length,
-          unitsFailed: Object.keys(errors).length,
+          changeType: 'created',
         });
       }
 
-      return { createdUnits, errors };
-    });
+      // Emit batch unit creation event
+      this.emitterService.emit(EventTypes.UNIT_BATCH_CREATED, {
+        propertyId: property.id,
+        propertyPid: pid,
+        cuid,
+        userId: currentuser.sub,
+        unitsCreated: result.createdUnits.length,
+        unitsFailed: Object.keys(result.errors).length,
+      });
+    }
 
     await this.propertyCache.invalidateProperty(cuid, pid);
     const errorsArray = Object.keys(result.errors);
@@ -1250,7 +1264,7 @@ export class PropertyUnitService {
     // pid/cuid are only existence-checked, so never let them pick the target property
     const { cuid, pid } = cxt.request.params;
     const propertyUnitQueue = this.queueFactory.getQueue('propertyUnitQueue') as PropertyUnitQueue;
-    const jobId = await propertyUnitQueue.addUnitBatchCreationJob({
+    const job = await propertyUnitQueue.addUnitBatchCreationJob({
       units: data.units,
       pid,
       cuid,
@@ -1260,12 +1274,25 @@ export class PropertyUnitService {
 
     return {
       success: true,
-      data: { jobId: jobId.toString() },
+      // The UI matches this against the job's 'job-notification' to show the outcome
+      data: { jobId: job.id.toString() },
       message: t('propertyUnit.success.jobQueued'),
     };
   }
 
-  async validateUnitsCsv(cxt: IRequestContext, csvFile: ExtractedMediaFile) {
+  getCsvImportFields() {
+    return getUnitImportFieldsResponse();
+  }
+
+  getCsvTemplate(): string {
+    return new PropertyUnitCsvProcessor().generateTemplateCsv();
+  }
+
+  async validateUnitsCsv(
+    cxt: IRequestContext,
+    csvFile: ExtractedMediaFile,
+    columnMapping?: Record<string, string>
+  ) {
     const currentuser = cxt.currentuser!;
     const { cuid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
@@ -1293,17 +1320,22 @@ export class PropertyUnitService {
         userId: currentuser.sub,
         cuid,
         pid: property.id,
+        columnMapping,
       });
 
       // Clean up the file after processing
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
 
+      // Finished counts in the same shape a CSV job notification carries, so the upload modal
+      // shows them straight from the response
+      const errors = validationResult.errors ?? [];
       return {
         success: true,
         data: {
-          validUnits: validationResult.validUnits.length,
           totalRows: validationResult.totalRows,
-          errors: validationResult.errors,
+          validCount: validationResult.validUnits.length,
+          errorCount: errors.length,
+          errors,
         },
         message: t('propertyUnit.success.csvValidated'),
       };
@@ -1325,7 +1357,11 @@ export class PropertyUnitService {
     }
   }
 
-  async importUnitsFromCsv(cxt: IRequestContext, csvFile: ExtractedMediaFile) {
+  async importUnitsFromCsv(
+    cxt: IRequestContext,
+    csvFile: ExtractedMediaFile,
+    columnMapping?: Record<string, string>
+  ) {
     const currentuser = cxt.currentuser!;
     const { cuid, pid } = cxt.request.params;
     const start = process.hrtime.bigint();
@@ -1365,14 +1401,20 @@ export class PropertyUnitService {
         userId: currentuser.sub,
         cuid,
         pid: property.id,
+        columnMapping,
       });
 
       if (validationResult.errors && validationResult.errors.length > 0) {
         this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
         return {
           success: false,
+          data: {
+            totalRows: validationResult.totalRows,
+            createdCount: 0,
+            errorCount: validationResult.errors.length,
+            errors: validationResult.errors,
+          },
           message: t('propertyUnit.errors.csvValidationFailed'),
-          errors: validationResult.errors,
         };
       }
 
@@ -1383,16 +1425,32 @@ export class PropertyUnitService {
         pid,
       };
 
+      // Same manager rules as the units form: a listed manager must be an employee, otherwise
+      // the property's manager (or the importer). managedBy is required by the model.
+      await this.assignUnitManagers(cuid, batchData.units, property, currentuser.sub);
       const result = await this.createUnitsDirectly(cxt, batchData, property);
 
       // Clean up the file after processing
       this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFile.path]);
 
+      // createUnitsDirectly throws when nothing was created; otherwise its message has the real
+      // created/failed counts instead of a blanket "imported successfully".
+      // Rows reach createUnitsDirectly in file order, so a unit's index gives its row number
+      const rowErrors = Object.values<{ unitIndex: number; error: string }>(result.errors).map(
+        (unitError) => ({
+          rowNumber: unitError.unitIndex + 1,
+          errors: [{ field: 'unitNumber', error: unitError.error }],
+        })
+      );
       return {
         success: true,
-        data: result.data,
-        errors: result.errors,
-        message: t('propertyUnit.success.csvImported'),
+        data: {
+          totalRows: validationResult.totalRows,
+          createdCount: result.data.length,
+          errorCount: rowErrors.length,
+          errors: rowErrors,
+        },
+        message: result.message,
       };
     } catch (error: any) {
       this.log.error('CSV import failed', {

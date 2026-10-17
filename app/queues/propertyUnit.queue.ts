@@ -1,3 +1,4 @@
+import { Job } from 'bull';
 import { PropertyUnitWorker } from '@workers/index';
 import { QUEUE_NAMES, JOB_NAME } from '@utils/index';
 
@@ -28,9 +29,21 @@ export class PropertyUnitQueue extends BaseQueue {
     );
   }
 
+  protected async onJobFailedPermanently(job: Job<UnitBatchJobData>, error: Error): Promise<void> {
+    if (job.name === JOB_NAME.UNIT_BATCH_CREATION_JOB) {
+      await this.propertyUnitWorker.notifyUnitBatchFailed(job, error);
+    }
+  }
+
   async addUnitBatchCreationJob(data: UnitBatchJobData) {
-    const jobId = await this.addJobToQueue(JOB_NAME.UNIT_BATCH_CREATION_JOB, data);
-    return jobId;
+    return this.addJobToQueue(JOB_NAME.UNIT_BATCH_CREATION_JOB, data, {
+      // A retry after the transaction commits would see its own units as duplicates and never
+      // bump the unit counter, so one attempt; the user is told the outcome either way.
+      attempts: 1,
+      timeout: 5 * 60 * 1000,
+      removeOnComplete: 100,
+      removeOnFail: 500,
+    });
   }
 
   async getUnitBatchJobStatus(jobId: string) {

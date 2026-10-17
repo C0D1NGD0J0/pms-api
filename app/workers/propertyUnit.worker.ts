@@ -2,7 +2,9 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
+import { MoneyUtils } from '@utils/money.utils';
 import { isUnlimited } from '@utils/planLimits.utils';
+import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { UnitBatchJobData } from '@queues/propertyUnit.queue';
@@ -16,6 +18,7 @@ interface IConstructor {
   propertyUnitDAO: PropertyUnitDAO;
   subscriptionDAO: SubscriptionDAO;
   propertyDAO: PropertyDAO;
+  sseService: SSEService;
 }
 
 export class PropertyUnitWorker {
@@ -25,6 +28,7 @@ export class PropertyUnitWorker {
   private readonly emitterService: EventEmitterService;
   private readonly propertyUnitDAO: PropertyUnitDAO;
   private readonly unitNumberingService: UnitNumberingService;
+  private readonly sseService: SSEService;
 
   constructor({
     propertyDAO,
@@ -32,14 +36,37 @@ export class PropertyUnitWorker {
     emitterService,
     subscriptionDAO,
     unitNumberingService,
+    sseService,
   }: IConstructor) {
     this.propertyDAO = propertyDAO;
     this.subscriptionDAO = subscriptionDAO;
     this.emitterService = emitterService;
     this.propertyUnitDAO = propertyUnitDAO;
     this.unitNumberingService = unitNumberingService;
+    this.sseService = sseService;
     this.log = createLogger('PropertyUnitWorker');
   }
+
+  /**
+   * Called by PropertyUnitQueue once a batch job has failed for good (plan or capacity limits,
+   * pattern problems, timeouts, crashed workers) so the units form doesn't report success.
+   */
+  notifyUnitBatchFailed = async (job: Job<UnitBatchJobData>, error: Error): Promise<void> => {
+    await this.sseService.sendToUser(
+      job.data.userId,
+      job.data.cuid,
+      {
+        jobId: job.id.toString(),
+        jobType: 'unit_batch_create',
+        stage: 'failed',
+        progress: 0,
+        propertyPid: job.data.pid,
+        message: error.message,
+        error: error.message,
+      },
+      'job-notification'
+    );
+  };
 
   processUnitBatchCreation = async (job: Job<UnitBatchJobData>) => {
     job.progress(10);
@@ -148,6 +175,11 @@ export class PropertyUnitWorker {
             // Create unit data
             const newUnitData = {
               ...unit,
+              // Typed in dollars, stored in cents; billed in the property's currency
+              fees: {
+                ...MoneyUtils.parseMoneyInput(unit.fees),
+                currency: (property.fees as any)?.currency ?? 'USD',
+              },
               cuid,
               propertyId: new Types.ObjectId(property.id),
               createdBy: new Types.ObjectId(userId),
@@ -193,6 +225,32 @@ export class PropertyUnitWorker {
       }
 
       job.progress(100);
+
+      await this.sseService
+        .sendToUser(
+          userId,
+          cuid,
+          {
+            jobId: job.id.toString(),
+            jobType: 'unit_batch_create',
+            stage:
+              result.createdUnits.length === 0 && result.errors.length > 0 ? 'failed' : 'completed',
+            progress: 100,
+            propertyPid: pid,
+            totalItems: units.length,
+            createdCount: result.createdUnits.length,
+            errorCount: result.errors.length,
+            errors: result.errors,
+            message:
+              result.errors.length > 0
+                ? `${result.createdUnits.length} units created successfully, ${result.errors.length} failed`
+                : `All ${result.createdUnits.length} units created successfully`,
+          },
+          'job-notification'
+        )
+        .catch((error) =>
+          this.log.error({ jobId: job.id, error }, 'Failed to send unit batch result')
+        );
 
       this.log.info(
         `Completed unit batch creation job ${job.id} for property ${pid}: ${result.createdUnits.length}/${units.length} successful`

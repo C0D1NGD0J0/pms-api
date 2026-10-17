@@ -1,9 +1,9 @@
 import { Response } from 'express';
 import { t } from '@shared/languages';
-import { httpStatusCodes } from '@utils/index';
 import { PropertyUnitService } from '@services/property';
 import { MediaUploadService } from '@services/mediaUpload';
 import { IPropertyFilterQuery } from '@interfaces/property.interface';
+import { parseColumnMappingField, httpStatusCodes } from '@utils/index';
 import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
@@ -114,6 +114,18 @@ export class PropertyUnitController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  getCsvTemplate = async (_req: AppRequest, res: Response) => {
+    const csv = this.propertyUnitService.getCsvTemplate();
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="unit-import-template.csv"');
+    res.status(httpStatusCodes.OK).send(csv);
+  };
+
+  getCsvImportFields = async (_req: AppRequest, res: Response) => {
+    const data = this.propertyUnitService.getCsvImportFields();
+    res.status(httpStatusCodes.OK).json({ success: true, data });
+  };
+
   validateUnitsCsv = async (req: AppRequest, res: Response) => {
     if (!req.scannedFiles || !req.scannedFiles.length) {
       return res.status(httpStatusCodes.BAD_REQUEST).json({
@@ -123,7 +135,11 @@ export class PropertyUnitController {
     }
 
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-    const result = await this.propertyUnitService.validateUnitsCsv(req.context, csvFile);
+    const result = await this.propertyUnitService.validateUnitsCsv(
+      req.context,
+      csvFile,
+      parseColumnMappingField(req.body?.columnMapping)
+    );
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -136,7 +152,11 @@ export class PropertyUnitController {
     }
 
     const csvFile: ExtractedMediaFile = req.scannedFiles[0];
-    const result = await this.propertyUnitService.importUnitsFromCsv(req.context, csvFile);
+    const result = await this.propertyUnitService.importUnitsFromCsv(
+      req.context,
+      csvFile,
+      parseColumnMappingField(req.body?.columnMapping)
+    );
     res.status(httpStatusCodes.OK).json(result);
   };
 }

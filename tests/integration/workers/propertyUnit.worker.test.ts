@@ -50,6 +50,7 @@ describe('PropertyUnitWorker (integration)', () => {
       emitterService: mockEmitterService as any,
       subscriptionDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
       unitNumberingService: new UnitNumberingService(),
+      sseService: { sendToUser: jest.fn().mockResolvedValue(undefined) } as any,
     });
   });
 

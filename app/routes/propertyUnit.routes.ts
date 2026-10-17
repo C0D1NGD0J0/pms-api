@@ -50,6 +50,29 @@ router.get(
   })
 );
 
+// Two-segment paths, so they never collide with GET /:puid
+router.get(
+  '/csv/template',
+  requirePropertyPermission(PermissionAction.CREATE),
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getCsvTemplate(req, res);
+  })
+);
+
+router.get(
+  '/csv/import-fields',
+  requirePropertyPermission(PermissionAction.CREATE),
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getCsvImportFields(req, res);
+  })
+);
+
 router.get(
   '/:puid',
   requirePropertyPermission(PermissionAction.READ),

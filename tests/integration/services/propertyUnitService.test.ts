@@ -164,8 +164,40 @@ describe('PropertyUnitService Integration Tests', () => {
         expect(savedUnit).not.toBeNull();
         expect(savedUnit!.unitNumber).toBe('101');
         expect(savedUnit!.specifications.bedrooms).toBe(2);
-        expect(savedUnit!.fees.rentAmount).toBe(1500);
+        // Typed in dollars, stored in cents
+        expect(savedUnit!.fees.rentAmount).toBe(150000);
         expect(savedUnit!.propertyId.toString()).toBe(testProperty._id.toString());
+      });
+
+      it("prices the unit in the property's currency, not the one sent", async () => {
+        await Property.updateOne({ _id: testProperty._id }, { 'fees.currency': 'CAD' });
+        const context = createMockContext(testClient.cuid, testProperty.pid, undefined, {
+          sub: adminUser._id.toString(),
+          client: { role: ROLES.ADMIN },
+          fullname: 'Admin User',
+        });
+
+        await propertyUnitService.addPropertyUnit(
+          context as any,
+          {
+            units: [
+              {
+                unitNumber: '101',
+                unitType: 'residential',
+                floor: 1,
+                specifications: { totalArea: 850 },
+                fees: { rentAmount: 1500, currency: 'USD' },
+                status: 'available',
+                managedBy: adminUser._id,
+              },
+            ],
+            cuid: testClient.cuid,
+            pid: testProperty.pid,
+          } as any
+        );
+
+        const savedUnit = await PropertyUnit.findOne({ propertyId: testProperty._id }).lean();
+        expect(savedUnit?.fees.currency).toBe('CAD');
       });
 
       it('should create multiple units (up to 5) directly', async () => {
@@ -438,7 +470,7 @@ describe('PropertyUnitService Integration Tests', () => {
         // Verify database was updated
         const updatedUnit = await PropertyUnit.findById(unit._id);
         expect(updatedUnit).not.toBeNull();
-        expect(updatedUnit!.fees.rentAmount).toBe(1800);
+        expect(updatedUnit!.fees.rentAmount).toBe(180000);
       });
 
       it('should validate rental amount is non-negative', async () => {
@@ -675,7 +707,7 @@ describe('PropertyUnitService Integration Tests', () => {
         );
 
         expect(result.success).toBe(true);
-        expect((await PropertyUnit.findById(unit._id))!.fees.rentAmount).toBe(2100);
+        expect((await PropertyUnit.findById(unit._id))!.fees.rentAmount).toBe(210000);
       });
 
       it('does not apply the new high-impact fields directly for staff', async () => {
@@ -742,7 +774,7 @@ describe('PropertyUnitService Integration Tests', () => {
         expect(saved!.approvalStatus).toBe('pending');
         expect(saved!.pendingChanges).toMatchObject({
           unitType: 'commercial',
-          fees: { rentAmount: 1850 },
+          fees: { rentAmount: 185000 },
           displayName: 'Sam Staff',
         });
         expect(saved!.pendingChanges!.updatedBy.toString()).toBe(staffUser._id.toString());
@@ -788,7 +820,7 @@ describe('PropertyUnitService Integration Tests', () => {
           approvalStatus: 'pending',
           pendingChanges: expect.objectContaining({ unitType: 'commercial' }),
           pendingChangesPreview: {
-            changes: { unitType: 'commercial', 'fees.rentAmount': 1850 },
+            changes: { unitType: 'commercial', 'fees.rentAmount': '1850.00' },
             displayName: 'Sam Staff',
           },
         });
@@ -850,7 +882,7 @@ describe('PropertyUnitService Integration Tests', () => {
         expect(result.success).toBe(true);
         const saved = await PropertyUnit.findById(unit._id);
         expect(saved!.unitType).toBe('commercial');
-        expect(saved!.fees.rentAmount).toBe(1850);
+        expect(saved!.fees.rentAmount).toBe(185000);
         expect(saved!.pendingChanges).toBeNull();
         expect(saved!.approvalStatus).toBe('approved');
         const approval = saved!.approvalDetails!.at(-1)!;

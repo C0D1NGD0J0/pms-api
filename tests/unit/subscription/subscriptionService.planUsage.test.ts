@@ -306,3 +306,68 @@ describe('SubscriptionService - Plan Usage with Verification', () => {
     });
   });
 });
+
+describe('SubscriptionService - Plan Usage with unlimited (-1) limits', () => {
+  it('reports enterprise unlimited limits as never reached with null remaining', async () => {
+    const mockSubscriptionDAO = { findFirst: jest.fn(), update: jest.fn() } as any;
+    const mockClientDAO = { findFirst: jest.fn(), getClientByCuid: jest.fn() } as any;
+    const service = new SubscriptionService({
+      subscriptionDAO: mockSubscriptionDAO,
+      clientDAO: mockClientDAO,
+      authCache: {} as any,
+      subscriptionCache: {
+        getEntitlements: jest.fn().mockResolvedValue({ success: false, data: null }),
+        cacheEntitlements: jest.fn().mockResolvedValue({ success: true }),
+        invalidate: jest.fn().mockResolvedValue({ success: true }),
+      } as any,
+      paymentGatewayService: {} as any,
+      sseService: {} as any,
+      userDAO: { list: jest.fn().mockResolvedValue([]) } as any,
+      emitterService: { on: jest.fn(), off: jest.fn(), emit: jest.fn() } as any,
+      propertyDAO: { countDocuments: jest.fn().mockResolvedValue(40) } as any,
+      propertyUnitDAO: { countDocuments: jest.fn().mockResolvedValue(0) } as any,
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
+      emailQueue: {} as any,
+      subscriptionWebhookService: {} as any,
+    });
+
+    mockClientDAO.findFirst.mockResolvedValue({
+      _id: new Types.ObjectId(),
+      cuid: 'TEST123',
+      isVerified: true,
+      createdAt: new Date(),
+    });
+    mockSubscriptionDAO.findFirst.mockResolvedValue({
+      _id: new Types.ObjectId(),
+      cuid: 'TEST123',
+      planName: 'enterprise',
+      resourceTracker: { propertyCount: 40, unitCount: 0, seatCount: 0 },
+      seats: { additional: 0, additionalCost: 0 },
+      manualRecords: { countThisPeriod: 12 },
+      reportGenerationUsage: { countThisPeriod: 7 },
+      billingInterval: 'monthly',
+      status: 'active',
+      startDate: new Date(),
+    });
+
+    const result = await service.getSubscriptionPlanUsage({
+      request: { params: { cuid: 'TEST123' } },
+    } as any);
+    const usage = result.data!;
+
+    expect(usage.limits.properties).toBe(-1);
+    expect(usage.isLimitReached.properties).toBe(false);
+    expect(usage.manualRecords).toEqual(
+      expect.objectContaining({
+        countThisPeriod: 12,
+        quota: -1,
+        remaining: null,
+        overageCount: 0,
+        projectedOverageCents: 0,
+      })
+    );
+    expect(usage.reportGenerationUsage).toEqual(
+      expect.objectContaining({ countThisPeriod: 7, quota: -1, remaining: null, percentUsed: 0 })
+    );
+  });
+});

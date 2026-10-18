@@ -3,6 +3,14 @@ import * as path from 'path';
 import { calcGatewayFee } from '@utils/financial.utils';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
+export {
+  UNLIMITED_PLAN_LIMIT,
+  isWithinLimit,
+  remainingFor,
+  isUnlimited,
+  overageFor,
+} from '@utils/planLimits.utils';
+
 const CONFIG_PATH = path.join(__dirname, 'platform.config.json');
 let platformConfig: any;
 
@@ -12,6 +20,32 @@ try {
 } catch (error) {
   console.error('Failed to load platform.config.json:', error);
   throw new Error('Platform configuration file not found or invalid');
+}
+
+/**
+ * Derive annual pricing from monthly pricing and `annualDiscountPercent`
+ * (0 = no discount, 20 = 20% off 12x monthly). Applies to the base price and
+ * every currency entry so the discount is set in one place.
+ */
+function applyAnnualDiscount(plans: Record<string, any>, discountPercent: number): void {
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent >= 100) {
+    throw new Error(`Invalid annualDiscountPercent: ${discountPercent}`);
+  }
+  const toAnnual = (monthlyCents: number) =>
+    Math.round((monthlyCents * 12 * (100 - discountPercent)) / 100);
+
+  for (const config of Object.values(plans)) {
+    const { monthly, annual } = config.pricing ?? {};
+    if (!monthly || !annual) continue;
+
+    annual.priceInCents = toAnnual(monthly.priceInCents);
+    annual.savingsPercent = monthly.priceInCents > 0 ? discountPercent : 0;
+    for (const [currency, monthlyCurrency] of Object.entries<any>(monthly.currencies ?? {})) {
+      if (annual.currencies?.[currency]) {
+        annual.currencies[currency].priceInCents = toAnnual(monthlyCurrency.priceInCents);
+      }
+    }
+  }
 }
 
 /**
@@ -38,6 +72,7 @@ function applyEnvPriceOverrides(plans: Record<string, any>): void {
 }
 
 applyEnvPriceOverrides(platformConfig.subscriptionPlans);
+applyAnnualDiscount(platformConfig.subscriptionPlans, platformConfig.annualDiscountPercent ?? 0);
 
 const PLAN_CONFIGS: Record<PlanName, ISubscriptionPlansConfig> = platformConfig.subscriptionPlans;
 
@@ -152,9 +187,31 @@ export class SubscriptionPlanConfig {
     return platformConfig.achPercentRate ?? 1.75;
   }
 
+  /** Max ACH application fee per payment in cents, or null when uncapped. */
+  public getAchFeeCapCents(): number | null {
+    return platformConfig.achFeeCapCents ?? null;
+  }
+
+  /**
+   * Instant payout pricing for display. Stripe charges the actual fee (Platform Pricing Tool),
+   * so payout amounts always come from Stripe's balance, never from these numbers.
+   */
+  public getInstantPayoutPricing(): { percentRate: number; minFeeCents: number } {
+    return {
+      percentRate: platformConfig.instantPayout?.percentRate ?? 2.5,
+      minFeeCents: platformConfig.instantPayout?.minFeeCents ?? 100,
+    };
+  }
+
+  public getAnnualDiscountPercent(): number {
+    return platformConfig.annualDiscountPercent ?? 0;
+  }
+
   public calculateAchApplicationFee(amountInCents: number): number {
     const rate = this.getAchPercentRate();
-    return Math.round(amountInCents * (rate / 100));
+    const fee = Math.round(amountInCents * (rate / 100));
+    const cap = this.getAchFeeCapCents();
+    return cap != null ? Math.min(fee, cap) : fee;
   }
 
   public getFormattedPrice(
@@ -304,7 +361,7 @@ export class SubscriptionPlanConfig {
     }
     const isAch = paymentMethodType === 'auto-debit';
     const fees = isAch ? gateway.acssProcessingFee : gateway.processingFee;
-    return calcGatewayFee(amountInCents, fees.percentRate, fees.fixedFeeCents);
+    return calcGatewayFee(amountInCents, fees.percentRate, fees.fixedFeeCents, fees.maxFeeCents);
   }
 
   /**

@@ -1,7 +1,6 @@
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { PdfQueue } from '@queues/index';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
@@ -11,10 +10,10 @@ import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { determineTemplateType, createLogger } from '@utils/index';
 import { PdfGeneratorService, MediaUploadService } from '@services/index';
 import { EventEmitterService, NotificationService } from '@services/index';
+import { ResourceContext, UploadResult } from '@interfaces/utils.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { ILeaseDocument, SigningMethod, LeaseStatus } from '@interfaces/lease.interface';
-import { IRequestContext, ResourceContext, UploadResult } from '@interfaces/utils.interface';
 import { NotificationPriorityEnum, NotificationTypeEnum } from '@interfaces/notification.interface';
 import {
   PdfGenerationRequestedPayload,
@@ -24,9 +23,13 @@ import {
   EventTypes,
 } from '@interfaces/events.interface';
 
-import { buildLandlordInfo } from './leaseHelpers';
 import { LeaseTemplateService } from './leaseTemplateService';
 import { hasESignatureEntitlement } from './leaseEntitlements';
+import {
+  assignUploadedLeaseDocumentTypes,
+  hasLeaseBeenSigned,
+  buildLandlordInfo,
+} from './leaseHelpers';
 
 interface IConstructor {
   leaseTemplateService: LeaseTemplateService;
@@ -148,7 +151,9 @@ export class LeasePdfService {
 
       const previewData = await this.generateLeasePreview(cuid, lease.luid);
       const finalTemplateType =
-        templateType || determineTemplateType(lease.property.propertyType || '');
+        templateType ||
+        lease.templateType ||
+        determineTemplateType(lease.property.propertyType || '');
       const html = await this.leaseTemplateService.transformAndRender(
         previewData,
         finalTemplateType
@@ -169,6 +174,8 @@ export class LeasePdfService {
           primaryResourceId: leaseId,
           uploadedBy: lease.createdBy?.toString() || 'system',
           resourceContext: ResourceContext.LEASE,
+          // the generated contract is always the agreement, signed or not
+          documentType: 'lease_agreement',
         })
         .catch((bufferError) => {
           this.log.error(
@@ -191,52 +198,6 @@ export class LeasePdfService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
-  }
-
-  /**
-   * Queue lease PDF generation (called by controller)
-   * Adds job to queue and returns immediately
-   */
-  async queueLeasePdfGeneration(
-    leaseId: string,
-    cuid: string,
-    ctx: IRequestContext,
-    templateType?: string
-  ): Promise<{ success: boolean; jobId?: string | number; error?: string }> {
-    try {
-      const lease = await this.leaseDAO.findFirst({
-        _id: new Types.ObjectId(leaseId),
-        cuid,
-        deletedAt: null,
-      });
-      if (!lease) {
-        throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
-      }
-
-      const pdfGeneratorQueue = this.queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue;
-      const job = await pdfGeneratorQueue.addToPdfQueue({
-        resource: {
-          resourceId: leaseId,
-          resourceName: 'lease',
-          actorId: ctx.currentuser?.sub || 'system',
-          resourceType: 'document',
-          fieldName: 'leaseDocument',
-        },
-        cuid,
-        templateType,
-      });
-
-      return {
-        success: true,
-        jobId: job?.id,
-      };
-    } catch (error) {
-      this.log.error({ error, leaseId }, 'Failed to queue PDF generation');
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }
@@ -484,6 +445,11 @@ export class LeasePdfService {
         });
         // Clean up stored senderInfo
         this.pendingSenderInfo.delete(resource.resourceId);
+        await this.notifyLeasePdfGenerationFailed(
+          cuid,
+          resource.resourceId,
+          result.error || 'PDF generation failed'
+        );
       } else {
         // PDF is being uploaded, wait for UPLOAD_COMPLETED event
         this.log.info('PDF upload in progress, waiting for UPLOAD_COMPLETED event', {
@@ -503,8 +469,39 @@ export class LeasePdfService {
       });
       // Clean up stored senderInfo
       this.pendingSenderInfo.delete(payload.resource.resourceId);
+      await this.notifyLeasePdfGenerationFailed(
+        payload.cuid,
+        payload.resource.resourceId,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
     }
   };
+
+  /**
+   * Tell the lease creator their PDF could not be generated — otherwise a "send for
+   * signature" that is waiting on the PDF silently never goes out.
+   */
+  private async notifyLeasePdfGenerationFailed(
+    cuid: string,
+    leaseId: string,
+    errorMessage: string
+  ): Promise<void> {
+    try {
+      if (!Types.ObjectId.isValid(leaseId)) return;
+      const lease = await this.leaseDAO.findFirst({
+        _id: new Types.ObjectId(leaseId),
+        cuid,
+        deletedAt: null,
+      });
+      if (!lease?.createdBy) return;
+      await this.notifyPdfGenerationStatus(lease, cuid, 'failed', errorMessage);
+    } catch (error) {
+      this.log.error('Failed to notify lease PDF generation failure', {
+        leaseId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
 
   /**
    * Handle PDF generated event for e-signature workflow
@@ -667,6 +664,20 @@ export class LeasePdfService {
    * Mark lease documents as failed
    */
   private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
+    // updateLeaseDocumentStatus flags every document on the lease; once signed, a failed
+    // upload could only have been a supporting document, so the signed agreement stays intact.
+    const query = Types.ObjectId.isValid(leaseId)
+      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
+      : { luid: leaseId, deletedAt: null };
+    const lease = await this.leaseDAO.findFirst(query);
+    if (lease && hasLeaseBeenSigned(lease)) {
+      this.log.warn('Lease document upload failed on a signed lease; existing documents kept', {
+        leaseId,
+        errorMessage,
+      });
+      return;
+    }
+
     this.log.warn('Marking lease documents as failed', {
       leaseId,
       errorMessage,
@@ -702,7 +713,10 @@ export class LeasePdfService {
     if (!lease) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
-    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
+    // Typed here, when the upload lands, so a signing that completed after the file was
+    // submitted still keeps the signed agreement in place.
+    const typedUploads = assignUploadedLeaseDocumentTypes(lease, uploadResults);
+    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, typedUploads, userId);
     if (!updatedLease) {
       throw new BadRequestError({
         message: t('common.errors.operationFailed', { action: 'update lease documents' }),

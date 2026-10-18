@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { JOB_NAME } from '@utils/constants';
 import { ROLES } from '@shared/constants/roles.constants';
 import { InvitationWorker } from '@workers/invitation.worker';
 
@@ -226,13 +227,19 @@ describe('InvitationWorker — CSV jobs', () => {
       expect(mockInvitationService.dispatchInvitation).not.toHaveBeenCalled();
     });
 
-    it('reports a header problem to the user instead of failing silently', async () => {
-      mockInvitationCsvProcessor.validateCsv.mockRejectedValue(
-        new Error('Missing required columns: role')
-      );
+    it('rethrows a header problem for the queue to report once, instead of failing silently', async () => {
+      const headerError = new Error('Missing required columns: role');
+      mockInvitationCsvProcessor.validateCsv.mockRejectedValue(headerError);
 
       await expect(worker.processCsvValidation(makeJob())).rejects.toThrow(
         'Missing required columns: role'
+      );
+      expect(mockSSEService.sendToUser).not.toHaveBeenCalled();
+
+      // InvitationQueue calls this once the job has failed for good
+      await worker.notifyCsvJobFailed(
+        { ...makeJob(), name: JOB_NAME.INVITATION_CSV_VALIDATION_JOB } as any,
+        headerError
       );
       expect(lastNotification()).toEqual(
         expect.objectContaining({
@@ -240,6 +247,17 @@ describe('InvitationWorker — CSV jobs', () => {
           stage: 'failed',
           error: 'Missing required columns: role',
         })
+      );
+    });
+
+    it('reports a failed import (e.g. a timeout) as an import failure', async () => {
+      await worker.notifyCsvJobFailed(
+        { ...makeJob(), name: JOB_NAME.INVITATION_CSV_IMPORT_JOB } as any,
+        new Error('job stalled more than allowable limit')
+      );
+
+      expect(lastNotification()).toEqual(
+        expect.objectContaining({ jobType: 'csv_invitation_import', stage: 'failed' })
       );
     });
   });

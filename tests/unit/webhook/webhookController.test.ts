@@ -41,6 +41,8 @@ describe('WebhookController - Stripe Webhooks', () => {
       handleChargeRefunded: jest.fn().mockResolvedValue(undefined),
       handleDisputeWon: jest.fn().mockResolvedValue(undefined),
       handleDisputeLost: jest.fn().mockResolvedValue(undefined),
+      handlePaymentIntentSucceeded: jest.fn().mockResolvedValue(undefined),
+      handlePaymentIntentFailed: jest.fn().mockResolvedValue(undefined),
     };
 
     mockPaymentWebhookService = {
@@ -126,6 +128,54 @@ describe('WebhookController - Stripe Webhooks', () => {
         ...charge,
         previous_attributes: { amount_refunded: 500 },
       });
+    });
+  });
+
+  describe('handleStripeWebhook — tenant PaymentIntent routing', () => {
+    const sendEvent = async (event: Record<string, any>) => {
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue(event as any);
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+    };
+
+    it('routes a succeeded tenant charge to handlePaymentIntentSucceeded', async () => {
+      const paymentIntent = { id: 'pi_1', metadata: { cuid: 'C1' } };
+      await sendEvent({
+        id: 'evt_pi_1',
+        type: 'payment_intent.succeeded',
+        data: { object: paymentIntent },
+      });
+
+      expect(mockPaymentService.handlePaymentIntentSucceeded).toHaveBeenCalledWith(paymentIntent);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+    });
+
+    it('routes a failed tenant charge to handlePaymentIntentFailed', async () => {
+      const paymentIntent = { id: 'pi_2', metadata: { cuid: 'C1' } };
+      await sendEvent({
+        id: 'evt_pi_2',
+        type: 'payment_intent.payment_failed',
+        data: { object: paymentIntent },
+      });
+
+      expect(mockPaymentService.handlePaymentIntentFailed).toHaveBeenCalledWith(paymentIntent);
+    });
+
+    it.each([
+      ['a subscription PaymentIntent (no cuid)', {}],
+      [
+        'a card-checkout PaymentIntent (settled by checkout.session.completed)',
+        { cuid: 'C1', pytuid: 'P1' },
+      ],
+    ])('ignores %s', async (_label, metadata) => {
+      await sendEvent({
+        id: 'evt_pi_3',
+        type: 'payment_intent.succeeded',
+        data: { object: { id: 'pi_3', metadata } },
+      });
+
+      expect(mockPaymentService.handlePaymentIntentSucceeded).not.toHaveBeenCalled();
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
     });
   });
 
@@ -376,6 +426,70 @@ describe('WebhookController - Stripe Webhooks', () => {
         success: false,
         message: 'Invalid signature',
       });
+    });
+
+    it('does not claim or process an event whose signature fails', async () => {
+      mockRequest.headers = { 'stripe-signature': 't=1,v1=bad' };
+      (mockRequest as any).rawBody = Buffer.from(
+        JSON.stringify({ id: 'evt_1', type: 'invoice.paid' })
+      );
+      mockStripeService.verifyWebhookSignature.mockRejectedValue(new Error('No signatures found'));
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockIdempotencyCache.claimWebhookEvent).not.toHaveBeenCalled();
+      expect(mockSubscriptionService.handleInvoicePaid).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('signature failures vs processing failures', () => {
+    beforeEach(() => {
+      mockRequest.headers = { 'stripe-signature': 't=1,v1=sig' };
+    });
+
+    it('returns 500 and releases the claim when processing a verified event throws', async () => {
+      mockStripeService.verifyWebhookSignature.mockResolvedValue({
+        id: 'evt_fail',
+        type: 'invoice.paid',
+        data: { object: { id: 'in_1' } },
+      } as any);
+      mockSubscriptionService.handleInvoicePaid.mockRejectedValue(new Error('db down'));
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockIdempotencyCache.releaseWebhookClaim).toHaveBeenCalledWith('evt_fail');
+    });
+
+    it('returns 400 without claiming when a Connect signature fails', async () => {
+      mockStripeService.verifyWebhookSignature.mockRejectedValue(new Error('No signatures found'));
+
+      await webhookController.handleStripeConnectWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
+
+      expect(mockResponse.status).toHaveBeenCalledWith(400);
+      expect(mockIdempotencyCache.claimWebhookEvent).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when processing a verified Connect event throws', async () => {
+      mockPaymentService.handleAccountUpdated = jest.fn().mockRejectedValue(new Error('db down'));
+      mockStripeService.verifyWebhookSignature.mockResolvedValue({
+        id: 'evt_acct',
+        type: 'account.updated',
+        account: 'acct_1',
+        data: { object: { id: 'acct_1' } },
+      } as any);
+
+      await webhookController.handleStripeConnectWebhook(
+        mockRequest as Request,
+        mockResponse as Response
+      );
+
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockIdempotencyCache.releaseWebhookClaim).toHaveBeenCalledWith('evt_acct');
     });
   });
 

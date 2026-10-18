@@ -1,8 +1,9 @@
 import Logger from 'bunyan';
 import { ClientSession, Types, Model } from 'mongoose';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
-import { calcPercentage, createLogger, escapeRegExp } from '@utils/index';
+import { createSafeMongoUpdate, calcPercentage, escapeRegExp, createLogger } from '@utils/index';
 import {
+  VendorServicesOffered,
   IVendorPayoutAccount,
   IVendorDocument,
   NewVendor,
@@ -15,9 +16,11 @@ import { IVendorFilterOptions, IVendorDAO } from './interfaces/vendorDAO.interfa
 
 export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
   protected logger: Logger;
+  private readonly vendorModel: Model<IVendorDocument>;
 
   constructor({ vendorModel }: { vendorModel: Model<IVendorDocument> }) {
     super(vendorModel);
+    this.vendorModel = vendorModel;
     this.logger = createLogger('VendorDAO');
   }
 
@@ -218,16 +221,18 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       // Check if it's a valid ObjectId format (24 hex characters)
       const isObjectId = /^[0-9a-fA-F]{24}$/.test(vendorIdStr);
 
+      const updateOperation = this.buildVendorUpdate(updateData);
+
       if (isObjectId) {
         // Use _id directly
-        vendor = await this.updateById(vendorIdStr, { $set: updateData }, {}, session);
+        vendor = await this.updateById(vendorIdStr, updateOperation, {}, session);
       } else {
         // It's a vuid, find vendor first
         const existingVendor = await this.findFirst({ vuid: vendorIdStr, deletedAt: null });
         if (existingVendor) {
           vendor = await this.updateById(
             existingVendor._id.toString(),
-            { $set: updateData },
+            updateOperation,
             {},
             session
           );
@@ -243,6 +248,23 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
       this.logger.error(`Error updating vendor ${vendorId}: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Nested objects are written field by field, so a save that leaves out e.g.
+   * insuranceInfo.expirationDate keeps the stored value. Arrays are replaced whole and an
+   * explicit null clears a field. The address is the exception: it is replaced as a unit,
+   * because a new fullAddress arrives with freshly geocoded parts and keeping parts of the
+   * old one would mix two addresses.
+   */
+  private buildVendorUpdate(updateData: Partial<IVendor>): { $set: Record<string, any> } {
+    const { address, ...fields } = updateData;
+    return {
+      $set: {
+        ...createSafeMongoUpdate(fields),
+        ...(address !== undefined && { address }),
+      },
+    };
   }
 
   async disconnectClient(vendorId: string, cuid: string): Promise<void> {
@@ -320,19 +342,51 @@ export class VendorDAO extends BaseDAO<IVendorDocument> implements IVendorDAO {
 
   async getClientVendors(cuid: string): Promise<ListResultWithPagination<IVendorDocument[]>> {
     try {
-      // Find vendors where connectedClients contains this cuid
-      const vendors = await this.list({
-        'connectedClients.cuid': cuid,
-        'connectedClients.isConnected': true,
-        deletedAt: null,
-      });
-
+      const vendors = await this.list(this.connectedToClientFilter(cuid));
       this.logger.info(`Retrieved ${vendors.items.length} vendors for client ${cuid}`);
       return vendors;
     } catch (error) {
       this.logger.error(`Error getting client vendors for ${cuid}: ${error}`);
       throw error;
     }
+  }
+
+  async getAllClientVendors(
+    cuid: string,
+    opts: { serviceKey?: keyof VendorServicesOffered; projection?: string } = {}
+  ): Promise<IVendorDocument[]> {
+    try {
+      const filter = this.connectedToClientFilter(cuid);
+      if (opts.serviceKey) filter[`servicesOffered.${opts.serviceKey}`] = true;
+
+      let query = this.vendorModel.find(filter);
+      if (opts.projection) query = query.select(opts.projection);
+      return await query.exec();
+    } catch (error) {
+      this.logger.error(`Error getting all client vendors for ${cuid}: ${error}`);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  async disconnectAllFromClient(cuid: string): Promise<number> {
+    try {
+      const result = await this.vendorModel
+        .updateMany(
+          this.connectedToClientFilter(cuid),
+          { $set: { 'connectedClients.$[elem].isConnected': false } },
+          { arrayFilters: [{ 'elem.cuid': cuid }] }
+        )
+        .exec();
+      this.logger.info(`Disconnected ${result.modifiedCount} vendors from client ${cuid}`);
+      return result.modifiedCount;
+    } catch (error) {
+      this.logger.error(`Error disconnecting vendors from client ${cuid}: ${error}`);
+      throw this.throwErrorHandler(error);
+    }
+  }
+
+  private connectedToClientFilter(cuid: string): Record<string, any> {
+    return { connectedClients: { $elemMatch: { cuid, isConnected: true } }, deletedAt: null };
   }
 
   async getClientVendorStats(

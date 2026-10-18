@@ -1,4 +1,4 @@
-import { type QueryFilter, ClientSession } from 'mongoose';
+import { type QueryFilter, ClientSession, Types } from 'mongoose';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
   ListResultWithPagination,
@@ -28,7 +28,6 @@ export interface IPropertyDAO {
     },
     pagination: { page: number; limit: number; sort?: string }
   ): ListResultWithPagination<IPropertyDocument[]>;
-
   getUnitCountsByStatus(propertyId: string): Promise<{
     total: number;
     available: number;
@@ -38,17 +37,17 @@ export interface IPropertyDAO {
     inactive: number;
   }>;
 
-  // checkPropertyAvailability(
-  //   propertyId: string,
-  //   startDate: Date,
-  //   endDate: Date
-  // ): Promise<{ isAvailable: boolean; conflictingLeases?: any[] }>;
-
   getPropertiesByClientId(
     clientId: string,
     filter?: QueryFilter<IPropertyDocument>,
     opts?: IPaginationQuery
   ): ListResultWithPagination<IPropertyDocument[]>;
+
+  // checkPropertyAvailability(
+  //   propertyId: string,
+  //   startDate: Date,
+  //   endDate: Date
+  // ): Promise<{ isAvailable: boolean; conflictingLeases?: any[] }>;
 
   canAddUnitToProperty(
     propertyId: string,
@@ -113,6 +112,8 @@ export interface IPropertyDAO {
   ): Promise<IPropertyDocument | null>;
 
   searchProperties(query: string, clientId: string): ListResultWithPagination<IPropertyDocument[]>;
+
+  findPropertyIds(filter: QueryFilter<IPropertyDocument>): Promise<Types.ObjectId[]>;
 
   archiveProperty(propertyId: string, userId: string): Promise<boolean>;
 }

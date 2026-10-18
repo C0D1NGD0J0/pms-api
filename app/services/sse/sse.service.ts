@@ -4,22 +4,17 @@ import { Response, Request } from 'express';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { createSession, Session } from 'better-sse';
-
-/** Viewer preferences captured when an announcement stream connects. */
-export interface ISSEAnnouncementPreferences {
-  disabledCategories?: string[];
-  seesAllDepartments?: boolean;
-  inAppDisabled?: boolean;
-}
-
-/** Lets the fan-out honour preferences without looking anything up. */
-export interface ISSEBroadcastDelivery {
-  category?: string | null;
-  required?: boolean;
-}
+import {
+  ISSEAnnouncementPreferences,
+  ISSEBroadcastDelivery,
+  IResourceEvent,
+  SSEChannelType,
+  SSEEventName,
+  ISSEService,
+} from '@interfaces/sse.interface';
 
 interface IConstructor {}
-export class SSEService {
+export class SSEService implements ISSEService {
   private readonly log: Logger;
   private readonly activeSessions: Map<string, Session[]> = new Map();
   private readonly redisPub: Redis;
@@ -65,7 +60,7 @@ export class SSEService {
     res: Response,
     userId: string,
     cuid: string,
-    channelType: 'individual' | 'announcement',
+    channelType: SSEChannelType,
     userRole?: string,
     userDepartment?: string,
     preferences?: ISSEAnnouncementPreferences
@@ -100,27 +95,58 @@ export class SSEService {
   async sendToUser(
     userId: string,
     cuid: string,
-    data: any,
-    eventType: string = 'notification',
+    data: IResourceEvent,
+    eventType: 'resource-event',
     eventId?: string
-  ): Promise<boolean> {
+  ): Promise<void>;
+  async sendToUser(
+    userId: string,
+    cuid: string,
+    data: unknown,
+    eventType: Exclude<SSEEventName, 'resource-event'>,
+    eventId?: string
+  ): Promise<void>;
+  async sendToUser(
+    userId: string,
+    cuid: string,
+    data: any,
+    eventType: SSEEventName,
+    eventId?: string
+  ): Promise<void> {
     const plainData = data?.toObject ? data.toObject() : data;
     await this.redisPub.publish(
       'pms:sse:events',
       JSON.stringify({ type: 'user', userId, cuid, data: plainData, eventType, eventId })
     );
-    return true;
   }
 
   async broadcastToClient(
     cuid: string,
-    data: any,
-    eventType: string = 'announcement',
+    data: IResourceEvent,
+    eventType: 'resource-event',
     eventId?: string,
     targetRoles?: string[],
     targetDepartments?: string[],
     delivery?: ISSEBroadcastDelivery
-  ): Promise<number> {
+  ): Promise<void>;
+  async broadcastToClient(
+    cuid: string,
+    data: unknown,
+    eventType: Exclude<SSEEventName, 'resource-event'>,
+    eventId?: string,
+    targetRoles?: string[],
+    targetDepartments?: string[],
+    delivery?: ISSEBroadcastDelivery
+  ): Promise<void>;
+  async broadcastToClient(
+    cuid: string,
+    data: any,
+    eventType: SSEEventName,
+    eventId?: string,
+    targetRoles?: string[],
+    targetDepartments?: string[],
+    delivery?: ISSEBroadcastDelivery
+  ): Promise<void> {
     const plainData = data?.toObject ? data.toObject() : data;
     await this.redisPub.publish(
       'pms:sse:events',
@@ -135,7 +161,6 @@ export class SSEService {
         delivery,
       })
     );
-    return 1;
   }
 
   private _localSendToUser(
@@ -237,11 +262,7 @@ export class SSEService {
     }
   }
 
-  getActiveSessionCount(
-    userId: string,
-    cuid: string,
-    channelType: 'individual' | 'announcement'
-  ): number {
+  getActiveSessionCount(userId: string, cuid: string, channelType: SSEChannelType): number {
     const sessionKey = this.getSessionKey(userId, cuid, channelType);
     const sessions = this.activeSessions.get(sessionKey) || [];
     return sessions.filter((s) => s.isConnected).length;

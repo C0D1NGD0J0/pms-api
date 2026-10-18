@@ -106,10 +106,5 @@ ExpenseSchema.index({ cuid: 1, propertyId: 1, date: -1 });
 ExpenseSchema.index({ cuid: 1, category: 1, date: -1 });
 
 const ExpenseModel = model<IExpenseDocument>('Expense', ExpenseSchema);
-if (process.env.SYNC_EXPENSE_INDEXES === 'true') {
-  ExpenseModel.syncIndexes().catch((error) => {
-    console.error('Failed to sync Expense indexes:', error);
-  });
-}
 
 export default ExpenseModel;

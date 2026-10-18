@@ -16,16 +16,6 @@ export class CronQueue extends BaseQueue {
   }
 
   /**
-   * Remove a repeatable job by name and cron pattern
-   * Used when disabling a cron job
-   */
-  async removeRepeatable(jobName: string, cronPattern: string): Promise<void> {
-    await this.queue.removeRepeatable(`cron:${jobName}`, {
-      cron: cronPattern,
-    });
-  }
-
-  /**
    * Get repeatable jobs
    * for getting next execution times
    */

@@ -1,6 +1,7 @@
 import { MailType } from '@interfaces/utils.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
-import { IUserRoleType, ROLES } from '@shared/constants/roles.constants';
+import { getStaffGrantSet } from '@services/permission/permissionGrants';
+import { IUserRoleType, ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import {
   NOTIFICATION_CATEGORIES,
   INotificationSettings,
@@ -40,11 +41,35 @@ export type NotificationChannel = 'email' | 'inApp' | 'sms' | 'push';
 
 const ALL_CATEGORIES: NotificationCategory[] = [...NOTIFICATION_CATEGORIES];
 
-const STAFF_BASE_CATEGORIES: NotificationCategory[] = [
-  'maintenance',
-  'propertyUpdates',
-  'announcements',
-];
+const STAFF_BASE_CATEGORIES: NotificationCategory[] = ['announcements'];
+
+/** Record-backed staff categories, offered only when the department can read that resource. */
+const STAFF_RECORD_CATEGORIES: Partial<Record<NotificationCategory, string>> = {
+  maintenance: 'maintenance',
+  propertyUpdates: 'property',
+};
+
+const staffGrantSetByDepartment = new Map<string, ReturnType<typeof getStaffGrantSet>>();
+
+function staffCanOpenCategoryRecords(
+  category: NotificationCategory,
+  department?: string | null
+): boolean {
+  const resource = STAFF_RECORD_CATEGORIES[category];
+  if (!resource) return false;
+  const grants = getCachedStaffGrantSet(department)[resource] ?? [];
+  return grants.some((grant) => grant.startsWith('read:'));
+}
+
+function getCachedStaffGrantSet(department?: string | null) {
+  const key = department ?? '';
+  let grantSet = staffGrantSetByDepartment.get(key);
+  if (!grantSet) {
+    grantSet = getStaffGrantSet(department);
+    staffGrantSetByDepartment.set(key, grantSet);
+  }
+  return grantSet;
+}
 
 const STAFF_DEPARTMENT_CATEGORIES: Partial<Record<string, NotificationCategory[]>> = {
   [EmployeeDepartment.ACCOUNTING]: ['payments'],
@@ -70,7 +95,10 @@ export function getCategoriesForRole(
   if (role === ROLES.STAFF) {
     const extras = (department && STAFF_DEPARTMENT_CATEGORIES[department]) || [];
     return ALL_CATEGORIES.filter(
-      (category) => STAFF_BASE_CATEGORIES.includes(category) || extras.includes(category)
+      (category) =>
+        STAFF_BASE_CATEGORIES.includes(category) ||
+        extras.includes(category) ||
+        staffCanOpenCategoryRecords(category, department)
     );
   }
   return ROLE_CATEGORIES[role as IUserRoleType] ?? ['announcements'];
@@ -120,6 +148,8 @@ export const MAIL_POLICY: Record<MailType, MailPolicy> = {
   [MailType.INVITATION_REMINDER]: required(),
   [MailType.ACCOUNT_DISCONNECTED]: required(),
   [MailType.ACCOUNT_UPDATE]: required(),
+  [MailType.EMAIL_CHANGE_VERIFICATION]: required(),
+  [MailType.EMAIL_CHANGE_NOTICE]: required(),
   [MailType.USER_CREATED]: required(),
   [MailType.COMPANY_CLOSURE_OWNER]: required(),
   [MailType.COMPANY_CLOSURE_STAFF]: required(),
@@ -238,6 +268,25 @@ export function sanitizeNotificationUpdate({
   return { update: cleaned as Partial<INotificationSettings> };
 }
 
+/** Categories the user switched off, plus record categories a staff-only user's department can't open. */
+export function getDisabledCategories(
+  prefs: ChannelPrefs | null | undefined,
+  recipient?: { roles: readonly string[]; department?: string | null }
+): NotificationCategory[] {
+  const isStaffOnly =
+    !!recipient?.roles.includes(ROLES.STAFF) &&
+    !recipient.roles.some((role) =>
+      (ROLE_GROUPS.MANAGEMENT_ROLES as readonly string[]).includes(role)
+    );
+  return NOTIFICATION_CATEGORIES.filter(
+    (category) =>
+      prefs?.[category] === false ||
+      (isStaffOnly &&
+        category in STAFF_RECORD_CATEGORIES &&
+        !staffCanOpenCategoryRecords(category, recipient?.department))
+  );
+}
+
 /**
  * Whether a notification may reach a user on a channel.
  * Missing preferences mean "allow" — a lookup failure must never swallow a notice.
@@ -256,12 +305,4 @@ export function shouldDeliver({
   if (isRequired || !prefs) return true;
   if (!CHANNEL_ENABLED[channel](prefs)) return false;
   return category ? prefs[category] !== false : true;
-}
-
-/** Categories the user has switched off (used to filter role/department announcements). */
-export function getDisabledCategories(
-  prefs: ChannelPrefs | null | undefined
-): NotificationCategory[] {
-  if (!prefs) return [];
-  return NOTIFICATION_CATEGORIES.filter((category) => prefs[category] === false);
 }

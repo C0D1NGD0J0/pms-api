@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { JOB_NAME } from '@utils/constants';
 import { PropertyWorker } from '@workers/property.worker';
 
 jest.mock('@services/subscription/subscription_plans.config', () => ({
@@ -118,19 +119,15 @@ describe('PropertyWorker.processCsvValidation', () => {
     );
   });
 
-  it('emits a failed job-notification and rethrows on a fatal error', async () => {
+  it('rethrows a fatal error without notifying — the queue reports the final failure once', async () => {
     mockPropertyCsvProcessor.validateCsv.mockReturnValue(Promise.reject(new Error('boom')));
 
     await expect(worker.processCsvValidation(makeJob() as any)).rejects.toThrow('boom');
 
-    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+    expect(mockSseService.sendToUser).not.toHaveBeenCalledWith(
       USER_ID,
       CUID,
-      expect.objectContaining({
-        jobType: 'csv_property_validation',
-        stage: 'failed',
-        error: 'boom',
-      }),
+      expect.objectContaining({ stage: 'failed' }),
       'job-notification'
     );
   });
@@ -226,15 +223,136 @@ describe('PropertyWorker.processCsvImport', () => {
     );
   });
 
-  it('emits a failed job-notification and rethrows on a fatal error', async () => {
-    mockPropertyCsvProcessor.validateCsv.mockReturnValue(Promise.reject(new Error('fatal')));
+  it('imports properties as approved when the importer can approve them (like single creation)', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(
+      Promise.resolve({
+        validProperties: [makeValidProperty('Alpha Tower')],
+        totalRows: 1,
+        errors: null,
+      })
+    );
+    mockPropertyDAO.insertMany.mockImplementation((batch: any[]) => Promise.resolve(batch));
 
-    await expect(worker.processCsvImport(makeJob() as any)).rejects.toThrow('fatal');
+    await worker.processCsvImport(
+      makeJob({ autoApprove: true, userId: '6acd03c359d0cb2da82035db' }) as any
+    );
+
+    const [inserted] = mockPropertyDAO.insertMany.mock.calls[0][0];
+    expect(inserted.approvalStatus).toBe('approved');
+    expect(inserted.approvalDetails[0]).toEqual(expect.objectContaining({ action: 'approved' }));
+  });
+
+  it('leaves properties for review when the importer cannot approve them', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(
+      Promise.resolve({
+        validProperties: [makeValidProperty('Alpha Tower')],
+        totalRows: 1,
+        errors: null,
+      })
+    );
+    mockPropertyDAO.insertMany.mockImplementation((batch: any[]) => Promise.resolve(batch));
+
+    await worker.processCsvImport(makeJob() as any);
+
+    const [inserted] = mockPropertyDAO.insertMany.mock.calls[0][0];
+    expect(inserted.approvalStatus).toBeUndefined();
+  });
+
+  // insertMany (ordered: false) silently drops rows the Property model rejects
+  it('reports a failure instead of success when no rows were actually saved', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(
+      Promise.resolve({
+        validProperties: [
+          makeValidProperty('Alpha Tower'),
+          makeValidProperty('Birch Court'),
+          makeValidProperty('Cedar House'),
+        ],
+        totalRows: 3,
+        errors: null,
+      })
+    );
+    mockPropertyDAO.insertMany.mockImplementation(() => Promise.resolve([]));
+
+    const result = await worker.processCsvImport(makeJob() as any);
+
+    expect(result.success).toBe(false);
+    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+      USER_ID,
+      CUID,
+      expect.objectContaining({
+        jobType: 'csv_property_import',
+        stage: 'failed',
+        createdCount: 0,
+        message: 'No properties could be imported',
+        errors: [
+          expect.objectContaining({
+            errors: [expect.objectContaining({ field: 'save' })],
+          }),
+        ],
+      }),
+      'job-notification'
+    );
+  });
+
+  it('reports rows that could not be saved alongside the ones that were', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(
+      Promise.resolve({
+        validProperties: [makeValidProperty('Alpha Tower'), makeValidProperty('Birch Court')],
+        totalRows: 2,
+        errors: null,
+      })
+    );
+    mockPropertyDAO.insertMany.mockImplementation((batch: any[]) =>
+      Promise.resolve(batch.slice(0, 1))
+    );
+
+    await worker.processCsvImport(makeJob() as any);
 
     expect(mockSseService.sendToUser).toHaveBeenCalledWith(
       USER_ID,
       CUID,
-      expect.objectContaining({ jobType: 'csv_property_import', stage: 'failed', error: 'fatal' }),
+      expect.objectContaining({
+        stage: 'completed',
+        createdCount: 1,
+        errorCount: 1,
+        message: 'Imported 1 property with some errors',
+      }),
+      'job-notification'
+    );
+  });
+
+  it('rethrows a fatal error without notifying — the queue reports the final failure once', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(Promise.reject(new Error('fatal')));
+
+    await expect(worker.processCsvImport(makeJob() as any)).rejects.toThrow('fatal');
+
+    expect(mockSseService.sendToUser).not.toHaveBeenCalledWith(
+      USER_ID,
+      CUID,
+      expect.objectContaining({ stage: 'failed' }),
+      'job-notification'
+    );
+  });
+});
+
+describe('PropertyWorker.notifyCsvJobFailed', () => {
+  it.each([
+    [JOB_NAME.CSV_VALIDATION_JOB, 'csv_property_validation'],
+    [JOB_NAME.CSV_IMPORT_JOB, 'csv_property_import'],
+  ])('sends a failed notification for a %s that failed for good', async (name, jobType) => {
+    const job = { ...makeJob(), name };
+
+    await worker.notifyCsvJobFailed(job as any, new Error('job timed out'));
+
+    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+      USER_ID,
+      CUID,
+      expect.objectContaining({
+        jobId: 'job-1',
+        jobType,
+        stage: 'failed',
+        error: 'job timed out',
+      }),
       'job-notification'
     );
   });

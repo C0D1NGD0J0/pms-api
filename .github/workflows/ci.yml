@@ -98,8 +98,9 @@ jobs:
         env:
           REDISMS_DISABLE_POSTINSTALL: "1"
 
+      # tsconfig.json includes tests/ — jest transpiles them without type-checking
       - name: Type check
-        run: npx tsc --noEmit -p tsconfig.build.json
+        run: npx tsc --noEmit -p tsconfig.json
 
   unit-tests:
     name: Unit Tests

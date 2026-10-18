@@ -5,6 +5,7 @@ import { ROLES } from '@shared/constants/roles.constants';
 import { ClientService } from '@services/client/client.service';
 import { ClientController } from '@controllers/ClientController';
 import { setupAllExternalMocks } from '@tests/setup/externalMocks';
+import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
 import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
@@ -91,6 +92,7 @@ describe('ClientController Integration Tests', () => {
       paymentGatewayService: {} as any,
       paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(null) } as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+      permissionService: new PermissionService(),
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });
 
@@ -277,17 +279,34 @@ describe('ClientController Integration Tests', () => {
       expect(client?.displayName).toBe(originalName);
     });
 
-    it('should reject invalid update data', async () => {
-      const invalidData = {
-        status: 'invalid-status',
-      };
+    // Body validation (incl. rejecting empty/unknown-only payloads) happens in the route's
+    // validateRequest middleware — see tests/unit/validation/clientValidation.updateDetails.test.ts
+    it('should only touch the settings field that was sent', async () => {
+      await Client.updateOne(
+        { cuid: testClient.cuid },
+        { $set: { 'settings.defaultCurrency': 'CAD', 'settings.lang': 'fr' } }
+      );
 
+      await request(app)
+        .patch(`/api/v1/clients/${testClient.cuid}`)
+        .send({ settings: { timeZone: 'Europe/Paris' } })
+        .expect(httpStatusCodes.OK);
+
+      const client = await Client.findOne({ cuid: testClient.cuid }).lean();
+      expect(client?.settings?.timeZone).toBe('Europe/Paris');
+      expect(client?.settings?.defaultCurrency).toBe('CAD');
+      expect(client?.settings?.lang).toBe('fr');
+    });
+
+    it('returns 403 when an admin sends a super-admin-only field', async () => {
       const response = await request(app)
         .patch(`/api/v1/clients/${testClient.cuid}`)
-        .send(invalidData)
-        .expect(httpStatusCodes.BAD_REQUEST);
+        .send({ settings: { requireDepositRefundApproval: true, lang: 'fr' } })
+        .expect(httpStatusCodes.FORBIDDEN);
 
       expect(response.body.success).toBe(false);
+      const client = await Client.findOne({ cuid: testClient.cuid }).lean();
+      expect(client?.settings?.requireDepositRefundApproval).not.toBe(true);
     });
   });
 
@@ -573,14 +592,9 @@ describe('ClientController Integration Tests', () => {
       expect(response.body.success).toBe(false);
     });
 
-    it('should handle malformed request data', async () => {
-      const response = await request(app)
-        .patch(`/api/v1/clients/${testClient.cuid}`)
-        .send({ settings: 'not-an-object' })
-        .expect(httpStatusCodes.BAD_REQUEST);
-
-      expect(response.body.success).toBe(false);
-    });
+    // Malformed PATCH /clients/:cuid bodies are rejected by the route's validateRequest
+    // middleware (not mounted in this controller-only app) — covered in
+    // tests/unit/validation/clientValidation.updateDetails.test.ts
 
     it('should handle concurrent role assignments', async () => {
       const promises = [

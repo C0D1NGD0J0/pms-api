@@ -270,8 +270,8 @@ PaymentSchema.index({ cuid: 1, status: 1, dueDate: -1 });
 PaymentSchema.index({ tenant: 1, dueDate: -1 });
 // One rent record per lease per period. Only lease-bound records are covered: property-mode
 // manual rent has no lease, and a null lease would otherwise collide across every client.
-// PaymentModel.syncIndexes() below drops and recreates this index on existing databases
-// whenever its options change (Mongoose compares partialFilterExpression).
+// syncAllIndexes() (run once after the DB connects) drops and recreates this index on existing
+// databases whenever its options change (Mongoose compares partialFilterExpression).
 export const RENT_PERIOD_UNIQUE_INDEX_FILTER = {
   paymentType: PaymentRecordType.RENT,
   deletedAt: null,
@@ -316,6 +316,4 @@ PaymentSchema.pre('validate', function () {
 });
 
 const PaymentModel = model<IPaymentDocument>('Payment', PaymentSchema);
-PaymentModel.syncIndexes();
-
 export default PaymentModel;

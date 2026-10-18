@@ -1,10 +1,13 @@
 import { t } from '@shared/languages';
-import { LeaseDAO } from '@dao/index';
+import { LeaseDAO, UserDAO } from '@dao/index';
+import { type QueryFilter, Types } from 'mongoose';
 import { ICurrentUser } from '@interfaces/user.interface';
-import { ValidationRequestError } from '@shared/customErrors';
 import type { MediaUploadService } from '@services/mediaUpload';
-import { IPropertyDocument } from '@interfaces/property.interface';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
+import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
+import type { PermissionService } from '@services/permission/permission.service';
+import { IPropertyDocument, IPendingChanges } from '@interfaces/property.interface';
+import { PermissionResource, PermissionAction, PermissionScope } from '@interfaces/utils.interface';
 import {
   IMMUTABLE_PROPERTY_FIELDS_WITH_LEASE_HISTORY,
   PROPERTY_APPROVAL_ROLES,
@@ -12,6 +15,16 @@ import {
   PROPERTY_STAFF_ROLES,
   MoneyUtils,
 } from '@utils/index';
+
+/**
+ * Drops media entries that only describe a file uploaded in this request
+ * (e.g. { documentType } for a multipart document). Those files are attached by
+ * the upload worker once stored, so persisting the descriptor would leave an
+ * empty media entry behind.
+ */
+export const withoutPendingUploads = <T extends { url?: string; externalUrl?: string }>(
+  media: T[]
+): T[] => media.filter((item) => item.url || item.externalUrl);
 
 /**
  * Soft-delete (or hard-delete) the assets for any images / documents that an
@@ -50,9 +63,67 @@ export const cleanUpRemovedPropertyMedia = async (
 };
 
 /**
+ * The property-access rule shared by property lists and property detail: null when
+ * the user holds `property list:any`, otherwise only properties they're assigned to or manage.
+ */
+export const getAccessiblePropertyFilter = async (
+  permissionService: PermissionService,
+  currentuser: ICurrentUser
+): Promise<QueryFilter<IPropertyDocument> | null> => {
+  const { granted } = await permissionService.checkUserPermission(
+    currentuser,
+    PermissionResource.PROPERTY,
+    PermissionAction.LIST
+  );
+  // A staff grant can be narrower (list:assigned) and still be granted
+  const staffScope = permissionService.resolveStaffScope(
+    currentuser,
+    PermissionResource.PROPERTY,
+    PermissionAction.LIST
+  );
+  if (granted && (!staffScope || staffScope === PermissionScope.ANY)) return null;
+
+  return getAssignedPropertyFilter(currentuser.sub);
+};
+
+/** Properties the user is assigned to or manages. */
+export const getAssignedPropertyFilter = (userId: string): QueryFilter<IPropertyDocument> => {
+  const id = new Types.ObjectId(userId);
+  return { $or: [{ assignedStaff: id }, { managedBy: id }] };
+};
+
+/** Throws `message` unless every id is a user connected to the client (with one of `roles`). */
+export const assertConnectedEmployees = async (
+  userDAO: UserDAO,
+  cuid: string,
+  userIds: string[],
+  message: string,
+  roles?: readonly string[]
+): Promise<void> => {
+  const uniqueIds = [...new Set(userIds)];
+  if (uniqueIds.length === 0) return;
+
+  const connectedCount = await userDAO.countDocuments({
+    _id: { $in: uniqueIds.map((id) => new Types.ObjectId(id)) },
+    deletedAt: null,
+    cuids: {
+      $elemMatch: { cuid, isConnected: true, ...(roles && { roles: { $in: [...roles] } }) },
+    },
+  });
+  if (connectedCount !== uniqueIds.length) throw new BadRequestError({ message });
+};
+
+export const pendingMediaItems = (
+  pendingMedia?: IPendingChanges['pendingMedia'] | null
+): Array<{ key?: string; url: string }> => [
+  ...(pendingMedia?.images ?? []),
+  ...(pendingMedia?.documents ?? []),
+];
+
+/**
  * Get the original requester ID from approval details
  */
-export const getOriginalRequesterId = (approvalDetails: any[]): string | undefined => {
+export const getOriginalRequesterId = (approvalDetails?: any[]): string | undefined => {
   if (!Array.isArray(approvalDetails) || approvalDetails.length === 0) {
     return undefined;
   }
@@ -67,7 +138,7 @@ export const getOriginalRequesterId = (approvalDetails: any[]): string | undefin
  */
 export const shouldShowPendingChanges = (
   currentUser: ICurrentUser,
-  property: IPropertyDocument
+  property: { pendingChanges?: unknown }
 ): boolean => {
   if (!property.pendingChanges) {
     return false;
@@ -125,7 +196,14 @@ export const generatePendingChangesPreview = (
   }
 
   const pendingChanges = property.pendingChanges as any;
-  const { updatedBy, updatedAt, ...changes } = pendingChanges;
+  // displayName and pendingMedia describe the submission, not property fields
+  const {
+    updatedBy,
+    updatedAt,
+    displayName: _displayName,
+    pendingMedia,
+    ...changes
+  } = pendingChanges;
 
   const formattedChanges = { ...changes };
   if (formattedChanges.fees) {
@@ -133,14 +211,44 @@ export const generatePendingChangesPreview = (
   }
 
   const updatedFields = Object.keys(changes);
-  const summary = generateChangesSummary(updatedFields);
+  const pendingMediaPreview = buildPendingMediaPreview(pendingMedia);
+  const summaryParts = [
+    ...(updatedFields.length ? [generateChangesSummary(updatedFields)] : []),
+    ...(pendingMediaPreview
+      ? [`${pendingMediaPreview.images.length + pendingMediaPreview.documents.length} new file(s)`]
+      : []),
+  ];
 
   return {
     updatedFields,
     updatedAt,
     updatedBy,
-    summary,
+    summary: summaryParts.length ? summaryParts.join('; ') : generateChangesSummary([]),
     changes: formattedChanges,
+    ...(pendingMediaPreview && { pendingMedia: pendingMediaPreview }),
+  };
+};
+
+/** Copies of the files a staff edit attached, so URL signing leaves pendingChanges untouched. */
+const buildPendingMediaPreview = (pendingMedia?: IPendingChanges['pendingMedia'] | null) => {
+  if (!pendingMediaItems(pendingMedia).length) return undefined;
+
+  return {
+    images: (pendingMedia?.images ?? []).map((image) => ({
+      _id: image._id,
+      key: image.key,
+      url: image.url,
+      filename: image.filename,
+      uploadedAt: image.uploadedAt,
+    })),
+    documents: (pendingMedia?.documents ?? []).map((document) => ({
+      _id: document._id,
+      key: document.key,
+      url: document.url,
+      documentName: document.documentName,
+      documentType: document.documentType,
+      uploadedAt: document.uploadedAt,
+    })),
   };
 };
 

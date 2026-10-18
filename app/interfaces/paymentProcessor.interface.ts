@@ -6,12 +6,16 @@ export enum PaymentProcessorAccountType {
 }
 
 export interface IPaymentProcessor {
+  /** Stripe terms the account was created under; only 'full' accounts can take instant payouts */
+  serviceAgreement?: PaymentProcessorServiceAgreement;
   disputeStats?: IPaymentProcessorDisputeStats;
   accountType: PaymentProcessorAccountType;
   payoutsBlockedBy?: Types.ObjectId;
   ownerType?: 'client' | 'vendor';
   payoutsBlockedReason?: string;
   payoutsPausedReason?: string;
+  /** Weekday of the weekly payout, kept so a paused schedule resumes on the same day */
+  payoutWeeklyAnchor?: string;
   detailsSubmitted: boolean;
   payoutsBlocked?: boolean;
   payoutsPaused?: boolean;
@@ -31,6 +35,7 @@ export interface IPaymentProcessor {
 }
 
 export interface IPaymentProcessorFormData {
+  serviceAgreement?: PaymentProcessorServiceAgreement;
   accountType: PaymentProcessorAccountType;
   ownerType?: 'client' | 'vendor';
   detailsSubmitted?: boolean;
@@ -54,3 +59,5 @@ export interface IPaymentProcessorDisputeStats {
   total: number;
   open: number;
 }
+
+export type PaymentProcessorServiceAgreement = 'full' | 'recipient';

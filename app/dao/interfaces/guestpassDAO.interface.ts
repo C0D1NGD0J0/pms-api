@@ -1,26 +1,50 @@
+import { QueryFilter } from 'mongoose';
 import { IGuestPassDocument, IGuestPassStats } from '@interfaces/guestPass.interface';
 
 export interface IGuestPassDAO {
+  acknowledgePass(
+    cuid: string,
+    vpuid: string,
+    acknowledgedBy: string,
+    visibilityFilter?: QueryFilter<IGuestPassDocument>
+  ): Promise<IGuestPassDocument | null>;
+  bulkAcknowledge(
+    cuid: string,
+    vpuids: string[],
+    acknowledgedBy: string,
+    visibilityFilter?: QueryFilter<IGuestPassDocument>
+  ): Promise<number>;
+  getUnacknowledgedPasses(
+    cuid: string,
+    propertyId: string,
+    visibilityFilter?: QueryFilter<IGuestPassDocument>
+  ): Promise<IGuestPassDocument[]>;
+  getUnacknowledgedCount(
+    cuid: string,
+    propertyId?: string,
+    visibilityFilter?: QueryFilter<IGuestPassDocument>
+  ): Promise<number>;
+  findByCode(
+    code: string,
+    cuid: string,
+    visibilityFilter?: QueryFilter<IGuestPassDocument>
+  ): Promise<IGuestPassDocument | null>;
   markAsUsed(
     id: string,
     cuid: string,
     validatedBy: string,
     notes?: string
   ): Promise<IGuestPassDocument | null>;
-  acknowledgePass(
+  revokePass(
+    id: string,
     cuid: string,
-    passId: string,
-    acknowledgedBy: string
+    revokedBy: string,
+    reason?: string
   ): Promise<IGuestPassDocument | null>;
   getStats(
     cuid: string,
     propertyId?: string | string[],
     createdBy?: string
   ): Promise<IGuestPassStats>;
-  revokePass(id: string, cuid: string, revokedBy: string): Promise<IGuestPassDocument | null>;
-  bulkAcknowledge(cuid: string, passIds: string[], acknowledgedBy: string): Promise<number>;
-  getUnacknowledgedPasses(cuid: string, propertyId: string): Promise<IGuestPassDocument[]>;
-  findByCode(code: string, cuid: string): Promise<IGuestPassDocument | null>;
-  getUnacknowledgedCount(cuid: string, propertyId?: string): Promise<number>;
   expireOldPasses(cuid?: string): Promise<number>;
 }

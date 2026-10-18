@@ -1,5 +1,5 @@
 import { Schema, Types, model } from 'mongoose';
-import { generateShortUID, createLogger } from '@utils/index';
+import { MAX_ASSIGNED_STAFF, generateShortUID, createLogger } from '@utils/index';
 import {
   VerificationStatusEnum,
   IPropertyDocument,
@@ -160,8 +160,8 @@ const PropertySchema = new Schema<IPropertyDocument>(
       type: [{ type: Schema.Types.ObjectId, ref: 'User' }],
       default: [],
       validate: {
-        validator: (v: Types.ObjectId[]) => v.length <= 10,
-        message: 'Cannot assign more than 10 staff members to a property',
+        validator: (v: Types.ObjectId[]) => v.length <= MAX_ASSIGNED_STAFF,
+        message: `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`,
       },
     },
     yearBuilt: {
@@ -213,10 +213,11 @@ const PropertySchema = new Schema<IPropertyDocument>(
     specifications: SpecificationsSchema,
     utilities: UtilitiesSchema,
     description: {
+      // Optional (CSV imports and the form both allow it); '' when not provided
       text: {
-        required: true,
         type: String,
         trim: true,
+        default: '',
       },
       html: {
         type: String,
@@ -373,7 +374,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
       {
         action: {
           type: String,
-          enum: ['created', 'updated', 'approved', 'rejected'],
+          enum: ['created', 'updated', 'approved', 'rejected', 'overridden'],
           required: true,
         },
         actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -666,6 +667,4 @@ PropertySchema.pre('validate', async function () {
 
 const PropertyModel = model<IPropertyDocument>('Property', PropertySchema);
 PropertyModel.cleanIndexes();
-PropertyModel.syncIndexes();
-
 export default PropertyModel;

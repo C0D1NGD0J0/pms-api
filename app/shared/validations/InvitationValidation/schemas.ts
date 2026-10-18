@@ -1,12 +1,18 @@
 import { z } from 'zod';
-import { isValidPhoneNumber } from '@utils/index';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+import { isValidPhoneNumber, toE164PhoneNumber } from '@utils/index';
 
 import { safeString } from '../UtilsValidation';
 
 // Letters in any script (é, ñ, ü, …) plus spaces, hyphens, apostrophes and dots
 const PERSON_NAME_REGEX = /^[\p{L}\s\-'.]+$/u;
+
+const dateTimeInput = (message: string) =>
+  z
+    .string()
+    .datetime(message)
+    .transform((str) => new Date(str));
 
 const employeeInfoSchema = z
   .object({
@@ -15,11 +21,7 @@ const employeeInfoSchema = z
     employeeId: z.string().max(50, 'Employee ID must be less than 50 characters').optional(),
     reportsTo: z.string().max(100, 'Reports to must be less than 100 characters').optional(),
     jobTitle: z.string().max(100, 'Job title must be less than 100 characters').optional(),
-    startDate: z
-      .string()
-      .datetime('Please provide a valid start date')
-      .transform((str) => new Date(str))
-      .optional(),
+    startDate: dateTimeInput('Please provide a valid start date').optional(),
   })
   .optional();
 
@@ -165,11 +167,7 @@ const vendorInfoSchema = z
     insuranceInfo: z
       .object({
         coverageAmount: z.number().positive('Coverage amount must be positive').optional(),
-        expirationDate: z
-          .string()
-          .datetime('Please provide a valid expiration date')
-          .transform((str) => new Date(str))
-          .optional(),
+        expirationDate: dateTimeInput('Please provide a valid expiration date').optional(),
         policyNumber: z
           .string()
           .max(100, 'Policy number must be less than 100 characters')
@@ -258,17 +256,18 @@ export const invitationDataSchema = z.object({
         .max(500, 'Invitation message must be less than 500 characters')
         .optional(),
 
-      expectedStartDate: z
-        .string()
-        .datetime('Please provide a valid date')
-        .transform((str) => new Date(str))
-        .optional(),
+      expectedStartDate: dateTimeInput('Please provide a valid date').optional(),
 
       employeeInfo: employeeInfoSchema,
       vendorInfo: vendorInfoSchema,
       tenantInfo: tenantInfoSchema,
     })
     .optional(),
+
+  // The invite form sends role info top-level; InvitationController moves it into metadata
+  employeeInfo: employeeInfoSchema,
+  vendorInfo: vendorInfoSchema,
+  tenantInfo: tenantInfoSchema,
 
   status: z
     .enum(['draft', 'pending'], {
@@ -330,6 +329,11 @@ export const acceptInvitationSchema = z
     headline: z.string().max(50, 'Headline must be less than 50 characters').optional(),
 
     policies: policiesSchema.optional(),
+
+    termsAccepted: z.literal(true, {
+      errorMap: () => ({ message: 'You must accept the terms of service and privacy policy' }),
+    }),
+    newsletterOptIn: z.boolean().optional(),
 
     firstName: z.string().min(2, 'First name must be at least 2 characters').max(50).optional(),
     lastName: z.string().min(2, 'Last name must be at least 2 characters').max(50).optional(),
@@ -410,6 +414,8 @@ export const invitationTokenSchema = z.object({
 export const iuidSchema = z.object({
   iuid: z.string().min(10, 'Invalid invitation ID').max(255, 'Invalid invitation ID'),
 });
+
+export const cuidAndIuidSchema = iuidSchema.merge(validateTokenAndCuidSchema.pick({ cuid: true }));
 
 export const invitationCsvSchema = z
   .object({
@@ -781,7 +787,7 @@ export const invitationCsvSchema = z
               data.tenantInfo_emergencyContactEmail
                 ? {
                     name: data.tenantInfo_emergencyContactName,
-                    phone: data.tenantInfo_emergencyContactPhone,
+                    phone: toE164PhoneNumber(data.tenantInfo_emergencyContactPhone),
                     relationship: data.tenantInfo_emergencyContactRelationship,
                     email: data.tenantInfo_emergencyContactEmail,
                   }
@@ -811,24 +817,29 @@ export const invitationCsvSchema = z
                       data.vendorInfo_contactPerson_name || data.firstName + ' ' + data.lastName,
                     jobTitle: data.vendorInfo_contactPerson_jobTitle || 'Owner',
                     email: data.vendorInfo_contactPerson_email || data.inviteeEmail,
-                    phone: data.vendorInfo_contactPerson_phone || data.phoneNumber,
+                    phone: toE164PhoneNumber(
+                      data.vendorInfo_contactPerson_phone || data.phoneNumber
+                    ),
                   }
                 : {
                     name: data.firstName + ' ' + data.lastName,
                     jobTitle: 'Owner',
                     email: data.inviteeEmail,
-                    phone: data.phoneNumber || '',
+                    phone: toE164PhoneNumber(data.phoneNumber) || '',
                   },
           }
         : undefined;
 
+    // Same shape as the single-invite form: a primary vendor's business details sit flat in
+    // metadata.vendorInfo, which is what invitation acceptance reads to create the vendor.
+    // (The Invitation model has no other vendor fields — anything else is dropped on save.)
     const vendorInfo =
       data.role === 'vendor'
         ? {
             isLinkedAccount: Boolean(isVendorTeamMember),
-            // For primary vendors, linkedVendorUid will be populated after vendor entity creation
-            // For team members, use the CSV linkedVendorUid as a temporary group identifier
+            // Team members join an existing vendor organisation by its vuid
             linkedVendorUid: isVendorTeamMember ? data.linkedVendorUid : undefined,
+            ...(vendorEntityData ?? {}),
           }
         : undefined;
 
@@ -840,7 +851,7 @@ export const invitationCsvSchema = z
       personalInfo: {
         firstName: data.firstName,
         lastName: data.lastName,
-        phoneNumber: data.phoneNumber,
+        phoneNumber: toE164PhoneNumber(data.phoneNumber),
       },
       metadata: {
         inviteMessage: data.inviteMessage,
@@ -848,10 +859,6 @@ export const invitationCsvSchema = z
         employeeInfo,
         vendorInfo,
         tenantInfo,
-        vendorEntityData,
-        isPrimaryVendor,
-        isVendorTeamMember,
-        csvGroupId: data.linkedVendorUid, // CSV group identifier for linking vendors and team members
       },
     };
   });

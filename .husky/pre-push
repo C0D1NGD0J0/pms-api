@@ -24,9 +24,9 @@ npm run lint || {
   exit 1
 }
 
-# TypeScript type check
+# TypeScript type check (tsconfig.json includes tests/ — jest transpiles them without type-checking)
 echo "🔎 Running TypeScript check..."
-npx tsc --noEmit -p tsconfig.build.json || {
+npx tsc --noEmit -p tsconfig.json || {
   echo "❌ TypeScript errors found. Please fix type errors before pushing."
   exit 1
 }

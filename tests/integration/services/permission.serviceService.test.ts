@@ -150,9 +150,13 @@ describe('PermissionService Integration Tests', () => {
 
       expect(result.permissions).toBeDefined();
       // Maintenance staff should have assigned maintenance permissions
-      expect(result.permissions).toContain('maintenance:create:assigned');
       expect(result.permissions).toContain('maintenance:update:assigned');
+      expect(result.permissions).toContain('maintenance:list:assigned');
       expect(result.permissions).toContain('property:read:assigned');
+      expect(result.permissions).toContain('property:list:assigned');
+      // Department grants replace the base staff grants
+      expect(result.permissions).not.toContain('maintenance:create:assigned');
+      expect(result.permissions).not.toContain('payment:read:any');
     });
 
     it('should use base staff permissions when no department assigned', async () => {

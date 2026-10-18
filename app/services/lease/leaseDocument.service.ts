@@ -12,6 +12,8 @@ import {
   UploadResult,
 } from '@interfaces/utils.interface';
 
+import { assignUploadedLeaseDocumentTypes, findActiveLeasePDF } from './leaseHelpers';
+
 interface IConstructor {
   s3Service: S3Service;
   leaseDAO: LeaseDAO;
@@ -43,7 +45,9 @@ export class LeaseDocumentService {
 
     const updated = await this.leaseDAO.updateLeaseDocuments(
       lease._id.toString(),
-      [{ ...document, resourceId: lease._id.toString(), publicuid: leaseId }],
+      assignUploadedLeaseDocumentTypes(lease, [
+        { ...document, resourceId: lease._id.toString(), publicuid: leaseId },
+      ]),
       uploadedBy
     );
 
@@ -63,7 +67,9 @@ export class LeaseDocumentService {
   async getLeaseDocumentUrl(cuid: string, leaseId: string): IPromiseReturnedData<string> {
     const lease = await this._findLease(leaseId, cuid);
 
-    const activeDoc = lease.leaseDocuments?.find((d: any) => d.status === 'active');
+    // Prefer the agreement over supporting documents uploaded after signing
+    const activeDoc =
+      findActiveLeasePDF(lease) || lease.leaseDocuments?.find((d: any) => d.status === 'active');
     if (!activeDoc?.key) {
       throw new NotFoundError({ message: 'No active document found for this lease' });
     }
@@ -129,7 +135,11 @@ export class LeaseDocumentService {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
 
-    const updatedLease = await this.leaseDAO.updateLeaseDocuments(leaseId, uploadResults, userId);
+    const updatedLease = await this.leaseDAO.updateLeaseDocuments(
+      leaseId,
+      assignUploadedLeaseDocumentTypes(lease, uploadResults),
+      userId
+    );
     if (!updatedLease) {
       throw new BadRequestError({
         message: t('common.errors.operationFailed', { action: 'update lease documents' }),

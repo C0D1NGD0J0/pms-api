@@ -57,7 +57,7 @@ describe('SubscriptionController Integration Tests', () => {
               },
               annual: {
                 priceId: 'price_portfolio_annual',
-                amount: 144000,
+                amount: 179988,
                 lookUpKey: 'portfolio_annual',
               },
             },
@@ -82,12 +82,12 @@ describe('SubscriptionController Integration Tests', () => {
             {
               monthly: {
                 priceId: 'price_growth_monthly',
-                amount: 7999,
+                amount: 6999,
                 lookUpKey: 'growth_monthly',
               },
               annual: {
                 priceId: 'price_growth_annual',
-                amount: 76800,
+                amount: 83988,
                 lookUpKey: 'growth_annual',
               },
             },
@@ -456,13 +456,13 @@ describe('SubscriptionController Integration Tests', () => {
       const growthPlan = response.body.data.find((p: any) => p.planName === 'growth');
       const portfolioPlan = response.body.data.find((p: any) => p.planName === 'portfolio');
 
-      // Growth subscription pricing should be $79.99/month (NOT $7.99 seat price)
-      expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
-      expect(growthPlan.pricing.annual.priceInCents).toBe(76800);
+      // Growth subscription pricing should be $69.99/month (NOT $7.99 seat price)
+      expect(growthPlan.pricing.monthly.priceInCents).toBe(6999);
+      expect(growthPlan.pricing.annual.priceInCents).toBe(83988);
 
       // Portfolio subscription pricing should be $149.99/month (NOT $5.99 seat price)
       expect(portfolioPlan.pricing.monthly.priceInCents).toBe(14999);
-      expect(portfolioPlan.pricing.annual.priceInCents).toBe(144000);
+      expect(portfolioPlan.pricing.annual.priceInCents).toBe(179988);
     });
 
     it('should return seat pricing separately in seatPricing object', async () => {
@@ -497,7 +497,7 @@ describe('SubscriptionController Integration Tests', () => {
 
       // Currency-specific config takes priority over Stripe mock for priceId,
       // but Stripe lookUpKey should still be present from the mock
-      expect(growthPlan.pricing.monthly.priceInCents).toBe(7999);
+      expect(growthPlan.pricing.monthly.priceInCents).toBe(6999);
       expect(growthPlan.pricing.monthly.priceId).toEqual(expect.any(String));
       expect(growthPlan.pricing.monthly.lookUpKey).toBe('growth_monthly');
     });

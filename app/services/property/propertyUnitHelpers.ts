@@ -1,7 +1,11 @@
 import { LeaseDAO } from '@dao/index';
+import { MoneyUtils } from '@utils/money.utils';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { ValidationRequestError } from '@shared/customErrors';
-import { IMMUTABLE_UNIT_FIELDS_WITH_LEASE_HISTORY } from '@utils/index';
 import { IPropertyUnitDocument, IPropertyUnit } from '@interfaces/propertyUnit.interface';
+import { IMMUTABLE_UNIT_FIELDS_WITH_LEASE_HISTORY, createSafeMongoUpdate } from '@utils/index';
+
+import { shouldShowPendingChanges, generateChangesSummary } from './propertyHelpers';
 
 /**
  * Throws if any update fields are structurally immutable due to non-draft lease history.
@@ -16,8 +20,11 @@ export const validateUnitLeaseImmutableFields = async (
   updateData: Partial<IPropertyUnit>,
   leaseDAO: LeaseDAO
 ): Promise<void> => {
-  const lockedFieldsAttempted = Object.keys(updateData).filter((f) =>
-    (IMMUTABLE_UNIT_FIELDS_WITH_LEASE_HISTORY as readonly string[]).includes(f)
+  // Edit forms resend the whole unit, so only a changed value counts as an attempt
+  const lockedFieldsAttempted = Object.keys(updateData).filter(
+    (f) =>
+      (IMMUTABLE_UNIT_FIELDS_WITH_LEASE_HISTORY as readonly string[]).includes(f) &&
+      String((updateData as any)[f]) !== String((unit as any)[f])
   );
 
   if (lockedFieldsAttempted.length === 0) return;
@@ -37,4 +44,35 @@ export const validateUnitLeaseImmutableFields = async (
       },
     });
   }
+};
+
+/**
+ * Preview of a unit's pending high-impact changes, in the same shape as a property's
+ * pendingChangesPreview. Changed fields are dot-notation paths ("fees.rentAmount") so the UI can
+ * show each one next to its current value. Staff only see their own pending changes.
+ */
+export const generateUnitPendingChangesPreview = (
+  unit: Pick<IPropertyUnit, 'pendingChanges'>,
+  currentUser: ICurrentUser
+) => {
+  if (!unit.pendingChanges || !shouldShowPendingChanges(currentUser, unit)) {
+    return undefined;
+  }
+
+  const { updatedBy, updatedAt, displayName, ...requestedChanges } = unit.pendingChanges;
+  // Shown in dollars, the way the property preview does
+  const changes = createSafeMongoUpdate({
+    ...requestedChanges,
+    ...(requestedChanges.fees && { fees: MoneyUtils.formatMoneyDisplay(requestedChanges.fees) }),
+  });
+  const updatedFields = Object.keys(changes);
+
+  return {
+    updatedFields,
+    updatedAt,
+    updatedBy,
+    displayName,
+    summary: generateChangesSummary(updatedFields),
+    changes,
+  };
 };

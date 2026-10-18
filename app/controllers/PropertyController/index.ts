@@ -22,7 +22,27 @@ export class PropertyController {
     this.mediaUploadService = mediaUploadService;
   }
 
+  /**
+   * Copies each document's documentType from the form body onto its uploaded
+   * file (matched by the "documents[i]" field-name index) so it isn't saved as 'other'.
+   */
+  private applyDocumentTypesToUploads(req: AppRequest) {
+    if (!req.scannedFiles || !Array.isArray(req.body?.documents)) return;
+
+    const bodyDocs = req.body.documents;
+    for (const file of req.scannedFiles) {
+      const match = file.fieldName.match(/^documents\[(\d+)\]/);
+      if (match) {
+        const idx = parseInt(match[1], 10);
+        if (bodyDocs[idx]?.documentType) {
+          file.documentType = bodyDocs[idx].documentType;
+        }
+      }
+    }
+  }
+
   create = async (req: AppRequest, res: Response) => {
+    this.applyDocumentTypesToUploads(req);
     const newProperty = await this.propertyService.addProperty(req.context, req.body);
 
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
@@ -104,7 +124,8 @@ export class PropertyController {
       cuid,
       csvFile.path,
       currentuser.sub,
-      columnMapping
+      columnMapping,
+      currentuser.client.role
     );
     res.status(httpStatusCodes.OK).json(result);
   };
@@ -189,30 +210,23 @@ export class PropertyController {
       });
     }
 
-    // Enrich document files with documentType from the form body
-    if (req.scannedFiles && req.body?.documents) {
-      const bodyDocs = Array.isArray(req.body.documents) ? req.body.documents : [];
-      for (const file of req.scannedFiles) {
-        const match = file.fieldName.match(/^documents\[(\d+)\]/);
-        if (match) {
-          const idx = parseInt(match[1], 10);
-          if (bodyDocs[idx]?.documentType) {
-            file.documentType = bodyDocs[idx].documentType;
-          }
-        }
-      }
+    this.applyDocumentTypesToUploads(req);
+
+    // Update first: a rejected update must not upload anything (the error handler removes
+    // the temp files). A staff edit awaiting approval uploads its files into pendingChanges.
+    const hardDelete = req.query['hard-delete'] === 'true';
+    const ctx = { cuid, pid, currentuser, hardDelete, newFiles: req.scannedFiles };
+    const result = await this.propertyService.updateClientProperty(ctx, req.body);
+    if (result.data?.pendingChanges) {
+      return res.status(httpStatusCodes.OK).json(result);
     }
 
-    const hardDelete = req.query['hard-delete'] === 'true';
     const uploadResult = await this.mediaUploadService.handleFiles(req, {
       primaryResourceId: pid,
       uploadedBy: currentuser.sub,
       resourceContext: ResourceContext.PROPERTY,
       hardDelete,
     });
-
-    const ctx = { cuid, pid, currentuser, hardDelete };
-    const result = await this.propertyService.updateClientProperty(ctx, req.body);
 
     const response = uploadResult.hasFiles
       ? {

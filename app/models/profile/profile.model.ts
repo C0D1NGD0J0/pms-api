@@ -334,6 +334,4 @@ ProfileSchema.pre('save', function (this: IProfileDocument) {
 });
 
 const ProfileModel = model<IProfileDocument>('Profile', ProfileSchema);
-ProfileModel.syncIndexes();
-
 export default ProfileModel;

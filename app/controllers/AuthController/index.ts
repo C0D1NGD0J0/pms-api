@@ -32,16 +32,14 @@ export class AuthController {
   login = async (req: Request, res: Response) => {
     const result = await this.authService.login(req.body);
 
-    // step 1 responses (password_required / otp_sent / passkey_available) have no tokens
+    // step 1 responses (password_required / otp_sent) have no tokens and nothing account-specific
     if (result.data.step !== 'authenticated') {
       return res.status(httpStatusCodes.OK).json({
         success: true,
         msg: result.message,
         step: result.data.step,
         loginType: result.data.loginType,
-        maskedPhone: result.data.maskedPhone,
-        fallbackLoginType: result.data.fallbackLoginType,
-        passkeyOptions: result.data.passkeyOptions,
+        smsLogin: result.data.smsLogin,
       });
     }
 
@@ -111,6 +109,12 @@ export class AuthController {
     const { t: token } = req.query;
     const { firstName, lastName } = req.body;
     const data = await this.authService.accountActivation(token as string, { firstName, lastName });
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
+  confirmEmailChange = async (req: Request, res: Response) => {
+    const { t: token } = req.query;
+    const data = await this.authService.confirmEmailChange(token as string);
     res.status(httpStatusCodes.OK).json(data);
   };
 

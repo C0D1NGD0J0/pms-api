@@ -287,7 +287,6 @@ export const createMockPropertyCsvData = () => {
       specifications_bathrooms: faker.number.float({ min: 1, max: 4, fractionDigits: 1 }),
       specifications_floors: faker.number.int({ min: 1, max: 3 }),
       fees_rentAmount: faker.number.float({ min: 1000, max: 5000, fractionDigits: 2 }),
-      fees_currency: 'USD',
       utilities_water: faker.datatype.boolean(),
       utilities_gas: faker.datatype.boolean(),
       utilities_electricity: faker.datatype.boolean(),

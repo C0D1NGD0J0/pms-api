@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { Subscription } from '@models/index';
+import { isUnlimited } from '@utils/planLimits.utils';
 import {
   IPaymentGatewayProvider,
   ISubscriptionDocument,
@@ -41,7 +42,8 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
   /**
    * Atomically increment a usage counter only if it's below the given limit.
    * Returns the updated document or null if the limit was already reached.
-   * Used by SMS service for atomic quota enforcement.
+   * An unlimited limit (-1) always increments.
+   * Used by SMS and report services for atomic quota enforcement.
    */
   async incrementUsageCounterIfUnder(
     cuid: string,
@@ -51,8 +53,9 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
       | 'reportGenerationUsage.countThisPeriod',
     limit: number
   ): Promise<ISubscriptionDocument | null> {
+    const underLimitFilter = isUnlimited(limit) ? {} : { [field]: { $lt: limit } };
     return Subscription.findOneAndUpdate(
-      { cuid, [field]: { $lt: limit } },
+      { cuid, ...underLimitFilter },
       { $inc: { [field]: 1 } },
       { returnDocument: 'after' }
     );
@@ -284,7 +287,7 @@ export class SubscriptionDAO extends BaseDAO<ISubscriptionDocument> implements I
         seat: 'resourceTracker.seatCount',
       }[resourceName];
 
-      if (maxLimit !== undefined && delta > 0) {
+      if (maxLimit !== undefined && !isUnlimited(maxLimit) && delta > 0) {
         // Incrementing with max limit check
         const result = await this.update(
           {

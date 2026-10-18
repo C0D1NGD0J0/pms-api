@@ -30,6 +30,11 @@ export interface TemplateListItem {
 }
 
 interface TemplateRegistryEntry {
+  /**
+   * Flag the mailer sets when it sends this type through a combined template
+   * (see getEmailTemplate in config.mailer.ts) — selects the matching variant.
+   */
+  variantData?: Record<string, string>;
   displayName: string;
   description: string;
   filename: string;
@@ -56,6 +61,20 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
     filename: 'accountUpdate',
     displayName: 'Account Update Notification',
     description: 'Notify users about account changes',
+    category: 'Account',
+  },
+  EMAIL_CHANGE_VERIFICATION: {
+    subdir: 'emailChange',
+    filename: 'verify',
+    displayName: 'Email Change Verification',
+    description: 'Ask the user to confirm a new sign-in email address',
+    category: 'Account',
+  },
+  EMAIL_CHANGE_NOTICE: {
+    subdir: 'emailChange',
+    filename: 'notice',
+    displayName: 'Email Change Notice',
+    description: 'Warn the previous address that the sign-in email is changing',
     category: 'Account',
   },
   ACCOUNT_DISCONNECTED: {
@@ -97,21 +116,24 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   },
   INVITATION_STAFF: {
     subdir: 'invitation',
-    filename: 'invitation-staff',
+    filename: 'invitation',
+    variantData: { role: ROLES.STAFF },
     displayName: 'Staff Invitation',
     description: 'Invite staff members to join the team',
     category: 'Invitation',
   },
   INVITATION_TENANT: {
     subdir: 'invitation',
-    filename: 'invitation-tenant',
+    filename: 'invitation',
+    variantData: { role: ROLES.TENANT },
     displayName: 'Tenant Invitation',
     description: 'Invite tenants to activate their resident account',
     category: 'Invitation',
   },
   INVITATION_VENDOR: {
     subdir: 'invitation',
-    filename: 'invitation-vendor',
+    filename: 'invitation',
+    variantData: { role: ROLES.VENDOR },
     displayName: 'Vendor Invitation',
     description: 'Invite vendors/service providers to join',
     category: 'Invitation',
@@ -171,28 +193,32 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   // ── Company Closure ─────────────────────────────────────────
   COMPANY_CLOSURE_OWNER: {
     subdir: 'subscription',
-    filename: 'company-closure-owner',
+    filename: 'company-closure',
+    variantData: { _audience: 'owner' },
     displayName: 'Company Closure — Owner',
     description: 'Notify account owner that their company account has been closed',
     category: 'Subscription',
   },
   COMPANY_CLOSURE_STAFF: {
     subdir: 'subscription',
-    filename: 'company-closure-staff',
+    filename: 'company-closure',
+    variantData: { _audience: 'staff' },
     displayName: 'Company Closure — Staff',
     description: 'Notify staff that the company account has been closed',
     category: 'Subscription',
   },
   COMPANY_CLOSURE_TENANT: {
     subdir: 'subscription',
-    filename: 'company-closure-tenant',
+    filename: 'company-closure',
+    variantData: { _audience: 'tenant' },
     displayName: 'Company Closure — Tenant',
     description: 'Notify tenant that the property management company has closed',
     category: 'Subscription',
   },
   COMPANY_CLOSURE_VENDOR: {
     subdir: 'subscription',
-    filename: 'company-closure-vendor',
+    filename: 'company-closure',
+    variantData: { _audience: 'vendor' },
     displayName: 'Company Closure — Vendor',
     description: 'Notify vendor that the property management company has closed',
     category: 'Subscription',
@@ -201,35 +227,40 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   // ── Inspection ──────────────────────────────────────────────
   INSPECTION_SCHEDULED: {
     subdir: 'inspection',
-    filename: 'inspection-scheduled',
+    filename: 'inspection-status',
+    variantData: { _status: 'scheduled' },
     displayName: 'Inspection Scheduled',
     description: 'Notify tenant that an inspection has been scheduled',
     category: 'Inspection',
   },
   INSPECTION_SUBMITTED: {
     subdir: 'inspection',
-    filename: 'inspection-submitted',
+    filename: 'inspection-status',
+    variantData: { _status: 'submitted' },
     displayName: 'Inspection Submitted',
     description: 'Notify inspector/PM that an inspection report was submitted',
     category: 'Inspection',
   },
   INSPECTION_APPROVED: {
     subdir: 'inspection',
-    filename: 'inspection-approved',
+    filename: 'inspection-status',
+    variantData: { _status: 'approved' },
     displayName: 'Inspection Approved',
     description: 'Notify tenant that their inspection was approved with refund details',
     category: 'Inspection',
   },
   INSPECTION_REJECTED: {
     subdir: 'inspection',
-    filename: 'inspection-rejected',
+    filename: 'inspection-status',
+    variantData: { _status: 'rejected' },
     displayName: 'Inspection Rejected',
     description: 'Notify tenant that their inspection was rejected with reason',
     category: 'Inspection',
   },
   INSPECTION_CANCELLED: {
     subdir: 'inspection',
-    filename: 'inspection-cancelled',
+    filename: 'inspection-status',
+    variantData: { _status: 'cancelled' },
     displayName: 'Inspection Cancelled',
     description: 'Notify tenant that a scheduled inspection was cancelled',
     category: 'Inspection',
@@ -303,35 +334,40 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   // ── Maintenance ──────────────────────────────────────────────
   MAINTENANCE_REQUEST_CREATED: {
     subdir: 'maintenance',
-    filename: 'maintenance-request-created',
+    filename: 'maintenance-request-status',
+    variantData: { _status: 'created' },
     displayName: 'Maintenance Request Created',
     description: 'Confirm a new maintenance request was submitted',
     category: 'Maintenance',
   },
   MAINTENANCE_REQUEST_ASSIGNED: {
     subdir: 'maintenance',
-    filename: 'maintenance-request-assigned',
+    filename: 'maintenance-request-status',
+    variantData: { _status: 'assigned' },
     displayName: 'Maintenance Request Assigned',
     description: 'Notify vendor of a new maintenance assignment',
     category: 'Maintenance',
   },
   MAINTENANCE_REQUEST_ACCEPTED: {
     subdir: 'maintenance',
-    filename: 'maintenance-request-accepted',
+    filename: 'maintenance-request-status',
+    variantData: { _status: 'accepted' },
     displayName: 'Maintenance Request Accepted',
     description: 'Notify tenant their request is being handled',
     category: 'Maintenance',
   },
   MAINTENANCE_REQUEST_DECLINED: {
     subdir: 'maintenance',
-    filename: 'maintenance-request-declined',
+    filename: 'maintenance-request-status',
+    variantData: { _status: 'declined' },
     displayName: 'Maintenance Request Declined',
     description: 'Notify that a maintenance assignment was declined',
     category: 'Maintenance',
   },
   MAINTENANCE_REQUEST_COMPLETED: {
     subdir: 'maintenance',
-    filename: 'maintenance-request-completed',
+    filename: 'maintenance-request-status',
+    variantData: { _status: 'completed' },
     displayName: 'Maintenance Request Completed',
     description: 'Notify tenant their maintenance request is complete',
     category: 'Maintenance',
@@ -345,21 +381,24 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   },
   MAINTENANCE_INVOICE_SUBMITTED: {
     subdir: 'maintenance',
-    filename: 'maintenance-invoice-submitted',
+    filename: 'maintenance-invoice-status',
+    variantData: { _status: 'submitted' },
     displayName: 'Maintenance Invoice Submitted',
     description: 'Notify admin an invoice was submitted for review',
     category: 'Maintenance',
   },
   MAINTENANCE_INVOICE_APPROVED: {
     subdir: 'maintenance',
-    filename: 'maintenance-invoice-approved',
+    filename: 'maintenance-invoice-status',
+    variantData: { _status: 'approved' },
     displayName: 'Maintenance Invoice Approved',
     description: 'Notify vendor their invoice was approved',
     category: 'Maintenance',
   },
   MAINTENANCE_INVOICE_REJECTED: {
     subdir: 'maintenance',
-    filename: 'maintenance-invoice-rejected',
+    filename: 'maintenance-invoice-status',
+    variantData: { _status: 'rejected' },
     displayName: 'Maintenance Invoice Rejected',
     description: 'Notify vendor their invoice was rejected',
     category: 'Maintenance',
@@ -373,28 +412,32 @@ const TEMPLATE_REGISTRY: Record<string, TemplateRegistryEntry> = {
   },
   MAINTENANCE_WORK_ORDER_SUBMITTED: {
     subdir: 'maintenance',
-    filename: 'maintenance-work-order-submitted',
+    filename: 'maintenance-work-order-status',
+    variantData: { _status: 'submitted' },
     displayName: 'Work Order Submitted',
     description: 'Notify admin a work order was submitted for review',
     category: 'Maintenance',
   },
   MAINTENANCE_WORK_ORDER_SUBMITTED_TENANT: {
     subdir: 'maintenance',
-    filename: 'maintenance-work-order-submitted-tenant',
+    filename: 'maintenance-work-order-status',
+    variantData: { _status: 'submitted_tenant' },
     displayName: 'Work Order Submitted (Tenant)',
     description: 'Notify tenant a work order was submitted for their request',
     category: 'Maintenance',
   },
   MAINTENANCE_WORK_ORDER_APPROVED: {
     subdir: 'maintenance',
-    filename: 'maintenance-work-order-approved',
+    filename: 'maintenance-work-order-status',
+    variantData: { _status: 'approved' },
     displayName: 'Work Order Approved',
     description: 'Notify vendor their work order was approved',
     category: 'Maintenance',
   },
   MAINTENANCE_WORK_ORDER_REJECTED: {
     subdir: 'maintenance',
-    filename: 'maintenance-work-order-rejected',
+    filename: 'maintenance-work-order-status',
+    variantData: { _status: 'rejected' },
     displayName: 'Work Order Rejected',
     description: 'Notify vendor their work order was rejected',
     category: 'Maintenance',
@@ -547,6 +590,7 @@ export class EmailTemplateService {
       const heroConfig = TEMPLATE_HERO_CONFIG[templateType] || { icon: '&#x1F3E0;', title: '' };
       const templateVariables = {
         ...variables,
+        ...entry.variantData,
         ROLES,
         appName: variables.appName || 'PropertyDesk',
         year: new Date().getFullYear(),

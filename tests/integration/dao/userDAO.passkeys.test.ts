@@ -1,3 +1,4 @@
+import bcrypt from 'bcryptjs';
 import { UserDAO } from '@dao/userDAO';
 import { User as UserModel } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
@@ -81,43 +82,6 @@ describe('UserDAO Passkey Methods (Integration)', () => {
     });
   });
 
-  describe('hasPasskeys', () => {
-    it('returns true when user has passkeys', async () => {
-      const email = `has-passkeys-${Date.now()}@test.com`;
-      const user = await UserModel.create(makeUserDoc({ email }));
-      await dao.addPasskey(user._id.toString(), makePasskey());
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(true);
-    });
-
-    it('returns false when user has no passkeys', async () => {
-      const email = `no-passkeys-${Date.now()}@test.com`;
-      await UserModel.create(makeUserDoc({ email }));
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(false);
-    });
-
-    it('returns false for inactive user with passkeys', async () => {
-      const email = `inactive-${Date.now()}@test.com`;
-      const user = await UserModel.create(makeUserDoc({ email, isActive: false }));
-      await dao.addPasskey(user._id.toString(), makePasskey());
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(false);
-    });
-
-    it('returns false for soft-deleted user', async () => {
-      const email = `deleted-${Date.now()}@test.com`;
-      const user = await UserModel.create(makeUserDoc({ email, deletedAt: new Date() }));
-      await dao.addPasskey(user._id.toString(), makePasskey());
-
-      const result = await dao.hasPasskeys(email);
-      expect(result).toBe(false);
-    });
-  });
-
   describe('findByPasskeyCredentialId', () => {
     it('finds user by credential ID', async () => {
       const user = await UserModel.create(makeUserDoc());
@@ -143,6 +107,14 @@ describe('UserDAO Passkey Methods (Integration)', () => {
       await dao.addPasskey(user._id.toString(), makePasskey({ credentialId: 'deleted-user-cred' }));
 
       const found = await dao.findByPasskeyCredentialId('deleted-user-cred');
+      expect(found).toBeNull();
+    });
+
+    it('excludes inactive users, matching password and OTP login', async () => {
+      const user = await UserModel.create(makeUserDoc({ isActive: false }));
+      await dao.addPasskey(user._id.toString(), makePasskey({ credentialId: 'inactive-cred' }));
+
+      const found = await dao.findByPasskeyCredentialId('inactive-cred');
       expect(found).toBeNull();
     });
   });
@@ -197,6 +169,21 @@ describe('UserDAO Passkey Methods (Integration)', () => {
       const found = await dao.findFirst({ _id: user._id });
       // passkeys should be undefined because select: false
       expect(found?.passkeys).toBeUndefined();
+    });
+  });
+
+  describe('verifyCredentials', () => {
+    it('returns null for an unknown email after the same bcrypt work as a real account', async () => {
+      const compare = jest.spyOn(bcrypt, 'compare');
+
+      const found = await dao.verifyCredentials('nobody@example.com', 'SomePassword1');
+
+      expect(found).toBeNull();
+      expect(compare).toHaveBeenCalledWith(
+        'SomePassword1',
+        expect.stringMatching(/^\$2[aby]\$10\$/)
+      );
+      compare.mockRestore();
     });
   });
 });

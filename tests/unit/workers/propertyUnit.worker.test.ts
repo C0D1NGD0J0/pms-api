@@ -23,6 +23,7 @@ const mockPropertyUnitDAO = {
   startSession: jest.fn() as any,
   withTransaction: jest.fn() as any,
   insert: jest.fn() as any,
+  distinct: jest.fn() as any,
 };
 
 const mockSubscriptionDAO = {
@@ -61,6 +62,8 @@ const makeJob = (units: any[], overrides: Record<string, any> = {}) => ({
 
 let worker: PropertyUnitWorker;
 
+const mockSseService = { sendToUser: (jest.fn() as any).mockResolvedValue(undefined) };
+
 beforeEach(() => {
   jest.clearAllMocks();
 
@@ -72,6 +75,7 @@ beforeEach(() => {
   mockSubscriptionDAO.findFirst.mockReturnValue(Promise.resolve(null));
   mockUnitNumberingService.validatePatternConsistency.mockReturnValue({ isConsistent: true });
   mockUnitNumberingService.validateUnitNumberFloorCorrelation.mockReturnValue({ isValid: true });
+  mockPropertyUnitDAO.distinct.mockReturnValue(Promise.resolve([]));
   mockPropertyUnitDAO.startSession.mockReturnValue(Promise.resolve('mock-session'));
   mockPropertyUnitDAO.withTransaction.mockImplementation(async (_session: any, fn: any) =>
     fn('mock-session')
@@ -86,6 +90,7 @@ beforeEach(() => {
     propertyUnitDAO: mockPropertyUnitDAO as any,
     subscriptionDAO: mockSubscriptionDAO as any,
     propertyDAO: mockPropertyDAO as any,
+    sseService: mockSseService as any,
   });
 });
 
@@ -96,6 +101,22 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
     await expect(
       worker.processUnitBatchCreation(makeJob([makeUnit('101')]) as any)
     ).rejects.toThrow('Property not found');
+  });
+
+  it("stores new units' fees in cents and the property's currency, whatever the form sent", async () => {
+    mockPropertyDAO.findFirst.mockReturnValue(
+      Promise.resolve({ id: PROPERTY_MONGO_ID, fees: { currency: 'CAD' } })
+    );
+
+    await worker.processUnitBatchCreation(
+      makeJob([makeUnit('101', { fees: { rentAmount: 1800, currency: 'USD' } })]) as any
+    );
+
+    expect(mockPropertyUnitDAO.insert).toHaveBeenCalledWith(
+      // Typed in dollars, stored in cents
+      expect.objectContaining({ fees: { rentAmount: 180000, currency: 'CAD' } }),
+      'mock-session'
+    );
   });
 
   it('reads the remaining unit quota off subscription.resourceTracker.unitCount', async () => {
@@ -200,7 +221,7 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
     ]);
   });
 
-  it('syncs property occupancy and emits PROPERTY_CREATED after inserting units', async () => {
+  it('syncs property occupancy and emits UNIT_BATCH_CREATED after inserting units', async () => {
     const result = await worker.processUnitBatchCreation(
       makeJob([makeUnit('101'), makeUnit('102')]) as any
     );
@@ -210,11 +231,30 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
       USER_ID
     );
     expect(mockEmitterService.emit).toHaveBeenCalledWith(
-      EventTypes.PROPERTY_CREATED,
-      expect.objectContaining({ propertyId: PID, clientId: CUID, unitsCreated: 2 })
+      EventTypes.UNIT_BATCH_CREATED,
+      expect.objectContaining({
+        propertyId: PROPERTY_MONGO_ID,
+        propertyPid: PID,
+        cuid: CUID,
+        unitsCreated: 2,
+        unitsFailed: 0,
+      })
     );
     expect(result.success).toBe(true);
     expect(result.data.createdUnits).toHaveLength(2);
+    // The units form waits for this instead of claiming success when the job was queued
+    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+      USER_ID,
+      CUID,
+      expect.objectContaining({
+        jobType: 'unit_batch_create',
+        stage: 'completed',
+        createdCount: 2,
+        errorCount: 0,
+        propertyPid: PID,
+      }),
+      'job-notification'
+    );
   });
 
   it('does not sync occupancy when every unit in the batch failed', async () => {
@@ -227,6 +267,7 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
 
     expect(mockPropertyDAO.syncPropertyOccupancyWithUnits).not.toHaveBeenCalled();
     expect(result.data.successfullyCreated).toBe(0);
+    expect(result.success).toBe(false);
   });
 
   it('propagates errors thrown from within the transaction', async () => {
@@ -237,5 +278,37 @@ describe('PropertyUnitWorker.processUnitBatchCreation', () => {
     await expect(
       worker.processUnitBatchCreation(makeJob([makeUnit('101')]) as any)
     ).rejects.toThrow('transaction aborted');
+  });
+});
+
+describe('PropertyUnitWorker — telling the units form the outcome', () => {
+  const job = (overrides: Record<string, any> = {}) => ({
+    id: 'job-7',
+    progress: jest.fn(),
+    data: {
+      units: [],
+      pid: 'PID1',
+      cuid: 'CUID1',
+      userId: 'user-1',
+      requestId: 'r1',
+      ...overrides,
+    },
+  });
+
+  it('sends a failed job-notification when the batch fails for good', async () => {
+    await worker.notifyUnitBatchFailed(job() as any, new Error('Unit limit reached'));
+
+    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+      'user-1',
+      'CUID1',
+      expect.objectContaining({
+        jobId: 'job-7',
+        jobType: 'unit_batch_create',
+        stage: 'failed',
+        propertyPid: 'PID1',
+        message: 'Unit limit reached',
+      }),
+      'job-notification'
+    );
   });
 });

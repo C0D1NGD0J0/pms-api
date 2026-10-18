@@ -1267,6 +1267,102 @@ describe('LeaseController Integration Tests', () => {
     });
   });
 
+  describe('POST /api/v1/leases/:cuid/:luid/approve - Approve Draft Renewal', () => {
+    let originalLease: any;
+    let renewal: any;
+    let addToPdfQueue: jest.Mock;
+    let getQueueSpy: jest.SpyInstance;
+    const daysFromNow = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+    beforeEach(async () => {
+      const baseLease = {
+        cuid: testClient.cuid,
+        tenantId: testTenant._id,
+        property: {
+          id: testProperty._id,
+          unitId: testUnit._id,
+          address: testProperty.address.fullAddress,
+        },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 300000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        type: LeaseType.FIXED_TERM,
+        createdBy: testManager._id,
+        signingMethod: 'electronic' as const,
+      };
+      originalLease = await Lease.create({
+        ...baseLease,
+        leaseNumber: `LEASE-ORIG-${Date.now()}`,
+        duration: { startDate: daysFromNow(-345), endDate: daysFromNow(20) },
+        status: LeaseStatus.ACTIVE,
+        approvalStatus: 'approved',
+        signedDate: new Date(),
+        eSignature: createMockESignature(),
+        signatures: createMockSignatures(testTenant._id),
+        leaseDocuments: createMockLeaseDocuments(testManager._id),
+      } as any);
+      // Manual renewals by a manager are created already approved but still in draft_renewal
+      renewal = await Lease.create({
+        ...baseLease,
+        leaseNumber: `LEASE-RENEWAL-${Date.now()}`,
+        previousLeaseId: originalLease._id,
+        duration: { startDate: daysFromNow(21), endDate: daysFromNow(386) },
+        status: LeaseStatus.DRAFT_RENEWAL,
+        approvalStatus: 'approved',
+        eSignature: { status: ILeaseESignatureStatusEnum.NOT_SENT, provider: 'boldsign' },
+      } as any);
+
+      addToPdfQueue = jest.fn().mockResolvedValue({ id: 'pdf-job-1' });
+      const queueFactory: any = container.resolve('queueFactory');
+      const realGetQueue = queueFactory.getQueue.bind(queueFactory);
+      getQueueSpy = jest
+        .spyOn(queueFactory, 'getQueue')
+        .mockImplementation((name: any) =>
+          name === 'pdfGeneratorQueue' ? ({ addToPdfQueue } as any) : realGetQueue(name)
+        );
+    });
+
+    afterEach(() => {
+      getQueueSpy.mockRestore();
+    });
+
+    it('moves a draft renewal to ready_for_signature and queues its PDF', async () => {
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}/${renewal.luid}/approve`)
+        .set('Cookie', authCookie(managerToken))
+        .set('idempotency-key', `approve-renewal-${Date.now()}`)
+        .send({});
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      const saved = await Lease.findById(renewal._id).lean();
+      expect(saved!.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
+      expect(saved!.approvalStatus).toBe('approved');
+      expect(addToPdfQueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resource: expect.objectContaining({ resourceId: renewal._id.toString() }),
+        })
+      );
+    });
+
+    it('does not let staff approve a draft renewal', async () => {
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}/${renewal.luid}/approve`)
+        .set('Cookie', authCookie(staffToken))
+        .set('idempotency-key', `approve-renewal-staff-${Date.now()}`)
+        .send({});
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      const saved = await Lease.findById(renewal._id).lean();
+      expect(saved!.status).toBe(LeaseStatus.DRAFT_RENEWAL);
+      expect(addToPdfQueue).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Authorization Tests', () => {
     let testLease: any;
 

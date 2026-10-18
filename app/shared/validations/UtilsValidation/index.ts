@@ -20,6 +20,26 @@ export const safeString = z
   .string()
   .refine((val) => !/[${}]/.test(val), { message: 'Invalid characters in field' });
 
+// Blank form inputs arrive as '' (or null) — treat them as not provided
+export const emptyToUndefined = (value: unknown) =>
+  value === '' || value === null ? undefined : value;
+
+export const optionalBlank = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess(emptyToUndefined, schema.optional());
+
+export const objectIdString = z.string().regex(/^[a-f\d]{24}$/i, 'Must be a valid ID');
+
+export const phoneNumber = z
+  .string()
+  .trim()
+  .regex(/^\+?[\d\s\-()]+$/, 'Invalid phone number format');
+
+// Query strings and multipart fields carry 'true'/'false'; z.coerce.boolean() would read 'false' as true
+export const queryBoolean = z.union([
+  z.boolean(),
+  z.enum(['true', 'false']).transform((value) => value === 'true'),
+]);
+
 export const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;

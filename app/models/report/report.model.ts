@@ -120,8 +120,5 @@ const reportScheduleSchema = new Schema<IReportScheduleDocument>(
 const Report = model<IReportDocument>('Report', reportSchema);
 const ReportSchedule = model<IReportScheduleDocument>('ReportSchedule', reportScheduleSchema);
 
-Report.syncIndexes();
-ReportSchedule.syncIndexes();
-
 export { ReportSchedule };
 export default Report;

@@ -89,14 +89,14 @@ export const IMPORTABLE_FIELDS: ImportableField[] = [
     key: 'occupancyStatus',
     label: 'Occupancy Status',
     group: 'basic',
-    required: false,
+    required: true,
     synonyms: ['occupancy', 'occupancy status'],
   },
   {
     key: 'maxAllowedUnits',
     label: 'Max Units',
     group: 'basic',
-    required: false,
+    required: true,
     synonyms: ['units', 'max units', 'number of units', 'unit count'],
   },
   {
@@ -124,7 +124,7 @@ export const IMPORTABLE_FIELDS: ImportableField[] = [
     key: 'specifications_totalArea',
     label: 'Total Area',
     group: 'specifications',
-    required: false,
+    required: true,
     synonyms: ['total area', 'square footage', 'sqft', 'size'],
   },
   {
@@ -189,13 +189,6 @@ export const IMPORTABLE_FIELDS: ImportableField[] = [
     group: 'fees',
     required: false,
     synonyms: ['security deposit', 'deposit'],
-  },
-  {
-    key: 'fees_currency',
-    label: 'Currency',
-    group: 'fees',
-    required: false,
-    synonyms: ['currency'],
   },
   {
     key: 'utilities_water',

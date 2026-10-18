@@ -28,7 +28,7 @@ router.get(
   requireActiveTenant('guestPass'),
   subscriptionEntitlements,
   requireFeature('guestPassService'),
-  validateRequest({ params: UtilsValidations.cuid }),
+  validateRequest({ params: UtilsValidations.cuid, query: GuestPassValidations.statsQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<GuestPassController>('guestPassController');
     return controller.getStats(req, res);
@@ -49,6 +49,21 @@ router.get(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<GuestPassController>('guestPassController');
     return controller.getExpectedVisitors(req, res);
+  })
+);
+
+// Properties the caller can check visitors in at (the validate dropdown)
+router.get(
+  '/:cuid/properties',
+  basicLimiter(),
+  requirePermission(PermissionResource.GUEST_PASS, PermissionAction.UPDATE),
+  requireActiveTenant('guestPass'),
+  subscriptionEntitlements,
+  requireFeature('guestPassService'),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<GuestPassController>('guestPassController');
+    return controller.getCheckInProperties(req, res);
   })
 );
 
@@ -147,6 +162,20 @@ router.post(
 
 // ── Pass-specific routes (/:cuid/:vpuid) ─────────────────────────────
 
+router.get(
+  '/:cuid/:vpuid',
+  basicLimiter(),
+  requirePermission(PermissionResource.GUEST_PASS, PermissionAction.READ),
+  requireActiveTenant('guestPass'),
+  subscriptionEntitlements,
+  requireFeature('guestPassService'),
+  validateRequest({ params: UtilsValidations.cuid.merge(GuestPassValidations.vpuid) }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<GuestPassController>('guestPassController');
+    return controller.getPass(req, res);
+  })
+);
+
 router.patch(
   '/:cuid/:vpuid/acknowledge',
   basicLimiter(),
@@ -170,7 +199,10 @@ router.delete(
   requireFeature('guestPassService'),
   requireActiveSubscription,
   idempotency,
-  validateRequest({ params: UtilsValidations.cuid.merge(GuestPassValidations.vpuid) }),
+  validateRequest({
+    params: UtilsValidations.cuid.merge(GuestPassValidations.vpuid),
+    body: GuestPassValidations.revokePass,
+  }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<GuestPassController>('guestPassController');
     return controller.revokePass(req, res);

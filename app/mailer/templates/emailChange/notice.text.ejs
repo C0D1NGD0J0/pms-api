@@ -1,0 +1,12 @@
+Sign-in Email Change
+====================
+
+Hi <%= fullname %>,
+
+<% if (stage === 'completed') { %>The sign-in email on your PropertyDesk account was changed to <%= newEmail %> on <%= changedAt %>. From now on, sign in with the new address.
+
+You've been signed out of your active sessions as a precaution.<% } else { %><% if (typeof requestedByName !== 'undefined' && requestedByName) { %><%= requestedByName %> requested<% } else { %>Someone requested<% } %> a change of the sign-in email on your PropertyDesk account to <%= newEmail %>.
+
+Nothing changes until the new address is confirmed. You can keep signing in with this email in the meantime.<% } %>
+
+Wasn't you? Contact our support team immediately at support@propertydesk.live.

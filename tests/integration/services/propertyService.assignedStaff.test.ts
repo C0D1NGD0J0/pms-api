@@ -57,6 +57,21 @@ const mockPropertyCsvProcessor = {
   processCsv: jest.fn().mockResolvedValue({ success: true }),
 } as any;
 
+// Department grants are owned by permissions.json; here the departments listed below are
+// treated as lacking `property list:any` so the service-side scoping is exercised.
+const DEPARTMENTS_WITHOUT_PROPERTY_LIST_ANY = [
+  EmployeeDepartment.SECURITY,
+  EmployeeDepartment.MAINTENANCE,
+] as string[];
+const mockPermissionService = {
+  checkUserPermission: jest.fn(async (currentuser: ICurrentUser) => ({
+    granted: !DEPARTMENTS_WITHOUT_PROPERTY_LIST_ANY.includes(
+      currentuser.employeeInfo?.department as string
+    ),
+  })),
+  resolveStaffScope: jest.fn(() => undefined),
+};
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 const buildStaffCtx = (
   cuid: string,
@@ -146,6 +161,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
     const propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,
       propertyCache: mockPropertyCache,
       notificationService: mockNotificationService,
@@ -177,6 +193,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       propertyApprovalService,
       propertyStatsService,
       notificationService: mockNotificationService,
+      permissionService: mockPermissionService as any,
       subscriptionDAO: {} as any,
       paymentDAO: {} as any,
       maintenanceRequestDAO: {} as any,
@@ -451,6 +468,57 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const pids = result.data!.items.map((p: any) => p.pid);
       expect(pids).toContain(managedProp.pid);
+    });
+
+    it('scopes any staff member without property list:any, not only security', async () => {
+      const client = await createTestClient();
+      const maintUser = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const assignedProp = await createTestProperty(client.cuid, client._id);
+      const unassignedProp = await createTestProperty(client.cuid, client._id);
+      await Property.findByIdAndUpdate(assignedProp._id, {
+        $addToSet: { assignedStaff: maintUser._id },
+      });
+
+      const currentuser = buildCurrentUser(maintUser._id.toString(), client.cuid, ROLES.STAFF, {
+        department: EmployeeDepartment.MAINTENANCE,
+      });
+
+      const result = await propertyService.getClientProperties(client.cuid, currentuser, {
+        pagination: { page: 1, sort: {} },
+        filters: { searchTerm: '' },
+      } as any);
+
+      const pids = result.data!.items.map((p: any) => p.pid);
+      expect(pids).toEqual([assignedProp.pid]);
+      expect(pids).not.toContain(unassignedProp.pid);
+      expect(mockPermissionService.checkUserPermission).toHaveBeenCalledWith(
+        currentuser,
+        'property',
+        'list'
+      );
+    });
+
+    it('keeps the assignment scope when a search term is applied', async () => {
+      const client = await createTestClient();
+      const secUser = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+
+      const assignedProp = await createTestProperty(client.cuid, client._id, { name: 'Gate A' });
+      await createTestProperty(client.cuid, client._id, { name: 'Gate B' });
+      await Property.findByIdAndUpdate(assignedProp._id, {
+        $addToSet: { assignedStaff: secUser._id },
+      });
+
+      const currentuser = buildCurrentUser(secUser._id.toString(), client.cuid, ROLES.STAFF, {
+        department: EmployeeDepartment.SECURITY,
+      });
+
+      const result = await propertyService.getClientProperties(client.cuid, currentuser, {
+        pagination: { page: 1, sort: {} },
+        filters: { searchTerm: 'Gate' },
+      } as any);
+
+      expect(result.data!.items.map((p: any) => p.pid)).toEqual([assignedProp.pid]);
     });
 
     it('should return 404 for getClientProperty when security staff is not assigned', async () => {

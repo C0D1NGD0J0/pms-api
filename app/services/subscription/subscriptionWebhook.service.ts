@@ -21,7 +21,11 @@ import {
   MailType,
 } from '@interfaces/index';
 
-import { subscriptionPlanConfig, SubscriptionPlanConfig } from './subscription_plans.config';
+import {
+  subscriptionPlanConfig,
+  SubscriptionPlanConfig,
+  overageFor,
+} from './subscription_plans.config';
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -392,9 +396,9 @@ export class SubscriptionWebhookService {
 
     const quota = subscriptionPlanConfig.getManualRecordQuota(previousPeriod.planName);
     const previousCount = previousPeriod.manualRecords?.countThisPeriod ?? 0;
-    if (previousCount <= quota || !previousPeriod.billing?.customerId) return;
+    const overageCount = overageFor(previousCount, quota);
+    if (overageCount === 0 || !previousPeriod.billing?.customerId) return;
 
-    const overageCount = previousCount - quota;
     const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
     const totalCents = overageCount * feeCents;
 
@@ -665,7 +669,7 @@ export class SubscriptionWebhookService {
   async handleSubscriptionCanceled(data: {
     stripeSubscriptionId: string;
     canceledAt: number;
-  }): IPromiseReturnedData<ISubscriptionDocument> {
+  }): IPromiseReturnedData<ISubscriptionDocument | null> {
     const session = await this.subscriptionDAO.startSession();
 
     try {
@@ -679,10 +683,9 @@ export class SubscriptionWebhookService {
           cxtsession
         );
 
-        if (!subscription) {
-          this.log.error({ stripeSubscriptionId }, 'Subscription not found for cancellation');
-          throw new BadRequestError({ message: 'Subscription not found' });
-        }
+        // No local record (client removed, or the record now tracks a different Stripe
+        // subscription): there is nothing to cancel, and a retry can never succeed.
+        if (!subscription) return null;
 
         const updatedSubscription = await this.subscriptionDAO.update(
           { _id: subscription._id },
@@ -711,6 +714,14 @@ export class SubscriptionWebhookService {
 
         return updatedSubscription;
       });
+
+      if (!result) {
+        this.log.warn(
+          { stripeSubscriptionId: data.stripeSubscriptionId },
+          'No local subscription for canceled Stripe subscription — acknowledging without changes'
+        );
+        return { data: null, success: true, message: 'No local subscription to cancel' };
+      }
 
       await this.notifyAccountAdminViaSSE(result.cuid, {
         type: 'subscription_canceled',
@@ -833,24 +844,17 @@ export class SubscriptionWebhookService {
         timestamp: new Date().toISOString(),
       };
 
-      const sent = await this.sseService.sendToUser(
+      await this.sseService.sendToUser(
         accountAdminId,
         cuid,
         { ...notificationPayload, resource: 'subscription' },
         'resource-event'
       );
 
-      if (sent) {
-        this.log.info(
-          { cuid, accountAdminId, eventType: eventData.type },
-          'SSE notification sent to account admin'
-        );
-      } else {
-        this.log.debug(
-          { cuid, accountAdminId },
-          'Account admin not connected to SSE, cache invalidated'
-        );
-      }
+      this.log.info(
+        { cuid, accountAdminId, eventType: eventData.type },
+        'SSE notification published to account admin'
+      );
     } catch (error) {
       this.log.error({ error, cuid }, 'Error sending SSE notification to account admin');
       // Don't throw - notification failure shouldn't break webhook processing
@@ -862,7 +866,11 @@ export class SubscriptionWebhookService {
    */
   private async syncPayoutSchedule(cuid: string, newStatus: ISubscriptionStatus): Promise<void> {
     try {
-      const paymentProcessor = await this.paymentProcessorDAO.findFirst({ cuid });
+      // The client's own processor — vendor processors also carry the inviting client's cuid
+      const paymentProcessor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+      });
       if (!paymentProcessor?.accountId) return;
 
       if (
@@ -877,7 +885,7 @@ export class SubscriptionWebhookService {
           'manual'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: {
               payoutsPaused: true,
@@ -892,10 +900,10 @@ export class SubscriptionWebhookService {
           IPaymentGatewayProvider.STRIPE,
           paymentProcessor.accountId,
           'weekly',
-          'monday'
+          paymentProcessor.payoutWeeklyAnchor || 'monday'
         );
         await this.paymentProcessorDAO.update(
-          { cuid },
+          { _id: paymentProcessor._id },
           {
             $set: { payoutsPaused: false },
             $unset: { payoutsPausedReason: '', payoutsPausedAt: '' },

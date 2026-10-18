@@ -125,6 +125,13 @@ export type JobData = any;
 
 export let serverAdapter: ExpressAdapter;
 const bullMQAdapters: BullAdapter[] = [];
+/** Drops uploaded file bytes (CSV jobs) from job data before it's copied anywhere long-lived. */
+const omitUploadedFileContent = <D>(data: D): D => {
+  if (!data || typeof data !== 'object' || !('csvContentBase64' in data)) return data;
+  const { csvContentBase64: _content, ...rest } = data as Record<string, unknown>;
+  return rest as D;
+};
+
 let sharedDLQ: Queue.Queue | null = null;
 
 const getSharedDLQ = (): Queue.Queue => {
@@ -216,12 +223,21 @@ export class BaseQueue<T extends JobData = JobData> {
           `Job ${job.id} reached max attempts. Moving to DLQ: ${this.dlq.name}`
         );
         try {
+          await this.onJobFailedPermanently(job, err);
+        } catch (hookError: any) {
+          this.log.error(
+            { jobId: job.id, error: hookError },
+            `Permanent-failure hook for job ${job.id} failed: ${hookError.message}`
+          );
+        }
+        try {
           await this.dlq.add(
             job.name,
             {
               originalJobId: job.id,
               originalQueue: this.queue.name,
-              data: job.data,
+              // Uploaded file contents stay out of the DLQ (it keeps jobs indefinitely)
+              data: omitUploadedFileContent(job.data),
               failedReason: err.message,
               failedStack: err.stack,
               failedTimestamp: new Date().toISOString(),
@@ -301,6 +317,12 @@ export class BaseQueue<T extends JobData = JobData> {
   /**
    * Add a job to the queue with type safety
    */
+  /**
+   * Runs once a job has failed for good (no retries left), whatever the cause: a thrown error,
+   * a timeout, or a stalled/crashed worker. Queues override it to tell the user.
+   */
+  protected async onJobFailedPermanently(_job: Queue.Job<T>, _error: Error): Promise<void> {}
+
   async addJobToQueue(name: string, data: T, options?: BullJobOptions): Promise<Queue.Job<T>> {
     try {
       const jobOptions = options || DEFAULT_JOB_OPTIONS;

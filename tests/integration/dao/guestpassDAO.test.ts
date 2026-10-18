@@ -1,10 +1,10 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
 import { Property, User } from '@models/index';
-import { GuestPassDAO } from '@dao/guestpassDAO';
-import { clearTestDatabase } from '@tests/helpers';
 import GuestPassModel from '@models/guestPass/guestpass.model';
 import { GuestPassStatus } from '@interfaces/guestPass.interface';
+import { GUEST_PASS_DISPLAY_POPULATE, GuestPassDAO } from '@dao/guestpassDAO';
+import { createTestPropertyUnit, createTestProfile, clearTestDatabase } from '@tests/helpers';
 
 describe('GuestPassDAO Integration Tests', () => {
   let dao: GuestPassDAO;
@@ -150,6 +150,20 @@ describe('GuestPassDAO Integration Tests', () => {
       const found = await dao.findByCode('USED01', testCuid);
       expect(found).toBeNull();
     });
+
+    it('should only match passes inside the visibility filter', async () => {
+      await createPass({ code: 'VIS001', propertyId: propertyId2 });
+
+      const outside = await dao.findByCode('VIS001', testCuid, {
+        propertyId: { $in: [propertyId] },
+      });
+      const inside = await dao.findByCode('VIS001', testCuid, {
+        propertyId: { $in: [propertyId2] },
+      });
+
+      expect(outside).toBeNull();
+      expect(inside).not.toBeNull();
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -169,6 +183,15 @@ describe('GuestPassDAO Integration Tests', () => {
       expect(result!.status).toBe(GuestPassStatus.USED);
       expect(result!.validatedBy!.toString()).toBe(validatorId.toString());
       expect(result!.entryNotes).toBe('Visitor verified at gate');
+    });
+
+    it('should stamp usedAt when the pass is validated', async () => {
+      const before = new Date();
+      const pass = await createPass();
+      const result = await dao.markAsUsed(pass._id.toString(), testCuid, validatorId.toString());
+
+      expect(result!.usedAt).toBeInstanceOf(Date);
+      expect(result!.usedAt!.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
     });
 
     it('should return null when pass is already USED', async () => {
@@ -272,11 +295,7 @@ describe('GuestPassDAO Integration Tests', () => {
   describe('acknowledgePass', () => {
     it('should acknowledge an unacknowledged ACTIVE pass', async () => {
       const pass = await createPass();
-      const result = await dao.acknowledgePass(
-        testCuid,
-        pass._id.toString(),
-        validatorId.toString()
-      );
+      const result = await dao.acknowledgePass(testCuid, pass.vpuid, validatorId.toString());
 
       expect(result).not.toBeNull();
       expect(result!.isAcknowledged).toBe(true);
@@ -288,12 +307,8 @@ describe('GuestPassDAO Integration Tests', () => {
       const acked = await createPass({ code: 'ACK001', isAcknowledged: true });
       const expired = await createPass({ code: 'EXP001', status: GuestPassStatus.EXPIRED });
 
-      expect(
-        await dao.acknowledgePass(testCuid, acked._id.toString(), validatorId.toString())
-      ).toBeNull();
-      expect(
-        await dao.acknowledgePass(testCuid, expired._id.toString(), validatorId.toString())
-      ).toBeNull();
+      expect(await dao.acknowledgePass(testCuid, acked.vpuid, validatorId.toString())).toBeNull();
+      expect(await dao.acknowledgePass(testCuid, expired.vpuid, validatorId.toString())).toBeNull();
     });
   });
 
@@ -307,7 +322,7 @@ describe('GuestPassDAO Integration Tests', () => {
 
       const count = await dao.bulkAcknowledge(
         testCuid,
-        [p1._id.toString(), p2._id.toString()],
+        [p1.vpuid, p2.vpuid],
         validatorId.toString()
       );
 
@@ -320,7 +335,7 @@ describe('GuestPassDAO Integration Tests', () => {
 
       const count = await dao.bulkAcknowledge(
         testCuid,
-        [p1._id.toString(), p2._id.toString()],
+        [p1.vpuid, p2.vpuid],
         validatorId.toString()
       );
 
@@ -420,6 +435,141 @@ describe('GuestPassDAO Integration Tests', () => {
 
       const stats = await dao.getStats(testCuid);
       expect(stats.total).toBe(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Display populate — host name, property name, unit number for the UI
+  // ---------------------------------------------------------------------------
+  describe('GUEST_PASS_DISPLAY_POPULATE', () => {
+    // Mirrors res.json(): virtuals such as createdBy.fullname only exist after serialisation
+    const toApiJson = (value: unknown) => JSON.parse(JSON.stringify(value));
+
+    let unitId: Types.ObjectId;
+    let unitNumber: string;
+    let hostFullName: string;
+
+    beforeEach(async () => {
+      const unit = await createTestPropertyUnit(testCuid, propertyId);
+      unitId = unit._id as Types.ObjectId;
+      unitNumber = unit.unitNumber;
+      const profile = await createTestProfile(userId, new Types.ObjectId());
+      hostFullName = `${profile.personalInfo.firstName} ${profile.personalInfo.lastName}`;
+    });
+
+    const createDisplayPass = (overrides: Record<string, any> = {}) =>
+      createPass({
+        propertyUnitId: unitId,
+        visitorInfo: { name: 'Ada Visitor', phone: '+15550001111', email: 'ada@example.com' },
+        purpose: 'Delivery',
+        hostNotes: 'Leave at the front desk',
+        ...overrides,
+      });
+
+    const expectDisplayFields = (pass: any) => {
+      expect(pass.visitorInfo.name).toBe('Ada Visitor');
+      expect(pass.purpose).toBe('Delivery');
+      expect(pass.hostNotes).toBe('Leave at the front desk');
+      expect(pass.propertyId).toMatchObject({
+        _id: propertyId.toString(),
+        pid: 'prop-uid-1',
+        name: 'Test Property',
+        address: { fullAddress: '123 Main St, Toronto, ON M5V1A1' },
+      });
+      expect(pass.propertyUnitId).toMatchObject({ _id: unitId.toString(), unitNumber });
+      expect(pass.createdBy).toMatchObject({
+        _id: userId.toString(),
+        uid: 'user-uid-1',
+        fullname: hostFullName,
+      });
+      expect(pass.createdBy.password).toBeUndefined();
+    };
+
+    it('list() with the display populate returns host, property, unit, purpose and hostNotes', async () => {
+      await createDisplayPass({ code: 'DSP001' });
+
+      const result = await dao.list({ cuid: testCuid }, { populate: GUEST_PASS_DISPLAY_POPULATE });
+
+      expect(result.items).toHaveLength(1);
+      expectDisplayFields(toApiJson(result.items[0]));
+    });
+
+    it('findByCode returns the display fields', async () => {
+      await createDisplayPass({ code: 'DSP002' });
+
+      const found = await dao.findByCode('DSP002', testCuid);
+
+      expectDisplayFields(toApiJson(found));
+    });
+
+    it('getUnacknowledgedPasses returns the display fields', async () => {
+      await createDisplayPass({ code: 'DSP003' });
+
+      const passes = await dao.getUnacknowledgedPasses(testCuid, propertyId.toString());
+
+      expect(passes).toHaveLength(1);
+      expectDisplayFields(toApiJson(passes[0]));
+    });
+
+    it("a createdBy-scoped (tenant) query returns only that host's passes", async () => {
+      await createDisplayPass({ code: 'DSP004' });
+      await createDisplayPass({ code: 'DSP005', createdBy: validatorId });
+      await createDisplayPass({ code: 'DSP006', cuid: otherCuid });
+
+      const result = await dao.list(
+        { cuid: testCuid, createdBy: userId },
+        { populate: GUEST_PASS_DISPLAY_POPULATE }
+      );
+
+      expect(result.items.map((p) => p.code)).toEqual(['DSP004']);
+      expectDisplayFields(toApiJson(result.items[0]));
+    });
+
+    it('leaves the host name null when the creator has no profile', async () => {
+      await createDisplayPass({ code: 'DSP007', createdBy: validatorId });
+
+      const found = toApiJson(await dao.findByCode('DSP007', testCuid));
+
+      expect(found.createdBy.uid).toBe('user-uid-2');
+      expect(found.createdBy.fullname).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Public-id acknowledge, revoke reason, host info
+  // ---------------------------------------------------------------------------
+  describe('public ids and persisted UI fields', () => {
+    it('acknowledgePass and bulkAcknowledge match by vpuid within the cuid only', async () => {
+      const own = await createPass({ code: 'VPU001' });
+      const foreign = await createPass({ code: 'VPU002', cuid: otherCuid });
+
+      expect(await dao.acknowledgePass(testCuid, foreign.vpuid, validatorId.toString())).toBeNull();
+      expect(
+        await dao.bulkAcknowledge(testCuid, [own.vpuid, foreign.vpuid], validatorId.toString())
+      ).toBe(1);
+    });
+
+    it('revokePass stores the reason when given', async () => {
+      const pass = await createPass({ code: 'RVK001' });
+      const result = await dao.revokePass(
+        pass._id.toString(),
+        testCuid,
+        userId.toString(),
+        'Visitor cancelled'
+      );
+
+      expect(result!.revokedReason).toBe('Visitor cancelled');
+    });
+
+    it('persists hostInfo and returns it with the display populate', async () => {
+      await createPass({
+        code: 'HST001',
+        hostInfo: { name: 'Rita Resident', phone: '+15550100200' },
+      });
+
+      const found = await dao.findByCode('HST001', testCuid);
+
+      expect(found!.hostInfo).toEqual({ name: 'Rita Resident', phone: '+15550100200' });
     });
   });
 });

@@ -115,6 +115,4 @@ AssetSchema.index({ 's3Info.key': 1 });
 
 const AssetModel = model<IAssetDocument>('Asset', AssetSchema);
 
-AssetModel.syncIndexes();
-
 export default AssetModel;

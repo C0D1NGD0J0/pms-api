@@ -3,6 +3,7 @@ import path from 'path';
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { QueueFactory } from '@services/queue';
 import { RedisService } from '@database/index';
@@ -203,6 +204,24 @@ export class ReportService implements ICronProvider {
     ];
   }
 
+  private async getReportLimitsForClient(cuid: string) {
+    const subscription = await this.subscriptionDAO.findFirst({ cuid });
+    return this.subscriptionPlanConfig.getReportLimits(
+      (subscription?.planName ?? 'essential') as PlanName
+    );
+  }
+
+  private assertEmailRecipientsWithinPlan(
+    emailRecipients: string[],
+    { maxReportEmails }: { maxReportEmails: number }
+  ): void {
+    if (emailRecipients.length > maxReportEmails) {
+      throw new BadRequestError({
+        message: t('report.errors.tooManyEmailRecipients', { max: maxReportEmails }),
+      });
+    }
+  }
+
   // ─── On-demand report generation ──────────────────────────────────
   async requestReport(
     cuid: string,
@@ -225,21 +244,13 @@ export class ReportService implements ICronProvider {
     const selectableSections = sections.filter((s) => s !== 'executive_summary');
     const emailRecipients = body.emailRecipients || [];
 
-    // ── Plan-based limits ──
-    const subscription = await this.subscriptionDAO.findFirst({ cuid });
-    const planName = (subscription?.planName ?? 'essential') as PlanName;
-    const limits = this.subscriptionPlanConfig.getReportLimits(planName);
-
+    const limits = await this.getReportLimitsForClient(cuid);
     if (selectableSections.length > limits.maxReportSections) {
       throw new BadRequestError({
         message: `Your plan allows up to ${limits.maxReportSections} report sections`,
       });
     }
-    if (emailRecipients.length > limits.maxReportEmails) {
-      throw new BadRequestError({
-        message: `Your plan allows up to ${limits.maxReportEmails} email recipients`,
-      });
-    }
+    this.assertEmailRecipientsWithinPlan(emailRecipients, limits);
 
     // ── Cooldown check (Redis) ──
     await this._checkCooldown(cuid);
@@ -381,9 +392,7 @@ export class ReportService implements ICronProvider {
       cooldownRemaining: number;
     };
   }> {
-    const subscription = await this.subscriptionDAO.findFirst({ cuid });
-    const planName = (subscription?.planName ?? 'essential') as PlanName;
-    const limits = this.subscriptionPlanConfig.getReportLimits(planName);
+    const limits = await this.getReportLimitsForClient(cuid);
 
     const [result, cooldownRemaining, usedThisMonth] = await Promise.all([
       this.reportDAO.listByClient(cuid, query),
@@ -423,6 +432,11 @@ export class ReportService implements ICronProvider {
       ? requestedSections
       : ['executive_summary', ...requestedSections];
     const nextRunAt = this._computeNextRunAt(body.frequency);
+
+    this.assertEmailRecipientsWithinPlan(
+      body.emailRecipients ?? [],
+      await this.getReportLimitsForClient(cuid)
+    );
 
     const schedule = await this.reportScheduleDAO.upsertSchedule(cuid, {
       cuid,
@@ -628,8 +642,16 @@ export class ReportService implements ICronProvider {
       await this.sseService.sendToUser(
         userId,
         cuid,
-        { reportId, presignedUrl, expiresAt, filename },
-        'report:ready'
+        {
+          resource: 'report',
+          action: 'ready',
+          resourceUId: reportId,
+          reportId,
+          presignedUrl,
+          expiresAt,
+          filename,
+        },
+        'resource-event'
       );
 
       this.log.info({ reportId, cuid }, 'Report generation completed');

@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import { asyncWrapper } from '@utils/helpers';
 import { validateRequest } from '@shared/validations/setup';
 import { PermissionAction } from '@interfaces/utils.interface';
+import { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { PropertyUnitController } from '@controllers/PropertyUnitController';
 import { PropertyUnitValidations } from '@shared/validations/PropertyUnitValidation';
 import {
@@ -11,6 +12,7 @@ import {
   isAuthenticated,
   basicLimiter,
   idempotency,
+  requireRole,
   diskUpload,
   scanFile,
 } from '@shared/middlewares';
@@ -45,6 +47,29 @@ router.get(
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
     return propertyUnitController.getPropertyUnits(req, res);
+  })
+);
+
+// Two-segment paths, so they never collide with GET /:puid
+router.get(
+  '/csv/template',
+  requirePropertyPermission(PermissionAction.CREATE),
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getCsvTemplate(req, res);
+  })
+);
+
+router.get(
+  '/csv/import-fields',
+  requirePropertyPermission(PermissionAction.CREATE),
+  basicLimiter(),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.getCsvImportFields(req, res);
   })
 );
 
@@ -95,12 +120,47 @@ router.patch(
   idempotency,
   basicLimiter(),
   validateRequest({
-    body: PropertyUnitValidations.updateUnit,
+    body: PropertyUnitValidations.updateUnitStatus,
   }),
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');
     return propertyUnitController.updateUnitStatus(req, res);
+  })
+);
+
+// Reviewing a staff member's pending high-impact changes — approval roles only
+router.post(
+  '/:puid/approve',
+  requirePropertyPermission(PermissionAction.UPDATE),
+  requireRole([...ROLE_GROUPS.PROPERTY_APPROVAL_ROLES]),
+  idempotency,
+  basicLimiter(),
+  validateRequest({
+    params: PropertyUnitValidations.validatePuid,
+    body: PropertyUnitValidations.approveUnitChanges,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.approveUnitChanges(req, res);
+  })
+);
+
+router.post(
+  '/:puid/reject',
+  requirePropertyPermission(PermissionAction.UPDATE),
+  requireRole([...ROLE_GROUPS.PROPERTY_APPROVAL_ROLES]),
+  idempotency,
+  basicLimiter(),
+  validateRequest({
+    params: PropertyUnitValidations.validatePuid,
+    body: PropertyUnitValidations.rejectUnitChanges,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyUnitController =
+      req.container.resolve<PropertyUnitController>('propertyUnitController');
+    return propertyUnitController.rejectUnitChanges(req, res);
   })
 );
 
@@ -124,11 +184,11 @@ router.patch(
   requirePropertyPermission(PermissionAction.UPDATE),
   idempotency,
   basicLimiter(),
+  diskUpload(['propertyUnit.media']),
+  scanFile,
   validateRequest({
     body: PropertyUnitValidations.uploadUnitMedia,
   }),
-  diskUpload(['propertyUnit.media']),
-  scanFile,
   asyncWrapper((req, res) => {
     const propertyUnitController =
       req.container.resolve<PropertyUnitController>('propertyUnitController');

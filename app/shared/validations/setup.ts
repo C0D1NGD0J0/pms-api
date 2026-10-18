@@ -1,9 +1,27 @@
+import { envVariables } from '@shared/config';
 import { EventTypes } from '@interfaces/index';
 import { httpStatusCodes } from '@utils/constants';
 import { EventEmitterService } from '@services/index';
 import { NextFunction, Response, Request } from 'express';
 import { ZodTypeDef, ZodSchema, ZodError, ZodType } from 'zod';
-import { extractMulterFiles, parseJsonFields } from '@utils/helpers';
+import { extractMulterFiles, parseJsonFields, createLogger } from '@utils/helpers';
+
+import { collectStrippedPaths } from './strippedPaths';
+
+const log = createLogger('ValidateRequest');
+
+const warnAboutStrippedFields = (req: Request, raw: { body?: unknown; query?: unknown }) => {
+  if (envVariables.SERVER.ENV === 'production') return;
+  const strippedPaths = new Set<string>();
+  if (raw.query !== undefined) collectStrippedPaths(raw.query, req.query, 'query', strippedPaths);
+  if (raw.body !== undefined) collectStrippedPaths(raw.body, req.body, 'body', strippedPaths);
+  if (strippedPaths.size === 0) return;
+
+  log.warn(
+    { route: `${req.method} ${req.originalUrl}`, strippedPaths: [...strippedPaths] },
+    'Request validation stripped undeclared fields — declare them in the schema if they are needed'
+  );
+};
 
 export const validateRequest = (schema: {
   query?: ZodType<any, ZodTypeDef, any>;
@@ -13,16 +31,17 @@ export const validateRequest = (schema: {
   return async (req: Request, res: Response, next: NextFunction) => {
     const { emitterService }: { emitterService: EventEmitterService } = req.container.cradle;
     try {
+      const raw: { body?: unknown; query?: unknown } = {};
       if (schema.query) {
+        raw.query = req.query;
         req.query = await schema.query.parseAsync(req.query);
-        // Sync validated query to context
         if (req.context?.request) {
           req.context.request.query = req.query;
         }
       }
       if (schema.params) {
-        req.params = await schema.params.parseAsync(req.params);
-        // Sync validated params to context
+        // merge so keys inherited via mergeParams but not declared in the schema survive
+        req.params = { ...req.params, ...(await schema.params.parseAsync(req.params)) };
         if (req.context?.request) {
           req.context.request.params = req.params;
         }
@@ -30,8 +49,10 @@ export const validateRequest = (schema: {
       // parse nested JSON fields in the body if multipart/form-data
       req.body = parseJsonFields(req);
       if (schema.body) {
+        raw.body = req.body;
         req.body = await schema.body.parseAsync(req.body);
       }
+      warnAboutStrippedFields(req, raw);
       next();
     } catch (error) {
       if (req.files) {

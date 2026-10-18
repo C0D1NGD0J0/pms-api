@@ -79,6 +79,16 @@ export const TEMPLATE_HERO_CONFIG: Record<string, HeroConfig> = {
     title: 'Account Disconnected',
     subtitle: 'Your connection has been removed',
   },
+  [MailType.EMAIL_CHANGE_VERIFICATION]: {
+    icon: '&#x2709;',
+    title: 'Confirm Your New Email',
+    subtitle: 'One click to finish updating your sign-in email',
+  },
+  [MailType.EMAIL_CHANGE_NOTICE]: {
+    icon: '&#x1F6E1;',
+    title: 'Sign-in Email Change',
+    subtitle: 'A change to your account email',
+  },
 
   // Invitation
   [MailType.INVITATION]: {
@@ -530,6 +540,9 @@ export class MailService {
       case MailType.PAYMENT_RETRIED_WITH_CARD:
         template = await this.buildTemplate('payment-retried-with-card', emailData, 'payment');
         break;
+      case MailType.EMAIL_CHANGE_VERIFICATION:
+        template = await this.buildTemplate('verify', emailData, 'emailChange');
+        break;
       case MailType.PAD_MANDATE_CONFIRMATION:
         template = await this.buildTemplate('pad-mandate-confirmation', emailData, 'payment');
         break;
@@ -604,6 +617,9 @@ export class MailService {
       case MailType.INSPECTION_REJECTED:
         emailData._status = 'rejected';
         template = await this.buildTemplate('inspection-status', emailData, 'inspection');
+        break;
+      case MailType.EMAIL_CHANGE_NOTICE:
+        template = await this.buildTemplate('notice', emailData, 'emailChange');
         break;
       case MailType.ACCOUNT_ACTIVATION:
         template = await this.buildTemplate('registration', emailData);
@@ -733,6 +749,8 @@ export class MailService {
       default: defaultText,
       [MailType.PASSWORD_RESET]: 'Password Reset Request',
       [MailType.ACCOUNT_UPDATE]: 'Account recently updated.',
+      [MailType.EMAIL_CHANGE_VERIFICATION]: 'Confirm Your New Email Address',
+      [MailType.EMAIL_CHANGE_NOTICE]: 'Your Sign-in Email Is Changing',
       [MailType.LEASE_ACTIVATED]: 'Your Lease is Now Active!',
       [MailType.LEASE_TERMINATED]: 'Lease Termination Notice',
       [MailType.LEASE_EXPIRED]: 'Your Lease Has Expired',

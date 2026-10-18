@@ -227,6 +227,4 @@ InvitationSchema.methods.accept = function (
 
 const InvitationModel = model<IInvitationDocument>('Invitation', InvitationSchema);
 
-InvitationModel.syncIndexes();
-
 export default InvitationModel;

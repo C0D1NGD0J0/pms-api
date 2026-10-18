@@ -10,6 +10,8 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { isWithinLimit, isUnlimited } from '@utils/planLimits.utils';
+import { PermissionService } from '@services/permission/permission.service';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
@@ -68,8 +70,8 @@ import {
   PROPERTY_APPROVAL_ROLES,
   createSafeMongoUpdate,
   convertUserRoleToEnum,
-  getCurrencyForCountry,
   PROPERTY_STAFF_ROLES,
+  MAX_ASSIGNED_STAFF,
   getRequestDuration,
   calcOccupancyRate,
   calcTotalPages,
@@ -89,11 +91,15 @@ import {
   validatePropertyLeaseImmutableFields,
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
+  getAccessiblePropertyFilter,
   cleanUpRemovedPropertyMedia,
   filterPropertyByDepartment,
+  assertConnectedEmployees,
+  withoutPendingUploads,
   isFinancialRestricted,
   canViewInspections,
   canViewMaintenance,
+  pendingMediaItems,
 } from './propertyHelpers';
 
 interface IConstructor {
@@ -104,6 +110,7 @@ interface IConstructor {
   propertyStatsService: PropertyStatsService;
   notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
+  permissionService: PermissionService;
   emitterService: EventEmitterService;
   geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
@@ -140,6 +147,7 @@ export class PropertyService implements ICronProvider {
   private readonly inspectionDAO: InspectionDAO;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
   private readonly notificationService: NotificationService;
+  private readonly permissionService: PermissionService;
   private readonly subscriptionDAO: SubscriptionDAO;
   private readonly paymentDAO: PaymentDAO;
   private readonly s3Service: S3Service;
@@ -163,6 +171,7 @@ export class PropertyService implements ICronProvider {
     inspectionDAO,
     maintenanceRequestDAO,
     notificationService,
+    permissionService,
     subscriptionDAO,
     paymentDAO,
     s3Service,
@@ -186,6 +195,7 @@ export class PropertyService implements ICronProvider {
     this.inspectionDAO = inspectionDAO;
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.notificationService = notificationService;
+    this.permissionService = permissionService;
     this.subscriptionDAO = subscriptionDAO;
     this.paymentDAO = paymentDAO;
     this.s3Service = s3Service;
@@ -406,9 +416,19 @@ export class PropertyService implements ICronProvider {
       }
     }
 
-    if (cleanPropertyData.fees) {
-      cleanPropertyData.fees = MoneyUtils.parseMoneyInput(cleanPropertyData.fees);
+    if (cleanPropertyData.documents) {
+      cleanPropertyData.documents = withoutPendingUploads(cleanPropertyData.documents);
     }
+    if (cleanPropertyData.images) {
+      cleanPropertyData.images = withoutPendingUploads(cleanPropertyData.images);
+    }
+
+    // Every property is priced in the account's currency (set from the signup country). Set
+    // before validation, whose money limits are scaled to the currency.
+    cleanPropertyData.fees = {
+      ...(cleanPropertyData.fees ?? {}),
+      currency: (client.settings?.defaultCurrency || 'USD') as any,
+    } as any;
 
     const validationResult = PropertyValidationService.validateProperty(cleanPropertyData);
     if (!validationResult.valid) {
@@ -450,6 +470,11 @@ export class PropertyService implements ICronProvider {
     }
 
     this.propertyTypeValidation(cleanPropertyData);
+
+    // Fee limits above are in major units (dollars), so convert to cents only after validating
+    if (cleanPropertyData.fees) {
+      cleanPropertyData.fees = MoneyUtils.parseMoneyInput(cleanPropertyData.fees);
+    }
 
     let approvalStatus: PropertyApprovalStatusEnum;
     let approvalDetails: any[];
@@ -513,11 +538,18 @@ export class PropertyService implements ICronProvider {
       cleanPropertyData.managedBy = new Types.ObjectId(currentuser.sub);
     } else {
       // fallback to client's accountAdmin
-      const client = await this.clientDAO.findFirst({ cuid });
       const accountAdminId = client?.accountAdmin?.toString();
       cleanPropertyData.managedBy = accountAdminId
         ? new Types.ObjectId(accountAdminId)
         : new Types.ObjectId(currentuser.sub); // last resort fallback
+    }
+
+    if (cleanPropertyData.assignedStaff?.length) {
+      cleanPropertyData.assignedStaff = await this.resolveInitialAssignedStaff(
+        cuid,
+        cleanPropertyData.assignedStaff.map(String),
+        cleanPropertyData.managedBy.toString()
+      );
     }
 
     // Get subscription and check limits
@@ -545,13 +577,6 @@ export class PropertyService implements ICronProvider {
         throw new BadRequestError({
           message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
         });
-      }
-
-      if (cleanPropertyData.address?.country) {
-        cleanPropertyData.fees = cleanPropertyData.fees ?? {};
-        cleanPropertyData.fees.currency = getCurrencyForCountry(
-          cleanPropertyData.address.country
-        ) as any;
       }
 
       // Every new property starts unverified, regardless of ownership type or uploaded
@@ -608,6 +633,31 @@ export class PropertyService implements ICronProvider {
     }
 
     return { success: true, data: result, message };
+  }
+
+  /**
+   * Applies the assign-staff endpoint's rules to staff picked at creation: every
+   * user must be connected to this client, the primary manager is not repeated,
+   * and at most MAX_ASSIGNED_STAFF staff are assigned.
+   */
+  private async resolveInitialAssignedStaff(
+    cuid: string,
+    requestedUserIds: string[],
+    managedById: string
+  ): Promise<Types.ObjectId[]> {
+    const userIds = [...new Set(requestedUserIds)].filter((id) => id !== managedById);
+    if (userIds.length > MAX_ASSIGNED_STAFF) {
+      throw new BadRequestError({
+        message: `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`,
+      });
+    }
+    await assertConnectedEmployees(
+      this.userDAO,
+      cuid,
+      userIds,
+      t('common.errors.notFound', { resource: 'User' })
+    );
+    return userIds.map((id) => new Types.ObjectId(id));
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
@@ -676,7 +726,8 @@ export class PropertyService implements ICronProvider {
     cuid: string,
     csvFilePath: string,
     actorId: string,
-    columnMapping?: Record<string, string>
+    columnMapping?: Record<string, string>,
+    actorRole?: string
   ): Promise<ISuccessReturnData> {
     if (!csvFilePath || !cuid) {
       throw new BadRequestError({ message: t('property.errors.noCsvFile') });
@@ -694,9 +745,9 @@ export class PropertyService implements ICronProvider {
     if (subscription) {
       const config = subscriptionPlanConfig.getConfig(subscription.planName);
       const maxProperties = config.limits.maxProperties;
-      if (maxProperties !== -1) {
+      if (!isUnlimited(maxProperties)) {
         const currentCount = await this.propertyDAO.countDocuments({ cuid, deletedAt: null });
-        if (currentCount >= maxProperties) {
+        if (!isWithinLimit(currentCount, maxProperties)) {
           this.emitterService.emit(EventTypes.DELETE_LOCAL_ASSET, [csvFilePath]);
           throw new BadRequestError({
             message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties. Upgrade to add more.`,
@@ -705,11 +756,14 @@ export class PropertyService implements ICronProvider {
       }
     }
 
+    // Same rule as single creation: admins and managers don't need anyone to approve their own
     const jobData = {
       csvFilePath,
       userId: actorId,
       clientInfo: { cuid, clientDisplayName: client.displayName, id: client.id },
       columnMapping: this.sanitizeColumnMapping(columnMapping),
+      autoApprove:
+        !!actorRole && PROPERTY_APPROVAL_ROLES.includes(convertUserRoleToEnum(actorRole)),
     };
 
     const propertyQueue = this.queueFactory.getQueue('propertyQueue') as PropertyQueue;
@@ -807,34 +861,21 @@ export class PropertyService implements ICronProvider {
       operationalStatus: { $ne: 'inactive' },
     };
 
+    const scopeClauses: QueryFilter<IPropertyDocument>[] = [];
+
     const userRole = currentuser.client.role;
     const userRoleEnum = userRole.toUpperCase() as keyof typeof IUserRole;
     if (!PROPERTY_APPROVAL_ROLES.includes(IUserRole[userRoleEnum])) {
-      filter.$or = [
-        { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
-        {
-          approvalStatus: PropertyApprovalStatusEnum.PENDING,
-        },
-      ];
-    }
-
-    // Security staff only see properties they're assigned to or manage
-    const userDepartment = currentuser.employeeInfo?.department as EmployeeDepartment | undefined;
-    if (userDepartment === EmployeeDepartment.SECURITY) {
-      const securityScope = {
+      scopeClauses.push({
         $or: [
-          { assignedStaff: new Types.ObjectId(currentuser.sub) },
-          { managedBy: new Types.ObjectId(currentuser.sub) },
+          { approvalStatus: PropertyApprovalStatusEnum.APPROVED },
+          { approvalStatus: PropertyApprovalStatusEnum.PENDING },
         ],
-      };
-
-      if (filter.$or) {
-        filter.$and = [{ $or: filter.$or }, securityScope];
-        delete filter.$or;
-      } else {
-        Object.assign(filter, securityScope);
-      }
+      });
     }
+
+    const accessFilter = await getAccessiblePropertyFilter(this.permissionService, currentuser);
+    if (accessFilter) scopeClauses.push(accessFilter);
 
     if (filters) {
       if (filters.propertyType) {
@@ -919,18 +960,16 @@ export class PropertyService implements ICronProvider {
           { 'address.fullAddress': { $regex: escapeRegExp(filters.searchTerm), $options: 'i' } },
         ];
 
-        if (filter.$or) {
-          const approvalOr = filter.$or;
-          delete filter.$or;
-          filter.$and = [{ $or: approvalOr }, { $or: searchOr }];
-        } else {
-          filter.$or = searchOr;
-        }
+        scopeClauses.push({ $or: searchOr });
       }
 
       if (filters.managedBy) {
         filter.managedBy = new Types.ObjectId(filters.managedBy as string);
       }
+    }
+
+    if (scopeClauses.length) {
+      filter.$and = scopeClauses;
     }
 
     const opts: IPaginationQuery = {
@@ -1004,24 +1043,18 @@ export class PropertyService implements ICronProvider {
       });
     }
 
+    const accessFilter =
+      currentUser.client.role === ROLES.STAFF
+        ? await getAccessiblePropertyFilter(this.permissionService, currentUser)
+        : null;
     const property = await this.propertyDAO.findPropertyWithActiveMedia({
       pid,
       cuid,
       deletedAt: null,
+      ...accessFilter,
     });
     if (!property) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
-    }
-
-    // Security staff can only view properties they're assigned to
-    const detailDept = currentUser.employeeInfo?.department as EmployeeDepartment | undefined;
-    if (detailDept === EmployeeDepartment.SECURITY) {
-      const isAssigned =
-        property.managedBy?.toString() === currentUser.sub ||
-        property.assignedStaff?.some((id: any) => id.toString() === currentUser.sub);
-      if (!isAssigned) {
-        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
-      }
     }
 
     if (currentUser?.client?.role === ROLES.TENANT) {
@@ -1339,6 +1372,8 @@ export class PropertyService implements ICronProvider {
       pid: string;
       currentuser: ICurrentUser;
       hardDelete?: boolean;
+      // Staff edits upload these with the change set and hold them for approval
+      newFiles?: ExtractedMediaFile[];
     },
     updateData: Partial<IPropertyDocument>
   ): Promise<ISuccessReturnData> {
@@ -1375,33 +1410,10 @@ export class PropertyService implements ICronProvider {
       cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
     }
 
-    // Keep currency in sync with country when address changes — but block if active leases exist
-    if (cleanUpdateData.address?.country) {
-      const newCurrency = getCurrencyForCountry(cleanUpdateData.address.country);
-      const existingCurrency = (property.fees as any)?.currency;
-
-      if (newCurrency !== existingCurrency) {
-        const activeLeaseCount = await this.leaseDAO.countDocuments({
-          'property.id': property._id,
-          cuid,
-          deletedAt: null,
-          status: {
-            $in: [
-              LeaseStatus.ACTIVE,
-              LeaseStatus.PENDING_SIGNATURE,
-              LeaseStatus.READY_FOR_SIGNATURE,
-            ],
-          },
-        });
-        if (activeLeaseCount > 0) {
-          throw new BadRequestError({
-            message: 'Cannot change property currency while active leases exist.',
-          });
-        }
-      }
-
-      cleanUpdateData.fees = cleanUpdateData.fees ?? ({} as any);
-      cleanUpdateData.fees!.currency = newCurrency as any;
+    // Currency is the account's, set at creation. Edits keep it: the schema fills in USD
+    // for any fees payload without one, which would otherwise overwrite it.
+    if (cleanUpdateData.fees && property.fees?.currency) {
+      cleanUpdateData.fees.currency = property.fees.currency;
     }
 
     // Sanitize HTML content
@@ -1417,10 +1429,14 @@ export class PropertyService implements ICronProvider {
     // Asset cleanup runs only once the change is actually applied (below for
     // direct updates, on approval for staff edits).
     if (images !== undefined) {
-      cleanUpdateData.images = images.filter((item) => item.status !== 'deleted');
+      cleanUpdateData.images = withoutPendingUploads(
+        images.filter((item) => item.status !== 'deleted')
+      );
     }
     if (documents !== undefined) {
-      cleanUpdateData.documents = documents.filter((item) => item.status !== 'deleted');
+      cleanUpdateData.documents = withoutPendingUploads(
+        documents.filter((item) => item.status !== 'deleted')
+      );
     }
 
     // Validate occupancy status change
@@ -1461,26 +1477,52 @@ export class PropertyService implements ICronProvider {
         }
       }
 
-      // staff update - store in pendingChanges
-      const result = await this.propertyDAO.update(
-        { cuid, pid, deletedAt: null },
+      const uploads = await this.mediaUploadService.uploadRequestFiles(
+        { scannedFiles: ctx.newFiles },
         {
-          $set: {
-            pendingChanges: {
-              ...cleanUpdateData,
-              updatedBy: new Types.ObjectId(ctx.currentuser.sub),
-              updatedAt: new Date(),
-              displayName: ctx.currentuser.fullname,
-            },
-            approvalStatus: PropertyApprovalStatusEnum.PENDING,
-            lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
-          },
+          resourceName: 'property',
+          resourceId: pid,
+          fieldName: 'media',
+          actorId: ctx.currentuser.sub,
         }
       );
+      const pendingChanges = this.buildStaffPendingChanges(
+        ctx.currentuser,
+        property.pendingChanges,
+        cleanUpdateData,
+        this.propertyDAO.buildMediaItems(property, uploads, ctx.currentuser.sub)
+      );
+
+      let result: IPropertyDocument | null = null;
+      try {
+        result = await this.propertyDAO.update(
+          { cuid, pid, deletedAt: null, pendingChanges: hasPendingChanges ? { $ne: null } : null },
+          {
+            $set: {
+              pendingChanges,
+              approvalStatus: PropertyApprovalStatusEnum.PENDING,
+              lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
+            },
+          }
+        );
+      } finally {
+        if (!result) await this.mediaUploadService.removeUploadedFiles(uploads);
+      }
 
       if (!result) {
         throw new BadRequestError({
           message: t('common.errors.operationFailed', { action: 'update property' }),
+        });
+      }
+
+      if (uploads.length) {
+        this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
+          results: uploads,
+          actorId: ctx.currentuser.sub,
+          resourceType: 'document',
+          resourceName: 'property',
+          resourceId: pid,
+          fieldName: 'media',
         });
       }
 
@@ -1557,6 +1599,15 @@ export class PropertyService implements ICronProvider {
         });
       }
 
+      const discardedMedia = pendingMediaItems(property.pendingChanges?.pendingMedia);
+      if (discardedMedia.length) {
+        try {
+          await this.mediaUploadService.removeUploadedFiles(discardedMedia, { deleteAssets: true });
+        } catch (error) {
+          this.log.error('Failed to delete files from overridden pending changes', { pid, error });
+        }
+      }
+
       // The update is already applied — a cleanup failure is logged, not thrown.
       try {
         await cleanUpRemovedPropertyMedia(
@@ -1619,6 +1670,30 @@ export class PropertyService implements ICronProvider {
     }
 
     throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });
+  }
+
+  /** A re-edit keeps the files the earlier submission already uploaded. */
+  private buildStaffPendingChanges(
+    currentuser: ICurrentUser,
+    existingPendingChanges: IPropertyDocument['pendingChanges'],
+    cleanUpdateData: Partial<IPropertyDocument>,
+    newMedia: ReturnType<PropertyDAO['buildMediaItems']>
+  ): Record<string, unknown> {
+    const pendingMedia = {
+      images: [...(existingPendingChanges?.pendingMedia?.images ?? []), ...newMedia.images],
+      documents: [
+        ...(existingPendingChanges?.pendingMedia?.documents ?? []),
+        ...newMedia.documents,
+      ],
+    };
+
+    return {
+      ...cleanUpdateData,
+      updatedBy: new Types.ObjectId(currentuser.sub),
+      updatedAt: new Date(),
+      displayName: currentuser.fullname,
+      ...(pendingMediaItems(pendingMedia).length > 0 && { pendingMedia }),
+    };
   }
 
   /**
@@ -2039,7 +2114,7 @@ export class PropertyService implements ICronProvider {
     });
 
     // Since cumulative counter includes this archived property, we just check active count
-    if (activePropertiesCount >= maxProperties) {
+    if (!isWithinLimit(activePropertiesCount, maxProperties)) {
       throw new BadRequestError({
         message: `Cannot unarchive property. Your ${subscription.planName} plan allows ${maxProperties} active properties. You currently have ${activePropertiesCount} active. Please archive another property or upgrade your plan.`,
       });
@@ -2695,9 +2770,9 @@ export class PropertyService implements ICronProvider {
       });
     }
 
-    if ((property.assignedStaff?.length || 0) >= 10) {
+    if ((property.assignedStaff?.length || 0) >= MAX_ASSIGNED_STAFF) {
       throw new BadRequestError({
-        message: 'Cannot assign more than 10 staff members to a property',
+        message: `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`,
       });
     }
 

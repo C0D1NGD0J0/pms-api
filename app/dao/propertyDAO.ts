@@ -4,6 +4,8 @@ import { type QueryFilter, ClientSession, Types, Model } from 'mongoose';
 import { ListResultWithPagination, IPaginationQuery, UploadResult } from '@interfaces/index';
 import { PropertyUnitStatusEnum, IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import {
+  MediaDocumentItem,
+  PropertyImageItem,
   IPropertyDocument,
   OccupancyStatus,
   PropertyStatus,
@@ -17,6 +19,7 @@ import { IPropertyUnitDAO, IPropertyDAO, IFindOptions } from './interfaces/index
 export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IPropertyDAO {
   protected logger: Logger;
   private propertyUnitDAO: IPropertyUnitDAO;
+  private readonly propertyModel: Model<IPropertyDocument>;
 
   constructor({
     propertyModel,
@@ -26,8 +29,17 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     propertyUnitDAO: IPropertyUnitDAO;
   }) {
     super(propertyModel);
+    this.propertyModel = propertyModel;
     this.propertyUnitDAO = propertyUnitDAO;
     this.logger = createLogger('PropertyDAO');
+  }
+
+  async findPropertyIds(filter: QueryFilter<IPropertyDocument>): Promise<Types.ObjectId[]> {
+    try {
+      return await this.propertyModel.distinct('_id', filter).exec();
+    } catch (error) {
+      throw this.throwErrorHandler(error);
+    }
   }
 
   async getFilteredProperties(
@@ -214,6 +226,52 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     return this.countDocuments({ cuid, deletedAt: null, isArchived: { $ne: true } });
   }
 
+  /**
+   * Turns upload results into property image/document entries (documents reuse the
+   * description/type of a matching template by documentName).
+   */
+  buildMediaItems(
+    property: Pick<IPropertyDocument, 'documents'>,
+    uploadData: UploadResult[],
+    userId: string
+  ): { documents: MediaDocumentItem[]; images: PropertyImageItem[] } {
+    const documents = uploadData
+      .filter(
+        (upload) => upload.fieldName === 'documents' || upload.fieldName?.includes('documents')
+      )
+      .map((upload) => {
+        const template = property.documents?.find(
+          (doc) => doc.documentName === upload?.documentName
+        );
+        if (!template) this.logger.warn(`Document template not found for: ${upload.documentName}`);
+        return {
+          key: upload.key,
+          url: upload.url,
+          status: 'active' as const,
+          uploadedAt: new Date(),
+          externalUrl: upload.url ?? '',
+          documentName: upload.documentName || upload.filename || 'Unknown Document',
+          description: template ? template.description : 'Uploaded document',
+          documentType: template
+            ? template.documentType
+            : ((upload.documentType || 'other') as any),
+          uploadedBy: new Types.ObjectId(upload.actorId || userId),
+        };
+      });
+
+    const images = uploadData
+      .filter((upload) => upload.fieldName === 'images' || upload.fieldName?.includes('images'))
+      .map((upload) => ({
+        key: upload.key,
+        url: upload.url,
+        uploadedAt: new Date(),
+        filename: upload.filename,
+        uploadedBy: new Types.ObjectId(upload.actorId || userId),
+      })) as PropertyImageItem[];
+
+    return { documents, images };
+  }
+
   async updatePropertyDocument(
     propertyUid: string,
     uploadData: UploadResult[],
@@ -224,86 +282,26 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         throw new Error('Property ID, upload data, and user ID are required');
       }
 
-      const property = await this.findFirst({ pid: propertyUid });
+      const property = await this.findFirst({ pid: propertyUid }, { projection: { documents: 1 } });
       if (!property) {
         throw new Error('Property not found');
       }
 
-      // Separate images and documents based on fieldName
-      const documentUploads = uploadData.filter(
-        (upload) => upload.fieldName === 'documents' || upload.fieldName?.includes('documents')
-      );
-
-      const imageUploads = uploadData.filter(
-        (upload) => upload.fieldName === 'images' || upload.fieldName?.includes('images')
-      );
-
+      const { documents, images } = this.buildMediaItems(property, uploadData, userId);
       const updateOperation: any = {
         $set: { lastModifiedBy: new Types.ObjectId(userId) },
       };
 
-      // Process document uploads
-      if (documentUploads.length > 0) {
-        const processedDocuments = documentUploads
-          .map((upload) => {
-            const foundDocument = property.documents?.find(
-              (doc) => doc.documentName === upload?.documentName
-            );
-            if (!foundDocument) {
-              this.logger.warn(`Document template not found for: ${upload.documentName}`);
-              return {
-                key: upload.key,
-                url: upload.url,
-                status: 'active' as const,
-                uploadedAt: new Date(),
-                externalUrl: upload.url ?? '',
-                documentName: upload.documentName || upload.filename || 'Unknown Document',
-                description: 'Uploaded document',
-                documentType: (upload.documentType || 'other') as any,
-                uploadedBy: new Types.ObjectId(upload.actorId || userId),
-              };
-            }
-            return {
-              key: upload.key,
-              url: upload.url,
-              status: 'active' as const,
-              uploadedAt: new Date(),
-              externalUrl: upload.url ?? '',
-              documentName: upload.documentName,
-              description: foundDocument.description,
-              documentType: foundDocument.documentType,
-              uploadedBy: new Types.ObjectId(upload.actorId || userId),
-            };
-          })
-          .filter((document) => document !== null);
-
-        if (processedDocuments.length > 0) {
-          updateOperation.$push = {
-            ...updateOperation.$push,
-            documents: { $each: processedDocuments },
-          };
-        }
+      if (documents.length > 0) {
+        updateOperation.$push = { ...updateOperation.$push, documents: { $each: documents } };
       }
-
-      // Process image uploads
-      if (imageUploads.length > 0) {
-        const processedImages = imageUploads.map((upload) => ({
-          key: upload.key,
-          url: upload.url,
-          uploadedAt: new Date(),
-          filename: upload.filename,
-          uploadedBy: new Types.ObjectId(upload.actorId || userId),
-        }));
-
-        updateOperation.$push = {
-          ...updateOperation.$push,
-          images: { $each: processedImages },
-        };
+      if (images.length > 0) {
+        updateOperation.$push = { ...updateOperation.$push, images: { $each: images } };
       }
 
       this.logger.info(`Processing uploads for property ${propertyUid}:`, {
-        documentsCount: documentUploads.length,
-        imagesCount: imageUploads.length,
+        documentsCount: documents.length,
+        imagesCount: images.length,
         totalUploads: uploadData.length,
       });
 

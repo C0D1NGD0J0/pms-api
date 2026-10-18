@@ -139,7 +139,16 @@ export class WebhookController {
       }
 
       const rawBody = (req as any).rawBody ?? req.body;
-      const event = await this.stripeService.verifyWebhookSignature(rawBody, signature);
+      let event: any;
+      try {
+        event = await this.stripeService.verifyWebhookSignature(rawBody, signature);
+      } catch (verificationError: any) {
+        this.log.error(
+          { error: verificationError.message },
+          'Stripe webhook signature verification failed'
+        );
+        return res.status(400).json({ success: false, message: verificationError.message });
+      }
       this.log.info({ type: event.type, id: event.id }, 'Processing Stripe webhook event');
 
       const claimed = await this.idempotencyCache.claimWebhookEvent(event.id);
@@ -190,6 +199,23 @@ export class WebhookController {
               stripeSubscriptionId: subscription.id,
               canceledAt: subscription.canceled_at,
             });
+            break;
+          }
+
+          // Tenant charges are PaymentIntents tagged with our cuid. Card-checkout
+          // PaymentIntents (tagged with pytuid) settle via checkout.session.completed,
+          // and subscription PaymentIntents via invoice.* — both are skipped here.
+          case 'payment_intent.payment_failed':
+          case 'payment_intent.succeeded': {
+            const paymentIntent = event.data.object as any;
+            const isTenantCharge =
+              !!paymentIntent.metadata?.cuid && !paymentIntent.metadata?.pytuid;
+            if (!isTenantCharge) break;
+            if (event.type === 'payment_intent.succeeded') {
+              await this.paymentService.handlePaymentIntentSucceeded(paymentIntent);
+            } else {
+              await this.paymentService.handlePaymentIntentFailed(paymentIntent);
+            }
             break;
           }
 
@@ -290,7 +316,9 @@ export class WebhookController {
         error: error.message,
         stack: error.stack,
       });
-      return res.status(400).json({
+      // Only processing failures reach here (bad signatures return 400 above). A 5xx marks the
+      // failure as ours in the Stripe Dashboard; Stripe retries either way.
+      return res.status(500).json({
         success: false,
         message: error.message || 'Webhook processing failed',
       });
@@ -306,11 +334,20 @@ export class WebhookController {
       }
 
       const rawBody = (req as any).rawBody ?? req.body;
-      const event = await this.stripeService.verifyWebhookSignature(
-        rawBody,
-        signature,
-        envVariables.STRIPE.CONNECT_WEBHOOK_SECRET
-      );
+      let event: any;
+      try {
+        event = await this.stripeService.verifyWebhookSignature(
+          rawBody,
+          signature,
+          envVariables.STRIPE.CONNECT_WEBHOOK_SECRET
+        );
+      } catch (verificationError: any) {
+        this.log.error(
+          { error: verificationError.message },
+          'Stripe Connect webhook signature verification failed'
+        );
+        return res.status(400).json({ success: false, message: verificationError.message });
+      }
       this.log.info(
         { type: event.type, id: event.id, account: event.account },
         'Processing Stripe Connect webhook event'
@@ -369,7 +406,7 @@ export class WebhookController {
         error: error.message,
         stack: error.stack,
       });
-      return res.status(400).json({
+      return res.status(500).json({
         success: false,
         message: error.message || 'Webhook processing failed',
       });

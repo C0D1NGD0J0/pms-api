@@ -1,6 +1,6 @@
-import { ZodError } from 'zod';
 import request from 'supertest';
 import { Application } from 'express';
+import { ZodTypeAny, ZodError } from 'zod';
 import { httpStatusCodes } from '@utils/constants';
 import { ROLES } from '@shared/constants/roles.constants';
 import { AuthService } from '@services/auth/auth.service';
@@ -11,6 +11,7 @@ import { Invitation, Profile, Client, Vendor, User } from '@models/index';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
+import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import { InvitationDAO, ProfileDAO, ClientDAO, VendorDAO, UserDAO } from '@dao/index';
 import {
   mockUnauthenticatedContext,
@@ -22,14 +23,12 @@ import {
   createTestUser,
 } from '@tests/helpers';
 
-/**
- * Wraps a handler to catch ZodError and return 400 instead of letting it
- * reach errorHandlerMiddleware (which doesn't map ZodError to 400).
- */
-const withZodErrorHandler =
-  (handler: (req: any, res: any) => Promise<any>) => async (req: any, res: any) => {
+// Mirrors validateRequest for the body: the service trusts route-validated input
+const withValidatedBody =
+  (schema: ZodTypeAny, handler: (req: any, res: any) => Promise<any>) =>
+  async (req: any, res: any) => {
     try {
-      return await handler(req, res);
+      req.body = await schema.parseAsync(req.body);
     } catch (err) {
       if (err instanceof ZodError) {
         return res.status(400).json({
@@ -40,6 +39,7 @@ const withZodErrorHandler =
       }
       throw err;
     }
+    return handler(req, res);
   };
 
 describe('InvitationController Integration Tests', () => {
@@ -49,6 +49,7 @@ describe('InvitationController Integration Tests', () => {
   let adminUser: any;
   let managerUser: any;
   let testInvitation: any;
+  const initializeRoleInfo = jest.fn().mockResolvedValue(undefined);
 
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
 
@@ -166,7 +167,7 @@ describe('InvitationController Integration Tests', () => {
       vendorService,
       queueFactory: mockQueueFactoryLocal as any,
       emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() } as any,
-      profileService: { initializeRoleInfo: jest.fn().mockResolvedValue(undefined) } as any,
+      profileService: { initializeRoleInfo } as any,
       userService: mockUserService as any,
       userCache: {
         invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
@@ -207,7 +208,9 @@ describe('InvitationController Integration Tests', () => {
           method: 'post',
           path: SEND_INVITE_PATH,
           contextUser: () => adminUser,
-          handler: withZodErrorHandler((req, res) => invitationController.sendInvitation(req, res)),
+          handler: withValidatedBody(InvitationValidations.sendInvitation, (req, res) =>
+            invitationController.sendInvitation(req, res)
+          ),
         },
         {
           method: 'get',
@@ -224,8 +227,6 @@ describe('InvitationController Integration Tests', () => {
           contextUser: () => adminUser,
           handler: (req, res) => {
             req.context = mockUnauthenticatedContext() as any;
-            // Controller reads token from req.body, so merge params.token into body
-            req.body.token = req.params.token;
             return invitationController.acceptInvitation(req, res);
           },
         },
@@ -248,7 +249,7 @@ describe('InvitationController Integration Tests', () => {
           method: 'patch',
           path: RESEND_PATH,
           contextUser: () => adminUser,
-          handler: withZodErrorHandler((req, res) =>
+          handler: withValidatedBody(InvitationValidations.resendInvitation, (req, res) =>
             invitationController.resendInvitation(req, res)
           ),
         },
@@ -308,6 +309,7 @@ describe('InvitationController Integration Tests', () => {
   beforeEach(async () => {
     await clearTestDatabase();
     resetContextOverrides();
+    initializeRoleInfo.mockClear();
 
     // Create test client and users
     testClient = await createTestClient();
@@ -531,6 +533,64 @@ describe('InvitationController Integration Tests', () => {
       expect(user?.isActive).toBe(true);
     });
 
+    it('should carry vendorInfo.serviceAreas from send through accept into the vendor entity data', async () => {
+      const inviteeEmail = `vendor.areas.${Date.now()}@test.com`;
+      await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}`)
+        .send({
+          inviteeEmail,
+          role: ROLES.VENDOR,
+          status: 'pending',
+          personalInfo: { firstName: 'Area', lastName: 'Vendor' },
+          vendorInfo: {
+            companyName: 'Area Plumbing Ltd',
+            businessType: 'Plumbing',
+            registrationNumber: 'REG-AREA-001',
+            serviceAreas: { maxDistance: 25 },
+          },
+        })
+        .expect(httpStatusCodes.OK);
+
+      const savedInvitation = await Invitation.findOne({ inviteeEmail });
+      expect(savedInvitation?.metadata?.vendorInfo).toMatchObject({
+        serviceAreas: { maxDistance: 25 },
+      });
+
+      await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${savedInvitation!.invitationToken}`)
+        .send({
+          password: 'SecurePassword123!',
+          personalInfo: { firstName: 'Area', lastName: 'Vendor' },
+        })
+        .expect(httpStatusCodes.OK);
+
+      expect(initializeRoleInfo).toHaveBeenCalledTimes(1);
+      const [, cuid, role, linkedVendorUid, metadata] = initializeRoleInfo.mock.calls[0] as any[];
+      expect(cuid).toBe(testClient.cuid);
+      expect(role).toBe(ROLES.VENDOR);
+      expect(linkedVendorUid).toBeUndefined();
+      expect(metadata.isPrimaryVendor).toBe(true);
+      expect(metadata.vendorEntityData).toMatchObject({
+        companyName: 'Area Plumbing Ltd',
+        registrationNumber: 'REG-AREA-001',
+        serviceAreas: { maxDistance: 25 },
+      });
+    });
+
+    it('should not build vendor entity data for non-vendor invitations', async () => {
+      await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${testInvitation.invitationToken}`)
+        .send({
+          password: 'SecurePassword123!',
+          personalInfo: { firstName: 'Staff', lastName: 'Member' },
+        })
+        .expect(httpStatusCodes.OK);
+
+      const [, , , , metadata] = initializeRoleInfo.mock.calls[0] as any[];
+      expect(metadata).not.toHaveProperty('vendorEntityData');
+      expect(metadata).not.toHaveProperty('isPrimaryVendor');
+    });
+
     it('should reject acceptance with weak password', async () => {
       // Create a separate invitation for this test
       const weakPwInvitation = await createTestInvitation(testClient._id, adminUser._id, {
@@ -576,6 +636,41 @@ describe('InvitationController Integration Tests', () => {
         .expect(httpStatusCodes.BAD_REQUEST);
 
       expect(response.body.success).toBe(false);
+    });
+
+    it('should accept using the URL token and ignore a token in the body', async () => {
+      const urlTokenInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `urltoken.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/invites/${testClient.cuid}/accept/${urlTokenInvitation.invitationToken}`)
+        .send({ password: 'SecurePassword123!', token: 'some-other-token' })
+        .expect(httpStatusCodes.OK);
+
+      expect(response.body.success).toBe(true);
+      const invitation = await Invitation.findById(urlTokenInvitation._id);
+      expect(invitation?.status).toBe('accepted');
+    });
+
+    it("should reject a token accepted on another client's cuid and leave it pending", async () => {
+      const otherClient = await createTestClient();
+      const crossClientInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `crossclient.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/invites/${otherClient.cuid}/accept/${crossClientInvitation.invitationToken}`)
+        .send({ password: 'SecurePassword123!' })
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      const invitation = await Invitation.findById(crossClientInvitation._id);
+      expect(invitation?.status).toBe('pending');
     });
 
     it('should set proper authentication cookies after acceptance', async () => {
@@ -720,6 +815,65 @@ describe('InvitationController Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+    });
+
+    it('sends a reminder for a pending invitation and counts it', async () => {
+      const pendingInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `pending.reminder.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+      const otherPending = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `pending.untouched.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+
+      await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/resend/${pendingInvitation.iuid}`)
+        .send({})
+        .expect(httpStatusCodes.OK);
+
+      const reminded = await Invitation.findById(pendingInvitation._id).lean();
+      const untouched = await Invitation.findById(otherPending._id).lean();
+      expect(reminded?.status).toBe('pending');
+      expect(reminded?.metadata?.remindersSent).toBe(1);
+      expect(reminded?.metadata?.lastReminderSent).toBeDefined();
+      expect(untouched?.metadata?.remindersSent ?? 0).toBe(0);
+    });
+
+    it('sends a reminder for an invitation whose email was already delivered (sent)', async () => {
+      const sentInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `sent.reminder.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'pending',
+      });
+      await Invitation.updateOne({ _id: sentInvitation._id }, { $set: { status: 'sent' } });
+
+      await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/resend/${sentInvitation.iuid}`)
+        .send({})
+        .expect(httpStatusCodes.OK);
+
+      const reminded = await Invitation.findById(sentInvitation._id).lean();
+      expect(reminded?.metadata?.remindersSent).toBe(1);
+    });
+
+    it('rejects resending a revoked invitation', async () => {
+      const revokedInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `revoked.resend.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'revoked',
+      });
+
+      const response = await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/resend/${revokedInvitation.iuid}`)
+        .send({})
+        .expect(httpStatusCodes.BAD_REQUEST);
+
+      expect(response.body.success).toBe(false);
+      const unchanged = await Invitation.findById(revokedInvitation._id).lean();
+      expect(unchanged?.status).toBe('revoked');
     });
 
     it('should reject resending already accepted invitation', async () => {
@@ -869,6 +1023,41 @@ describe('InvitationController Integration Tests', () => {
       expect(invitation?.personalInfo.firstName).toBe('UpdatedFirst');
     });
 
+    it('should save top-level role info into metadata without wiping saved fields', async () => {
+      const draftInvitation = await createTestInvitation(testClient._id, adminUser._id, {
+        inviteeEmail: `draft.roleinfo.${Date.now()}@test.com`,
+        role: ROLES.STAFF,
+        status: 'draft',
+      });
+      await Invitation.updateOne(
+        { _id: draftInvitation._id },
+        {
+          $set: {
+            'metadata.inviteMessage': 'Welcome aboard',
+            'metadata.employeeInfo': { department: 'operations', jobTitle: 'Coordinator' },
+          },
+        }
+      );
+
+      await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/${draftInvitation.iuid}`)
+        .send({
+          inviteeEmail: draftInvitation.inviteeEmail,
+          role: ROLES.STAFF,
+          status: 'draft',
+          personalInfo: { firstName: 'Role', lastName: 'Info' },
+          employeeInfo: { jobTitle: 'Senior Coordinator' },
+        })
+        .expect(httpStatusCodes.OK);
+
+      const invitation = await Invitation.findById(draftInvitation._id).lean();
+      expect(invitation?.metadata.employeeInfo).toEqual({
+        department: 'operations',
+        jobTitle: 'Senior Coordinator',
+      });
+      expect(invitation?.metadata.inviteMessage).toBe('Welcome aboard');
+    });
+
     it('should reject updating accepted invitation', async () => {
       const acceptedInvitation = await createTestInvitation(testClient._id, adminUser._id, {
         inviteeEmail: `accepted5.${Date.now()}@test.com`,
@@ -911,6 +1100,27 @@ describe('InvitationController Integration Tests', () => {
 
       expect(response.body.success).toBe(true);
       expect(response.body.data).toBeDefined();
+    });
+
+    it('sends a reminder to every pending invitation', async () => {
+      const pendingBefore = await Invitation.find({
+        clientId: testClient._id,
+        status: 'pending',
+      }).lean();
+
+      const response = await request(app)
+        .patch(`/api/v1/invites/${testClient.cuid}/process-pending`)
+        .expect(httpStatusCodes.OK);
+
+      const result = response.body.data.data ?? response.body.data;
+      expect(result.failed).toBe(0);
+      expect(result.processed).toBe(pendingBefore.length);
+      expect(result.processed).toBeGreaterThanOrEqual(2);
+
+      const pendingAfter = await Invitation.find({
+        _id: { $in: pendingBefore.map((inv) => inv._id) },
+      }).lean();
+      pendingAfter.forEach((inv) => expect(inv.metadata?.remindersSent).toBe(1));
     });
 
     it('should support dry run mode', async () => {

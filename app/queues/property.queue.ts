@@ -1,49 +1,65 @@
+import { Job } from 'bull';
 import { CsvJobData } from '@interfaces/index';
 import { QUEUE_NAMES, JOB_NAME } from '@utils/index';
-import { S3Service } from '@services/fileUpload/awsS3';
 import { PropertyWorker } from '@workers/property.worker';
 
 import { BaseQueue } from './base.queue';
-import { withStagedCsv, stageCsvInS3 } from './csvFileTransfer';
+import { attachCsvToJob, withCsvFile } from './csvFileTransfer';
 
 interface IConstructor {
   propertyWorker: PropertyWorker;
-  s3Service: S3Service;
 }
 
 export class PropertyQueue extends BaseQueue {
   private readonly propertyWorker: PropertyWorker;
-  private readonly s3Service: S3Service;
 
-  constructor({ propertyWorker, s3Service }: IConstructor) {
+  constructor({ propertyWorker }: IConstructor) {
     super({ queueName: QUEUE_NAMES.PROPERTY_QUEUE });
     this.propertyWorker = propertyWorker;
-    this.s3Service = s3Service;
     this.processQueueJobs(
       JOB_NAME.CSV_VALIDATION_JOB,
       2,
-      withStagedCsv(s3Service, this.propertyWorker.processCsvValidation)
+      withCsvFile(this.propertyWorker.processCsvValidation)
     );
     this.processQueueJobs(
       JOB_NAME.CSV_IMPORT_JOB,
       1,
-      withStagedCsv(s3Service, this.propertyWorker.processCsvImport)
+      withCsvFile(this.propertyWorker.processCsvImport)
     );
+  }
+
+  protected async onJobFailedPermanently(job: Job<CsvJobData>, error: Error): Promise<void> {
+    if (job.name === JOB_NAME.CSV_VALIDATION_JOB || job.name === JOB_NAME.CSV_IMPORT_JOB) {
+      await this.propertyWorker.notifyCsvJobFailed(job, error);
+    }
   }
 
   async addCsvValidationJob(data: CsvJobData) {
     const jobId = await this.addJobToQueue(
       JOB_NAME.CSV_VALIDATION_JOB,
-      await stageCsvInS3(this.s3Service, data)
+      await attachCsvToJob(data),
+      {
+        // Every row is geocoded, so allow more than the 60s default; the user can just re-run it
+        attempts: 1,
+        timeout: 5 * 60 * 1000,
+        removeOnComplete: 100,
+        removeOnFail: 500,
+        delay: 5000,
+      }
     );
     return jobId;
   }
 
   async addCsvImportJob(data: CsvJobData) {
-    const jobId = await this.addJobToQueue(
-      JOB_NAME.CSV_IMPORT_JOB,
-      await stageCsvInS3(this.s3Service, data)
-    );
+    const jobId = await this.addJobToQueue(JOB_NAME.CSV_IMPORT_JOB, await attachCsvToJob(data), {
+      // A retry would insert the same properties again, and Bull's timeout doesn't stop the
+      // first run — so one attempt with room to geocode and insert a large file.
+      attempts: 1,
+      timeout: 15 * 60 * 1000,
+      removeOnComplete: 100,
+      removeOnFail: 500,
+      delay: 5000,
+    });
     return jobId;
   }
 }

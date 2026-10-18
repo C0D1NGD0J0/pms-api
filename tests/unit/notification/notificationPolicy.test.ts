@@ -33,8 +33,10 @@ describe('notificationPolicy', () => {
     it.each([
       [undefined, ['maintenance', 'propertyUpdates', 'announcements']],
       ['maintenance', ['maintenance', 'propertyUpdates', 'announcements']],
-      ['accounting', ['payments', 'maintenance', 'propertyUpdates', 'announcements']],
-      ['security', ['maintenance', 'propertyUpdates', 'guestPasses', 'announcements']],
+      ['other', ['maintenance', 'propertyUpdates', 'announcements']],
+      // accounting and security can't open maintenance requests
+      ['accounting', ['payments', 'propertyUpdates', 'announcements']],
+      ['security', ['propertyUpdates', 'guestPasses', 'announcements']],
       ['operations', ['payments', 'maintenance', 'leases', 'propertyUpdates', 'announcements']],
       [
         'management',
@@ -129,6 +131,35 @@ describe('notificationPolicy', () => {
       'leases',
     ]);
     expect(getDisabledCategories(null)).toEqual([]);
+  });
+
+  describe('getDisabledCategories — staff departments', () => {
+    it('hides maintenance from staff whose department cannot open maintenance requests', () => {
+      expect(getDisabledCategories(null, { roles: ['staff'], department: 'accounting' })).toEqual([
+        'maintenance',
+      ]);
+      expect(getDisabledCategories(null, { roles: ['staff'], department: 'security' })).toEqual([
+        'maintenance',
+      ]);
+    });
+
+    it('keeps record categories for departments that can open them', () => {
+      for (const department of ['maintenance', 'operations', 'management', undefined]) {
+        expect(getDisabledCategories(null, { roles: ['staff'], department })).toEqual([]);
+      }
+    });
+
+    it('merges with the categories the user switched off', () => {
+      expect(
+        getDisabledCategories({ payments: false }, { roles: ['staff'], department: 'accounting' })
+      ).toEqual(['payments', 'maintenance']);
+    });
+
+    it('never hides categories from managers, even with a department set', () => {
+      expect(getDisabledCategories(null, { roles: ['manager'], department: 'security' })).toEqual(
+        []
+      );
+    });
   });
 
   describe('sanitizeNotificationUpdate', () => {

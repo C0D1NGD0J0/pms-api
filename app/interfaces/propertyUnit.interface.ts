@@ -67,8 +67,8 @@ export interface IPropertyUnitDocument extends IPropertyUnit, Document {
 }
 
 export interface IPropertyUnit {
+  pendingChanges?: IPropertyUnitPendingChanges | null;
   approvalDetails?: IPropertyUnitApprovalDetail[];
-  pendingChanges?: IPropertyUnitPendingChanges;
   specifications: IPropertyUnitSpecifications;
   inspections?: PropertyUnitInspection[];
   unitAuthorization?: IUnitAuthorization;
@@ -172,6 +172,15 @@ export interface UnitTypeRule {
   requiredFields?: string[];
 }
 
+export interface IPropertyUnitApprovalDetail {
+  metadata?: Record<string, unknown>;
+  rejectionReason?: string;
+  action: ApprovalAction;
+  actor: Types.ObjectId;
+  timestamp: Date;
+  notes?: string;
+}
+
 export interface IPropertyUnitAmenities {
   airConditioning: boolean;
   washerDryer: boolean;
@@ -220,13 +229,6 @@ export interface IPropertyUnitSpecifications {
   bathrooms?: number;
   totalArea: number;
   bedrooms?: number;
-}
-
-export interface IPropertyUnitApprovalDetail {
-  action: ApprovalAction;
-  actor: Types.ObjectId;
-  timestamp: Date;
-  notes?: string;
 }
 
 export type UnitFeature = {

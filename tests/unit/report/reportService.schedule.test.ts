@@ -95,6 +95,46 @@ describe('ReportService — Schedule Management', () => {
       expect(nextRunAt.getDate()).toBe(1);
     });
 
+    it('should reject schedule recipients above the plan email limit', async () => {
+      mockSubscriptionPlanConfig.getReportLimits.mockReturnValueOnce({
+        maxReportsPerMonth: 10,
+        maxReportSections: 9,
+        maxReportEmails: 10,
+      });
+      const recipients = Array.from({ length: 11 }, (_, i) => `user${i}@test.com`);
+
+      await expect(
+        service.upsertSchedule(CUID, USER_ID, {
+          frequency: ScheduleFrequency.MONTHLY,
+          emailRecipients: recipients,
+        })
+      ).rejects.toThrow('report.errors.tooManyEmailRecipients');
+      expect(mockReportScheduleDAO.upsertSchedule).not.toHaveBeenCalled();
+    });
+
+    it('should accept 25 schedule recipients on an enterprise-sized plan', async () => {
+      mockSubscriptionPlanConfig.getReportLimits.mockReturnValueOnce({
+        maxReportsPerMonth: -1,
+        maxReportSections: 9,
+        maxReportEmails: 25,
+      });
+      mockReportScheduleDAO.upsertSchedule.mockResolvedValue({
+        _id: new Types.ObjectId(SCHEDULE_ID),
+      });
+      const recipients = Array.from({ length: 25 }, (_, i) => `user${i}@test.com`);
+
+      const result = await service.upsertSchedule(CUID, USER_ID, {
+        frequency: ScheduleFrequency.MONTHLY,
+        emailRecipients: recipients,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockReportScheduleDAO.upsertSchedule).toHaveBeenCalledWith(
+        CUID,
+        expect.objectContaining({ emailRecipients: recipients })
+      );
+    });
+
     it('should use Types.ObjectId for createdBy', async () => {
       mockReportScheduleDAO.upsertSchedule.mockResolvedValue({
         _id: new Types.ObjectId(SCHEDULE_ID),

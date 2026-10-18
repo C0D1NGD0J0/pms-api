@@ -343,7 +343,8 @@ describe('Invitation Metadata Transfer', () => {
       // Execute
       await invitationService.acceptInvitation('client-123', acceptanceData);
 
-      // Verify that initializeRoleInfo was called with the vendor metadata
+      // A primary-vendor invitation (no linkedVendorUid) hands its business details to the
+      // profile service so the vendor entity is created from them
       expect(profileService.initializeRoleInfo).toHaveBeenCalledWith(
         mockIds.user.toString(),
         'client-123',
@@ -352,13 +353,16 @@ describe('Invitation Metadata Transfer', () => {
         {
           employeeInfo: undefined,
           vendorInfo: mockVendorInfo,
+          isPrimaryVendor: true,
+          vendorEntityData: expect.objectContaining({
+            companyName: mockVendorInfo.companyName,
+            businessType: mockVendorInfo.businessType,
+            registrationNumber: mockVendorInfo.registrationNumber,
+            servicesOffered: mockVendorInfo.servicesOffered,
+            contactPerson: mockVendorInfo.contactPerson,
+          }),
         }
       );
-
-      // Verify that for simple vendorInfo without isPrimaryVendor, no vendor entity is created
-      // since the profile service only creates vendors for primary vendors or team members
-      expect(mockVendorServiceForInvitation.createVendor).not.toHaveBeenCalled();
-      expect(mockDAOs.profileDAO.updateVendorReference).not.toHaveBeenCalled();
     });
   });
 

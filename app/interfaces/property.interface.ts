@@ -125,6 +125,19 @@ export interface PropertyTypeRule {
   minUnits: number;
 }
 
+export interface CsvJobData {
+  // User-confirmed header → field key mapping from the frontend's mapping step.
+  columnMapping?: Record<string, string>;
+  /** The uploaded CSV's bytes; the worker writes them to a temp csvFilePath. */
+  csvContentBase64?: string;
+  clientInfo: IClientInfo;
+  /** Importer may approve properties (admin/manager), so imported properties start approved */
+  autoApprove?: boolean;
+  csvFilePath: string;
+  jobId?: string;
+  userId: string;
+}
+
 export interface IAssignableUser {
   employeeInfo?: {
     department?: string;
@@ -184,17 +197,6 @@ export interface IPropertyAuthorization {
   notes?: string; // Internal notes
 }
 
-export interface CsvJobData {
-  // User-confirmed header → field key mapping from the frontend's mapping step.
-  columnMapping?: Record<string, string>;
-  clientInfo: IClientInfo;
-  csvFilePath: string;
-  /** Where the API staged the CSV in S3; the worker downloads it to csvFilePath. */
-  csvS3Key?: string;
-  jobId?: string;
-  userId: string;
-}
-
 export interface FinancialDetails {
   lastAssessmentDate?: Date;
   maintenanceCost?: number;
@@ -250,7 +252,7 @@ export interface PropertySpecifications {
 }
 
 export interface PropertyApprovalEntry {
-  action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted';
+  action: 'created' | 'approved' | 'rejected' | 'updated' | 'submitted' | 'overridden';
   rejectionReason?: string; // Only for rejected actions
   actor: Types.ObjectId;
   timestamp: Date;
@@ -269,6 +271,13 @@ export interface UnitInfo {
   totalUnits: number;
 }
 
+export type IPendingChanges = {
+  pendingMedia?: { documents: MediaDocumentItem[]; images: PropertyImageItem[] };
+  updatedAt: Date;
+  updatedBy: Types.ObjectId;
+  displayName: string;
+} & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
+
 export interface CommunityAmenities {
   laundryFacility: boolean;
   securitySystem: boolean;
@@ -278,6 +287,18 @@ export interface CommunityAmenities {
   elevator: boolean;
   doorman: boolean;
   parking: boolean;
+}
+
+export interface AddressDetails {
+  streetNumber?: string;
+  fullAddress?: string;
+  unitNumber?: string;
+  latAndlon?: string;
+  postCode?: string;
+  country?: string;
+  street?: string;
+  state?: string;
+  city?: string;
 }
 
 export interface PropertyImageItem {
@@ -321,17 +342,6 @@ export interface IVerificationDetailEntry {
   notes?: string;
 }
 
-export interface AddressDetails {
-  streetNumber?: string;
-  fullAddress?: string;
-  latAndlon?: string;
-  postCode?: string;
-  country?: string;
-  street?: string;
-  state?: string;
-  city?: string;
-}
-
 export interface InteriorAmenities {
   airConditioning: boolean;
   storageSpace: boolean;
@@ -362,12 +372,6 @@ export interface IPropertyNote {
   html?: string;
   text: string;
 }
-
-export type IPendingChanges = {
-  updatedAt: Date;
-  updatedBy: Types.ObjectId;
-  displayName: string;
-} & Partial<Omit<IProperty, 'cuid' | 'pid' | 'id' | '_id'>>;
 
 export interface PropertyUtilities {
   electricity: boolean;

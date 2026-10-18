@@ -433,6 +433,17 @@ const LeaseSchema = new Schema<ILeaseDocument>(
           type: Schema.Types.ObjectId,
           ref: 'User',
         },
+        signerInfo: {
+          name: {
+            type: String,
+            trim: true,
+          },
+          email: {
+            type: String,
+            trim: true,
+            match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Please provide a valid email address'],
+          },
+        },
         coTenantInfo: {
           name: {
             type: String,
@@ -969,7 +980,5 @@ LeaseSchema.index(
 );
 
 const LeaseModel = model<ILeaseDocument>('Lease', LeaseSchema);
-
-LeaseModel.syncIndexes();
 
 export default LeaseModel;

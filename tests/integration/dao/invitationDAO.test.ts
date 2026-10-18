@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { InvitationDAO } from '@dao/invitationDAO';
 import { clearTestDatabase } from '@tests/helpers';
 import { Invitation, Client, User } from '@models/index';
+import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
 
 describe('InvitationDAO Integration Tests', () => {
@@ -200,15 +201,36 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const found = await invitationDAO.findByToken('test-token-123');
+      const found = await invitationDAO.findByToken('test-token-123', testClientId.toString());
 
       expect(found).not.toBeNull();
       expect(found?.iuid).toBe(created.iuid);
       expect(found?.inviteeEmail).toBe('token@example.com');
     });
 
+    it('should return null when the token belongs to another client', async () => {
+      await Invitation.create({
+        invitedBy: testInviterId,
+        inviteeEmail: 'scoped-token@example.com',
+        clientId: testClientId,
+        role: IUserRole.STAFF,
+        status: 'pending',
+        invitationToken: 'scoped-token-123',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        personalInfo: { firstName: 'Scoped', lastName: 'Token' },
+        metadata: { remindersSent: 0 },
+      });
+
+      const found = await invitationDAO.findByToken(
+        'scoped-token-123',
+        new Types.ObjectId().toString()
+      );
+
+      expect(found).toBeNull();
+    });
+
     it('should return null for non-existent token', async () => {
-      const found = await invitationDAO.findByToken('non-existent-token');
+      const found = await invitationDAO.findByToken('non-existent-token', testClientId.toString());
 
       expect(found).toBeNull();
     });
@@ -625,6 +647,41 @@ describe('InvitationDAO Integration Tests', () => {
       );
 
       expect(updated?.linkedVendorUid).toBeNull();
+    });
+
+    it('should keep saved role info that a partial edit does not resend', async () => {
+      const created = await Invitation.create({
+        invitedBy: testInviterId,
+        inviteeEmail: 'partial-edit@example.com',
+        clientId: testClientId,
+        role: IUserRole.STAFF,
+        status: 'draft',
+        invitationToken: 'partial-edit-token',
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        personalInfo: { firstName: 'Partial', lastName: 'Edit' },
+        metadata: {
+          remindersSent: 3,
+          lastReminderSent: new Date(),
+          inviteMessage: 'Original message',
+          employeeInfo: { jobTitle: 'Leasing Agent', department: EmployeeDepartment.OPERATIONS },
+        },
+      });
+
+      const updated = await invitationDAO.updateInvitation(created.iuid, testClientId.toString(), {
+        inviteeEmail: 'partial-edit@example.com',
+        role: IUserRole.STAFF,
+        status: 'draft',
+        personalInfo: { firstName: 'Partial', lastName: 'Edit' },
+        metadata: { employeeInfo: { jobTitle: 'Senior Leasing Agent' } },
+      });
+
+      expect(updated?.metadata.employeeInfo).toEqual({
+        jobTitle: 'Senior Leasing Agent',
+        department: EmployeeDepartment.OPERATIONS,
+      });
+      expect(updated?.metadata.inviteMessage).toBe('Original message');
+      expect(updated?.metadata.remindersSent).toBe(0);
+      expect(updated?.metadata.lastReminderSent).toBeUndefined();
     });
   });
 

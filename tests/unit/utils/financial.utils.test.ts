@@ -178,6 +178,10 @@ describe('calcGatewayFee', () => {
     expect(calcGatewayFee(10000, 2.9, 30)).toBe(320));
   it('returns only fixed fee when percent rate is 0', () =>
     expect(calcGatewayFee(50000, 0, 30)).toBe(30));
+  it('caps the fee at maxFeeCents (Canadian PAD: 1% + 40¢, max $5)', () =>
+    expect(calcGatewayFee(250000, 1, 40, 500)).toBe(500));
+  it('leaves fees under the cap unchanged', () =>
+    expect(calcGatewayFee(20000, 1, 40, 500)).toBe(240));
 });
 
 describe('calcApplicationFeeSplit', () => {

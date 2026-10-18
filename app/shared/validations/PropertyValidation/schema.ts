@@ -2,16 +2,21 @@ import { z } from 'zod';
 import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
+import { MAX_ASSIGNED_STAFF } from '@utils/constants';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { BaseCSVProcessorService } from '@services/csv/base';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
+import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
+
+import {
+  emptyToUndefined,
+  objectIdString,
+  optionalBlank,
+  queryBoolean,
+  getContainer,
+} from '../UtilsValidation';
 
 const log = createLogger('PropertyValidation');
-
-const getContainer = async () => {
-  const { container } = await import('@di/setup');
-  return container;
-};
 
 const isUniqueAddress = async (address: string, clientId: string) => {
   const { propertyDAO }: { propertyDAO: PropertyDAO; clientDAO: ClientDAO } = (await getContainer())
@@ -42,12 +47,8 @@ const PropertyStatusEnum = z.enum(['available', 'maintenance', 'construction', '
 
 const OccupancyStatusEnum = z.enum(['vacant', 'occupied', 'partially_occupied']);
 
-// Use z.coerce for all numeric/boolean fields — FormData sends everything as strings.
-// Empty strings from blank form fields must become undefined so .optional() works.
-const optionalNum = z.preprocess(
-  (v) => (v === '' || v === undefined || v === null ? undefined : v),
-  z.coerce.number().optional()
-);
+// FormData sends everything as strings — coerce numbers and booleans
+const optionalNum = optionalBlank(z.coerce.number());
 
 const SpecificationsSchema = z.object({
   totalArea: optionalNum.pipe(
@@ -124,10 +125,7 @@ const FinancialDetailsSchema = z.object({
 });
 
 const defaultNum = (fallback: number) =>
-  z.preprocess(
-    (v) => (v === '' || v === undefined || v === null ? fallback : v),
-    z.coerce.number()
-  );
+  z.preprocess((v) => emptyToUndefined(v) ?? fallback, z.coerce.number());
 
 const FeesSchema = z.object({
   currency: z.nativeEnum(CURRENCIES).default(CURRENCIES.USD),
@@ -140,39 +138,45 @@ const FeesSchema = z.object({
   ),
 });
 
-const coerceBool = z.union([z.boolean(), z.string().transform((v) => v === 'true')]);
-
 const UtilitiesSchema = z.object({
-  water: coerceBool.default(false),
-  gas: coerceBool.default(false),
-  electricity: coerceBool.default(false),
-  internet: coerceBool.default(false),
-  trash: coerceBool.default(false),
-  cableTV: coerceBool.default(false),
+  water: queryBoolean.default(false),
+  gas: queryBoolean.default(false),
+  electricity: queryBoolean.default(false),
+  internet: queryBoolean.default(false),
+  trash: queryBoolean.default(false),
+  cableTV: queryBoolean.default(false),
 });
 
 const InteriorAmenitiesSchema = z.object({
-  airConditioning: coerceBool.default(false),
-  heating: coerceBool.default(false),
-  washerDryer: coerceBool.default(false),
-  dishwasher: coerceBool.default(false),
-  fridge: coerceBool.default(false),
-  furnished: coerceBool.default(false),
-  storageSpace: coerceBool.default(false),
+  airConditioning: queryBoolean.default(false),
+  heating: queryBoolean.default(false),
+  washerDryer: queryBoolean.default(false),
+  dishwasher: queryBoolean.default(false),
+  fridge: queryBoolean.default(false),
+  furnished: queryBoolean.default(false),
+  storageSpace: queryBoolean.default(false),
 });
 
 const CommunityAmenitiesSchema = z.object({
-  petFriendly: coerceBool.default(false),
-  swimmingPool: coerceBool.default(false),
-  fitnessCenter: coerceBool.default(false),
-  elevator: coerceBool.default(false),
-  parking: coerceBool.default(false),
-  securitySystem: coerceBool.default(false),
-  laundryFacility: coerceBool.default(false),
-  doorman: coerceBool.default(false),
+  petFriendly: queryBoolean.default(false),
+  swimmingPool: queryBoolean.default(false),
+  fitnessCenter: queryBoolean.default(false),
+  elevator: queryBoolean.default(false),
+  parking: queryBoolean.default(false),
+  securitySystem: queryBoolean.default(false),
+  laundryFacility: queryBoolean.default(false),
+  doorman: queryBoolean.default(false),
 });
 
+// Multipart entries for files being uploaded in this request carry only metadata
+// (e.g. documentType) — the file is in req.files and url/uploadedBy are set
+// server-side after upload. Index gaps (an entry with nothing but a file) are
+// filled with {} so item indexes keep matching the file field names.
+const mediaArray = <T extends z.ZodTypeAny>(arraySchema: z.ZodArray<T>) =>
+  z.preprocess((v) => (Array.isArray(v) ? Array.from(v, (item) => item ?? {}) : v), arraySchema);
+
 const PropertyMediaDocumentSchema = z.object({
+  _id: objectIdString.optional(),
   documentType: z
     .enum([
       'deed',
@@ -186,10 +190,10 @@ const PropertyMediaDocumentSchema = z.object({
       'management_agreement',
     ])
     .optional(),
-  url: z.string().url('Invalid URL format for document'),
+  url: z.string().url('Invalid URL format for document').optional(),
   key: z.string().optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
-  externalUrl: z.string().url('Invalid external URL format').optional(),
+  externalUrl: optionalBlank(z.string().url('Invalid external URL format')),
   uploadedAt: z.coerce
     .date({
       errorMap: (issue, { defaultError }) => ({
@@ -200,13 +204,14 @@ const PropertyMediaDocumentSchema = z.object({
       }),
     })
     .default(() => new Date()),
-  uploadedBy: z.string(),
+  uploadedBy: z.string().optional(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
   documentName: z.string().max(100, 'Document name must be at most 100 characters').optional(),
 });
 
 const PropertyImageSchema = z.object({
-  url: z.string().url('Invalid URL format for image'),
+  _id: objectIdString.optional(),
+  url: z.string().url('Invalid URL format for image').optional(),
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   filename: z.string().optional(),
   key: z.string().optional(),
@@ -220,7 +225,7 @@ const PropertyImageSchema = z.object({
       }),
     })
     .default(() => new Date()),
-  uploadedBy: z.string(),
+  uploadedBy: z.string().optional(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
 });
 
@@ -239,7 +244,7 @@ const OwnerSchema = z.object({
 });
 
 const AuthorizationSchema = z.object({
-  isActive: coerceBool.default(true),
+  isActive: queryBoolean.default(true),
   expiresAt: z.union([z.string(), z.date(), z.null()]).optional().nullable(),
   notes: z
     .string()
@@ -248,7 +253,7 @@ const AuthorizationSchema = z.object({
     .optional(),
 });
 
-const CreatePropertySchema = z.object({
+export const CreatePropertySchema = z.object({
   name: z
     .string()
     .min(3, 'Property name must be at least 3 characters')
@@ -256,6 +261,13 @@ const CreatePropertySchema = z.object({
   propertyType: PropertyTypeEnum,
   operationalStatus: PropertyStatusEnum.default('available'),
   managedBy: z.string(),
+  assignedStaff: z
+    .array(objectIdString)
+    .max(
+      MAX_ASSIGNED_STAFF,
+      `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`
+    )
+    .optional(),
   yearBuilt: z.coerce
     .number()
     .int()
@@ -291,15 +303,19 @@ const CreatePropertySchema = z.object({
     state: z.string().optional(),
     postCode: z.union([z.string().min(1, 'Post code cannot be empty'), z.number()]).optional(),
     country: z.string().optional(),
+    unitNumber: z.string().trim().max(50, 'Unit number must be at most 50 characters').optional(),
   }),
   utilities: UtilitiesSchema.optional(),
   interiorAmenities: InteriorAmenitiesSchema.optional(),
   communityAmenities: CommunityAmenitiesSchema.optional(),
-  documents: z.array(PropertyMediaDocumentSchema).optional(),
-  images: z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images').optional(),
+  documents: mediaArray(z.array(PropertyMediaDocumentSchema)).optional(),
+  images: mediaArray(
+    z.array(PropertyImageSchema).max(5, 'Property cannot have more than 5 images')
+  ).optional(),
   notes: z
     .array(
       z.object({
+        _id: objectIdString.optional(),
         text: z
           .string()
           .trim()
@@ -336,9 +352,13 @@ export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefi
   }
 );
 
-export const UpdatePropertySchema = CreatePropertySchema.partial().omit({ cuid: true }).extend({
-  id: z.string().optional(),
-});
+// assignedStaff changes after creation go through the assign/unassign endpoints,
+// which verify each user belongs to the client.
+export const UpdatePropertySchema = CreatePropertySchema.partial()
+  .omit({ cuid: true, assignedStaff: true })
+  .extend({
+    id: z.string().optional(),
+  });
 
 export const PropertySearchSchema = z.object({
   query: z.string().optional(),
@@ -418,8 +438,12 @@ const PropertyCsvSchemaBase = z.object({
   address_unitNumber: z.string().optional(),
   propertyType: PropertyTypeEnum,
   status: PropertyStatusEnum.optional().default('available'),
-  occupancyStatus: OccupancyStatusEnum.optional().default('vacant'),
-  maxAllowedUnits: z.coerce.number().min(0).max(500).optional(),
+  occupancyStatus: OccupancyStatusEnum,
+  maxAllowedUnits: z.coerce
+    .number({ invalid_type_error: 'Number of units is required and must be a number' })
+    .int()
+    .min(1, 'Number of units must be at least 1')
+    .max(500),
   yearBuilt: z.coerce
     .number()
     .int()
@@ -435,9 +459,8 @@ const PropertyCsvSchemaBase = z.object({
 
   // Specifications
   specifications_totalArea: z.coerce
-    .number()
-    .positive('Total area must be a positive number')
-    .optional(),
+    .number({ invalid_type_error: 'Total area is required and must be a number' })
+    .positive('Total area must be a positive number'),
   specifications_bedrooms: z.coerce
     .number()
     .int()
@@ -467,7 +490,6 @@ const PropertyCsvSchemaBase = z.object({
   fees_rentalAmount: z.coerce.number().min(0).optional(),
   fees_managementFees: z.coerce.number().min(0).optional(),
   fees_securityDeposit: z.coerce.number().min(0).optional(),
-  fees_currency: z.nativeEnum(CURRENCIES).optional().default(CURRENCIES.USD),
 
   // Utilities - using boolean validation
   utilities_water: z
@@ -562,13 +584,9 @@ const PropertyCsvSchemaBase = z.object({
     .optional()
     .default('company_owned'),
   owner_name: z.string().trim().max(200, 'Owner name must be at most 200 characters').optional(),
-  owner_email: z
-    .string()
-    .trim()
-    .email('Invalid email format for owner email')
-    .transform((val) => (val === '' ? undefined : val))
-    .optional()
-    .transform((val: string | undefined) => val?.toLowerCase()),
+  owner_email: optionalBlank(
+    z.string().trim().email('Invalid email format for owner email').toLowerCase()
+  ),
   owner_phone: z.string().trim().max(20, 'Owner phone must be at most 20 characters').optional(),
   owner_taxId: z.string().trim().max(50, 'Owner tax ID must be at most 50 characters').optional(),
   owner_notes: z.string().trim().max(500, 'Owner notes must be at most 500 characters').optional(),
@@ -602,6 +620,33 @@ export const PropertyCsvSchema = PropertyCsvSchemaBase.superRefine((data, ctx) =
       code: z.ZodIssueCode.custom,
       message: 'Provide either fullAddress or both address_street and address_city.',
       path: ['fullAddress'],
+    });
+  }
+
+  // A single-unit property is leased as a whole, so it needs its own rent and deposit
+  // (multi-unit properties get theirs from their units)
+  if (data.maxAllowedUnits !== 1) return;
+  const requireColumn = (column: keyof typeof data, message: string) => {
+    if (data[column] === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message, path: [column] });
+    }
+  };
+  requireColumn('fees_rentalAmount', 'Rent amount is required for a single-unit property');
+  requireColumn('fees_securityDeposit', 'Security deposit is required for a single-unit property');
+
+  const { requiredFields } = PropertyTypeManager.getRules(data.propertyType);
+  if (requiredFields.includes('specifications.bedrooms') && !data.specifications_bedrooms) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Bedrooms are required for a single-unit ${data.propertyType}`,
+      path: ['specifications_bedrooms'],
+    });
+  }
+  if (requiredFields.includes('specifications.bathrooms') && !data.specifications_bathrooms) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Bathrooms are required for a single-unit ${data.propertyType}`,
+      path: ['specifications_bathrooms'],
     });
   }
 });

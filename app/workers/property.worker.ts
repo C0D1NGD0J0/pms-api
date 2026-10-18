@@ -1,12 +1,15 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
-import { createLogger } from '@utils/index';
+import { Types } from 'mongoose';
 import { PropertyCsvProcessor } from '@services/csv';
+import { createLogger, JOB_NAME } from '@utils/index';
+import { isUnlimited } from '@utils/planLimits.utils';
 import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionDAO, PropertyDAO, ClientDAO } from '@dao/index';
 import { CsvProcessReturnData, CsvJobData } from '@interfaces/index';
+import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import { subscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 
 interface IConstructor {
@@ -43,6 +46,29 @@ export class PropertyWorker {
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.sseService = sseService;
   }
+
+  /**
+   * Called by PropertyQueue once a CSV job has failed for good — thrown errors, timeouts and
+   * stalled/crashed workers alike — so the import screen and notifications always get a result.
+   */
+  notifyCsvJobFailed = async (job: Job<CsvJobData>, error: Error): Promise<void> => {
+    const isImport = job.name === JOB_NAME.CSV_IMPORT_JOB;
+    await this.sseService.sendToUser(
+      job.data.userId,
+      job.data.clientInfo.cuid,
+      {
+        jobId: job.id.toString(),
+        jobType: isImport ? 'csv_property_import' : 'csv_property_validation',
+        stage: 'failed',
+        progress: 0,
+        message: isImport
+          ? 'CSV file processing encountered a fatal error'
+          : 'CSV file validation encountered a fatal error',
+        error: error.message,
+      },
+      'job-notification'
+    );
+  };
 
   processCsvValidation = async (job: Job<CsvJobData>) => {
     job.progress(10);
@@ -94,19 +120,7 @@ export class PropertyWorker {
       };
     } catch (error) {
       this.log.error(`Error processing CSV validation job ${job.id}:`, error);
-      await this.sseService.sendToUser(
-        userId,
-        cuid,
-        {
-          jobId: job.id.toString(),
-          jobType: 'csv_property_validation',
-          stage: 'failed',
-          progress: 0,
-          message: 'CSV file validation encountered a fatal error',
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'job-notification'
-      );
+      // Reported once, on the final attempt, by the queue's failed hook (notifyCsvJobFailed)
       throw error;
     }
   };
@@ -165,7 +179,7 @@ export class PropertyWorker {
       if (subscription) {
         const config = subscriptionPlanConfig.getConfig(subscription.planName);
         const maxProperties = config.limits.maxProperties;
-        if (maxProperties !== -1) {
+        if (!isUnlimited(maxProperties)) {
           const currentCount = await this.propertyDAO.countDocuments({ cuid, deletedAt: null });
           const remaining = maxProperties - currentCount;
           if (remaining <= 0) {
@@ -214,6 +228,17 @@ export class PropertyWorker {
         }
       }
 
+      if (job.data.autoApprove) {
+        const approvedAt = new Date();
+        csvResult.validProperties = csvResult.validProperties.map((property) => ({
+          ...property,
+          approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+          approvalDetails: [
+            { action: 'approved', timestamp: approvedAt, actor: new Types.ObjectId(userId) },
+          ],
+        })) as typeof csvResult.validProperties;
+      }
+
       let totalInserted = 0;
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
@@ -233,17 +258,39 @@ export class PropertyWorker {
         return { totalInserted };
       });
 
+      // insertMany (ordered: false) silently skips rows the model rejects, so compare what was
+      // saved with what passed CSV validation instead of assuming everything went in.
+      const notSavedCount = csvResult.validProperties.length - propertiesResult.totalInserted;
+      if (notSavedCount > 0) {
+        this.log.error(
+          { jobId: job.id, cuid, notSavedCount },
+          'CSV import: some valid rows were rejected by the Property model'
+        );
+        postValidationErrors.push({
+          rowNumber: 0,
+          errors: [
+            {
+              field: 'save',
+              error: `${notSavedCount} of ${csvResult.validProperties.length} properties could not be saved. Please check the data and try again.`,
+            },
+          ],
+        });
+      }
+
       const combinedErrors: CsvProcessReturnData['errors'] = [
         ...(csvResult.errors || []),
         ...postValidationErrors,
       ];
+      const nothingSaved = propertiesResult.totalInserted === 0;
 
       const returnResult = {
         data: [],
         errors: combinedErrors.length ? combinedErrors : null,
-        message: combinedErrors.length
-          ? 'Properties imported with some errors'
-          : 'All properties imported successfully',
+        message: nothingSaved
+          ? 'No properties could be imported'
+          : combinedErrors.length
+            ? `Imported ${propertiesResult.totalInserted} propert${propertiesResult.totalInserted === 1 ? 'y' : 'ies'} with some errors`
+            : `Imported ${propertiesResult.totalInserted} propert${propertiesResult.totalInserted === 1 ? 'y' : 'ies'} successfully`,
       } as CsvProcessReturnData & { message: string };
 
       // Sync subscription.resourceTracker.propertyCount so the atomic gate in addProperty() stays accurate
@@ -264,7 +311,7 @@ export class PropertyWorker {
         {
           jobId: job.id.toString(),
           jobType: 'csv_property_import',
-          stage: 'completed',
+          stage: nothingSaved ? 'failed' : 'completed',
           progress: 100,
           totalItems: csvResult.totalRows,
           createdCount: propertiesResult.totalInserted,
@@ -276,7 +323,7 @@ export class PropertyWorker {
       );
 
       return {
-        success: true,
+        success: !nothingSaved,
         processId: job.id,
         data: {
           totalInserted: propertiesResult.totalInserted,
@@ -288,19 +335,7 @@ export class PropertyWorker {
       };
     } catch (error) {
       this.log.error(`Error processing CSV import job ${job.id}:`, error);
-      await this.sseService.sendToUser(
-        userId,
-        cuid,
-        {
-          jobId: job.id.toString(),
-          jobType: 'csv_property_import',
-          stage: 'failed',
-          progress: 0,
-          message: 'CSV file processing encountered a fatal error',
-          error: error instanceof Error ? error.message : String(error),
-        },
-        'job-notification'
-      );
+      // Reported once, on the final attempt, by the queue's failed hook (notifyCsvJobFailed)
       throw error;
     }
   };

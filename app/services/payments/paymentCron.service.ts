@@ -1154,12 +1154,12 @@ export class PaymentCronService implements ICronProvider {
 
     const failures: { index: number; message: string }[] = [];
     for (const { invoiceId, index } of invoicesToPay) {
-      const payResult = await this.paymentGatewayService.payInvoice(
+      const payResult = await this.paymentGatewayService.payCharge(
         IPaymentGatewayProvider.STRIPE,
         invoiceId
       );
       if (!payResult.success) {
-        failures.push({ index, message: payResult.message || 'Failed to pay invoice' });
+        failures.push({ index, message: payResult.message || 'Failed to pay charge' });
       }
     }
 
@@ -1399,13 +1399,12 @@ export class PaymentCronService implements ICronProvider {
     let activeInvoiceId = payment.gatewayPaymentId;
 
     if (!activeInvoiceId) {
-      const { invoiceId, hostedInvoiceUrl: hostedUrl } = await this.createAndFinalizeInvoice({
+      const { chargeId } = await this.createTenantCharge({
         tenantCustomerId,
         connectedAccountId: paymentProcessor.accountId,
         applicationFee: feeBreakdown.applicationFee,
         currency: (payment.currency ?? 'USD').toLowerCase(),
         description: payment.description || `Maintenance charge ${pytuid}`,
-        dueDate: dayjs().toDate(),
         lineItems: payment.lineItems?.length
           ? (payment.lineItems as { description: string; amountInCents: number }[])
           : [
@@ -1416,18 +1415,18 @@ export class PaymentCronService implements ICronProvider {
             ],
         cuid,
         paymentMethodId,
+        mandateId,
         skipDestinationTransfer: payment.paymentType === PaymentRecordType.MAINTENANCE,
       });
 
-      activeInvoiceId = invoiceId;
+      activeInvoiceId = chargeId;
 
       await this.paymentDAO.updateById(payment._id.toString(), {
         gatewayPaymentId: activeInvoiceId,
-        ...(hostedUrl && { 'receipt.url': hostedUrl }),
       });
     }
 
-    const payResult = await this.paymentGatewayService.payInvoice(
+    const payResult = await this.paymentGatewayService.payCharge(
       IPaymentGatewayProvider.STRIPE,
       activeInvoiceId!,
       { paymentMethod: paymentMethodId, ...(mandateId && { mandate: mandateId }) }
@@ -1629,26 +1628,25 @@ export class PaymentCronService implements ICronProvider {
     this.log.info(counts, '[Cron] Payment reconciliation complete');
   }
 
-  private async fetchInvoiceOrThrow(invoiceId: string) {
-    const result = await this.paymentGatewayService.getInvoice(
-      IPaymentGatewayProvider.STRIPE,
-      invoiceId
-    );
-    if (!result.success || !result.data) {
-      throw new Error(result.message || `Failed to fetch invoice ${invoiceId}`);
-    }
-    return result.data;
+  /** Charge state (PaymentIntent or legacy invoice) in the invoice status vocabulary. */
+  private async fetchInvoiceOrThrow(chargeId: string) {
+    const details = await this.fetchInvoicePaymentDetails(chargeId);
+    return {
+      status: details.status ?? null,
+      paidAt: details.paidAt,
+      hostedInvoiceUrl: details.receiptUrl,
+    };
   }
 
-  private async fetchInvoicePaymentDetails(invoiceId: string) {
-    const result = await this.paymentGatewayService.getInvoicePaymentDetails(
+  private async fetchInvoicePaymentDetails(chargeId: string) {
+    const result = await this.paymentGatewayService.getChargeDetails(
       IPaymentGatewayProvider.STRIPE,
-      invoiceId
+      chargeId
     );
-    if (!result.success) {
-      throw new Error(result.message || `Failed to fetch payment details for ${invoiceId}`);
+    if (!result.success || !result.data) {
+      throw new Error(result.message || `Failed to fetch charge ${chargeId}`);
     }
-    return result.data ?? {};
+    return result.data;
   }
 
   private async reconcileProcessingPayment(
@@ -1801,51 +1799,36 @@ export class PaymentCronService implements ICronProvider {
     }
   }
 
-  private async createAndFinalizeInvoice(opts: {
+  private async createTenantCharge(opts: {
     tenantCustomerId: string;
     connectedAccountId: string;
     applicationFee: number;
     currency: string;
     description: string;
-    dueDate: Date;
     lineItems: { description: string; amountInCents: number }[];
     cuid: string;
     paymentMethodId?: string;
+    mandateId?: string;
     leaseUid?: string;
     skipDestinationTransfer?: boolean;
-  }): Promise<{ invoiceId: string; hostedInvoiceUrl?: string }> {
-    const invoiceResult = await this.paymentGatewayService.createInvoice(
-      IPaymentGatewayProvider.STRIPE,
-      {
-        tenantCustomerId: opts.tenantCustomerId,
-        connectedAccountId: opts.connectedAccountId,
-        applicationFeeAmountInCents: opts.applicationFee,
-        currency: opts.currency,
-        description: opts.description,
-        autoChargeDueDate: opts.dueDate,
-        lineItems: opts.lineItems,
-        cuid: opts.cuid,
-        paymentMethodId: opts.paymentMethodId,
-        leaseUid: opts.leaseUid,
-        skipDestinationTransfer: opts.skipDestinationTransfer,
-      }
-    );
-    if (!invoiceResult.success || !invoiceResult.data) {
-      throw new Error(invoiceResult.message || 'Failed to create invoice');
+  }): Promise<{ chargeId: string }> {
+    const result = await this.paymentGatewayService.createCharge(IPaymentGatewayProvider.STRIPE, {
+      tenantCustomerId: opts.tenantCustomerId,
+      connectedAccountId: opts.connectedAccountId,
+      applicationFeeAmountInCents: opts.applicationFee,
+      currency: opts.currency,
+      description: opts.description,
+      lineItems: opts.lineItems,
+      cuid: opts.cuid,
+      paymentMethodId: opts.paymentMethodId,
+      mandateId: opts.mandateId,
+      leaseUid: opts.leaseUid,
+      skipDestinationTransfer: opts.skipDestinationTransfer,
+    });
+    if (!result.success || !result.data) {
+      throw new Error(result.message || 'Failed to create charge');
     }
-
-    const finalizeResult = await this.paymentGatewayService.finalizeInvoice(
-      IPaymentGatewayProvider.STRIPE,
-      invoiceResult.data.invoiceId
-    );
-    if (!finalizeResult.success) {
-      throw new Error(finalizeResult.message || 'Failed to finalize invoice');
-    }
-
-    return {
-      invoiceId: invoiceResult.data.invoiceId,
-      hostedInvoiceUrl: finalizeResult.data?.hostedInvoiceUrl,
-    };
+    return { chargeId: result.data.chargeId };
   }
 
   private mapLeasePaymentMethod(acceptedPaymentMethod: string | undefined): PaymentMethod {

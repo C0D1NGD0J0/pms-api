@@ -16,6 +16,10 @@ const addressSchema = z.object({
     .optional(),
 });
 
+// On update only fullAddress is required — the vendor service geocodes it into
+// street/city/state/postCode/country (onboarding sends a free-text address)
+const updateAddressSchema = addressSchema.partial().required({ fullAddress: true });
+
 // Contact person validation schema
 const contactPersonSchema = z.object({
   name: z.string().min(1, 'Contact person name is required').max(100),
@@ -125,7 +129,7 @@ export const updateVendorSchema = z.object({
   yearsInBusiness: z.number().min(0, 'Years in business cannot be negative').max(100).optional(),
   registrationNumber: z.string().max(50).optional(),
   taxId: z.string().max(50).optional(),
-  address: addressSchema.optional(),
+  address: updateAddressSchema.optional(),
   contactPerson: contactPersonSchema.optional(),
   servicesOffered: servicesOfferedSchema,
   serviceAreas: serviceAreasSchema,

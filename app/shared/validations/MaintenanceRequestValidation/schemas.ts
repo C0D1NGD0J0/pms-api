@@ -10,7 +10,9 @@ import {
   AvailabilityWindow,
 } from '@interfaces/maintenanceRequest.interface';
 
-import { getContainer } from '../UtilsValidation';
+import { objectIdString, queryBoolean, getContainer } from '../UtilsValidation';
+
+const MAINTENANCE_LIST_SORT_FIELDS = ['createdAt', 'updatedAt', 'scheduledDate', 'title'];
 
 export const MaintenanceSchemas = {
   mruidParam: z.object({
@@ -83,6 +85,15 @@ export const MaintenanceSchemas = {
           options: z.array(z.nativeEnum(AvailabilityWindow)).optional().default([]),
         })
         .optional(),
+      // Staff-only extras (the service ignores them for tenants). Multipart sends every
+      // field as a string: parseJsonFields converts "true"/"false", numbers need coercion.
+      vendorVuid: z.string().trim().min(1).optional(),
+      scheduledDate: z
+        .string()
+        .refine((d) => !isNaN(Date.parse(d)), 'Invalid date')
+        .refine((d) => new Date(d) > new Date(), 'Scheduled date must be in the future')
+        .optional(),
+      estimatedCost: z.coerce.number().positive().optional(),
     })
     .superRefine(async (data, ctx) => {
       if (data.puid && data.pid) {
@@ -156,6 +167,7 @@ export const MaintenanceSchemas = {
       reason: z.string().max(500).optional(),
       technician: z
         .object({
+          userId: objectIdString.optional(),
           name: z.string().min(1).max(100),
           phone: z.string().max(20).optional(),
           email: z.string().email().optional(),
@@ -223,8 +235,12 @@ export const MaintenanceSchemas = {
     externalInvoiceUrl: z.string().url().optional(),
     attachment: z
       .object({
-        url: z.string().url(),
-        key: z.string().min(1),
+        // https only — the URL is rendered as a link, so javascript:/data: schemes are rejected
+        url: z
+          .string()
+          .url()
+          .refine((u) => u.startsWith('https://'), 'Attachment URL must use https'),
+        key: z.string().min(1).max(1024),
       })
       .optional(),
   }),
@@ -293,13 +309,22 @@ export const MaintenanceSchemas = {
     tenantUid: z.string().optional(),
     managedByUid: z.string().optional(),
     search: z.string().trim().max(100).optional(),
-    isBillable: z.coerce.boolean().optional(),
+    isBillable: queryBoolean.optional(),
     assignedTechnicianSub: z.string().optional(),
     page: z.coerce.number().int().positive().optional(),
     category: z.nativeEnum(MaintenanceCategory).optional(),
     status: z.nativeEnum(MaintenanceRequestStatus).optional(),
     priority: z.nativeEnum(MaintenanceRequestPriority).optional(),
     limit: z.coerce.number().int().positive().max(100).optional(),
+    // Field name, '-' prefix for descending (e.g. '-createdAt')
+    sort: z
+      .enum(
+        MAINTENANCE_LIST_SORT_FIELDS.flatMap((field) => [field, `-${field}`]) as [
+          string,
+          ...string[],
+        ]
+      )
+      .optional(),
   }),
 
   webhookSourceParam: z.object({

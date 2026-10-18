@@ -17,6 +17,7 @@ import { EmailQueue } from '@queues/email.queue';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
+import { IUserDocument } from '@interfaces/user.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { InvoiceStatus } from '@interfaces/invoice.interface';
 import { ROLE_GROUPS } from '@shared/constants/roles.constants';
@@ -1140,14 +1141,15 @@ export class OffboardingService {
     }
 
     // --- 1. Bulk terminate all active leases ---
-    const activeLeases = await this.leaseDAO.list({
-      cuid,
-      status: LeaseStatus.ACTIVE,
-      deletedAt: null,
-    });
+    // Every step pages through all matches — list() alone stops at its default page size
+    const activeLeases = iterateInPages(
+      this.leaseDAO,
+      { cuid, status: LeaseStatus.ACTIVE, deletedAt: null },
+      { projection: 'luid' }
+    );
 
     const leaseResults = { succeeded: 0, failed: 0 };
-    for (const lease of activeLeases.items || []) {
+    for await (const lease of activeLeases) {
       try {
         await this.leaseService.terminateLease(
           cuid,
@@ -1171,15 +1173,22 @@ export class OffboardingService {
     this.log.info({ cuid, ...leaseResults }, 'Account closure — lease termination batch complete');
 
     // --- 2. Disconnect all staff/admin users ---
-    const staffUsers = await this.userDAO.list({
-      cuids: {
-        $elemMatch: { cuid, isConnected: true, roles: { $in: ROLE_GROUPS.EMPLOYEE_ROLES } },
+    const staffUsers: IUserDocument[] = [];
+    for await (const user of iterateInPages(
+      this.userDAO,
+      {
+        cuids: {
+          $elemMatch: { cuid, isConnected: true, roles: { $in: ROLE_GROUPS.EMPLOYEE_ROLES } },
+        },
+        deletedAt: null,
       },
-      deletedAt: null,
-    });
+      { projection: '_id uid email' }
+    )) {
+      staffUsers.push(user);
+    }
 
     let staffDisconnected = 0;
-    for (const user of staffUsers.items || []) {
+    for (const user of staffUsers) {
       try {
         if (user._id.toString() === currentUser.sub) continue;
 
@@ -1202,17 +1211,15 @@ export class OffboardingService {
     }
 
     // --- 3. Disconnect all vendors ---
-    const vendors = await this.vendorDAO.getClientVendors(cuid);
-    const vendorsDisconnected = (vendors.items || []).length;
-    for (const vendor of vendors.items || []) {
-      try {
-        await this.vendorDAO.disconnectClient(vendor._id.toString(), cuid);
-      } catch (err: any) {
-        this.log.warn(
-          { vendorId: vendor._id, error: err.message },
-          'Vendor disconnection failed during closure'
-        );
-      }
+    const vendors = await this.vendorDAO.getAllClientVendors(cuid, {
+      projection:
+        'connectedClients.cuid connectedClients.primaryAccountHolderUserId contactPerson.email',
+    });
+    const vendorsDisconnected = vendors.length;
+    try {
+      await this.vendorDAO.disconnectAllFromClient(cuid);
+    } catch (err: any) {
+      this.log.warn({ cuid, error: err.message }, 'Vendor disconnection failed during closure');
     }
 
     // --- 4. Suspend the client ---
@@ -1230,7 +1237,7 @@ export class OffboardingService {
     );
 
     // --- 5. Send closure emails ---
-    for (const user of staffUsers.items || []) {
+    for (const user of staffUsers) {
       if (user.email && user._id.toString() !== currentUser.sub) {
         this.emailQueue.addToEmailQueue('companyClosure-staff', {
           to: user.email,
@@ -1242,9 +1249,27 @@ export class OffboardingService {
       }
     }
 
-    for (const vendor of vendors.items || []) {
-      const connectedClient = (vendor as any).connectedClients?.find((c: any) => c.cuid === cuid);
-      const vendorEmail = connectedClient?.primaryAccountHolderEmail || (vendor as any).email;
+    // Vendors carry no login email of their own — it lives on the primary account holder's user
+    const accountHolderIds = vendors
+      .map((vendor) => vendor.connectedClients?.find((c) => c.cuid === cuid))
+      .map((connection) => connection?.primaryAccountHolderUserId)
+      .filter((id): id is Types.ObjectId => !!id);
+    const accountHolderEmails = new Map<string, string>();
+    if (accountHolderIds.length > 0) {
+      const { items: holders } = await this.userDAO.list(
+        { _id: { $in: accountHolderIds } },
+        { projection: '_id email', limit: accountHolderIds.length }
+      );
+      for (const holder of holders) {
+        if (holder.email) accountHolderEmails.set(holder._id.toString(), holder.email);
+      }
+    }
+
+    for (const vendor of vendors) {
+      const connectedClient = vendor.connectedClients?.find((c) => c.cuid === cuid);
+      const holderId = connectedClient?.primaryAccountHolderUserId?.toString();
+      const vendorEmail =
+        (holderId && accountHolderEmails.get(holderId)) || vendor.contactPerson?.email;
       if (vendorEmail) {
         this.emailQueue.addToEmailQueue('companyClosure-vendor', {
           to: vendorEmail,
@@ -1257,15 +1282,19 @@ export class OffboardingService {
     }
 
     // --- 6. Send tenant closure emails ---
-    const tenantUsers = await this.userDAO.list({
-      cuids: { $elemMatch: { cuid, roles: { $in: ['tenant'] }, isConnected: true } },
-      deletedAt: null,
-    });
-
-    for (const tenant of tenantUsers.items || []) {
-      if ((tenant as any).email) {
+    let tenantsNotified = 0;
+    for await (const tenant of iterateInPages(
+      this.userDAO,
+      {
+        cuids: { $elemMatch: { cuid, roles: { $in: ['tenant'] }, isConnected: true } },
+        deletedAt: null,
+      },
+      { projection: '_id email' }
+    )) {
+      tenantsNotified++;
+      if (tenant.email) {
         this.emailQueue.addToEmailQueue('companyClosure-tenant', {
-          to: (tenant as any).email,
+          to: tenant.email,
           requestId: ctx.requestId,
           emailType: MailType.COMPANY_CLOSURE_TENANT,
           subject: `${companyName} — Account Closure Notice`,
@@ -1297,8 +1326,6 @@ export class OffboardingService {
     });
 
     this.log.info({ cuid }, 'Account closure completed');
-
-    const tenantsNotified = (tenantUsers.items || []).length;
 
     return {
       success: true,

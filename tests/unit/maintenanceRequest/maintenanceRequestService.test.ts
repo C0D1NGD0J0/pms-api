@@ -35,7 +35,7 @@ const mockPropertyDAO = { findFirst: jest.fn() } as any;
 const mockPropertyUnitDAO = { findFirst: jest.fn() } as any;
 const mockVendorDAO = {
   findFirst: jest.fn(),
-  getClientVendors: jest.fn(),
+  getAllClientVendors: jest.fn(),
   getVendorByVuid: jest.fn(),
 } as any;
 const mockUserDAO = { findFirst: jest.fn() } as any;
@@ -836,10 +836,23 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     expect(mockDAO.listWithDetails).toHaveBeenCalledWith(
       expect.objectContaining({
         cuid: testCuid,
-        $or: [{ title: expectedRegex }, { mruid: expectedRegex }],
+        $and: [{ $or: [{ title: expectedRegex }, { mruid: expectedRegex }] }],
       }),
-      { page: 1, limit: 5 }
+      { skip: 0, limit: 5, sort: { createdAt: -1, _id: -1 } }
     );
+  });
+
+  it('listRequests: converts page to skip for the DAO', async () => {
+    mockDAO.listWithDetails.mockResolvedValue({ items: [], pagination: {} });
+
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    await service.listRequests(ctx as IRequestContext, {}, { page: 3, limit: 10, sort: 'title' });
+
+    expect(mockDAO.listWithDetails).toHaveBeenCalledWith(expect.anything(), {
+      skip: 20,
+      limit: 10,
+      sort: { title: 1, _id: 1 },
+    });
   });
 
   it('listRequests: blank search adds no $or filter', async () => {
@@ -850,6 +863,7 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
 
     const [filterArg] = mockDAO.listWithDetails.mock.calls[0];
     expect(filterArg).not.toHaveProperty('$or');
+    expect(filterArg).not.toHaveProperty('$and');
   });
 
   // ─── acceptAssignment ─────────────────────────────────────────────────────
@@ -899,6 +913,9 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
       status: MaintenanceRequestStatus.IN_PROGRESS,
     });
 
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+    mockUserDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(teamMemberSub) });
+
     const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
     await service.acceptAssignment(ctx as IRequestContext, 'MR001', {
       action: 'accept',
@@ -909,6 +926,35 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     const setPayload = updateCall[1].$set;
     // userId is stored as an ObjectId, compare via toString()
     expect(setPayload.assignedTechnician.userId.toString()).toBe(teamMemberSub);
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cuids: {
+          $elemMatch: expect.objectContaining({
+            cuid: testCuid,
+            isConnected: true,
+            linkedVendorUid: { $in: [primaryVendorUid, primaryVendorObjectId.toString()] },
+          }),
+        },
+      })
+    );
+  });
+
+  it('acceptAssignment: rejects a technician userId that is not on the vendor team', async () => {
+    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+      vendorId: primaryVendorObjectId,
+    });
+    mockDAO.getByMruid.mockResolvedValue(request);
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+    mockUserDAO.findFirst.mockResolvedValue(null);
+
+    const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
+    await expect(
+      service.acceptAssignment(ctx as IRequestContext, 'MR001', {
+        action: 'accept',
+        technician: { name: 'Stranger', userId: new Types.ObjectId().toString() },
+      })
+    ).rejects.toThrow(ForbiddenError);
+    expect(mockDAO.updateById).not.toHaveBeenCalled();
   });
 
   it('acceptAssignment: defaults assignedTechnician.userId to caller sub when not provided', async () => {

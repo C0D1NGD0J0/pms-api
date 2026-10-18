@@ -299,7 +299,6 @@
     "success": {
       "sent": "Invitation don send to {{email}}",
       "resent": "Invitation reminder don send to {{email}}",
-      "reactivated": "Invitation don reactivate and send to {{email}}",
       "revoked": "Invitation don revoke successfully",
       "accepted": "Invitation don accept successfully",
       "declined": "Invitation don decline successfully",

@@ -20,6 +20,20 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       fullname: 'Jane Doe',
       updatedAt: 'July 10, 2026 at 3:45 PM',
     },
+    EMAIL_CHANGE_VERIFICATION: {
+      fullname: 'Jane Doe',
+      newEmail: 'jane.new@example.com',
+      requestedByName: 'Alex Manager',
+      confirmUrl: 'http://localhost:3000/email_change/confirm?t=sample-token-abc123',
+      expiresInHours: 24,
+    },
+    EMAIL_CHANGE_NOTICE: {
+      fullname: 'Jane Doe',
+      newEmail: 'jane.new@example.com',
+      requestedByName: 'Alex Manager',
+      stage: 'requested',
+      changedAt: 'July 10, 2026 at 3:45 PM',
+    },
     ACCOUNT_DISCONNECTED: {
       fullname: 'Jane Doe',
       companyName: 'Maple Ridge Properties',
@@ -36,6 +50,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       email: 'jane.doe@example.com',
       temporaryPassword: 'TempPass!2026',
       loginUrl: 'http://localhost:3000/login',
+      expectedStartDate: '2026-08-01',
     },
     FORGOT_PASSWORD: {
       fullname: 'Jane Doe',
@@ -283,7 +298,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
         category: 'Plumbing',
         priority: 'high',
         preferredDate: 'July 15, 2026',
-        availabilityWindows: 'Weekdays 9AM-5PM',
+        availabilityWindows: ['weekdays_only', 'morning'],
       },
     },
     MAINTENANCE_REQUEST_ASSIGNED: {
@@ -299,7 +314,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
         scheduledDate: 'July 18, 2026',
         estimatedCost: 25000,
         preferredDate: 'July 15, 2026',
-        availabilityWindows: 'Weekdays 9AM-5PM',
+        availabilityWindows: ['weekdays_only', 'morning'],
       },
     },
     MAINTENANCE_REQUEST_ACCEPTED: {
@@ -328,7 +343,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
         title: 'Leaking kitchen faucet',
         category: 'Plumbing',
         completedAt: 'July 18, 2026',
-        completionNotes: 'Replaced faulty washer and tested for leaks. All clear.',
+        completionNotes: [{ note: 'Replaced faulty washer and tested for leaks. All clear.' }],
       },
     },
     MAINTENANCE_CHARGE_CREATED: {
@@ -449,6 +464,9 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
     COMPANY_CLOSURE_OWNER: {
       companyName: 'Maple Ridge Properties',
       effectiveDate: 'October 1, 2026',
+      leasesTerminated: 12,
+      staffDisconnected: 4,
+      vendorsDisconnected: 3,
     },
     COMPANY_CLOSURE_STAFF: {
       companyName: 'Maple Ridge Properties',
@@ -480,6 +498,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       hasRefund: true,
       refundAmount: 90000,
       depositAmount: 90000,
+      currency: 'CAD',
       iuid: 'INSP-2026-0012',
     },
     INSPECTION_REJECTED: {

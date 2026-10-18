@@ -76,26 +76,29 @@ describe('UserDAO Integration Tests', () => {
     });
   });
 
-  describe('isEmailUnique', () => {
-    it('should return false for existing email', async () => {
+  describe('isEmailTaken', () => {
+    beforeEach(async () => {
       await User.create({
         uid: 'uid-unique-test',
         email: 'unique@example.com',
+        pendingEmail: 'reserved@example.com',
         password: 'hashed',
         isActive: true,
         activecuid: 'CLIENT_1',
         cuids: [],
       });
-
-      const isUnique = await userDAO.isEmailUnique('unique@example.com');
-
-      expect(isUnique).toBe(false);
     });
 
-    it('should return true for new email', async () => {
-      const isUnique = await userDAO.isEmailUnique('newemail@example.com');
+    it('matches a login email or a pending email, ignoring case and whitespace', async () => {
+      expect(await userDAO.isEmailTaken(' Unique@Example.com ')).toBe(true);
+      expect(await userDAO.isEmailTaken('reserved@example.com')).toBe(true);
+    });
 
-      expect(isUnique).toBe(true);
+    it('is false for a new email or when the only match is the excluded user', async () => {
+      const owner = await User.findOne({ uid: 'uid-unique-test' });
+
+      expect(await userDAO.isEmailTaken('newemail@example.com')).toBe(false);
+      expect(await userDAO.isEmailTaken('unique@example.com', owner!._id.toString())).toBe(false);
     });
   });
 

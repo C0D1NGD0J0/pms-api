@@ -197,6 +197,7 @@ describe('UserController Integration Tests', () => {
       paymentGatewayService: {} as any,
       paymentProcessorDAO: {} as any,
       featureFlagService: { isEnabled: jest.fn().mockReturnValue(true) } as any,
+      permissionService: new PermissionService(),
       vendorDAO: {} as any,
       queueFactory: { getQueue: jest.fn().mockReturnValue({ addToEmailQueue: jest.fn() }) } as any,
     });

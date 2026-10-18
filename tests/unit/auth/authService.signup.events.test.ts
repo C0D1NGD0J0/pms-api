@@ -32,7 +32,7 @@ const makeSignupData = (overrides: Record<string, any> = {}): ISignupData => ({
     category: 'individual',
     planName: 'essential',
     planId: 'price_essential',
-    planLookUpKey: 'essential_monthly',
+    lookUpKey: 'essential_monthly',
     billingInterval: 'monthly',
     totalMonthlyPrice: 0,
     isEnterpriseAccount: false,
@@ -44,7 +44,7 @@ const makeMocks = () => {
   const userDAO = {
     startSession: jest.fn().mockReturnValue(Promise.resolve({ endSession: jest.fn() })),
     withTransaction: jest.fn().mockImplementation(async (_session: any, fn: any) => fn(_session)),
-    findFirst: jest.fn().mockReturnValue(Promise.resolve(null)), // no duplicate
+    isEmailTaken: jest.fn().mockReturnValue(Promise.resolve(false)),
     insert: jest.fn().mockReturnValue(
       Promise.resolve({
         _id: USER_ID,
@@ -145,6 +145,19 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
     expect(typeof emittedPayload.userId).toBe('string');
   });
 
+  it('should create the subscription with the lookUpKey the signup form sends', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks);
+
+    await service.signup(makeSignupData());
+
+    expect(mocks.subscriptionService.createSubscription).toHaveBeenCalledWith(
+      CLIENT_ID.toString(),
+      expect.objectContaining({ planLookUpKey: 'essential_monthly' }),
+      expect.anything()
+    );
+  });
+
   it('should NOT emit event when subscription creation fails', async () => {
     const mocks = makeMocks();
     mocks.subscriptionService.createSubscription.mockReturnValue(
@@ -215,7 +228,7 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
 
   it('should NOT emit event when user already exists', async () => {
     const mocks = makeMocks();
-    mocks.userDAO.findFirst.mockReturnValue(Promise.resolve({ _id: USER_ID, email: TEST_EMAIL }));
+    mocks.userDAO.isEmailTaken.mockReturnValue(Promise.resolve(true));
     const service = makeService(mocks);
 
     await expect(service.signup(makeSignupData())).rejects.toThrow();

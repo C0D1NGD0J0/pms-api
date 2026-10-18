@@ -1,10 +1,13 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
+import type { PdfQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
+import type { QueueFactory } from '@services/queue';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
+import type { PdfJobData } from '@interfaces/pdfGenerator.interface';
 import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
 export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
 export { computeLeaseMonthlyFees } from '@utils/financial.utils';
@@ -24,6 +27,7 @@ import {
   ForbiddenError,
 } from '@shared/customErrors';
 import {
+  LeaseTerminationReasonCode,
   ILeaseESignatureStatusEnum,
   ILeaseDocument,
   ILeaseFormData,
@@ -34,9 +38,9 @@ import {
   EDITABLE_FIELDS_BY_LEASE_STATUS,
   HIGH_IMPACT_LEASE_FIELDS,
   PROPERTY_APPROVAL_ROLES,
-  IMMUTABLE_LEASE_FIELDS,
   convertUserRoleToEnum,
   createSafeMongoUpdate,
+  determineTemplateType,
   PROPERTY_STAFF_ROLES,
   calcDaysRemaining,
   calcLeaseProgress,
@@ -45,19 +49,19 @@ import {
   MoneyUtils,
 } from '@utils/index';
 
-export const validateImmutableFields = (updateData: Partial<ILeaseFormData>): void => {
-  const updateFields = Object.keys(updateData);
-  const immutableFieldsAttempted = updateFields.filter((field) =>
-    IMMUTABLE_LEASE_FIELDS.includes(field)
+export const rejectRestrictedFields = (
+  updateData: object,
+  restrictedFields: string[],
+  messageKey: string
+): void => {
+  const attemptedFields = Object.keys(updateData).filter((field) =>
+    restrictedFields.includes(field)
   );
-
-  if (immutableFieldsAttempted.length > 0) {
+  if (attemptedFields.length > 0) {
     throw new ValidationRequestError({
-      message: 'Cannot modify immutable fields',
+      message: t(messageKey),
       errorInfo: {
-        fields: immutableFieldsAttempted.map(
-          (f) => `Field '${f}' cannot be modified after creation`
-        ),
+        fields: attemptedFields.map((field) => t('lease.errors.fieldNotEditable', { field })),
       },
     });
   }
@@ -165,12 +169,13 @@ export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => 
 };
 
 /**
- * Validate lease termination date with comprehensive business rules
+ * Validate lease termination date with comprehensive business rules.
+ * Exemptions are keyed on the structured reasonCode, never the free-text reason.
  */
 export const validateLeaseTermination = (
   lease: ILeaseDocument,
   terminationDate: Date,
-  terminationReason: string
+  reasonCode?: string
 ): { warnings: string[] } => {
   const errors: Record<string, string[]> = {};
   const warnings: string[] = [];
@@ -204,16 +209,8 @@ export const validateLeaseTermination = (
     ];
   }
 
-  // Rule 3: Notice period requirement (with exceptions)
-  const reasonsAllowingImmediateTermination = [
-    'lease_violation',
-    'non_payment',
-    'property_sale',
-    'emergency',
-    'mutual_agreement',
-  ];
-
-  const requiresNotice = !reasonsAllowingImmediateTermination.includes(terminationReason);
+  // Rule 3: notice period, waived for every specific reason except 'other'
+  const requiresNotice = !reasonCode || reasonCode === LeaseTerminationReasonCode.OTHER;
   const noticePeriodDays = lease.renewalOptions?.noticePeriodDays || 30;
 
   if (requiresNotice) {
@@ -232,7 +229,7 @@ export const validateLeaseTermination = (
     (termDate.getTime() - leaseStartDate.getTime()) / (1000 * 60 * 60 * 24)
   );
 
-  if (daysSinceStart < 30 && terminationReason !== 'lease_violation') {
+  if (daysSinceStart < 30 && reasonCode !== LeaseTerminationReasonCode.LEASE_VIOLATION) {
     errors.terminationDate = [
       `Lease must be active for at least 30 days before termination (currently ${daysSinceStart} days). Exception: lease violations.`,
     ];
@@ -244,8 +241,8 @@ export const validateLeaseTermination = (
 
   if (
     !isEndOfMonth &&
-    terminationReason !== 'lease_violation' &&
-    terminationReason !== 'emergency'
+    reasonCode !== LeaseTerminationReasonCode.LEASE_VIOLATION &&
+    reasonCode !== LeaseTerminationReasonCode.EMERGENCY
   ) {
     const suggestedDate = new Date(termDate.getFullYear(), termDate.getMonth() + 1, 0);
     warnings.push(
@@ -1318,6 +1315,62 @@ export const findActiveLeasePDF = (lease: ILeaseDocument) =>
   lease.leaseDocuments?.find(
     (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
   );
+
+// Statuses a lease can only reach after its contract was executed (the model requires
+// signedDate + signatures for ACTIVE, and the others are only entered from ACTIVE).
+const SIGNED_LEASE_STATUSES: LeaseStatus[] = [
+  LeaseStatus.ACTIVE,
+  LeaseStatus.EXPIRED,
+  LeaseStatus.TERMINATED,
+  LeaseStatus.COMPLETED,
+];
+
+/**
+ * True once the lease contract has been fully signed at least once — manual signing sets
+ * signedDate, a completed e-signature sets eSignature.status 'signed', and manual activation
+ * moves the lease to ACTIVE. A partially signed envelope does not count: a decline/expiry
+ * reverts the lease to draft with those signatures still recorded.
+ */
+export const hasLeaseBeenSigned = (
+  lease: Pick<ILeaseDocument, 'signedDate' | 'eSignature' | 'status'>
+): boolean =>
+  !!lease.signedDate ||
+  lease.eSignature?.status === ILeaseESignatureStatusEnum.SIGNED ||
+  SIGNED_LEASE_STATUSES.includes(lease.status);
+
+// Untyped uploads are the contract itself until the first signature, then supporting documents
+// that must never replace the signed agreement. Explicit types (generated agreement PDF) are kept.
+export const assignUploadedLeaseDocumentTypes = <T extends { documentType?: string }>(
+  lease: Pick<ILeaseDocument, 'signedDate' | 'eSignature' | 'status'>,
+  uploadResults: T[]
+): T[] => {
+  const defaultType = hasLeaseBeenSigned(lease) ? 'other' : 'lease_agreement';
+  return uploadResults.map((upload) =>
+    upload.documentType ? upload : { ...upload, documentType: defaultType }
+  );
+};
+
+export const queueLeasePdf = (
+  queueFactory: QueueFactory,
+  lease: ILeaseDocument,
+  actorId: string,
+  options: Pick<PdfJobData, 'templateType' | 'senderInfo'> = {}
+) =>
+  (queueFactory.getQueue('pdfGeneratorQueue') as PdfQueue).addToPdfQueue({
+    resource: {
+      resourceId: lease._id.toString(),
+      resourceName: 'lease',
+      actorId,
+      resourceType: 'document',
+      fieldName: 'leaseDocument',
+    },
+    cuid: lease.cuid,
+    templateType:
+      options.templateType ||
+      lease.templateType ||
+      determineTemplateType(lease.property?.propertyType || ''),
+    senderInfo: options.senderInfo,
+  });
 
 /**
  * Builds BoldSign sender info from client profile.

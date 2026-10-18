@@ -21,7 +21,8 @@ export class EmailQueue extends BaseQueue {
     this.processQueueJobs('*', 3, this.emailWorker.sendMail);
   }
 
-  addToEmailQueue(queuename: string, data: IEmailOptions<unknown>): void {
-    this.addJobToQueue(queuename, data);
+  /** Resolves once the email job is in the queue; callers that must know it was queued await it. */
+  async addToEmailQueue(queuename: string, data: IEmailOptions<unknown>): Promise<void> {
+    await this.addJobToQueue(queuename, data);
   }
 }

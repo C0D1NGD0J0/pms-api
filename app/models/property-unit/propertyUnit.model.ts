@@ -1,5 +1,6 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
+import { UNIT_FLOOR_RANGE } from '@utils/constants';
 import { CURRENCIES } from '@interfaces/utils.interface';
 import { calcRentAdjustment } from '@utils/financial.utils';
 import {
@@ -58,8 +59,8 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
     },
     floor: {
       type: Number,
-      max: 100,
-      min: 1,
+      max: UNIT_FLOOR_RANGE.max,
+      min: UNIT_FLOOR_RANGE.min, // negative = basement, 0 = ground floor
       default: 1,
     },
     unitType: {
@@ -201,6 +202,31 @@ const PropertyUnitSchema = new Schema<IPropertyUnitDocument>(
     lastModifiedBy: {
       type: Schema.Types.ObjectId,
       ref: 'User',
+    },
+    // Units are created live; only staff edits to high-impact fields wait for approval
+    approvalStatus: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'approved',
+      index: true,
+    },
+    approvalDetails: [
+      {
+        action: {
+          type: String,
+          enum: ['created', 'updated', 'approved', 'rejected', 'overridden'],
+          required: true,
+        },
+        actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+        timestamp: { type: Date, default: Date.now },
+        notes: { type: String, maxlength: 500 },
+        rejectionReason: { type: String, maxlength: 500 },
+        metadata: { type: Schema.Types.Mixed },
+      },
+    ],
+    pendingChanges: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     deletedAt: {
       type: Date,
@@ -393,6 +419,4 @@ PropertyUnitSchema.methods.getAuthorizationStatus = function (this: IPropertyUni
 
 const PropertyUnitModel = model<IPropertyUnitDocument>('PropertyUnit', PropertyUnitSchema);
 PropertyUnitModel.cleanIndexes();
-PropertyUnitModel.syncIndexes();
-
 export default PropertyUnitModel;

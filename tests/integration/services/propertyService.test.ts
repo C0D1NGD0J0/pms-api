@@ -3,6 +3,7 @@ import { PropertyCache } from '@caching/property.cache';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { PropertyService } from '@services/property/property.service';
+import { PermissionService } from '@services/permission/permission.service';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import { PropertyStatsService } from '@services/property/propertyStats.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
@@ -30,6 +31,7 @@ const mockMediaUploadService = {
   handleMediaDeletion: jest.fn().mockResolvedValue(undefined),
   handleAvatarDeletion: jest.fn().mockResolvedValue(undefined),
   uploadFile: jest.fn().mockResolvedValue({ success: true }),
+  uploadRequestFiles: jest.fn().mockResolvedValue([]),
 } as any;
 
 const mockGeoCoderService = {
@@ -127,6 +129,7 @@ describe('PropertyService Integration Tests', () => {
     // Initialize real extracted services
     propertyApprovalService = new PropertyApprovalService({
       propertyDAO,
+      propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,
       propertyCache,
       notificationService: mockNotificationService,
@@ -159,6 +162,7 @@ describe('PropertyService Integration Tests', () => {
       propertyApprovalService,
       propertyStatsService,
       notificationService: mockNotificationService,
+      permissionService: new PermissionService(),
       subscriptionDAO: {
         findFirst: jest.fn().mockResolvedValue({
           planName: 'growth',
@@ -276,6 +280,36 @@ describe('PropertyService Integration Tests', () => {
           }
           throw error;
         }
+      });
+
+      it("prices the property in the account's currency, not the one sent", async () => {
+        await Client.updateOne({ cuid: testClient.cuid }, { 'settings.defaultCurrency': 'CAD' });
+        const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+        const result = await propertyService.addProperty(
+          ctx as any,
+          {
+            name: `Toronto Property ${Date.now()}`,
+            propertyType: 'apartment',
+            maxAllowedUnits: 10,
+            fullAddress: '88 Kensington Ave, Toronto, ON M5T 2K2',
+            address: {
+              street: 'Kensington Ave',
+              city: 'Toronto',
+              state: 'ON',
+              postCode: 'M5T 2K2',
+              country: 'Canada',
+              fullAddress: '88 Kensington Ave, Toronto, ON M5T 2K2',
+            },
+            specifications: { totalArea: 5000 },
+            fees: { rentAmount: '1850', currency: 'USD' },
+            occupancyStatus: 'vacant',
+            computedLocation: { type: 'Point', coordinates: [-79.4013, 43.6547] },
+          } as any
+        );
+
+        const savedProperty = await Property.findOne({ pid: result.data.pid }).lean();
+        expect(savedProperty?.fees?.currency).toBe('CAD');
       });
 
       it('should create property requiring approval for staff user', async () => {
@@ -420,6 +454,96 @@ describe('PropertyService Integration Tests', () => {
         const properties = await Property.find({ cuid: testClient.cuid });
         expect(properties).toHaveLength(0);
       });
+
+      describe('assignedStaff and pending uploads', () => {
+        const buildHouse = (overrides: Record<string, unknown> = {}) => ({
+          name: `Staffed House ${Date.now()}`,
+          propertyType: 'house' as const,
+          maxAllowedUnits: 1,
+          address: {
+            street: '12 Elm St',
+            city: 'Austin',
+            state: 'TX',
+            postCode: '78701',
+            country: 'USA',
+            unitNumber: '4B',
+            fullAddress: '12 Elm St, Austin, TX 78701',
+          },
+          description: { text: 'House with staff assigned at creation' },
+          specifications: { bedrooms: 3, bathrooms: 2, totalArea: 1800 },
+          fees: { rentAmount: '950', currency: 'USD' },
+          occupancyStatus: 'vacant' as const,
+          computedLocation: { type: 'Point', coordinates: [-97.7431, 30.2672] },
+          ...overrides,
+        });
+
+        it('stores assignedStaff as ObjectIds, deduped and without the manager', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+          const staffId = staffUser._id.toString();
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            buildHouse({
+              managedBy: adminUser._id.toString(),
+              assignedStaff: [staffId, staffId, adminUser._id.toString()],
+            }) as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.assignedStaff).toHaveLength(1);
+          expect(saved!.assignedStaff![0]).toBeInstanceOf(Types.ObjectId);
+          expect(saved!.assignedStaff![0].toString()).toBe(staffId);
+          expect(saved!.address.unitNumber).toBe('4B');
+        });
+
+        it('accepts rent and management fees above $1000/$500 and stores them in cents', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            buildHouse({
+              fees: { rentAmount: '1200', managementFees: '750', currency: 'USD' },
+            }) as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.fees.rentAmount).toBe(120000);
+          expect(saved!.fees.managementFees).toBe(75000);
+        });
+
+        it('rejects staff who are not connected to the client', async () => {
+          const otherClient = await createTestClient();
+          const outsider = await createTestUser(otherClient.cuid, {
+            roles: [ROLES.STAFF],
+            email: `outsider-${Date.now()}@test.com`,
+          });
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          await expect(
+            propertyService.addProperty(
+              ctx as any,
+              buildHouse({ assignedStaff: [outsider._id.toString()] }) as any
+            )
+          ).rejects.toThrow(BadRequestError);
+          expect(await Property.countDocuments({ cuid: testClient.cuid })).toBe(0);
+        });
+
+        it('does not persist media entries that only describe a file being uploaded', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            buildHouse({
+              documents: [{ documentType: 'deed', status: 'active', uploadedAt: new Date() }],
+              images: [{ status: 'active', uploadedAt: new Date() }],
+            }) as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.documents).toHaveLength(0);
+          expect(saved!.images).toHaveLength(0);
+        });
+      });
     }); // End addProperty
 
     describe('updateClientProperty', () => {
@@ -500,6 +624,42 @@ describe('PropertyService Integration Tests', () => {
         expect(updatedProperty!.pendingChanges).toBeDefined();
         expect((updatedProperty!.pendingChanges as any).name).toBe('Staff Updated Name');
         expect(updatedProperty!.approvalStatus).toBe(PropertyApprovalStatusEnum.PENDING);
+      });
+
+      it('lets an admin override pending staff changes and records an overridden entry', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Override Target',
+          operationalStatus: 'available',
+        });
+        await Property.findByIdAndUpdate(property._id, {
+          approvalStatus: PropertyApprovalStatusEnum.PENDING,
+          pendingChanges: {
+            name: 'Staff Proposed Name',
+            updatedBy: staffUser._id,
+            updatedAt: new Date(),
+            displayName: 'Staff Member',
+          },
+        });
+
+        const result = await propertyService.updateClientProperty(
+          {
+            cuid: testClient.cuid,
+            pid: property.pid,
+            currentuser: {
+              sub: adminUser._id.toString(),
+              displayName: adminUser.firstName,
+              fullname: `${adminUser.firstName} ${adminUser.lastName}`,
+              client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+            },
+          } as any,
+          { name: 'Admin Name' }
+        );
+
+        expect(result.success).toBe(true);
+        const updated = await Property.findById(property._id).lean();
+        expect(updated!.name).toBe('Admin Name');
+        expect(updated!.pendingChanges).toBeNull();
+        expect(updated!.approvalDetails?.at(-1)).toMatchObject({ action: 'overridden' });
       });
 
       describe('image removal', () => {
@@ -747,9 +907,12 @@ describe('PropertyService Integration Tests', () => {
         const rejectedProperty = await Property.findById(property._id);
         expect(rejectedProperty!.name).toBe('Property to Reject'); // Original name
         expect(rejectedProperty!.pendingChanges).toBeNull();
-        // Note: Service currently keeps status as 'pending' after rejecting pending changes
-        // This might be a bug - ideally it should revert to 'approved'
-        expect(rejectedProperty!.approvalStatus).toBe('pending');
+        // The live data is still the approved version, so it leaves the pending list
+        expect(rejectedProperty!.approvalStatus).toBe('approved');
+        expect(rejectedProperty!.approvalDetails?.at(-1)).toMatchObject({
+          action: 'rejected',
+          rejectionReason: 'Does not meet standards',
+        });
       });
 
       it('should reject new property creation', async () => {
@@ -794,6 +957,157 @@ describe('PropertyService Integration Tests', () => {
         ).rejects.toThrow(BadRequestError);
       });
     }); // End rejectProperty
+
+    describe('bulk approval decisions', () => {
+      const adminCaller = () =>
+        ({
+          sub: adminUser._id.toString(),
+          displayName: adminUser.firstName,
+          client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+        }) as any;
+
+      const seedPendingEdit = async (name: string, proposedName: string) => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, { name });
+        await Property.findByIdAndUpdate(property._id, {
+          approvalStatus: PropertyApprovalStatusEnum.PENDING,
+          pendingChanges: {
+            name: proposedName,
+            updatedBy: staffUser._id,
+            updatedAt: new Date(),
+            displayName: 'Staff Member',
+          },
+        });
+        return property;
+      };
+
+      it('bulk approve applies each pending change and records the approver', async () => {
+        const first = await seedPendingEdit('First', 'First Approved');
+        const second = await seedPendingEdit('Second', 'Second Approved');
+
+        const result = await propertyService.bulkApproveProperties(
+          testClient.cuid,
+          [first.pid, second.pid],
+          adminCaller()
+        );
+
+        expect(result.data).toMatchObject({ approved: 2, total: 2, failed: [] });
+        for (const [property, name] of [
+          [first, 'First Approved'],
+          [second, 'Second Approved'],
+        ] as const) {
+          const saved = await Property.findById(property._id).lean();
+          expect(saved!.name).toBe(name);
+          expect(saved!.pendingChanges).toBeNull();
+          expect(saved!.approvalStatus).toBe('approved');
+          expect(saved!.approvalDetails?.at(-1)).toMatchObject({ action: 'approved' });
+          expect(saved!.approvalDetails?.at(-1)?.actor.toString()).toBe(adminUser._id.toString());
+        }
+      });
+
+      it('bulk approve reports properties that could not be approved', async () => {
+        const pending = await seedPendingEdit('Pending', 'Pending Approved');
+
+        const result = await propertyService.bulkApproveProperties(
+          testClient.cuid,
+          [pending.pid, 'missing-pid'],
+          adminCaller()
+        );
+
+        expect(result.data.approved).toBe(1);
+        expect(result.data.total).toBe(2);
+        expect(result.data.failed).toEqual([
+          expect.objectContaining({ pid: 'missing-pid', error: expect.any(String) }),
+        ]);
+      });
+
+      it('bulk reject discards pending changes and records the reason', async () => {
+        const edited = await seedPendingEdit('Edited', 'Edited Rejected');
+        const newProperty = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Brand New',
+        });
+        await Property.findByIdAndUpdate(newProperty._id, {
+          approvalStatus: PropertyApprovalStatusEnum.PENDING,
+        });
+
+        const result = await propertyService.bulkRejectProperties(
+          testClient.cuid,
+          [edited.pid, newProperty.pid],
+          adminCaller(),
+          'Incomplete details'
+        );
+
+        expect(result.data).toMatchObject({ rejected: 2, total: 2, failed: [] });
+
+        const savedEdit = await Property.findById(edited._id).lean();
+        expect(savedEdit!.name).toBe('Edited');
+        expect(savedEdit!.pendingChanges).toBeNull();
+        expect(savedEdit!.approvalStatus).toBe('approved');
+        expect(savedEdit!.approvalDetails?.at(-1)).toMatchObject({
+          action: 'rejected',
+          rejectionReason: 'Incomplete details',
+        });
+
+        const savedNew = await Property.findById(newProperty._id).lean();
+        expect(savedNew!.approvalStatus).toBe('rejected');
+      });
+
+      it('bulk reject leaves live approved properties without pending changes alone', async () => {
+        const live = await createTestProperty(testClient.cuid, testClient._id, { name: 'Live' });
+        await Property.findByIdAndUpdate(live._id, {
+          approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+        });
+
+        const result = await propertyService.bulkRejectProperties(
+          testClient.cuid,
+          [live.pid],
+          adminCaller(),
+          'Not needed'
+        );
+
+        expect(result.data.rejected).toBe(0);
+        expect(result.data.failed).toHaveLength(1);
+        const saved = await Property.findById(live._id).lean();
+        expect(saved!.approvalStatus).toBe('approved');
+      });
+    });
+
+    describe('unarchiveClientProperty', () => {
+      const archiveOne = async (name: string) => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, { name });
+        await Property.findByIdAndUpdate(property._id, { deletedAt: new Date() });
+        return property;
+      };
+
+      it('restores an archived property on an unlimited (enterprise) plan', async () => {
+        const archived = await archiveOne('Archived Enterprise');
+        await createTestProperty(testClient.cuid, testClient._id, { name: 'Active One' });
+        (propertyService as any).subscriptionDAO.findFirst.mockResolvedValueOnce({
+          planName: 'enterprise',
+          resourceTracker: { propertyCount: 2, unitCount: 0, seatCount: 0 },
+        });
+
+        const result = await propertyService.unarchiveClientProperty(testClient.cuid, archived.pid);
+
+        expect(result.success).toBe(true);
+        const restored = await Property.findById(archived._id).lean();
+        expect(restored!.deletedAt).toBeNull();
+      });
+
+      it('blocks unarchiving when the active count has reached a finite plan limit', async () => {
+        const archived = await archiveOne('Archived Essential');
+        for (let i = 0; i < 3; i++) {
+          await createTestProperty(testClient.cuid, testClient._id, { name: `Active ${i}` });
+        }
+        (propertyService as any).subscriptionDAO.findFirst.mockResolvedValueOnce({
+          planName: 'essential',
+          resourceTracker: { propertyCount: 4, unitCount: 0, seatCount: 0 },
+        });
+
+        await expect(
+          propertyService.unarchiveClientProperty(testClient.cuid, archived.pid)
+        ).rejects.toThrow(BadRequestError);
+      });
+    });
 
     describe('archiveClientProperty', () => {
       it('should archive property without active leases', async () => {

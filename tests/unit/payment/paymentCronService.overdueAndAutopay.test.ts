@@ -72,7 +72,7 @@ const makeService = () => {
   const tenantProfile = makeTenantProfile();
   const profileDAO = { findFirst: jest.fn().mockResolvedValue(tenantProfile) };
   const paymentGatewayService = {
-    payInvoice: jest.fn().mockResolvedValue({ success: true, data: null }),
+    payCharge: jest.fn().mockResolvedValue({ success: true, data: null }),
     retrievePaymentMethod: jest
       .fn()
       .mockResolvedValue({ success: true, data: { type: 'card', last4: '4242' } }),
@@ -337,7 +337,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
     await service.autoChargeDueRentPayments();
 
-    expect(paymentGatewayService.payInvoice).toHaveBeenCalledWith('stripe', 'in_rent_1');
+    expect(paymentGatewayService.payCharge).toHaveBeenCalledWith('stripe', 'in_rent_1');
     expect(paymentDAO.update).toHaveBeenCalledWith(
       {
         _id: payment._id,
@@ -369,7 +369,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
     await service.autoChargeDueRentPayments();
 
-    expect(paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+    expect(paymentGatewayService.payCharge).not.toHaveBeenCalled();
     expect(paymentDAO.update).not.toHaveBeenCalled();
     expect(paymentDAO.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -383,7 +383,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
     const { service, paymentDAO, paymentGatewayService } = makeService();
     const payment = dueRent();
     queuePayments(paymentDAO, [payment]);
-    paymentGatewayService.payInvoice.mockResolvedValue({
+    paymentGatewayService.payCharge.mockResolvedValue({
       success: false,
       data: null,
       message: 'Your card was declined.',
@@ -411,7 +411,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
     const { service, paymentDAO, paymentGatewayService, emitterService } = makeService();
     const payment = dueRent({ failure: { retryCount: 1 } });
     queuePayments(paymentDAO, [payment]);
-    paymentGatewayService.payInvoice.mockResolvedValue({
+    paymentGatewayService.payCharge.mockResolvedValue({
       success: false,
       data: null,
       message: 'The mandate for this payment method has been revoked.',
@@ -439,7 +439,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
     const { service, paymentDAO, paymentGatewayService } = makeService();
     const payment = dueRent();
     queuePayments(paymentDAO, [payment]);
-    paymentGatewayService.payInvoice.mockResolvedValue({
+    paymentGatewayService.payCharge.mockResolvedValue({
       success: false,
       data: null,
       message: 'The acss_debit mandate is inactive.',
@@ -457,7 +457,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
     const { service, paymentDAO, paymentGatewayService, emitterService } = makeService();
     const payment = dueRent();
     queuePayments(paymentDAO, [payment]);
-    paymentGatewayService.payInvoice.mockResolvedValue({
+    paymentGatewayService.payCharge.mockResolvedValue({
       success: false,
       data: null,
       message: 'amount_too_large for acss_debit',
@@ -494,7 +494,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await service.autoChargeDueRentPayments();
 
-      expect(paymentGatewayService.payInvoice.mock.calls.map((c: any[]) => c[1])).toEqual([
+      expect(paymentGatewayService.payCharge.mock.calls.map((c: any[]) => c[1])).toEqual([
         'in_rent',
         'in_fees',
       ]);
@@ -506,7 +506,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await service.autoChargeDueRentPayments();
 
-      expect(paymentGatewayService.payInvoice.mock.calls.map((c: any[]) => c[1])).toEqual([
+      expect(paymentGatewayService.payCharge.mock.calls.map((c: any[]) => c[1])).toEqual([
         'in_fees',
       ]);
     });
@@ -515,7 +515,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
       const { service, paymentDAO, paymentGatewayService } = makeService();
       const payment = splitRent();
       queuePayments(paymentDAO, [payment]);
-      paymentGatewayService.payInvoice
+      paymentGatewayService.payCharge
         .mockResolvedValueOnce({ success: true, data: null })
         .mockResolvedValueOnce({ success: false, data: null, message: 'declined' });
 
@@ -555,7 +555,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await ctx.service.autoChargeDueRentPayments();
 
-      expect(ctx.paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+      expect(ctx.paymentGatewayService.payCharge).not.toHaveBeenCalled();
       expect(ctx.paymentDAO.update).toHaveBeenCalledWith(
         { _id: payment._id, padNoticeSentAt: null, deletedAt: null },
         { $set: { padNoticeSentAt: expect.any(Date) } }
@@ -588,7 +588,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await ctx.service.autoChargeDueRentPayments();
 
-      expect(ctx.paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+      expect(ctx.paymentGatewayService.payCharge).not.toHaveBeenCalled();
       expect(ctx.emitterService.emit).not.toHaveBeenCalled();
     });
 
@@ -601,7 +601,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await ctx.service.autoChargeDueRentPayments();
 
-      expect(ctx.paymentGatewayService.payInvoice).toHaveBeenCalledTimes(1);
+      expect(ctx.paymentGatewayService.payCharge).toHaveBeenCalledTimes(1);
     });
 
     it('treats an unknown method type with a mandate on file as a bank debit', async () => {
@@ -615,7 +615,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await ctx.service.autoChargeDueRentPayments();
 
-      expect(ctx.paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+      expect(ctx.paymentGatewayService.payCharge).not.toHaveBeenCalled();
     });
 
     it('does not delay card payments', async () => {
@@ -624,7 +624,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
 
       await ctx.service.autoChargeDueRentPayments();
 
-      expect(ctx.paymentGatewayService.payInvoice).toHaveBeenCalledTimes(1);
+      expect(ctx.paymentGatewayService.payCharge).toHaveBeenCalledTimes(1);
       expect(ctx.emitterService.emit).not.toHaveBeenCalledWith(
         EventTypes.PAD_PRE_DEBIT_NOTIFICATION,
         expect.anything()
@@ -649,7 +649,7 @@ describe('PaymentCronService — autoChargeDueRentPayments', () => {
     expect(paymentDAO.list).toHaveBeenCalledTimes(2);
     expect(paymentDAO.list.mock.calls[1][0]._id).toEqual({ $gt: firstPage[199]._id });
     expect(paymentDAO.list.mock.calls[1][1]).toEqual({ limit: 200, sort: { _id: 1 } });
-    expect(paymentGatewayService.payInvoice).toHaveBeenCalledTimes(201);
+    expect(paymentGatewayService.payCharge).toHaveBeenCalledTimes(201);
   });
 });
 
@@ -668,7 +668,7 @@ describe('PaymentCronService — autoChargeOverdueMaintenancePayments', () => {
 
     await service.autoChargeOverdueMaintenancePayments();
 
-    expect(paymentGatewayService.payInvoice).toHaveBeenCalledWith('stripe', 'in_mnt_1', {
+    expect(paymentGatewayService.payCharge).toHaveBeenCalledWith('stripe', 'in_mnt_1', {
       paymentMethod: 'pm_card',
     });
     expect(paymentDAO.update).toHaveBeenCalledWith(
@@ -704,7 +704,7 @@ describe('PaymentCronService — autoChargeOverdueMaintenancePayments', () => {
 
     await ctx.service.autoChargeOverdueMaintenancePayments();
 
-    expect(ctx.paymentGatewayService.payInvoice).not.toHaveBeenCalled();
+    expect(ctx.paymentGatewayService.payCharge).not.toHaveBeenCalled();
     expect(ctx.emitterService.emit).toHaveBeenCalledWith(
       EventTypes.PAD_PRE_DEBIT_NOTIFICATION,
       expect.objectContaining({ paymentType: PaymentRecordType.LATE_FEE })

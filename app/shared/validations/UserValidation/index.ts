@@ -1,4 +1,5 @@
 import {
+  EmailChangeRequestSchema,
   UserFilterQuerySchema,
   UserRoleParamSchema,
   UserUidParamSchema,
@@ -10,4 +11,5 @@ export class UserValidations {
   static userIdParam = UserIdParamSchema;
   static userFilterQuery = UserFilterQuerySchema;
   static userRoleParam = UserRoleParamSchema;
+  static emailChangeRequest = EmailChangeRequestSchema;
 }

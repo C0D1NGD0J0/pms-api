@@ -156,6 +156,4 @@ VendorSchema.index({ 'address.computedLocation': '2dsphere' });
 
 const VendorModel = model<IVendorDocument>('Vendor', VendorSchema);
 
-VendorModel.syncIndexes();
-
 export default VendorModel;

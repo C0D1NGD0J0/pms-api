@@ -2,10 +2,8 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { PropertyDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
-import { BadRequestError } from '@shared/customErrors';
 import { UploadFailedPayload, EventTypes } from '@interfaces/index';
 import { EventEmitterService, MediaUploadService } from '@services/index';
-import { ISuccessReturnData, UploadResult } from '@interfaces/utils.interface';
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
@@ -17,7 +15,6 @@ interface IConstructor {
  * PropertyMediaService
  *
  * Handles all media and document operations for properties including:
- * - Document uploads and updates
  * - Media file management
  * - Upload failure event handling
  * - Document status tracking
@@ -41,59 +38,11 @@ export class PropertyMediaService {
 
   /**
    * Subscribe to media upload events.
-   * Completed uploads are persisted by UploadWorker calling updatePropertyDocuments
-   * directly, so UPLOAD_COMPLETED is deliberately not handled here.
+   * Property uploads are saved by PropertyService in the request that sent them, so
+   * UPLOAD_COMPLETED is deliberately not handled here.
    */
   registerEventListeners(): void {
     this.emitterService.on(EventTypes.UPLOAD_FAILED, this.onUploadFailed);
-  }
-
-  /**
-   * Update property documents after successful upload
-   *
-   * @param propertyUid - Property unique identifier (pid)
-   * @param uploadResult - Array of upload results from media service
-   * @param userid - User ID performing the update
-   * @returns Success response with updated property
-   *
-   * @throws BadRequestError if propertyUid or uploadResult is missing
-   * @throws BadRequestError if property not found or update fails
-   */
-  async updatePropertyDocuments(
-    propertyUid: string,
-    uploadResult: UploadResult[],
-    userid: string
-  ): Promise<ISuccessReturnData> {
-    if (!propertyUid) {
-      throw new BadRequestError({ message: t('common.errors.required', { field: 'Property ID' }) });
-    }
-
-    if (!uploadResult || uploadResult.length === 0) {
-      throw new BadRequestError({
-        message: t('common.errors.required', { field: 'Upload result' }),
-      });
-    }
-
-    const property = await this.propertyDAO.findFirst(
-      { pid: propertyUid, deletedAt: null },
-      { projection: { _id: 1 } }
-    );
-
-    if (!property) {
-      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
-    }
-
-    const updatedProperty = await this.propertyDAO.updatePropertyDocument(
-      propertyUid,
-      uploadResult,
-      userid
-    );
-
-    if (!updatedProperty) {
-      throw new BadRequestError({ message: 'Unable to update property.' });
-    }
-
-    return { success: true, data: updatedProperty, message: 'Property updated successfully' };
   }
 
   /**

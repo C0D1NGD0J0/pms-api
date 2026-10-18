@@ -41,6 +41,7 @@ import {
   IRequestContext,
   ResourceContext,
   IPaginateResult,
+  UploadResult,
 } from '@interfaces/utils.interface';
 import {
   MaintenanceRequestDAO,
@@ -74,6 +75,7 @@ import {
   MAX_ASSIGNED_STAFF,
   getRequestDuration,
   calcOccupancyRate,
+  generateShortUID,
   calcTotalPages,
   createLogger,
   escapeRegExp,
@@ -368,7 +370,8 @@ export class PropertyService implements ICronProvider {
 
   async addProperty(
     cxt: IRequestContext,
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
+    propertyData: NewPropertyType,
+    newFiles?: ExtractedMediaFile[]
   ): Promise<ISuccessReturnData> {
     const {
       params: { cuid },
@@ -563,47 +566,77 @@ export class PropertyService implements ICronProvider {
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
     const maxProperties = config.limits.maxProperties;
 
-    const session = await this.propertyDAO.startSession();
-    const result = await this.propertyDAO.withTransaction(session, async (txSession) => {
-      const result = await this.subscriptionDAO.updateResourceCount(
-        'property',
-        subscription.client,
-        1,
-        maxProperties,
-        txSession
-      );
+    // Uploaded after every check, so a rejected create uploads nothing, and saved with the
+    // property in the same write. The pid is chosen here so the S3 keys carry it.
+    const pid = generateShortUID();
+    const uploads = newFiles?.length
+      ? await this.mediaUploadService.uploadRequestFiles(
+          { scannedFiles: newFiles },
+          {
+            resourceName: 'property',
+            resourceId: pid,
+            fieldName: 'media',
+            actorId: currentuser.sub,
+          }
+        )
+      : [];
+    const newMedia = this.propertyDAO.buildMediaItems(
+      { documents: cleanPropertyData.documents as IPropertyDocument['documents'] },
+      uploads,
+      currentuser.sub
+    );
 
-      if (!result) {
-        throw new BadRequestError({
-          message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
-        });
-      }
+    let result: IPropertyDocument;
+    try {
+      const session = await this.propertyDAO.startSession();
+      result = await this.propertyDAO.withTransaction(session, async (txSession) => {
+        const result = await this.subscriptionDAO.updateResourceCount(
+          'property',
+          subscription.client,
+          1,
+          maxProperties,
+          txSession
+        );
 
-      // Every new property starts unverified, regardless of ownership type or uploaded
-      // documents — only an admin review (PropertyVerificationService) can verify it.
-      const verificationStatus = VerificationStatusEnum.UNVERIFIED;
+        if (!result) {
+          throw new BadRequestError({
+            message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
+          });
+        }
 
-      const property = await this.propertyDAO.createProperty(
-        {
+        // Every new property starts unverified, regardless of ownership type or uploaded
+        // documents — only an admin review (PropertyVerificationService) can verify it.
+        const verificationStatus = VerificationStatusEnum.UNVERIFIED;
+
+        const newPropertyData = {
           ...cleanPropertyData,
+          images: [...(cleanPropertyData.images ?? []), ...newMedia.images],
+          documents: [...(cleanPropertyData.documents ?? []), ...newMedia.documents],
+          pid,
           cuid,
           approvalStatus,
           approvalDetails,
           verificationStatus,
-        },
-        txSession
-      );
+        } as Partial<IPropertyDocument>;
+        const property = await this.propertyDAO.createProperty(newPropertyData, txSession);
 
-      if (!property) {
-        throw new BadRequestError({
-          message: t('common.errors.operationFailed', { action: 'create property' }),
-        });
-      }
+        if (!property) {
+          throw new BadRequestError({
+            message: t('common.errors.operationFailed', { action: 'create property' }),
+          });
+        }
 
-      return property;
-    });
+        return property;
+      });
+    } catch (error) {
+      await this.removeUploadsAfterFailedWrite(uploads, pid);
+      throw error;
+    }
+
+    this.emitUploadCompleted(uploads, pid, currentuser.sub);
 
     await this.propertyCache.cacheProperty(cuid, result.id, result);
+    await this.propertyCache.invalidatePropertyLists(cuid);
     await this.propertyCache.invalidateLeaseableProperties(cuid);
 
     if (approvalStatus === PropertyApprovalStatusEnum.PENDING) {
@@ -632,7 +665,40 @@ export class PropertyService implements ICronProvider {
       }
     }
 
-    return { success: true, data: result, message };
+    return { success: true, data: await this.withSignedMediaUrls(result), message };
+  }
+
+  /** AssetService turns UPLOAD_COMPLETED into document-library asset records. */
+  private emitUploadCompleted(uploads: UploadResult[], pid: string, actorId: string): void {
+    if (!uploads.length) return;
+    this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
+      results: uploads,
+      actorId,
+      resourceType: 'document',
+      resourceName: 'property',
+      resourceId: pid,
+      fieldName: 'media',
+    });
+  }
+
+  /** The write that would have referenced these files failed, so nothing points at them. */
+  private async removeUploadsAfterFailedWrite(uploads: UploadResult[], pid: string) {
+    try {
+      await this.mediaUploadService.removeUploadedFiles(uploads);
+    } catch (error) {
+      this.log.error('Failed to remove files uploaded for a failed property write', { pid, error });
+    }
+  }
+
+  /**
+   * Media URLs are signed on every read, so the write response signs them too — the client
+   * can show the new files straight away. The stored URLs are left untouched.
+   */
+  private async withSignedMediaUrls(property: IPropertyDocument) {
+    const plain = (property.toObject ? property.toObject() : property) as IPropertyDocument;
+    if (plain.images?.length) await this.s3Service.signFileUrls(plain.images);
+    if (plain.documents?.length) await this.s3Service.signFileUrls(plain.documents);
+    return plain;
   }
 
   /**
@@ -1515,16 +1581,7 @@ export class PropertyService implements ICronProvider {
         });
       }
 
-      if (uploads.length) {
-        this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
-          results: uploads,
-          actorId: ctx.currentuser.sub,
-          resourceType: 'document',
-          resourceName: 'property',
-          resourceId: pid,
-          fieldName: 'media',
-        });
-      }
+      this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
 
       // Send notification to approvers
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, false);
@@ -1591,13 +1648,45 @@ export class PropertyService implements ICronProvider {
         $push: pushOperations,
       };
 
-      const result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
+      // New files are saved in this same write. An edited list in the payload replaces the
+      // stored one, so the uploads go after it — Mongo rejects $set and $push on one path.
+      const uploads = ctx.newFiles?.length
+        ? await this.mediaUploadService.uploadRequestFiles(
+            { scannedFiles: ctx.newFiles },
+            {
+              resourceName: 'property',
+              resourceId: pid,
+              fieldName: 'media',
+              actorId: ctx.currentuser.sub,
+            }
+          )
+        : [];
+      const newMedia = this.propertyDAO.buildMediaItems(property, uploads, ctx.currentuser.sub);
+      for (const field of ['images', 'documents'] as const) {
+        const uploaded = newMedia[field] as any[];
+        if (!uploaded.length) continue;
+
+        if (cleanUpdateData[field] !== undefined) {
+          updateOperation.$set[field] = [...(cleanUpdateData[field] as any[]), ...uploaded];
+        } else {
+          updateOperation.$push[field] = { $each: uploaded };
+        }
+      }
+
+      let result: IPropertyDocument | null = null;
+      try {
+        result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
+      } finally {
+        if (!result) await this.removeUploadsAfterFailedWrite(uploads, pid);
+      }
 
       if (!result) {
         throw new BadRequestError({
           message: t('common.errors.operationFailed', { action: 'update property' }),
         });
       }
+
+      this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
 
       const discardedMedia = pendingMediaItems(property.pendingChanges?.pendingMedia);
       if (discardedMedia.length) {
@@ -1634,6 +1723,7 @@ export class PropertyService implements ICronProvider {
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
       await this.propertyCache.invalidatePropertyDetail(ctx.cuid, result.pid);
+      await this.propertyCache.invalidatePropertyLists(ctx.cuid);
       await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
@@ -1666,7 +1756,7 @@ export class PropertyService implements ICronProvider {
       const baseMessage = t('common.success.updated', { resource: 'Property' });
       const message = hasPendingChanges ? `${baseMessage}${overrideMessage}` : baseMessage;
 
-      return { success: true, data: result, message };
+      return { success: true, data: await this.withSignedMediaUrls(result), message };
     }
 
     throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });

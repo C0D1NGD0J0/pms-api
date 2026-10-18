@@ -1,4 +1,3 @@
-import { UploadWorker } from '@workers/upload.worker';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EventTypes } from '@interfaces/events.interface';
 import { UploadResult } from '@interfaces/utils.interface';
@@ -6,7 +5,6 @@ import { PropertyService } from '@services/property/property.service';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
 import { PermissionService } from '@services/permission/permission.service';
 import { PropertyStatsService } from '@services/property/propertyStats.service';
-import { PropertyMediaService } from '@services/property/propertyMedia.service';
 import { mockQueueFactory, mockEventEmitter } from '@tests/setup/externalMocks';
 import { PropertyUnit, Property, Profile, Client, Lease, User } from '@models/index';
 import { PropertyApprovalService } from '@services/property/propertyApproval.service';
@@ -40,7 +38,6 @@ const mockPropertyCache = {
 describe('Property staff edits with file uploads (pending media)', () => {
   let propertyService: PropertyService;
   let approvalService: PropertyApprovalService;
-  let uploadWorker: UploadWorker;
 
   let client: any;
   let adminUser: any;
@@ -95,21 +92,6 @@ describe('Property staff edits with file uploads (pending media)', () => {
     actorId: staffUser._id.toString(),
   });
 
-  const runUploadJob = (results: UploadResult[]) =>
-    uploadWorker.uploadAsset({
-      progress: jest.fn(),
-      data: {
-        resource: {
-          resourceName: 'property',
-          resourceType: results[0].mediatype ?? 'document',
-          resourceId: property.pid,
-          fieldName: results[0].fieldName,
-          actorId: staffUser._id.toString(),
-        },
-        results,
-      },
-    } as any);
-
   const reload = () => Property.findById(property._id).lean() as Promise<any>;
 
   beforeAll(() => {
@@ -125,7 +107,12 @@ describe('Property staff edits with file uploads (pending media)', () => {
     });
 
     propertyService = new PropertyService({
-      s3Service: { signFileUrls: jest.fn(async (items: any) => items) } as any,
+      s3Service: {
+        signFileUrls: jest.fn(async (items: any[]) => {
+          items.forEach((item) => (item.url = `signed:${item.key}`));
+          return items;
+        }),
+      } as any,
       propertyVerificationService: {} as any,
       propertyDAO,
       propertyUnitDAO,
@@ -147,21 +134,6 @@ describe('Property staff edits with file uploads (pending media)', () => {
       paymentDAO: {} as any,
       maintenanceRequestDAO: {} as any,
       inspectionDAO: {} as any,
-    });
-
-    const propertyMediaService = new PropertyMediaService({
-      propertyDAO,
-      mediaUploadService: mockMediaUploadService,
-      emitterService: mockEventEmitter as any,
-    });
-
-    uploadWorker = new UploadWorker({
-      s3Service: {} as any,
-      emitterService: mockEventEmitter as any,
-      maintenanceRequestService: {} as any,
-      propertyMediaService,
-      inspectionService: {} as any,
-      sseService: {} as any,
     });
   });
 
@@ -263,22 +235,100 @@ describe('Property staff edits with file uploads (pending media)', () => {
     );
   });
 
-  it('attaches files from an admin edit directly, without holding them for approval', async () => {
-    const result = await propertyService.updateClientProperty(
+  const adminEdit = (updateData: Record<string, unknown>, uploads: UploadResult[] = []) => {
+    mockMediaUploadService.uploadRequestFiles.mockResolvedValueOnce(uploads);
+    return propertyService.updateClientProperty(
       {
         cuid: client.cuid,
         pid: property.pid,
         currentuser: asUser(adminUser, ROLES.ADMIN),
-        newFiles: [scannedFile],
+        newFiles: uploads.length ? [scannedFile] : undefined,
       } as any,
-      { name: 'Admin Name' } as any
+      updateData as any
     );
-    expect(result.data.pendingChanges ?? null).toBeNull();
-    expect(mockMediaUploadService.uploadRequestFiles).not.toHaveBeenCalled();
+  };
 
-    await runUploadJob([imageUpload('admin.png')]);
+  it('saves files from an admin edit on the property in the same write, with no queue step', async () => {
+    const result = await adminEdit({ name: 'Admin Name' }, [
+      imageUpload('admin.png'),
+      documentUpload('deed.pdf', 'deed'),
+    ]);
+
+    expect(result.data.pendingChanges ?? null).toBeNull();
+    const saved = await reload();
+    expect(saved.name).toBe('Admin Name');
+    expect(saved.images.map((image: any) => image.key)).toEqual(['property/admin.png']);
+    expect(saved.documents).toEqual([
+      expect.objectContaining({ key: 'property/deed.pdf', documentType: 'deed', status: 'active' }),
+    ]);
+    // The response carries the new media with URLs the client can open (signed like reads)
+    expect(result.data.images).toEqual([
+      expect.objectContaining({
+        key: 'property/admin.png',
+        url: 'signed:property/admin.png',
+        filename: 'admin.png',
+        uploadedAt: expect.any(Date),
+      }),
+    ]);
+    expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+      EventTypes.UPLOAD_COMPLETED,
+      expect.objectContaining({ resourceName: 'property', resourceId: property.pid })
+    );
+    expect(mockPropertyCache.invalidateProperty).toHaveBeenCalled();
+    expect(mockPropertyCache.invalidatePropertyDetail).toHaveBeenCalledWith(
+      client.cuid,
+      property.pid
+    );
+    expect(mockPropertyCache.invalidatePropertyLists).toHaveBeenCalledWith(client.cuid);
+    expect(mockPropertyCache.invalidateLeaseableProperties).toHaveBeenCalledWith(client.cuid);
+  });
+
+  it('puts an admin upload after an edited image list in that same write', async () => {
+    await Property.findByIdAndUpdate(property._id, {
+      images: [
+        { key: 'property/old-a.png', url: 'https://s3.test/a', uploadedBy: adminUser._id },
+        { key: 'property/old-b.png', url: 'https://s3.test/b', uploadedBy: adminUser._id },
+      ],
+    });
+    const current = await reload();
+
+    await adminEdit({ images: [current.images[1]] }, [imageUpload('new.png')]);
 
     const saved = await reload();
-    expect(saved.images.map((image: any) => image.key)).toEqual(['property/admin.png']);
+    expect(saved.images.map((image: any) => image.key)).toEqual([
+      'property/old-b.png',
+      'property/new.png',
+    ]);
+  });
+
+  it('appends an admin upload to the stored list when the edit leaves the list alone', async () => {
+    await Property.findByIdAndUpdate(property._id, {
+      images: [{ key: 'property/old-a.png', url: 'https://s3.test/a', uploadedBy: adminUser._id }],
+    });
+
+    await adminEdit({ name: 'Renamed' }, [imageUpload('new.png')]);
+
+    const saved = await reload();
+    expect(saved.images.map((image: any) => image.key)).toEqual([
+      'property/old-a.png',
+      'property/new.png',
+    ]);
+  });
+
+  it('removes the uploaded files and emits no UPLOAD_COMPLETED when the admin write fails', async () => {
+    const uploads = [imageUpload('admin.png')];
+    const update = jest.spyOn(PropertyDAO.prototype, 'update').mockResolvedValueOnce(null as any);
+
+    try {
+      await expect(adminEdit({ name: 'Admin Name' }, uploads)).rejects.toThrow();
+    } finally {
+      update.mockRestore();
+    }
+
+    expect(mockMediaUploadService.removeUploadedFiles).toHaveBeenCalledWith(uploads);
+    expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+      EventTypes.UPLOAD_COMPLETED,
+      expect.anything()
+    );
   });
 });

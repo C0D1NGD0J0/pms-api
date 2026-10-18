@@ -129,14 +129,14 @@ export const IMPORTABLE_FIELDS: ImportableField[] = [
   },
   {
     key: 'specifications_bedrooms',
-    label: 'Bedrooms',
+    label: 'Bedrooms (single-unit house or townhouse)',
     group: 'specifications',
     required: false,
     synonyms: ['bedrooms', 'beds', 'bed'],
   },
   {
     key: 'specifications_bathrooms',
-    label: 'Bathrooms',
+    label: 'Bathrooms (single-unit house or townhouse)',
     group: 'specifications',
     required: false,
     synonyms: ['bathrooms', 'baths', 'bath'],
@@ -171,7 +171,7 @@ export const IMPORTABLE_FIELDS: ImportableField[] = [
   },
   {
     key: 'fees_rentalAmount',
-    label: 'Rent Amount',
+    label: 'Rent Amount (single-unit properties)',
     group: 'fees',
     required: false,
     synonyms: ['rent', 'rent amount', 'market rent', 'monthly rent'],
@@ -185,7 +185,7 @@ export const IMPORTABLE_FIELDS: ImportableField[] = [
   },
   {
     key: 'fees_securityDeposit',
-    label: 'Security Deposit',
+    label: 'Security Deposit (single-unit properties)',
     group: 'fees',
     required: false,
     synonyms: ['security deposit', 'deposit'],

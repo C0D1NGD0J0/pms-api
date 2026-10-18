@@ -8,11 +8,11 @@ const makeRes = () => {
   return res;
 };
 
-describe('PropertyController.updateClientProperty — file uploads', () => {
+describe('PropertyController — file uploads are saved by the service in the same write', () => {
   const currentuser = { sub: 'USER-1', client: { cuid: 'CUID', role: 'admin' } };
   const scannedFiles = [{ fieldName: 'images[0].file', path: '/tmp/a.png' }];
-  const propertyService = { updateClientProperty: jest.fn() };
-  const mediaUploadService = { handleFiles: jest.fn() };
+  const propertyService = { updateClientProperty: jest.fn(), addProperty: jest.fn() };
+  const mediaUploadService = { uploadRequestFiles: jest.fn() };
   const controller = new PropertyController({
     propertyService: propertyService as any,
     mediaUploadService: mediaUploadService as any,
@@ -29,24 +29,13 @@ describe('PropertyController.updateClientProperty — file uploads', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('uploads nothing when the service rejects the update', async () => {
-    propertyService.updateClientProperty.mockRejectedValueOnce(new Error('pending changes lock'));
-
-    await expect(controller.updateClientProperty(makeReq(), makeRes())).rejects.toThrow(
-      'pending changes lock'
-    );
-
-    expect(mediaUploadService.handleFiles).not.toHaveBeenCalled();
-  });
-
-  it('passes the new files to the service, then uploads them after a direct update', async () => {
-    const serviceResult = { success: true, data: { pid: 'PID-1' }, message: 'updated' };
+  it('passes the new files to the update and returns its result as-is', async () => {
+    const serviceResult = {
+      success: true,
+      data: { pid: 'PID-1', images: [{ key: 'property/a.png', url: 'https://signed/a.png' }] },
+      message: 'updated',
+    };
     propertyService.updateClientProperty.mockResolvedValueOnce(serviceResult);
-    mediaUploadService.handleFiles.mockResolvedValueOnce({
-      hasFiles: true,
-      message: '1 file(s) queued',
-      processedFiles: { property_images: { queuedCount: 1 } },
-    });
     const res = makeRes();
 
     await controller.updateClientProperty(makeReq(), res);
@@ -55,28 +44,30 @@ describe('PropertyController.updateClientProperty — file uploads', () => {
       expect.objectContaining({ cuid: 'CUID', pid: 'PID-1', newFiles: scannedFiles }),
       { name: 'New name' }
     );
-    expect(propertyService.updateClientProperty.mock.invocationCallOrder[0]).toBeLessThan(
-      mediaUploadService.handleFiles.mock.invocationCallOrder[0]
-    );
+    expect(mediaUploadService.uploadRequestFiles).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(httpStatusCodes.OK);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ ...serviceResult, fileUpload: '1 file(s) queued' })
-    );
+    expect(res.json).toHaveBeenCalledWith(serviceResult);
   });
 
-  it('does not queue files of a staff edit held for approval (the service stored them)', async () => {
-    const serviceResult = {
-      success: true,
-      data: { pid: 'PID-1', pendingChanges: { pendingMedia: { images: [], documents: [] } } },
-      message: 'Property changes submitted for approval',
-    };
-    propertyService.updateClientProperty.mockResolvedValueOnce(serviceResult);
+  it('surfaces a rejected update without uploading anything itself', async () => {
+    propertyService.updateClientProperty.mockRejectedValueOnce(new Error('pending changes lock'));
+
+    await expect(controller.updateClientProperty(makeReq(), makeRes())).rejects.toThrow(
+      'pending changes lock'
+    );
+
+    expect(mediaUploadService.uploadRequestFiles).not.toHaveBeenCalled();
+  });
+
+  it('passes the new files to the create and returns the created property', async () => {
+    const serviceResult = { success: true, data: { pid: 'PID-NEW', images: [] }, message: 'ok' };
+    propertyService.addProperty.mockResolvedValueOnce(serviceResult);
     const res = makeRes();
+    const req = makeReq();
 
-    await controller.updateClientProperty(makeReq(), res);
+    await controller.create(req, res);
 
-    expect(mediaUploadService.handleFiles).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(httpStatusCodes.OK);
+    expect(propertyService.addProperty).toHaveBeenCalledWith(req.context, req.body, scannedFiles);
     expect(res.json).toHaveBeenCalledWith(serviceResult);
   });
 });

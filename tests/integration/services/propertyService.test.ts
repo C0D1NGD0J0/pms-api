@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { PropertyCache } from '@caching/property.cache';
+import { EventTypes } from '@interfaces/events.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { PropertyService } from '@services/property/property.service';
@@ -32,6 +33,7 @@ const mockMediaUploadService = {
   handleAvatarDeletion: jest.fn().mockResolvedValue(undefined),
   uploadFile: jest.fn().mockResolvedValue({ success: true }),
   uploadRequestFiles: jest.fn().mockResolvedValue([]),
+  removeUploadedFiles: jest.fn().mockResolvedValue(undefined),
 } as any;
 
 const mockGeoCoderService = {
@@ -280,6 +282,112 @@ describe('PropertyService Integration Tests', () => {
           }
           throw error;
         }
+      });
+
+      describe('with uploaded files', () => {
+        const newPropertyData = () => ({
+          name: `Uploads Property ${Date.now()}`,
+          propertyType: 'apartment' as const,
+          maxAllowedUnits: 10,
+          fullAddress: `${Date.now()} Upload Ave, New York, NY 10001`,
+          address: {
+            street: 'Upload Ave',
+            city: 'New York',
+            state: 'NY',
+            postCode: '10001',
+            country: 'USA',
+            fullAddress: `${Date.now()} Upload Ave, New York, NY 10001`,
+          },
+          description: { text: 'Property created with photos and a deed' },
+          specifications: { totalArea: 5000 },
+          fees: { rentAmount: '850', currency: 'USD' },
+          occupancyStatus: 'vacant' as const,
+        });
+        const scannedFiles = [
+          { fieldName: 'images[0].file', path: '/tmp/front.png' },
+          { fieldName: 'documents[0].file', path: '/tmp/deed.pdf', documentType: 'deed' },
+        ] as any;
+        const uploadsFor = (pid: string) => [
+          {
+            fieldName: 'images[0]',
+            resourceId: pid,
+            resourceName: 'property',
+            publicuid: pid,
+            filename: 'front.png',
+            key: `property/${pid}/front.png`,
+            url: `https://s3.test/property/${pid}/front.png`,
+            mediatype: 'image' as const,
+          },
+          {
+            fieldName: 'documents[0]',
+            resourceId: pid,
+            resourceName: 'property',
+            publicuid: pid,
+            filename: 'deed.pdf',
+            documentType: 'deed',
+            key: `property/${pid}/deed.pdf`,
+            url: `https://s3.test/property/${pid}/deed.pdf`,
+            mediatype: 'document' as const,
+          },
+        ];
+
+        it('saves the uploaded media with the new property in one write', async () => {
+          mockMediaUploadService.uploadRequestFiles.mockImplementationOnce(
+            async (_req: any, resource: any) => uploadsFor(resource.resourceId)
+          );
+          (mockEventEmitter.emit as jest.Mock).mockClear();
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            newPropertyData() as any,
+            scannedFiles
+          );
+
+          const { pid } = result.data;
+          expect(mockMediaUploadService.uploadRequestFiles).toHaveBeenCalledWith(
+            { scannedFiles },
+            expect.objectContaining({ resourceName: 'property', resourceId: pid })
+          );
+          const saved = await Property.findOne({ pid }).lean();
+          expect(saved!.images).toEqual([
+            expect.objectContaining({ key: `property/${pid}/front.png`, filename: 'front.png' }),
+          ]);
+          expect(saved!.documents).toEqual([
+            expect.objectContaining({
+              key: `property/${pid}/deed.pdf`,
+              documentType: 'deed',
+              status: 'active',
+            }),
+          ]);
+          expect(result.data.images[0]).toEqual(
+            expect.objectContaining({ key: `property/${pid}/front.png`, url: expect.any(String) })
+          );
+          expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+            EventTypes.UPLOAD_COMPLETED,
+            expect.objectContaining({ resourceName: 'property', resourceId: pid })
+          );
+        });
+
+        it('removes the uploaded files when the property is not created', async () => {
+          const uploads = uploadsFor('PENDING');
+          mockMediaUploadService.uploadRequestFiles.mockResolvedValueOnce(uploads);
+          mockMediaUploadService.removeUploadedFiles.mockClear();
+          const createProperty = jest
+            .spyOn(PropertyDAO.prototype, 'createProperty')
+            .mockRejectedValueOnce(new Error('insert failed'));
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          try {
+            await expect(
+              propertyService.addProperty(ctx as any, newPropertyData() as any, scannedFiles)
+            ).rejects.toThrow('insert failed');
+          } finally {
+            createProperty.mockRestore();
+          }
+
+          expect(mockMediaUploadService.removeUploadedFiles).toHaveBeenCalledWith(uploads);
+        });
       });
 
       it("prices the property in the account's currency, not the one sent", async () => {

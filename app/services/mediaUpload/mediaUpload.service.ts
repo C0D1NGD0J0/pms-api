@@ -46,79 +46,6 @@ export class MediaUploadService {
   }
 
   /**
-   * Handle file uploads with automatic deletion detection
-   * This method now transparently handles both uploads and deletions
-   */
-  async handleFiles(
-    req: AppRequest,
-    context: {
-      primaryResourceId: string;
-      uploadedBy: string;
-      resourceContext?: ResourceContext;
-      hardDelete?: boolean;
-    }
-  ): Promise<MediaOperationResult> {
-    try {
-      // Handle deletions first if we detect media changes in request body
-      await this.handleDeletions(req, context);
-
-      // Then handle uploads
-      const files = req.scannedFiles;
-
-      if (!files || files.length === 0) {
-        this.logger.debug('No files found in request');
-        return {
-          hasFiles: false,
-          processedFiles: {},
-          totalQueued: 0,
-          message: 'No files to process',
-        };
-      }
-
-      const groupedFiles = this.groupFilesByResource(files, context);
-      const { processedFiles, totalQueued } = await this.uploadAndQueue(groupedFiles);
-
-      return {
-        hasFiles: true,
-        processedFiles,
-        totalQueued,
-        message: `${totalQueued} file(s) queued for processing across ${Object.keys(processedFiles).length} resource type(s)`,
-      };
-    } catch (error) {
-      this.logger.error('Error handling files:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Internal method to handle deletions based on request body changes
-   */
-  private async handleDeletions(
-    req: AppRequest,
-    context: {
-      primaryResourceId: string;
-      uploadedBy: string;
-      resourceContext?: ResourceContext;
-    }
-  ): Promise<void> {
-    // For now, this is a placeholder for deletion logic
-    // This would be called internally by services that need deletion
-    // We keep the simple interface but allow for internal deletion handling
-
-    // If profile context and there's avatar data in request, handle avatar deletion
-    if (context.resourceContext === ResourceContext.USER_PROFILE) {
-      // Avatar deletion would be handled by ProfileService when it detects changes
-      return;
-    }
-
-    // If property context and there's media data in request, handle media deletion
-    if (req.body.images !== undefined || req.body.documents !== undefined) {
-      // Property media deletion would be handled by PropertyService when it detects changes
-      return;
-    }
-  }
-
-  /**
    * Utility method for other services to handle avatar deletions
    */
   async handleAvatarDeletion(
@@ -250,9 +177,9 @@ export class MediaUploadService {
   }
 
   /**
-   * Uploads the request's scanned files straight to S3, for flows that save the result
-   * themselves during the request (receipts, lease documents, unit photos, property media
-   * held for approval). Returns [] when the request has no files.
+   * Uploads the request's scanned files straight to S3. Every user upload goes through here:
+   * the caller saves the results on its record during the same request (removing them with
+   * removeUploadedFiles if that write fails). Returns [] when the request has no files.
    */
   async uploadRequestFiles(
     req: Pick<AppRequest, 'scannedFiles'>,
@@ -285,9 +212,8 @@ export class MediaUploadService {
   }
 
   /**
-   * Uploads each group to S3, then queues the worker job that persists the results.
-   * A group that fails to upload emits UPLOAD_FAILED (its listeners mark records failed)
-   * instead of failing the whole request.
+   * Uploads each group of generated files to S3, then queues the worker job that persists the
+   * results. A group that fails to upload emits UPLOAD_FAILED (its listeners mark records failed).
    */
   private async uploadAndQueue(
     groupedFiles: Record<string, { resourceInfo: ResourceInfo; fileGroup: ExtractedMediaFile[] }>
@@ -435,30 +361,6 @@ export class MediaUploadService {
       };
     }
 
-    if (fieldName.includes('documents') || fieldName.startsWith('documents.')) {
-      return {
-        resourceName: 'property',
-        resourceId: context.primaryResourceId,
-        fieldName: 'documents',
-      };
-    }
-
-    if (fieldName.includes('images') || fieldName.startsWith('images.')) {
-      return {
-        resourceName: 'property',
-        resourceId: context.primaryResourceId,
-        fieldName: 'images',
-      };
-    }
-
-    if (context.resourceContext === ResourceContext.USER_PROFILE) {
-      return {
-        resourceName: 'profile',
-        resourceId: context.primaryResourceId,
-        fieldName: fieldName.split('.')[0] || 'media',
-      };
-    }
-
     if (context.resourceContext === ResourceContext.LEASE) {
       return {
         resourceName: 'lease',
@@ -494,6 +396,22 @@ export class MediaUploadService {
       };
     }
 
+    if (fieldName.includes('documents') || fieldName.startsWith('documents.')) {
+      return {
+        resourceName: 'property',
+        resourceId: context.primaryResourceId,
+        fieldName: 'documents',
+      };
+    }
+
+    if (fieldName.includes('images') || fieldName.startsWith('images.')) {
+      return {
+        resourceName: 'property',
+        resourceId: context.primaryResourceId,
+        fieldName: 'images',
+      };
+    }
+
     return {
       resourceName: 'property',
       resourceId: context.primaryResourceId,
@@ -521,8 +439,9 @@ export class MediaUploadService {
   }
 
   /**
-   * Handle buffer uploads (e.g., generated PDFs)
-   * Saves the buffer to a temp file, uploads it to S3, and queues persistence
+   * Handle buffer uploads of generated files (lease, invoice and inspection-report PDFs).
+   * Saves the buffer to a temp file, uploads it to S3, and queues persistence on the media
+   * queue; the worker saves the result and notifies the client (see UploadWorker).
    */
   async handleBuffer(
     buffer: Buffer,

@@ -4,9 +4,9 @@ import { PropertyService } from '@services/index';
 import { IUserRole } from '@shared/constants/roles.constants';
 import propertyFormMeta from '@shared/constants/fromStaticData.json';
 import { parseColumnMappingField, httpStatusCodes } from '@utils/index';
+import { ExtractedMediaFile, AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { IPropertyFilterQuery, PropertyType } from '@interfaces/property.interface';
-import { ExtractedMediaFile, ResourceContext, AppRequest } from '@interfaces/utils.interface';
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
@@ -43,23 +43,13 @@ export class PropertyController {
 
   create = async (req: AppRequest, res: Response) => {
     this.applyDocumentTypesToUploads(req);
-    const newProperty = await this.propertyService.addProperty(req.context, req.body);
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: newProperty.data.pid,
-      uploadedBy: req.context.currentuser!.sub,
-      resourceContext: ResourceContext.PROPERTY,
-    });
-
-    const response = uploadResult.hasFiles
-      ? {
-          ...newProperty,
-          fileUpload: uploadResult.message,
-          processedFiles: uploadResult.processedFiles,
-        }
-      : newProperty;
-
-    res.status(httpStatusCodes.OK).json(response);
+    // The service uploads the files and saves them with the property in the same write
+    const newProperty = await this.propertyService.addProperty(
+      req.context,
+      req.body,
+      req.scannedFiles
+    );
+    res.status(httpStatusCodes.OK).json(newProperty);
   };
 
   validateCsv = async (req: AppRequest, res: Response) => {
@@ -212,31 +202,12 @@ export class PropertyController {
 
     this.applyDocumentTypesToUploads(req);
 
-    // Update first: a rejected update must not upload anything (the error handler removes
-    // the temp files). A staff edit awaiting approval uploads its files into pendingChanges.
+    // The service uploads the files only once the update passes its checks, and saves them in
+    // the same write: on the property for a direct update, in pendingChanges for a staff edit.
     const hardDelete = req.query['hard-delete'] === 'true';
     const ctx = { cuid, pid, currentuser, hardDelete, newFiles: req.scannedFiles };
     const result = await this.propertyService.updateClientProperty(ctx, req.body);
-    if (result.data?.pendingChanges) {
-      return res.status(httpStatusCodes.OK).json(result);
-    }
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: pid,
-      uploadedBy: currentuser.sub,
-      resourceContext: ResourceContext.PROPERTY,
-      hardDelete,
-    });
-
-    const response = uploadResult.hasFiles
-      ? {
-          ...result,
-          fileUpload: uploadResult.message,
-          processedFiles: uploadResult.processedFiles,
-        }
-      : result;
-
-    res.status(httpStatusCodes.OK).json(response);
+    res.status(httpStatusCodes.OK).json(result);
   };
 
   batchArchiveProperties = async (req: AppRequest, res: Response) => {

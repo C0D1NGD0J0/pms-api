@@ -119,6 +119,8 @@ beforeEach(() => {
     notificationService: mockNotificationService as any,
     paymentDAO: mockPaymentDAO as any,
     emailQueue: mockEmailQueue,
+    mediaUploadService: {} as any,
+    sseService: {} as any,
     s3Service: mockS3Service as any,
   });
   service.registerEventListeners();

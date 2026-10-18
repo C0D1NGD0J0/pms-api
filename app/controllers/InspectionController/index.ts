@@ -1,6 +1,6 @@
 import { Response } from 'express';
+import { AppRequest } from '@interfaces/utils.interface';
 import { IInspection } from '@interfaces/inspection.interface';
-import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { InspectionService } from '@services/inspection/inspection.service';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { InspectionAIService } from '@services/inspection/inspectionAI.service';
@@ -63,44 +63,30 @@ export class InspectionController {
     const { cuid, iuid } = req.params;
     const userId = req.context.currentuser!.sub;
     const userRole = req.context.currentuser!.client.role;
+    // The service uploads the room media and saves it in the same write as the update
     const result = await this.inspectionService.updateInspection(
       cuid,
       userId,
       userRole,
       iuid,
-      req.body
+      req.body,
+      req.scannedFiles
     );
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: iuid,
-      uploadedBy: userId,
-      resourceContext: ResourceContext.INSPECTION,
-    });
-
-    const response = uploadResult.hasFiles
-      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : result;
-
-    return res.status(200).json(response);
+    return res.status(200).json(result);
   }
 
   async submitInspection(req: AppRequest, res: Response) {
     const { cuid, iuid } = req.params;
     const userId = req.context.currentuser!.sub;
     const userRole = req.context.currentuser!.client.role;
-    const result = await this.inspectionService.submitInspection(cuid, userId, userRole, iuid);
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: iuid,
-      uploadedBy: userId,
-      resourceContext: ResourceContext.INSPECTION,
-    });
-
-    const response = uploadResult.hasFiles
-      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : result;
-
-    return res.status(200).json(response);
+    const result = await this.inspectionService.submitInspection(
+      cuid,
+      userId,
+      userRole,
+      iuid,
+      req.scannedFiles
+    );
+    return res.status(200).json(result);
   }
 
   async reviewInspection(req: AppRequest, res: Response) {

@@ -2,8 +2,8 @@ import fs from 'fs';
 import { Response } from 'express';
 import { httpStatusCodes } from '@utils/index';
 import { BadRequestError } from '@shared/customErrors';
+import { AppRequest } from '@interfaces/utils.interface';
 import { InvoiceSource } from '@interfaces/maintenanceRequest.interface';
-import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import {
   MaintenanceRequestService,
@@ -44,19 +44,13 @@ export class MaintenanceController {
   }
 
   async createRequest(req: AppRequest, res: Response) {
-    const result = await this.maintenanceRequestService.createRequest(req.context, req.body);
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: result.data.mruid,
-      uploadedBy: req.context.currentuser!.sub,
-      resourceContext: ResourceContext.MAINTENANCE,
-    });
-
-    const response = uploadResult.hasFiles
-      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : result;
-
-    return res.status(httpStatusCodes.CREATED).json(response);
+    // The service uploads the media and saves it with the request in the same write
+    const result = await this.maintenanceRequestService.createRequest(
+      req.context,
+      req.body,
+      req.scannedFiles
+    );
+    return res.status(httpStatusCodes.CREATED).json(result);
   }
 
   async listRequests(req: AppRequest, res: Response) {
@@ -154,20 +148,10 @@ export class MaintenanceController {
     const result = await this.maintenanceRequestService.updateRequest(
       req.context,
       req.params.mruid,
-      req.body
+      req.body,
+      req.scannedFiles
     );
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: req.params.mruid,
-      uploadedBy: req.context.currentuser!.sub,
-      resourceContext: ResourceContext.MAINTENANCE,
-    });
-
-    const response = uploadResult.hasFiles
-      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : result;
-
-    return res.status(httpStatusCodes.OK).json(response);
+    return res.status(httpStatusCodes.OK).json(result);
   }
 
   async submitInvoice(req: AppRequest, res: Response) {

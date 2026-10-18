@@ -66,6 +66,8 @@ describe('InspectionService Integration Tests', () => {
       notificationService: { createNotification: jest.fn() } as any,
       paymentDAO: new PaymentDAO({ paymentModel: Payment }),
       emailQueue: mockEmailQueue,
+      mediaUploadService: {} as any,
+      sseService: { broadcastToClient: jest.fn().mockResolvedValue(undefined) } as any,
     });
   });
 

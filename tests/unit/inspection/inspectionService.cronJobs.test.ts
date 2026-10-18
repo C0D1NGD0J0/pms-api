@@ -125,6 +125,8 @@ beforeEach(() => {
     notificationService: mockNotificationService as any,
     paymentDAO: mockPaymentDAO as any,
     emailQueue: mockEmailQueue,
+    mediaUploadService: {} as any,
+    sseService: {} as any,
     s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
   });
 

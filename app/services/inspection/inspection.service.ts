@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { EmailQueue } from '@queues/index';
@@ -9,14 +10,20 @@ import { S3Service } from '@services/fileUpload';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';
-import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { LEASE_CONSTANTS, createLogger, MoneyUtils, toId } from '@utils/index';
 import { DEFAULT_INSPECTION_ROOMS } from '@models/inspection/inspection.model';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { PaymentRefundedPayload, EventTypes } from '@interfaces/events.interface';
 import { NotificationService } from '@services/notification/notification.service';
+import {
+  IPromiseReturnedData,
+  ExtractedMediaFile,
+  UploadResult,
+} from '@interfaces/utils.interface';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -43,6 +50,7 @@ import {
 import {
   ALLOWED_INSPECTION_TRANSITIONS,
   IListInspectionsQuery,
+  IInspectionDocument,
   IDisputeInspection,
   ICreateInspection,
   IUpdateInspection,
@@ -55,12 +63,14 @@ import {
 
 interface IConstructor {
   notificationService: NotificationService;
+  mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   inspectionDAO: InspectionDAO;
   propertyDAO: PropertyDAO;
   emailQueue: EmailQueue;
   paymentDAO: PaymentDAO;
+  sseService: SSEService;
   s3Service: S3Service;
   leaseDAO: LeaseDAO;
   userDAO: UserDAO;
@@ -87,6 +97,8 @@ export class InspectionService implements ICronProvider {
   private readonly notificationService: NotificationService;
   private readonly paymentDAO: PaymentDAO;
   private readonly emailQueue: EmailQueue;
+  private readonly mediaUploadService: MediaUploadService;
+  private readonly sseService: SSEService;
   private readonly s3Service: S3Service;
   private readonly log: Logger;
 
@@ -100,6 +112,8 @@ export class InspectionService implements ICronProvider {
     notificationService,
     paymentDAO,
     emailQueue,
+    mediaUploadService,
+    sseService,
     s3Service,
   }: IConstructor) {
     this.inspectionDAO = inspectionDAO;
@@ -111,6 +125,8 @@ export class InspectionService implements ICronProvider {
     this.notificationService = notificationService;
     this.paymentDAO = paymentDAO;
     this.emailQueue = emailQueue;
+    this.mediaUploadService = mediaUploadService;
+    this.sseService = sseService;
     this.s3Service = s3Service;
     this.log = createLogger('InspectionService');
   }
@@ -590,7 +606,8 @@ export class InspectionService implements ICronProvider {
     userId: string,
     userRole: string,
     iuid: string,
-    data: IUpdateInspection
+    data: IUpdateInspection,
+    newFiles?: ExtractedMediaFile[]
   ): IPromiseReturnedData {
     const tenantFilter = userRole === 'tenant' ? userId : undefined;
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, tenantFilter);
@@ -643,17 +660,34 @@ export class InspectionService implements ICronProvider {
       updates.rejectionReason = null;
     }
 
-    const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
-      $set: updates,
-    });
-    return { success: true, message: 'Inspection updated', data: updated! };
+    // New files are saved in this same write, into the room their field name targets
+    const uploads = await this.uploadInspectionMedia(newFiles, iuid, userId);
+    const pushNewMedia = this._placeUploadedMedia(updates, uploads, userId);
+
+    let updated: IInspectionDocument | null = null;
+    try {
+      updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
+        $set: updates,
+        ...(Object.keys(pushNewMedia).length && { $push: pushNewMedia }),
+      });
+    } finally {
+      if (!updated) await this.removeUploadsAfterFailedWrite(uploads, iuid);
+    }
+
+    await this.notifyMediaAdded(cuid, iuid, uploads.length);
+    return {
+      success: true,
+      message: 'Inspection updated',
+      data: await this.withSignedMedia(updated!),
+    };
   }
 
   async submitInspection(
     cuid: string,
     userId: string,
     userRole: string,
-    iuid: string
+    iuid: string,
+    newFiles?: ExtractedMediaFile[]
   ): IPromiseReturnedData {
     const tenantFilter = userRole === 'tenant' ? userId : undefined;
     const inspection = await this.inspectionDAO.getByIuid(iuid, cuid, tenantFilter);
@@ -691,9 +725,20 @@ export class InspectionService implements ICronProvider {
       submitFields.overallCondition = this._computeOverallCondition(inspection.rooms);
     }
 
-    const updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
-      $set: submitFields,
-    });
+    // Files sent with the submission are saved in the submitting write
+    const uploads = await this.uploadInspectionMedia(newFiles, iuid, userId);
+    const pushNewMedia = this._placeUploadedMedia(submitFields, uploads, userId);
+
+    let updated: IInspectionDocument | null = null;
+    try {
+      updated = await this.inspectionDAO.updateById(inspection._id.toString(), {
+        $set: submitFields,
+        ...(Object.keys(pushNewMedia).length && { $push: pushNewMedia }),
+      });
+    } finally {
+      if (!updated) await this.removeUploadsAfterFailedWrite(uploads, iuid);
+    }
+    await this.notifyMediaAdded(cuid, iuid, uploads.length);
 
     this.emitterService.emit(EventTypes.INSPECTION_SUBMITTED, {
       iuid: inspection.iuid,
@@ -703,7 +748,11 @@ export class InspectionService implements ICronProvider {
       type: inspection.type,
     });
 
-    return { success: true, message: 'Inspection submitted', data: updated! };
+    return {
+      success: true,
+      message: 'Inspection submitted',
+      data: await this.withSignedMedia(updated!),
+    };
   }
 
   async reviewInspection(
@@ -1740,11 +1789,12 @@ export class InspectionService implements ICronProvider {
 
   // ─── Report document persistence (called by upload worker after S3 upload) ────
 
+  /** Saves the generated report PDF; returns what the worker needs to notify the client. */
   async updateReportDocument(
     inspectionId: string,
     pdfResult: { url: string; key?: string; size?: number }
-  ): Promise<string | null> {
-    await this.inspectionDAO.updateById(inspectionId, {
+  ): Promise<{ cuid: string; iuid: string } | null> {
+    const inspection = await this.inspectionDAO.updateById(inspectionId, {
       $set: {
         'reportDocument.url': pdfResult.url,
         'reportDocument.key': pdfResult.key,
@@ -1754,53 +1804,102 @@ export class InspectionService implements ICronProvider {
       },
     });
 
-    const inspection = await this.inspectionDAO.findFirst({ _id: inspectionId });
-    return inspection?.cuid ?? null;
+    return inspection ? { cuid: inspection.cuid, iuid: inspection.iuid } : null;
   }
 
-  // ─── Media persistence (called by upload worker after S3 upload) ─────────────
+  // ─── Uploaded media (saved during the request that sent it) ──────────────────
 
-  async persistUploadedMedia(
+  private uploadInspectionMedia(
+    files: ExtractedMediaFile[] | undefined,
     iuid: string,
-    results: { url: string; key?: string; filename: string; actorId?: string }[],
-    actorId: string,
-    roomIndex?: number
-  ): Promise<string | null> {
-    if (!results?.length) return null;
+    actorId: string
+  ): Promise<UploadResult[]> {
+    if (!files?.length) return Promise.resolve([]);
+    return this.mediaUploadService.uploadRequestFiles(
+      { scannedFiles: files },
+      { resourceName: 'inspection', resourceId: iuid, fieldName: 'media', actorId }
+    );
+  }
 
-    const mediaItems = results.map((r) => ({
-      url: r.url,
-      key: r.key,
-      filename: r.filename,
-      uploadedBy: actorId,
-      uploadedAt: new Date(),
-      status: 'active' as const,
-    }));
+  /** The write that would have referenced these files failed, so nothing points at them. */
+  private async removeUploadsAfterFailedWrite(uploads: UploadResult[], iuid: string) {
+    if (!uploads.length) return;
+    try {
+      await this.mediaUploadService.removeUploadedFiles(uploads);
+    } catch (error) {
+      this.log.error({ error, iuid }, 'Failed to remove files uploaded for a failed write');
+    }
+  }
 
-    let updated;
-    if (roomIndex !== undefined) {
-      // Room-targeted: push to rooms[N].media
-      updated = await this.inspectionDAO.update(
-        { iuid },
-        { $push: { [`rooms.${roomIndex}.media`]: { $each: mediaItems } } }
+  /** Lets everyone viewing the inspection in this client refetch it with the new media. */
+  private async notifyMediaAdded(cuid: string, iuid: string, count: number): Promise<void> {
+    if (!count) return;
+    try {
+      await this.sseService.broadcastToClient(
+        cuid,
+        { resource: 'inspection', action: 'media-updated', resourceUId: iuid, count },
+        'resource-event'
       );
-      this.log.info(
-        { iuid, roomIndex, count: mediaItems.length },
-        '[InspectionService] room media persisted after S3 upload'
-      );
-    } else {
-      // Legacy: push to top-level media
-      updated = await this.inspectionDAO.update(
-        { iuid },
-        { $push: { media: { $each: mediaItems } } }
-      );
-      this.log.info(
-        { iuid, count: mediaItems.length },
-        '[InspectionService] media persisted after S3 upload'
-      );
+    } catch (error) {
+      this.log.warn({ error, iuid }, 'SSE media-updated notify failed (non-fatal)');
+    }
+  }
+
+  /**
+   * Adds uploaded files to the update being written. A file whose field names a room
+   * (rooms[N][media][i][file]) joins that room; any other file joins the top-level media.
+   * When the update replaces `rooms`, room files are appended to the replacement list —
+   * Mongo rejects a $push into rooms.N.media alongside a $set of rooms. Returns the $push
+   * for everything not merged into the $set.
+   */
+  private _placeUploadedMedia(
+    updates: Record<string, any>,
+    uploads: UploadResult[],
+    actorId: string
+  ): Record<string, { $each: IInspectionMedia[] }> {
+    const push: Record<string, { $each: IInspectionMedia[] }> = {};
+    const append = (path: string, item: IInspectionMedia) => {
+      push[path] = push[path] ?? { $each: [] };
+      push[path].$each.push(item);
+    };
+
+    for (const upload of uploads) {
+      const item = {
+        url: upload.url,
+        key: upload.key,
+        filename: upload.filename,
+        uploadedBy: new Types.ObjectId(actorId),
+        uploadedAt: new Date(),
+        status: 'active',
+      } as IInspectionMedia;
+      const roomMatch = upload.fieldName?.match(/^rooms\[(\d+)\]\[media\]/);
+      const roomIndex = roomMatch ? parseInt(roomMatch[1], 10) : undefined;
+
+      if (roomIndex === undefined) {
+        append('media', item);
+      } else if (!Array.isArray(updates.rooms)) {
+        append(`rooms.${roomIndex}.media`, item);
+      } else if (updates.rooms[roomIndex]) {
+        const room = updates.rooms[roomIndex];
+        room.media = [...(room.media ?? []), item];
+      } else {
+        // The replacement rooms list has no such room; keep the file on the inspection
+        append('media', item);
+      }
     }
 
-    return (updated as any)?.cuid ?? null;
+    return push;
+  }
+
+  /** Signs media URLs on a written inspection like a read does, so new files show at once. */
+  private async withSignedMedia(inspection: IInspectionDocument) {
+    const doc: any = inspection?.toObject ? inspection.toObject() : inspection;
+    if (!doc) return doc;
+    if (doc.media?.length) await this.s3Service.signFileUrls(doc.media);
+    for (const room of doc.rooms ?? []) {
+      if (room.media?.length) await this.s3Service.signFileUrls(room.media);
+    }
+    return doc;
   }
 
   // ─── Private ─────────────────────────────────────────────────────────────────

@@ -155,6 +155,8 @@ beforeEach(() => {
       sendToUser: jest.fn().mockReturnValue(Promise.resolve(undefined)),
     } as any,
     s3Service: mockS3Service,
+    mediaUploadService: {} as any,
+    sseService: {} as any,
   });
 });
 

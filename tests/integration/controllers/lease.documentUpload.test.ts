@@ -5,11 +5,9 @@ import { Types } from 'mongoose';
 import { asValue } from 'awilix';
 import { Application } from 'express';
 import { QueueFactory } from '@services/queue';
-import { UploadWorker } from '@workers/upload.worker';
 import { S3Service } from '@services/fileUpload/awsS3';
 import { EventListenerSetup, container } from '@di/index';
 import GuestPassModel from '@models/guestPass/guestpass.model';
-import { LeasePdfService } from '@services/lease/leasePdf.service';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { Subscription, PropertyUnit, Property, Lease } from '@models/index';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
@@ -42,7 +40,7 @@ const waitFor = async (check: () => Promise<boolean>, timeoutMs = 3000) => {
   return false;
 };
 
-describe('Lease document upload (create/update) — property-documents pipeline', () => {
+describe('Lease document upload (create/update) — saved during the request', () => {
   let app: Application;
   let testClient: any;
   let testTenant: any;
@@ -71,7 +69,8 @@ describe('Lease document upload (create/update) — property-documents pipeline'
       }),
     });
 
-    // External services only: S3 echoes back results like S3Service does, the upload queue is captured
+    // External services only: S3 echoes back results like S3Service does. The upload queue is
+    // captured to prove user uploads never go through it.
     const s3Service = container.resolve<S3Service>('s3Service');
     uploadFilesSpy = jest
       .spyOn(s3Service, 'uploadFiles')
@@ -100,8 +99,6 @@ describe('Lease document upload (create/update) — property-documents pipeline'
 
     // Temp-file clean-up (error handler → DELETE_LOCAL_ASSET) as registered at API start-up
     EventListenerSetup.registerInfrastructureListeners(container);
-    // Persistence runs in the worker process: upload worker → UPLOAD_COMPLETED → LeasePdfService
-    container.resolve<LeasePdfService>('leasePdfService').registerEventListeners();
 
     app = createTestApp();
 
@@ -151,13 +148,6 @@ describe('Lease document upload (create/update) — property-documents pipeline'
     jest.restoreAllMocks();
   });
 
-  const runUploadWorkerOnQueuedJob = async () => {
-    expect(addToUploadQueue).toHaveBeenCalledTimes(1);
-    const [, jobData] = addToUploadQueue.mock.calls[0];
-    const uploadWorker = container.resolve<UploadWorker>('uploadWorker');
-    await uploadWorker.uploadAsset({ data: jobData, progress: jest.fn() } as any);
-  };
-
   const postLeaseWithDocument = (originalName: string, propertyId: string) =>
     request(app)
       .post(`/api/v1/leases/${testClient.cuid}`)
@@ -179,14 +169,14 @@ describe('Lease document upload (create/update) — property-documents pipeline'
         contentType: 'application/pdf',
       });
 
-  it('POST with leaseDocument[0].file uploads to S3 and persists it onto lease.leaseDocuments', async () => {
+  it('POST with leaseDocument[0].file saves the document with the new lease and returns it', async () => {
     const originalName = `signed-lease-${Date.now()}.pdf`;
 
     const response = await postLeaseWithDocument(originalName, testProperty._id.toString());
 
     expect({ status: response.status, body: response.body }).toMatchObject({ status: 200 });
     const created = response.body.data.data;
-    expect(response.body.fileUpload).toMatch(/1 file\(s\) queued/);
+    expect(response.body.fileUpload).toBeUndefined();
     expect(uploadFilesSpy).toHaveBeenCalledWith(
       [
         expect.objectContaining({
@@ -200,25 +190,37 @@ describe('Lease document upload (create/update) — property-documents pipeline'
         fieldName: 'leaseDocument',
       })
     );
+    expect(addToUploadQueue).not.toHaveBeenCalled();
     expect(tempFilesNamed(originalName)).toHaveLength(0);
 
-    await runUploadWorkerOnQueuedJob();
-
-    const persisted = await waitFor(async () => {
-      const lease = await Lease.findById(created._id).lean();
-      return (lease?.leaseDocuments?.length ?? 0) > 0;
-    });
-    expect(persisted).toBe(true);
+    const expectedKey = `lease/${created._id}/${uploadFilesSpy.mock.calls[0][0][0].fileName}`;
+    expect(created.leaseDocuments).toEqual([
+      expect.objectContaining({
+        filename: originalName,
+        key: expectedKey,
+        status: 'active',
+        documentType: 'lease_agreement',
+        url: expect.any(String),
+      }),
+    ]);
+    // The same signed, role-filtered list the lease detail GET returns
+    expect(response.body.data.documents).toEqual([
+      expect.objectContaining({
+        filename: originalName,
+        key: expectedKey,
+        url: expect.any(String),
+      }),
+    ]);
     const lease = await Lease.findById(created._id).lean();
     expect(lease!.leaseDocuments![0]).toMatchObject({
       filename: originalName,
-      key: `lease/${created._id}/${uploadFilesSpy.mock.calls[0][0][0].fileName}`,
+      key: expectedKey,
       status: 'active',
       documentType: 'lease_agreement',
     });
   });
 
-  it('PATCH with leaseDocument[0].file attaches the document to an existing lease', async () => {
+  it('PATCH with leaseDocument[0].file attaches the document before responding', async () => {
     const draftLease = await Lease.create({
       luid: `lease-draft-${Date.now()}`,
       cuid: testClient.cuid,
@@ -258,14 +260,15 @@ describe('Lease document upload (create/update) — property-documents pipeline'
       expect.any(Array),
       expect.objectContaining({ resourceName: 'lease', resourceId: draftLease._id.toString() })
     );
-
-    await runUploadWorkerOnQueuedJob();
-
-    const persisted = await waitFor(async () => {
-      const lease = await Lease.findById(draftLease._id).lean();
-      return lease?.leaseDocuments?.some((doc) => doc.filename === originalName) ?? false;
-    });
-    expect(persisted).toBe(true);
+    expect(addToUploadQueue).not.toHaveBeenCalled();
+    expect(response.body.data.lease.leaseDocuments).toEqual([
+      expect.objectContaining({ filename: originalName, status: 'active' }),
+    ]);
+    expect(response.body.data.documents).toEqual([
+      expect.objectContaining({ filename: originalName, url: expect.any(String) }),
+    ]);
+    const lease = await Lease.findById(draftLease._id).lean();
+    expect(lease!.leaseDocuments!.map((doc) => doc.filename)).toEqual([originalName]);
   });
 
   describe('uploaded document type follows the first signature', () => {
@@ -349,45 +352,13 @@ describe('Lease document upload (create/update) — property-documents pipeline'
 
       const response = await patchWithDocument(lease.luid, originalName);
       expect(response.status).toBe(200);
-      await runUploadWorkerOnQueuedJob();
 
-      expect(
-        await waitFor(async () =>
-          (await documentsOf(lease._id)).some((doc) => doc.filename === originalName)
-        )
-      ).toBe(true);
       const docs = await documentsOf(lease._id);
       expect(docs.find((doc) => doc.filename === originalName)).toMatchObject({
         documentType: 'lease_agreement',
         status: 'active',
       });
       expect(docs.find((doc) => doc.key === SIGNED_AGREEMENT_KEY)!.status).toBe('inactive');
-    });
-
-    it('an upload that lands after signing is stored as other and keeps the signed agreement active', async () => {
-      const lease = await createLeaseWithAgreement();
-      const originalName = `after-signing-${Date.now()}.pdf`;
-
-      const response = await patchWithDocument(lease.luid, originalName);
-      expect(response.status).toBe(200);
-      // Signing completes between the upload request and the worker persisting it
-      await markLeaseSigned(lease._id);
-      await runUploadWorkerOnQueuedJob();
-
-      expect(
-        await waitFor(async () =>
-          (await documentsOf(lease._id)).some((doc) => doc.filename === originalName)
-        )
-      ).toBe(true);
-      const docs = await documentsOf(lease._id);
-      expect(docs.find((doc) => doc.filename === originalName)).toMatchObject({
-        documentType: 'other',
-        status: 'active',
-      });
-      expect(docs.find((doc) => doc.key === SIGNED_AGREEMENT_KEY)).toMatchObject({
-        documentType: 'lease_agreement',
-        status: 'active',
-      });
     });
 
     it('POST /:luid/document replaces the agreement before signing', async () => {
@@ -434,6 +405,7 @@ describe('Lease document upload (create/update) — property-documents pipeline'
     expect(uploadFilesSpy).not.toHaveBeenCalled();
     expect(addToUploadQueue).not.toHaveBeenCalled();
     expect(await waitFor(async () => tempFilesNamed(originalName).length === 0)).toBe(true);
+    expect(await Lease.countDocuments({ cuid: testClient.cuid })).toBe(0);
   });
 
   it('rejects the old `document` field and non-PDF lease documents', async () => {

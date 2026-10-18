@@ -14,6 +14,7 @@ import { UserCache } from '@caching/user.cache';
 import { IUserBasicInfo } from '@dao/interfaces';
 import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { ICurrentUser } from '@interfaces/user.interface';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
@@ -33,16 +34,17 @@ import {
   BoldSignService,
 } from '@services/index';
 import {
-  ValidationRequestError,
-  InvalidRequestError,
-  BadRequestError,
-  ForbiddenError,
-} from '@shared/customErrors';
-import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  ValidationRequestError,
+  InvalidRequestError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   ILeaseTerminationData,
   ILeaseFilterOptions,
@@ -56,6 +58,7 @@ import {
   ListResultWithPagination,
   IPromiseReturnedData,
   ISuccessReturnData,
+  ExtractedMediaFile,
   IRequestContext,
   ResourceContext,
   UploadResult,
@@ -229,7 +232,8 @@ export class LeaseService {
   async createLease(
     cuid: string,
     data: ILeaseFormData,
-    ctx: IRequestContext
+    ctx: IRequestContext,
+    newFiles?: ExtractedMediaFile[]
   ): IPromiseReturnedData<ILeaseDocument> {
     const currentuser = ctx.currentuser!;
 
@@ -406,78 +410,105 @@ export class LeaseService {
     const hasUnitOwner =
       hasUnitNumber && (ownershipType === 'external_owner' || ownershipType === 'self_owned');
 
-    const session = await this.leaseDAO.startSession();
-    const result = await this.leaseDAO.withTransaction(session, async (session) => {
-      const parsedLeaseData = {
-        ...data,
-        cuid,
-        tenantId: tenantInfo.tenantId,
-        createdBy: currentuser.sub,
-        signingMethod: data.signingMethod || SigningMethod.PENDING,
-        templateType: data.templateType || 'residential-single-family',
-        landlordName: landlordInfo.landlordName,
-        fees: MoneyUtils.parseLeaseFees(data.fees),
-        ...(data.petPolicy && { petPolicy: MoneyUtils.parsePetPolicyFees(data.petPolicy) }),
-        internalNotes: data.internalNotes?.length
-          ? data.internalNotes.map((n: any) => ({
-              ...n,
-              note: sanitizeHtml(n.note ?? ''),
-              html: n.html ? sanitizeHtml(n.html) : undefined,
-            }))
-          : undefined,
-        legalTerms: data.legalTerms
-          ? {
-              text: data.legalTerms.text ? sanitizeHtml(data.legalTerms.text) : undefined,
-              html: data.legalTerms.html ? sanitizeHtml(data.legalTerms.html) : undefined,
-              url: data.legalTerms.url,
-            }
-          : undefined,
-        property: {
-          id: data.property.id,
-          address: propertyInfo?.address || 'REQUIRED',
-          unitId: data.property.unitId,
-          propertyType: propertyInfo?.propertyType,
-          name: propertyInfo?.name,
-          unitNumber: propertyInfo?.unitNumber,
-          specifications: propertyInfo?.specifications,
-        },
-        approvalStatus,
-        approvalDetails,
-        ...(approvalStatus === 'approved' && { status: LeaseStatus.READY_FOR_SIGNATURE }),
-        useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
-        metadata: {
-          ...landlordInfo,
-          hasUnitOwner,
-          isMultiUnit,
-          ownershipType,
-          propertyName: property.name,
-          propertyType: property.propertyType,
-          ...(tenantInfo.pendingTenantEmail && {
-            pendingTenantEmail: tenantInfo.pendingTenantEmail,
-          }),
-        },
-      };
+    // Uploaded after every check and saved with the lease in the same write. The id is chosen
+    // here so the S3 keys carry it, as they do for documents added to the lease later. A new
+    // lease is unsigned, so each file is stored as its agreement.
+    const leaseId = new Types.ObjectId();
+    const uploads = newFiles?.length
+      ? await this.mediaUploadService.uploadRequestFiles(
+          { scannedFiles: newFiles },
+          {
+            resourceName: 'lease',
+            resourceId: leaseId.toString(),
+            fieldName: 'leaseDocument',
+            actorId: currentuser.sub,
+          }
+        )
+      : [];
+    const leaseDocuments = uploads.length
+      ? this.leaseDAO.buildLeaseDocumentEntries(uploads, currentuser.sub)
+      : [];
 
-      const lease = await this.leaseDAO.createLease(cuid, parsedLeaseData, session);
+    let result: { lease: ILeaseDocument };
+    try {
+      const session = await this.leaseDAO.startSession();
+      result = await this.leaseDAO.withTransaction(session, async (session) => {
+        const parsedLeaseData = {
+          ...data,
+          _id: leaseId,
+          ...(leaseDocuments.length && { leaseDocuments }),
+          cuid,
+          tenantId: tenantInfo.tenantId,
+          createdBy: currentuser.sub,
+          signingMethod: data.signingMethod || SigningMethod.PENDING,
+          templateType: data.templateType || 'residential-single-family',
+          landlordName: landlordInfo.landlordName,
+          fees: MoneyUtils.parseLeaseFees(data.fees),
+          ...(data.petPolicy && { petPolicy: MoneyUtils.parsePetPolicyFees(data.petPolicy) }),
+          internalNotes: data.internalNotes?.length
+            ? data.internalNotes.map((n: any) => ({
+                ...n,
+                note: sanitizeHtml(n.note ?? ''),
+                html: n.html ? sanitizeHtml(n.html) : undefined,
+              }))
+            : undefined,
+          legalTerms: data.legalTerms
+            ? {
+                text: data.legalTerms.text ? sanitizeHtml(data.legalTerms.text) : undefined,
+                html: data.legalTerms.html ? sanitizeHtml(data.legalTerms.html) : undefined,
+                url: data.legalTerms.url,
+              }
+            : undefined,
+          property: {
+            id: data.property.id,
+            address: propertyInfo?.address || 'REQUIRED',
+            unitId: data.property.unitId,
+            propertyType: propertyInfo?.propertyType,
+            name: propertyInfo?.name,
+            unitNumber: propertyInfo?.unitNumber,
+            specifications: propertyInfo?.specifications,
+          },
+          approvalStatus,
+          approvalDetails,
+          ...(approvalStatus === 'approved' && { status: LeaseStatus.READY_FOR_SIGNATURE }),
+          useInvitationIdAsTenantId: tenantInfo.useInvitationIdAsTenantId,
+          metadata: {
+            ...landlordInfo,
+            hasUnitOwner,
+            isMultiUnit,
+            ownershipType,
+            propertyName: property.name,
+            propertyType: property.propertyType,
+            ...(tenantInfo.pendingTenantEmail && {
+              pendingTenantEmail: tenantInfo.pendingTenantEmail,
+            }),
+          },
+        };
 
-      if (tenantInfo.useInvitationIdAsTenantId) {
-        this.log.warn('Lease created with invitation as temporary tenant', {
-          leaseId: lease.luid,
-          invitationId: tenantInfo.tenantId.toString(),
-        });
-      }
+        const lease = await this.leaseDAO.createLease(cuid, parsedLeaseData, session);
 
-      // Reserve the unit so no second lease can be created for it while this draft exists
-      if (data.property.unitId) {
-        await this.propertyUnitDAO.updateById(
-          data.property.unitId.toString(),
-          { status: PropertyUnitStatusEnum.RESERVED },
-          session
-        );
-      }
+        if (tenantInfo.useInvitationIdAsTenantId) {
+          this.log.warn('Lease created with invitation as temporary tenant', {
+            leaseId: lease.luid,
+            invitationId: tenantInfo.tenantId.toString(),
+          });
+        }
 
-      return { lease };
-    });
+        // Reserve the unit so no second lease can be created for it while this draft exists
+        if (data.property.unitId) {
+          await this.propertyUnitDAO.updateById(
+            data.property.unitId.toString(),
+            { status: PropertyUnitStatusEnum.RESERVED },
+            session
+          );
+        }
+
+        return { lease };
+      });
+    } catch (error) {
+      await this.removeUploadsAfterFailedWrite(uploads, leaseId.toString());
+      throw error;
+    }
 
     if (approvalStatus === 'pending') {
       try {
@@ -509,7 +540,81 @@ export class LeaseService {
 
     await this.leaseCache.invalidateLeaseLists(cuid);
 
-    return { success: true, data: result.lease, message };
+    return { success: true, data: await this.withSignedDocuments(result.lease), message };
+  }
+
+  /**
+   * Uploads the files sent with a lease edit and attaches them in the same request, once the
+   * edit itself is saved (edits are written by several status-specific paths). If attaching
+   * fails the files are removed from S3 again. Returns null when no files were sent.
+   */
+  async addUploadedDocuments(
+    cuid: string,
+    luid: string,
+    files: ExtractedMediaFile[] | undefined,
+    actorId: string
+  ): Promise<ILeaseDocument | null> {
+    if (!files?.length) return null;
+
+    const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
+    if (!lease) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+
+    const leaseId = lease._id.toString();
+    const uploads = await this.mediaUploadService.uploadRequestFiles(
+      { scannedFiles: files },
+      { resourceName: 'lease', resourceId: leaseId, fieldName: 'leaseDocument', actorId }
+    );
+
+    let updated: ILeaseDocument | null = null;
+    try {
+      // Typed against the lease as it is now: once signed, an upload is stored as 'other'
+      ({ data: updated } = await this.leaseDocumentService.updateLeaseDocuments(
+        leaseId,
+        uploads,
+        actorId
+      ));
+    } finally {
+      if (!updated) await this.removeUploadsAfterFailedWrite(uploads, leaseId);
+    }
+
+    await this.leaseCache.invalidateLease(cuid, luid);
+    await this.leaseCache.invalidateLeaseLists(cuid);
+    return this.withSignedDocuments(updated!);
+  }
+
+  /**
+   * The documents list the lease detail GET returns (role-filtered), for a lease that a write
+   * returned already signed — so a write response can carry the same list.
+   */
+  documentsForViewer(lease: ILeaseDocument, currentuser: ICurrentUser): any[] {
+    return filterDocumentsByRole(
+      lease.leaseDocuments ?? [],
+      convertUserRoleToEnum(currentuser.client.role)
+    );
+  }
+
+  /** The write that would have referenced these files failed, so nothing points at them. */
+  private async removeUploadsAfterFailedWrite(uploads: UploadResult[], leaseId: string) {
+    if (!uploads.length) return;
+    try {
+      await this.mediaUploadService.removeUploadedFiles(uploads);
+    } catch (error) {
+      this.log.error(
+        { error, leaseId },
+        'Failed to remove files uploaded for a failed lease write'
+      );
+    }
+  }
+
+  /** Signs document URLs on a written lease like a read does, so new files open at once. */
+  private async withSignedDocuments(lease: ILeaseDocument): Promise<ILeaseDocument> {
+    const plain = (lease.toObject ? lease.toObject() : lease) as ILeaseDocument;
+    if (plain.leaseDocuments?.length) {
+      await this.s3Service.signFileUrls(plain.leaseDocuments as any[]);
+    }
+    return plain;
   }
 
   async getFilteredLeases(

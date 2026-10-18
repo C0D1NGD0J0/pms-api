@@ -832,6 +832,29 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   /**
    * Update lease with uploaded document information
    */
+  /** Turns upload results into lease.leaseDocuments entries. */
+  buildLeaseDocumentEntries(uploadResults: UploadResult[], userId: string) {
+    return uploadResults.map((upload) => {
+      // Derive mimeType from filename extension
+      const ext = upload.filename.split('.').pop()?.toLowerCase();
+      let mimeType = 'application/pdf'; // default
+      if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+      else if (ext === 'png') mimeType = 'image/png';
+
+      return {
+        documentType: upload.documentType || 'lease_agreement',
+        status: 'active' as const,
+        filename: upload.filename,
+        url: upload.url,
+        key: upload.key,
+        mimeType,
+        size: upload.size,
+        uploadedBy: new Types.ObjectId(upload.actorId || userId),
+        uploadedAt: new Date(),
+      };
+    });
+  }
+
   async updateLeaseDocuments(
     leaseId: string,
     uploadResults: UploadResult[],
@@ -856,36 +879,17 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       );
 
       // Process lease document uploads
-      const processedDocuments = uploadResults
-        .filter((upload) => {
-          if (existingKeys.has(upload.key)) {
-            this.log.warn('Skipping duplicate document (key already exists)', {
-              leaseId,
-              key: upload.key,
-            });
-            return false;
-          }
-          return true;
-        })
-        .map((upload) => {
-          // Derive mimeType from filename extension
-          const ext = upload.filename.split('.').pop()?.toLowerCase();
-          let mimeType = 'application/pdf'; // default
-          if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
-          else if (ext === 'png') mimeType = 'image/png';
-
-          return {
-            documentType: (upload as any).documentType || 'lease_agreement',
-            status: 'active',
-            filename: upload.filename,
-            url: upload.url,
+      const newUploads = uploadResults.filter((upload) => {
+        if (existingKeys.has(upload.key)) {
+          this.log.warn('Skipping duplicate document (key already exists)', {
+            leaseId,
             key: upload.key,
-            mimeType,
-            size: upload.size,
-            uploadedBy: new Types.ObjectId((upload as any).actorId || userId),
-            uploadedAt: new Date(),
-          };
-        });
+          });
+          return false;
+        }
+        return true;
+      });
+      const processedDocuments = this.buildLeaseDocumentEntries(newUploads, userId);
 
       if (processedDocuments.length === 0) {
         this.log.info('All documents already exist, skipping update', { leaseId });

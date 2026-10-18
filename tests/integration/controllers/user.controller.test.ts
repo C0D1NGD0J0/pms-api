@@ -133,7 +133,7 @@ describe('UserController Integration Tests', () => {
     });
 
     const mockMediaUploadService = {
-      handleFiles: jest.fn().mockResolvedValue({ hasFiles: false }),
+      uploadRequestFiles: jest.fn().mockResolvedValue([]),
       handleMediaDeletion: jest.fn(),
       handleAvatarDeletion: jest.fn(),
     } as any;

@@ -580,10 +580,13 @@ export class LeasePdfService {
     }
 
     try {
+      // Only generated lease PDFs arrive here — user uploads are saved during their request
       const { luid, cuid } = await this.updateLeaseDocuments(resourceId, results, actorId);
+      await this.leaseCache.invalidateLease(cuid, luid);
+      await this.leaseCache.invalidateLeaseLists(cuid);
       try {
-        await this.sseService.sendToUser(
-          actorId,
+        // Everyone viewing the lease refetches, not only whoever triggered the PDF
+        await this.sseService.broadcastToClient(
           cuid,
           { resource: 'lease', action: 'document-added', resourceUId: luid },
           'resource-event'

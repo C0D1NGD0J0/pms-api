@@ -24,8 +24,10 @@ const config: JestConfigWithTsJest = {
     '**/tests/utils/**/*.test.[jt]s?(x)',
     '**/tests/api/**/*.test.[jt]s?(x)',
   ],
+  // Transpile only — type-checking every file on load made each suite ~7s and pushed CI past its
+  // 20-min limit. Types are still enforced by `tsc` (pre-push hook and the CI TypeScript job).
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', { isolatedModules: true }],
   },
   testEnvironmentOptions: {
     node: true,

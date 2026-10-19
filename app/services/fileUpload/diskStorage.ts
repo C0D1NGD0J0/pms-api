@@ -68,12 +68,6 @@ export class DiskStorage {
       fileTypes: ['csv'],
     },
     {
-      name: 'documents.items[*].file', // Wildcard pattern for documents
-      maxCount: 1,
-      maxSize: 20 * 1024 * 1024, // 20MB
-      fileTypes: ['pdf', 'jpeg', 'jpg', 'png'],
-    },
-    {
       name: 'documents[*].file', // Property documents pattern
       maxCount: 10,
       maxSize: 10 * 1024 * 1024, // 10MB

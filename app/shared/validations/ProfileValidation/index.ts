@@ -87,44 +87,6 @@ const vendorInfoSchema = z.object({
   isLinkedAccount: z.boolean().default(false),
 });
 
-const documentSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, 'Document name is required'),
-  type: z.enum([
-    'passport',
-    'utility_bill',
-    'certification',
-    'drivers_license',
-    'employment_verification',
-    'other',
-  ]),
-  file: z
-    .custom<Express.Multer.File>(
-      (val) => {
-        if (!val) return true; // Optional field
-        return (
-          typeof val === 'object' &&
-          'fieldname' in val &&
-          'originalname' in val &&
-          'mimetype' in val &&
-          'size' in val
-        );
-      },
-      { message: 'Invalid file object' }
-    )
-    .optional(),
-  filename: z.string().optional(),
-  url: z.string().optional(),
-  key: z.string().optional(),
-  uploadedAt: z.coerce.date().optional(),
-  expiryDate: z.coerce.date().optional(),
-  status: z.enum(['valid', 'expiring', 'expired', 'uploaded']).default('uploaded'),
-});
-
-const documentsSchema = z.object({
-  items: z.array(documentSchema).default([]).optional(),
-});
-
 const tenantInfoSchema = z.object({
   activeLease: z
     .object({
@@ -265,7 +227,6 @@ export const ProfileValidations = {
       personalInfo: personalInfoSchema.optional(),
       settings: settingsSchema.optional(),
       profileMeta: profileMetaSchema.optional(),
-      documents: documentsSchema.optional(),
       employeeInfo: employeeInfoSchema.optional(),
       vendorInfo: vendorInfoSchema.optional(),
       tenantInfo: tenantInfoSchema.optional(),

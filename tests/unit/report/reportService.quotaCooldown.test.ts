@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { NotFoundError } from '@shared/customErrors';
 import { ReportService } from '@services/report/report.service';
 import { ReportPeriod, ReportStatus } from '@interfaces/report.interface';
 
@@ -7,6 +8,8 @@ import {
   mockSubscriptionDAO,
   createReportService,
   mockRedisService,
+  mockQueueFactory,
+  mockPropertyDAO,
   mockReportDAO,
   mockClientDAO,
 } from './__mocks__';
@@ -213,6 +216,52 @@ describe('ReportService — Quota & Cooldown', () => {
       });
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  // ─── Property scoping (pid) ──────────────────────────────────────
+
+  describe('property scoping', () => {
+    const PID = 'PROPERTYPID1';
+    const PROPERTY_ID = new Types.ObjectId().toString();
+
+    beforeEach(() => {
+      mockSubscriptionPlanConfig.getReportLimits.mockReturnValue({
+        maxReportsPerMonth: 10,
+        maxReportSections: 9,
+        maxReportEmails: 10,
+      });
+      mockRedisService.client.get.mockResolvedValue(null);
+    });
+
+    it('should resolve pid to the internal property _id for the report and job', async () => {
+      mockPropertyDAO.findFirst.mockResolvedValueOnce({ _id: new Types.ObjectId(PROPERTY_ID) });
+      const addReportJob = jest.fn().mockResolvedValue({ id: 'job-1' });
+      mockQueueFactory.getQueue.mockReturnValueOnce({ addReportJob });
+
+      await service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS, pid: PID });
+
+      expect(mockPropertyDAO.findFirst).toHaveBeenCalledWith({
+        pid: PID,
+        cuid: CUID,
+        deletedAt: null,
+      });
+      expect(mockReportDAO.createReport).toHaveBeenCalledWith(
+        expect.objectContaining({ propertyId: PROPERTY_ID })
+      );
+      expect(addReportJob).toHaveBeenCalledWith(
+        expect.objectContaining({ propertyId: PROPERTY_ID })
+      );
+    });
+
+    it('should reject an unknown pid before consuming quota', async () => {
+      mockPropertyDAO.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS, pid: PID })
+      ).rejects.toThrow(NotFoundError);
+      expect(mockSubscriptionDAO.incrementUsageCounterIfUnder).not.toHaveBeenCalled();
+      expect(mockReportDAO.createReport).not.toHaveBeenCalled();
     });
   });
 });

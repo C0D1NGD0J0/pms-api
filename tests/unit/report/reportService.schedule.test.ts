@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { NotFoundError } from '@shared/customErrors';
 import { ReportService } from '@services/report/report.service';
 import {
   ScheduleFrequency,
@@ -14,13 +15,16 @@ import {
   createReportService,
   mockEmitterService,
   mockQueueFactory,
+  mockPropertyDAO,
   mockReportDAO,
 } from './__mocks__';
 
 const CUID = 'TEST_CLIENT_001';
+const PID = 'PROPERTYPID1';
 const USER_ID = new Types.ObjectId().toString();
 const SCHEDULE_ID = new Types.ObjectId().toString();
 const REPORT_ID = new Types.ObjectId().toString();
+const PROPERTY_ID = new Types.ObjectId().toString();
 
 describe('ReportService — Schedule Management', () => {
   let service: ReportService;
@@ -147,6 +151,39 @@ describe('ReportService — Schedule Management', () => {
       const callData = mockReportScheduleDAO.upsertSchedule.mock.calls[0][1];
       expect(callData.createdBy).toBeInstanceOf(Types.ObjectId);
     });
+
+    it('should resolve pid to the internal property _id scoped to the client', async () => {
+      mockPropertyDAO.findFirst.mockResolvedValueOnce({ _id: new Types.ObjectId(PROPERTY_ID) });
+      mockReportScheduleDAO.upsertSchedule.mockResolvedValue({
+        _id: new Types.ObjectId(SCHEDULE_ID),
+      });
+
+      await service.upsertSchedule(CUID, USER_ID, {
+        frequency: ScheduleFrequency.MONTHLY,
+        pid: PID,
+      });
+
+      expect(mockPropertyDAO.findFirst).toHaveBeenCalledWith({
+        pid: PID,
+        cuid: CUID,
+        deletedAt: null,
+      });
+      const callData = mockReportScheduleDAO.upsertSchedule.mock.calls[0][1];
+      expect(callData.propertyId).toBe(PROPERTY_ID);
+      expect(callData).not.toHaveProperty('pid');
+    });
+
+    it('should reject an unknown pid without saving the schedule', async () => {
+      mockPropertyDAO.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        service.upsertSchedule(CUID, USER_ID, {
+          frequency: ScheduleFrequency.MONTHLY,
+          pid: PID,
+        })
+      ).rejects.toThrow(NotFoundError);
+      expect(mockReportScheduleDAO.upsertSchedule).not.toHaveBeenCalled();
+    });
   });
 
   // ─── getSchedule ─────────────────────────────────────────────────
@@ -164,7 +201,27 @@ describe('ReportService — Schedule Management', () => {
       const result = await service.getSchedule(CUID);
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(schedule);
+      expect(result.data).toEqual({ ...schedule, pid: undefined });
+    });
+
+    it('should expose the stored property as pid and hide the internal _id', async () => {
+      mockReportScheduleDAO.getSchedule.mockResolvedValue({
+        _id: SCHEDULE_ID,
+        cuid: CUID,
+        frequency: ScheduleFrequency.MONTHLY,
+        propertyId: PROPERTY_ID,
+        isActive: true,
+      });
+      mockPropertyDAO.aggregate.mockResolvedValueOnce([
+        { _id: new Types.ObjectId(PROPERTY_ID), pid: PID },
+      ]);
+
+      const result = await service.getSchedule(CUID);
+
+      expect(result.data?.pid).toBe(PID);
+      expect(result.data).not.toHaveProperty('propertyId');
+      const [pipeline] = mockPropertyDAO.aggregate.mock.calls[0];
+      expect(pipeline[0].$match.cuid).toBe(CUID);
     });
 
     it('should return null when no schedule exists', async () => {
@@ -202,6 +259,7 @@ describe('ReportService — Schedule Management', () => {
         frequency: ScheduleFrequency.MONTHLY,
         sections: [...REPORT_SECTIONS],
         emailRecipients: ['pm@test.com'],
+        propertyId: PROPERTY_ID,
         isActive: true,
         nextRunAt: new Date('2026-08-01'),
       };
@@ -209,9 +267,8 @@ describe('ReportService — Schedule Management', () => {
       mockReportDAO.createReport.mockResolvedValue({
         _id: new Types.ObjectId(REPORT_ID),
       });
-      mockQueueFactory.getQueue.mockReturnValue({
-        addReportJob: jest.fn().mockResolvedValue({ id: 'job-1' }),
-      });
+      const addReportJob = jest.fn().mockResolvedValue({ id: 'job-1' });
+      mockQueueFactory.getQueue.mockReturnValue({ addReportJob });
 
       const cronJobs = service.getCronJobs();
       expect(cronJobs).toHaveLength(2);
@@ -227,8 +284,14 @@ describe('ReportService — Schedule Management', () => {
           status: ReportStatus.PENDING,
           period: ReportPeriod.LAST_30_DAYS,
           scheduledBy: schedule._id,
+          propertyId: PROPERTY_ID,
         })
       );
+      // Stored schedules keep the internal ref; the worker filters by it directly
+      expect(addReportJob).toHaveBeenCalledWith(
+        expect.objectContaining({ propertyId: PROPERTY_ID })
+      );
+      expect(mockPropertyDAO.findFirst).not.toHaveBeenCalled();
       expect(mockQueueFactory.getQueue).toHaveBeenCalledWith('reportQueue');
       expect(mockReportScheduleDAO.advanceNextRunAt).toHaveBeenCalledTimes(1);
     });

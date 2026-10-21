@@ -53,7 +53,10 @@ export const mockMaintenanceRequestDAO = {
   getStats: jest.fn() as any,
   listWithDetails: jest.fn() as any,
 };
-export const mockPropertyDAO = { aggregate: jest.fn().mockResolvedValue([]) as any };
+export const mockPropertyDAO = {
+  aggregate: jest.fn().mockResolvedValue([]) as any,
+  findFirst: jest.fn().mockResolvedValue(null) as any,
+};
 export const mockPdfGeneratorService = { generatePdf: jest.fn() as any };
 export const mockS3Service = {
   uploadBuffer: jest.fn() as any,

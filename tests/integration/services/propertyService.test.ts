@@ -1782,7 +1782,6 @@ describe('PropertyService Integration Tests', () => {
           const property = await createTestProperty(testClient.cuid, testClient._id, {
             propertyType: 'house',
             operationalStatus: 'available',
-            approvalStatus: PropertyApprovalStatusEnum.APPROVED,
           });
           await Property.collection.updateOne(
             { _id: property._id },

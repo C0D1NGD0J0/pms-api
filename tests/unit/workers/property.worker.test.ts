@@ -36,6 +36,11 @@ const mockSseService = {
   sendToUser: jest.fn() as any,
 };
 
+const mockPropertyCache = {
+  invalidatePropertyLists: jest.fn() as any,
+  invalidateLeaseableProperties: jest.fn() as any,
+};
+
 const CUID = 'test-client-cuid';
 const USER_ID = 'user-actor-id';
 
@@ -73,6 +78,7 @@ beforeEach(() => {
     propertyDAO: mockPropertyDAO as any,
     clientDAO: mockClientDAO as any,
     sseService: mockSseService as any,
+    propertyCache: mockPropertyCache as any,
   });
 });
 
@@ -221,6 +227,41 @@ describe('PropertyWorker.processCsvImport', () => {
       }),
       'job-notification'
     );
+  });
+
+  it('says how many imported properties need verification or a management agreement before leasing', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(
+      Promise.resolve({
+        validProperties: [
+          { ...makeValidProperty('Company Block'), owner: { type: 'company_owned' } },
+          { ...makeValidProperty('Owner Villa'), owner: { type: 'external_owner' } },
+        ],
+        totalRows: 2,
+        errors: null,
+      })
+    );
+
+    const result = await worker.processCsvImport(makeJob() as any);
+
+    const leasingRequirements = { needsVerificationCount: 2, needsAgreementCount: 1 };
+    expect(mockSseService.sendToUser).toHaveBeenCalledWith(
+      USER_ID,
+      CUID,
+      expect.objectContaining({ leasingRequirements }),
+      'job-notification'
+    );
+    expect(result.data).toEqual(expect.objectContaining({ leasingRequirements }));
+  });
+
+  it('clears the property list and lease picker caches so imports show up straight away', async () => {
+    mockPropertyCsvProcessor.validateCsv.mockReturnValue(
+      Promise.resolve({ validProperties: [makeValidProperty()], totalRows: 1, errors: null })
+    );
+
+    await worker.processCsvImport(makeJob() as any);
+
+    expect(mockPropertyCache.invalidatePropertyLists).toHaveBeenCalledWith(CUID);
+    expect(mockPropertyCache.invalidateLeaseableProperties).toHaveBeenCalledWith(CUID);
   });
 
   it('imports properties as approved when the importer can approve them (like single creation)', async () => {

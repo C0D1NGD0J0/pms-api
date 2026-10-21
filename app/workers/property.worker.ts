@@ -1,12 +1,14 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { PropertyCache } from '@caching/index';
 import { PropertyCsvProcessor } from '@services/csv';
 import { createLogger, JOB_NAME } from '@utils/index';
 import { isUnlimited } from '@utils/planLimits.utils';
 import { SSEService } from '@services/sse/sse.service';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { isManagementAuthorizedFor } from '@utils/propertyLeasing';
 import { SubscriptionDAO, PropertyDAO, ClientDAO } from '@dao/index';
 import { CsvProcessReturnData, CsvJobData } from '@interfaces/index';
 import { PropertyApprovalStatusEnum } from '@interfaces/property.interface';
@@ -16,6 +18,7 @@ interface IConstructor {
   propertyCsvProcessor: PropertyCsvProcessor;
   emitterService: EventEmitterService;
   subscriptionDAO: SubscriptionDAO;
+  propertyCache: PropertyCache;
   propertyDAO: PropertyDAO;
   sseService: SSEService;
   clientDAO: ClientDAO;
@@ -29,8 +32,10 @@ export class PropertyWorker {
   private readonly emitterService: EventEmitterService;
   private readonly propertyCsvProcessor: PropertyCsvProcessor;
   private readonly sseService: SSEService;
+  private readonly propertyCache: PropertyCache;
 
   constructor({
+    propertyCache,
     propertyDAO,
     clientDAO,
     subscriptionDAO,
@@ -45,6 +50,7 @@ export class PropertyWorker {
     this.log = createLogger('PropertyWorker');
     this.propertyCsvProcessor = propertyCsvProcessor;
     this.sseService = sseService;
+    this.propertyCache = propertyCache;
   }
 
   /**
@@ -240,6 +246,8 @@ export class PropertyWorker {
       }
 
       let totalInserted = 0;
+      // Every import starts unverified; non-company-owned ones also need a management agreement
+      let needsAgreementCount = 0;
       const session = await this.propertyDAO.startSession();
       const propertiesResult = await this.propertyDAO.withTransaction(session, async (session) => {
         const batchSize = 50;
@@ -248,6 +256,9 @@ export class PropertyWorker {
           const batch = csvResult.validProperties.slice(i, i + batchSize);
           const batchProperties = await this.propertyDAO.insertMany(batch, session);
           totalInserted += batchProperties.length;
+          needsAgreementCount += batchProperties.filter(
+            (property) => !isManagementAuthorizedFor(property)
+          ).length;
           const progress = 50 + Math.floor((i / csvResult.validProperties.length) * 40);
           job.progress(progress);
           if (global.gc) {
@@ -255,8 +266,23 @@ export class PropertyWorker {
           }
         }
 
-        return { totalInserted };
+        return { totalInserted, needsAgreementCount };
       });
+
+      if (propertiesResult.totalInserted > 0) {
+        await this.propertyCache.invalidatePropertyLists(cuid);
+        await this.propertyCache.invalidateLeaseableProperties(cuid);
+      }
+
+      // Imported properties can't be leased until ownership is verified (and, unless company
+      // owned, a management agreement is on file) — the import result says so up front
+      const leasingRequirements =
+        propertiesResult.totalInserted > 0
+          ? {
+              needsVerificationCount: propertiesResult.totalInserted,
+              needsAgreementCount: propertiesResult.needsAgreementCount,
+            }
+          : undefined;
 
       // insertMany (ordered: false) silently skips rows the model rejects, so compare what was
       // saved with what passed CSV validation instead of assuming everything went in.
@@ -318,6 +344,7 @@ export class PropertyWorker {
           errorCount: combinedErrors.length,
           errors: returnResult.errors,
           message: returnResult.message,
+          ...(leasingRequirements && { leasingRequirements }),
         },
         'job-notification'
       );
@@ -328,6 +355,7 @@ export class PropertyWorker {
         data: {
           totalInserted: propertiesResult.totalInserted,
           validRecord: csvResult.validProperties.length,
+          ...(leasingRequirements && { leasingRequirements }),
         },
         finishedAt: new Date(),
         message: returnResult.message,

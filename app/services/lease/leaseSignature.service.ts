@@ -11,6 +11,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
 import { IResourceEvent } from '@interfaces/sse.interface';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
+import { LEASING_CHECK_SELECT } from '@utils/propertyLeasing';
 import { OwnershipType } from '@interfaces/property.interface';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PROPERTY_APPROVAL_ROLES, PROPERTY_STAFF_ROLES, createLogger } from '@utils/index';
@@ -38,6 +39,7 @@ import {
   validateLeaseReadyForSignature,
   fetchPropertyManagerWithUser,
   validateResourceAvailable,
+  assertPropertyLeasable,
   fetchTenantWithUser,
   findActiveLeasePDF,
   fetchPropertyUnit,
@@ -152,12 +154,15 @@ export class LeaseSignatureService {
 
     const property = await this.propertyDAO.findFirst(
       { _id: lease.property.id, deletedAt: null },
-      { select: '+owner +authorization' }
+      { select: LEASING_CHECK_SELECT }
     );
     if (!property) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
     validateResourceAvailable(property, 'property');
+    // Verification may have lapsed (grace period expired) since the lease was drafted. Management
+    // authorization isn't required here: without it the external owner signs directly
+    assertPropertyLeasable(property, { requireManagementAuth: false });
     if (lease.property.unitId) {
       const propertyUnit = await fetchPropertyUnit(
         this.propertyUnitDAO,

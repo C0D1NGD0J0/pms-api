@@ -1777,12 +1777,17 @@ describe('PropertyService Integration Tests', () => {
       });
 
       it('flags properties that fail the leasing ownership checks, reading the hidden fields', async () => {
+        // The test factory gives every property an active agreement; each case sets its own
         const blockedReasonOf = async (overrides: Record<string, unknown>) => {
           const property = await createTestProperty(testClient.cuid, testClient._id, {
             propertyType: 'house',
             operationalStatus: 'available',
             approvalStatus: PropertyApprovalStatusEnum.APPROVED,
           });
+          await Property.collection.updateOne(
+            { _id: property._id },
+            { $unset: { authorization: '' } }
+          );
           await Property.collection.updateOne({ _id: property._id }, { $set: overrides });
 
           const result = await propertyService.getLeaseableProperties(

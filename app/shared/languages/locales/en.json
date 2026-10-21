@@ -614,7 +614,10 @@
       "propertyUnderMaintenance": "Cannot create a lease for a property that is currently under maintenance. Resolve active service requests first.",
       "immutableFields": "Cannot modify immutable fields",
       "lifecycleManagedFields": "Lease status, approval and signature fields can only change through lease actions",
-      "fieldNotEditable": "Field '{{field}}' cannot be modified through a lease update"
+      "fieldNotEditable": "Field '{{field}}' cannot be modified through a lease update",
+      "propertyNotApproved": "This property is still awaiting approval. Approve it before creating or renewing leases.",
+      "managementNotAuthorized": "This property has no active management agreement on file. Upload the owner's management agreement before creating or renewing leases.",
+      "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator."
     }
   },
   "common": {

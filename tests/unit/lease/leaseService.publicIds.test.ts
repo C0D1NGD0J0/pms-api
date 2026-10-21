@@ -178,6 +178,23 @@ describe('LeaseService — public id resolution', () => {
       expect(leaseDAO.createLease).not.toHaveBeenCalled();
     });
 
+    it.each([
+      [{ approvalStatus: 'pending' }, 'lease.errors.propertyNotApproved'],
+      [{ verificationStatus: 'unverified' }, 'lease.errors.ownershipUnverified'],
+      [
+        { owner: { type: 'external_owner' }, authorization: undefined },
+        'lease.errors.managementNotAuthorized',
+      ],
+    ])(
+      'says why a property that fails the ownership checks (%o) cannot be leased',
+      async (overrides, key) => {
+        propertyDAO.findFirst.mockResolvedValue({ ...property, ...overrides });
+
+        await expect(leaseService.createLease(cuid, leaseRequest(), context)).rejects.toThrow(key);
+        expect(leaseDAO.createLease).not.toHaveBeenCalled();
+      }
+    );
+
     it('rejects an unknown or other-client tenant uid', async () => {
       userDAO.findFirst.mockResolvedValue(null);
 

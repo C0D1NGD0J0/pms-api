@@ -11,6 +11,8 @@ import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
 import { EventEmitterService } from '@services/eventEmitter';
+import { getUidsByUserId } from '@services/property/propertyHelpers';
+import { SHORT_UID_REGEX } from '@shared/validations/UtilsValidation';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { InvitationValidations } from '@shared/validations/InvitationValidation';
 import { PaymentGatewayService, VendorService, UserService } from '@services/index';
@@ -149,6 +151,9 @@ export class InvitationService {
     if (!client) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
+
+    await this.assertLinkedVendorConnected(cuid, validatedData);
+    await this.assertSupervisorIsEmployee(cuid, validatedData);
 
     if (!client.isVerified && validatedData.role === ROLES.TENANT) {
       const pendingTenantInvitations = await this.invitationDAO.countDocuments({
@@ -358,6 +363,9 @@ export class InvitationService {
         }
       }
 
+      await this.assertLinkedVendorConnected(cuid, invitationData);
+      await this.assertSupervisorIsEmployee(cuid, invitationData);
+
       const updatedInvitation = await this.invitationDAO.updateInvitation(
         iuid,
         client.id,
@@ -378,6 +386,66 @@ export class InvitationService {
     } catch (error) {
       this.log.error('Error updating invitation:', error);
       throw error;
+    }
+  }
+
+  /**
+   * A vendor team-member invitation must name (by vuid) a vendor organisation connected to this
+   * client — that vuid becomes the member's linkedVendorUid on acceptance.
+   */
+  private async assertLinkedVendorConnected(
+    cuid: string,
+    invitationData: Pick<IInvitationData, 'role' | 'linkedVendorUid'>
+  ): Promise<void> {
+    const vuid = invitationData.linkedVendorUid;
+    if (invitationData.role !== ROLES.VENDOR || !vuid) return;
+
+    const vendor = await this.vendorService.getVendorByVuid(vuid);
+    if (!vendor) {
+      throw new BadRequestError({ message: t('invitation.csv.vendorNotFound', { vuid }) });
+    }
+
+    const connection = vendor.connectedClients?.find((cc: any) => cc.cuid === cuid);
+    if (!connection?.isConnected) {
+      throw new BadRequestError({ message: t('invitation.csv.vendorNotConnected', { vuid }) });
+    }
+  }
+
+  /**
+   * employeeInfo.reportsTo names the supervisor by uid; it must be an active employee of this
+   * client. The uid is kept in the invitation and resolved to the user on acceptance.
+   */
+  private async assertSupervisorIsEmployee(
+    cuid: string,
+    invitationData: Pick<IInvitationData, 'metadata'>
+  ): Promise<void> {
+    const supervisorUid = invitationData.metadata?.employeeInfo?.reportsTo;
+    if (!supervisorUid) return;
+    await this.userService.resolveSupervisorId(cuid, String(supervisorUid));
+  }
+
+  /**
+   * Invitation responses name the supervisor by uid. Older invitations stored the
+   * supervisor's ObjectId, so swap those for the uid (or drop an unknown one).
+   */
+  private async exposeSupervisorUids(invitations: IInvitationDocument[]): Promise<void> {
+    const hasLegacySupervisorRef = (invitation: IInvitationDocument) => {
+      const reportsTo = invitation.metadata?.employeeInfo?.reportsTo;
+      return !!reportsTo && !SHORT_UID_REGEX.test(String(reportsTo));
+    };
+    const legacyInvitations = invitations.filter(hasLegacySupervisorRef);
+    if (legacyInvitations.length === 0) return;
+
+    const uidsById = await getUidsByUserId(
+      this.userDAO,
+      legacyInvitations.map((invitation) => String(invitation.metadata.employeeInfo!.reportsTo))
+    );
+    for (const invitation of legacyInvitations) {
+      const employeeInfo = invitation.metadata.employeeInfo!;
+      invitation.metadata.employeeInfo = {
+        ...employeeInfo,
+        reportsTo: uidsById.get(String(employeeInfo.reportsTo)),
+      };
     }
   }
 
@@ -438,10 +506,14 @@ export class InvitationService {
     cuid: string
   ): Promise<void> {
     const vendorEntityData = await this.buildVendorEntityDataForAcceptance(result);
+    const isVendorTeamMember =
+      result.invitation.role === ROLES.VENDOR && !!result.invitation.linkedVendorUid;
     const metadata = {
       employeeInfo: result.invitation.metadata?.employeeInfo,
       vendorInfo: result.invitation.metadata?.vendorInfo,
       ...(vendorEntityData && { isPrimaryVendor: true, vendorEntityData }),
+      // Records the vendor link on the profile too (profile.vendorInfo.linkedVendorUid)
+      ...(isVendorTeamMember && { isVendorTeamMember }),
     };
 
     await this.profileService.initializeRoleInfo(
@@ -645,6 +717,7 @@ export class InvitationService {
   ): Promise<ISuccessReturnData<IInvitationDocument | null>> {
     try {
       const invitation = await this.findClientInvitation(iuid, cuid);
+      if (invitation) await this.exposeSupervisorUids([invitation]);
       return {
         success: true,
         data: invitation,
@@ -898,6 +971,7 @@ export class InvitationService {
     // Add clientId to query for DAO
     const queryWithClientId = { ...query, clientId: client.id.toString() };
     const result = await this.invitationDAO.getInvitationsByClient(queryWithClientId);
+    await this.exposeSupervisorUids(result.items);
 
     return {
       success: true,

@@ -14,6 +14,8 @@ import {
 
 import { permissionConfig, resolveGrantSet } from './permissionGrants';
 
+const OBJECT_ID_PATTERN = /^[a-f0-9]{24}$/i;
+
 /** Broadest first: a staff member is checked against the widest scope they actually hold. */
 const STAFF_SCOPE_PREFERENCE = [
   PermissionScope.ANY,
@@ -155,6 +157,26 @@ export class PermissionService {
     return checkRole(role);
   }
 
+  /**
+   * Like-for-like ownership: a User _id is compared to currentuser.sub, a uid to currentuser.uid.
+   * A bare id is classified by shape (24-hex ObjectId vs short uid).
+   */
+  private isOwnUserResource(currentUser: ICurrentUser, resourceData: any): boolean {
+    const isBareId =
+      typeof resourceData === 'string' || typeof resourceData?.toHexString === 'function';
+    if (isBareId) {
+      const bareId = resourceData.toString();
+      return OBJECT_ID_PATTERN.test(bareId)
+        ? bareId === currentUser.sub
+        : !!currentUser.uid && bareId === currentUser.uid;
+    }
+
+    const resourceObjectId = resourceData._id ?? resourceData.id;
+    if (resourceObjectId) return resourceObjectId.toString() === currentUser.sub;
+    if (resourceData.uid) return !!currentUser.uid && resourceData.uid === currentUser.uid;
+    return false;
+  }
+
   async checkUserPermission(
     currentUser: ICurrentUser,
     resource: PermissionResource,
@@ -175,9 +197,13 @@ export class PermissionService {
     if (resource === PermissionResource.USER && resourceData) {
       // Handle both cases: full user object or just an ID
       const resourceId = resourceData._id || resourceData.uid || resourceData;
-      const resourceOwnerId = resourceData._id || resourceData.id || resourceData;
+      const isOwnResource = this.isOwnUserResource(currentUser, resourceData);
+      // Owner is expressed as a User _id so the :mine check compares it to context.userId (sub)
+      const resourceOwnerId = isOwnResource
+        ? userId
+        : resourceData._id || resourceData.id || resourceData;
 
-      scope = resourceId.toString() === userId ? PermissionScope.MINE : PermissionScope.ANY;
+      scope = isOwnResource ? PermissionScope.MINE : PermissionScope.ANY;
 
       // Add resource context for better permission checking
       context = {

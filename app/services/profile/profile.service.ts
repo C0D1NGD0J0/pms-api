@@ -139,7 +139,19 @@ export class ProfileService {
 
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
 
-      const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, validation.data);
+      const { reportsTo: supervisorUid, ...employeeFields } = validation.data;
+      const employeeUpdate = supervisorUid
+        ? {
+            ...employeeFields,
+            reportsTo: await this.userService.resolveSupervisorId(
+              cuid,
+              supervisorUid,
+              profile.user.toString()
+            ),
+          }
+        : employeeFields;
+
+      const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, employeeUpdate);
 
       if (!result) {
         throw new NotFoundError({
@@ -189,13 +201,17 @@ export class ProfileService {
         });
       }
 
-      // Update the vendor entity with new information — ownership enforced in vendorService
-      await this.vendorService.updateVendorInfo(
-        vendor._id.toString(),
-        vendorInfo,
-        undefined,
-        callerUserId
-      );
+      // The vendor link fields are system-managed (set at invitation acceptance), never client-edited
+      const {
+        vendorId: _vendorId,
+        linkedVendorUid: _linkedVendorUid,
+        isLinkedAccount: _isLinkedAccount,
+        ...businessInfo
+      } = vendorInfo ?? {};
+
+      // Update the vendor entity with new information — ownership enforced in vendorService,
+      // which resolves the vendor by vuid
+      await this.vendorService.updateVendorInfo(vendor.vuid, businessInfo, undefined, callerUserId);
 
       // Update profile vendorInfo to maintain reference (if needed)
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
@@ -407,9 +423,14 @@ export class ProfileService {
     context: { linkedVendorUid?: string },
     profile: IProfileDocument
   ): Promise<{ profile: IProfileDocument }> {
+    // vendorId is what the current-user payload keys vendorInfo (and its vuid) on
+    const vendor = context.linkedVendorUid
+      ? await this.vendorService.getVendorByVuid(context.linkedVendorUid)
+      : null;
     const updatedProfile = await this.profileDAO.updateVendorReference(profile.id, {
       linkedVendorUid: context.linkedVendorUid,
       isLinkedAccount: true,
+      ...(vendor && { vendorId: vendor._id.toString() }),
     });
 
     this.logger.info(
@@ -430,7 +451,10 @@ export class ProfileService {
       return profile;
     }
 
-    const employeeData = metadata?.employeeInfo || {};
+    const employeeData = await this.withInvitedSupervisorId(
+      context.cuid,
+      metadata?.employeeInfo || {}
+    );
     const updatedProfile = await this.profileDAO.updateEmployeeInfo(
       profile.id,
       context.cuid,
@@ -440,6 +464,26 @@ export class ProfileService {
     this.logger.info(`Initialized employee info for profile ${profile.id} with metadata`);
 
     return updatedProfile || profile;
+  }
+
+  /**
+   * Invitations name the supervisor by uid (older ones by ObjectId); the profile stores
+   * their ObjectId. A supervisor who has since left the client is dropped rather than
+   * failing the acceptance.
+   */
+  private async withInvitedSupervisorId(
+    cuid: string,
+    employeeInfo: Record<string, any>
+  ): Promise<Record<string, any>> {
+    const { reportsTo, ...employeeFields } = employeeInfo;
+    if (!reportsTo) return employeeFields;
+
+    const supervisor = await this.userService.findSupervisor(reportsTo, cuid);
+    if (!supervisor) {
+      this.logger.warn(`Invited supervisor ${String(reportsTo)} is not in client ${cuid}; skipped`);
+      return employeeFields;
+    }
+    return { ...employeeFields, reportsTo: supervisor._id };
   }
 
   private buildSuccessResponse(

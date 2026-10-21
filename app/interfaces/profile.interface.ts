@@ -66,6 +66,17 @@ export interface IProfileUpdateData {
   vendorInfo?: Partial<IVendorInfo>;
 }
 
+export interface IEmployeeInfo {
+  emergencyContact?: IEmergencyContact;
+  // Supervisor: their user ObjectId on a profile, their uid in invitation metadata
+  reportsTo?: Types.ObjectId | string;
+  department?: EmployeeDepartment;
+  clientSpecificSettings?: any;
+  employeeId?: string;
+  jobTitle?: string;
+  startDate?: Date;
+}
+
 export interface ISettings {
   pushSubscriptions?: IPushSubscription[];
   phoneVerification?: IPhoneVerification;
@@ -131,20 +142,10 @@ export interface IProfileDocument extends Document, IProfile {
   id: string;
 }
 
-export interface IEmployeeInfo {
-  emergencyContact?: IEmergencyContact;
-  department?: EmployeeDepartment;
-  clientSpecificSettings?: any;
-  employeeId?: string;
-  reportsTo?: string;
-  jobTitle?: string;
-  startDate?: Date;
-}
-
 export interface IVendorInfo {
   vendorId?: Types.ObjectId; // Reference to the vendor collection
   isLinkedAccount: boolean;
-  linkedVendorUid?: string; // Reference to primary vendor (stays as string to match user model)
+  linkedVendorUid?: string; // vuid of the vendor organisation (unset on primary vendor account)
 }
 
 export interface IProfile {
@@ -315,13 +316,6 @@ export interface IAvatar {
 }
 
 export type MaintenanceRequestPriority = 'low' | 'medium' | 'high' | 'urgent';
-
-/**
- * @deprecated Use IVendorInfo instead
- */
-export interface ClientVendorInfo {
-  linkedVendorUid?: Types.ObjectId;
-}
 
 export type NoteType = 'general' | 'payment' | 'maintenance' | 'lease';
 

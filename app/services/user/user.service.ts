@@ -13,8 +13,10 @@ import { PaymentRecordType } from '@interfaces/payments.interface';
 import { InspectionStatus } from '@interfaces/inspection.interface';
 import { EventEmitterService, VendorService } from '@services/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { SHORT_UID_REGEX } from '@shared/validations/UtilsValidation';
 import { IClientUserConnections } from '@interfaces/client.interface';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
+import { resolveConnectedUserId } from '@services/property/propertyHelpers';
 import { PermissionService } from '@services/permission/permission.service';
 import { LeaseExpiredPayload, IProfileDocument, EventTypes } from '@interfaces/index';
 import { IUserRoleType, ROLE_GROUPS, IUserRole, ROLES } from '@shared/constants/roles.constants';
@@ -73,6 +75,8 @@ import {
 } from '@interfaces/user.interface';
 
 const EMAIL_CHANGE_TTL_HOURS = 24;
+const OBJECT_ID_HEX_REGEX = /^[0-9a-f]{24}$/i;
+const SUPERVISOR_NOT_EMPLOYEE_MESSAGE = 'Supervisor must be an active employee of this account';
 
 export interface IEmailChangeStatus {
   pendingEmail: string | null;
@@ -633,46 +637,16 @@ export class UserService implements ICronProvider {
     const hireDate = employeeInfo.startDate || user.createdAt;
     const tenure = this.calculateTenure(hireDate);
 
-    // Resolve supervisor name + uid from reportsTo (ObjectId or uid string).
-    // Always validates that the supervisor belongs to the same client (cuid)
-    // to prevent cross-tenant data leakage.
+    // Responses name the supervisor by uid; only a supervisor of this client is exposed.
     let directManager = '';
     let supervisorUid = '';
-    const reportsToId = employeeInfo.reportsTo;
-    if (reportsToId) {
-      const idStr = reportsToId.toString();
-      if (Types.ObjectId.isValid(idStr)) {
-        // Legacy path: stored as MongoDB ObjectId
-        const [supervisorProfile, supervisorUser] = await Promise.all([
-          this.profileDAO.findFirst({ user: new Types.ObjectId(idStr) }),
-          this.userDAO.getUserById(idStr),
-        ]);
-        // Verify supervisor belongs to the same client before exposing their info.
-        const belongsToClient = supervisorUser?.cuids?.some((c: any) => c.cuid === cuid);
-        if (belongsToClient) {
-          if (supervisorProfile?.personalInfo) {
-            const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
-            directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
-          }
-          if (supervisorUser?.uid) {
-            supervisorUid = supervisorUser.uid;
-          }
-        }
-      } else {
-        // New path: stored as uid string
-        const supervisorUser = await this.userDAO.getUserByUId(idStr);
-        // Verify supervisor belongs to the same client before exposing their info.
-        const belongsToClient = supervisorUser?.cuids?.some((c: any) => c.cuid === cuid);
-        if (supervisorUser && belongsToClient) {
-          supervisorUid = idStr;
-          const supervisorProfile = await this.profileDAO.findFirst({
-            user: supervisorUser._id,
-          });
-          if (supervisorProfile?.personalInfo) {
-            const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
-            directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
-          }
-        }
+    const supervisorUser = await this.findSupervisor(employeeInfo.reportsTo, cuid);
+    if (supervisorUser) {
+      supervisorUid = supervisorUser.uid;
+      const supervisorProfile = await this.profileDAO.findFirst({ user: supervisorUser._id });
+      if (supervisorProfile?.personalInfo) {
+        const { firstName, lastName, displayName } = supervisorProfile.personalInfo;
+        directManager = displayName || `${firstName || ''} ${lastName || ''}`.trim();
       }
     }
 
@@ -811,9 +785,9 @@ export class UserService implements ICronProvider {
 
     // get linked users if this is a primary vendor
     let linkedUsers: any[] = [];
-    if (!clientConnection.linkedVendorUid) {
+    if (!clientConnection.linkedVendorUid && vendor?.vuid) {
       try {
-        const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(userid, cuid);
+        const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid);
         linkedUsers = linkedUsersResult.items.map((linkedUser: any) => {
           const personalInfo = linkedUser.profile?.personalInfo || {};
           return {
@@ -1268,25 +1242,64 @@ export class UserService implements ICronProvider {
         return null;
       }
 
-      const supervisorId = user.profile.employeeInfo.reportsTo;
-
-      // Validate supervisor exists and belongs to same client
-      const supervisor = await this.getUserWithClientContext(supervisorId, cuid);
+      const reportsTo = user.profile.employeeInfo.reportsTo;
+      const supervisor = await this.findSupervisor(reportsTo, cuid);
 
       if (!supervisor) {
         this.log.warn('Supervisor not found or not in same client', {
           userId,
-          supervisorId,
+          reportsTo: String(reportsTo),
           cuid,
         });
         return null;
       }
 
-      return supervisorId;
+      return supervisor._id.toString();
     } catch (error) {
       this.log.error('Failed to find user supervisor', { error, userId, cuid });
       return null;
     }
+  }
+
+  /**
+   * Resolves the supervisor uid a request names to that user's ObjectId (what
+   * employeeInfo.reportsTo stores). Throws unless the uid is an active employee of this
+   * client — a uid from another client is rejected — and is not the employee themselves.
+   */
+  async resolveSupervisorId(
+    cuid: string,
+    supervisorUid: string,
+    employeeUserId?: string
+  ): Promise<Types.ObjectId> {
+    const supervisorId = await resolveConnectedUserId(
+      this.userDAO,
+      cuid,
+      supervisorUid,
+      SUPERVISOR_NOT_EMPLOYEE_MESSAGE,
+      ROLE_GROUPS.EMPLOYEE_ROLES
+    );
+    if (employeeUserId && supervisorId.toString() === employeeUserId) {
+      throw new BadRequestError({ message: 'An employee cannot report to themselves' });
+    }
+    return supervisorId;
+  }
+
+  /**
+   * Finds the user a stored reportsTo points at, when they belong to this client. Profiles
+   * store the supervisor's ObjectId; a uid (invitation metadata, legacy values) also resolves.
+   */
+  async findSupervisor(reportsTo: unknown, cuid: string): Promise<IUserDocument | null> {
+    if (!reportsTo || !cuid) return null;
+
+    const ref = String(reportsTo);
+    const supervisorFilter = SHORT_UID_REGEX.test(ref)
+      ? { uid: ref }
+      : OBJECT_ID_HEX_REGEX.test(ref)
+        ? { _id: new Types.ObjectId(ref) }
+        : null;
+    if (!supervisorFilter) return null;
+
+    return this.userDAO.findFirst({ ...supervisorFilter, deletedAt: null, 'cuids.cuid': cuid });
   }
 
   async getUserDisplayName(userId: string, cuid: string): Promise<string> {
@@ -1582,7 +1595,7 @@ export class UserService implements ICronProvider {
   async getAvailableTenantsForLease(cuid: string): Promise<
     ISuccessReturnData<
       Array<{
-        id: string;
+        uid: string;
         email: string;
         fullName: string;
         phoneNumber?: string;
@@ -1625,8 +1638,9 @@ export class UserService implements ICronProvider {
         .map((tenant: any) => {
           const personalInfo = tenant.profile?.personalInfo || {};
 
+          // The lease form sends this uid back as tenantInfo.uid
           return {
-            id: tenant._id,
+            uid: tenant.uid,
             email: tenant.email,
             fullName:
               `${personalInfo.firstName || ''} ${personalInfo.lastName || ''}`.trim() ||
@@ -2398,7 +2412,7 @@ export class UserService implements ICronProvider {
 
           if (vendor && vendor.vuid) {
             // Get all linked vendor users
-            const linkedUsers = await this.userDAO.getLinkedVendorUsers(user._id.toString(), cuid);
+            const linkedUsers = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid);
 
             if (linkedUsers.items.length > 0) {
               this.log.info('Queueing background disconnect for linked vendor team members', {
@@ -2415,6 +2429,7 @@ export class UserService implements ICronProvider {
               const userQueue = this.queueFactory.getQueue('userQueue') as UserQueue;
               await userQueue.addVendorTeamDisconnectJob({
                 primaryVendorUserId: user._id.toString(),
+                vuid: vendor.vuid,
                 vendorId: vendor._id.toString(),
                 cuid,
                 clientId: client._id.toString(),

@@ -3,7 +3,7 @@ import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 import { isValidPhoneNumber, toE164PhoneNumber } from '@utils/index';
 
-import { safeString } from '../UtilsValidation';
+import { SHORT_UID_REGEX, shortUidString, safeString } from '../UtilsValidation';
 
 // Letters in any script (é, ñ, ü, …) plus spaces, hyphens, apostrophes and dots
 const PERSON_NAME_REGEX = /^[\p{L}\s\-'.]+$/u;
@@ -19,7 +19,8 @@ const employeeInfoSchema = z
     permissions: z.array(z.string()).optional(),
     department: z.string().max(100, 'Department must be less than 100 characters').optional(),
     employeeId: z.string().max(50, 'Employee ID must be less than 50 characters').optional(),
-    reportsTo: z.string().max(100, 'Reports to must be less than 100 characters').optional(),
+    // The supervisor's user uid — the service checks they are an employee of this client
+    reportsTo: shortUidString.optional(),
     jobTitle: z.string().max(100, 'Job title must be less than 100 characters').optional(),
     startDate: dateTimeInput('Please provide a valid start date').optional(),
   })
@@ -209,20 +210,14 @@ export const invitationDataSchema = z.object({
     errorMap: () => ({ message: 'Please provide a valid role' }),
   }),
 
+  // vuid of the vendor organisation a team member joins
   linkedVendorUid: z
     .string()
+    .trim()
     .optional()
-    .refine(
-      (val) => {
-        if (!val) return true;
-        // Check if valid vendor UID (12 alphanumeric chars) or MongoDB ObjectId (24 hex chars)
-        return /^[A-Z0-9]{12}$/.test(val) || /^[0-9a-fA-F]{24}$/.test(val);
-      },
-      {
-        message:
-          'Vendor ID must be a valid vendor UID (12 alphanumeric characters) or MongoDB ObjectId (24 hex characters)',
-      }
-    ),
+    .refine((val) => !val || SHORT_UID_REGEX.test(val), {
+      message: 'Vendor ID must be a valid vendor UID (12 characters)',
+    }),
 
   personalInfo: z.object({
     firstName: z
@@ -436,12 +431,11 @@ export const invitationCsvSchema = z
           return undefined;
         }
         const trimmed = str.trim();
-        // Check if valid vendor UID (12 chars with letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex chars)
-        if (!/^[A-Z0-9_-]{12}$/.test(trimmed) && !/^[0-9a-fA-F]{24}$/.test(trimmed)) {
+        if (!SHORT_UID_REGEX.test(trimmed)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
-              'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores) or MongoDB ObjectId (24 hex characters)',
+              'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores)',
           });
           return z.NEVER;
         }
@@ -551,7 +545,18 @@ export const invitationCsvSchema = z
       .optional(),
     employeeInfo_reportsTo: z
       .string()
-      .transform((str) => (str && str.trim() !== '' ? str : undefined))
+      .transform((str, ctx) => {
+        const trimmed = str?.trim();
+        if (!trimmed) return undefined;
+        if (!SHORT_UID_REGEX.test(trimmed)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Reports To must be the supervisor's user ID (12 characters)",
+          });
+          return z.NEVER;
+        }
+        return trimmed;
+      })
       .optional(),
     employeeInfo_startDate: z
       .string()

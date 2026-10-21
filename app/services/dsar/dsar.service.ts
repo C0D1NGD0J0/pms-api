@@ -301,6 +301,10 @@ export class DSARService {
       tenantId: user._id,
       deletedAt: null,
     });
+    const supervisor = await this.userService.findSupervisor(
+      profile?.employeeInfo?.reportsTo,
+      cuid
+    );
 
     const exported: DSARExport = {
       exportedAt: new Date().toISOString(),
@@ -320,7 +324,9 @@ export class DSARService {
       },
       personalInfo: profile?.personalInfo ? this.sanitisePersonalInfo(profile.personalInfo) : {},
       tenantInfo: profile?.tenantInfo ?? null,
-      employeeInfo: profile?.employeeInfo ? this.sanitiseEmployeeInfo(profile.employeeInfo) : null,
+      employeeInfo: profile?.employeeInfo
+        ? this.sanitiseEmployeeInfo(profile.employeeInfo, supervisor?.uid)
+        : null,
       vendorInfo: profile?.vendorInfo ?? null,
       leases: (leases ?? []).map((l: any) => this.sanitiseLease(l)),
       gdprSettings: profile?.settings?.gdprSettings ?? null,
@@ -453,7 +459,7 @@ export class DSARService {
         const vendor = await this.vendorService.getVendorByUserId(userId);
 
         if (vendor && vendor.vuid) {
-          const linkedUsers = await this.userDAO.getLinkedVendorUsers(userId, cuid);
+          const linkedUsers = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid);
 
           if (linkedUsers.items.length > 0) {
             const companyName =
@@ -464,6 +470,7 @@ export class DSARService {
             const userQueue = this.queueFactory.getQueue('userQueue') as UserQueue;
             await userQueue.addVendorTeamDisconnectJob({
               primaryVendorUserId: userId,
+              vuid: vendor.vuid,
               vendorId: vendor._id.toString(),
               cuid,
               clientId: client?._id.toString() || '',
@@ -618,9 +625,10 @@ export class DSARService {
     return { ...rest, avatar: avatar?.url ?? null };
   }
 
-  private sanitiseEmployeeInfo(employeeInfo: any): Record<string, any> {
-    const { permissions, clientSpecificSettings, ...rest } = employeeInfo;
-    return rest;
+  /** The stored supervisor ObjectId is swapped for the supervisor's uid. */
+  private sanitiseEmployeeInfo(employeeInfo: any, supervisorUid?: string): Record<string, any> {
+    const { permissions, clientSpecificSettings, reportsTo, ...rest } = employeeInfo;
+    return { ...rest, ...(supervisorUid && { reportsTo: supervisorUid }) };
   }
 
   private sanitiseLease(lease: any): Record<string, any> {

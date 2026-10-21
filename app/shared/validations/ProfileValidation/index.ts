@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { EmployeeDepartment } from '@interfaces/index';
 import { NOTIFICATION_CATEGORIES } from '@interfaces/notification.interface';
 
+import { shortUidString } from '../UtilsValidation';
+
 // User model fields that can be updated
 const userInfoSchema = z
   .object({
@@ -67,7 +69,8 @@ const profileMetaSchema = z.object({
 const employeeInfoSchema = z.object({
   jobTitle: z.string().min(2).max(100).optional(),
   department: z.nativeEnum(EmployeeDepartment).optional(),
-  reportsTo: z.string().min(2).max(100).optional(),
+  // The supervisor's user uid — resolved to the user server-side
+  reportsTo: shortUidString.optional(),
   employeeId: z.string().min(3).max(20).optional(),
   startDate: z.coerce.date().optional(),
   permissions: z.array(z.string()).optional(),
@@ -79,11 +82,8 @@ const vendorInfoSchema = z.object({
     .length(24, 'Vendor ID must be a valid MongoDB ObjectId')
     .regex(/^[0-9a-fA-F]{24}$/, 'Vendor ID must contain only hexadecimal characters')
     .optional(),
-  linkedVendorUid: z
-    .string()
-    .length(24, 'Linked vendor ID must be a valid MongoDB ObjectId')
-    .regex(/^[0-9a-fA-F]{24}$/, 'Linked vendor ID must contain only hexadecimal characters')
-    .optional(),
+  // vuid of the vendor organisation (team members only)
+  linkedVendorUid: shortUidString.optional(),
   isLinkedAccount: z.boolean().default(false),
 });
 

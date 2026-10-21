@@ -49,8 +49,8 @@ describe('InvitationValidations', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should accept valid MongoDB ObjectIds', async () => {
-      const validData = {
+    it('should reject MongoDB ObjectIds (linkedVendorUid is the vendor vuid)', async () => {
+      const invalidData = {
         inviteeEmail: 'test@example.com',
         role: 'vendor',
         firstName: 'Test',
@@ -60,8 +60,9 @@ describe('InvitationValidations', () => {
         cuid: 'test-client',
       };
 
-      const result = await schema.safeParseAsync(validData);
-      expect(result.success).toBe(true);
+      await expect(schema.parseAsync(invalidData)).rejects.toThrow(
+        'linkedVendorUid must be a valid vendor UID'
+      );
     });
 
     it('should reject vendor UIDs that are too long', async () => {
@@ -95,5 +96,34 @@ describe('InvitationValidations', () => {
         'linkedVendorUid must be a valid vendor UID'
       );
     });
+  });
+
+  describe('linkedVendorUid validation (single invitation)', () => {
+    const linkedVendorUidIssues = async (linkedVendorUid: string) => {
+      const result = await InvitationValidations.sendInvitation.safeParseAsync({
+        inviteeEmail: 'test@example.com',
+        role: 'vendor',
+        status: 'pending',
+        personalInfo: { firstName: 'Test', lastName: 'User' },
+        linkedVendorUid,
+      });
+      return result.success
+        ? []
+        : result.error.issues.filter((issue) => issue.path.includes('linkedVendorUid'));
+    };
+
+    it.each(['GNTM8EMXMA2Z', 'BQ--E29IUASZ', '__PV4RILXPLT'])(
+      'accepts the vuid %s',
+      async (vuid) => {
+        expect(await linkedVendorUidIssues(vuid)).toHaveLength(0);
+      }
+    );
+
+    it.each(['507f1f77bcf86cd799439011', 'TOOLONGVENDORID', 'gntm8emxma2z'])(
+      'rejects %s',
+      async (value) => {
+        expect(await linkedVendorUidIssues(value)).toHaveLength(1);
+      }
+    );
   });
 });

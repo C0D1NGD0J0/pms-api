@@ -31,6 +31,8 @@ describe('LeaseService — public id resolution', () => {
     approvalStatus: 'approved',
     cuid,
     isManagementAuthorized: () => true,
+    verificationStatus: 'verified',
+    authorization: { isActive: true },
     isVerifiedForLeasing: () => true,
     owner: { type: 'company_owned' },
     propertyType: 'apartment',

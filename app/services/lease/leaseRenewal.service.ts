@@ -10,6 +10,7 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { LEASING_CHECK_SELECT } from '@utils/propertyLeasing';
 import { getUidsByUserId } from '@services/property/propertyHelpers';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import { IPropertyDocument, ICurrentUser, ICronJob } from '@interfaces/index';
@@ -45,6 +46,7 @@ import {
 
 import {
   calculateRenewalMetadata,
+  assertPropertyLeasable,
   createSystemContext,
   findActiveLeasePDF,
   queueLeasePdf,
@@ -237,6 +239,10 @@ export class LeaseRenewalService {
         message: 'Only active or recently expired leases can be renewed',
       });
     }
+
+    // A renewal is a new contract, so it needs the same ownership checks as lease creation. The
+    // auto-renewal cron catches this per lease and notifies the property manager with the reason
+    await this.assertRenewalPropertyLeasable(cuid, existingLease);
 
     if (!isSystemCall) {
       const renewalMeta = calculateRenewalMetadata(existingLease);
@@ -901,6 +907,8 @@ export class LeaseRenewalService {
         message: `Cannot approve renewal with status ${renewal.status}. Must be draft_renewal.`,
       });
     }
+    // The draft may have been created before verification lapsed or an agreement expired
+    await this.assertRenewalPropertyLeasable(cuid, renewal);
 
     const hasModifications = Object.keys(renewalData).length > 0;
     const updateData: any = {
@@ -1042,6 +1050,19 @@ export class LeaseRenewalService {
    * Renewals are created without documents; generate the agreement once approved so it can be
    * sent for signature (auto-send skips renewals that have no active PDF).
    */
+  /** The lease's property must pass the full leasing ownership checks (see assertPropertyLeasable). */
+  private async assertRenewalPropertyLeasable(cuid: string, lease: ILeaseDocument): Promise<void> {
+    const propertyRef = lease.property.id as any;
+    const property = await this.propertyDAO.findFirst(
+      { _id: propertyRef?._id ?? propertyRef, cuid, deletedAt: null },
+      { select: LEASING_CHECK_SELECT }
+    );
+    if (!property) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+    assertPropertyLeasable(property);
+  }
+
   private async queueRenewalPdfGeneration(renewal: ILeaseDocument, actorId: string): Promise<void> {
     try {
       await queueLeasePdf(this.queueFactory, renewal, actorId);

@@ -16,6 +16,7 @@ import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventTypes } from '@interfaces/events.interface';
+import { LEASING_CHECK_SELECT } from '@utils/propertyLeasing';
 import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
@@ -99,6 +100,7 @@ import {
   handleClosedStatusUpdate,
   calculateRenewalMetadata,
   rejectRestrictedFields,
+  assertPropertyLeasable,
   constructActivityFeed,
   filterDocumentsByRole,
   handleActiveUpdate,
@@ -261,16 +263,10 @@ export class LeaseService {
       await assertESignatureEntitlement(this.subscriptionService, cuid);
     }
 
+    // Unapproved properties are found too, so assertPropertyLeasable can say why they're blocked
     const property = await this.propertyDAO.findFirst(
-      {
-        pid: data.property.pid,
-        cuid,
-        approvalStatus: 'approved',
-        deletedAt: null,
-      },
-      {
-        select: '+owner +authorization +verificationGracePeriod',
-      }
+      { pid: data.property.pid, cuid, deletedAt: null },
+      { select: LEASING_CHECK_SELECT }
     );
 
     if (!property) {
@@ -285,19 +281,8 @@ export class LeaseService {
       throw new BadRequestError({ message: t('lease.errors.propertyUnderMaintenance') });
     }
 
-    if (!property.isManagementAuthorized()) {
-      this.log.error(
-        `Property ${data.property.pid} is not authorized for management by client ${cuid}`
-      );
-      throw new BadRequestError({ message: t('property.errors.managementNotAuthorized') });
-    }
-
-    if (!property.isVerifiedForLeasing()) {
-      throw new BadRequestError({
-        message:
-          'Property ownership verification is required before creating leases. Upload verification documents or request a grace period from your administrator.',
-      });
-    }
+    // Approved, management authorized and ownership verified — imported properties included
+    assertPropertyLeasable(property);
 
     const { hasErrors, errors, tenantInfo, propertyInfo, unitId, managedById } =
       await this.validateLeaseData(cuid, data, property);
@@ -1592,6 +1577,17 @@ export class LeaseService {
 
     enforceLeaseApprovalRequirement(lease, 'activate');
     validateLeaseReadyForActivation(lease);
+
+    // Verification may have lapsed since the lease was drafted (e.g. a grace period expired)
+    const propertyRef = lease.property.id as any;
+    const leasingProperty = await this.propertyDAO.findFirst(
+      { _id: propertyRef?._id ?? propertyRef, cuid, deletedAt: null },
+      { select: LEASING_CHECK_SELECT }
+    );
+    if (!leasingProperty) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+    assertPropertyLeasable(leasingProperty, { requireManagementAuth: false });
 
     const activatedLease = await this.leaseDAO.update(
       { _id: lease._id },

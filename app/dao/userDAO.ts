@@ -745,27 +745,39 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
     }
   }
 
+  /**
+   * Team members connected to this client under the vendor organisation `vuid`.
+   * Pass `primaryAccountHolderUserId` to include the organisation's primary account holder too.
+   */
   async getLinkedVendorUsers(
-    vendorUid: string,
+    vuid: string,
     cuid: string,
-    opts?: IFindOptions
+    opts?: IFindOptions,
+    primaryAccountHolderUserId?: string | Types.ObjectId
   ): Promise<ListResultWithPagination<IUserDocument[]>> {
     try {
-      // Include both team members (linkedVendorUid set) and the primary account
-      // holder (linkedVendorUid is null, primaryRole is 'vendor')
+      // $elemMatch keeps the cuid, connection and vendor link on the same cuids entry
+      const teamMemberFilter: QueryFilter<IUserDocument> = {
+        cuids: { $elemMatch: { cuid, isConnected: true, linkedVendorUid: vuid } },
+      };
       const query: QueryFilter<IUserDocument> = {
-        'cuids.cuid': cuid,
-        'cuids.isConnected': true,
         deletedAt: null,
-        $or: [
-          { 'cuids.linkedVendorUid': vendorUid },
-          { 'cuids.linkedVendorUid': null, 'cuids.primaryRole': 'vendor' },
-        ],
+        ...(primaryAccountHolderUserId
+          ? {
+              $or: [
+                teamMemberFilter,
+                {
+                  _id: new Types.ObjectId(primaryAccountHolderUserId.toString()),
+                  cuids: { $elemMatch: { cuid, isConnected: true } },
+                },
+              ],
+            }
+          : teamMemberFilter),
       };
 
       return await this.list(query, opts);
     } catch (error) {
-      this.logger.error(`Error getting linked vendor users for vendor ${vendorUid}:`, error);
+      this.logger.error(`Error getting linked vendor users for vendor ${vuid}:`, error);
       throw this.throwErrorHandler(error);
     }
   }

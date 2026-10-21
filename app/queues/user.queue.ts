@@ -4,7 +4,7 @@ import { QUEUE_NAMES, JOB_NAME } from '@utils/constants';
 import { BaseQueue } from './base.queue';
 
 export interface IVendorTeamDisconnectJobData {
-  /** MongoDB _id of the primary vendor user (used to fetch linked team members) */
+  /** MongoDB _id of the primary vendor user being removed */
   primaryVendorUserId: string;
   /** Human-readable client name for the disconnection email */
   companyName: string;
@@ -13,6 +13,8 @@ export interface IVendorTeamDisconnectJobData {
   vendorId: string;
   /** Client MongoDB _id string */
   clientId: string;
+  /** vuid of the vendor organisation — team members are linked by it */
+  vuid: string;
   /** Client being disconnected from */
   cuid: string;
 }

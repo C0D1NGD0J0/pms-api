@@ -830,8 +830,8 @@ describe('VendorService.getVendorTeamMembers — auth guard', () => {
     expect(Array.isArray(result.data.items)).toBe(true);
   });
 
-  it('team member linked via primary account holder User._id (single-invite path) can retrieve team members', async () => {
-    // linkedVendorUid stores the primary vendor's User._id hex string on the single-invite path
+  it('a legacy link to the primary account holder User._id is not accepted (migrated to the vuid)', async () => {
+    // Older single invitations stored the primary vendor's User._id; linkedVendorUid is now the vuid
     const primaryUserId = primaryVendorUser._id.toString();
     const teamMember = await createTestUser(client.cuid, {
       roles: [ROLES.VENDOR],
@@ -855,10 +855,9 @@ describe('VendorService.getVendorTeamMembers — auth guard', () => {
       vendorInfo: { isLinkedAccount: true },
     });
 
-    const result = await vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid);
-
-    expect(result.success).toBe(true);
-    expect(Array.isArray(result.data.items)).toBe(true);
+    await expect(vendorService.getVendorTeamMembers(ctx, client.cuid, vendor.vuid)).rejects.toThrow(
+      ForbiddenError
+    );
   });
 
   it('unrelated vendor from a different org is forbidden', async () => {

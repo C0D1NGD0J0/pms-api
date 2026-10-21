@@ -155,43 +155,32 @@ describe('CurrentUser.isVendorTeamMember', () => {
 
 describe('CurrentUser.isVendorTeamMemberOf', () => {
   const vuid = 'GNTM8EMXMA2Z';
-  const primaryUserId = new Types.ObjectId().toHexString();
 
-  it('matches when linkedVendorUid === vuid (CSV invite path)', () => {
+  it('matches when linkedVendorUid === vuid', () => {
     const user = makeVendor({ linkedVendorUid: vuid });
     expect(CurrentUser.isVendorTeamMemberOf(user, vuid)).toBe(true);
   });
 
-  it('matches when linkedVendorUid === primaryAccountHolderUserId (single-invite path, 24-hex ObjectId string)', () => {
-    const user = makeVendor({ linkedVendorUid: primaryUserId });
-    expect(CurrentUser.isVendorTeamMemberOf(user, vuid, primaryUserId)).toBe(true);
+  it('does not match a legacy 24-hex linkedVendorUid (the primary vendor User._id)', () => {
+    const user = makeVendor({ linkedVendorUid: new Types.ObjectId().toHexString() });
+    expect(CurrentUser.isVendorTeamMemberOf(user, vuid)).toBe(false);
   });
 
-  it('returns false when neither vuid nor primaryUserId matches linkedVendorUid', () => {
+  it('returns false when linkedVendorUid belongs to another vendor', () => {
     const user = makeVendor({ linkedVendorUid: 'COMPLETELY_DIFFERENT' });
-    expect(CurrentUser.isVendorTeamMemberOf(user, vuid, primaryUserId)).toBe(false);
+    expect(CurrentUser.isVendorTeamMemberOf(user, vuid)).toBe(false);
   });
 
   it('returns false when the user is not a team member at all (primary vendor)', () => {
     const user = makeVendor({ linkedVendorUid: undefined }, { isPrimaryVendor: true });
-    expect(CurrentUser.isVendorTeamMemberOf(user, vuid, primaryUserId)).toBe(false);
+    expect(CurrentUser.isVendorTeamMemberOf(user, vuid)).toBe(false);
   });
 
   it('returns false when user is not a vendor role', () => {
     const user = makeUser({
       client: { cuid: 'C1', displayname: 'x', role: 'admin', isVerified: true },
     });
-    expect(CurrentUser.isVendorTeamMemberOf(user, vuid, primaryUserId)).toBe(false);
-  });
-
-  it('returns false when primaryAccountHolderUserId is not provided and linkedVendorUid does not match vuid', () => {
-    const user = makeVendor({ linkedVendorUid: 'SOME_OTHER_UID' });
     expect(CurrentUser.isVendorTeamMemberOf(user, vuid)).toBe(false);
-  });
-
-  it('matches when linkedVendorUid === vuid even without primaryAccountHolderUserId arg', () => {
-    const user = makeVendor({ linkedVendorUid: vuid });
-    expect(CurrentUser.isVendorTeamMemberOf(user, vuid)).toBe(true);
   });
 });
 

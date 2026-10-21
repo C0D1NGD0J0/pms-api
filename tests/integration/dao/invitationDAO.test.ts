@@ -104,7 +104,7 @@ describe('InvitationDAO Integration Tests', () => {
     });
 
     it('should create invitation with linkedVendorUid', async () => {
-      const vendorId = new Types.ObjectId();
+      const vendorVuid = 'GNTM8EMXMA2Z';
       const invitationData = {
         inviteeEmail: 'vendor@example.com',
         role: IUserRole.VENDOR,
@@ -113,7 +113,7 @@ describe('InvitationDAO Integration Tests', () => {
           firstName: 'Vendor',
           lastName: 'User',
         },
-        linkedVendorUid: vendorId.toString(),
+        linkedVendorUid: vendorVuid,
       };
 
       const invitation = await invitationDAO.createInvitation(
@@ -122,7 +122,7 @@ describe('InvitationDAO Integration Tests', () => {
         testClientId.toString()
       );
 
-      expect(invitation.linkedVendorUid).toEqual(vendorId);
+      expect(invitation.linkedVendorUid).toBe(vendorVuid);
     });
 
     it('should set expiresAt to 1 day from creation', async () => {
@@ -589,7 +589,7 @@ describe('InvitationDAO Integration Tests', () => {
         },
       });
 
-      const vendorId = new Types.ObjectId();
+      const vendorVuid = 'GNTM8EMXMA2Z';
       const updateData = {
         inviteeEmail: 'vendor@example.com',
         role: IUserRole.VENDOR,
@@ -598,7 +598,7 @@ describe('InvitationDAO Integration Tests', () => {
           firstName: 'Vendor',
           lastName: 'User',
         },
-        linkedVendorUid: vendorId.toString(),
+        linkedVendorUid: vendorVuid,
       };
 
       const updated = await invitationDAO.updateInvitation(
@@ -607,11 +607,11 @@ describe('InvitationDAO Integration Tests', () => {
         updateData
       );
 
-      expect(updated?.linkedVendorUid).toEqual(vendorId);
+      expect(updated?.linkedVendorUid).toBe(vendorVuid);
     });
 
     it('should remove linkedVendorUid when not provided', async () => {
-      const vendorId = new Types.ObjectId();
+      const vendorVuid = 'GNTM8EMXMA2Z';
       const created = await Invitation.create({
         invitedBy: testInviterId,
         inviteeEmail: 'vendor2@example.com',
@@ -624,7 +624,7 @@ describe('InvitationDAO Integration Tests', () => {
           firstName: 'Vendor',
           lastName: 'Two',
         },
-        linkedVendorUid: vendorId,
+        linkedVendorUid: vendorVuid,
         metadata: {
           remindersSent: 0,
         },

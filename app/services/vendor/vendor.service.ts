@@ -129,7 +129,7 @@ export class VendorService {
 
       if (linkedVendorUid && linkedVendorUid.trim()) {
         try {
-          existingVendor = await this.vendorDAO.getVendorById(linkedVendorUid.trim());
+          existingVendor = await this.vendorDAO.getVendorByVuid(linkedVendorUid.trim());
         } catch (error) {
           this.logger.warn(
             `linkedVendorUid ${linkedVendorUid} not found, falling back to other methods`
@@ -153,7 +153,7 @@ export class VendorService {
 
       if (existingVendor) {
         // Validate data consistency if linkedVendorUid was used to find the vendor
-        if (linkedVendorUid && linkedVendorUid.trim() === existingVendor._id?.toString()) {
+        if (linkedVendorUid && linkedVendorUid.trim() === existingVendor.vuid) {
           const conflicts = [];
 
           // Check for company name mismatch
@@ -261,16 +261,21 @@ export class VendorService {
   ): Promise<ISuccessReturnData<IVendorDocument>> {
     try {
       if (callerUserId) {
-        const existing = await this.vendorDAO.getVendorByVuid(vendorId);
-        if (existing) {
-          const clientConn = existing.connectedClients?.find(
-            (cc) => cc.primaryAccountHolderUserId?.toString() === callerUserId
-          );
-          if (!clientConn) {
-            throw new ForbiddenError({
-              message: t('vendor.errors.onlyPrimaryCanUpdate'),
-            });
-          }
+        // getVendorById accepts a vuid or an _id, so the ownership check can't be skipped by
+        // passing an id the vuid lookup doesn't recognise
+        const existing = await this.vendorDAO.getVendorById(vendorId);
+        if (!existing) {
+          throw new NotFoundError({
+            message: t('common.errors.notFound', { resource: 'Vendor' }),
+          });
+        }
+        const clientConn = existing.connectedClients?.find(
+          (cc) => cc.primaryAccountHolderUserId?.toString() === callerUserId
+        );
+        if (!clientConn) {
+          throw new ForbiddenError({
+            message: t('vendor.errors.onlyPrimaryCanUpdate'),
+          });
         }
       }
 
@@ -326,6 +331,15 @@ export class VendorService {
       return await this.vendorDAO.getVendorById(vendorId);
     } catch (error) {
       this.logger.error(`Error getting vendor ${vendorId}: ${error}`);
+      throw error;
+    }
+  }
+
+  async getVendorByVuid(vuid: string): Promise<IVendorDocument | null> {
+    try {
+      return await this.vendorDAO.getVendorByVuid(vuid);
+    } catch (error) {
+      this.logger.error(`Error getting vendor ${vuid}: ${error}`);
       throw error;
     }
   }
@@ -533,7 +547,7 @@ export class VendorService {
       const isPrimaryVendor =
         vendorConnection.primaryAccountHolderUserId.toString() === currentuser.sub.toString();
       const primaryVendorUserId = vendorConnection.primaryAccountHolderUserId.toString();
-      const isTeamMember = CurrentUser.isVendorTeamMemberOf(currentuser, vuid, primaryVendorUserId);
+      const isTeamMember = CurrentUser.isVendorTeamMemberOf(currentuser, vendor.vuid);
 
       if (!allowedRoles && !isPrimaryVendor && !isTeamMember) {
         throw new ForbiddenError({
@@ -562,11 +576,16 @@ export class VendorService {
         }
       }
 
-      // Fetch linked vendor users
-      const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid, {
-        ...paginationOpts,
-        populate: [{ path: 'profile', select: 'personalInfo contactInfo' }],
-      });
+      // Team members plus the organisation's primary account holder
+      const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(
+        vendor.vuid,
+        cuid,
+        {
+          ...paginationOpts,
+          populate: [{ path: 'profile', select: 'personalInfo contactInfo' }],
+        },
+        primaryVendorUserId
+      );
 
       // Filter by status if provided
       let teamMembers = linkedUsersResult.items;
@@ -584,7 +603,6 @@ export class VendorService {
 
         return {
           uid: member.uid,
-          sub: member._id.toString(),
           email: member.email,
           displayName:
             memberConnection?.clientDisplayName ||
@@ -726,10 +744,7 @@ export class VendorService {
       let linkedUsers: any[] = [];
       if (!userClientConnection?.linkedVendorUid) {
         try {
-          const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(
-            user._id.toString(),
-            cuid
-          );
+          const linkedUsersResult = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid);
           linkedUsers = linkedUsersResult.items.map((linkedUser: any) => {
             const personalInfo = linkedUser.profile?.personalInfo || {};
             return {

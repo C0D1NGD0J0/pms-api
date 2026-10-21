@@ -616,10 +616,14 @@ describe('UserService - archiveUser with Multi-Tenant and Lease Validation', () 
 
       await userService.archiveUser(testCuid, testUid, mockCurrentUser as any);
 
+      // Team members are linked by the vendor's vuid, not the primary vendor's User._id
+      expect(mockUserDAO.getLinkedVendorUsers).toHaveBeenCalledWith('V001', testCuid);
+
       // Team member disconnection is handled asynchronously via the UserQueue
       expect(mockAddVendorTeamDisconnectJob).toHaveBeenCalledWith(
         expect.objectContaining({
           primaryVendorUserId: mockUserId.toString(),
+          vuid: 'V001',
           vendorId: mockVendorObjectId.toString(),
           cuid: testCuid,
           clientId: mockClientId.toString(),

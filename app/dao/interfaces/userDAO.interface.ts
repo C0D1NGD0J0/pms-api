@@ -1,4 +1,4 @@
-import type { QueryFilter } from 'mongoose';
+import type { QueryFilter, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { IInvitationDocument } from '@interfaces/invitation.interface';
@@ -26,6 +26,12 @@ export interface IUserDAO {
     linkedVendorUid?: string,
     session?: any
   ): Promise<IUserDocument | null>;
+  getLinkedVendorUsers(
+    vuid: string,
+    cuid: string,
+    opts?: IFindOptions,
+    primaryAccountHolderUserId?: string | Types.ObjectId
+  ): Promise<ListResultWithPagination<IUserDocument[]>>;
   setPendingEmail(
     userId: string,
     pendingChange: { pendingEmail: string; tokenHash: string; expiresAt: Date; requestedBy: string }
@@ -45,11 +51,6 @@ export interface IUserDAO {
     filters?: ITenantFilterOptions,
     pagination?: IFindOptions
   ): Promise<IPaginatedResult<IUserDocument[]>>;
-  getLinkedVendorUsers(
-    primaryVendorId: string,
-    cuid: string,
-    opts?: IFindOptions
-  ): Promise<ListResultWithPagination<IUserDocument[]>>;
   getClientTenantDetails(
     cuid: string,
     tenantUid: string

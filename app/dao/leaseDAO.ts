@@ -34,7 +34,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
 
   async createLease(
     cuid: string,
-    data: ILeaseFormData,
+    data: Omit<ILeaseFormData, 'tenantInfo'>,
     session?: ClientSession
   ): Promise<ILeaseDocument> {
     try {
@@ -976,11 +976,9 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         hasError: !!errorMessage,
       });
 
-      // leaseId could be either luid or _id, try to determine which
-      const query: Record<string, any> = Types.ObjectId.isValid(leaseId)
-        ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
-        : { luid: leaseId, deletedAt: null };
-
+      // Internal only: callers pass the _id of a lease they already loaded (or the PDF/upload
+      // job's resourceId, which is the lease _id)
+      const query: Record<string, any> = { _id: new Types.ObjectId(leaseId), deletedAt: null };
       if (cuid) query.cuid = cuid;
 
       return await this.update(query, { $set: updateData });

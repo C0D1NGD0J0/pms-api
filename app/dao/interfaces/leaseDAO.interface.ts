@@ -86,6 +86,12 @@ export interface ILeaseDAO {
     limit?: number
   ): Promise<{ items: ILeaseDocument[]; total: number }>;
 
+  createLease(
+    cuid: string,
+    data: Omit<ILeaseFormData, 'tenantInfo'>,
+    session?: ClientSession
+  ): Promise<ILeaseDocument>;
+
   updateLeaseDocuments(
     leaseId: string,
     uploadResults: UploadResult[],
@@ -97,8 +103,6 @@ export interface ILeaseDAO {
     leaseId: string,
     data: Partial<ILeaseDocument>
   ): Promise<ILeaseDocument | null>;
-
-  createLease(cuid: string, data: ILeaseFormData, session?: ClientSession): Promise<ILeaseDocument>;
 
   getLeaseById(cuid: string, leaseId: string, opts?: IFindOptions): Promise<ILeaseDocument | null>;
 

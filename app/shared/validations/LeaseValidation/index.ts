@@ -1,7 +1,6 @@
 import {
   RenewalRequestDecisionSchema,
   VacateRequestDecisionSchema,
-  ExpiringLeasesQuerySchema,
   SignatureActionSchema,
   LeaseStatsQuerySchema,
   RenewalRequestSchema,
@@ -10,7 +9,6 @@ import {
   ActivateLeaseSchema,
   FilterLeasesSchema,
   LeasePreviewSchema,
-  LeaseIdParamSchema,
   ApproveLeaseSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
@@ -25,11 +23,9 @@ export class LeaseValidations {
   static activateLease = ActivateLeaseSchema;
   static terminateLease = TerminateLeaseSchema;
   static signatureAction = SignatureActionSchema;
-  static expiringQuery = ExpiringLeasesQuerySchema;
   static statsQuery = LeaseStatsQuerySchema;
   static previewLease = LeasePreviewSchema;
   static renewLease = RenewLeaseSchema;
-  static leaseIdParam = LeaseIdParamSchema;
   static approveLease = ApproveLeaseSchema;
   static rejectLease = RejectLeaseSchema;
   static vacateRequest = VacateRequestSchema;

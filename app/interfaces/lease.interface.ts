@@ -196,9 +196,7 @@ export interface ILeaseFormData {
     | 'lateFeePercentage'
     | 'acceptedPaymentMethod'
   >;
-  property: Pick<ILeaseProperty, 'id' | 'address'> & {
-    unitId?: string;
-  };
+  property: Pick<ILeaseProperty, 'id' | 'address' | 'managedBy' | 'unitId'>;
   duration: Pick<ILeaseDuration, 'startDate' | 'endDate' | 'moveInDate'>;
   leaseDocument?: ILeaseDocumentItem[];
   utilitiesIncluded?: UtilityType[];
@@ -391,6 +389,26 @@ export interface ILeaseListItem {
   luid: string;
 }
 
+/**
+ * Lease create/update request body. The client names the property, unit, tenant and manager by
+ * their public ids; the service resolves them (scoped to the client) into ILeaseFormData's
+ * ObjectId refs.
+ */
+export interface ILeaseRequestData extends Omit<ILeaseFormData, 'tenantInfo' | 'property'> {
+  tenantInfo: {
+    uid?: string; // existing tenant's user uid
+    email?: string; // required when inviting new tenant
+    firstName?: string; // required when inviting new tenant
+    lastName?: string; // required when inviting new tenant
+  };
+  property: {
+    pid: string;
+    puid?: string;
+    address?: ILeaseProperty['address'];
+    managedBy?: string; // user uid of the lease's property manager
+  };
+}
+
 export interface ILeaseSignature {
   landlordInfo?: {
     name: string;
@@ -542,6 +560,17 @@ export interface ILeaseUserPermissions {
   canDownload: boolean;
   canDelete: boolean;
   canEdit: boolean;
+}
+
+/**
+ * Lease renewal request body. A renewal copies the lease's property, unit and tenant, so their
+ * public ids, when sent, must name the lease being renewed; the manager (a user uid) may change.
+ */
+export interface ILeaseRenewalRequestData
+  extends Partial<Omit<ILeaseFormData, 'tenantInfo' | 'property' | 'internalNotes'>> {
+  property?: Partial<Pick<ILeaseRequestData['property'], 'pid' | 'puid' | 'managedBy'>>;
+  tenantInfo?: Pick<ILeaseRequestData['tenantInfo'], 'uid'>;
+  internalNotes?: string; // a single free-text note
 }
 
 export interface LeaseESignatureSentPayload {
@@ -776,6 +805,12 @@ export type LeaseTemplateType =
   | 'commercial-office'
   | 'commercial-retail'
   | 'short-term-rental';
+
+/** Renewal terms once the request's public ids are resolved (managedBy is the manager's ObjectId) */
+export interface ILeaseRenewalData
+  extends Omit<ILeaseRenewalRequestData, 'property' | 'tenantInfo'> {
+  property?: { managedBy?: Types.ObjectId };
+}
 
 export interface ILeaseQueryOptions {
   sortOrder?: 'asc' | 'desc';

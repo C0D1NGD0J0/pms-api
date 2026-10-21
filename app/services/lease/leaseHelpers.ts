@@ -1236,14 +1236,14 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
   renewalEndDate.setMonth(renewalStartDate.getMonth() + renewalMonths);
 
   // Pre-calculate form initial values for renewal
+  // Public ids only (pid, unit puid); the manager and tenant uids are added by getRenewalFormData
   const renewalFormData = {
     property: {
-      id: lease.propertyInfo?.id?.toString() || '',
-      unitId: lease.propertyUnitInfo?.id?.toString() || '',
+      pid: lease.propertyInfo?.pid || '',
+      puid: lease.propertyUnitInfo?.puid || '',
       address: lease.propertyInfo?.address || '',
     },
     tenant: {
-      id: lease.tenantInfo?._id?.toString() || lease.tenantId?.toString() || '',
       fullname: lease.tenantInfo?.fullname || '',
     },
     duration: {

@@ -1,56 +1,7 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
-import { UserDAO } from '@dao/userDAO';
-import { PropertyDAO } from '@dao/propertyDAO';
 import { LeaseTerminationReasonCode } from '@interfaces/lease.interface';
 
-import { optionalBlank, getContainer, calendarDate } from '../UtilsValidation';
-
-export const isValidProperty = async (propertyId: string, cuid: string) => {
-  try {
-    if (!propertyId || !Types.ObjectId.isValid(propertyId)) {
-      return false;
-    }
-
-    const { propertyDAO }: { propertyDAO: PropertyDAO } = (await getContainer()).cradle;
-    const property = await propertyDAO.findFirst({
-      _id: new Types.ObjectId(propertyId),
-      cuid,
-      deletedAt: null,
-    });
-
-    return !!property;
-  } catch (error) {
-    console.error('Error validating property:', error);
-    return false;
-  }
-};
-
-export const isValidTenant = async (tenantId: string, cuid: string) => {
-  try {
-    if (!tenantId || !Types.ObjectId.isValid(tenantId)) {
-      return false;
-    }
-
-    const { userDAO }: { userDAO: UserDAO } = (await getContainer()).cradle;
-    const user = await userDAO.findFirst({
-      _id: new Types.ObjectId(tenantId),
-      activecuid: cuid,
-      deletedAt: null,
-    });
-
-    if (!user) {
-      return false;
-    }
-
-    // Verify user has 'tenant' role for this client
-    const clientAccess = user.cuids.find((c: any) => c.cuid === cuid);
-    return clientAccess && clientAccess.roles.includes('tenant');
-  } catch (error) {
-    console.error('Error validating tenant:', error);
-    return false;
-  }
-};
+import { shortUidString, optionalBlank, calendarDate } from '../UtilsValidation';
 
 // Enum Schemas
 export const LeaseStatusEnum = z.enum([
@@ -138,10 +89,12 @@ export const LeaseDurationSchema = z.object({
   terminationDate: calendarDate('Termination date must be a valid date').optional(),
 });
 
+// Public ids only: pid, unit puid and the manager's user uid (resolved within the client)
 export const LeasePropertySchema = z.object({
-  id: z.string().min(1, 'Property ID is required'),
+  pid: shortUidString,
   address: z.string().min(5, 'Property address must be at least 5 characters').optional(),
-  unitId: z.string().optional(),
+  puid: optionalBlank(shortUidString),
+  managedBy: optionalBlank(shortUidString),
 });
 
 export const CoTenantSchema = z.object({
@@ -223,7 +176,8 @@ export const InternalNoteSchema = z.object({
     .max(2000, 'Note text cannot exceed 2000 characters'),
   html: z.string().trim().max(10000, 'Note HTML cannot exceed 10000 characters').optional(),
   author: z.string().min(1, 'Author name is required'),
-  authorId: z.string().min(1, 'Author ID is required'),
+  // the author's user uid; a new note without one is attributed to the current user
+  authorId: optionalBlank(shortUidString),
   timestamp: z.union([z.date(), z.string()]).optional(),
 });
 
@@ -247,11 +201,22 @@ export const RenewLeaseSchema = z.object({
   legalTerms: optionalBlank(LegalTermsSchema),
   // Renewal takes a single free-text note; the service wraps it into an internal note entry
   internalNotes: z.string().trim().max(2000, 'Note text cannot exceed 2000 characters').optional(),
+  // A renewal keeps the lease's property, unit and tenant: pid, puid and the tenant's uid, when
+  // sent, must name the lease being renewed. managedBy (a user uid) reassigns the renewal's manager.
+  property: z
+    .object({
+      pid: optionalBlank(shortUidString),
+      puid: optionalBlank(shortUidString),
+      managedBy: optionalBlank(shortUidString),
+    })
+    .optional(),
+  tenantInfo: z.object({ uid: optionalBlank(shortUidString) }).optional(),
 });
 
 // firstName/lastName are required by the service only when inviting a new tenant by email
 export const TenantInfoSchema = z.object({
-  id: z.string().min(1, 'Tenant ID must be provided').nullable().optional(),
+  // an existing tenant's user uid
+  uid: optionalBlank(shortUidString),
   email: z.string().email('Invalid email format').or(z.literal('')).nullable().optional(),
   firstName: z.string().trim().max(50, 'First name must be at most 50 characters').optional(),
   lastName: z.string().trim().max(50, 'Last name must be at most 50 characters').optional(),
@@ -305,8 +270,7 @@ export const CreateLeaseSchema = BaseLeaseSchemaObject.omit({ cuid: true })
   .refine(
     (data) => {
       return (
-        (data.tenantInfo.id && data.tenantInfo.id.trim() !== '') ||
-        (data.tenantInfo.email && data.tenantInfo.email.trim() !== '')
+        !!data.tenantInfo.uid || (data.tenantInfo.email && data.tenantInfo.email.trim() !== '')
       );
     },
     {
@@ -423,7 +387,6 @@ export const FilterLeasesSchema = z.object({
     .object({
       status: z.string().optional(),
       cuid: z.string().optional(),
-      propertyId: z.string().optional(),
       search: z.string().max(100, 'Search term must be less than 100 characters').optional(),
       unitPuid: z.string().optional(),
     })
@@ -493,24 +456,9 @@ export const SignatureActionSchema = z.object({
   signedBy: z.array(ManualSignerSchema).max(20, 'Too many signers').optional(),
 });
 
-export const ExpiringLeasesQuerySchema = z.object({
-  daysThreshold: z.coerce.number().int().min(1).max(365).default(30),
-  status: z.array(LeaseStatusEnum).optional(),
-  propertyId: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(10),
-});
-
 export const LeaseStatsQuerySchema = z.object({
-  propertyId: z.string().optional(),
-  startDate: z.coerce.date().optional(),
-  endDate: z.coerce.date().optional(),
-});
-
-export const ExportLeasesQuerySchema = z.object({
-  format: z.enum(['csv', 'excel']).default('csv'),
-  status: z.array(LeaseStatusEnum).optional(),
-  propertyId: z.string().optional(),
+  // the property's pid, resolved within the client
+  pid: optionalBlank(shortUidString),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
 });
@@ -635,12 +583,6 @@ export const GetLeaseByIdQuerySchema = z.object({
         .pipe(z.array(z.enum(['payments', 'documents', 'activity', 'timeline', 'all']))),
     ])
     .optional(),
-});
-
-export const LeaseIdParamSchema = z.object({
-  leaseId: z.string().refine((id) => Types.ObjectId.isValid(id), {
-    message: 'Invalid lease ID format',
-  }),
 });
 
 export const ApproveLeaseSchema = z.object({

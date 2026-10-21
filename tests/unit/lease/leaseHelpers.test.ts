@@ -145,6 +145,26 @@ describe('calculateRenewalMetadata — renewal form money in major units', () =>
     );
     expect(formData.petPolicy).toEqual({ allowed: true, deposit: 300, monthlyFee: 45, maxPets: 2 });
   });
+
+  it('names the property and unit by pid and puid, never by ObjectId', () => {
+    const lease: any = {
+      status: LeaseStatus.ACTIVE,
+      duration: { endDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000) },
+      tenantId: '507f1f77bcf86cd799439013',
+      propertyInfo: { id: '507f1f77bcf86cd799439011', pid: 'PROPERTY0001', address: '1 Main St' },
+      propertyUnitInfo: { id: '507f1f77bcf86cd799439012', puid: 'UNIT00000001' },
+      tenantInfo: { _id: '507f1f77bcf86cd799439014', fullname: 'Ada Lovelace' },
+    };
+
+    const formData = calculateRenewalMetadata(lease, true)!.renewalFormData!;
+
+    expect(formData.property).toEqual({
+      pid: 'PROPERTY0001',
+      puid: 'UNIT00000001',
+      address: '1 Main St',
+    });
+    expect(formData.tenant).toEqual({ fullname: 'Ada Lovelace' });
+  });
 });
 
 describe('generatePendingChangesPreview — pet fees', () => {

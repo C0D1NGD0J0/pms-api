@@ -6,6 +6,9 @@ import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interfac
 
 import { BaseCache } from './base.cache';
 
+// v2: entries carry public ids (pid / unit puid) instead of ObjectIds
+const LEASEABLE_PROPERTIES_PREFIX = 'leaseableProperties:v2';
+
 export class PropertyCache extends BaseCache {
   private readonly KEY_PREFIXES = {
     CLIENT_PROPERTY: 'cp',
@@ -458,7 +461,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const key = `leaseableProperties:${cuid}:${userId}:units=${fetchUnits}`;
+      const key = `${LEASEABLE_PROPERTIES_PREFIX}:${cuid}:${userId}:units=${fetchUnits}`;
       return await this.setItem(key, JSON.stringify(properties), ttl);
     } catch (error) {
       this.log.error('Failed to cache leaseable properties:', error);
@@ -481,10 +484,9 @@ export class PropertyCache extends BaseCache {
       if (!cuid) {
         return { success: false, data: null, error: 'Client ID is required' };
       }
-      const keys = [
-        `leaseableProperties:${cuid}:units=true`,
-        `leaseableProperties:${cuid}:units=false`,
-      ];
+      // Entries are cached per user, so match every user's entry for this client
+      const keys = await this.scanKeys(`${LEASEABLE_PROPERTIES_PREFIX}:${cuid}:*`);
+      if (keys.length === 0) return { success: true, data: { deletedCount: 0 } };
       return await this.deleteItems(keys);
     } catch (error) {
       this.log.error('Failed to invalidate leaseable properties cache:', error);
@@ -506,7 +508,7 @@ export class PropertyCache extends BaseCache {
         };
       }
 
-      const key = `leaseableProperties:${cuid}:${userId}:units=${fetchUnits}`;
+      const key = `${LEASEABLE_PROPERTIES_PREFIX}:${cuid}:${userId}:units=${fetchUnits}`;
       const result = await this.getItem<string>(key);
 
       if (result.success && result.data) {

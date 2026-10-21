@@ -589,11 +589,14 @@ export class MaintenanceRequestService {
     if (tenant) baseFilter.tenantId = tenant._id;
     if (managedBy) baseFilter.managedBy = managedBy._id;
 
-    if (filters.assignedTechnicianSub) {
-      if (isVendorTeamMember && filters.assignedTechnicianSub !== currentuser.sub) {
+    if (filters.assignedTechnicianUid) {
+      if (isVendorTeamMember && filters.assignedTechnicianUid !== currentuser.uid) {
         throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
       }
-      baseFilter['assignedTechnician.userId'] = new Types.ObjectId(filters.assignedTechnicianSub);
+      baseFilter['assignedTechnician.userId'] = await this.resolveTechnicianFilter(
+        filters.assignedTechnicianUid,
+        currentuser
+      );
     }
 
     const result = await this.maintenanceRequestDAO.listWithDetails(
@@ -769,6 +772,10 @@ export class MaintenanceRequestService {
         vendorDoc?.companyName ||
         `${vendor?.profile?.personalInfo?.firstName || ''} ${vendor?.profile?.personalInfo?.lastName || ''}`.trim() ||
         vendor.email;
+      // Public id the client uses to (re)assign this vendor
+      plain.vendorVuid = vendorDoc?.vuid ?? null;
+    } else {
+      plain.vendorVuid = null;
     }
     // Collapse vendorId back to a plain string after populate (interface declares string)
     plain.vendorId = vendor?._id?.toString() ?? null;
@@ -936,37 +943,30 @@ export class MaintenanceRequestService {
       }
     }
 
-    if (data.technician?.userId) {
-      await this.assertTechnicianOnVendorTeam(request, cuid, data.technician.userId);
-    }
+    const requestedTechnician = data.technician?.uid ? data.technician : undefined;
+    const technicianUser = requestedTechnician
+      ? await this.resolveTechnicianOnVendorTeam(request, cuid, requestedTechnician.uid!)
+      : { _id: new Types.ObjectId(currentuser.sub), uid: currentuser.uid };
+    const technicianDetails = requestedTechnician ?? {
+      phone: '',
+      email: currentuser.email,
+      name: currentuser.fullname || currentuser.displayName || 'Assigned Technician',
+    };
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      if (!data.technician?.userId) {
-        data.technician = {
-          phone: '',
-          email: currentuser.email,
-          userId: currentuser.sub.toString(),
-          name: currentuser.fullname || currentuser.displayName || 'Assigned Technician',
-        };
-      }
-
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
         {
           $set: {
             status: MaintenanceRequestStatus.IN_PROGRESS,
-            ...(data.technician && {
-              assignedTechnician: {
-                name: data.technician.name,
-                phone: data.technician.phone,
-                email: data.technician.email,
-                ...(data.technician.userId &&
-                  Types.ObjectId.isValid(data.technician.userId) && {
-                    userId: new Types.ObjectId(data.technician.userId),
-                  }),
-              },
-            }),
+            assignedTechnician: {
+              userId: technicianUser._id,
+              uid: technicianUser.uid,
+              name: technicianDetails.name,
+              phone: technicianDetails.phone,
+              email: technicianDetails.email,
+            },
           },
         },
         undefined,
@@ -1371,21 +1371,39 @@ export class MaintenanceRequestService {
   }
 
   /**
-   * The technician must be the assigned (primary) vendor user or a connected team member of
-   * that vendor in this client. Team members store linkedVendorUid as either the vendor's vuid
-   * or the primary account holder's User._id, depending on the invitation path.
+   * Resolves a technician UID to the user it names. The technician must be connected to this
+   * client and be either the assigned (primary) vendor user or a team member whose
+   * linkedVendorUid is that vendor's vuid.
    */
-  private async assertTechnicianOnVendorTeam(
+  private async resolveTechnicianOnVendorTeam(
     request: { vendorId?: any },
     cuid: string,
-    technicianUserId: string
-  ): Promise<void> {
+    technicianUid: string
+  ): Promise<{ _id: Types.ObjectId; uid: string }> {
     const notOnTeamError = new ForbiddenError({
       message: 'Selected technician is not a member of your team',
     });
-    const primaryVendorUserId = request.vendorId?.toString();
-    if (!primaryVendorUserId || !Types.ObjectId.isValid(technicianUserId)) throw notOnTeamError;
-    if (technicianUserId === primaryVendorUserId) return;
+    const primaryVendorUserId = request.vendorId?._id?.toString() ?? request.vendorId?.toString();
+    if (!primaryVendorUserId || !Types.ObjectId.isValid(primaryVendorUserId)) {
+      throw notOnTeamError;
+    }
+
+    const technician = await this.userDAO.findFirst(
+      {
+        uid: technicianUid,
+        deletedAt: null,
+        cuids: { $elemMatch: { cuid, isConnected: true } },
+      },
+      undefined,
+      { _id: 1, uid: 1, cuids: 1 }
+    );
+    if (!technician) throw notOnTeamError;
+
+    const technicianRef = {
+      _id: new Types.ObjectId(technician._id.toString()),
+      uid: technician.uid,
+    };
+    if (technicianRef._id.toString() === primaryVendorUserId) return technicianRef;
 
     const vendor = await this.vendorDAO.findFirst(
       {
@@ -1403,18 +1421,31 @@ export class MaintenanceRequestService {
     );
     if (!vendor) throw notOnTeamError;
 
-    const teamMember = await this.userDAO.findFirst({
-      _id: new Types.ObjectId(technicianUserId),
-      deletedAt: null,
-      cuids: {
-        $elemMatch: {
-          cuid,
-          isConnected: true,
-          linkedVendorUid: { $in: [vendor.vuid, primaryVendorUserId] },
-        },
-      },
-    });
-    if (!teamMember) throw notOnTeamError;
+    const isOnVendorTeam = (technician.cuids ?? []).some(
+      (connection) =>
+        connection.cuid === cuid &&
+        connection.isConnected &&
+        connection.linkedVendorUid === vendor.vuid
+    );
+    if (!isOnVendorTeam) throw notOnTeamError;
+    return technicianRef;
+  }
+
+  /**
+   * Resolves the assignedTechnicianUid list filter to the internal user ref. An unknown UID
+   * matches nothing rather than silently dropping the filter.
+   */
+  private async resolveTechnicianFilter(
+    technicianUid: string,
+    currentuser: { uid: string; sub: string }
+  ): Promise<Types.ObjectId | { $in: [] }> {
+    if (technicianUid === currentuser.uid) return new Types.ObjectId(currentuser.sub);
+    const technician = await this.userDAO.findFirst(
+      { uid: technicianUid, deletedAt: null },
+      undefined,
+      { _id: 1 }
+    );
+    return technician ? new Types.ObjectId(technician._id.toString()) : { $in: [] };
   }
 
   private buildUnassignUpdate() {

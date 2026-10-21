@@ -1,6 +1,7 @@
 import { ROLES } from '@shared/constants/roles.constants';
 import {
   serializeMaintenanceRequestListItem,
+  serializeMaintenanceRequestResult,
   serializeMaintenanceRequest,
 } from '@controllers/MaintenanceController/serializers';
 
@@ -77,6 +78,8 @@ const full: Record<string, any> = {
   },
 
   assignedTechnician: {
+    userId: '507f1f77bcf86cd799439011',
+    uid: 'TECHUID00001',
     name: 'John Smith',
     specialization: 'plumbing',
     phone: '555-1234',
@@ -105,9 +108,17 @@ const listItem: Record<string, any> = {
 describe('serializeMaintenanceRequest — employee roles', () => {
   const employeeRoles = [ROLES.MANAGER, ROLES.ADMIN, ROLES.STAFF, ROLES.SUPER_ADMIN] as const;
 
-  it.each(employeeRoles)('%s: returns the full response unchanged', (role) => {
+  it.each(employeeRoles)('%s: returns the full response minus the technician _id', (role) => {
     const result = serializeMaintenanceRequest(full, role);
-    expect(result).toBe(full); // same reference — no copy
+    const { userId, ...publicTechnician } = full.assignedTechnician;
+    void userId;
+    expect(result).toEqual({ ...full, assignedTechnician: publicTechnician });
+  });
+
+  it('exposes assignedTechnician.uid and never the internal userId', () => {
+    const result = serializeMaintenanceRequest(full, ROLES.MANAGER);
+    expect(result.assignedTechnician.uid).toBe('TECHUID00001');
+    expect(result.assignedTechnician).not.toHaveProperty('userId');
   });
 
   it('manager: retains estimatedCost, aiAnalysis, leaseEndDate', () => {
@@ -162,6 +173,11 @@ describe('serializeMaintenanceRequest — vendor role', () => {
     expect(result.invoice.amountInCents).toBe(20000);
     expect(result.invoice.vendorPayoutStatus).toBe('pending');
     expect(result.invoice.vendorPaidAt).toBeNull();
+  });
+
+  it('exposes assignedTechnician.uid but not the internal userId', () => {
+    expect(result.assignedTechnician.uid).toBe('TECHUID00001');
+    expect(result.assignedTechnician).not.toHaveProperty('userId');
   });
 
   it('retains assignedTechnician in full (vendor coordinates with their tech)', () => {
@@ -276,6 +292,16 @@ describe('serializeMaintenanceRequestListItem — employee roles', () => {
     const result = serializeMaintenanceRequestListItem(listItem, ROLES.MANAGER);
     expect(result).toBe(listItem);
   });
+
+  it.each([ROLES.MANAGER, ROLES.VENDOR, ROLES.TENANT])(
+    '%s: strips the technician _id and keeps the uid',
+    (role) => {
+      const item = { ...listItem, assignedTechnician: { ...full.assignedTechnician } };
+      const result = serializeMaintenanceRequestListItem(item, role);
+      expect(result.assignedTechnician.uid).toBe('TECHUID00001');
+      expect(result.assignedTechnician).not.toHaveProperty('userId');
+    }
+  );
 });
 
 describe('serializeMaintenanceRequestListItem — vendor role', () => {
@@ -329,5 +355,49 @@ describe('serializeMaintenanceRequestListItem — tenant role', () => {
     expect(result.status).toBe('in_progress');
     expect(result.title).toBe('Leaking faucet');
     expect(result.mruid).toBe('MR-001');
+  });
+});
+
+// ── serializeMaintenanceRequestResult (mutation responses) ────────────────────
+
+describe('serializeMaintenanceRequestResult — mutation responses', () => {
+  const mutationResult = { success: true, message: 'Updated', data: full };
+  const allRoles = [ROLES.MANAGER, ROLES.STAFF, ROLES.VENDOR, ROLES.TENANT] as const;
+
+  it.each(allRoles)('%s: never exposes assignedTechnician.userId', (role) => {
+    const result = serializeMaintenanceRequestResult(mutationResult, role);
+    expect(result.data.assignedTechnician).toBeDefined();
+    expect(result.data.assignedTechnician).not.toHaveProperty('userId');
+  });
+
+  it('keeps success and message and exposes the technician uid to employees', () => {
+    const result = serializeMaintenanceRequestResult(mutationResult, ROLES.MANAGER);
+    expect(result.success).toBe(true);
+    expect(result.message).toBe('Updated');
+    expect(result.data.assignedTechnician.uid).toBe('TECHUID00001');
+  });
+
+  it('applies the role allow-list like the detail read', () => {
+    const vendorResult = serializeMaintenanceRequestResult(mutationResult, ROLES.VENDOR);
+    expect(vendorResult.data).toEqual(serializeMaintenanceRequest(full, ROLES.VENDOR));
+    expect(vendorResult.data.tenantId).toBeUndefined();
+
+    const tenantResult = serializeMaintenanceRequestResult(mutationResult, ROLES.TENANT);
+    expect(tenantResult.data).toEqual(serializeMaintenanceRequest(full, ROLES.TENANT));
+  });
+
+  it('converts a Mongoose document with toObject before serializing', () => {
+    const document: Record<string, any> = { toObject: () => full };
+    const result = serializeMaintenanceRequestResult(
+      { success: true, data: document },
+      ROLES.MANAGER
+    );
+    expect(result.data).not.toHaveProperty('toObject');
+    expect(result.data.assignedTechnician).not.toHaveProperty('userId');
+  });
+
+  it('passes a result without data through unchanged', () => {
+    const empty = { success: true, data: null };
+    expect(serializeMaintenanceRequestResult(empty, ROLES.MANAGER)).toBe(empty);
   });
 });

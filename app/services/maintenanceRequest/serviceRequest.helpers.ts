@@ -59,18 +59,8 @@ export async function assertVendorAuthorized(
 }
 
 /**
- * Resolves the primary vendor User._id for a team member.
- *
- * linkedVendorUid is stored in two formats depending on the invitation path:
- *   - Single invitation: primary vendor User._id as 24-hex ObjectId string
- *     (invitation.linkedVendorUid stored via `new Types.ObjectId(userId)` → `.toString()`)
- *   - Bulk CSV invitation: vendor entity vuid (e.g. "GNTM8EMXMA2Z")
- *
- * For the 24-hex case we always verify against the Vendor entity rather than
- * trusting the stored value blindly — a vuid coerced through ObjectId().toString()
- * also produces a 24-hex string that looks valid but is not a real User._id.
- *
- * Falls back to currentuser.vendorInfo.linkedVendorUid if client.linkedVendorUid is absent.
+ * Resolves the primary vendor User._id for a team member, via the vendor organisation
+ * their `linkedVendorUid` (a vuid) points at.
  */
 export async function resolvePrimaryVendorId(
   vendorDAO: VendorDAO,

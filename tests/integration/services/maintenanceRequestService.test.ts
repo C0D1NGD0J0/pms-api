@@ -835,7 +835,7 @@ describe('MaintenanceRequestService', () => {
 
       const asTechnician = await insertRequest(client.cuid, property._id, {
         title: 'Fix the boiler',
-        assignedTechnician: { userId: staff._id, name: 'Staff Tech' },
+        assignedTechnician: { userId: staff._id, uid: staff.uid, name: 'Staff Tech' },
       });
       const assignedByStaff = await insertRequest(client.cuid, property._id, {
         title: 'Fix the fence',
@@ -844,7 +844,7 @@ describe('MaintenanceRequestService', () => {
       const someoneElses = await insertRequest(client.cuid, property._id, {
         title: 'Fix the boiler too',
         assignedBy: otherStaff._id,
-        assignedTechnician: { userId: otherStaff._id, name: 'Other Tech' },
+        assignedTechnician: { userId: otherStaff._id, uid: otherStaff.uid, name: 'Other Tech' },
       });
       const service = setupService();
 
@@ -1089,11 +1089,12 @@ describe('MaintenanceRequestService', () => {
 
       await service.acceptAssignment(vendorCtx, mruid, {
         action: 'accept',
-        technician: { name: 'Team Tech', userId: teamMember._id.toString() },
+        technician: { name: 'Team Tech', uid: teamMember.uid },
       });
 
       const stored = await MaintenanceRequest.findOne({ mruid }).lean();
       expect(stored?.assignedTechnician?.userId?.toString()).toBe(teamMember._id.toString());
+      expect(stored?.assignedTechnician?.uid).toBe(teamMember.uid);
       expect(stored?.assignedTechnician?.name).toBe('Team Tech');
     });
 
@@ -1116,7 +1117,7 @@ describe('MaintenanceRequestService', () => {
       await expect(
         service.acceptAssignment(vendorCtx, mruid, {
           action: 'accept',
-          technician: { name: 'Outsider', userId: outsider._id.toString() },
+          technician: { name: 'Outsider', uid: outsider.uid },
         })
       ).rejects.toThrow('Selected technician is not a member of your team');
 
@@ -1129,11 +1130,12 @@ describe('MaintenanceRequestService', () => {
 
       await service.acceptAssignment(vendorCtx, mruid, {
         action: 'accept',
-        technician: { name: 'Owner', userId: vendorUser._id.toString() },
+        technician: { name: 'Owner', uid: vendorUser.uid },
       });
 
       const stored = await MaintenanceRequest.findOne({ mruid }).lean();
       expect(stored?.assignedTechnician?.userId?.toString()).toBe(vendorUser._id.toString());
+      expect(stored?.assignedTechnician?.uid).toBe(vendorUser.uid);
     });
 
     it('vendor should accept assignment and transition to in_progress', async () => {

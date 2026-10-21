@@ -12,7 +12,11 @@ import {
   InvoiceAIService,
 } from '@services/index';
 
-import { serializeMaintenanceRequestListItem, serializeMaintenanceRequest } from './serializers';
+import {
+  serializeMaintenanceRequestListItem,
+  serializeMaintenanceRequestResult,
+  serializeMaintenanceRequest,
+} from './serializers';
 
 interface IConstructor {
   maintenanceRequestService: MaintenanceRequestService;
@@ -50,7 +54,10 @@ export class MaintenanceController {
       req.body,
       req.scannedFiles
     );
-    return res.status(httpStatusCodes.CREATED).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res
+      .status(httpStatusCodes.CREATED)
+      .json(serializeMaintenanceRequestResult(result, role));
   }
 
   async listRequests(req: AppRequest, res: Response) {
@@ -88,7 +95,10 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.CREATED).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res
+      .status(httpStatusCodes.CREATED)
+      .json(serializeMaintenanceRequestResult(result, role));
   }
 
   async respondToAssignment(req: AppRequest, res: Response) {
@@ -97,7 +107,8 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async updateStatus(req: AppRequest, res: Response) {
@@ -106,7 +117,8 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async markWorkDone(req: AppRequest, res: Response) {
@@ -115,7 +127,8 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async finalizeCompletion(req: AppRequest, res: Response) {
@@ -123,7 +136,8 @@ export class MaintenanceController {
       req.context,
       req.params.mruid
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async submitTenantFeedback(req: AppRequest, res: Response) {
@@ -132,7 +146,8 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async cancelRequest(req: AppRequest, res: Response) {
@@ -141,7 +156,8 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async updateRequest(req: AppRequest, res: Response) {
@@ -151,7 +167,8 @@ export class MaintenanceController {
       req.body,
       req.scannedFiles
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async submitInvoice(req: AppRequest, res: Response) {
@@ -206,7 +223,10 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.CREATED).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res
+      .status(httpStatusCodes.CREATED)
+      .json(serializeMaintenanceRequestResult(result, role));
   }
 
   async reviewWorkOrder(req: AppRequest, res: Response) {
@@ -215,7 +235,8 @@ export class MaintenanceController {
       req.params.mruid,
       req.body
     );
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async handleWebhook(req: AppRequest, res: Response) {
@@ -254,12 +275,14 @@ export class MaintenanceController {
   async acceptAISuggestion(req: AppRequest, res: Response) {
     const { mruid } = req.params;
     const result = await this.vendorSuggestionService.acceptAISuggestion(req.context, mruid);
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 
   async dismissAISuggestion(req: AppRequest, res: Response) {
     const { mruid } = req.params;
     const result = await this.vendorSuggestionService.dismissAISuggestion(req.context, mruid);
-    return res.status(httpStatusCodes.OK).json(result);
+    const role = req.context.currentuser!.client.role;
+    return res.status(httpStatusCodes.OK).json(serializeMaintenanceRequestResult(result, role));
   }
 }

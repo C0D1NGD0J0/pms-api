@@ -58,7 +58,7 @@ export function serializeMaintenanceRequest(
   role: IUserRoleType
 ): Record<string, any> {
   if (RoleHelpers.isEmployeeRole(role)) {
-    return data;
+    return withPublicTechnician(data);
   }
 
   if (role === ROLES.VENDOR) {
@@ -98,7 +98,7 @@ export function serializeMaintenanceRequest(
 
     // Assigned technician — vendor coordinates with their own tech; full access
     if (data.assignedTechnician) {
-      out.assignedTechnician = data.assignedTechnician;
+      out.assignedTechnician = toPublicTechnician(data.assignedTechnician);
     }
 
     return out;
@@ -157,7 +157,7 @@ export function serializeMaintenanceRequestListItem(
   role: IUserRoleType
 ): Record<string, any> {
   if (RoleHelpers.isEmployeeRole(role)) {
-    return data;
+    return withPublicTechnician(data);
   }
 
   if (role === ROLES.VENDOR) {
@@ -177,7 +177,7 @@ export function serializeMaintenanceRequestListItem(
     void aiAnalysis;
     void internalNotes;
     void leaseEndDate;
-    return rest;
+    return withPublicTechnician(rest);
   }
 
   if (role === ROLES.TENANT) {
@@ -197,8 +197,35 @@ export function serializeMaintenanceRequestListItem(
     void internalNotes;
     void leaseEndDate;
     void tenantName;
-    return rest;
+    return withPublicTechnician(rest);
   }
 
-  return data;
+  return withPublicTechnician(data);
+}
+
+/**
+ * Serializes the maintenance request a write endpoint returns with the same role allow-list
+ * as the detail read, so mutation responses never carry fields reads hide
+ * (e.g. assignedTechnician.userId). Accepts a Mongoose document or a plain object.
+ */
+export function serializeMaintenanceRequestResult<T extends { data?: any }>(
+  result: T,
+  role: IUserRoleType
+): T {
+  const request = result.data?.toObject ? result.data.toObject() : result.data;
+  if (!request) return result;
+  return { ...result, data: serializeMaintenanceRequest(request, role) };
+}
+
+export function withPublicTechnician(data: Record<string, any>): Record<string, any> {
+  if (!data.assignedTechnician) return data;
+  return { ...data, assignedTechnician: toPublicTechnician(data.assignedTechnician) };
+}
+
+/**
+ * Public shape of the assigned technician — the internal userId (Mongo _id) is never exposed;
+ * clients identify the technician by uid (absent on requests accepted before uids were stored).
+ */
+export function toPublicTechnician(technician: Record<string, any>): Record<string, any> {
+  return pick(technician, ['uid', 'name', 'phone', 'email', 'specialization']);
 }

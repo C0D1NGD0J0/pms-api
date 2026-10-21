@@ -129,7 +129,7 @@ export interface IMaintenanceFilters {
   status?: MaintenanceRequestStatus | MaintenanceRequestStatus[];
   priority?: MaintenanceRequestPriority;
   category?: MaintenanceCategory;
-  assignedTechnicianSub?: string; // MongoDB _id of technician; filters by assignedTechnician.userId
+  assignedTechnicianUid?: string; // user UID of the assigned technician
   managedByUid?: string; // user resource UID of the staff member managing the property
   isBillable?: boolean;
   vendorUid?: string; // user resource UID of vendor
@@ -244,10 +244,12 @@ export interface ISubmitInvoicePayload {
   amount: number;
 }
 
-export interface IRespondToAssignmentPayload {
-  technician?: { name: string; phone?: string; email?: string; userId?: string }; // optional on accept
-  action: 'accept' | 'decline';
-  reason?: string; // required when action === 'decline'
+export interface ITechnician {
+  userId?: Types.ObjectId | string; // internal ref — never serialized to clients
+  phone?: string;
+  email?: string;
+  name: string;
+  uid?: string; // public user UID; absent on documents written before the uid contract
 }
 
 export interface IVendorSuggestion {
@@ -257,6 +259,12 @@ export interface IVendorSuggestion {
   vendorId: string;
   score: number;
   vuid: string;
+}
+
+export interface IRespondToAssignmentPayload {
+  technician?: { name: string; phone?: string; email?: string; uid?: string }; // optional on accept
+  action: 'accept' | 'decline';
+  reason?: string; // required when action === 'decline'
 }
 
 export interface MaintenanceRequestMedia {
@@ -318,13 +326,6 @@ export interface IAssignVendorPayload {
   scheduledDate?: string;
   estimatedCost?: number;
   vuid: string; // vendor resource UID
-}
-
-export interface ITechnician {
-  userId?: Types.ObjectId | string;
-  phone?: string;
-  email?: string;
-  name: string;
 }
 
 export interface IReviewWorkOrderPayload {

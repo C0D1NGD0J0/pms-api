@@ -155,6 +155,7 @@ const MaintenanceRequestSchema = new Schema<IMaintenanceRequestDocument>(
       type: {
         _id: false,
         userId: { type: Schema.Types.ObjectId, ref: 'User' },
+        uid: { type: String },
         name: { type: String, maxlength: 100 },
         phone: { type: String, maxlength: 20 },
         email: { type: String, maxlength: 200 },

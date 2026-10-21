@@ -15,6 +15,7 @@ import { PermissionService } from '@services/permission/permission.service';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
+import { getPropertyLeasingBlock, PropertyLeasingBlock } from '@utils/propertyLeasing';
 import { getImportFieldsResponse, isKnownImportField } from '@services/csv/propertyImportFields';
 import {
   PropertyCsvProcessor,
@@ -2655,6 +2656,7 @@ export class PropertyService implements ICronProvider {
         name: string;
         address: string;
         propertyType: string;
+        leasingBlockedReason: PropertyLeasingBlock | null;
         financialInfo?: {
           rentAmount?: number;
           securityDeposit?: number;
@@ -2727,7 +2729,10 @@ export class PropertyService implements ICronProvider {
       const properties = await this.propertyDAO.list(filter, {
         limit: 1000,
         sort: { name: 1 },
-        projection: '_id pid name address propertyType fees',
+        // owner/authorization/verificationGracePeriod are select: false — they feed the
+        // leasing check below
+        projection:
+          '_id pid name address propertyType fees approvalStatus verificationStatus owner authorization verificationGracePeriod',
       });
 
       if (!properties.items.length) {
@@ -2778,6 +2783,8 @@ export class PropertyService implements ICronProvider {
           name: propertyObj.name,
           address: propertyObj.address?.fullAddress || '',
           propertyType: propertyObj.propertyType,
+          // Listed but not selectable in the lease form until resolved (e.g. imported, unverified)
+          leasingBlockedReason: getPropertyLeasingBlock(propertyObj),
         };
 
         // Add financial info if available

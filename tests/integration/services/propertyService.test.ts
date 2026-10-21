@@ -1776,6 +1776,59 @@ describe('PropertyService Integration Tests', () => {
         expect(result.data.metadata).toBeDefined();
       });
 
+      it('flags properties that fail the leasing ownership checks, reading the hidden fields', async () => {
+        const blockedReasonOf = async (overrides: Record<string, unknown>) => {
+          const property = await createTestProperty(testClient.cuid, testClient._id, {
+            propertyType: 'house',
+            operationalStatus: 'available',
+            approvalStatus: PropertyApprovalStatusEnum.APPROVED,
+          });
+          await Property.collection.updateOne({ _id: property._id }, { $set: overrides });
+
+          const result = await propertyService.getLeaseableProperties(
+            testClient.cuid,
+            {
+              sub: adminUser._id.toString(),
+              client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+            } as any,
+            false
+          );
+          return result.data.items.find((item: any) => item.pid === property.pid)
+            ?.leasingBlockedReason;
+        };
+        const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        // imported (or new) and not yet reviewed
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'unverified',
+            owner: { type: 'company_owned' },
+          })
+        ).toBe('ownership_unverified');
+        // an active grace period is enough
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'unverified',
+            owner: { type: 'company_owned' },
+            verificationGracePeriod: { expiresAt: future, grantedBy: adminUser._id },
+          })
+        ).toBeNull();
+        // external owner with no management agreement
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'verified',
+            owner: { type: 'external_owner', name: 'Owner' },
+          })
+        ).toBe('management_not_authorized');
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'verified',
+            owner: { type: 'external_owner', name: 'Owner' },
+            authorization: { isActive: true, expiresAt: future },
+          })
+        ).toBeNull();
+      });
+
       it('should include units when fetchUnits is true', async () => {
         // Create units for apartment property
         await createTestPropertyUnit(testClient.cuid, property1._id, {

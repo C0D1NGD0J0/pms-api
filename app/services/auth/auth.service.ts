@@ -1412,7 +1412,7 @@ export class AuthService {
 
     // Guard against double-charging: check for any existing payments on this lease
     const existing = await this.paymentService.listPayments(cuid, {
-      leaseId: lease.luid,
+      luid: lease.luid,
       limit: 1,
     });
     if (existing.data && existing.data.items && existing.data.items.length > 0) {

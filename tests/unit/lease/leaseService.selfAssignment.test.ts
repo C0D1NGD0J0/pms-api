@@ -8,7 +8,7 @@ import { InvitationDAO } from '@dao/invitationDAO';
 import { ForbiddenError } from '@shared/customErrors';
 import { IRequestContext } from '@interfaces/utils.interface';
 import { mockSubscriptionService } from '@tests/setup/externalMocks';
-import { ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
+import { ILeaseRequestData, ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 
 // Break the circular import chain: lease.service → @shared/middlewares → @di/index → registerResources → lease.service (undefined)
 jest.mock('@shared/middlewares', () => ({
@@ -170,10 +170,10 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: mockUserId.toString(), // User trying to assign themselves
+          uid: 'tenant-uid', // User trying to assign themselves
         },
         property: {
-          id: mockPropertyId.toString(),
+          pid: 'PROPERTY0001',
         },
         duration: {
           startDate: new Date(),
@@ -224,10 +224,10 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: differentTenantId.toString(), // Different tenant
+          uid: 'other-tenant-uid', // Different tenant
         },
         property: {
-          id: mockPropertyId.toString(),
+          pid: 'PROPERTY0001',
         },
         duration: {
           startDate: new Date(),
@@ -281,7 +281,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
           email: 'newtenant@example.com',
         },
         property: {
-          id: mockPropertyId.toString(),
+          pid: 'PROPERTY0001',
         },
         duration: {
           startDate: new Date(),
@@ -331,7 +331,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
       mockLeaseDAO.findFirst.mockResolvedValue(mockLease as any);
 
-      const updateData: Partial<ILeaseFormData> = {
+      const updateData: Partial<ILeaseRequestData> = {
         fees: { rentAmount: 500 } as ILeaseFormData['fees'],
       };
 
@@ -377,7 +377,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         fees: { rentAmount: 1200, securityDeposit: 2000 },
       } as any);
 
-      const updateData: Partial<ILeaseFormData> = {
+      const updateData: Partial<ILeaseRequestData> = {
         fees: { rentAmount: 1200 } as ILeaseFormData['fees'],
       };
 
@@ -417,7 +417,7 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
         } as any,
       };
 
-      const updateData: Partial<ILeaseFormData> = {
+      const updateData: Partial<ILeaseRequestData> = {
         fees: { rentAmount: 500 } as ILeaseFormData['fees'],
       };
 
@@ -443,13 +443,13 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
       const updateData = {
         internalNotes: [
           {
-            authorId: 'staff-1',
+            // no authorId: a new note is attributed to the current user
             timestamp: new Date(),
             author: 'Staff User',
             note: 'Updated by staff',
           },
         ],
-      } as unknown as Partial<ILeaseFormData>;
+      } as unknown as Partial<ILeaseRequestData>;
 
       // This should succeed because lease tenant !== current user and field is allowed
       const result = await leaseService.updateLease(
@@ -490,10 +490,10 @@ describe('LeaseService - Tenant Self-Assignment Prevention', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: mockUserId.toString(), // Trying to assign themselves
+          uid: 'multi-tenant-uid', // Trying to assign themselves
         },
         property: {
-          id: mockPropertyId.toString(),
+          pid: 'PROPERTY0001',
         },
         duration: {
           startDate: new Date(),

@@ -16,12 +16,13 @@ import { getSystemBotUserId } from '@utils/systemBot';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { EventTypes } from '@interfaces/events.interface';
-import { IUserRole } from '@shared/constants/roles.constants';
+import { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { getUidsByUserId, getUserIdsByUid } from '@services/property/propertyHelpers';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
@@ -46,15 +47,6 @@ import {
   NotFoundError,
 } from '@shared/customErrors';
 import {
-  ILeaseTerminationData,
-  ILeaseFilterOptions,
-  ILeaseDocument,
-  ILeaseFormData,
-  ILeaseListItem,
-  SigningMethod,
-  LeaseStatus,
-} from '@interfaces/lease.interface';
-import {
   ListResultWithPagination,
   IPromiseReturnedData,
   ISuccessReturnData,
@@ -64,6 +56,19 @@ import {
   UploadResult,
   MailType,
 } from '@interfaces/utils.interface';
+import {
+  ILeaseRenewalRequestData,
+  ILeaseTerminationData,
+  ILeaseFilterOptions,
+  ILeaseRenewalData,
+  ILeaseRequestData,
+  ILeaseDocument,
+  ILeaseFormData,
+  ILeaseListItem,
+  IInternalNote,
+  SigningMethod,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 import {
   LIFECYCLE_MANAGED_LEASE_FIELDS,
   PROPERTY_APPROVAL_ROLES,
@@ -105,6 +110,11 @@ import {
   fetchLeaseByLuid,
   queueLeasePdf,
 } from './leaseHelpers';
+
+const LEASE_MANAGER_NOT_EMPLOYEE_MESSAGE =
+  'Lease manager must be an active employee of this account';
+const LEASE_RENEWAL_REFS_MISMATCH_MESSAGE =
+  'A renewal keeps the property, unit and tenant of the lease being renewed';
 
 interface IConstructor {
   paymentGatewayService?: PaymentGatewayService;
@@ -231,7 +241,7 @@ export class LeaseService {
 
   async createLease(
     cuid: string,
-    data: ILeaseFormData,
+    data: ILeaseRequestData,
     ctx: IRequestContext,
     newFiles?: ExtractedMediaFile[]
   ): IPromiseReturnedData<ILeaseDocument> {
@@ -253,7 +263,7 @@ export class LeaseService {
 
     const property = await this.propertyDAO.findFirst(
       {
-        _id: new Types.ObjectId(data.property.id),
+        pid: data.property.pid,
         cuid,
         approvalStatus: 'approved',
         deletedAt: null,
@@ -264,7 +274,7 @@ export class LeaseService {
     );
 
     if (!property) {
-      this.log.error(`Property with id ${data.property.id} not found for client ${cuid}`);
+      this.log.error(`Property ${data.property.pid} not found for client ${cuid}`);
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
@@ -277,7 +287,7 @@ export class LeaseService {
 
     if (!property.isManagementAuthorized()) {
       this.log.error(
-        `Property with id ${data.property.id} is not authorized for management by client ${cuid}`
+        `Property ${data.property.pid} is not authorized for management by client ${cuid}`
       );
       throw new BadRequestError({ message: t('property.errors.managementNotAuthorized') });
     }
@@ -289,11 +299,8 @@ export class LeaseService {
       });
     }
 
-    const { hasErrors, errors, tenantInfo, propertyInfo } = await this.validateLeaseData(
-      cuid,
-      data,
-      property
-    );
+    const { hasErrors, errors, tenantInfo, propertyInfo, unitId, managedById } =
+      await this.validateLeaseData(cuid, data, property);
     if (hasErrors) {
       throw new ValidationRequestError({
         message: t('lease.errors.validationFailed') || 'Lease validation failed',
@@ -327,7 +334,7 @@ export class LeaseService {
       data.tenantInfo.email &&
       data.tenantInfo.firstName &&
       data.tenantInfo.lastName &&
-      !data.tenantInfo.id &&
+      !data.tenantInfo.uid &&
       tenantInfo.useInvitationIdAsTenantId
     ) {
       try {
@@ -393,7 +400,7 @@ export class LeaseService {
     }
     const landlordInfo = await buildLandlordInfo(
       cuid,
-      data.property.id.toString(),
+      property._id.toString(),
       {
         clientDAO: this.clientDAO,
         propertyDAO: this.propertyDAO,
@@ -403,12 +410,16 @@ export class LeaseService {
     );
 
     const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(property.propertyType);
-    const hasUnitNumber = !!data.property.unitId;
+    const hasUnitNumber = !!unitId;
     const ownershipType = property.owner?.type || 'company_owned';
 
     // If external_owner/self_owned AND has unit number, the landlord owns just the unit
     const hasUnitOwner =
       hasUnitNumber && (ownershipType === 'external_owner' || ownershipType === 'self_owned');
+
+    const internalNotes = data.internalNotes?.length
+      ? await this.resolveInternalNoteAuthors(data.internalNotes, currentuser)
+      : undefined;
 
     // Uploaded after every check and saved with the lease in the same write. The id is chosen
     // here so the S3 keys carry it, as they do for documents added to the lease later. A new
@@ -429,12 +440,14 @@ export class LeaseService {
       ? this.leaseDAO.buildLeaseDocumentEntries(uploads, currentuser.sub)
       : [];
 
+    // tenantInfo and property carry public ids; the lease stores the resolved refs set below
+    const { tenantInfo: _requestedTenant, property: _requestedProperty, ...leaseFields } = data;
     let result: { lease: ILeaseDocument };
     try {
       const session = await this.leaseDAO.startSession();
       result = await this.leaseDAO.withTransaction(session, async (session) => {
         const parsedLeaseData = {
-          ...data,
+          ...leaseFields,
           _id: leaseId,
           ...(leaseDocuments.length && { leaseDocuments }),
           cuid,
@@ -445,13 +458,7 @@ export class LeaseService {
           landlordName: landlordInfo.landlordName,
           fees: MoneyUtils.parseLeaseFees(data.fees),
           ...(data.petPolicy && { petPolicy: MoneyUtils.parsePetPolicyFees(data.petPolicy) }),
-          internalNotes: data.internalNotes?.length
-            ? data.internalNotes.map((n: any) => ({
-                ...n,
-                note: sanitizeHtml(n.note ?? ''),
-                html: n.html ? sanitizeHtml(n.html) : undefined,
-              }))
-            : undefined,
+          internalNotes,
           legalTerms: data.legalTerms
             ? {
                 text: data.legalTerms.text ? sanitizeHtml(data.legalTerms.text) : undefined,
@@ -459,10 +466,12 @@ export class LeaseService {
                 url: data.legalTerms.url,
               }
             : undefined,
+          // Stored refs are ObjectIds resolved from the request's public ids
           property: {
-            id: data.property.id,
+            id: property._id,
             address: propertyInfo?.address || 'REQUIRED',
-            unitId: data.property.unitId,
+            unitId,
+            ...(managedById && { managedBy: managedById }),
             propertyType: propertyInfo?.propertyType,
             name: propertyInfo?.name,
             unitNumber: propertyInfo?.unitNumber,
@@ -495,9 +504,9 @@ export class LeaseService {
         }
 
         // Reserve the unit so no second lease can be created for it while this draft exists
-        if (data.property.unitId) {
+        if (unitId) {
           await this.propertyUnitDAO.updateById(
-            data.property.unitId.toString(),
+            unitId.toString(),
             { status: PropertyUnitStatusEnum.RESERVED },
             session
           );
@@ -730,7 +739,7 @@ export class LeaseService {
         return {
           success: true,
           message: t('common.success.retrieved', { resource: 'Lease' }),
-          data: { lease },
+          data: { lease: await this.withLeasePublicIds(lease) },
         };
       }
 
@@ -825,7 +834,7 @@ export class LeaseService {
   async updateLease(
     cxt: IRequestContext,
     luid: string,
-    updateData: Partial<ILeaseFormData>
+    updateData: Partial<ILeaseRequestData>
   ): Promise<ISuccessReturnData<any>> {
     try {
       const { cuid } = cxt.request.params;
@@ -875,7 +884,17 @@ export class LeaseService {
         });
       }
 
-      const cleanUpdateData = { ...updateData };
+      const { property: requestedProperty, ...otherUpdates } = updateData;
+      const cleanUpdateData: Partial<ILeaseFormData> = {
+        ...otherUpdates,
+      } as Partial<ILeaseFormData>;
+      if (requestedProperty) {
+        cleanUpdateData.property = (await this.resolveLeasePropertyUpdate(
+          cuid,
+          lease,
+          requestedProperty
+        )) as ILeaseFormData['property'];
+      }
       const isApprovalRole = PROPERTY_APPROVAL_ROLES.includes(userRole);
 
       if (cleanUpdateData.fees) {
@@ -911,6 +930,14 @@ export class LeaseService {
             : undefined,
           url: cleanUpdateData.legalTerms.url,
         };
+      }
+
+      if (Array.isArray(cleanUpdateData.internalNotes)) {
+        cleanUpdateData.internalNotes = await this.resolveInternalNoteAuthors(
+          cleanUpdateData.internalNotes,
+          currentUser,
+          lease.internalNotes
+        );
       }
 
       rejectRestrictedFields(
@@ -958,14 +985,19 @@ export class LeaseService {
           );
           // Notify tenant (email + in-app) when an admin directly updates an active lease
           if (result?.success && !result.data?.requiresApproval && lease.tenantId) {
-            const leaseUrl = `${envVariables.FRONTEND.URL}/tenants/${cuid}/${lease.tenantId}/lease`;
+            let leaseUrl = `${envVariables.FRONTEND.URL}/login`;
             try {
               // tenantInfo is a virtual that requires population — resolve tenant email from profile/user directly
               const tenantProfile = await this.profileDAO.findFirst(
                 { user: lease.tenantId, deletedAt: null },
-                { populate: { path: 'user', select: 'email' } }
+                { populate: { path: 'user', select: 'email uid' } }
               );
               const tenantEmail = (tenantProfile as any)?.user?.email;
+              // The tenant portal is routed by the tenant's uid
+              const tenantUid = (tenantProfile as any)?.user?.uid;
+              leaseUrl = tenantUid
+                ? `${envVariables.FRONTEND.URL}/tenants/${cuid}/${tenantUid}/lease/${lease.luid}`
+                : `${envVariables.FRONTEND.URL}/login`;
               const tenantName =
                 tenantProfile?.personalInfo?.firstName && tenantProfile?.personalInfo?.lastName
                   ? `${tenantProfile.personalInfo.firstName} ${tenantProfile.personalInfo.lastName}`
@@ -1052,6 +1084,134 @@ export class LeaseService {
       this.log.error('Error updating lease:', error);
       throw error;
     }
+  }
+
+  /**
+   * The raw lease plus the public ids of its property (pid), unit (puid), manager, tenant and
+   * note authors (user uids), so the edit form can preselect them and send them back without
+   * ObjectIds.
+   */
+  private async withLeasePublicIds(lease: ILeaseDocument) {
+    const leaseObj = lease.toObject();
+    const noteAuthorIds = (lease.internalNotes ?? []).map((note) => note.authorId);
+    const [property, unit, uidsByUserId] = await Promise.all([
+      this.propertyDAO.findFirst({ _id: lease.property.id }, { projection: 'pid' }),
+      lease.property.unitId
+        ? this.propertyUnitDAO.findFirst({ _id: lease.property.unitId }, { projection: 'puid' })
+        : null,
+      getUidsByUserId(this.userDAO, [lease.property.managedBy, lease.tenantId, ...noteAuthorIds]),
+    ]);
+
+    return {
+      ...leaseObj,
+      ...(leaseObj.internalNotes && {
+        internalNotes: leaseObj.internalNotes.map((note: IInternalNote) => ({
+          ...note,
+          authorId: uidsByUserId.get(String(note.authorId)) ?? null,
+        })),
+      }),
+      property: {
+        ...leaseObj.property,
+        pid: property?.pid ?? null,
+        puid: unit?.puid ?? null,
+        managedByUid: uidsByUserId.get(String(lease.property.managedBy)) ?? null,
+      },
+      // null while the lease still points at a pending invitation rather than a user
+      tenantUid: uidsByUserId.get(String(lease.tenantId)) ?? null,
+    };
+  }
+
+  /**
+   * Swaps a lease update's public property ids for the ObjectId refs stored on the lease, each
+   * resolved within the client: pid → property.id, puid → property.unitId (a unit of the lease's
+   * property, or of the new one when pid changes it) and the manager's uid → property.managedBy.
+   */
+  private async resolveLeasePropertyUpdate(
+    cuid: string,
+    lease: ILeaseDocument,
+    requestedProperty: Partial<ILeaseRequestData['property']>
+  ): Promise<Partial<ILeaseFormData['property']>> {
+    const { pid, puid, managedBy, ...otherFields } = requestedProperty;
+    const resolved: Partial<ILeaseFormData['property']> = { ...otherFields };
+
+    let propertyId = lease.property.id;
+    if (pid) {
+      const property = await this.propertyDAO.findFirst(
+        { pid, cuid, approvalStatus: 'approved', deletedAt: null },
+        { projection: '_id' }
+      );
+      if (!property) {
+        throw new BadRequestError({
+          message: t('common.errors.notFound', { resource: 'Property' }),
+        });
+      }
+      resolved.id = property._id;
+      propertyId = property._id;
+    }
+
+    if (puid) {
+      const unit = await this.propertyUnitDAO.findFirst({
+        puid,
+        propertyId,
+        cuid,
+        deletedAt: null,
+      });
+      if (!unit) {
+        throw new BadRequestError({
+          message: 'Unit not found or does not belong to this property',
+        });
+      }
+      resolved.unitId = unit._id.toString();
+    }
+
+    if (managedBy) {
+      const managerIds = await getUserIdsByUid(
+        this.userDAO,
+        cuid,
+        [managedBy],
+        ROLE_GROUPS.EMPLOYEE_ROLES
+      );
+      const managedById = managerIds.get(managedBy);
+      if (!managedById) {
+        throw new BadRequestError({ message: LEASE_MANAGER_NOT_EMPLOYEE_MESSAGE });
+      }
+      resolved.managedBy = managedById;
+    }
+
+    return resolved;
+  }
+
+  /**
+   * Internal notes name their author by user uid; swaps each for the ObjectId the lease stores and
+   * sanitizes the text. A note can only be attributed to the current user (a note without an
+   * author is theirs) or to an author of the lease's existing notes, so edits keep authorship.
+   */
+  private async resolveInternalNoteAuthors(
+    notes: IInternalNote[],
+    currentuser: ICurrentUser,
+    existingNotes: IInternalNote[] = []
+  ): Promise<IInternalNote[]> {
+    const authorIdsByUid = new Map<string, string>([[currentuser.uid, currentuser.sub]]);
+    const existingAuthorUids = await getUidsByUserId(
+      this.userDAO,
+      existingNotes.map((note) => note.authorId)
+    );
+    for (const [userId, uid] of existingAuthorUids) authorIdsByUid.set(uid, userId);
+
+    return notes.map((note) => {
+      const authorId = authorIdsByUid.get(note.authorId ? String(note.authorId) : currentuser.uid);
+      if (!authorId) {
+        throw new BadRequestError({
+          message: t('common.errors.notFound', { resource: 'Note author' }),
+        });
+      }
+      return {
+        ...note,
+        authorId: new Types.ObjectId(authorId),
+        note: sanitizeHtml(note.note ?? ''),
+        html: note.html ? sanitizeHtml(note.html) : undefined,
+      };
+    });
   }
 
   /**
@@ -1655,11 +1815,33 @@ export class LeaseService {
     };
   }
 
-  async getLeaseStats(cuid: string, filters?: any): IPromiseReturnedData<any> {
+  async getLeaseStats(
+    cuid: string,
+    filters: { pid?: string; startDate?: Date; endDate?: Date } = {}
+  ): IPromiseReturnedData<any> {
     this.log.info(`Getting lease statistics for client ${cuid}`, { filters });
 
     try {
-      const stats = await this.leaseDAO.getLeaseStats(cuid, filters);
+      const { pid, startDate, endDate } = filters;
+      const statsFilters: Record<string, unknown> = {};
+      // Leases whose term overlaps the requested window
+      if (endDate) statsFilters['duration.startDate'] = { $lte: endDate };
+      if (startDate) statsFilters['duration.endDate'] = { $gte: startDate };
+      // The property is named by its pid; the lease stores its ObjectId
+      if (pid) {
+        const property = await this.propertyDAO.findFirst(
+          { pid, cuid, deletedAt: null },
+          { projection: '_id' }
+        );
+        if (!property) {
+          throw new BadRequestError({
+            message: t('common.errors.notFound', { resource: 'Property' }),
+          });
+        }
+        statsFilters['property.id'] = property._id;
+      }
+
+      const stats = await this.leaseDAO.getLeaseStats(cuid, statsFilters);
 
       return {
         success: true,
@@ -2146,7 +2328,7 @@ export class LeaseService {
    */
   private async validateLeaseData(
     cuid: string,
-    leaseData: ILeaseFormData,
+    leaseData: ILeaseRequestData,
     propertyRecord: IPropertyDocument
   ): Promise<{
     hasErrors: boolean;
@@ -2156,6 +2338,9 @@ export class LeaseService {
       useInvitationIdAsTenantId: boolean;
       pendingTenantEmail?: string;
     } | null;
+    // ObjectIds resolved from the request's unit puid and manager uid
+    unitId?: Types.ObjectId;
+    managedById?: Types.ObjectId;
     propertyInfo?: {
       id: string;
       address: string;
@@ -2179,34 +2364,29 @@ export class LeaseService {
       pendingTenantEmail?: string;
     } | null = null;
 
-    if (leaseData.tenantInfo.id) {
-      if (!Types.ObjectId.isValid(leaseData.tenantInfo.id)) {
-        if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
-        validationErrors['tenantInfo.id'].push('Invalid tenant ID format');
-      } else {
-        // A tenant can belong to several clients; their active one need not be this client
-        const user = await this.userDAO.findFirst({
-          _id: new Types.ObjectId(leaseData.tenantInfo.id),
-          'cuids.cuid': cuid,
-          deletedAt: null,
-        });
+    if (leaseData.tenantInfo.uid) {
+      // A tenant can belong to several clients; their active one need not be this client
+      const user = await this.userDAO.findFirst({
+        uid: leaseData.tenantInfo.uid,
+        'cuids.cuid': cuid,
+        deletedAt: null,
+      });
 
-        if (!user) {
-          if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
-          validationErrors['tenantInfo.id'].push(
-            t('common.errors.notFound', { resource: 'Tenant' })
-          );
+      if (!user) {
+        if (!validationErrors['tenantInfo.uid']) validationErrors['tenantInfo.uid'] = [];
+        validationErrors['tenantInfo.uid'].push(
+          t('common.errors.notFound', { resource: 'Tenant' })
+        );
+      } else {
+        const clientAccess = user.cuids.find((c) => c.cuid === cuid);
+        if (!clientAccess || !clientAccess.roles.includes('tenant')) {
+          if (!validationErrors['tenantInfo.uid']) validationErrors['tenantInfo.uid'] = [];
+          validationErrors['tenantInfo.uid'].push(t('common.errors.invalidUserRole'));
         } else {
-          const clientAccess = user.cuids.find((c) => c.cuid === cuid);
-          if (!clientAccess || !clientAccess.roles.includes('tenant')) {
-            if (!validationErrors['tenantInfo.id']) validationErrors['tenantInfo.id'] = [];
-            validationErrors['tenantInfo.id'].push(t('common.errors.invalidUserRole'));
-          } else {
-            tenantInfo = {
-              tenantId: user._id,
-              useInvitationIdAsTenantId: false,
-            };
-          }
+          tenantInfo = {
+            tenantId: user._id,
+            useInvitationIdAsTenantId: false,
+          };
         }
       }
     } else if (leaseData.tenantInfo.email) {
@@ -2261,53 +2441,69 @@ export class LeaseService {
     }
 
     let unit = null;
+    const requestedPuid = leaseData.property.puid;
 
     if (!propertyRecord) {
-      if (!validationErrors['property.id']) validationErrors['property.id'] = [];
-      validationErrors['property.id'].push(t('common.errors.notFound', { resource: 'Property' }));
+      if (!validationErrors['property.pid']) validationErrors['property.pid'] = [];
+      validationErrors['property.pid'].push(t('common.errors.notFound', { resource: 'Property' }));
     } else {
       const isMultiUnit = PropertyTypeManager.supportsMultipleUnits(propertyRecord.propertyType);
 
-      if (isMultiUnit) {
-        if (!leaseData.property.unitId) {
-          if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-          validationErrors['property.unitId'].push(
-            `Unit ID is required for ${propertyRecord.propertyType} properties`
-          );
-        } else {
-          unit = await this.propertyUnitDAO.findFirst({
-            _id: leaseData.property.unitId,
-            propertyId: propertyRecord._id,
-            cuid,
-          });
+      if (isMultiUnit && !requestedPuid) {
+        if (!validationErrors['property.puid']) validationErrors['property.puid'] = [];
+        validationErrors['property.puid'].push(
+          `Unit ID is required for ${propertyRecord.propertyType} properties`
+        );
+      } else if (requestedPuid) {
+        unit = await this.propertyUnitDAO.findFirst({
+          puid: requestedPuid,
+          propertyId: propertyRecord._id,
+          cuid,
+          deletedAt: null,
+        });
 
-          if (!unit) {
-            if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-            validationErrors['property.unitId'].push(
-              'Unit not found or does not belong to this property'
+        if (!unit) {
+          if (!validationErrors['property.puid']) validationErrors['property.puid'] = [];
+          validationErrors['property.puid'].push(
+            'Unit not found or does not belong to this property'
+          );
+        } else if (isMultiUnit) {
+          if (unit.status === PropertyUnitStatusEnum.OCCUPIED) {
+            if (!validationErrors['property.puid']) validationErrors['property.puid'] = [];
+            validationErrors['property.puid'].push(
+              'Unit is currently occupied and cannot be leased'
             );
-          } else {
-            if (unit.status === PropertyUnitStatusEnum.OCCUPIED) {
-              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-              validationErrors['property.unitId'].push(
-                'Unit is currently occupied and cannot be leased'
-              );
-            } else if (unit.status === PropertyUnitStatusEnum.RESERVED) {
-              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-              validationErrors['property.unitId'].push(
-                'Unit already has a draft lease and cannot be leased again until that draft is deleted'
-              );
-            } else if (
-              unit.status === PropertyUnitStatusEnum.MAINTENANCE ||
-              unit.status === PropertyUnitStatusEnum.INACTIVE
-            ) {
-              if (!validationErrors['property.unitId']) validationErrors['property.unitId'] = [];
-              validationErrors['property.unitId'].push(
-                'Unit status indicates it cannot be leased at this time'
-              );
-            }
+          } else if (unit.status === PropertyUnitStatusEnum.RESERVED) {
+            if (!validationErrors['property.puid']) validationErrors['property.puid'] = [];
+            validationErrors['property.puid'].push(
+              'Unit already has a draft lease and cannot be leased again until that draft is deleted'
+            );
+          } else if (
+            unit.status === PropertyUnitStatusEnum.MAINTENANCE ||
+            unit.status === PropertyUnitStatusEnum.INACTIVE
+          ) {
+            if (!validationErrors['property.puid']) validationErrors['property.puid'] = [];
+            validationErrors['property.puid'].push(
+              'Unit status indicates it cannot be leased at this time'
+            );
           }
         }
+      }
+    }
+    const unitId = unit?._id as Types.ObjectId | undefined;
+
+    let managedById: Types.ObjectId | undefined;
+    if (leaseData.property.managedBy) {
+      const managerIds = await getUserIdsByUid(
+        this.userDAO,
+        cuid,
+        [leaseData.property.managedBy],
+        ROLE_GROUPS.EMPLOYEE_ROLES
+      );
+      managedById = managerIds.get(leaseData.property.managedBy);
+      if (!managedById) {
+        if (!validationErrors['property.managedBy']) validationErrors['property.managedBy'] = [];
+        validationErrors['property.managedBy'].push(LEASE_MANAGER_NOT_EMPLOYEE_MESSAGE);
       }
     }
 
@@ -2333,9 +2529,7 @@ export class LeaseService {
       validationErrors['fees.rentAmount'].push(t('lease.errors.rentMustBePositive'));
     }
 
-    const baseRentCents = leaseData.property.unitId
-      ? unit?.fees?.rentAmount
-      : propertyRecord.fees?.rentAmount;
+    const baseRentCents = unitId ? unit?.fees?.rentAmount : propertyRecord.fees?.rentAmount;
 
     if (baseRentCents && Number(baseRentCents) > 0) {
       const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.rentAmount);
@@ -2365,8 +2559,8 @@ export class LeaseService {
 
     const overlappingLeases = await this.leaseDAO.checkOverlappingLeases(
       cuid,
-      leaseData.property.id.toString(),
-      leaseData.property.unitId,
+      propertyRecord._id.toString(),
+      unitId?.toString(),
       new Date(leaseData.duration.startDate),
       leaseData.duration.endDate ? new Date(leaseData.duration.endDate) : new Date('2099-12-31')
     );
@@ -2380,9 +2574,11 @@ export class LeaseService {
       hasErrors: Object.keys(validationErrors).length > 0,
       errors: validationErrors,
       tenantInfo: tenantInfo || null,
+      unitId,
+      managedById,
       propertyInfo: {
-        id: leaseData.property.id.toString(),
-        unitId: leaseData.property.unitId || null,
+        id: propertyRecord._id.toString(),
+        unitId: unitId?.toString() || null,
         address:
           (typeof propertyRecord?.address === 'string'
             ? propertyRecord?.address
@@ -2963,7 +3159,7 @@ export class LeaseService {
   async createDraftLeaseRenewal(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
+    renewalData: ILeaseRenewalData,
     ctx: IRequestContext | null = null
   ): IPromiseReturnedData<ILeaseDocument> {
     return this.leaseRenewalService.createDraftLeaseRenewal(
@@ -2988,16 +3184,59 @@ export class LeaseService {
   async renewLease(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
+    renewalData: ILeaseRenewalRequestData,
     ctx: IRequestContext
   ): IPromiseReturnedData<ILeaseDocument> {
+    const { property, tenantInfo, ...renewalTerms } = renewalData;
+    const managedBy = await this.resolveRenewalManager(cuid, luid, property, tenantInfo);
+
     return this.leaseRenewalService.renewLease(
       cuid,
       luid,
-      renewalData,
+      { ...renewalTerms, ...(managedBy && { property: { managedBy } }) },
       ctx,
       this.validateLeaseData.bind(this)
     );
+  }
+
+  /**
+   * A renewal copies the lease's property, unit and tenant, so the request's pid, puid and tenant
+   * uid (when sent) must name the lease being renewed. Resolves the manager's uid (if sent) to the
+   * ObjectId the renewal stores — the only reference a renewal may change.
+   */
+  private async resolveRenewalManager(
+    cuid: string,
+    luid: string,
+    requestedProperty?: ILeaseRenewalRequestData['property'],
+    tenantInfo?: ILeaseRenewalRequestData['tenantInfo']
+  ): Promise<Types.ObjectId | undefined> {
+    const hasPropertyRefs =
+      !!requestedProperty?.pid || !!requestedProperty?.puid || !!requestedProperty?.managedBy;
+    if (!hasPropertyRefs && !tenantInfo?.uid) return undefined;
+
+    const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
+    if (!lease) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+
+    const resolved = hasPropertyRefs
+      ? await this.resolveLeasePropertyUpdate(cuid, lease, requestedProperty!)
+      : {};
+    const isOtherProperty = !!resolved.id && String(resolved.id) !== String(lease.property.id);
+    const isOtherUnit =
+      !!resolved.unitId && String(resolved.unitId) !== String(lease.property.unitId);
+    if (isOtherProperty || isOtherUnit) {
+      throw new BadRequestError({ message: LEASE_RENEWAL_REFS_MISMATCH_MESSAGE });
+    }
+
+    if (tenantInfo?.uid) {
+      const uidsByUserId = await getUidsByUserId(this.userDAO, [lease.tenantId]);
+      if (uidsByUserId.get(String(lease.tenantId)) !== tenantInfo.uid) {
+        throw new BadRequestError({ message: LEASE_RENEWAL_REFS_MISMATCH_MESSAGE });
+      }
+    }
+
+    return resolved.managedBy as Types.ObjectId | undefined;
   }
 
   /**
@@ -3131,7 +3370,7 @@ export class LeaseService {
           : property?.address?.fullAddress) || 'N/A';
 
       const leaseUrl = tenantUser.uid
-        ? `${envVariables.FRONTEND.URL}/tenants/${lease.cuid}/${tenantUser.uid}/leases/${lease.luid}`
+        ? `${envVariables.FRONTEND.URL}/tenants/${lease.cuid}/${tenantUser.uid}/lease/${lease.luid}`
         : '';
       const pmPhone = lease.propertyInfo?.contactPhone || 'N/A';
 

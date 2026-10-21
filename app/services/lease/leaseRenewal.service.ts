@@ -10,10 +10,10 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { getUidsByUserId } from '@services/property/propertyHelpers';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import { IPropertyDocument, ICurrentUser, ICronJob } from '@interfaces/index';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
-import { ILeaseDocument, ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 import { EventEmitterService, NotificationService, InvitationService } from '@services/index';
 import {
   IPromiseReturnedData,
@@ -25,6 +25,13 @@ import {
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  ILeaseRequestData,
+  ILeaseRenewalData,
+  ILeaseDocument,
+  ILeaseFormData,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 import {
   convertUserRoleToEnum,
   preventTenantConflict,
@@ -143,18 +150,31 @@ export class LeaseRenewalService {
       }
 
       // Calculate renewal metadata to get form data
-      const renewalMetadata = calculateRenewalMetadata(lease, true);
-      if (!renewalMetadata) {
+      const renewalFormData = calculateRenewalMetadata(lease, true)?.renewalFormData;
+      if (!renewalFormData) {
         throw new InvalidRequestError({
           message:
             'Unable to calculate renewal form data. Please ensure the lease has valid dates.',
         });
       }
 
+      // The form sends these public ids back with the renewal (same contract as lease edit)
+      const uidsByUserId = await getUidsByUserId(this.userDAO, [
+        lease.property.managedBy,
+        lease.tenantId,
+      ]);
+
       return {
         success: true,
         message: t('common.success.retrieved', { resource: 'Renewal form data' }),
-        data: renewalMetadata.renewalFormData,
+        data: {
+          ...renewalFormData,
+          property: {
+            ...renewalFormData.property,
+            managedBy: uidsByUserId.get(String(lease.property.managedBy)) ?? '',
+          },
+          tenantInfo: { uid: uidsByUserId.get(String(lease.tenantId)) ?? '' },
+        },
       };
     } catch (error: any) {
       this.log.error('Error getting renewal form data:', error);
@@ -169,11 +189,11 @@ export class LeaseRenewalService {
   async createDraftLeaseRenewal(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
+    renewalData: ILeaseRenewalData,
     ctx: IRequestContext | null = null,
     validateLeaseDataFn?: (
       cuid: string,
-      data: ILeaseFormData,
+      data: ILeaseRequestData,
       property: IPropertyDocument
     ) => Promise<{ hasErrors: boolean; errors: any }>
   ): IPromiseReturnedData<ILeaseDocument> {
@@ -327,6 +347,10 @@ export class LeaseRenewalService {
         previousLeaseId: existingLease._id,
         status: LeaseStatus.DRAFT_RENEWAL,
         approvalStatus: requiresApproval ? 'pending' : 'approved',
+        // Same property, unit and tenant as the lease; only the manager can be reassigned
+        property: renewalData.property?.managedBy
+          ? { ...cleanLease.property, managedBy: renewalData.property.managedBy }
+          : cleanLease.property,
         duration: renewalData.duration || {
           startDate: defaultStartDate,
           endDate: defaultEndDate,
@@ -1003,11 +1027,11 @@ export class LeaseRenewalService {
   async renewLease(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
+    renewalData: ILeaseRenewalData,
     ctx: IRequestContext,
     validateLeaseDataFn?: (
       cuid: string,
-      data: ILeaseFormData,
+      data: ILeaseRequestData,
       property: IPropertyDocument
     ) => Promise<{ hasErrors: boolean; errors: any }>
   ): IPromiseReturnedData<ILeaseDocument> {

@@ -46,7 +46,7 @@ export class LeaseDocumentService {
     const updated = await this.leaseDAO.updateLeaseDocuments(
       lease._id.toString(),
       assignUploadedLeaseDocumentTypes(lease, [
-        { ...document, resourceId: lease._id.toString(), publicuid: leaseId },
+        { ...document, resourceId: lease._id.toString(), publicuid: lease.luid },
       ]),
       uploadedBy
     );
@@ -97,7 +97,12 @@ export class LeaseDocumentService {
     }
 
     // Soft-delete: mark as deleted in DB but keep S3 file for audit/record purposes
-    const updated = await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'deleted');
+    const updated = await this.leaseDAO.updateLeaseDocumentStatus(
+      lease._id.toString(),
+      'deleted',
+      undefined,
+      cuid
+    );
     if (!updated) {
       throw new BadRequestError({
         message: t('common.errors.operationFailed', { action: 'remove document' }),
@@ -126,11 +131,11 @@ export class LeaseDocumentService {
       });
     }
 
-    const query = Types.ObjectId.isValid(leaseId)
-      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
-      : { luid: leaseId, deletedAt: null };
-
-    const lease = await this.leaseDAO.findFirst(query);
+    // Internal only: LeaseService passes the _id of a lease it already loaded by luid
+    const lease = await this.leaseDAO.findFirst({
+      _id: new Types.ObjectId(leaseId),
+      deletedAt: null,
+    });
     if (!lease) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }
@@ -158,13 +163,9 @@ export class LeaseDocumentService {
     await this.leaseDAO.updateLeaseDocumentStatus(leaseId, 'failed', errorMessage);
   }
 
-  private async _findLease(leaseId: string, cuid?: string): Promise<ILeaseDocument> {
-    const query: Record<string, any> = Types.ObjectId.isValid(leaseId)
-      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
-      : { luid: leaseId, deletedAt: null };
-    if (cuid) query.cuid = cuid;
-
-    const lease = await this.leaseDAO.findFirst(query);
+  // Every caller is a request handler naming the lease by its luid
+  private async _findLease(luid: string, cuid: string): Promise<ILeaseDocument> {
+    const lease = await this.leaseDAO.findFirst({ luid, cuid, deletedAt: null });
     if (!lease) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }

@@ -293,10 +293,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
+          pid: property.pid,
           address: property.address.fullAddress,
         },
         duration: {
@@ -355,8 +355,8 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const result = await leaseService.createLease(
         client.cuid,
         {
-          tenantInfo: { id: tenant._id.toString() },
-          property: { id: property._id.toString(), address: property.address.fullAddress },
+          tenantInfo: { uid: tenant.uid },
+          property: { pid: property.pid, address: property.address.fullAddress },
           duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-01-01') },
           fees: {
             rentAmount: 1500,
@@ -402,12 +402,12 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
+          pid: property.pid,
           address: property.address.fullAddress,
-          // Missing unitId
+          // Missing unit puid
         },
         duration: {
           startDate: new Date('2025-01-01'),
@@ -463,11 +463,11 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
-          unitId: unit._id.toString(),
+          pid: property.pid,
+          puid: unit.puid,
           address: property.address.fullAddress,
         },
         duration: {
@@ -520,10 +520,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
+          pid: property.pid,
           address: property.address.fullAddress,
         },
         duration: {
@@ -566,10 +566,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: new Types.ObjectId().toString(), // Non-existent property
+          pid: 'MISSINGPROP1', // Non-existent property
           address: '123 Fake St',
         },
         duration: {
@@ -2261,6 +2261,12 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         activeLeaseForRenewal.luid
       );
 
+      // the form sends these public ids back with the renewal
+      expect(result.data.property).toEqual(
+        expect.objectContaining({ pid: renewalProperty.pid, puid: '', managedBy: '' })
+      );
+      expect(result.data.property).not.toHaveProperty('id');
+      expect(result.data.tenantInfo).toEqual({ uid: renewalTenant.uid });
       expect(result.data.fees.rentAmount).toBe(2100.5);
       expect(result.data.fees.securityDeposit).toBe(3000);
       expect(result.data.petPolicy).toEqual(
@@ -2669,8 +2675,8 @@ describe('LeaseService Integration Tests - Workflow Regressions', () => {
     const result = await leaseService.createLease(
       client.cuid,
       {
-        tenantInfo: { id: multiClientTenant._id.toString() },
-        property: { id: property._id.toString(), address: property.address.fullAddress },
+        tenantInfo: { uid: multiClientTenant.uid },
+        property: { pid: property.pid, address: property.address.fullAddress },
         duration: { startDate: daysFromNow(10), endDate: daysFromNow(375) },
         fees: {
           rentAmount: 1500,

@@ -71,8 +71,8 @@ export class LeaseController {
     ]);
     const filterOpts = {
       status: VALID_LEASE_STATUSES.has(filter.status) ? filter.status : undefined,
+      // tenantId is never taken from the client; the service scopes a tenant to their own leases
       search: typeof filter.search === 'string' ? filter.search : undefined,
-      tenantId: typeof filter.tenantId === 'string' ? filter.tenantId : undefined,
       unitPuid: typeof filter.unitPuid === 'string' ? filter.unitPuid : undefined,
     };
 

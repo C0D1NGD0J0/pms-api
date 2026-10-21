@@ -9,7 +9,7 @@ import { S3Service } from '@services/fileUpload/awsS3';
 import { EventListenerSetup, container } from '@di/index';
 import GuestPassModel from '@models/guestPass/guestpass.model';
 import { LeaseStatus, LeaseType } from '@interfaces/lease.interface';
-import { Subscription, PropertyUnit, Property, Lease } from '@models/index';
+import { Subscription, PropertyUnit, Property, Lease, User } from '@models/index';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
 import { createAuthToken, createTestApp, authCookie } from '../../setup/testApp';
@@ -39,6 +39,11 @@ const waitFor = async (check: () => Promise<boolean>, timeoutMs = 3000) => {
   }
   return false;
 };
+
+// The lease API validates public ids in the production shape (12-char short uids)
+const TEST_PID = 'DOCUPLOADP01';
+const TEST_PUID = 'DOCUPLOADU01';
+const TEST_TENANT_UID = 'DOCUPLOADT01';
 
 describe('Lease document upload (create/update) — saved during the request', () => {
   let app: Application;
@@ -125,6 +130,8 @@ describe('Lease document upload (create/update) — saved during the request', (
       propertyType: 'apartment',
       maxAllowedUnits: 10,
     });
+    // pid/puid/uid are immutable on the models, so set them on the raw collections
+    await Property.collection.updateOne({ _id: testProperty._id }, { $set: { pid: TEST_PID } });
     await Property.findByIdAndUpdate(testProperty._id, {
       approvalStatus: 'approved',
       owner: { type: 'company_owned' },
@@ -134,6 +141,8 @@ describe('Lease document upload (create/update) — saved during the request', (
       status: 'available',
       unitNumber: '101',
     });
+    await PropertyUnit.collection.updateOne({ _id: testUnit._id }, { $set: { puid: TEST_PUID } });
+    await User.collection.updateOne({ _id: testTenant._id }, { $set: { uid: TEST_TENANT_UID } });
     managerToken = createAuthToken(testManager);
   });
 
@@ -148,14 +157,14 @@ describe('Lease document upload (create/update) — saved during the request', (
     jest.restoreAllMocks();
   });
 
-  const postLeaseWithDocument = (originalName: string, propertyId: string) =>
+  const postLeaseWithDocument = (originalName: string, pid: string) =>
     request(app)
       .post(`/api/v1/leases/${testClient.cuid}`)
       .set('Cookie', authCookie(managerToken))
       .set('idempotency-key', `create-upload-${Date.now()}`)
-      .field('tenantInfo.id', testTenant._id.toString())
-      .field('property.id', propertyId)
-      .field('property.unitId', testUnit._id.toString())
+      .field('tenantInfo.uid', TEST_TENANT_UID)
+      .field('property.pid', pid)
+      .field('property.puid', TEST_PUID)
       .field('duration.startDate', '2026-01-01')
       .field('duration.endDate', '2026-12-31')
       .field('fees.rentAmount', '1500')
@@ -172,7 +181,7 @@ describe('Lease document upload (create/update) — saved during the request', (
   it('POST with leaseDocument[0].file saves the document with the new lease and returns it', async () => {
     const originalName = `signed-lease-${Date.now()}.pdf`;
 
-    const response = await postLeaseWithDocument(originalName, testProperty._id.toString());
+    const response = await postLeaseWithDocument(originalName, TEST_PID);
 
     expect({ status: response.status, body: response.body }).toMatchObject({ status: 200 });
     const created = response.body.data.data;
@@ -399,7 +408,7 @@ describe('Lease document upload (create/update) — saved during the request', (
   it('does not upload anything and removes the temp file when the lease write is rejected', async () => {
     const originalName = `rejected-${Date.now()}.pdf`;
 
-    const response = await postLeaseWithDocument(originalName, '507f1f77bcf86cd799439011');
+    const response = await postLeaseWithDocument(originalName, 'MISSINGPROP1');
 
     expect(response.status).toBe(400);
     expect(uploadFilesSpy).not.toHaveBeenCalled();

@@ -15,4 +15,5 @@ export const PaymentValidations = {
   cardCheckoutParams: schemas.cardCheckoutParams,
   cardCheckoutBody: schemas.cardCheckoutBody,
   listPaymentsQuery: schemas.listPaymentsQuery,
+  paymentStatsQuery: schemas.paymentStatsQuery,
 };

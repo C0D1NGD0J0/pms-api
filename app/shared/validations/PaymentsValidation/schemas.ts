@@ -23,7 +23,7 @@ export const cardCheckoutBody = z.object({
 
 export const chargeForMaintenance = z.object({
   mruid: z.string().min(1, 'Maintenance request ID is required'),
-  tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
+  tenantUid: safeString.pipe(z.string().min(1, 'Tenant is required')),
   // Optional: the service always charges the approved invoice amount and only logs a mismatch
   amount: z.number().int().positive('Amount must be a positive integer (cents)').optional(),
   description: z.string().trim().max(500).optional(),
@@ -32,7 +32,7 @@ export const chargeForMaintenance = z.object({
 export const createPayment = z.object({
   paymentType: z.enum(['rent', 'maintenance', 'late_fee', 'security_deposit', 'deposit_refund']),
   leaseId: safeString.pipe(z.string().min(1, 'Lease ID is required')),
-  tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
+  tenantUid: safeString.pipe(z.string().min(1, 'Tenant is required')),
   dueDate: calendarDate(),
   daysLate: z.number().int().min(0).optional(),
   description: z.string().optional(),
@@ -61,7 +61,7 @@ export const recordManualPayment = z
     paidAt: calendarDate().refine(isNotFutureDate, {
       message: 'Payment date cannot be in the future',
     }),
-    tenantId: safeString.pipe(z.string().min(1, 'Tenant ID is required')),
+    tenantUid: safeString.pipe(z.string().min(1, 'Tenant is required')),
     leaseId: safeString.optional(),
     propertyId: safeString.optional(),
     unitId: safeString.optional(),
@@ -116,13 +116,16 @@ export const updatePayoutScheduleBody = z.object({
 export const listPaymentsQuery = z.object({
   status: z.string().optional(),
   type: z.string().optional(),
-  tenantId: z.string().optional(),
-  leaseId: z.string().optional(),
+  tenantUid: safeString.optional(),
   luid: z.string().optional(),
   pendingReview: z.string().optional(), // 'true' | 'false' — coerced to boolean in controller
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   sortDirection: z.enum(['asc', 'desc']).optional(),
+});
+
+export const paymentStatsQuery = z.object({
+  tenantUid: safeString.optional(),
 });
 
 export const releaseDeposit = z.object({

@@ -905,10 +905,13 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
   let mockPaymentDAO: jest.Mocked<PaymentDAO>;
   let mockClientDAO: jest.Mocked<ClientDAO>;
   let mockProfileDAO: jest.Mocked<ProfileDAO>;
+  let mockUserDAO: jest.Mocked<UserDAO>;
 
   const TENANT_USER_ID = new Types.ObjectId().toString();
   const TENANT_PROFILE_ID = new Types.ObjectId().toString();
+  const OTHER_TENANT_USER_ID = new Types.ObjectId().toString();
   const OTHER_TENANT_PROFILE_ID = new Types.ObjectId().toString();
+  const OTHER_TENANT_UID = 'OTHER-TENANT-UID';
 
   beforeEach(() => {
     mockClientDAO = {
@@ -920,16 +923,20 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
     mockProfileDAO = {
       findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_PROFILE_ID) }),
     } as unknown as jest.Mocked<ProfileDAO>;
+    mockUserDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(OTHER_TENANT_USER_ID) }),
+    } as unknown as jest.Mocked<UserDAO>;
     paymentService = makeServiceWithMocks({
       clientDAO: mockClientDAO,
       paymentDAO: mockPaymentDAO,
       profileDAO: mockProfileDAO,
+      userDAO: mockUserDAO,
     });
   });
 
   afterEach(() => jest.clearAllMocks());
 
-  it('ignores provided tenantId and auto-scopes to requesting tenant profile when role is tenant', async () => {
+  it('ignores a requested tenant and auto-scopes to the requesting tenant profile when role is tenant', async () => {
     const context = {
       currentuser: {
         sub: TENANT_USER_ID,
@@ -937,19 +944,33 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
       },
     } as any;
 
-    await paymentService.getPaymentStats(CUID, context, OTHER_TENANT_PROFILE_ID);
+    await paymentService.getPaymentStats(CUID, context, OTHER_TENANT_UID);
 
-    // profileDAO.findFirst should be called with the requester's own userId (sub), not the caller-supplied tenantId
-    expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({ user: expect.any(Types.ObjectId) });
-
-    // The payment query should use the auto-resolved profile id, not OTHER_TENANT_PROFILE_ID
+    // The requester's own profile is used — the requested tenant uid is never looked up
+    expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({
+      user: new Types.ObjectId(TENANT_USER_ID),
+    });
+    expect(mockUserDAO.findFirst).not.toHaveBeenCalled();
     expect(mockPaymentDAO.list).toHaveBeenCalledWith(
       expect.objectContaining({ cuid: CUID, tenant: TENANT_PROFILE_ID }),
       expect.anything()
     );
   });
 
-  it('uses provided tenantId directly when role is not tenant (PM/admin)', async () => {
+  it('fails closed when the requesting tenant has no profile', async () => {
+    mockProfileDAO.findFirst.mockResolvedValue(null);
+    const context = {
+      currentuser: { sub: TENANT_USER_ID, client: { role: 'tenant', cuid: CUID } },
+    } as any;
+
+    await expect(paymentService.getPaymentStats(CUID, context)).rejects.toThrow(NotFoundError);
+    expect(mockPaymentDAO.list).not.toHaveBeenCalled();
+  });
+
+  it('resolves a requested tenant uid within the client when role is not tenant (PM/admin)', async () => {
+    mockProfileDAO.findFirst.mockResolvedValue({
+      _id: new Types.ObjectId(OTHER_TENANT_PROFILE_ID),
+    } as any);
     const context = {
       currentuser: {
         sub: 'admin-user-id',
@@ -957,18 +978,32 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
       },
     } as any;
 
-    await paymentService.getPaymentStats(CUID, context, OTHER_TENANT_PROFILE_ID);
+    await paymentService.getPaymentStats(CUID, context, OTHER_TENANT_UID);
 
-    // profileDAO.findFirst should NOT be called — PM tenantId is passed through directly
-    expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
-
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith({
+      uid: OTHER_TENANT_UID,
+      'cuids.cuid': CUID,
+    });
+    expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({
+      user: new Types.ObjectId(OTHER_TENANT_USER_ID),
+    });
     expect(mockPaymentDAO.list).toHaveBeenCalledWith(
       expect.objectContaining({ cuid: CUID, tenant: OTHER_TENANT_PROFILE_ID }),
       expect.anything()
     );
   });
 
-  it('returns client-wide stats (no tenantId filter) when no context and no tenantId provided', async () => {
+  it('rejects a requested tenant uid that does not belong to the client', async () => {
+    mockUserDAO.findFirst.mockResolvedValue(null);
+    const context = { currentuser: { sub: 'admin-user-id', client: { role: 'admin' } } } as any;
+
+    await expect(paymentService.getPaymentStats(CUID, context, 'FOREIGN-UID')).rejects.toThrow(
+      'Tenant not found for this account'
+    );
+    expect(mockPaymentDAO.list).not.toHaveBeenCalled();
+  });
+
+  it('returns client-wide stats (no tenant filter) when no context and no tenant uid provided', async () => {
     await paymentService.getPaymentStats(CUID);
 
     expect(mockProfileDAO.findFirst).not.toHaveBeenCalled();
@@ -976,6 +1011,131 @@ describe('PaymentService - getPaymentStats (tenant auto-scope)', () => {
       expect.not.objectContaining({ tenant: expect.anything() }),
       expect.anything()
     );
+  });
+});
+
+describe('PaymentService - listPayments (tenant scope)', () => {
+  let paymentService: PaymentService;
+  let mockPaymentDAO: jest.Mocked<PaymentDAO>;
+  let mockProfileDAO: jest.Mocked<ProfileDAO>;
+  let mockUserDAO: jest.Mocked<UserDAO>;
+
+  const TENANT_USER_ID = new Types.ObjectId();
+  const TENANT_PROFILE_ID = new Types.ObjectId();
+  const TENANT_UID = 'TENANT-UID-1';
+
+  beforeEach(() => {
+    mockPaymentDAO = {
+      list: jest.fn().mockResolvedValue({ items: [], pagination: null }),
+    } as unknown as jest.Mocked<PaymentDAO>;
+    mockProfileDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: TENANT_PROFILE_ID }),
+    } as unknown as jest.Mocked<ProfileDAO>;
+    mockUserDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: TENANT_USER_ID }),
+    } as unknown as jest.Mocked<UserDAO>;
+    paymentService = makeServiceWithMocks({
+      clientDAO: {
+        findFirst: jest.fn().mockResolvedValue({ cuid: CUID }),
+      } as unknown as jest.Mocked<ClientDAO>,
+      paymentDAO: mockPaymentDAO,
+      profileDAO: mockProfileDAO,
+      userDAO: mockUserDAO,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  const staffContext = { currentuser: { sub: 'pm-id', client: { role: 'manager' } } } as any;
+
+  it('filters by the profile of the requested tenant uid, scoped to the client', async () => {
+    await paymentService.listPayments(CUID, { tenantUid: TENANT_UID }, staffContext);
+
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ uid: TENANT_UID, 'cuids.cuid': CUID });
+    expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({ user: TENANT_USER_ID });
+    expect(mockPaymentDAO.list.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ tenant: TENANT_PROFILE_ID })
+    );
+  });
+
+  it('rejects a tenant uid from another client', async () => {
+    mockUserDAO.findFirst.mockResolvedValue(null);
+
+    await expect(
+      paymentService.listPayments(CUID, { tenantUid: 'FOREIGN-UID' }, staffContext)
+    ).rejects.toThrow('Tenant not found for this account');
+    expect(mockPaymentDAO.list).not.toHaveBeenCalled();
+  });
+
+  it('scopes a tenant to their own payments without a tenant uid', async () => {
+    const tenantContext = {
+      currentuser: { sub: TENANT_USER_ID.toString(), client: { role: 'tenant' } },
+    } as any;
+
+    await paymentService.listPayments(CUID, { tenantUid: 'SOMEONE-ELSE' }, tenantContext);
+
+    expect(mockUserDAO.findFirst).not.toHaveBeenCalled();
+    expect(mockPaymentDAO.list.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ tenant: TENANT_PROFILE_ID })
+    );
+  });
+
+  it('fails closed when the requesting tenant has no profile', async () => {
+    mockProfileDAO.findFirst.mockResolvedValue(null);
+    const tenantContext = {
+      currentuser: { sub: TENANT_USER_ID.toString(), client: { role: 'tenant' } },
+    } as any;
+
+    await expect(paymentService.listPayments(CUID, {}, tenantContext)).rejects.toThrow(
+      NotFoundError
+    );
+    expect(mockPaymentDAO.list).not.toHaveBeenCalled();
+  });
+});
+
+describe('PaymentService - createRentPayment (tenant uid)', () => {
+  const TENANT_USER_ID = new Types.ObjectId();
+
+  it('resolves tenantUid to the internal user id before delegating to the rent service', async () => {
+    const mockUserDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: TENANT_USER_ID }),
+    } as unknown as jest.Mocked<UserDAO>;
+    const paymentService = makeServiceWithMocks({ userDAO: mockUserDAO });
+    const delegate = jest
+      .spyOn((paymentService as any).rentPaymentService, 'createRentPayment')
+      .mockResolvedValue({ success: true, data: {} } as any);
+
+    await paymentService.createRentPayment(CUID, {
+      paymentType: PaymentRecordType.RENT,
+      leaseId: 'LUID-1',
+      tenantUid: 'TENANT-UID-1',
+      dueDate: new Date('2026-04-01'),
+    });
+
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith({
+      uid: 'TENANT-UID-1',
+      'cuids.cuid': CUID,
+    });
+    const forwarded = delegate.mock.calls[0][1] as Record<string, unknown>;
+    expect(forwarded.tenantId).toBe(TENANT_USER_ID.toString());
+    expect(forwarded).not.toHaveProperty('tenantUid');
+  });
+
+  it('rejects a tenantUid that does not belong to the client', async () => {
+    const paymentService = makeServiceWithMocks({
+      userDAO: { findFirst: jest.fn().mockResolvedValue(null) } as unknown as jest.Mocked<UserDAO>,
+    });
+    const delegate = jest.spyOn((paymentService as any).rentPaymentService, 'createRentPayment');
+
+    await expect(
+      paymentService.createRentPayment(CUID, {
+        paymentType: PaymentRecordType.RENT,
+        leaseId: 'LUID-1',
+        tenantUid: 'FOREIGN-UID',
+        dueDate: new Date('2026-04-01'),
+      })
+    ).rejects.toThrow('Tenant not found for this account');
+    expect(delegate).not.toHaveBeenCalled();
   });
 });
 
@@ -992,6 +1152,7 @@ describe('PaymentService - recordManualPayment', () => {
 
   const USER_ID = new Types.ObjectId().toString();
   const TENANT_ID = new Types.ObjectId().toString();
+  const TENANT_UID = 'TENANT-UID-1';
   const LEASE_ID = new Types.ObjectId().toString();
 
   const makeProfile = (overrides: Record<string, any> = {}) => ({
@@ -1018,7 +1179,7 @@ describe('PaymentService - recordManualPayment', () => {
     paymentMethod: PaymentMethod.CASH,
     baseAmount: 150000,
     paidAt: new Date('2026-03-01'),
-    tenantId: TENANT_ID,
+    tenantUid: TENANT_UID,
     leaseId: LEASE_ID,
     period: { month: 3, year: 2026 },
     description: 'March rent - cash payment',
@@ -1231,9 +1392,32 @@ describe('PaymentService - recordManualPayment', () => {
     await expect(
       paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())
     ).rejects.toThrow(NotFoundError);
-    expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ 'cuids.cuid': CUID })
-    );
+    expect(mockUserDAO.findFirst).toHaveBeenCalledWith({ uid: TENANT_UID, 'cuids.cuid': CUID });
+    expect(mockPaymentDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('should resolve the tenant uid to the profile stored on the payment', async () => {
+    const tenantProfile = makeProfile();
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockProfileDAO.findFirst.mockResolvedValue(tenantProfile as any);
+    mockLeaseDAO.findFirst.mockResolvedValue(makeLease() as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData());
+
+    expect(mockProfileDAO.findFirst).toHaveBeenCalledWith({
+      user: new Types.ObjectId(TENANT_ID),
+    });
+    expect(mockPaymentDAO.insert.mock.calls[0][0].tenant).toEqual(tenantProfile._id);
+  });
+
+  it('should reject recording a payment where the requester is the tenant', async () => {
+    mockClientDAO.findFirst.mockResolvedValue(makeClient() as any);
+    mockUserDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(USER_ID) } as any);
+
+    await expect(
+      paymentService.recordManualPayment(CUID, USER_ID, USER_ID, makeData())
+    ).rejects.toThrow('where you are the tenant');
     expect(mockPaymentDAO.insert).not.toHaveBeenCalled();
   });
 
@@ -3377,11 +3561,12 @@ describe('PaymentService - chargeForMaintenance', () => {
   const CURRENT_USER_ID = new Types.ObjectId().toString();
   const TENANT_USER_ID = new Types.ObjectId().toString();
   const MRUID = 'MR-TEST-001';
+  const TENANT_UID = 'TENANTUID001';
   const PROFILE_OID = new Types.ObjectId();
 
   const makeBody = (overrides: Record<string, any> = {}) => ({
     mruid: MRUID,
-    tenantId: TENANT_USER_ID,
+    tenantUid: TENANT_UID,
     amount: 45000,
     description: 'Fix leaking pipe',
     ...overrides,
@@ -3444,6 +3629,10 @@ describe('PaymentService - chargeForMaintenance', () => {
       }),
     };
     (paymentService as any).maintenancePaymentService.userDAO = {
+      findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_USER_ID) }),
+    };
+    // The endpoint takes the tenant's uid; PaymentService resolves it to the User._id
+    (paymentService as any).userDAO = {
       findFirst: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(TENANT_USER_ID) }),
     };
   });
@@ -3537,6 +3726,30 @@ describe('PaymentService - chargeForMaintenance', () => {
   it('should throw NotFoundError when the tenant profile does not exist', async () => {
     mockClientDAO.findFirst.mockResolvedValue({ cuid: CUID } as any);
     mockProfileDAO.getProfileByUserId.mockResolvedValue(null);
+
+    await expect(
+      paymentService.chargeForMaintenance(CUID, CURRENT_USER_ID, makeBody())
+    ).rejects.toThrow(NotFoundError);
+
+    expect(mockPaymentDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('should resolve the tenant by uid within the client', async () => {
+    mockClientDAO.findFirst.mockResolvedValue({ cuid: CUID } as any);
+    mockProfileDAO.getProfileByUserId.mockResolvedValue({ _id: PROFILE_OID } as any);
+    mockPaymentDAO.insert.mockResolvedValue({} as any);
+
+    await paymentService.chargeForMaintenance(CUID, CURRENT_USER_ID, makeBody());
+
+    expect((paymentService as any).userDAO.findFirst).toHaveBeenCalledWith({
+      uid: TENANT_UID,
+      'cuids.cuid': CUID,
+    });
+    expect(mockProfileDAO.getProfileByUserId).toHaveBeenCalledWith(TENANT_USER_ID);
+  });
+
+  it('should throw NotFoundError for a tenant uid outside the client', async () => {
+    (paymentService as any).userDAO.findFirst.mockResolvedValue(null);
 
     await expect(
       paymentService.chargeForMaintenance(CUID, CURRENT_USER_ID, makeBody())
@@ -5984,7 +6197,11 @@ describe('PaymentService - createCardPaymentSession', () => {
       ownerType: 'client',
     },
     profile: { _id: PROFILE_ID, user: new Types.ObjectId(TENANT_USER_ID) },
-    tenantUser: { _id: new Types.ObjectId(TENANT_USER_ID), email: 'tenant@example.com' },
+    tenantUser: {
+      _id: new Types.ObjectId(TENANT_USER_ID),
+      uid: 'TENANTUID001',
+      email: 'tenant@example.com',
+    },
     stripeSession: { id: 'cs_123', url: CHECKOUT_URL },
   });
 
@@ -6383,7 +6600,7 @@ describe('PaymentService — createCardCheckoutSession charges baseAmount only',
       findFirst: jest.fn().mockResolvedValue({ accountId: 'acct_test_123', chargesEnabled: true }),
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockUserDAO = {
-      findFirst: jest.fn().mockResolvedValue({ email: 'tenant@test.com' }),
+      findFirst: jest.fn().mockResolvedValue({ uid: 'TENANTUID001', email: 'tenant@test.com' }),
     } as unknown as jest.Mocked<UserDAO>;
     mockStripeService = {
       createPaymentCheckoutSession: jest.fn().mockResolvedValue({
@@ -6788,6 +7005,7 @@ describe('PaymentCronService - getCronJobs', () => {
 
 describe('PaymentService - createCardPaymentSession — session expiry and return URLs', () => {
   const TENANT_USER_ID = new Types.ObjectId().toString();
+  const TENANT_UID = 'TENANTUID001';
   const PROFILE_ID = new Types.ObjectId();
   const FRONTEND = 'https://app.example.com';
   let originalFrontendUrl: string;
@@ -6818,7 +7036,9 @@ describe('PaymentService - createCardPaymentSession — session expiry and retur
       profileDAO: {
         findFirst: jest.fn().mockResolvedValue({ _id: PROFILE_ID, user: TENANT_USER_ID }),
       } as any,
-      userDAO: { findFirst: jest.fn().mockResolvedValue({ email: 't@example.com' }) } as any,
+      userDAO: {
+        findFirst: jest.fn().mockResolvedValue({ uid: TENANT_UID, email: 't@example.com' }),
+      } as any,
       paymentGatewayService: gateway as any,
       stripeService: stripe,
     });
@@ -6876,6 +7096,31 @@ describe('PaymentService - createCardPaymentSession — session expiry and retur
 
     await expect(svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID)).rejects.toThrow(
       BadRequestError
+    );
+    expect(stripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('builds the default return URLs with the tenant uid, never the User _id', async () => {
+    const { svc, stripe } = setup();
+
+    await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID);
+
+    const { successUrl, cancelUrl } = stripe.createPaymentCheckoutSession.mock.calls[0][0];
+    expect(successUrl).toBe(
+      `${FRONTEND}/tenants/${CUID}/${TENANT_UID}/payments/${PYTUID}?payment_success=true`
+    );
+    expect(cancelUrl).toBe(
+      `${FRONTEND}/tenants/${CUID}/${TENANT_UID}/payments/${PYTUID}?payment_cancelled=true`
+    );
+    expect(successUrl).not.toContain(TENANT_USER_ID);
+  });
+
+  it('refuses checkout when the tenant user cannot be found', async () => {
+    const { svc, stripe } = setup();
+    (svc as any).userDAO.findFirst = jest.fn().mockResolvedValue(null);
+
+    await expect(svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID)).rejects.toThrow(
+      'Tenant user not found'
     );
     expect(stripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
   });

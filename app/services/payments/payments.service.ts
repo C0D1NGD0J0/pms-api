@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { MoneyUtils } from '@utils/money.utils';
@@ -57,7 +58,6 @@ import {
   PaymentRecordType,
   IPaymentListItem,
   IPaymentDocument,
-  IProfileDocument,
   IPaymentFormData,
   IProfileWithUser,
   ILeaseDocument,
@@ -230,6 +230,17 @@ export class PaymentService implements ICronProvider {
       idempotencyKey?: string;
     }
   ): IPromiseReturnedData<IPaymentDocument> {
+    // Requests from the API name the tenant by uid; the rent service cross-checks the internal
+    // User._id against the lease tenant.
+    if (data.tenantUid) {
+      const { tenantUid, ...rest } = data;
+      const tenantUser = await this.getClientTenantUserOrThrow(cuid, tenantUid);
+      return this.rentPaymentService.createRentPayment(
+        cuid,
+        { ...rest, tenantId: tenantUser._id.toString() },
+        options
+      );
+    }
     return this.rentPaymentService.createRentPayment(cuid, data, options);
   }
 
@@ -246,8 +257,7 @@ export class PaymentService implements ICronProvider {
     filters?: {
       status?: string;
       type?: string;
-      tenantId?: string;
-      leaseId?: string;
+      tenantUid?: string;
       luid?: string;
       maintenanceRequestUid?: string;
       pendingReview?: boolean;
@@ -260,14 +270,6 @@ export class PaymentService implements ICronProvider {
     const page = filters?.page ?? 1;
     const limit = filters?.limit ?? 10;
     const skip = (page - 1) * limit;
-
-    let tenantUserId: string | undefined;
-    let tenantId: string | undefined = filters?.tenantId;
-
-    if (context?.currentuser?.client?.role === 'tenant') {
-      tenantUserId = context.currentuser.sub;
-      tenantId = undefined;
-    }
 
     try {
       const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
@@ -289,25 +291,22 @@ export class PaymentService implements ICronProvider {
         query.paymentType = filters.type as any;
       }
 
-      // tenantUserId (User._id) takes precedence — resolve to Profile._id
-      if (tenantUserId) {
-        const profile = await this.profileDAO.findFirst({
-          user: new Types.ObjectId(tenantUserId),
-        });
-        if (profile) {
-          query.tenant = profile._id;
-        }
-      } else if (tenantId) {
-        query.tenant = new Types.ObjectId(tenantId);
+      const tenantProfileId = await this.resolveTenantProfileScope(
+        cuid,
+        context,
+        filters?.tenantUid
+      );
+      if (tenantProfileId) {
+        query.tenant = tenantProfileId;
       }
 
-      if (filters?.leaseId) {
-        query.lease = new Types.ObjectId(filters.leaseId);
-      } else if (filters?.luid) {
+      if (filters?.luid) {
+        // An unknown lease must not fall through to an unfiltered list
         const lease = await this.leaseDAO.findFirst({ luid: filters.luid, cuid, deletedAt: null });
-        if (lease) {
-          query.lease = lease._id;
+        if (!lease) {
+          throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
         }
+        query.lease = lease._id;
       }
 
       if (filters?.maintenanceRequestUid) {
@@ -656,7 +655,7 @@ export class PaymentService implements ICronProvider {
   async getPaymentStats(
     cuid: string,
     context?: IRequestContext,
-    tenantId?: string
+    tenantUid?: string
   ): IPromiseReturnedData<{
     expectedRevenue: number;
     collected: number;
@@ -672,18 +671,10 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      // Tenant role: always scope to own payments — ignore any caller-supplied tenantId
-      // Non-tenant (PM/admin): use provided tenantId to filter stats for a specific tenant
       const daoFilters: Record<string, any> = {};
-      if (context?.currentuser?.client?.role === 'tenant') {
-        const profile = await this.profileDAO.findFirst({
-          user: new Types.ObjectId(context.currentuser.sub),
-        });
-        if (profile) {
-          daoFilters.tenantId = profile._id.toString();
-        }
-      } else if (tenantId) {
-        daoFilters.tenantId = tenantId;
+      const tenantProfileId = await this.resolveTenantProfileScope(cuid, context, tenantUid);
+      if (tenantProfileId) {
+        daoFilters.tenantId = tenantProfileId.toString();
       }
 
       // Fetch ALL payments for this client across all time (no date filter).
@@ -1063,8 +1054,6 @@ export class PaymentService implements ICronProvider {
     paymentSource?: PaymentSource
   ): IPromiseReturnedData<IManualPaymentResult> {
     try {
-      // Prevent conflict of interest: cannot record payment where you are the tenant
-      preventTenantConflict(requestingUserSub, data.tenantId as string);
       this.assertValidManualEntry(data);
 
       const client = await this.clientDAO.findFirst({ cuid, deletedAt: null });
@@ -1072,8 +1061,13 @@ export class PaymentService implements ICronProvider {
         throw new NotFoundError({ message: 'Client not found' });
       }
 
-      const tenantProfile = await this.getClientTenantProfileOrThrow(cuid, data.tenantId);
-      const target = await this.resolveManualEntryTarget(cuid, data);
+      const tenantUser = await this.getClientTenantUserOrThrow(cuid, data.tenantUid);
+      const tenantUserId = tenantUser._id.toString();
+      // Prevent conflict of interest: cannot record payment where you are the tenant
+      preventTenantConflict(requestingUserSub, tenantUserId);
+
+      const tenantProfile = await this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
+      const target = await this.resolveManualEntryTarget(cuid, data, tenantUserId);
 
       const chargeToSettle = data.pytuid
         ? await this.getChargeToSettleOrThrow(cuid, data, tenantProfile._id, target.lease?._id)
@@ -1177,28 +1171,43 @@ export class PaymentService implements ICronProvider {
     }
   }
 
-  /** The tenant must be a member of this client — a user id from another client is rejected. */
-  private async getClientTenantProfileOrThrow(
-    cuid: string,
-    tenantUserId: string
-  ): Promise<IProfileDocument> {
-    if (!Types.ObjectId.isValid(tenantUserId)) {
-      throw new BadRequestError({ message: 'Invalid tenant ID' });
-    }
-    const tenantUser = await this.userDAO.findFirst({
-      _id: new Types.ObjectId(tenantUserId),
-      'cuids.cuid': cuid,
-    });
+  /** The tenant must be a member of this client — a uid from another client is rejected. */
+  private async getClientTenantUserOrThrow(cuid: string, tenantUid: string) {
+    const tenantUser = await this.userDAO.findFirst({ uid: tenantUid, 'cuids.cuid': cuid });
     if (!tenantUser) {
       throw new NotFoundError({ message: 'Tenant not found for this account' });
     }
-    return this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
+    return tenantUser;
+  }
+
+  /**
+   * Profile._id that payment queries are scoped to. A tenant only ever sees their own payments
+   * (any requested tenant is ignored); staff may narrow to one tenant of this client by uid.
+   */
+  private async resolveTenantProfileScope(
+    cuid: string,
+    context?: IRequestContext,
+    tenantUid?: string
+  ): Promise<Types.ObjectId | undefined> {
+    if (context?.currentuser?.client?.role === 'tenant') {
+      const profile = await this.getProfileOrThrow(
+        context.currentuser.sub,
+        'Tenant profile not found'
+      );
+      return profile._id;
+    }
+    if (!tenantUid) return undefined;
+
+    const tenantUser = await this.getClientTenantUserOrThrow(cuid, tenantUid);
+    const profile = await this.getProfileOrThrow(tenantUser._id, 'Tenant profile not found');
+    return profile._id;
   }
 
   /** Resolves and validates the lease / property / maintenance request a manual entry points to. */
   private async resolveManualEntryTarget(
     cuid: string,
-    data: IManualPaymentFormData
+    data: IManualPaymentFormData,
+    tenantUserId: string
   ): Promise<IManualEntryTarget> {
     const target: IManualEntryTarget = {};
 
@@ -1207,7 +1216,7 @@ export class PaymentService implements ICronProvider {
       if (!lease) {
         throw new NotFoundError({ message: 'Lease not found' });
       }
-      if (lease.useInvitationIdAsTenantId || lease.tenantId?.toString() !== data.tenantId) {
+      if (lease.useInvitationIdAsTenantId || lease.tenantId?.toString() !== tenantUserId) {
         throw new BadRequestError({
           message: 'The selected tenant is not the tenant on this lease',
         });
@@ -1248,7 +1257,7 @@ export class PaymentService implements ICronProvider {
       if (!request) {
         throw new NotFoundError({ message: 'Maintenance request not found' });
       }
-      if (request.tenantId && request.tenantId.toString() !== data.tenantId) {
+      if (request.tenantId && request.tenantId.toString() !== tenantUserId) {
         throw new BadRequestError({
           message: 'The selected tenant is not the tenant on this maintenance request',
         });
@@ -2232,12 +2241,16 @@ export class PaymentService implements ICronProvider {
         }
       }
 
-      const tenantUser = await this.userDAO.findFirst({
-        _id: new Types.ObjectId(tenantUserId),
-      });
-      const customerEmail = tenantUser?.email ?? '';
+      const tenantUser = await this.userDAO.findFirst(
+        { _id: new Types.ObjectId(tenantUserId) },
+        { select: 'uid email' }
+      );
+      if (!tenantUser?.uid) {
+        throw new NotFoundError({ message: 'Tenant user not found' });
+      }
+      const customerEmail = tenantUser.email ?? '';
 
-      const uid = tenantUserId;
+      const uid = tenantUser.uid;
       const frontendUrl = envVariables.FRONTEND.URL;
 
       // Fall back to the specific payment-detail page so the user lands in the
@@ -2579,9 +2592,14 @@ export class PaymentService implements ICronProvider {
   async chargeForMaintenance(
     cuid: string,
     currentUserId: string,
-    body: { mruid: string; tenantId: string; amount?: number; description?: string }
+    body: { mruid: string; tenantUid: string; amount?: number; description?: string }
   ): IPromiseReturnedData<IPaymentDocument> {
-    return this.maintenancePaymentService.chargeForMaintenance(cuid, currentUserId, body);
+    const { tenantUid, ...charge } = body;
+    const tenantUser = await this.getClientTenantUserOrThrow(cuid, tenantUid);
+    return this.maintenancePaymentService.chargeForMaintenance(cuid, currentUserId, {
+      ...charge,
+      tenantId: tenantUser._id.toString(),
+    });
   }
 
   async payVendor(cuid: string, mruid: string): IPromiseReturnedData<null> {

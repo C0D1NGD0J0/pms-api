@@ -182,12 +182,27 @@ export interface IManualPaymentFormData {
   description?: string;
   propertyId?: string; // Property ID (pid) — used when no lease
   baseAmount: number; // In cents
+  /** Tenant's User.uid — resolved to the internal id by the service */
+  tenantUid: string;
   leaseId?: string;
-  tenantId: string;
   unitId?: string; // Unit ID (puid) — used when no lease
   pytuid?: string; // Open charge to settle; when omitted the service auto-matches one
   mruid?: string; // Maintenance request the payment is for
   paidAt: Date;
+}
+
+export interface IPaymentFormData {
+  paymentType: PaymentRecordType;
+  period?: IPaymentPeriod;
+  notifyByEmail?: boolean;
+  description?: string;
+  /** Public User.uid from API requests — the facade resolves it to tenantId */
+  tenantUid?: string;
+  daysLate?: number; // For late fee calculations
+  /** Internal User._id — cross-checked against the lease tenant */
+  tenantId?: string;
+  leaseId?: string;
+  dueDate: Date;
 }
 
 export interface IVendorEarningsResponse {
@@ -206,17 +221,6 @@ export interface IRefundPaymentData {
   isManualRelease?: boolean; // When true, skip Stripe and record refund as processed outside the app
   amount?: number;
   reason?: string;
-}
-
-export interface IPaymentFormData {
-  paymentType: PaymentRecordType;
-  period?: IPaymentPeriod;
-  notifyByEmail?: boolean;
-  description?: string;
-  daysLate?: number; // For late fee calculations
-  leaseId?: string;
-  tenantId: string;
-  dueDate: Date;
 }
 
 export interface IVendorEarningItem {

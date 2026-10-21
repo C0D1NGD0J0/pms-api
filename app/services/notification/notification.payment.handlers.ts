@@ -806,11 +806,9 @@ async function getDepositManagerEmail(
 ): Promise<string | null> {
   let managerId: string | undefined;
 
-  if (ctx.leaseDAO && leaseId) {
-    const leaseFilter = Types.ObjectId.isValid(leaseId)
-      ? { _id: new Types.ObjectId(leaseId), cuid }
-      : { luid: leaseId, cuid };
-    const lease: any = await ctx.leaseDAO.findFirst(leaseFilter);
+  // leaseId comes from DEPOSIT_REFUND_FAILED, whose only emitter passes the inspection's lease _id
+  if (ctx.leaseDAO && leaseId && Types.ObjectId.isValid(leaseId)) {
+    const lease: any = await ctx.leaseDAO.findFirst({ _id: new Types.ObjectId(leaseId), cuid });
     const propertyId = lease?.property?.id;
     if (propertyId && Types.ObjectId.isValid(propertyId.toString())) {
       const property = await ctx.propertyDAO.findFirst({

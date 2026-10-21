@@ -135,7 +135,7 @@ const internalOnlyRoutes: Array<{
     label: 'PM maintenance charge',
     method: 'post',
     url: `${base}/maintenance-charge`,
-    body: { mruid: MRUID, tenantId: 'tenant-sub', amount: 1 },
+    body: { mruid: MRUID, tenantUid: 'TENANTUID001', amount: 1 },
   },
   {
     label: 'manual entry',
@@ -146,7 +146,7 @@ const internalOnlyRoutes: Array<{
       paymentMethod: 'cash',
       baseAmount: 100,
       paidAt: '2026-01-01',
-      tenantId: 'tenant-sub',
+      tenantUid: 'tenant-uid',
       leaseId: 'lease-1',
     },
   },
@@ -158,7 +158,7 @@ const internalOnlyRoutes: Array<{
     body: {
       paymentType: 'rent',
       leaseId: 'lease-1',
-      tenantId: 'tenant-sub',
+      tenantUid: 'tenant-uid',
       dueDate: '2026-01-01',
     },
   },

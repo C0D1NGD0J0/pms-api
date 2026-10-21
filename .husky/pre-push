@@ -3,10 +3,11 @@ set -e
 
 echo "Running pre-push checks..."
 
-# Security audit
+# Security audit — blocks high/critical production advisories; reviewed exceptions live in
+# .audit-allowlist.json (each with a reason and a reviewBy date)
 echo "🔒 Running security audit..."
-npm audit --audit-level=critical --omit=dev || {
-  echo "❌ Critical vulnerabilities found in production dependencies. Run 'npm audit' for details."
+node scripts/audit-prod.js || {
+  echo "❌ Fix them, or (if there's no exploit path) add a reviewed entry to .audit-allowlist.json."
   exit 1
 }
 

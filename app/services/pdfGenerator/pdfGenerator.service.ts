@@ -68,10 +68,15 @@ export class PdfGeneratorService {
       const browser = await this.getBrowser();
       page = await browser.newPage();
 
-      // Set HTML content and wait for resources to load
-      await page.setContent(html, {
-        waitUntil: 'networkidle0',
-        timeout: 30000,
+      // Set HTML content and wait for resources to load. setContent no longer accepts
+      // 'networkidle0' (puppeteer 25), so wait for 'load' and then for the network to go quiet —
+      // the same 0 in-flight requests for 500ms — within the original 30s budget
+      const loadDeadline = Date.now() + 30000;
+      await page.setContent(html, { waitUntil: 'load', timeout: 30000 });
+      await page.waitForNetworkIdle({
+        idleTime: 500,
+        concurrency: 0,
+        timeout: Math.max(loadDeadline - Date.now(), 1000),
       });
 
       // pdf options optimized for legal documents
@@ -229,7 +234,7 @@ export class PdfGeneratorService {
         '--disable-gpu',
         '--no-first-run',
         '--no-zygote',
-        '--single-process',
+        // No '--single-process': it's unsupported by Chromium and crashes v155+ at launch
         '--disable-web-security',
         // Memory-saving flags (process/feature only — no rendering impact)
         '--disable-extensions',

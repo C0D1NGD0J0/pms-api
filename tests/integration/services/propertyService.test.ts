@@ -585,19 +585,20 @@ describe('PropertyService Integration Tests', () => {
           ...overrides,
         });
 
-        it('stores assignedStaff as ObjectIds, deduped and without the manager', async () => {
+        it('resolves manager and staff uids to ObjectIds, deduped and without the manager', async () => {
           const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
           const staffId = staffUser._id.toString();
 
           const result = await propertyService.addProperty(
             ctx as any,
             buildHouse({
-              managedBy: adminUser._id.toString(),
-              assignedStaff: [staffId, staffId, adminUser._id.toString()],
+              managedBy: adminUser.uid,
+              assignedStaff: [staffUser.uid, staffUser.uid, adminUser.uid],
             }) as any
           );
 
           const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.managedBy!.toString()).toBe(adminUser._id.toString());
           expect(saved!.assignedStaff).toHaveLength(1);
           expect(saved!.assignedStaff![0]).toBeInstanceOf(Types.ObjectId);
           expect(saved!.assignedStaff![0].toString()).toBe(staffId);
@@ -619,6 +620,20 @@ describe('PropertyService Integration Tests', () => {
           expect(saved!.fees.managementFees).toBe(75000);
         });
 
+        it('rejects a manager uid from another client', async () => {
+          const otherClient = await createTestClient();
+          const outsider = await createTestUser(otherClient.cuid, {
+            roles: [ROLES.MANAGER],
+            email: `outside-manager-${Date.now()}@test.com`,
+          });
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          await expect(
+            propertyService.addProperty(ctx as any, buildHouse({ managedBy: outsider.uid }) as any)
+          ).rejects.toThrow(BadRequestError);
+          expect(await Property.countDocuments({ cuid: testClient.cuid })).toBe(0);
+        });
+
         it('rejects staff who are not connected to the client', async () => {
           const otherClient = await createTestClient();
           const outsider = await createTestUser(otherClient.cuid, {
@@ -630,7 +645,7 @@ describe('PropertyService Integration Tests', () => {
           await expect(
             propertyService.addProperty(
               ctx as any,
-              buildHouse({ assignedStaff: [outsider._id.toString()] }) as any
+              buildHouse({ assignedStaff: [outsider.uid] }) as any
             )
           ).rejects.toThrow(BadRequestError);
           expect(await Property.countDocuments({ cuid: testClient.cuid })).toBe(0);

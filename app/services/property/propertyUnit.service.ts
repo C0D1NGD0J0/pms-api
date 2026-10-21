@@ -56,11 +56,17 @@ import {
   megabytes,
 } from '@utils/index';
 
-import { assertConnectedEmployees } from './propertyHelpers';
+import {
+  assertConnectedEmployees,
+  resolveConnectedUserIds,
+  getUidsByUserId,
+} from './propertyHelpers';
 import {
   generateUnitPendingChangesPreview,
   validateUnitLeaseImmutableFields,
 } from './propertyUnitHelpers';
+
+const UNIT_MANAGER_NOT_EMPLOYEE_MESSAGE = 'Unit manager must be an active employee of this account';
 
 interface IConstructor {
   unitNumberingService: UnitNumberingService;
@@ -284,6 +290,7 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
     }
 
+    await this.resolveUnitManagerUids(cuid, data.units);
     await this.assignUnitManagers(cuid, data.units, property, currentuser.sub);
 
     if (data.units.length <= 5) {
@@ -316,12 +323,37 @@ export class PropertyUnitService {
     }
   }
 
+  /**
+   * Units from the form name their manager by user uid; swaps each for the employee's ObjectId,
+   * rejecting a uid that is unknown or not an employee of this client.
+   */
+  private async resolveUnitManagerUids(
+    cuid: string,
+    units: Array<Partial<Pick<IPropertyUnit, 'managedBy'>>>
+  ): Promise<void> {
+    const managerUids = units
+      .filter((unit) => unit.managedBy)
+      .map((unit) => String(unit.managedBy));
+    if (managerUids.length === 0) return;
+
+    const idsByUid = await resolveConnectedUserIds(
+      this.userDAO,
+      cuid,
+      managerUids,
+      UNIT_MANAGER_NOT_EMPLOYEE_MESSAGE,
+      ROLE_GROUPS.EMPLOYEE_ROLES
+    );
+    for (const unit of units) {
+      if (unit.managedBy) unit.managedBy = idsByUid.get(String(unit.managedBy))!;
+    }
+  }
+
   private assertUnitManagersAreEmployees(cuid: string, managerIds: string[]): Promise<void> {
     return assertConnectedEmployees(
       this.userDAO,
       cuid,
       managerIds,
-      'Unit manager must be an active employee of this account',
+      UNIT_MANAGER_NOT_EMPLOYEE_MESSAGE,
       ROLE_GROUPS.EMPLOYEE_ROLES
     );
   }
@@ -525,10 +557,12 @@ export class PropertyUnitService {
     const pendingChangesPreview = currentuser
       ? generateUnitPendingChangesPreview(unitObj, currentuser)
       : undefined;
+    const managerUids = await getUidsByUserId(this.userDAO, [unitObj.managedBy]);
 
     return {
       data: {
         ...unitObj,
+        managedByUid: managerUids.get(String(unitObj.managedBy)) ?? null,
         currentLease: resolvedLease,
         ...(pendingChangesPreview && { pendingChangesPreview }),
       },
@@ -600,10 +634,16 @@ export class PropertyUnitService {
     const leaseByUnitId = new Map(
       (activeLeases.items ?? []).map((l: any) => [l.property?.unitId?.toString(), l])
     );
+    // Edit forms preselect each unit's manager by public uid
+    const managerUids = await getUidsByUserId(
+      this.userDAO,
+      units.items.map((unit: any) => unit.managedBy)
+    );
 
     const enrichedItems = units.items.map((unit: any) => {
       // pendingChanges is only read for the preview; the list response omits it
       const { pendingChanges, ...unitObj } = unit.toObject ? unit.toObject() : { ...unit };
+      unitObj.managedByUid = managerUids.get(String(unitObj.managedBy)) ?? null;
       const activeLease = leaseByUnitId.get(unitObj._id.toString());
       if (activeLease && !unitObj.currentLease) {
         unitObj.currentLease = {
@@ -693,6 +733,17 @@ export class PropertyUnitService {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Unit' }) });
     }
 
+    if (updateData.managedBy) {
+      // The edit form resends the current manager's uid; keep it even if they have since left
+      const currentManagerUid = unit.managedBy
+        ? (await getUidsByUserId(this.userDAO, [unit.managedBy])).get(unit.managedBy.toString())
+        : undefined;
+      if (currentManagerUid && String(updateData.managedBy) === currentManagerUid) {
+        updateData.managedBy = unit.managedBy;
+      } else {
+        await this.resolveUnitManagerUids(cuid, [updateData]);
+      }
+    }
     await this.validateUnitChanges(property, unit, updateData);
 
     // Smart Approval Workflow for Units

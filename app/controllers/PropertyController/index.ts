@@ -400,10 +400,7 @@ export class PropertyController {
   assignStaff = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;
-    const result = await this.propertyService.assignStaff(
-      { cuid, pid, currentuser },
-      req.body.userId
-    );
+    const result = await this.propertyService.assignStaff({ cuid, pid, currentuser }, req.body.uid);
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -412,7 +409,7 @@ export class PropertyController {
     const { currentuser } = req.context;
     const result = await this.propertyService.unassignStaff(
       { cuid, pid, currentuser },
-      req.body.userId
+      req.body.uid
     );
     res.status(httpStatusCodes.OK).json(result);
   };

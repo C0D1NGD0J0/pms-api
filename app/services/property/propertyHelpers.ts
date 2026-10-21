@@ -113,6 +113,83 @@ export const assertConnectedEmployees = async (
   if (connectedCount !== uniqueIds.length) throw new BadRequestError({ message });
 };
 
+/**
+ * Maps public user uids to internal ObjectIds, keeping only users connected to the client
+ * (with one of `roles`). Uids that are unknown or belong to another client are left out.
+ */
+export const getUserIdsByUid = async (
+  userDAO: UserDAO,
+  cuid: string,
+  uids: string[],
+  roles?: readonly string[]
+): Promise<Map<string, Types.ObjectId>> => {
+  const uniqueUids = [...new Set(uids.filter(Boolean))];
+  const idsByUid = new Map<string, Types.ObjectId>();
+  if (uniqueUids.length === 0) return idsByUid;
+
+  const users = await userDAO.list(
+    {
+      uid: { $in: uniqueUids },
+      deletedAt: null,
+      cuids: {
+        $elemMatch: { cuid, isConnected: true, ...(roles && { roles: { $in: [...roles] } }) },
+      },
+    },
+    { projection: 'uid', limit: uniqueUids.length }
+  );
+  for (const user of users.items) idsByUid.set(user.uid, user._id as Types.ObjectId);
+  return idsByUid;
+};
+
+/**
+ * Resolves public user uids to their internal ObjectIds. Throws `message` unless every uid is a
+ * user connected to the client (with one of `roles`), so a uid from another client is rejected.
+ */
+export const resolveConnectedUserIds = async (
+  userDAO: UserDAO,
+  cuid: string,
+  uids: string[],
+  message: string,
+  roles?: readonly string[]
+): Promise<Map<string, Types.ObjectId>> => {
+  const idsByUid = await getUserIdsByUid(userDAO, cuid, uids, roles);
+  if (idsByUid.size !== new Set(uids.filter(Boolean)).size) {
+    throw new BadRequestError({ message });
+  }
+  return idsByUid;
+};
+
+/** Resolves one user uid to its ObjectId — see resolveConnectedUserIds. */
+export const resolveConnectedUserId = async (
+  userDAO: UserDAO,
+  cuid: string,
+  uid: string,
+  message: string,
+  roles?: readonly string[]
+): Promise<Types.ObjectId> => {
+  const idsByUid = await resolveConnectedUserIds(userDAO, cuid, [uid], message, roles);
+  return idsByUid.get(uid)!;
+};
+
+/** Maps user ObjectIds to their public uids for responses; unknown ids are left out. */
+export const getUidsByUserId = async (
+  userDAO: UserDAO,
+  userIds: Array<Types.ObjectId | string | null | undefined>
+): Promise<Map<string, string>> => {
+  const uniqueIds = [...new Set(userIds.filter(Boolean).map(String))].filter((id) =>
+    Types.ObjectId.isValid(id)
+  );
+  const uidsById = new Map<string, string>();
+  if (uniqueIds.length === 0) return uidsById;
+
+  const users = await userDAO.list(
+    { _id: { $in: uniqueIds.map((id) => new Types.ObjectId(id)) } },
+    { projection: 'uid', limit: uniqueIds.length }
+  );
+  for (const user of users.items) uidsById.set(user._id.toString(), user.uid);
+  return uidsById;
+};
+
 export const pendingMediaItems = (
   pendingMedia?: IPendingChanges['pendingMedia'] | null
 ): Array<{ key?: string; url: string }> => [

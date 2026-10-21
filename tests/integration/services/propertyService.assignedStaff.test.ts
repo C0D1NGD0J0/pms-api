@@ -217,7 +217,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const property = await createTestProperty(client.cuid, client._id);
 
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
-      const result = await propertyService.assignStaff(ctx, staffUser._id.toString());
+      const result = await propertyService.assignStaff(ctx, staffUser.uid);
 
       expect(result.success).toBe(true);
 
@@ -234,9 +234,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const ctx = buildStaffCtx(client.cuid, 'non-existent-pid', adminUser._id.toString());
 
-      await expect(propertyService.assignStaff(ctx, staffUser._id.toString())).rejects.toThrow(
-        NotFoundError
-      );
+      await expect(propertyService.assignStaff(ctx, staffUser.uid)).rejects.toThrow(NotFoundError);
     });
 
     it('should reject if user is not found or not in cuid', async () => {
@@ -244,11 +242,15 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const adminUser = await createTestUser(client.cuid, { roles: [ROLES.ADMIN] });
       const property = await createTestProperty(client.cuid, client._id);
 
-      // Use a valid ObjectId that doesn't belong to any user
-      const fakeUserId = new Types.ObjectId().toString();
+      // Staff are named by uid: an unknown uid and another client's user are both rejected
+      const otherClient = await createTestClient();
+      const otherClientUser = await createTestUser(otherClient.cuid, { roles: [ROLES.STAFF] });
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
 
-      await expect(propertyService.assignStaff(ctx, fakeUserId)).rejects.toThrow(NotFoundError);
+      await expect(propertyService.assignStaff(ctx, 'UNKNOWNUID01')).rejects.toThrow(NotFoundError);
+      await expect(propertyService.assignStaff(ctx, otherClientUser.uid)).rejects.toThrow(
+        NotFoundError
+      );
     });
 
     it('should reject if user is already the primary manager', async () => {
@@ -261,7 +263,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const ctx = buildStaffCtx(client.cuid, property.pid, managerUser._id.toString());
 
-      await expect(propertyService.assignStaff(ctx, managerUser._id.toString())).rejects.toThrow(
+      await expect(propertyService.assignStaff(ctx, managerUser.uid)).rejects.toThrow(
         BadRequestError
       );
     });
@@ -279,7 +281,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
 
-      await expect(propertyService.assignStaff(ctx, staffUser._id.toString())).rejects.toThrow(
+      await expect(propertyService.assignStaff(ctx, staffUser.uid)).rejects.toThrow(
         BadRequestError
       );
     });
@@ -297,7 +299,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const extraStaff = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
 
-      await expect(propertyService.assignStaff(ctx, extraStaff._id.toString())).rejects.toThrow(
+      await expect(propertyService.assignStaff(ctx, extraStaff.uid)).rejects.toThrow(
         BadRequestError
       );
     });
@@ -319,7 +321,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       });
 
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
-      const result = await propertyService.unassignStaff(ctx, staffUser._id.toString());
+      const result = await propertyService.unassignStaff(ctx, staffUser.uid);
 
       expect(result.success).toBe(true);
 
@@ -333,9 +335,9 @@ describe('PropertyService — assignedStaff & department filtering', () => {
 
       const ctx = buildStaffCtx(client.cuid, 'missing-pid', adminUser._id.toString());
 
-      await expect(
-        propertyService.unassignStaff(ctx, new Types.ObjectId().toString())
-      ).rejects.toThrow(NotFoundError);
+      await expect(propertyService.unassignStaff(ctx, adminUser.uid)).rejects.toThrow(
+        NotFoundError
+      );
     });
 
     it('should be a no-op when removing a user who is not in assignedStaff', async () => {
@@ -344,7 +346,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const property = await createTestProperty(client.cuid, client._id);
 
       const ctx = buildStaffCtx(client.cuid, property.pid, adminUser._id.toString());
-      const result = await propertyService.unassignStaff(ctx, new Types.ObjectId().toString());
+      const result = await propertyService.unassignStaff(ctx, adminUser.uid);
 
       expect(result.success).toBe(true);
 
@@ -373,7 +375,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const ctx = buildRequestContext(client.cuid, adminUser._id.toString(), ROLES.ADMIN);
       await propertyService.updateClientProperty(
         { cuid: client.cuid, pid: property.pid, currentuser: ctx.currentuser },
-        { managedBy: staffUser._id } as any
+        { managedBy: staffUser.uid } as any
       );
 
       // The staff user should have been pulled from assignedStaff
@@ -399,7 +401,7 @@ describe('PropertyService — assignedStaff & department filtering', () => {
       const ctx = buildRequestContext(client.cuid, adminUser._id.toString(), ROLES.ADMIN);
       await propertyService.updateClientProperty(
         { cuid: client.cuid, pid: property.pid, currentuser: ctx.currentuser },
-        { managedBy: newManager._id } as any
+        { managedBy: newManager.uid } as any
       );
 
       const updated = await Property.findById(property._id);

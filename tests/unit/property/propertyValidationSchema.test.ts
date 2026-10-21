@@ -1,6 +1,8 @@
 import {
   CreatePropertySchema,
   UpdatePropertySchema,
+  UnassignStaffSchema,
+  AssignStaffSchema,
 } from '@shared/validations/PropertyValidation/schema';
 
 // UpdatePropertySchema is CreatePropertySchema.partial() with no async superRefine,
@@ -232,18 +234,18 @@ describe('PropertyValidation schema — FormData coercion', () => {
     });
   });
 
-  describe('assignedStaff on create', () => {
+  describe('assignedStaff and managedBy on create (user uids)', () => {
     const baseCreate = {
       name: 'Elm Street',
       propertyType: 'house',
-      managedBy: '507f1f77bcf86cd799439011',
+      managedBy: 'MANAGER00001',
       description: { text: 'Nice' },
       cuid: 'client-1',
       specifications: {},
       fees: {},
       address: { fullAddress: '12 Elm Street, Toronto', streetNumber: '12', unitNumber: '4B' },
     };
-    const staffId = (n: number) => `507f1f77bcf86cd7994390${String(n).padStart(2, '0')}`;
+    const staffId = (n: number) => `STAFFUID00${String(n).padStart(2, '0')}`;
 
     it('keeps assignedStaff and address.unitNumber', () => {
       const result = CreatePropertySchema.safeParse({
@@ -258,10 +260,23 @@ describe('PropertyValidation schema — FormData coercion', () => {
       }
     });
 
-    it('rejects non-ObjectId staff ids', () => {
+    it('rejects staff ids that are not user uids, including ObjectIds', () => {
+      for (const staff of ['nope', '507f1f77bcf86cd799439011']) {
+        expect(
+          CreatePropertySchema.safeParse({ ...baseCreate, assignedStaff: [staff] }).success
+        ).toBe(false);
+      }
+    });
+
+    it('rejects an ObjectId manager and treats a blank one as unset', () => {
       expect(
-        CreatePropertySchema.safeParse({ ...baseCreate, assignedStaff: ['nope'] }).success
+        CreatePropertySchema.safeParse({ ...baseCreate, managedBy: '507f1f77bcf86cd799439011' })
+          .success
       ).toBe(false);
+
+      const blank = CreatePropertySchema.safeParse({ ...baseCreate, managedBy: '' });
+      expect(blank.success).toBe(true);
+      if (blank.success) expect(blank.data.managedBy).toBeUndefined();
     });
 
     it('rejects more than 10 staff', () => {
@@ -277,6 +292,17 @@ describe('PropertyValidation schema — FormData coercion', () => {
       if (result.success) {
         expect(result.data).not.toHaveProperty('assignedStaff');
       }
+    });
+  });
+
+  describe('assign/unassign staff body', () => {
+    it.each([
+      ['AssignStaffSchema', AssignStaffSchema],
+      ['UnassignStaffSchema', UnassignStaffSchema],
+    ])('%s takes a user uid, not an ObjectId', (_name, schema) => {
+      expect(schema.safeParse({ uid: 'STAFFUID0001' }).success).toBe(true);
+      expect(schema.safeParse({ uid: '507f1f77bcf86cd799439011' }).success).toBe(false);
+      expect(schema.safeParse({ userId: '507f1f77bcf86cd799439011' }).success).toBe(false);
     });
   });
 });

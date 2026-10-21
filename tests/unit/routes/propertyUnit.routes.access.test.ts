@@ -106,7 +106,8 @@ const buildApp = () => {
 
 const app = buildApp();
 const base = `/api/v1/properties/${CUID}/${PID}/units`;
-const managerId = new Types.ObjectId().toString();
+// Unit managers are sent as user uids
+const managerId = 'MANAGER00001';
 
 const send = (
   method: 'post' | 'patch' | 'get' | 'delete',

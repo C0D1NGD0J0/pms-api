@@ -96,12 +96,15 @@ import {
   getAccessiblePropertyFilter,
   cleanUpRemovedPropertyMedia,
   filterPropertyByDepartment,
-  assertConnectedEmployees,
+  resolveConnectedUserIds,
+  resolveConnectedUserId,
   withoutPendingUploads,
   isFinancialRestricted,
   canViewInspections,
   canViewMaintenance,
   pendingMediaItems,
+  getUidsByUserId,
+  getUserIdsByUid,
 } from './propertyHelpers';
 
 interface IConstructor {
@@ -534,8 +537,12 @@ export class PropertyService implements ICronProvider {
 
     cleanPropertyData.createdBy = new Types.ObjectId(currentuser.sub);
 
+    // managedBy and assignedStaff arrive as user uids; they are stored as User ObjectIds
     if (cleanPropertyData.managedBy) {
-      cleanPropertyData.managedBy = new Types.ObjectId(cleanPropertyData.managedBy);
+      cleanPropertyData.managedBy = await this.resolvePropertyManagerId(
+        cuid,
+        String(cleanPropertyData.managedBy)
+      );
     } else if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
       // admin/manager can manage their own properties
       cleanPropertyData.managedBy = new Types.ObjectId(currentuser.sub);
@@ -708,22 +715,35 @@ export class PropertyService implements ICronProvider {
    */
   private async resolveInitialAssignedStaff(
     cuid: string,
-    requestedUserIds: string[],
+    requestedUids: string[],
     managedById: string
   ): Promise<Types.ObjectId[]> {
-    const userIds = [...new Set(requestedUserIds)].filter((id) => id !== managedById);
+    const idsByUid = await resolveConnectedUserIds(
+      this.userDAO,
+      cuid,
+      requestedUids,
+      t('common.errors.notFound', { resource: 'User' })
+    );
+    const userIds = [...new Set([...idsByUid.values()].map(String))].filter(
+      (id) => id !== managedById
+    );
     if (userIds.length > MAX_ASSIGNED_STAFF) {
       throw new BadRequestError({
         message: `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`,
       });
     }
-    await assertConnectedEmployees(
+    return userIds.map((id) => new Types.ObjectId(id));
+  }
+
+  /** A property's manager is given by uid and must be an employee connected to this client. */
+  private resolvePropertyManagerId(cuid: string, managerUid: string): Promise<Types.ObjectId> {
+    return resolveConnectedUserId(
       this.userDAO,
       cuid,
-      userIds,
-      t('common.errors.notFound', { resource: 'User' })
+      managerUid,
+      'Property manager must be an active employee of this account',
+      ROLE_GROUPS.EMPLOYEE_ROLES
     );
-    return userIds.map((id) => new Types.ObjectId(id));
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
@@ -1029,8 +1049,10 @@ export class PropertyService implements ICronProvider {
         scopeClauses.push({ $or: searchOr });
       }
 
+      // managedBy is the manager's public uid; an unknown or other-client uid matches nothing
       if (filters.managedBy) {
-        filter.managedBy = new Types.ObjectId(filters.managedBy as string);
+        const managerIds = await getUserIdsByUid(this.userDAO, cuid, [String(filters.managedBy)]);
+        filter.managedBy = managerIds.get(String(filters.managedBy)) ?? new Types.ObjectId();
       }
     }
 
@@ -1154,12 +1176,14 @@ export class PropertyService implements ICronProvider {
 
     // Fetch property manager details
     let propertyManager = null;
+    // Public uid of the manager, so edit forms can preselect them without the internal _id
+    let managedByUid: string | null = null;
     if (property.managedBy) {
       const managerProfile = await this.profileDAO.findFirst(
         { user: property.managedBy, deletedAt: null },
         {
           select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
-          populate: { path: 'user', select: 'email' },
+          populate: { path: 'user', select: 'email uid' },
         }
       );
 
@@ -1171,6 +1195,12 @@ export class PropertyService implements ICronProvider {
           phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
         };
       }
+      managedByUid =
+        (managerProfile as any)?.user?.uid ??
+        (await getUidsByUserId(this.userDAO, [property.managedBy])).get(
+          property.managedBy.toString()
+        ) ??
+        null;
     }
 
     // Fetch assigned staff details
@@ -1270,6 +1300,8 @@ export class PropertyService implements ICronProvider {
           {
             sort: { createdAt: -1 },
             limit: 20,
+            // The technician is identified publicly by uid; the internal user ref stays server-side
+            projection: { 'assignedTechnician.userId': 0 },
             populate: [
               { path: 'propertyId', select: 'pid name address' },
               {
@@ -1359,6 +1391,7 @@ export class PropertyService implements ICronProvider {
       ...(pendingChangesPreview && { pendingChangesPreview }),
       fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       manager: propertyManager,
+      managedByUid,
       assignedStaff: assignedStaffList,
     };
 
@@ -1470,6 +1503,14 @@ export class PropertyService implements ICronProvider {
     // Process update data
     const { images, documents, ...restUpdateData } = updateData;
     const cleanUpdateData: Partial<IPropertyDocument> = { ...restUpdateData };
+
+    // The new manager arrives as a user uid; staff edits hold the resolved ObjectId for approval
+    if (cleanUpdateData.managedBy) {
+      cleanUpdateData.managedBy = await this.resolvePropertyManagerId(
+        cuid,
+        String(cleanUpdateData.managedBy)
+      );
+    }
 
     // Parse money fields
     if (cleanUpdateData.fees) {
@@ -2495,6 +2536,8 @@ export class PropertyService implements ICronProvider {
       // Add projection to shape the response
       pipeline.push({
         $project: {
+          // uid is what assignment forms send back (managedBy, assignedStaff)
+          uid: 1,
           puid: '$profile.puid',
           email: 1,
           displayName: '$profile.personalInfo.displayName',
@@ -2608,7 +2651,7 @@ export class PropertyService implements ICronProvider {
   ): Promise<
     ISuccessReturnData<{
       items: Array<{
-        id: string;
+        pid: string;
         name: string;
         address: string;
         propertyType: string;
@@ -2618,7 +2661,7 @@ export class PropertyService implements ICronProvider {
           currency?: string;
         };
         units?: Array<{
-          id: string;
+          puid: string;
           unitNumber: string;
           status: string;
           financialInfo?: {
@@ -2632,7 +2675,7 @@ export class PropertyService implements ICronProvider {
         totalProperties: number;
         filteredCount: number;
         filteredProperties?: Array<{
-          id: string;
+          pid: string;
           name: string;
           propertyType: string;
           reason: string;
@@ -2684,7 +2727,7 @@ export class PropertyService implements ICronProvider {
       const properties = await this.propertyDAO.list(filter, {
         limit: 1000,
         sort: { name: 1 },
-        projection: '_id name address propertyType fees',
+        projection: '_id pid name address propertyType fees',
       });
 
       if (!properties.items.length) {
@@ -2698,7 +2741,7 @@ export class PropertyService implements ICronProvider {
       // Map properties to simplified format and filter multi-unit properties without units
       const leaseableProperties: any[] = [];
       const filteredProperties: Array<{
-        id: string;
+        pid: string;
         name: string;
         propertyType: string;
         reason: string;
@@ -2717,7 +2760,7 @@ export class PropertyService implements ICronProvider {
           // Filter out multi-unit properties with no units
           if (!unitsResult.items || unitsResult.items.length === 0) {
             filteredProperties.push({
-              id: propertyObj._id.toString(),
+              pid: propertyObj.pid,
               name: propertyObj.name,
               propertyType: propertyObj.propertyType,
               reason: 'requires_units',
@@ -2729,9 +2772,9 @@ export class PropertyService implements ICronProvider {
           }
         }
 
-        // Build leaseable property object
+        // Build leaseable property object — public ids only; the lease form sends them back
         const result: any = {
-          id: propertyObj._id.toString(),
+          pid: propertyObj.pid,
           name: propertyObj.name,
           address: propertyObj.address?.fullAddress || '',
           propertyType: propertyObj.propertyType,
@@ -2756,7 +2799,7 @@ export class PropertyService implements ICronProvider {
             result.units = unitsResult.items.map((unit) => {
               const unitObj = unit.toObject ? unit.toObject() : unit;
               const unitData: any = {
-                id: unitObj._id.toString(),
+                puid: unitObj.puid,
                 unitNumber: unitObj.unitNumber,
                 status: unitObj.status,
               };
@@ -2827,7 +2870,7 @@ export class PropertyService implements ICronProvider {
 
   async assignStaff(
     ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
-    userId: string
+    staffUid: string
   ): Promise<ISuccessReturnData> {
     const { cuid, pid } = ctx;
 
@@ -2839,7 +2882,8 @@ export class PropertyService implements ICronProvider {
     }
 
     const user = await this.userDAO.findFirst({
-      _id: new Types.ObjectId(userId),
+      uid: staffUid,
+      deletedAt: null,
       cuids: { $elemMatch: { cuid, isConnected: true } },
     });
     if (!user) {
@@ -2847,6 +2891,7 @@ export class PropertyService implements ICronProvider {
         message: t('common.errors.notFound', { resource: 'User' }),
       });
     }
+    const userId = user._id.toString();
 
     if (property.managedBy?.toString() === userId) {
       throw new BadRequestError({
@@ -2880,7 +2925,7 @@ export class PropertyService implements ICronProvider {
 
   async unassignStaff(
     ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
-    userId: string
+    staffUid: string
   ): Promise<ISuccessReturnData> {
     const { cuid, pid } = ctx;
 
@@ -2891,9 +2936,20 @@ export class PropertyService implements ICronProvider {
       });
     }
 
+    // Not scoped to connected users: staff who left the account must still be removable
+    const user = await this.userDAO.findFirst(
+      { uid: staffUid, 'cuids.cuid': cuid },
+      { projection: '_id' }
+    );
+    if (!user) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'User' }),
+      });
+    }
+
     const updated = await this.propertyDAO.update(
       { _id: property._id },
-      { $pull: { assignedStaff: new Types.ObjectId(userId) } }
+      { $pull: { assignedStaff: user._id } }
     );
 
     return {

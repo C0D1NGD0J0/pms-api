@@ -9,6 +9,11 @@ import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import type { PdfJobData } from '@interfaces/pdfGenerator.interface';
 import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
+import {
+  PROPERTY_LEASING_BLOCK_MESSAGE_KEYS,
+  getPropertyLeasingBlock,
+  LeasingCheckFields,
+} from '@utils/propertyLeasing';
 export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
 export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
@@ -1517,4 +1522,20 @@ export async function buildLandlordInfo(
       client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
     isExternalOwner: false,
   };
+}
+
+/**
+ * Throws when the property fails the ownership rules for leasing (approved, management
+ * authorized, ownership verified) — whether it was created by form or CSV import.
+ * Pass `requireManagementAuth: false` for signing/activation, where an external owner without a
+ * management agreement signs directly.
+ */
+export function assertPropertyLeasable(
+  property: LeasingCheckFields,
+  options?: { requireManagementAuth?: boolean }
+): void {
+  const block = getPropertyLeasingBlock(property, options);
+  if (block) {
+    throw new BadRequestError({ message: t(PROPERTY_LEASING_BLOCK_MESSAGE_KEYS[block]) });
+  }
 }

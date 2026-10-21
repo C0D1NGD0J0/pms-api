@@ -7,7 +7,8 @@ import { ISuccessReturnData, IPaginationQuery } from '@interfaces/utils.interfac
 import { BaseCache } from './base.cache';
 
 // v2: entries carry public ids (pid / unit puid) instead of ObjectIds
-const LEASEABLE_PROPERTIES_PREFIX = 'leaseableProperties:v2';
+// v3: items carry leasingBlockedReason
+const LEASEABLE_PROPERTIES_PREFIX = 'leaseableProperties:v3';
 
 export class PropertyCache extends BaseCache {
   private readonly KEY_PREFIXES = {

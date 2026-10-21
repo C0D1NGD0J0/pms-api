@@ -266,21 +266,7 @@ export class InspectionService implements ICronProvider {
         throw new NotFoundError({ message: 'Property not found' });
       }
 
-      let inspectorUid = data.inspectorId;
-      if (inspectorUid) {
-        const inspector = await this.userDAO.findFirst({
-          uid: inspectorUid,
-          'cuids.cuid': cuid,
-          deletedAt: null,
-        });
-        if (!inspector) {
-          throw new NotFoundError({ message: 'Inspector not found' });
-        }
-      } else {
-        // Default to the current user — resolve _id to uid
-        const currentUser = await this.userDAO.findFirst({ _id: userId, deletedAt: null });
-        inspectorUid = currentUser?.uid ?? userId;
-      }
+      const inspectorUid = await this._resolveInspectorUid(cuid, userId, data.inspectorId);
 
       const rooms = data.rooms && data.rooms.length > 0 ? data.rooms : DEFAULT_INSPECTION_ROOMS;
 
@@ -351,6 +337,9 @@ export class InspectionService implements ICronProvider {
       });
       if (!property) throw new NotFoundError({ message: 'Property not found' });
 
+      // Resolve before any status change so a bad inspector can't strand the unit in maintenance
+      const inspectorUid = await this._resolveInspectorUid(cuid, userId, data.inspectorId);
+
       let unitDoc = null;
       let previousStatus: string | undefined;
 
@@ -400,12 +389,6 @@ export class InspectionService implements ICronProvider {
         await this.propertyDAO.updateById(property._id.toString(), {
           operationalStatus: 'maintenance',
         });
-      }
-
-      let inspectorUid = data.inspectorId;
-      if (!inspectorUid) {
-        const currentUser = await this.userDAO.findFirst({ _id: userId, deletedAt: null });
-        inspectorUid = currentUser?.uid ?? userId;
       }
 
       const rooms = data.rooms?.length ? data.rooms : DEFAULT_INSPECTION_ROOMS;
@@ -1906,14 +1889,49 @@ export class InspectionService implements ICronProvider {
 
   private static readonly SELF_ACTION_EXEMPT_ROLES = new Set(['super-admin', 'admin']);
 
+  /**
+   * Resolves the inspector to a real user uid. A client-supplied inspector must be a uid of a
+   * user connected to this client; otherwise the scheduling actor (a User _id) becomes the
+   * inspector. Never falls back to writing an _id into inspectorUid.
+   */
+  private async _resolveInspectorUid(
+    cuid: string,
+    actorUserId: string,
+    requestedInspectorUid?: string
+  ): Promise<string> {
+    if (requestedInspectorUid) {
+      const inspector = await this.userDAO.findFirst(
+        {
+          uid: requestedInspectorUid,
+          cuids: { $elemMatch: { cuid, isConnected: true } },
+          deletedAt: null,
+        },
+        { projection: 'uid' }
+      );
+      if (!inspector?.uid) {
+        throw new BadRequestError({ message: 'Inspector not found' });
+      }
+      return inspector.uid;
+    }
+
+    const actor = Types.ObjectId.isValid(actorUserId)
+      ? await this.userDAO.findFirst({ _id: actorUserId, deletedAt: null }, { projection: 'uid' })
+      : null;
+    if (!actor?.uid) {
+      throw new BadRequestError({ message: 'Inspector not found' });
+    }
+    return actor.uid;
+  }
+
+  /** Both ids are user uids (controllers pass currentuser.uid). */
   private _enforceNoSelfAction(
     inspectorUid: string | undefined,
-    userId: string,
+    actorUid: string,
     userRole: string,
     action: string
   ): void {
     if (InspectionService.SELF_ACTION_EXEMPT_ROLES.has(userRole)) return;
-    if (inspectorUid && inspectorUid === userId) {
+    if (inspectorUid && inspectorUid === actorUid) {
       throw new ForbiddenError({
         message: `Inspector cannot ${action} their own inspection`,
       });

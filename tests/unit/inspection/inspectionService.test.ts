@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { jest } from '@jest/globals';
+import { BadRequestError } from '@shared/customErrors';
 import { InspectionService } from '@services/inspection/inspection.service';
 import {
   InspectionStatus,
@@ -574,7 +575,7 @@ describe('InspectionService', () => {
     beforeEach(() => {
       mockInspectionDAO.findFirst.mockResolvedValue(null);
       mockPropertyDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(), cuid: CUID });
-      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockUserDAO.findFirst.mockResolvedValue({ uid: 'SCHEDULER001' });
       mockInspectionDAO.insert.mockImplementation((data: any) =>
         Promise.resolve({ ...data, iuid: IUID })
       );
@@ -753,7 +754,7 @@ describe('InspectionService', () => {
       expect(insertData.rooms[0].name).toBe('Living Room');
     });
 
-    it('should throw 404 when inspectorId provided but user not found', async () => {
+    it('should throw 400 when inspectorId is not a uid of a user connected to the client', async () => {
       const lease = makeActiveLease();
       const property = { _id: lease.property.id, cuid: CUID };
       mockLeaseDAO.findFirst.mockResolvedValue(lease);
@@ -761,14 +762,80 @@ describe('InspectionService', () => {
       mockPropertyDAO.findFirst.mockResolvedValue(property);
       mockUserDAO.findFirst.mockResolvedValue(null);
 
+      const scheduling = service.scheduleInspection(CUID, USER_ID, {
+        type: InspectionType.MOVE_IN,
+        leaseId: 'lease-123',
+        scheduledDate: new Date().toISOString(),
+        inspectorId: new Types.ObjectId().toString(),
+      });
+
+      await expect(scheduling).rejects.toBeInstanceOf(BadRequestError);
+      await expect(scheduling).rejects.toThrow(/Inspector not found/);
+      expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ cuids: { $elemMatch: { cuid: CUID, isConnected: true } } }),
+        { projection: 'uid' }
+      );
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
+    it('stores the requested inspector uid after verifying it belongs to the client', async () => {
+      const lease = makeActiveLease();
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(null);
+      mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
+      mockUserDAO.findFirst.mockResolvedValue({ uid: 'INSPECTOR001' });
+      mockInspectionDAO.insert.mockImplementation((data: any) =>
+        Promise.resolve({ ...data, iuid: IUID })
+      );
+
+      await service.scheduleInspection(CUID, USER_ID, {
+        type: InspectionType.MOVE_IN,
+        leaseId: 'lease-123',
+        scheduledDate: new Date().toISOString(),
+        inspectorId: 'INSPECTOR001',
+      });
+
+      expect(mockInspectionDAO.insert.mock.calls[0][0].inspectorUid).toBe('INSPECTOR001');
+    });
+
+    it('defaults the inspector to the scheduling user uid, never their _id', async () => {
+      const lease = makeActiveLease();
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(null);
+      mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
+      mockUserDAO.findFirst.mockResolvedValue({ uid: 'SCHEDULER001' });
+      mockInspectionDAO.insert.mockImplementation((data: any) =>
+        Promise.resolve({ ...data, iuid: IUID })
+      );
+
+      await service.scheduleInspection(CUID, USER_ID, {
+        type: InspectionType.MOVE_IN,
+        leaseId: 'lease-123',
+        scheduledDate: new Date().toISOString(),
+      });
+
+      expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
+        { _id: USER_ID, deletedAt: null },
+        { projection: 'uid' }
+      );
+      expect(mockInspectionDAO.insert.mock.calls[0][0].inspectorUid).toBe('SCHEDULER001');
+    });
+
+    it('refuses to schedule rather than writing the scheduling user _id as inspectorUid', async () => {
+      const lease = makeActiveLease();
+      mockLeaseDAO.findFirst.mockResolvedValue(lease);
+      mockInspectionDAO.findFirst.mockResolvedValue(null);
+      mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
+      mockUserDAO.findFirst.mockResolvedValue(null);
+
       await expect(
         service.scheduleInspection(CUID, USER_ID, {
           type: InspectionType.MOVE_IN,
           leaseId: 'lease-123',
           scheduledDate: new Date().toISOString(),
-          inspectorId: new Types.ObjectId().toString(),
         })
-      ).rejects.toThrow(/Inspector not found/);
+      ).rejects.toBeInstanceOf(BadRequestError);
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
     });
 
     describe('move-out on a lease that has ended', () => {
@@ -788,6 +855,7 @@ describe('InspectionService', () => {
       beforeEach(() => {
         mockInspectionDAO.findFirst.mockResolvedValue(null);
         mockPropertyDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(), cuid: CUID });
+        mockUserDAO.findFirst.mockResolvedValue({ uid: 'SCHEDULER001' });
         mockInspectionDAO.insert.mockImplementation((data: any) =>
           Promise.resolve({ ...data, iuid: IUID })
         );
@@ -1005,7 +1073,7 @@ describe('InspectionService', () => {
       mockInspectionDAO.findFirst
         .mockResolvedValueOnce(null) // handleLeaseActivated dup check
         .mockResolvedValueOnce(null); // scheduleInspection dup check
-      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockUserDAO.findFirst.mockResolvedValue({ uid: 'SCHEDULER001' });
       mockInspectionDAO.insert.mockResolvedValue(makeInspection());
 
       await (service as any).handleLeaseActivated(makeLeaseActivatedPayload());
@@ -1067,7 +1135,7 @@ describe('InspectionService', () => {
         Promise.resolve(filter.previousLeaseId ? null : lease)
       ); // no renewal; scheduleInspection lease lookup
       mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
-      mockUserDAO.findFirst.mockResolvedValue(null);
+      mockUserDAO.findFirst.mockResolvedValue({ uid: 'SCHEDULER001' });
       mockInspectionDAO.insert.mockResolvedValue(makeInspection());
 
       await service.checkUpcomingLeaseExpirations();
@@ -1181,7 +1249,7 @@ describe('InspectionService', () => {
           Promise.resolve(filter.previousLeaseId ? latestRenewal : lease)
         );
         mockPropertyDAO.findFirst.mockResolvedValue({ _id: lease.property.id, cuid: CUID });
-        mockUserDAO.findFirst.mockResolvedValue(null);
+        mockUserDAO.findFirst.mockResolvedValue({ uid: 'SCHEDULER001' });
         mockInspectionDAO.insert.mockResolvedValue(makeInspection());
 
         await service.checkUpcomingLeaseExpirations();

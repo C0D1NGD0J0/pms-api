@@ -155,6 +155,29 @@ describe('InspectionService — Property-Only Inspections (Path B)', () => {
       });
     });
 
+    it('rejects an unknown inspector before changing any unit or property status', async () => {
+      const property = makeProperty();
+      const unit = makeUnit();
+      mockPropertyDAO.findFirst.mockResolvedValue(property);
+      mockPropertyUnitDAO.findFirst.mockResolvedValue(unit);
+      mockInspectionDAO.findFirst.mockResolvedValue(null);
+      mockUserDAO.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.scheduleInspection(CUID, USER_ID, {
+          type: InspectionType.ROUTINE,
+          propertyId: PROPERTY_PID,
+          propertyUnitId: UNIT_PUID,
+          scheduledDate: new Date().toISOString(),
+          inspectorId: 'NOTAMEMBER01',
+        })
+      ).rejects.toThrow(/Inspector not found/);
+
+      expect(mockPropertyUnitDAO.updateById).not.toHaveBeenCalled();
+      expect(mockPropertyDAO.updateById).not.toHaveBeenCalled();
+      expect(mockInspectionDAO.insert).not.toHaveBeenCalled();
+    });
+
     it('schedules routine inspection for specific unit', async () => {
       const property = makeProperty();
       const unit = makeUnit();

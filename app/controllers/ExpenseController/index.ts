@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { Response } from 'express';
 import { httpStatusCodes } from '@utils/constants';
 import { AppRequest } from '@interfaces/utils.interface';
+import { IExpenseListQuery } from '@interfaces/expense.interface';
 import { ExpenseService } from '@services/expense/expense.service';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
@@ -29,7 +30,7 @@ export class ExpenseController {
 
   async listExpenses(req: AppRequest, res: Response): Promise<Response> {
     const { cuid } = req.params;
-    const result = await this.expenseService.listExpenses(cuid, req.query as any);
+    const result = await this.expenseService.listExpenses(cuid, req.query as IExpenseListQuery);
     return res.status(httpStatusCodes.OK).json(result);
   }
 

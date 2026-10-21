@@ -6,7 +6,7 @@ echo "Running pre-push checks..."
 # Security audit — blocks high/critical production advisories; reviewed exceptions live in
 # .audit-allowlist.json (each with a reason and a reviewBy date)
 echo "🔒 Running security audit..."
-node scripts/audit-prod.js || {
+node .husky/audit-prod.js || {
   echo "❌ Fix them, or (if there's no exploit path) add a reviewed entry to .audit-allowlist.json."
   exit 1
 }

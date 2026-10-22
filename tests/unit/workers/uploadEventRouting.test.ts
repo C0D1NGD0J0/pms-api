@@ -1,5 +1,7 @@
+import { Types } from 'mongoose';
 import { EventTypes } from '@interfaces/index';
 import { UploadWorker } from '@workers/upload.worker';
+import { InvoiceService } from '@services/invoice/invoice.service';
 import { LeasePdfService } from '@services/lease/leasePdf.service';
 import { mockSubscriptionService } from '@tests/setup/externalMocks';
 import { PropertyMediaService } from '@services/property/propertyMedia.service';
@@ -29,19 +31,22 @@ describe('UploadWorker — UPLOAD_FAILED payload', () => {
     const worker = new UploadWorker({
       s3Service: {} as any,
       emitterService: emitterService as any,
-      maintenanceRequestService: {
-        persistUploadedMedia: jest.fn().mockRejectedValue(new Error('DB down')),
+      inspectionService: {
+        updateReportDocument: jest.fn().mockRejectedValue(new Error('DB down')),
       } as any,
-      propertyMediaService: {} as any,
-      inspectionService: {} as any,
       sseService: {} as any,
     });
 
     await expect(
       worker.uploadAsset({
         data: {
-          resource: { resourceName: 'maintenance', resourceId: 'MR1', actorId: 'A1' },
-          results: [{ key: 'maintenance/a.jpg', url: 'https://s3/a.jpg', filename: 'a.jpg' }],
+          resource: {
+            resourceName: 'inspection',
+            resourceId: 'INS1',
+            fieldName: 'reportDocument',
+            actorId: 'A1',
+          },
+          results: [{ key: 'inspection/r.pdf', url: 'https://s3/r.pdf', filename: 'r.pdf' }],
         },
         progress: jest.fn(),
       } as any)
@@ -49,7 +54,7 @@ describe('UploadWorker — UPLOAD_FAILED payload', () => {
 
     expect(emitterService.emit).toHaveBeenCalledWith(
       EventTypes.UPLOAD_FAILED,
-      expect.objectContaining({ resourceName: 'maintenance', resourceId: 'MR1' })
+      expect.objectContaining({ resourceName: 'inspection', resourceId: 'INS1' })
     );
   });
 });
@@ -133,5 +138,104 @@ describe('PropertyMediaService — UPLOAD_FAILED routing', () => {
 
     await emitterService.handlers[EventTypes.UPLOAD_FAILED](uploadFailed('property'));
     expect(markFailed).toHaveBeenCalledWith('RESOURCE-1', 'S3 down');
+  });
+});
+
+// Generated files are saved by the worker process, after the request that asked for them has
+// returned — so the save refreshes caches and tells the whole client, not only the requester.
+describe('Generated PDFs — cache refresh and client-wide notification', () => {
+  const pdfResult = { key: 'lease/agreement.pdf', url: 'https://s3/agreement.pdf' };
+
+  it('a saved lease PDF invalidates the lease caches and broadcasts document-added', async () => {
+    const emitterService = makeEmitter();
+    const lease = { _id: new Types.ObjectId(), luid: 'L1', cuid: 'C1', status: 'draft' };
+    const leaseDAO = {
+      findFirst: jest.fn().mockResolvedValue(lease),
+      updateLeaseDocuments: jest.fn().mockResolvedValue({ ...lease, leaseDocuments: [{}] }),
+    };
+    const leaseCache = {
+      invalidateLease: jest.fn().mockResolvedValue({ success: true }),
+      invalidateLeaseLists: jest.fn().mockResolvedValue({ success: true }),
+    };
+    const sseService = {
+      broadcastToClient: jest.fn().mockResolvedValue(undefined),
+      sendToUser: jest.fn(),
+    };
+    new LeasePdfService({
+      subscriptionService: mockSubscriptionService as any,
+      clientDAO: {} as any,
+      emitterService: emitterService as any,
+      leaseTemplateService: {} as any,
+      sseService: sseService as any,
+      leaseCache: leaseCache as any,
+      leaseDAO: leaseDAO as any,
+      mediaUploadService: {} as any,
+      notificationService: {} as any,
+      pdfGeneratorService: {} as any,
+      profileDAO: {} as any,
+      propertyDAO: {} as any,
+      queueFactory: {} as any,
+    }).registerEventListeners();
+
+    await emitterService.handlers[EventTypes.UPLOAD_COMPLETED]({
+      results: [pdfResult],
+      actorId: new Types.ObjectId().toString(),
+      resourceType: 'document',
+      resourceName: 'lease',
+      resourceId: lease._id.toString(),
+      fieldName: 'document',
+    });
+
+    expect(leaseDAO.updateLeaseDocuments).toHaveBeenCalled();
+    expect(leaseCache.invalidateLease).toHaveBeenCalledWith('C1', 'L1');
+    expect(leaseCache.invalidateLeaseLists).toHaveBeenCalledWith('C1');
+    expect(sseService.broadcastToClient).toHaveBeenCalledWith(
+      'C1',
+      { resource: 'lease', action: 'document-added', resourceUId: 'L1' },
+      'resource-event'
+    );
+    expect(sseService.sendToUser).not.toHaveBeenCalled();
+  });
+
+  it('a saved invoice PDF broadcasts document-attached to the client (its actor is "system")', async () => {
+    const emitterService = makeEmitter();
+    const paymentDAO = { update: jest.fn().mockResolvedValue({ pytuid: 'PYT1', cuid: 'C1' }) };
+    const sseService = {
+      broadcastToClient: jest.fn().mockResolvedValue(undefined),
+      sendToUser: jest.fn(),
+    };
+    new InvoiceService({
+      paymentDAO: paymentDAO as any,
+      queueFactory: {} as any,
+      pdfGeneratorService: {} as any,
+      mediaUploadService: {} as any,
+      invoiceTemplateRenderer: {} as any,
+      emitterService: emitterService as any,
+      sseService: sseService as any,
+    }).registerEventListeners();
+
+    await emitterService.handlers[EventTypes.UPLOAD_COMPLETED]({
+      results: [{ key: 'payment-invoice/i.pdf', url: 'https://s3/i.pdf' }],
+      actorId: 'system',
+      resourceType: 'document',
+      resourceName: 'payment-invoice',
+      resourceId: 'PYT1',
+      fieldName: 'invoiceDocument',
+    });
+
+    expect(paymentDAO.update).toHaveBeenCalledWith(
+      { pytuid: 'PYT1' },
+      { $set: { invoiceDocument: expect.objectContaining({ key: 'payment-invoice/i.pdf' }) } }
+    );
+    expect(sseService.broadcastToClient).toHaveBeenCalledWith(
+      'C1',
+      { resource: 'invoice', action: 'document-attached', resourceUId: 'PYT1' },
+      'resource-event'
+    );
+    expect(emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.INVOICE_GENERATED,
+      expect.objectContaining({ pytuid: 'PYT1', cuid: 'C1' })
+    );
+    expect(sseService.sendToUser).not.toHaveBeenCalled();
   });
 });

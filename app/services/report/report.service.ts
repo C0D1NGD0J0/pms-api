@@ -40,6 +40,8 @@ import {
   UserDAO,
 } from '@dao/index';
 import {
+  IReportScheduleResponse,
+  IReportListItemResponse,
   IReportScheduleDocument,
   IReportStatusResponse,
   ScheduleFrequency,
@@ -230,12 +232,14 @@ export class ReportService implements ICronProvider {
       period: ReportPeriod;
       startDate?: string;
       endDate?: string;
-      propertyId?: string;
+      pid?: string;
       sections?: ReportSection[];
       emailRecipients?: string[];
     }
   ): IPromiseReturnedData<{ reportId: string; status: ReportStatus }> {
-    const { period, propertyId } = body;
+    const { period } = body;
+    // Resolve before any quota is consumed so an unknown pid costs the client nothing
+    const propertyId = await this._resolvePropertyId(cuid, body.pid);
     // executive_summary is always included and doesn't count toward the section limit
     const requestedSections = body.sections?.length ? body.sections : [...REPORT_SECTIONS];
     const sections: ReportSection[] = requestedSections.includes('executive_summary')
@@ -330,7 +334,7 @@ export class ReportService implements ICronProvider {
       startDate: report.startDate,
       endDate: report.endDate,
       sections: report.sections,
-      failedReason: report.failedReason,
+      // failedReason is withheld: it holds the raw server error, and status FAILED tells the client
       createdAt: report.createdAt,
       completedAt: report.completedAt,
     };
@@ -381,7 +385,7 @@ export class ReportService implements ICronProvider {
     cuid: string,
     query?: { page?: number; limit?: number; status?: ReportStatus }
   ): IPromiseReturnedData<{
-    reports: IReportDocument[];
+    reports: IReportListItemResponse[];
     pagination?: Record<string, any>;
     meta: {
       maxReportsPerMonth: number;
@@ -399,11 +403,12 @@ export class ReportService implements ICronProvider {
       this._getCooldownRemaining(cuid),
       this._syncUsageCounter(cuid),
     ]);
+    const reports = await this._withPublicPropertyRefs<IReportListItemResponse>(cuid, result.items);
 
     return {
       success: true,
       data: {
-        reports: result.items,
+        reports,
         pagination: result.pagination,
         meta: {
           ...limits,
@@ -423,10 +428,11 @@ export class ReportService implements ICronProvider {
       frequency: ScheduleFrequency;
       sections?: ReportSection[];
       emailRecipients?: string[];
-      propertyId?: string;
+      pid?: string;
       isActive?: boolean;
     }
   ): IPromiseReturnedData<{ scheduleId: string }> {
+    const propertyId = await this._resolvePropertyId(cuid, body.pid);
     const requestedSections = body.sections?.length ? body.sections : [...REPORT_SECTIONS];
     const sections: ReportSection[] = requestedSections.includes('executive_summary')
       ? requestedSections
@@ -444,7 +450,7 @@ export class ReportService implements ICronProvider {
       frequency: body.frequency,
       sections,
       emailRecipients: body.emailRecipients || [],
-      propertyId: body.propertyId,
+      propertyId,
       nextRunAt,
       isActive: body.isActive !== false,
     });
@@ -456,9 +462,14 @@ export class ReportService implements ICronProvider {
     };
   }
 
-  async getSchedule(cuid: string): IPromiseReturnedData<IReportScheduleDocument | null> {
+  async getSchedule(cuid: string): IPromiseReturnedData<IReportScheduleResponse | null> {
     const schedule = await this.reportScheduleDAO.getSchedule(cuid);
-    return { success: true, data: schedule };
+    if (!schedule) return { success: true, data: null };
+
+    const [publicSchedule] = await this._withPublicPropertyRefs<IReportScheduleResponse>(cuid, [
+      schedule,
+    ]);
+    return { success: true, data: publicSchedule };
   }
 
   async deactivateSchedule(cuid: string): IPromiseReturnedData<{ deactivated: boolean }> {
@@ -780,6 +791,44 @@ export class ReportService implements ICronProvider {
   }
 
   // ─── Private helpers ──────────────────────────────────────────────
+
+  /** Resolves a client-supplied pid to the internal property _id string stored on reports. */
+  private async _resolvePropertyId(cuid: string, pid?: string): Promise<string | undefined> {
+    if (!pid) return undefined;
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+    return property._id.toString();
+  }
+
+  /** Swaps the stored propertyId (_id) on reports/schedules for the property's public pid. */
+  private async _withPublicPropertyRefs<T>(
+    cuid: string,
+    docs: Array<IReportDocument | IReportScheduleDocument>
+  ): Promise<T[]> {
+    const plainDocs = docs.map((doc) =>
+      typeof (doc as any).toObject === 'function' ? doc.toObject() : { ...doc }
+    ) as Array<Record<string, any>>;
+
+    const propertyObjectIds = [
+      ...new Set(plainDocs.map((doc) => doc.propertyId).filter(Boolean) as string[]),
+    ]
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    const properties = propertyObjectIds.length
+      ? ((await this.propertyDAO.aggregate([
+          { $match: { _id: { $in: propertyObjectIds }, cuid } },
+          { $project: { _id: 1, pid: 1 } },
+        ])) as Array<{ _id: Types.ObjectId; pid: string }>)
+      : [];
+    const pidByPropertyId = new Map(properties.map((p) => [p._id.toString(), p.pid]));
+
+    return plainDocs.map(({ propertyId, ...rest }) => ({
+      ...rest,
+      pid: propertyId ? pidByPropertyId.get(String(propertyId)) : undefined,
+    })) as T[];
+  }
 
   private async _aggregateData(
     cuid: string,

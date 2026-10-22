@@ -580,10 +580,13 @@ export class LeasePdfService {
     }
 
     try {
+      // Only generated lease PDFs arrive here — user uploads are saved during their request
       const { luid, cuid } = await this.updateLeaseDocuments(resourceId, results, actorId);
+      await this.leaseCache.invalidateLease(cuid, luid);
+      await this.leaseCache.invalidateLeaseLists(cuid);
       try {
-        await this.sseService.sendToUser(
-          actorId,
+        // Everyone viewing the lease refetches, not only whoever triggered the PDF
+        await this.sseService.broadcastToClient(
           cuid,
           { resource: 'lease', action: 'document-added', resourceUId: luid },
           'resource-event'
@@ -666,10 +669,11 @@ export class LeasePdfService {
   private async markLeaseDocumentsAsFailed(leaseId: string, errorMessage: string): Promise<void> {
     // updateLeaseDocumentStatus flags every document on the lease; once signed, a failed
     // upload could only have been a supporting document, so the signed agreement stays intact.
-    const query = Types.ObjectId.isValid(leaseId)
-      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
-      : { luid: leaseId, deletedAt: null };
-    const lease = await this.leaseDAO.findFirst(query);
+    // leaseId is the upload job's resourceId: the lease _id set by generateLeasePDF.
+    const lease = await this.leaseDAO.findFirst({
+      _id: new Types.ObjectId(leaseId),
+      deletedAt: null,
+    });
     if (lease && hasLeaseBeenSigned(lease)) {
       this.log.warn('Lease document upload failed on a signed lease; existing documents kept', {
         leaseId,
@@ -704,12 +708,11 @@ export class LeasePdfService {
       });
     }
 
-    // Flexible query - supports both ObjectId and luid
-    const query = Types.ObjectId.isValid(leaseId)
-      ? { _id: new Types.ObjectId(leaseId), deletedAt: null }
-      : { luid: leaseId, deletedAt: null };
-
-    const lease = await this.leaseDAO.findFirst(query);
+    // leaseId is the upload job's resourceId: the lease _id set by generateLeasePDF
+    const lease = await this.leaseDAO.findFirst({
+      _id: new Types.ObjectId(leaseId),
+      deletedAt: null,
+    });
     if (!lease) {
       throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
     }

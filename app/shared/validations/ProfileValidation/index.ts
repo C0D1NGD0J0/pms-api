@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { EmployeeDepartment } from '@interfaces/index';
 import { NOTIFICATION_CATEGORIES } from '@interfaces/notification.interface';
 
+import { shortUidString } from '../UtilsValidation';
+
 // User model fields that can be updated
 const userInfoSchema = z
   .object({
@@ -67,7 +69,8 @@ const profileMetaSchema = z.object({
 const employeeInfoSchema = z.object({
   jobTitle: z.string().min(2).max(100).optional(),
   department: z.nativeEnum(EmployeeDepartment).optional(),
-  reportsTo: z.string().min(2).max(100).optional(),
+  // The supervisor's user uid — resolved to the user server-side
+  reportsTo: shortUidString.optional(),
   employeeId: z.string().min(3).max(20).optional(),
   startDate: z.coerce.date().optional(),
   permissions: z.array(z.string()).optional(),
@@ -79,50 +82,9 @@ const vendorInfoSchema = z.object({
     .length(24, 'Vendor ID must be a valid MongoDB ObjectId')
     .regex(/^[0-9a-fA-F]{24}$/, 'Vendor ID must contain only hexadecimal characters')
     .optional(),
-  linkedVendorUid: z
-    .string()
-    .length(24, 'Linked vendor ID must be a valid MongoDB ObjectId')
-    .regex(/^[0-9a-fA-F]{24}$/, 'Linked vendor ID must contain only hexadecimal characters')
-    .optional(),
+  // vuid of the vendor organisation (team members only)
+  linkedVendorUid: shortUidString.optional(),
   isLinkedAccount: z.boolean().default(false),
-});
-
-const documentSchema = z.object({
-  id: z.string().optional(),
-  name: z.string().min(1, 'Document name is required'),
-  type: z.enum([
-    'passport',
-    'utility_bill',
-    'certification',
-    'drivers_license',
-    'employment_verification',
-    'other',
-  ]),
-  file: z
-    .custom<Express.Multer.File>(
-      (val) => {
-        if (!val) return true; // Optional field
-        return (
-          typeof val === 'object' &&
-          'fieldname' in val &&
-          'originalname' in val &&
-          'mimetype' in val &&
-          'size' in val
-        );
-      },
-      { message: 'Invalid file object' }
-    )
-    .optional(),
-  filename: z.string().optional(),
-  url: z.string().optional(),
-  key: z.string().optional(),
-  uploadedAt: z.coerce.date().optional(),
-  expiryDate: z.coerce.date().optional(),
-  status: z.enum(['valid', 'expiring', 'expired', 'uploaded']).default('uploaded'),
-});
-
-const documentsSchema = z.object({
-  items: z.array(documentSchema).default([]).optional(),
 });
 
 const tenantInfoSchema = z.object({
@@ -265,7 +227,6 @@ export const ProfileValidations = {
       personalInfo: personalInfoSchema.optional(),
       settings: settingsSchema.optional(),
       profileMeta: profileMetaSchema.optional(),
-      documents: documentsSchema.optional(),
       employeeInfo: employeeInfoSchema.optional(),
       vendorInfo: vendorInfoSchema.optional(),
       tenantInfo: tenantInfoSchema.optional(),

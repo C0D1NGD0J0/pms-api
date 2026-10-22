@@ -61,7 +61,8 @@ export class App implements IAppSetup {
       initBullBoardAdapter();
     }
     this.routes(this.expApp);
-    this.expApp.use(Sentry.expressErrorHandler());
+    // Registers Sentry's error handler (same order: after routes, before ours)
+    Sentry.setupExpressErrorHandler(this.expApp);
     this.expApp.use(errorHandlerMiddleware);
   };
 

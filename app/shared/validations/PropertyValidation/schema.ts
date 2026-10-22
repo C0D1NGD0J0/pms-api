@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { Types } from 'mongoose';
 import { createLogger } from '@utils/index';
 import { PropertyDAO, ClientDAO } from '@dao/index';
 import { MAX_ASSIGNED_STAFF } from '@utils/constants';
@@ -10,6 +9,7 @@ import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 
 import {
   emptyToUndefined,
+  shortUidString,
   objectIdString,
   optionalBlank,
   queryBoolean,
@@ -260,9 +260,10 @@ export const CreatePropertySchema = z.object({
     .max(100, 'Property name must be at most 100 characters'),
   propertyType: PropertyTypeEnum,
   operationalStatus: PropertyStatusEnum.default('available'),
-  managedBy: z.string(),
+  // User uids; the service checks each is an employee connected to this client
+  managedBy: optionalBlank(shortUidString),
   assignedStaff: z
-    .array(objectIdString)
+    .array(shortUidString)
     .max(
       MAX_ASSIGNED_STAFF,
       `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`
@@ -693,14 +694,11 @@ export const GetAssignableUsersSchema = z.object({
     .default(10),
 });
 
+// Staff are identified by their public user uid
 export const AssignStaffSchema = z.object({
-  userId: z
-    .string()
-    .refine((val) => Types.ObjectId.isValid(val), { message: 'Must be a valid user ID' }),
+  uid: shortUidString,
 });
 
 export const UnassignStaffSchema = z.object({
-  userId: z
-    .string()
-    .refine((val) => Types.ObjectId.isValid(val), { message: 'Must be a valid user ID' }),
+  uid: shortUidString,
 });

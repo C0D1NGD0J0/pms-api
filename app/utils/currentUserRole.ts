@@ -22,13 +22,8 @@ export const CurrentUser = {
   },
 
   /**
-   * A vendor team member — linked to a primary account but not the owner.
-   *
-   * `linkedVendorUid` is stored in two formats depending on the invitation path:
-   *   - CSV bulk invite: the vendor's vuid  (e.g. "GNTM8EMXMA2Z")
-   *   - Single invite: the primary vendor's User._id as a 24-hex string
-   *
-   * Either format means the user is a team member, so we check for presence.
+   * A vendor team member — linked to a vendor organisation but not its owner.
+   * `linkedVendorUid` holds the organisation's vuid (e.g. "GNTM8EMXMA2Z").
    */
   isVendorTeamMember(u: ICurrentUser): boolean {
     return (
@@ -37,22 +32,9 @@ export const CurrentUser = {
     );
   },
 
-  /**
-   * True if the user is a team member for a *specific* vendor org.
-   *
-   * @param vuid - The vendor's short vuid (matches CSV invite path)
-   * @param primaryAccountHolderUserId - The primary vendor's User._id string (matches single-invite path)
-   */
-  isVendorTeamMemberOf(
-    u: ICurrentUser,
-    vuid: string,
-    primaryAccountHolderUserId?: string
-  ): boolean {
-    if (!CurrentUser.isVendorTeamMember(u)) return false;
-    const linked = u.client.linkedVendorUid;
-    return (
-      linked === vuid || (!!primaryAccountHolderUserId && linked === primaryAccountHolderUserId)
-    );
+  /** True if the user is a team member of the vendor organisation `vuid`. */
+  isVendorTeamMemberOf(u: ICurrentUser, vuid: string): boolean {
+    return CurrentUser.isVendorTeamMember(u) && u.client.linkedVendorUid === vuid;
   },
 
   // ── PM-side checks ─────────────────────────────────────────────────────────

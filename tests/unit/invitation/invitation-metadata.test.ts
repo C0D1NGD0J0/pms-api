@@ -27,6 +27,7 @@ describe('Invitation Metadata Transfer', () => {
     user: new Types.ObjectId(),
     invitation: new Types.ObjectId(),
     profile: new Types.ObjectId(),
+    supervisor: new Types.ObjectId(),
   };
 
   const createMockDAOs = () => ({
@@ -96,6 +97,7 @@ describe('Invitation Metadata Transfer', () => {
       addExistingUserToClient: jest.fn().mockResolvedValue(mockUser),
       createUserFromInvitationData: jest.fn().mockResolvedValue(mockUser),
       buildProfileFromInvitationData: jest.fn().mockReturnValue({}),
+      findSupervisor: jest.fn().mockResolvedValue({ _id: mockIds.supervisor, uid: 'SUPVR0000001' }),
     } as any;
 
     const mockMediaUploadService = {
@@ -154,7 +156,7 @@ describe('Invitation Metadata Transfer', () => {
         jobTitle: 'Senior Maintenance Manager',
         employeeId: 'EMP-001',
         startDate: new Date('2024-01-15'),
-        reportsTo: 'John Doe',
+        reportsTo: 'SUPVR0000001',
       };
 
       const mockInvitation = {
@@ -237,11 +239,31 @@ describe('Invitation Metadata Transfer', () => {
         }
       );
 
-      // Verify that updateEmployeeInfo was called with the employee data
+      // The invited supervisor uid is resolved (scoped to the client) and stored as their ObjectId
+      const userService = (profileService as any).userService;
+      expect(userService.findSupervisor).toHaveBeenCalledWith('SUPVR0000001', 'client-123');
       expect(mockDAOs.profileDAO.updateEmployeeInfo).toHaveBeenCalledWith(
         mockIds.profile,
         'client-123',
-        mockEmployeeInfo
+        { ...mockEmployeeInfo, reportsTo: mockIds.supervisor }
+      );
+    });
+
+    it('drops an invited supervisor who is no longer in the client instead of failing', async () => {
+      const userService = (profileService as any).userService;
+      userService.findSupervisor.mockResolvedValueOnce(null);
+      const employeeInfo = { jobTitle: 'Agent', reportsTo: 'SUPVR0000001' };
+
+      await (profileService as any).handleEmployeeRoleIfNeeded(
+        { role: 'staff', cuid: 'client-123' },
+        { id: mockIds.profile },
+        { employeeInfo }
+      );
+
+      expect(mockDAOs.profileDAO.updateEmployeeInfo).toHaveBeenCalledWith(
+        mockIds.profile,
+        'client-123',
+        { jobTitle: 'Agent' }
       );
     });
   });

@@ -1,3 +1,4 @@
+import { t } from '@shared/languages';
 import * as Sentry from '@sentry/node';
 import { MongooseError } from 'mongoose';
 import { AwilixResolutionError } from 'awilix';
@@ -37,7 +38,6 @@ export const errorHandlerMiddleware = async (
     statusCode = mongoError.statusCode || 422;
     errorInfo = mongoError.errorInfo;
   } else if (err instanceof AwilixResolutionError) {
-    message = `Dependency injection error: ${err.message}`;
     statusCode = 500;
   } else if (err.name === 'ValidationError') {
     message = 'Validation failed';
@@ -61,11 +61,18 @@ export const errorHandlerMiddleware = async (
     }
   }
 
+  // Unexpected failures (thrown Error, TypeError, driver errors) describe server internals;
+  // CustomErrors carry messages written for the user
+  const isUnexpectedServerError = statusCode >= 500 && !(err instanceof CustomError);
+  if (isUnexpectedServerError) {
+    message = t('system.errors.unexpectedError');
+  }
+
   const errorResponse = {
     success: false,
     message,
     statusCode,
-    ...(err.errors?.length ? { errors: err.errors } : {}),
+    ...(err.errors?.length && !isUnexpectedServerError ? { errors: err.errors } : {}),
     ...(errorInfo ? { errorInfo } : {}),
     ...(code ? { code } : {}),
   };

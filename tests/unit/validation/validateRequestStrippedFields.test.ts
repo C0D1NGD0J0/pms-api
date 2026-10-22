@@ -80,15 +80,24 @@ describe('collectStrippedPaths', () => {
 });
 
 describe('schemas keep the fields services rely on', () => {
-  it('maintenance assignmentBody keeps a valid technician.userId and rejects a malformed one', () => {
-    const userId = '507f1f77bcf86cd799439011';
-    const parse = (id: string) =>
+  it('maintenance assignmentBody keeps a technician uid and rejects a Mongo _id', () => {
+    const parse = (uid: string) =>
       MaintenanceSchemas.assignmentBody.parse({
         action: 'accept',
-        technician: { name: 'T', userId: id },
+        technician: { name: 'T', uid },
       });
-    expect(parse(userId).technician?.userId).toBe(userId);
-    expect(() => parse('not-an-id')).toThrow('Must be a valid ID');
+    expect(parse('TECHUID00001').technician?.uid).toBe('TECHUID00001');
+    expect(() => parse('507f1f77bcf86cd799439011')).toThrow('Must be a valid user UID');
+    expect(() => parse('short')).toThrow('Must be a valid user UID');
+  });
+
+  it('maintenance listQuery accepts assignedTechnicianUid and drops assignedTechnicianSub', () => {
+    const parsed = MaintenanceSchemas.listQuery.parse({
+      assignedTechnicianUid: 'TECHUID00001',
+      assignedTechnicianSub: '507f1f77bcf86cd799439011',
+    }) as Record<string, unknown>;
+    expect(parsed.assignedTechnicianUid).toBe('TECHUID00001');
+    expect(parsed).not.toHaveProperty('assignedTechnicianSub');
   });
 
   it('guest pass createPass keeps host fields and treats blank inputs as missing', () => {

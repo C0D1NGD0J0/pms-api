@@ -155,6 +155,8 @@ beforeEach(() => {
       sendToUser: jest.fn().mockReturnValue(Promise.resolve(undefined)),
     } as any,
     s3Service: mockS3Service,
+    mediaUploadService: {} as any,
+    sseService: {} as any,
   });
 });
 
@@ -903,7 +905,25 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
     ).rejects.toThrow(ForbiddenError);
   });
 
-  it('acceptAssignment: stores assignedTechnician.userId when technician.userId is provided', async () => {
+  const teamMemberUid = 'TEAMMEMBER01';
+  const primaryVendorUserUid = 'PRIMARYVNDR1';
+
+  const makeTeamMemberUser = (linkedVendorUid: string, cuid = testCuid) => ({
+    _id: new Types.ObjectId(teamMemberSub),
+    uid: teamMemberUid,
+    cuids: [{ cuid, isConnected: true, linkedVendorUid }],
+  });
+
+  const acceptAsPrimaryVendor = (technician?: { name: string; uid?: string }) => {
+    const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
+    (ctx.currentuser as any).uid = primaryVendorUserUid;
+    return service.acceptAssignment(ctx as IRequestContext, 'MR001', {
+      action: 'accept',
+      ...(technician && { technician }),
+    });
+  };
+
+  const mockAssignedRequest = () => {
     const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
       vendorId: primaryVendorObjectId,
     });
@@ -912,72 +932,132 @@ describe('MaintenanceRequestService - team member (linked account) access', () =
       ...request,
       status: MaintenanceRequestStatus.IN_PROGRESS,
     });
+    return request;
+  };
 
+  it('acceptAssignment: resolves technician.uid to a team member and stores userId + uid', async () => {
+    mockAssignedRequest();
     mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
-    mockUserDAO.findFirst.mockResolvedValue({ _id: new Types.ObjectId(teamMemberSub) });
+    mockUserDAO.findFirst.mockResolvedValue(makeTeamMemberUser(primaryVendorUid));
 
-    const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
-    await service.acceptAssignment(ctx as IRequestContext, 'MR001', {
-      action: 'accept',
-      technician: { name: 'Tech One', userId: teamMemberSub },
-    });
+    await acceptAsPrimaryVendor({ name: 'Tech One', uid: teamMemberUid });
 
-    const updateCall = mockDAO.updateById.mock.calls[0];
-    const setPayload = updateCall[1].$set;
-    // userId is stored as an ObjectId, compare via toString()
+    const setPayload = mockDAO.updateById.mock.calls[0][1].$set;
     expect(setPayload.assignedTechnician.userId.toString()).toBe(teamMemberSub);
+    expect(setPayload.assignedTechnician.uid).toBe(teamMemberUid);
+    expect(setPayload.assignedTechnician.name).toBe('Tech One');
     expect(mockUserDAO.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        cuids: {
-          $elemMatch: expect.objectContaining({
-            cuid: testCuid,
-            isConnected: true,
-            linkedVendorUid: { $in: [primaryVendorUid, primaryVendorObjectId.toString()] },
-          }),
-        },
-      })
+      {
+        uid: teamMemberUid,
+        deletedAt: null,
+        cuids: { $elemMatch: { cuid: testCuid, isConnected: true } },
+      },
+      undefined,
+      expect.any(Object)
     );
   });
 
-  it('acceptAssignment: rejects a technician userId that is not on the vendor team', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
-      vendorId: primaryVendorObjectId,
+  it('acceptAssignment: the primary account holder can be named as technician by uid', async () => {
+    mockAssignedRequest();
+    mockUserDAO.findFirst.mockResolvedValue({
+      _id: primaryVendorObjectId,
+      uid: primaryVendorUserUid,
+      cuids: [{ cuid: testCuid, isConnected: true }],
     });
-    mockDAO.getByMruid.mockResolvedValue(request);
-    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+
+    await acceptAsPrimaryVendor({ name: 'Owner', uid: primaryVendorUserUid });
+
+    const setPayload = mockDAO.updateById.mock.calls[0][1].$set;
+    expect(setPayload.assignedTechnician.userId.toString()).toBe(primaryVendorObjectId.toString());
+    expect(setPayload.assignedTechnician.uid).toBe(primaryVendorUserUid);
+    expect(mockVendorDAO.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('acceptAssignment: rejects an unknown technician uid', async () => {
+    mockAssignedRequest();
     mockUserDAO.findFirst.mockResolvedValue(null);
 
-    const ctx = makeCtx('vendor', primaryVendorObjectId.toString());
-    await expect(
-      service.acceptAssignment(ctx as IRequestContext, 'MR001', {
-        action: 'accept',
-        technician: { name: 'Stranger', userId: new Types.ObjectId().toString() },
-      })
-    ).rejects.toThrow(ForbiddenError);
+    await expect(acceptAsPrimaryVendor({ name: 'Stranger', uid: 'UNKNOWNUID01' })).rejects.toThrow(
+      ForbiddenError
+    );
     expect(mockDAO.updateById).not.toHaveBeenCalled();
   });
 
-  it('acceptAssignment: defaults assignedTechnician.userId to caller sub when not provided', async () => {
-    const request = makeRequest(MaintenanceRequestStatus.ASSIGNED, {
-      vendorId: primaryVendorObjectId,
-    });
-    mockDAO.getByMruid.mockResolvedValue(request);
-    mockDAO.updateById.mockResolvedValue({
-      ...request,
-      status: MaintenanceRequestStatus.IN_PROGRESS,
-    });
+  it('acceptAssignment: rejects a connected user who is not on the vendor team', async () => {
+    mockAssignedRequest();
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+    mockUserDAO.findFirst.mockResolvedValue(makeTeamMemberUser('OTHERVENDOR1'));
 
-    const callerSub = primaryVendorObjectId.toString();
-    const ctx = makeCtx('vendor', callerSub);
-    await service.acceptAssignment(ctx as IRequestContext, 'MR001', {
-      action: 'accept',
-      technician: { name: 'Tech One' }, // no userId
-    });
+    await expect(acceptAsPrimaryVendor({ name: 'Other', uid: teamMemberUid })).rejects.toThrow(
+      ForbiddenError
+    );
+    expect(mockDAO.updateById).not.toHaveBeenCalled();
+  });
 
-    const updateCall = mockDAO.updateById.mock.calls[0];
-    const setPayload = updateCall[1].$set;
-    // When no userId is provided, the service defaults it to currentuser.sub
-    expect(setPayload.assignedTechnician.userId.toString()).toBe(callerSub);
+  it('acceptAssignment: no longer accepts a team member linked by the primary holder _id', async () => {
+    mockAssignedRequest();
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: primaryVendorUid });
+    mockUserDAO.findFirst.mockResolvedValue(makeTeamMemberUser(primaryVendorObjectId.toString()));
+
+    await expect(acceptAsPrimaryVendor({ name: 'Legacy', uid: teamMemberUid })).rejects.toThrow(
+      ForbiddenError
+    );
+  });
+
+  it('acceptAssignment: defaults the technician to the caller when no uid is provided', async () => {
+    mockAssignedRequest();
+
+    await acceptAsPrimaryVendor({ name: 'Tech One' });
+
+    const setPayload = mockDAO.updateById.mock.calls[0][1].$set;
+    expect(setPayload.assignedTechnician.userId.toString()).toBe(primaryVendorObjectId.toString());
+    expect(setPayload.assignedTechnician.uid).toBe(primaryVendorUserUid);
+    expect(mockUserDAO.findFirst).not.toHaveBeenCalled();
+  });
+
+  // ─── listRequests: assignedTechnicianUid ──────────────────────────────────
+
+  it('listRequests: team member filtering by their own uid resolves to their internal ref', async () => {
+    mockDAO.listWithDetails.mockResolvedValue({ items: [], pagination: {} });
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    (ctx.currentuser as any).uid = teamMemberUid;
+
+    await service.listRequests(
+      ctx as IRequestContext,
+      { assignedTechnicianUid: teamMemberUid },
+      { page: 1, limit: 20 }
+    );
+
+    const [filterArg] = mockDAO.listWithDetails.mock.calls[0];
+    expect(filterArg['assignedTechnician.userId'].toString()).toBe(teamMemberSub);
+  });
+
+  it("listRequests: team member cannot filter by another technician's uid", async () => {
+    const ctx = makeLinkedCtx(teamMemberSub, primaryVendorUid);
+    (ctx.currentuser as any).uid = teamMemberUid;
+
+    await expect(
+      service.listRequests(
+        ctx as IRequestContext,
+        { assignedTechnicianUid: 'SOMEONEELSE1' },
+        { page: 1, limit: 20 }
+      )
+    ).rejects.toThrow(ForbiddenError);
+  });
+
+  it('listRequests: an unknown technician uid matches nothing', async () => {
+    mockDAO.listWithDetails.mockResolvedValue({ items: [], pagination: {} });
+    mockUserDAO.findFirst.mockResolvedValue(null);
+    const ctx = makeCtx('admin');
+
+    await service.listRequests(
+      ctx as IRequestContext,
+      { assignedTechnicianUid: 'UNKNOWNUID01' },
+      { page: 1, limit: 20 }
+    );
+
+    const [filterArg] = mockDAO.listWithDetails.mock.calls[0];
+    expect(filterArg['assignedTechnician.userId']).toEqual({ $in: [] });
   });
 
   // ─── declineAssignment ────────────────────────────────────────────────────
@@ -1328,5 +1408,37 @@ describe('MaintenanceRequestService - getRequest presigned URLs', () => {
     await service.getRequest(makeCtx('admin') as IRequestContext, 'MR001');
 
     expect(mockS3Service.signFileUrls).not.toHaveBeenCalled();
+  });
+});
+
+// ===========================================================================
+// getRequest — assigned vendor public id
+// ===========================================================================
+
+describe('MaintenanceRequestService - getRequest vendor vuid', () => {
+  it('exposes the assigned vendor vuid so the client can preselect it', async () => {
+    mockDAO.findFirst.mockResolvedValue(
+      makeRequest(MaintenanceRequestStatus.ASSIGNED, {
+        vendorId: { _id: vendorObjectId, email: 'vendor@example.com', uid: 'VENDORUSER01' },
+      })
+    );
+    mockLeaseDAO.findFirst.mockResolvedValue(null);
+    mockVendorDAO.findFirst.mockResolvedValue({ vuid: 'VUID00000001', companyName: 'Fix-It Co' });
+
+    const result: any = await service.getRequest(makeCtx('admin') as IRequestContext, 'MR001');
+
+    expect(result.data.vendorVuid).toBe('VUID00000001');
+    expect(result.data.vendorName).toBe('Fix-It Co');
+  });
+
+  it('returns a null vendorVuid when no vendor is assigned', async () => {
+    mockDAO.findFirst.mockResolvedValue(
+      makeRequest(MaintenanceRequestStatus.OPEN, { vendorId: undefined })
+    );
+    mockLeaseDAO.findFirst.mockResolvedValue(null);
+
+    const result: any = await service.getRequest(makeCtx('admin') as IRequestContext, 'MR001');
+
+    expect(result.data.vendorVuid).toBeNull();
   });
 });

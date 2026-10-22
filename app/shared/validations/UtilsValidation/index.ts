@@ -29,6 +29,11 @@ export const optionalBlank = <T extends z.ZodTypeAny>(schema: T) =>
 
 export const objectIdString = z.string().regex(/^[a-f\d]{24}$/i, 'Must be a valid ID');
 
+// Public identifiers (cuid, uid, vuid, pid, ...) from generateShortUID(): 12 chars of nanoid's
+// alphabet, uppercased
+export const SHORT_UID_REGEX = /^[A-Z0-9_-]{12}$/;
+export const shortUidString = z.string().trim().regex(SHORT_UID_REGEX, 'Must be a valid ID');
+
 export const phoneNumber = z
   .string()
   .trim()

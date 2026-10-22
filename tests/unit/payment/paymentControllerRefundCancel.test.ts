@@ -103,7 +103,7 @@ describe('PaymentValidations', () => {
       paymentMethod: 'cash',
       baseAmount: '150000',
       paidAt: '2026-09-02',
-      tenantId: USER_ID,
+      tenantUid: 'TENANT-UID-1',
       leaseId: 'L1',
     };
 
@@ -121,6 +121,7 @@ describe('PaymentValidations', () => {
       [{ status: 'overdue' }],
       [{ paymentMethod: 'online' }],
       [{ paidAt: '2099-01-01' }],
+      [{ tenantUid: undefined, tenantId: '507f1f77bcf86cd799439011' }],
     ])('rejects %j', (overrides) => {
       expect(
         PaymentValidations.recordManualPayment.safeParse({ ...valid, ...overrides }).success

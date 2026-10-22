@@ -169,6 +169,20 @@ describe('LeaseDocumentService.uploadLeaseDocument', () => {
     );
   });
 
+  it('tags the document with the lease luid as publicuid even when looked up by _id', async () => {
+    const { service, leaseDAO, lease } = makeService();
+
+    await service.uploadLeaseDocument(
+      'C1',
+      lease._id.toString(),
+      s3Result('lease.pdf') as any,
+      USER_ID
+    );
+
+    const [[, [document]]] = leaseDAO.updateLeaseDocuments.mock.calls;
+    expect(document.publicuid).toBe('L1');
+  });
+
   it('rejects when no document was uploaded', async () => {
     const { service } = makeService();
 

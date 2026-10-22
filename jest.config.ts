@@ -28,7 +28,20 @@ const config: JestConfigWithTsJest = {
   // 20-min limit. Types are still enforced by `tsc` (pre-push hook and the CI TypeScript job).
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', { isolatedModules: true }],
+    // ESM-only packages (below) compiled to CommonJS for Jest; Node 22 loads them natively
+    '^.+\\.js$': [
+      'babel-jest',
+      {
+        babelrc: false,
+        configFile: false,
+        presets: [['@babel/preset-env', { targets: { node: 'current' } }]],
+      },
+    ],
   },
+  // sanitize-html >= 2.18 depends on the ESM-only htmlparser2 family
+  transformIgnorePatterns: [
+    '/node_modules/(?!(sanitize-html/node_modules/)?(htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities)/)',
+  ],
   testEnvironmentOptions: {
     node: true,
   },
@@ -42,6 +55,8 @@ const config: JestConfigWithTsJest = {
   maxWorkers: '50%',
   workerIdleMemoryLimit: '512MB',
   moduleNameMapper: {
+    // ESM-only since v25; tests never drive a real browser (see the stub)
+    '^puppeteer$': '<rootDir>/tests/setup/puppeteerStub.ts',
     '@controllers/(.*)': '<rootDir>/app/controllers/$1',
     '@interfaces/(.*)': '<rootDir>/app/interfaces/$1',
     '@models/(.*)': '<rootDir>/app/models/$1',

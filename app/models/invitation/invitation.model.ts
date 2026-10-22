@@ -141,9 +141,10 @@ const InvitationSchema = new Schema<IInvitationDocument>(
     declinedAt: {
       type: Date,
     },
+    // vuid of the vendor organisation a team-member invitation joins
     linkedVendorUid: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
+      type: String,
+      trim: true,
       index: true,
       default: null,
     },

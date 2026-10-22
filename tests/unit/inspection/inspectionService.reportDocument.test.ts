@@ -70,6 +70,8 @@ beforeEach(() => {
     notificationService: mockNotificationService as any,
     paymentDAO: mockPaymentDAO as any,
     emailQueue: mockEmailQueue,
+    mediaUploadService: {} as any,
+    sseService: {} as any,
     s3Service: { getSignedUrl: jest.fn(), uploadFiles: jest.fn() } as any,
   });
 });
@@ -82,20 +84,20 @@ describe('InspectionService.updateReportDocument', () => {
     size: 204800,
   };
 
-  it('should update reportDocument fields and return the cuid', async () => {
+  it('should update reportDocument fields and return the cuid and iuid', async () => {
     const inspection = {
       _id: new Types.ObjectId(inspectionId),
+      iuid: 'INS1',
       cuid: CUID,
       status: InspectionStatus.SUBMITTED,
       type: InspectionType.MOVE_IN,
     };
 
     mockInspectionDAO.updateById.mockReturnValue(Promise.resolve(inspection));
-    mockInspectionDAO.findFirst.mockReturnValue(Promise.resolve(inspection));
 
     const result = await service.updateReportDocument(inspectionId, pdfResult);
 
-    expect(result).toBe(CUID);
+    expect(result).toEqual({ cuid: CUID, iuid: 'INS1' });
 
     // Verify updateById was called with the correct $set payload
     expect(mockInspectionDAO.updateById).toHaveBeenCalledWith(
@@ -114,35 +116,30 @@ describe('InspectionService.updateReportDocument', () => {
     const updateCall = mockInspectionDAO.updateById.mock.calls[0];
     const setPayload = updateCall[1].$set;
     expect(setPayload['reportDocument.generatedAt']).toBeInstanceOf(Date);
-
-    // Verify findFirst was called to look up the cuid
-    expect(mockInspectionDAO.findFirst).toHaveBeenCalledWith({ _id: inspectionId });
   });
 
-  it('should return null when inspection is not found after update', async () => {
+  it('should return null when the inspection is not found', async () => {
     mockInspectionDAO.updateById.mockReturnValue(Promise.resolve(null));
-    mockInspectionDAO.findFirst.mockReturnValue(Promise.resolve(null));
 
     const result = await service.updateReportDocument(inspectionId, pdfResult);
 
     expect(result).toBeNull();
     expect(mockInspectionDAO.updateById).toHaveBeenCalledTimes(1);
-    expect(mockInspectionDAO.findFirst).toHaveBeenCalledTimes(1);
   });
 
   it('should handle pdfResult without optional key and size', async () => {
     const minimalPdfResult = { url: 'https://s3.example.com/report.pdf' };
     const inspection = {
       _id: new Types.ObjectId(inspectionId),
+      iuid: 'INS1',
       cuid: CUID,
     };
 
     mockInspectionDAO.updateById.mockReturnValue(Promise.resolve(inspection));
-    mockInspectionDAO.findFirst.mockReturnValue(Promise.resolve(inspection));
 
     const result = await service.updateReportDocument(inspectionId, minimalPdfResult);
 
-    expect(result).toBe(CUID);
+    expect(result).toEqual({ cuid: CUID, iuid: 'INS1' });
 
     const updateCall = mockInspectionDAO.updateById.mock.calls[0];
     const setPayload = updateCall[1].$set;

@@ -56,6 +56,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
   let cuid: string;
   let clientId: Types.ObjectId;
   let tenantUserId: Types.ObjectId;
+  let tenantUid: string;
   let tenantProfileId: Types.ObjectId;
   let propertyId: Types.ObjectId;
 
@@ -79,6 +80,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
     clientId = client._id as Types.ObjectId;
     const tenant = await createTestUser(cuid, { roles: ['tenant'] });
     tenantUserId = tenant._id as Types.ObjectId;
+    tenantUid = tenant.uid;
     tenantProfileId = (await createTestProfile(tenantUserId, clientId))._id as Types.ObjectId;
     // Tenant profiles carry a tenantInfo object (the factory leaves it null)
     await mongoose.connection
@@ -584,7 +586,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
           paymentType: PaymentRecordType.SECURITY_DEPOSIT,
           paymentMethod: PaymentMethod.CASH,
           baseAmount: SECURITY_DEPOSIT + PET_DEPOSIT,
-          tenantId: tenantUserId.toString(),
+          tenantUid,
           leaseId: lease.luid,
           paidAt: new Date(),
         }

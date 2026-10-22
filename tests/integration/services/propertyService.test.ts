@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { PropertyCache } from '@caching/property.cache';
+import { EventTypes } from '@interfaces/events.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { PropertyService } from '@services/property/property.service';
@@ -32,6 +33,7 @@ const mockMediaUploadService = {
   handleAvatarDeletion: jest.fn().mockResolvedValue(undefined),
   uploadFile: jest.fn().mockResolvedValue({ success: true }),
   uploadRequestFiles: jest.fn().mockResolvedValue([]),
+  removeUploadedFiles: jest.fn().mockResolvedValue(undefined),
 } as any;
 
 const mockGeoCoderService = {
@@ -282,6 +284,112 @@ describe('PropertyService Integration Tests', () => {
         }
       });
 
+      describe('with uploaded files', () => {
+        const newPropertyData = () => ({
+          name: `Uploads Property ${Date.now()}`,
+          propertyType: 'apartment' as const,
+          maxAllowedUnits: 10,
+          fullAddress: `${Date.now()} Upload Ave, New York, NY 10001`,
+          address: {
+            street: 'Upload Ave',
+            city: 'New York',
+            state: 'NY',
+            postCode: '10001',
+            country: 'USA',
+            fullAddress: `${Date.now()} Upload Ave, New York, NY 10001`,
+          },
+          description: { text: 'Property created with photos and a deed' },
+          specifications: { totalArea: 5000 },
+          fees: { rentAmount: '850', currency: 'USD' },
+          occupancyStatus: 'vacant' as const,
+        });
+        const scannedFiles = [
+          { fieldName: 'images[0].file', path: '/tmp/front.png' },
+          { fieldName: 'documents[0].file', path: '/tmp/deed.pdf', documentType: 'deed' },
+        ] as any;
+        const uploadsFor = (pid: string) => [
+          {
+            fieldName: 'images[0]',
+            resourceId: pid,
+            resourceName: 'property',
+            publicuid: pid,
+            filename: 'front.png',
+            key: `property/${pid}/front.png`,
+            url: `https://s3.test/property/${pid}/front.png`,
+            mediatype: 'image' as const,
+          },
+          {
+            fieldName: 'documents[0]',
+            resourceId: pid,
+            resourceName: 'property',
+            publicuid: pid,
+            filename: 'deed.pdf',
+            documentType: 'deed',
+            key: `property/${pid}/deed.pdf`,
+            url: `https://s3.test/property/${pid}/deed.pdf`,
+            mediatype: 'document' as const,
+          },
+        ];
+
+        it('saves the uploaded media with the new property in one write', async () => {
+          mockMediaUploadService.uploadRequestFiles.mockImplementationOnce(
+            async (_req: any, resource: any) => uploadsFor(resource.resourceId)
+          );
+          (mockEventEmitter.emit as jest.Mock).mockClear();
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            newPropertyData() as any,
+            scannedFiles
+          );
+
+          const { pid } = result.data;
+          expect(mockMediaUploadService.uploadRequestFiles).toHaveBeenCalledWith(
+            { scannedFiles },
+            expect.objectContaining({ resourceName: 'property', resourceId: pid })
+          );
+          const saved = await Property.findOne({ pid }).lean();
+          expect(saved!.images).toEqual([
+            expect.objectContaining({ key: `property/${pid}/front.png`, filename: 'front.png' }),
+          ]);
+          expect(saved!.documents).toEqual([
+            expect.objectContaining({
+              key: `property/${pid}/deed.pdf`,
+              documentType: 'deed',
+              status: 'active',
+            }),
+          ]);
+          expect(result.data.images[0]).toEqual(
+            expect.objectContaining({ key: `property/${pid}/front.png`, url: expect.any(String) })
+          );
+          expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+            EventTypes.UPLOAD_COMPLETED,
+            expect.objectContaining({ resourceName: 'property', resourceId: pid })
+          );
+        });
+
+        it('removes the uploaded files when the property is not created', async () => {
+          const uploads = uploadsFor('PENDING');
+          mockMediaUploadService.uploadRequestFiles.mockResolvedValueOnce(uploads);
+          mockMediaUploadService.removeUploadedFiles.mockClear();
+          const createProperty = jest
+            .spyOn(PropertyDAO.prototype, 'createProperty')
+            .mockRejectedValueOnce(new Error('insert failed'));
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          try {
+            await expect(
+              propertyService.addProperty(ctx as any, newPropertyData() as any, scannedFiles)
+            ).rejects.toThrow('insert failed');
+          } finally {
+            createProperty.mockRestore();
+          }
+
+          expect(mockMediaUploadService.removeUploadedFiles).toHaveBeenCalledWith(uploads);
+        });
+      });
+
       it("prices the property in the account's currency, not the one sent", async () => {
         await Client.updateOne({ cuid: testClient.cuid }, { 'settings.defaultCurrency': 'CAD' });
         const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
@@ -477,19 +585,20 @@ describe('PropertyService Integration Tests', () => {
           ...overrides,
         });
 
-        it('stores assignedStaff as ObjectIds, deduped and without the manager', async () => {
+        it('resolves manager and staff uids to ObjectIds, deduped and without the manager', async () => {
           const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
           const staffId = staffUser._id.toString();
 
           const result = await propertyService.addProperty(
             ctx as any,
             buildHouse({
-              managedBy: adminUser._id.toString(),
-              assignedStaff: [staffId, staffId, adminUser._id.toString()],
+              managedBy: adminUser.uid,
+              assignedStaff: [staffUser.uid, staffUser.uid, adminUser.uid],
             }) as any
           );
 
           const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          expect(saved!.managedBy!.toString()).toBe(adminUser._id.toString());
           expect(saved!.assignedStaff).toHaveLength(1);
           expect(saved!.assignedStaff![0]).toBeInstanceOf(Types.ObjectId);
           expect(saved!.assignedStaff![0].toString()).toBe(staffId);
@@ -511,6 +620,20 @@ describe('PropertyService Integration Tests', () => {
           expect(saved!.fees.managementFees).toBe(75000);
         });
 
+        it('rejects a manager uid from another client', async () => {
+          const otherClient = await createTestClient();
+          const outsider = await createTestUser(otherClient.cuid, {
+            roles: [ROLES.MANAGER],
+            email: `outside-manager-${Date.now()}@test.com`,
+          });
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          await expect(
+            propertyService.addProperty(ctx as any, buildHouse({ managedBy: outsider.uid }) as any)
+          ).rejects.toThrow(BadRequestError);
+          expect(await Property.countDocuments({ cuid: testClient.cuid })).toBe(0);
+        });
+
         it('rejects staff who are not connected to the client', async () => {
           const otherClient = await createTestClient();
           const outsider = await createTestUser(otherClient.cuid, {
@@ -522,7 +645,7 @@ describe('PropertyService Integration Tests', () => {
           await expect(
             propertyService.addProperty(
               ctx as any,
-              buildHouse({ assignedStaff: [outsider._id.toString()] }) as any
+              buildHouse({ assignedStaff: [outsider.uid] }) as any
             )
           ).rejects.toThrow(BadRequestError);
           expect(await Property.countDocuments({ cuid: testClient.cuid })).toBe(0);
@@ -1651,6 +1774,63 @@ describe('PropertyService Integration Tests', () => {
         expect(result.success).toBe(true);
         expect(result.data.items.length).toBeGreaterThan(0);
         expect(result.data.metadata).toBeDefined();
+      });
+
+      it('flags properties that fail the leasing ownership checks, reading the hidden fields', async () => {
+        // The test factory gives every property an active agreement; each case sets its own
+        const blockedReasonOf = async (overrides: Record<string, unknown>) => {
+          const property = await createTestProperty(testClient.cuid, testClient._id, {
+            propertyType: 'house',
+            operationalStatus: 'available',
+          });
+          await Property.collection.updateOne(
+            { _id: property._id },
+            { $unset: { authorization: '' } }
+          );
+          await Property.collection.updateOne({ _id: property._id }, { $set: overrides });
+
+          const result = await propertyService.getLeaseableProperties(
+            testClient.cuid,
+            {
+              sub: adminUser._id.toString(),
+              client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+            } as any,
+            false
+          );
+          return result.data.items.find((item: any) => item.pid === property.pid)
+            ?.leasingBlockedReason;
+        };
+        const future = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        // imported (or new) and not yet reviewed
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'unverified',
+            owner: { type: 'company_owned' },
+          })
+        ).toBe('ownership_unverified');
+        // an active grace period is enough
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'unverified',
+            owner: { type: 'company_owned' },
+            verificationGracePeriod: { expiresAt: future, grantedBy: adminUser._id },
+          })
+        ).toBeNull();
+        // external owner with no management agreement
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'verified',
+            owner: { type: 'external_owner', name: 'Owner' },
+          })
+        ).toBe('management_not_authorized');
+        expect(
+          await blockedReasonOf({
+            verificationStatus: 'verified',
+            owner: { type: 'external_owner', name: 'Owner' },
+            authorization: { isActive: true, expiresAt: future },
+          })
+        ).toBeNull();
       });
 
       it('should include units when fetchUnits is true', async () => {

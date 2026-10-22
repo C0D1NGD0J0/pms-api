@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { GuestPassStatus } from '@interfaces/index';
 
-import { objectIdString, optionalBlank, phoneNumber } from '../UtilsValidation';
+import { optionalBlank, phoneNumber } from '../UtilsValidation';
 
 const statuses = Object.values(GuestPassStatus) as [string, ...string[]];
 // pid / puid
@@ -84,10 +84,10 @@ export const GuestPassValidations = {
   }),
 
   propertyIdParam: z.object({
-    propertyId: objectIdString.describe('Property ID is missing or invalid'),
+    propertyId: resourceId.describe('Property ID is missing or invalid'),
   }),
 
   unacknowledgedCountQuery: z.object({
-    propertyId: objectIdString.optional(),
+    propertyId: resourceId.optional(),
   }),
 };

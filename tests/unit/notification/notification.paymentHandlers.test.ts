@@ -575,6 +575,33 @@ describe('handleDepositRefundFailed', () => {
     });
     expect(emailCall(ctx, 'depositRefundFailed').to).toBe('owner@example.com');
   });
+
+  it('looks the lease up by _id within the client', async () => {
+    const ctx = buildCtx({ lease: { property: { id: propertyId } } });
+    await handleDepositRefundFailed(ctx, {
+      cuid: CUID,
+      pytuid: 'PYT-DEP',
+      leaseId: leaseId.toString(),
+      amount: 150000,
+      currency: 'CAD',
+      reason: 'x',
+    });
+    expect(ctx.leaseDAO!.findFirst).toHaveBeenCalledWith({ _id: leaseId, cuid: CUID });
+  });
+
+  it('skips the lease lookup and emails the account admin when leaseId is not an ObjectId', async () => {
+    const ctx = buildCtx({ lease: { property: { id: propertyId } } });
+    await handleDepositRefundFailed(ctx, {
+      cuid: CUID,
+      pytuid: 'PYT-DEP',
+      leaseId: 'LEASE0000001',
+      amount: 150000,
+      currency: 'CAD',
+      reason: 'x',
+    });
+    expect(ctx.leaseDAO!.findFirst).not.toHaveBeenCalled();
+    expect(emailCall(ctx, 'depositRefundFailed').to).toBe('owner@example.com');
+  });
 });
 
 describe('handleMaintenanceChargeCreated', () => {

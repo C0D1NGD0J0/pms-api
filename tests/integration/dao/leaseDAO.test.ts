@@ -1633,7 +1633,8 @@ describe('LeaseDAO Integration Tests', () => {
       expect(updated).not.toBeNull();
     });
 
-    it('should handle luid instead of ObjectId', async () => {
+    // Internal only: every caller passes the lease _id (request handlers resolve the luid first)
+    it('looks the lease up by _id only, scoped to the cuid when given', async () => {
       const lease = await Lease.create({
         cuid: testCuid,
         type: LeaseType.FIXED_TERM,
@@ -1661,9 +1662,18 @@ describe('LeaseDAO Integration Tests', () => {
         ],
       });
 
-      const updated = await leaseDAO.updateLeaseDocumentStatus(lease.luid, 'active');
-
-      expect(updated).not.toBeNull();
+      await expect(leaseDAO.updateLeaseDocumentStatus(lease.luid, 'active')).rejects.toThrow();
+      expect(
+        await leaseDAO.updateLeaseDocumentStatus(lease._id.toString(), 'active', undefined, 'OTHER')
+      ).toBeNull();
+      expect(
+        await leaseDAO.updateLeaseDocumentStatus(
+          lease._id.toString(),
+          'active',
+          undefined,
+          testCuid
+        )
+      ).not.toBeNull();
     });
   });
 

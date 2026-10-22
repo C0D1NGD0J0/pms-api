@@ -151,6 +151,7 @@ export interface IAssignableUser {
   // Personal "First Last" name — use this when picking a person to assign
   fullName: string;
   email: string;
+  uid: string;
   id: string;
 }
 

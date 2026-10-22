@@ -32,7 +32,7 @@ const makeLease = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
-const buildService = (lease: Record<string, any>) => {
+const buildService = (lease: Record<string, any>, propertyOverrides: Record<string, any> = {}) => {
   const pdfQueue = { addToPdfQueue: jest.fn().mockReturnValue(Promise.resolve({ id: 'pdf-1' })) };
   const mocks = {
     leaseDAO: {
@@ -49,6 +49,9 @@ const buildService = (lease: Record<string, any>) => {
           operationalStatus: 'available',
           owner: { type: 'company_owned' },
           isManagementAuthorized: () => true,
+          verificationStatus: 'verified',
+          authorization: { isActive: true },
+          ...propertyOverrides,
         })
       ),
     },
@@ -93,5 +96,31 @@ describe('LeaseSignatureService.sendLeaseForSignature - PDF not generated yet', 
     expect(pdfQueue.addToPdfQueue).toHaveBeenCalledWith(
       expect.objectContaining({ templateType: 'residential-apartment' })
     );
+  });
+});
+
+describe('LeaseSignatureService.sendLeaseForSignature - property ownership', () => {
+  it('refuses to send when the property is no longer verified (e.g. a grace period expired)', async () => {
+    const { service, pdfQueue } = buildService(makeLease(), {
+      verificationStatus: 'unverified',
+      verificationGracePeriod: { expiresAt: dayjs().subtract(1, 'day').toDate() },
+    });
+
+    await expect(service.sendLeaseForSignature(managerContext)).rejects.toThrow(
+      'lease.errors.ownershipUnverified'
+    );
+    expect(pdfQueue.addToPdfQueue).not.toHaveBeenCalled();
+  });
+
+  it('still sends without a management agreement, since the external owner signs directly', async () => {
+    const { service, pdfQueue } = buildService(makeLease(), {
+      owner: { type: 'external_owner', email: 'owner@example.com' },
+      isManagementAuthorized: () => false,
+      authorization: undefined,
+    });
+
+    await service.sendLeaseForSignature(managerContext);
+
+    expect(pdfQueue.addToPdfQueue).toHaveBeenCalled();
   });
 });

@@ -90,7 +90,6 @@ export interface IReportStatusResponse {
   startDate: Date;
   endDate: Date;
 }
-
 export interface IReportJobData {
   emailRecipients: string[];
   sections: ReportSection[];
@@ -104,13 +103,22 @@ export interface IReportJobData {
   endDate: Date;
   cuid: string;
 }
-
-// --- Response types ---
-
 export type IReportListReturnData = IPromiseReturnedData<{
-  reports: IReportDocument[];
+  reports: IReportListItemResponse[];
   pagination: IPaginateResult;
 }>;
 
+export type IReportScheduleResponse = WithPublicPropertyRef<IReportScheduleDocument>;
+
+export type IReportListItemResponse = WithPublicPropertyRef<IReportDocument>;
+
+// --- Response types ---
+
 export type IReportReturnData = IPromiseReturnedData<IReportStatusResponse>;
+
 export type ReportSection = (typeof REPORT_SECTIONS)[number];
+// Public shapes — the stored propertyId (Mongo _id) is swapped for the property's pid.
+type WithPublicPropertyRef<T extends Document> = {
+  _id: Types.ObjectId;
+  pid?: string;
+} & Omit<T, 'propertyId' | keyof Document>;

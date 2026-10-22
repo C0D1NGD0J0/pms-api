@@ -382,6 +382,7 @@ export const MaintenanceRequestDetailSchema = MaintenanceRequestSummarySchema.ex
     .optional(),
   assignedTechnician: z
     .object({
+      uid: z.string().optional(),
       name: z.string(),
       phone: z.string().optional(),
       email: z.string().optional(),

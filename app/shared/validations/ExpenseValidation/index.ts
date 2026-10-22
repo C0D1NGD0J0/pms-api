@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { ExpensePaymentMethod, ExpenseCategory } from '@interfaces/expense.interface';
 
+import { shortUidString } from '../UtilsValidation';
+
 const categories = Object.values(ExpenseCategory) as [string, ...string[]];
 const paymentMethods = Object.values(ExpensePaymentMethod) as [string, ...string[]];
-const objectIdRegex = /^[a-fA-F0-9]{24}$/;
-const objectId = z.string().regex(objectIdRegex, 'Must be a valid ID');
 
 export const ExpenseValidations = {
   createExpense: z.object({
-    propertyId: objectId.describe('Property ID is required'),
-    unitId: objectId.optional(),
+    pid: shortUidString.describe('Property is required'),
+    puid: shortUidString.optional(),
     amount: z.number().int().min(1, 'Amount must be at least 1 cent'),
     currency: z.string().length(3).toUpperCase().optional(),
     category: z.enum(categories, { message: `Category must be one of: ${categories.join(', ')}` }),
@@ -28,8 +28,8 @@ export const ExpenseValidations = {
   }),
 
   updateExpense: z.object({
-    propertyId: objectId.optional(),
-    unitId: objectId.optional(),
+    pid: shortUidString.optional(),
+    puid: shortUidString.optional(),
     amount: z.number().int().min(1).optional(),
     currency: z.string().length(3).toUpperCase().optional(),
     category: z.enum(categories).optional(),
@@ -46,8 +46,8 @@ export const ExpenseValidations = {
   }),
 
   listExpensesQuery: z.object({
-    propertyId: objectId.optional(),
-    unitId: objectId.optional(),
+    pid: shortUidString.optional(),
+    puid: shortUidString.optional(),
     category: z.enum(categories).optional(),
     from: z.string().optional(),
     to: z.string().optional(),

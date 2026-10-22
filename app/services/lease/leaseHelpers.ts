@@ -9,6 +9,11 @@ import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import type { PdfJobData } from '@interfaces/pdfGenerator.interface';
 import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
+import {
+  PROPERTY_LEASING_BLOCK_MESSAGE_KEYS,
+  getPropertyLeasingBlock,
+  LeasingCheckFields,
+} from '@utils/propertyLeasing';
 export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
 export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
@@ -1236,14 +1241,14 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
   renewalEndDate.setMonth(renewalStartDate.getMonth() + renewalMonths);
 
   // Pre-calculate form initial values for renewal
+  // Public ids only (pid, unit puid); the manager and tenant uids are added by getRenewalFormData
   const renewalFormData = {
     property: {
-      id: lease.propertyInfo?.id?.toString() || '',
-      unitId: lease.propertyUnitInfo?.id?.toString() || '',
+      pid: lease.propertyInfo?.pid || '',
+      puid: lease.propertyUnitInfo?.puid || '',
       address: lease.propertyInfo?.address || '',
     },
     tenant: {
-      id: lease.tenantInfo?._id?.toString() || lease.tenantId?.toString() || '',
       fullname: lease.tenantInfo?.fullname || '',
     },
     duration: {
@@ -1517,4 +1522,20 @@ export async function buildLandlordInfo(
       client.companyProfile?.companyPhone || `${profile.personalInfo.phoneNumber || 'N/A'}`,
     isExternalOwner: false,
   };
+}
+
+/**
+ * Throws when the property fails the ownership rules for leasing (approved, management
+ * authorized, ownership verified) — whether it was created by form or CSV import.
+ * Pass `requireManagementAuth: false` for signing/activation, where an external owner without a
+ * management agreement signs directly.
+ */
+export function assertPropertyLeasable(
+  property: LeasingCheckFields,
+  options?: { requireManagementAuth?: boolean }
+): void {
+  const block = getPropertyLeasingBlock(property, options);
+  if (block) {
+    throw new BadRequestError({ message: t(PROPERTY_LEASING_BLOCK_MESSAGE_KEYS[block]) });
+  }
 }

@@ -45,8 +45,7 @@ export class PaymentController {
     const filters = {
       status: req.query.status as string,
       type: req.query.type as string,
-      tenantId: req.query.tenantId as string,
-      leaseId: req.query.leaseId as string,
+      tenantUid: req.query.tenantUid as string,
       luid: req.query.luid as string,
       maintenanceRequestUid: req.query.maintenanceRequestUid as string,
       pendingReview: req.query.pendingReview === 'true',
@@ -82,7 +81,7 @@ export class PaymentController {
     const { mruid } = req.body as { mruid: string };
     const result = await this.paymentService.chargeForMaintenance(cuid, tenantId, {
       mruid,
-      tenantId,
+      tenantUid: req.context.currentuser!.uid,
     });
     return res.status(200).json(result);
   }
@@ -240,8 +239,8 @@ export class PaymentController {
 
   async getPaymentStats(req: AppRequest, res: Response) {
     const { cuid } = req.params;
-    const { tenantId } = req.query as { tenantId?: string };
-    const result = await this.paymentService.getPaymentStats(cuid, req.context, tenantId);
+    const { tenantUid } = req.query as { tenantUid?: string };
+    const result = await this.paymentService.getPaymentStats(cuid, req.context, tenantUid);
     return res.status(200).json(result);
   }
 

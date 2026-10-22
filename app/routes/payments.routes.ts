@@ -41,7 +41,7 @@ router.get(
   '/:cuid/stats',
   basicLimiter(),
   requirePermission(PermissionResource.PAYMENT, PermissionAction.LIST),
-  validateRequest({ params: UtilsValidations.cuid }),
+  validateRequest({ params: UtilsValidations.cuid, query: PaymentValidations.paymentStatsQuery }),
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.getPaymentStats(req, res);

@@ -27,8 +27,7 @@ router.post(
   subscriptionEntitlements,
   requireActiveSubscription,
   basicLimiter(),
-  diskUpload(['propertyUnit.media']),
-  scanFile,
+  // Unit photos are added through PATCH /:puid/media, which saves them during the request
   validateRequest({
     body: PropertyUnitValidations.createUnits,
   }),
@@ -89,8 +88,6 @@ router.patch(
   requirePropertyPermission(PermissionAction.UPDATE),
   idempotency,
   basicLimiter(),
-  diskUpload(['propertyUnit.media']),
-  scanFile,
   validateRequest({
     params: PropertyUnitValidations.validatePuid,
     body: PropertyUnitValidations.updateUnit,

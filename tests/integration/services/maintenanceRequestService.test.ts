@@ -44,7 +44,7 @@ import {
   createTestUser,
 } from '../../helpers';
 
-const setupService = () => {
+const setupService = (overrides: { mediaUploadService?: any; sseService?: any } = {}) => {
   const userDAO = new UserDAO({ userModel: User });
   const propertyUnitDAO = new PropertyUnitDAO({ propertyUnitModel: PropertyUnit });
   const propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
@@ -105,6 +105,10 @@ const setupService = () => {
       dismissAISuggestion: jest.fn(),
     } as unknown as VendorSuggestionService,
     maintenanceInvoiceService,
+    mediaUploadService: overrides.mediaUploadService ?? ({} as any),
+    sseService: overrides.sseService ?? {
+      broadcastToClient: jest.fn().mockResolvedValue(undefined),
+    },
   });
 };
 
@@ -163,6 +167,134 @@ beforeEach(async () => {
 });
 
 describe('MaintenanceRequestService', () => {
+  describe('media uploaded with the request', () => {
+    const s3Upload = (name: string, resourceId: string) => ({
+      key: `maintenance/${resourceId}/${name}`,
+      url: `https://s3.test/maintenance/${name}`,
+      filename: name,
+      fieldName: 'media[0][file]',
+      resourceId,
+      publicuid: resourceId,
+    });
+    const makeMediaUploadService = () => ({
+      uploadRequestFiles: jest.fn(async (_req: any, resource: any) => [
+        s3Upload('leak.jpg', resource.resourceId),
+      ]),
+      removeUploadedFiles: jest.fn().mockResolvedValue(undefined),
+    });
+    const scannedFiles = [{ fieldName: 'media[0][file]', path: '/tmp/leak.jpg' }] as any;
+    const newRequest = (pid: string) => ({
+      pid,
+      title: 'Leaking pipe',
+      description: { text: 'Water under the kitchen sink' },
+      category: MaintenanceCategory.PLUMBING,
+      permissionToEnter: true,
+    });
+
+    it('saves the uploaded media on the new request in the same write', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const mediaUploadService = makeMediaUploadService();
+      const sseService = { broadcastToClient: jest.fn().mockResolvedValue(undefined) };
+      const service = setupService({ mediaUploadService, sseService });
+
+      const result = await service.createRequest(
+        mockRequestContext(managerUser, client.cuid) as any,
+        newRequest(property.pid) as any,
+        scannedFiles
+      );
+
+      const { mruid } = result.data;
+      expect(mediaUploadService.uploadRequestFiles).toHaveBeenCalledWith(
+        { scannedFiles },
+        expect.objectContaining({ resourceName: 'maintenance', resourceId: mruid })
+      );
+      const stored = await MaintenanceRequest.findOne({ mruid }).lean();
+      expect(stored!.media).toEqual([
+        expect.objectContaining({ key: `maintenance/${mruid}/leak.jpg`, status: 'active' }),
+      ]);
+      expect(result.data.media).toEqual([
+        expect.objectContaining({ key: `maintenance/${mruid}/leak.jpg`, filename: 'leak.jpg' }),
+      ]);
+      expect(sseService.broadcastToClient).toHaveBeenCalledWith(
+        client.cuid,
+        expect.objectContaining({
+          resource: 'maintenance',
+          action: 'media-updated',
+          resourceUId: mruid,
+        }),
+        'resource-event'
+      );
+    });
+
+    it('removes the uploaded media and saves nothing when the create write fails', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const mediaUploadService = makeMediaUploadService();
+      const service = setupService({ mediaUploadService });
+      const insert = jest
+        .spyOn(MaintenanceRequestDAO.prototype, 'insert')
+        .mockRejectedValueOnce(new Error('write failed'));
+
+      try {
+        await expect(
+          service.createRequest(
+            mockRequestContext(managerUser, client.cuid) as any,
+            newRequest(property.pid) as any,
+            scannedFiles
+          )
+        ).rejects.toThrow('write failed');
+      } finally {
+        insert.mockRestore();
+      }
+
+      expect(mediaUploadService.removeUploadedFiles).toHaveBeenCalledWith([
+        expect.objectContaining({ filename: 'leak.jpg' }),
+      ]);
+      expect(await MaintenanceRequest.countDocuments({ cuid: client.cuid })).toBe(0);
+    });
+
+    it('uploads nothing when the request is rejected before the write', async () => {
+      const client = await createTestClient();
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const mediaUploadService = makeMediaUploadService();
+      const service = setupService({ mediaUploadService });
+
+      await expect(
+        service.createRequest(
+          mockRequestContext(managerUser, client.cuid) as any,
+          newRequest('NO-SUCH-PID') as any,
+          scannedFiles
+        )
+      ).rejects.toThrow();
+      expect(mediaUploadService.uploadRequestFiles).not.toHaveBeenCalled();
+    });
+
+    it('appends media sent with an edit to the stored media in the same write', async () => {
+      const client = await createTestClient();
+      const property = await createTestProperty(client.cuid, client._id);
+      const managerUser = await createTestUser(client.cuid, { roles: [ROLES.MANAGER] });
+      const ctx = mockRequestContext(managerUser, client.cuid) as any;
+      const created = await setupService().createRequest(ctx, newRequest(property.pid) as any);
+      const mediaUploadService = makeMediaUploadService();
+      const service = setupService({ mediaUploadService });
+
+      const result = await service.updateRequest(
+        ctx,
+        created.data.mruid,
+        { title: 'Leaking pipe — worse' } as any,
+        scannedFiles
+      );
+
+      const stored = await MaintenanceRequest.findOne({ mruid: created.data.mruid }).lean();
+      expect(stored!.title).toBe('Leaking pipe — worse');
+      expect(stored!.media.map((item: any) => item.filename)).toEqual(['leak.jpg']);
+      expect(result.data.media.map((item: any) => item.filename)).toEqual(['leak.jpg']);
+    });
+  });
+
   describe('createRequest', () => {
     it('assigns a vendor with schedule and estimate when created by staff', async () => {
       const client = await createTestClient();
@@ -703,7 +835,7 @@ describe('MaintenanceRequestService', () => {
 
       const asTechnician = await insertRequest(client.cuid, property._id, {
         title: 'Fix the boiler',
-        assignedTechnician: { userId: staff._id, name: 'Staff Tech' },
+        assignedTechnician: { userId: staff._id, uid: staff.uid, name: 'Staff Tech' },
       });
       const assignedByStaff = await insertRequest(client.cuid, property._id, {
         title: 'Fix the fence',
@@ -712,7 +844,7 @@ describe('MaintenanceRequestService', () => {
       const someoneElses = await insertRequest(client.cuid, property._id, {
         title: 'Fix the boiler too',
         assignedBy: otherStaff._id,
-        assignedTechnician: { userId: otherStaff._id, name: 'Other Tech' },
+        assignedTechnician: { userId: otherStaff._id, uid: otherStaff.uid, name: 'Other Tech' },
       });
       const service = setupService();
 
@@ -957,11 +1089,12 @@ describe('MaintenanceRequestService', () => {
 
       await service.acceptAssignment(vendorCtx, mruid, {
         action: 'accept',
-        technician: { name: 'Team Tech', userId: teamMember._id.toString() },
+        technician: { name: 'Team Tech', uid: teamMember.uid },
       });
 
       const stored = await MaintenanceRequest.findOne({ mruid }).lean();
       expect(stored?.assignedTechnician?.userId?.toString()).toBe(teamMember._id.toString());
+      expect(stored?.assignedTechnician?.uid).toBe(teamMember.uid);
       expect(stored?.assignedTechnician?.name).toBe('Team Tech');
     });
 
@@ -984,7 +1117,7 @@ describe('MaintenanceRequestService', () => {
       await expect(
         service.acceptAssignment(vendorCtx, mruid, {
           action: 'accept',
-          technician: { name: 'Outsider', userId: outsider._id.toString() },
+          technician: { name: 'Outsider', uid: outsider.uid },
         })
       ).rejects.toThrow('Selected technician is not a member of your team');
 
@@ -997,11 +1130,12 @@ describe('MaintenanceRequestService', () => {
 
       await service.acceptAssignment(vendorCtx, mruid, {
         action: 'accept',
-        technician: { name: 'Owner', userId: vendorUser._id.toString() },
+        technician: { name: 'Owner', uid: vendorUser.uid },
       });
 
       const stored = await MaintenanceRequest.findOne({ mruid }).lean();
       expect(stored?.assignedTechnician?.userId?.toString()).toBe(vendorUser._id.toString());
+      expect(stored?.assignedTechnician?.uid).toBe(vendorUser.uid);
     });
 
     it('vendor should accept assignment and transition to in_progress', async () => {

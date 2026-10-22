@@ -348,10 +348,11 @@ export class InvoiceService {
         }
       );
 
-      if (updatedPayment?.cuid && payload.actorId) {
+      // Payments have no read cache. The job's actor is 'system', so the event goes to the
+      // whole client rather than to a user.
+      if (updatedPayment?.cuid) {
         try {
-          await this.sseService.sendToUser(
-            payload.actorId,
+          await this.sseService.broadcastToClient(
             updatedPayment.cuid,
             { resource: 'invoice', action: 'document-attached', resourceUId: pytuid },
             'resource-event'
@@ -364,7 +365,7 @@ export class InvoiceService {
       this.emitterService.emit(EventTypes.INVOICE_GENERATED, {
         jobId: 'upload-completed',
         pytuid,
-        cuid: '',
+        cuid: updatedPayment?.cuid ?? '',
         invoiceUrl: pdfResult.url,
         s3Key: pdfResult.key ?? '',
         fileSize: pdfResult.size,

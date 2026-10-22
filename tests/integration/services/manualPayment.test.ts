@@ -49,10 +49,14 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
 
   let paymentService: PaymentService;
 
+  const uidOf = (userId: Types.ObjectId) => `uid-${userId.toString()}`;
+
   const insertUser = async (cuid: string) => {
+    const userId = new Types.ObjectId();
     const { insertedId } = await User.collection.insertOne({
+      _id: userId,
       email: `tenant-${new Types.ObjectId().toString()}@example.com`,
-      uid: `uid-${new Types.ObjectId().toString()}`,
+      uid: uidOf(userId),
       activecuid: cuid,
       isActive: true,
       deletedAt: null,
@@ -99,7 +103,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
     paymentMethod: PaymentMethod.CASH,
     baseAmount: 150000,
     paidAt: new Date('2026-09-02'),
-    tenantId: tenantUserId.toString(),
+    tenantUid: uidOf(tenantUserId),
     leaseId: LUID,
     period: { month: 9, year: 2026 },
     ...overrides,
@@ -379,7 +383,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
       await expect(
         record(
           manualEntry({
-            tenantId: outsiderId.toString(),
+            tenantUid: uidOf(outsiderId),
             leaseId: undefined,
             propertyId: undefined,
           })
@@ -391,7 +395,7 @@ describe('PaymentService.recordManualPayment — settling open charges (integrat
       const otherTenantId = await insertUser(CUID);
       await insertProfile(otherTenantId);
 
-      await expect(record(manualEntry({ tenantId: otherTenantId.toString() }))).rejects.toThrow(
+      await expect(record(manualEntry({ tenantUid: uidOf(otherTenantId) }))).rejects.toThrow(
         'not the tenant on this lease'
       );
     });

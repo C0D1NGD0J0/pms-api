@@ -3,6 +3,8 @@ import { isValidObjectId } from 'mongoose';
 import { UNIT_FLOOR_RANGE } from '@utils/constants';
 import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
 
+import { shortUidString, optionalBlank } from '../UtilsValidation';
+
 const getContainer = async () => {
   const { container } = await import('@di/setup');
   return container;
@@ -158,10 +160,6 @@ const InspectionAttachmentSchema = z.object({
   uploadedAt: z.coerce.date().default(() => new Date()),
 });
 
-const ObjectIdString = z
-  .string()
-  .refine((value) => isValidObjectId(value), { message: 'Must be a valid ID' });
-
 const InspectorSchema = z.object({
   name: z.string().trim().min(1, 'Inspector name is required'),
   contact: z.string().trim().min(1, 'Inspector contact is required'),
@@ -211,8 +209,8 @@ const BaseUnitSchema = z.object({
   floor: UnitFloorSchema.default(1),
   description: z.string().max(500, 'Description must be at most 500 characters').optional(),
   isActive: z.boolean().default(true),
-  // Optional: the service verifies it is an employee of this client, or defaults it to the property's manager
-  managedBy: ObjectIdString.optional(),
+  // Optional user uid: must be an employee of this client, else the property's manager is used
+  managedBy: optionalBlank(shortUidString),
   fees: FeesSchema,
   specifications: SpecificationsSchema,
   utilities: UtilitiesSchema.optional(),
@@ -299,8 +297,8 @@ export const UpdateUnitSchema = z.object({
   floor: UnitFloorSchema.optional(),
   unitType: UnitTypeZodEnum.optional(),
   isActive: z.boolean().optional(),
-  // the service checks it is an employee connected to this client
-  managedBy: ObjectIdString.optional(),
+  // user uid; the service checks it is an employee connected to this client
+  managedBy: optionalBlank(shortUidString),
   description: BaseUnitSchema.shape.description,
   // currency must match the property's (enforced by the service)
   fees: FeesSchema.partial().optional(),

@@ -10,7 +10,15 @@ import {
   AvailabilityWindow,
 } from '@interfaces/maintenanceRequest.interface';
 
-import { objectIdString, queryBoolean, getContainer } from '../UtilsValidation';
+import { queryBoolean, getContainer } from '../UtilsValidation';
+
+// Public user UID — a Mongo ObjectId is rejected so clients cannot fall back to internal ids
+const userUidString = z
+  .string()
+  .trim()
+  .min(8, 'Must be a valid user UID')
+  .max(64, 'Must be a valid user UID')
+  .refine((value) => !/^[a-f\d]{24}$/i.test(value), 'Must be a valid user UID');
 
 const MAINTENANCE_LIST_SORT_FIELDS = ['createdAt', 'updatedAt', 'scheduledDate', 'title'];
 
@@ -167,7 +175,7 @@ export const MaintenanceSchemas = {
       reason: z.string().max(500).optional(),
       technician: z
         .object({
-          userId: objectIdString.optional(),
+          uid: userUidString.optional(),
           name: z.string().min(1).max(100),
           phone: z.string().max(20).optional(),
           email: z.string().email().optional(),
@@ -310,7 +318,7 @@ export const MaintenanceSchemas = {
     managedByUid: z.string().optional(),
     search: z.string().trim().max(100).optional(),
     isBillable: queryBoolean.optional(),
-    assignedTechnicianSub: z.string().optional(),
+    assignedTechnicianUid: userUidString.optional(),
     page: z.coerce.number().int().positive().optional(),
     category: z.nativeEnum(MaintenanceCategory).optional(),
     status: z.nativeEnum(MaintenanceRequestStatus).optional(),

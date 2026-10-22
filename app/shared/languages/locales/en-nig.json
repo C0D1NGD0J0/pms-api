@@ -374,7 +374,10 @@
       "validationFailed": "Lease validation fail. Please check the details and try again.",
       "overlappingLease": "Lease dates dey overlap with existing active lease for dis unit",
       "cannotCreateOwnLease": "You no fit create lease for yourself as tenant - conflict of interest",
-      "cannotUpdateOwnLease": "You no fit update your own lease information - conflict of interest"
+      "cannotUpdateOwnLease": "You no fit update your own lease information - conflict of interest",
+      "propertyNotApproved": "This property is still awaiting approval. Approve it before creating or renewing leases.",
+      "managementNotAuthorized": "This property has no active management agreement on file. Upload the owner's management agreement before creating or renewing leases.",
+      "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator."
     }
   }
 }

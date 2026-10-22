@@ -134,8 +134,33 @@ describe('ReportValidations', () => {
       if (result.success) {
         expect(result.data.sections).toBeUndefined();
         expect(result.data.emailRecipients).toBeUndefined();
-        expect(result.data.propertyId).toBeUndefined();
+        expect(result.data.pid).toBeUndefined();
       }
+    });
+
+    it('should accept a property pid', () => {
+      const result = ReportValidations.generateBody.safeParse({
+        period: 'last_30_days',
+        pid: 'PROPERTYPID1',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject a Mongo _id in place of a pid', () => {
+      const result = ReportValidations.generateBody.safeParse({
+        period: 'last_30_days',
+        pid: '507f1f77bcf86cd799439011',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should strip the legacy propertyId field', () => {
+      const result = ReportValidations.generateBody.safeParse({
+        period: 'last_30_days',
+        propertyId: '507f1f77bcf86cd799439011',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).not.toHaveProperty('propertyId');
     });
   });
 
@@ -147,6 +172,19 @@ describe('ReportValidations', () => {
         frequency: 'monthly',
       });
       expect(result.success).toBe(true);
+    });
+
+    it('should accept a property pid and reject a Mongo _id', () => {
+      expect(
+        ReportValidations.scheduleBody.safeParse({ frequency: 'monthly', pid: 'PROPERTYPID1' })
+          .success
+      ).toBe(true);
+      expect(
+        ReportValidations.scheduleBody.safeParse({
+          frequency: 'monthly',
+          pid: '507f1f77bcf86cd799439011',
+        }).success
+      ).toBe(false);
     });
 
     it('should accept valid quarterly schedule with options', () => {

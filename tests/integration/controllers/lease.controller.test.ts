@@ -6,7 +6,7 @@ import { Application } from 'express';
 import { container } from '@di/index';
 import { ROLES } from '@shared/constants/roles.constants';
 import GuestPassModel from '@models/guestPass/guestpass.model';
-import { Subscription, PropertyUnit, Property, Lease } from '@models/index';
+import { Subscription, PropertyUnit, Property, Lease, User } from '@models/index';
 import { ILeaseESignatureStatusEnum, LeaseStatus, LeaseType } from '@interfaces/lease.interface';
 import { IPaymentGatewayProvider, ISubscriptionStatus } from '@interfaces/subscription.interface';
 
@@ -157,6 +157,23 @@ describe('LeaseController Integration Tests', () => {
       unitNumber: '101',
     });
 
+    // The lease API takes short public ids (SHORT_UID_REGEX); the factories' ids are longer
+    // (written through the driver: the models treat these ids as immutable)
+    await Property.collection.updateOne(
+      { _id: testProperty._id },
+      { $set: { pid: 'LEASECTLPRP1' } }
+    );
+    await PropertyUnit.collection.updateOne(
+      { _id: testUnit._id },
+      { $set: { puid: 'LEASECTLUNT1' } }
+    );
+    await User.collection.updateOne({ _id: testTenant._id }, { $set: { uid: 'LEASECTLTNT1' } });
+    await User.collection.updateOne({ _id: testManager._id }, { $set: { uid: 'LEASECTLMGR1' } });
+    testProperty = await Property.findById(testProperty._id);
+    testUnit = await PropertyUnit.findById(testUnit._id);
+    testTenant = await User.findById(testTenant._id);
+    testManager = await User.findById(testManager._id);
+
     // Create auth tokens
     managerToken = createAuthToken(testManager);
     tenantToken = createAuthToken(testTenant);
@@ -174,12 +191,10 @@ describe('LeaseController Integration Tests', () => {
   describe('POST /api/v1/leases/:cuid - Create Lease', () => {
     it('should create a lease successfully with manager role', async () => {
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -213,12 +228,10 @@ describe('LeaseController Integration Tests', () => {
 
     it('should return 403 for staff user without lease create permission', async () => {
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1259,6 +1272,34 @@ describe('LeaseController Integration Tests', () => {
       expect(response.body.message).toContain('renewal');
     });
 
+    it("accepts the lease's public ids and rejects ObjectIds or another tenant", async () => {
+      const send = (body: Record<string, unknown>, key: string) =>
+        request(app)
+          .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/lease_renewal`)
+          .set('Cookie', authCookie(adminToken))
+          .set('idempotency-key', `renewal-${key}-${Date.now()}`)
+          .send(body);
+
+      const objectIdResponse = await send(
+        { property: { pid: testProperty._id.toString() } },
+        'oid'
+      );
+      expect(objectIdResponse.status).toBe(422);
+
+      const otherTenantResponse = await send({ tenantInfo: { uid: 'OTHERTENANT1' } }, 'other');
+      expect(otherTenantResponse.status).toBe(400);
+
+      const response = await send(
+        {
+          property: { pid: testProperty.pid, puid: testUnit.puid },
+          tenantInfo: { uid: testTenant.uid },
+        },
+        'uids'
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.data.property.id.toString()).toBe(testProperty._id.toString());
+    });
+
     it('should return 401 without authentication', async () => {
       await request(app)
         .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/lease_renewal`)
@@ -1445,12 +1486,10 @@ describe('LeaseController Integration Tests', () => {
   describe('Internal Notes - Create and Update', () => {
     it('should create a lease with internal notes', async () => {
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1470,7 +1509,7 @@ describe('LeaseController Integration Tests', () => {
           {
             note: 'This is a test note',
             author: 'Test Manager',
-            authorId: testManager._id.toString(),
+            authorId: testManager.uid,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -1532,13 +1571,13 @@ describe('LeaseController Integration Tests', () => {
           {
             note: 'Initial note',
             author: 'Test Manager',
-            authorId: testManager._id.toString(),
+            authorId: testManager.uid,
             timestamp: new Date().toISOString(),
           },
           {
             note: 'Second note added',
             author: 'Test Manager',
-            authorId: testManager._id.toString(),
+            authorId: testManager.uid,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -1559,12 +1598,10 @@ describe('LeaseController Integration Tests', () => {
     it('should reject notes exceeding 2000 characters', async () => {
       const longNote = 'a'.repeat(2001);
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1584,7 +1621,7 @@ describe('LeaseController Integration Tests', () => {
           {
             note: longNote,
             author: 'Test Manager',
-            authorId: testManager._id.toString(),
+            authorId: testManager.uid,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -1601,12 +1638,10 @@ describe('LeaseController Integration Tests', () => {
 
     it('should reject notes without required author info', async () => {
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1641,12 +1676,10 @@ describe('LeaseController Integration Tests', () => {
 
     it('should handle empty notes array', async () => {
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1679,12 +1712,10 @@ describe('LeaseController Integration Tests', () => {
 
     it('should create a lease with HTML notes', async () => {
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1705,7 +1736,7 @@ describe('LeaseController Integration Tests', () => {
             note: 'This is a test note',
             html: '<p>This is a <b>test</b> note</p>',
             author: 'Test Manager',
-            authorId: testManager._id.toString(),
+            authorId: testManager.uid,
             timestamp: new Date().toISOString(),
           },
         ],
@@ -1730,12 +1761,10 @@ describe('LeaseController Integration Tests', () => {
     it('should reject HTML exceeding 10000 characters', async () => {
       const longHtml = '<p>' + 'a'.repeat(10001) + '</p>';
       const leaseData = {
-        tenantInfo: {
-          id: testTenant._id.toString(),
-        },
+        tenantInfo: { uid: testTenant.uid },
         property: {
-          id: testProperty._id.toString(),
-          unitId: testUnit._id.toString(),
+          pid: testProperty.pid,
+          puid: testUnit.puid,
           address: testProperty.address.fullAddress,
         },
         duration: {
@@ -1756,7 +1785,7 @@ describe('LeaseController Integration Tests', () => {
             note: 'Short text',
             html: longHtml,
             author: 'Test Manager',
-            authorId: testManager._id.toString(),
+            authorId: testManager.uid,
             timestamp: new Date().toISOString(),
           },
         ],

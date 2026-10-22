@@ -293,10 +293,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
+          pid: property.pid,
           address: property.address.fullAddress,
         },
         duration: {
@@ -355,8 +355,8 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       const result = await leaseService.createLease(
         client.cuid,
         {
-          tenantInfo: { id: tenant._id.toString() },
-          property: { id: property._id.toString(), address: property.address.fullAddress },
+          tenantInfo: { uid: tenant.uid },
+          property: { pid: property.pid, address: property.address.fullAddress },
           duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-01-01') },
           fees: {
             rentAmount: 1500,
@@ -402,12 +402,12 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
+          pid: property.pid,
           address: property.address.fullAddress,
-          // Missing unitId
+          // Missing unit puid
         },
         duration: {
           startDate: new Date('2025-01-01'),
@@ -463,11 +463,11 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
-          unitId: unit._id.toString(),
+          pid: property.pid,
+          puid: unit.puid,
           address: property.address.fullAddress,
         },
         duration: {
@@ -520,10 +520,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: property._id.toString(),
+          pid: property.pid,
           address: property.address.fullAddress,
         },
         duration: {
@@ -566,10 +566,10 @@ describe('LeaseService Integration Tests - Write Operations', () => {
 
       const leaseData = {
         tenantInfo: {
-          id: tenant._id.toString(),
+          uid: tenant.uid,
         },
         property: {
-          id: new Types.ObjectId().toString(), // Non-existent property
+          pid: 'MISSINGPROP1', // Non-existent property
           address: '123 Fake St',
         },
         duration: {
@@ -2261,6 +2261,12 @@ describe('LeaseService Integration Tests - Read Operations', () => {
         activeLeaseForRenewal.luid
       );
 
+      // the form sends these public ids back with the renewal
+      expect(result.data.property).toEqual(
+        expect.objectContaining({ pid: renewalProperty.pid, puid: '', managedBy: '' })
+      );
+      expect(result.data.property).not.toHaveProperty('id');
+      expect(result.data.tenantInfo).toEqual({ uid: renewalTenant.uid });
       expect(result.data.fees.rentAmount).toBe(2100.5);
       expect(result.data.fees.securityDeposit).toBe(3000);
       expect(result.data.petPolicy).toEqual(
@@ -2408,6 +2414,141 @@ describe('LeaseService Integration Tests - Read Operations', () => {
       // Hydration fills in the 'boldsign' default once the cron selects the provider
       const updatedRenewal = await Lease.findById(renewalResult.data._id);
       expect(updatedRenewal!.autoSendInfo?.failureReason).not.toBe('no_provider');
+    });
+
+    describe('leasing ownership checks (the same rules for form-created and imported properties)', () => {
+      const actor = () =>
+        ({
+          currentuser: {
+            sub: testManager._id.toString(),
+            uid: testManager.uid,
+            fullname: 'Test Manager',
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          },
+          request: { params: { cuid: testClient.cuid } },
+        }) as any;
+      const setProperty = (set: Record<string, unknown>, unset: Record<string, ''> = {}) =>
+        Property.collection.updateOne(
+          { _id: renewalProperty._id },
+          { $set: set, ...(Object.keys(unset).length && { $unset: unset }) }
+        );
+
+      it('skips an automatic renewal when the property is no longer verified', async () => {
+        await setProperty({ verificationStatus: 'unverified' });
+
+        await expect(
+          leaseService.createDraftLeaseRenewal(
+            testClient.cuid,
+            activeLeaseForRenewal.luid,
+            {},
+            null
+          )
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(await Lease.countDocuments({ previousLeaseId: activeLeaseForRenewal._id })).toBe(0);
+      });
+
+      it('allows the renewal while a verification grace period is active', async () => {
+        await setProperty({
+          verificationStatus: 'unverified',
+          verificationGracePeriod: {
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            grantedBy: testManager._id,
+          },
+        });
+
+        const result = await leaseService.createDraftLeaseRenewal(
+          testClient.cuid,
+          activeLeaseForRenewal.luid,
+          {},
+          null
+        );
+        expect(result.success).toBe(true);
+      });
+
+      it("blocks a renewal once an external owner's management agreement has expired", async () => {
+        await setProperty({
+          owner: { type: 'external_owner', name: 'Owner', email: 'owner@example.com' },
+          authorization: { isActive: true, expiresAt: new Date(Date.now() - 1000) },
+        });
+
+        await expect(
+          leaseService.createDraftLeaseRenewal(
+            testClient.cuid,
+            activeLeaseForRenewal.luid,
+            {},
+            null
+          )
+        ).rejects.toMatchObject({ statusCode: 400 });
+      });
+
+      it('blocks approving a draft renewal whose property lost its verification', async () => {
+        const renewal = await leaseService.createDraftLeaseRenewal(
+          testClient.cuid,
+          activeLeaseForRenewal.luid,
+          {},
+          null
+        );
+        await setProperty({ verificationStatus: 'unverified' });
+
+        await expect(
+          leaseService.approveLease(testClient.cuid, renewal.data.luid, actor().currentuser)
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect((await Lease.findById(renewal.data._id))!.status).toBe(LeaseStatus.DRAFT_RENEWAL);
+      });
+
+      describe('manual activation', () => {
+        let readyLease: any;
+
+        beforeEach(async () => {
+          readyLease = await Lease.create({
+            cuid: testClient.cuid,
+            tenantId: renewalTenant._id,
+            property: { id: renewalProperty._id, address: renewalProperty.address.street },
+            duration: {
+              startDate: new Date('2026-01-01'),
+              endDate: new Date('2026-12-31'),
+              moveInDate: new Date('2026-01-01'),
+            },
+            fees: {
+              rentAmount: 2000,
+              securityDeposit: 2000,
+              rentDueDay: 1,
+              currency: 'USD',
+              acceptedPaymentMethod: 'e-transfer',
+            },
+            type: LeaseType.FIXED_TERM,
+            signingMethod: 'manual',
+            status: LeaseStatus.READY_FOR_SIGNATURE,
+            approvalStatus: 'approved',
+            createdBy: testManager._id,
+          });
+        });
+
+        it('is blocked when ownership verification has lapsed', async () => {
+          await setProperty({ verificationStatus: 'unverified' });
+
+          await expect(
+            leaseService.activateLease(testClient.cuid, readyLease.luid, actor())
+          ).rejects.toMatchObject({ statusCode: 400 });
+          expect((await Lease.findById(readyLease._id))!.status).toBe(
+            LeaseStatus.READY_FOR_SIGNATURE
+          );
+        });
+
+        it("doesn't need a management agreement (the external owner signs directly)", async () => {
+          await setProperty(
+            { owner: { type: 'external_owner', name: 'Owner', email: 'owner@example.com' } },
+            { authorization: '' }
+          );
+
+          const result = await leaseService.activateLease(
+            testClient.cuid,
+            readyLease.luid,
+            actor()
+          );
+          expect(result.success).toBe(true);
+        });
+      });
     });
   });
 });
@@ -2669,8 +2810,8 @@ describe('LeaseService Integration Tests - Workflow Regressions', () => {
     const result = await leaseService.createLease(
       client.cuid,
       {
-        tenantInfo: { id: multiClientTenant._id.toString() },
-        property: { id: property._id.toString(), address: property.address.fullAddress },
+        tenantInfo: { uid: multiClientTenant.uid },
+        property: { pid: property.pid, address: property.address.fullAddress },
         duration: { startDate: daysFromNow(10), endDate: daysFromNow(375) },
         fees: {
           rentAmount: 1500,

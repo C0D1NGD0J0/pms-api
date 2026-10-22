@@ -17,7 +17,7 @@ const uiUnit = (overrides: Record<string, unknown> = {}) => ({
   status: 'available',
   floor: 1,
   isActive: true,
-  managedBy: new Types.ObjectId().toString(),
+  managedBy: 'MANAGER00001', // the manager's user uid
   specifications: { totalArea: 450, bedrooms: 3, bathrooms: 2, maxOccupants: 5 },
   amenities: { airConditioning: false, washerDryer: true, dishwasher: true, parking: false },
   utilities: { gas: false, trash: false, water: true, heating: true, centralAC: false },
@@ -57,7 +57,7 @@ describe('PropertyUnitValidations', () => {
       expect(parsed.units[0].managedBy).toBeUndefined();
     });
 
-    it('rejects a managedBy that is not an ObjectId', async () => {
+    it('rejects a managedBy that is not a user uid (including an ObjectId)', async () => {
       await expect(
         PropertyUnitValidations.createUnits.parseAsync({
           units: [uiUnit({ managedBy: 'not-an-id' })],
@@ -123,11 +123,12 @@ describe('PropertyUnitValidations', () => {
       expect(parsed).toEqual({ fees: { rentAmount: 2000 } });
     });
 
-    it('rejects an unknown currency, unit type or a non-ObjectId managedBy', async () => {
+    it('rejects an unknown currency, unit type or a managedBy that is not a user uid', async () => {
       for (const body of [
         { fees: { currency: 'XYZ' } },
         { unitType: 'castle' },
         { managedBy: 'not-an-id' },
+        { managedBy: new Types.ObjectId().toString() },
       ]) {
         await expect(PropertyUnitValidations.updateUnit.parseAsync(body)).rejects.toThrow();
       }

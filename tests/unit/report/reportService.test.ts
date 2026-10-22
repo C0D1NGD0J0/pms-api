@@ -161,6 +161,25 @@ describe('ReportService', () => {
   // ─── getReportStatus ──────────────────────────────────────────────
 
   describe('getReportStatus', () => {
+    it('should not expose the raw server error of a failed report', async () => {
+      mockReportDAO.findById.mockResolvedValue({
+        _id: new Types.ObjectId(REPORT_ID),
+        cuid: CUID,
+        status: ReportStatus.FAILED,
+        period: ReportPeriod.LAST_30_DAYS,
+        startDate: new Date(),
+        endDate: new Date(),
+        sections: [...REPORT_SECTIONS],
+        failedReason: "Cannot read properties of undefined (reading 'units')",
+        createdAt: new Date(),
+      });
+
+      const result = await service.getReportStatus(CUID, REPORT_ID);
+
+      expect(result.data.status).toBe(ReportStatus.FAILED);
+      expect(result.data).not.toHaveProperty('failedReason');
+    });
+
     it('should return status for a pending report', async () => {
       mockReportDAO.findById.mockResolvedValue({
         _id: new Types.ObjectId(REPORT_ID),

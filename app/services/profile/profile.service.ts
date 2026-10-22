@@ -26,12 +26,14 @@ import {
   getCategoriesForRole,
 } from '@services/notification/notificationPolicy';
 import {
+  ExtractedMediaFile,
   IProfileUpdateData,
   ISuccessReturnData,
   IProfileCompletion,
   IProfileDocument,
   IProfileEditData,
   IRequestContext,
+  UploadResult,
   ICurrentUser,
   EventTypes,
   TenantInfo,
@@ -137,7 +139,19 @@ export class ProfileService {
 
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
 
-      const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, validation.data);
+      const { reportsTo: supervisorUid, ...employeeFields } = validation.data;
+      const employeeUpdate = supervisorUid
+        ? {
+            ...employeeFields,
+            reportsTo: await this.userService.resolveSupervisorId(
+              cuid,
+              supervisorUid,
+              profile.user.toString()
+            ),
+          }
+        : employeeFields;
+
+      const result = await this.profileDAO.updateEmployeeInfo(profileId, cuid, employeeUpdate);
 
       if (!result) {
         throw new NotFoundError({
@@ -187,13 +201,17 @@ export class ProfileService {
         });
       }
 
-      // Update the vendor entity with new information — ownership enforced in vendorService
-      await this.vendorService.updateVendorInfo(
-        vendor._id.toString(),
-        vendorInfo,
-        undefined,
-        callerUserId
-      );
+      // The vendor link fields are system-managed (set at invitation acceptance), never client-edited
+      const {
+        vendorId: _vendorId,
+        linkedVendorUid: _linkedVendorUid,
+        isLinkedAccount: _isLinkedAccount,
+        ...businessInfo
+      } = vendorInfo ?? {};
+
+      // Update the vendor entity with new information — ownership enforced in vendorService,
+      // which resolves the vendor by vuid
+      await this.vendorService.updateVendorInfo(vendor.vuid, businessInfo, undefined, callerUserId);
 
       // Update profile vendorInfo to maintain reference (if needed)
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
@@ -405,9 +423,14 @@ export class ProfileService {
     context: { linkedVendorUid?: string },
     profile: IProfileDocument
   ): Promise<{ profile: IProfileDocument }> {
+    // vendorId is what the current-user payload keys vendorInfo (and its vuid) on
+    const vendor = context.linkedVendorUid
+      ? await this.vendorService.getVendorByVuid(context.linkedVendorUid)
+      : null;
     const updatedProfile = await this.profileDAO.updateVendorReference(profile.id, {
       linkedVendorUid: context.linkedVendorUid,
       isLinkedAccount: true,
+      ...(vendor && { vendorId: vendor._id.toString() }),
     });
 
     this.logger.info(
@@ -428,7 +451,10 @@ export class ProfileService {
       return profile;
     }
 
-    const employeeData = metadata?.employeeInfo || {};
+    const employeeData = await this.withInvitedSupervisorId(
+      context.cuid,
+      metadata?.employeeInfo || {}
+    );
     const updatedProfile = await this.profileDAO.updateEmployeeInfo(
       profile.id,
       context.cuid,
@@ -438,6 +464,26 @@ export class ProfileService {
     this.logger.info(`Initialized employee info for profile ${profile.id} with metadata`);
 
     return updatedProfile || profile;
+  }
+
+  /**
+   * Invitations name the supervisor by uid (older ones by ObjectId); the profile stores
+   * their ObjectId. A supervisor who has since left the client is dropped rather than
+   * failing the acceptance.
+   */
+  private async withInvitedSupervisorId(
+    cuid: string,
+    employeeInfo: Record<string, any>
+  ): Promise<Record<string, any>> {
+    const { reportsTo, ...employeeFields } = employeeInfo;
+    if (!reportsTo) return employeeFields;
+
+    const supervisor = await this.userService.findSupervisor(reportsTo, cuid);
+    if (!supervisor) {
+      this.logger.warn(`Invited supervisor ${String(reportsTo)} is not in client ${cuid}; skipped`);
+      return employeeFields;
+    }
+    return { ...employeeFields, reportsTo: supervisor._id };
   }
 
   private buildSuccessResponse(
@@ -867,11 +913,48 @@ export class ProfileService {
   }
 
   /**
+   * Uploads the avatar file sent with a profile edit and saves it on the target user's profile
+   * in the same request (after the edit's own permission checks have passed). Returns the
+   * updated profile, or null when no avatar file was sent.
+   */
+  async saveUploadedAvatar(
+    cuid: string,
+    targetUid: string,
+    files: ExtractedMediaFile[] | undefined,
+    actorId: string
+  ): Promise<IProfileDocument | null> {
+    const avatarFile = files?.find((file) => file.fieldName.includes('avatar'));
+    if (!avatarFile) return null;
+
+    const uploads = await this.mediaUploadService.uploadRequestFiles(
+      { scannedFiles: [avatarFile] },
+      { resourceName: 'profile', resourceId: targetUid, fieldName: 'avatar', actorId }
+    );
+
+    let profile: IProfileDocument | null = null;
+    try {
+      ({ data: profile } = await this.updateAvatarInfo(targetUid, uploads));
+    } finally {
+      if (!profile) {
+        await this.mediaUploadService.removeUploadedFiles(uploads).catch((error) => {
+          this.logger.error({ error, targetUid }, 'Failed to remove avatar after failed save');
+        });
+      }
+    }
+
+    // The avatar shows in the navbar (/me) and on user pages
+    await this.authCache.invalidateCurrentUser(profile!.user.toString(), cuid);
+    await this.userCache.invalidateUserDetail(cuid, targetUid);
+    await this.userCache.invalidateUserLists(cuid);
+    return profile;
+  }
+
+  /**
    * Update user avatar information from upload results
    */
   async updateAvatarInfo(
     userUid: string,
-    uploadResults: Array<{ url: string; filename: string; publicuid: string }>
+    uploadResults: Array<Pick<UploadResult, 'url' | 'filename' | 'key'>>
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
       if (!uploadResults || uploadResults.length === 0) {
@@ -894,19 +977,11 @@ export class ProfileService {
       });
       const currentAvatar = currentProfile?.personalInfo?.avatar;
 
-      // Handle deletion of old avatar if exists
-      if (currentAvatar?.key) {
-        const newAvatar = {
-          key: avatarResult.publicuid,
-        };
-
-        await this.mediaUploadService.handleAvatarDeletion(currentAvatar, newAvatar);
-      }
-
       const avatarUpdateData = {
         'personalInfo.avatar.url': avatarResult.url,
         'personalInfo.avatar.filename': avatarResult.filename,
-        'personalInfo.avatar.key': avatarResult.publicuid,
+        // The S3 key, so the file can be signed and later deleted
+        'personalInfo.avatar.key': avatarResult.key,
       };
 
       const updatedProfile = await this.profileDAO.updateById(
@@ -919,6 +994,13 @@ export class ProfileService {
       if (!updatedProfile) {
         throw new NotFoundError({
           message: t('common.errors.operationFailed', { action: 'update profile avatar' }),
+        });
+      }
+
+      // Only once the new avatar is saved is the old file queued for deletion
+      if (currentAvatar?.key) {
+        await this.mediaUploadService.handleAvatarDeletion(currentAvatar, {
+          key: avatarResult.key,
         });
       }
 
@@ -935,7 +1017,6 @@ export class ProfileService {
     }
   }
 
-  private readonly onUploadCompleted = this.handleUploadCompleted.bind(this);
   private readonly onLeaseActivated = this.handleLeaseActivated.bind(this);
   private readonly onLeaseTerminated = this.handleLeaseTerminated.bind(this);
 
@@ -943,29 +1024,8 @@ export class ProfileService {
    * Setup event listeners for profile-related events
    */
   registerEventListeners(): void {
-    this.emitterService.on(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
     this.emitterService.on(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
     this.emitterService.on(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
-  }
-
-  /**
-   * Handle upload completion events - only process avatar uploads
-   */
-  private async handleUploadCompleted(data: any): Promise<void> {
-    try {
-      // Only handle avatar uploads (profile-specific uploads)
-      if (
-        data.resourceName === 'profile' &&
-        data.fieldName === 'avatar' &&
-        data.results?.length > 0
-      ) {
-        await this.updateAvatarInfo(data.resourceId, data.results);
-        this.logger.info(`Avatar updated for user ${data.resourceId}`);
-      }
-      // Ignore other upload types - they're handled by other services
-    } catch (error) {
-      this.logger.error('Error handling upload completion in ProfileService:', error);
-    }
   }
 
   private async handleLeaseActivated(payload: any): Promise<void> {
@@ -1203,7 +1263,6 @@ export class ProfileService {
    * Clean up event listeners when service is destroyed
    */
   destroy(): void {
-    this.emitterService.off(EventTypes.UPLOAD_COMPLETED, this.onUploadCompleted);
     this.emitterService.off(EventTypes.LEASE_ESIGNATURE_COMPLETED, this.onLeaseActivated);
     this.emitterService.off(EventTypes.LEASE_TERMINATED, this.onLeaseTerminated);
     this.logger.info('Profile service event listeners removed');

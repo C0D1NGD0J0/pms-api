@@ -7,7 +7,7 @@ import {
   ReportStatus,
 } from '@interfaces/report.interface';
 
-import { UtilsValidations } from '../UtilsValidation';
+import { UtilsValidations, shortUidString } from '../UtilsValidation';
 
 const sectionsSchema = z
   .array(z.enum(REPORT_SECTIONS as unknown as [string, ...string[]]))
@@ -25,7 +25,7 @@ export const ReportValidations = {
       period: z.nativeEnum(ReportPeriod),
       startDate: z.string().datetime().optional(),
       endDate: z.string().datetime().optional(),
-      propertyId: z.string().min(1).optional(),
+      pid: shortUidString.optional(),
       sections: sectionsSchema,
       emailRecipients: emailRecipientsSchema,
     })
@@ -48,7 +48,7 @@ export const ReportValidations = {
     frequency: z.nativeEnum(ScheduleFrequency),
     sections: sectionsSchema,
     emailRecipients: emailRecipientsSchema,
-    propertyId: z.string().min(1).optional(),
+    pid: shortUidString.optional(),
     isActive: z.boolean().optional(),
   }),
 

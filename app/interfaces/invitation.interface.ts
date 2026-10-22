@@ -6,11 +6,11 @@ import { EmployeeInfo, TenantInfo, VendorInfo } from './profile.interface';
 
 export interface IInvitation {
   personalInfo: IInvitationPersonalInfo;
-  linkedVendorUid?: Types.ObjectId;
   metadata: IInvitationMetadata;
   acceptedBy?: Types.ObjectId;
   revokedBy?: Types.ObjectId;
   invitedBy: Types.ObjectId;
+  linkedVendorUid?: string; // vuid of the vendor organisation a team member joins
   status: InvitationStatus;
   clientId: Types.ObjectId;
   invitationToken: string;
@@ -68,7 +68,7 @@ export interface IInvitationData {
   personalInfo: IInvitationPersonalInfo;
   metadata?: IInvitationMetadataInput;
   status: InitialInvitationStatus;
-  linkedVendorUid?: string; // ID of an existing vendor user to link this invitation to
+  linkedVendorUid?: string; // vuid of the vendor organisation this invitation joins
   inviteeEmail: string;
   role: IUserRole;
 }

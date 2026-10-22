@@ -10,10 +10,11 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { LEASING_CHECK_SELECT } from '@utils/propertyLeasing';
+import { getUidsByUserId } from '@services/property/propertyHelpers';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import { IPropertyDocument, ICurrentUser, ICronJob } from '@interfaces/index';
 import { InvitationDAO, ProfileDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
-import { ILeaseDocument, ILeaseFormData, LeaseStatus } from '@interfaces/lease.interface';
 import { EventEmitterService, NotificationService, InvitationService } from '@services/index';
 import {
   IPromiseReturnedData,
@@ -25,6 +26,13 @@ import {
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  ILeaseRequestData,
+  ILeaseRenewalData,
+  ILeaseDocument,
+  ILeaseFormData,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 import {
   convertUserRoleToEnum,
   preventTenantConflict,
@@ -38,6 +46,7 @@ import {
 
 import {
   calculateRenewalMetadata,
+  assertPropertyLeasable,
   createSystemContext,
   findActiveLeasePDF,
   queueLeasePdf,
@@ -143,18 +152,31 @@ export class LeaseRenewalService {
       }
 
       // Calculate renewal metadata to get form data
-      const renewalMetadata = calculateRenewalMetadata(lease, true);
-      if (!renewalMetadata) {
+      const renewalFormData = calculateRenewalMetadata(lease, true)?.renewalFormData;
+      if (!renewalFormData) {
         throw new InvalidRequestError({
           message:
             'Unable to calculate renewal form data. Please ensure the lease has valid dates.',
         });
       }
 
+      // The form sends these public ids back with the renewal (same contract as lease edit)
+      const uidsByUserId = await getUidsByUserId(this.userDAO, [
+        lease.property.managedBy,
+        lease.tenantId,
+      ]);
+
       return {
         success: true,
         message: t('common.success.retrieved', { resource: 'Renewal form data' }),
-        data: renewalMetadata.renewalFormData,
+        data: {
+          ...renewalFormData,
+          property: {
+            ...renewalFormData.property,
+            managedBy: uidsByUserId.get(String(lease.property.managedBy)) ?? '',
+          },
+          tenantInfo: { uid: uidsByUserId.get(String(lease.tenantId)) ?? '' },
+        },
       };
     } catch (error: any) {
       this.log.error('Error getting renewal form data:', error);
@@ -169,11 +191,11 @@ export class LeaseRenewalService {
   async createDraftLeaseRenewal(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
+    renewalData: ILeaseRenewalData,
     ctx: IRequestContext | null = null,
     validateLeaseDataFn?: (
       cuid: string,
-      data: ILeaseFormData,
+      data: ILeaseRequestData,
       property: IPropertyDocument
     ) => Promise<{ hasErrors: boolean; errors: any }>
   ): IPromiseReturnedData<ILeaseDocument> {
@@ -217,6 +239,10 @@ export class LeaseRenewalService {
         message: 'Only active or recently expired leases can be renewed',
       });
     }
+
+    // A renewal is a new contract, so it needs the same ownership checks as lease creation. The
+    // auto-renewal cron catches this per lease and notifies the property manager with the reason
+    await this.assertRenewalPropertyLeasable(cuid, existingLease);
 
     if (!isSystemCall) {
       const renewalMeta = calculateRenewalMetadata(existingLease);
@@ -327,6 +353,10 @@ export class LeaseRenewalService {
         previousLeaseId: existingLease._id,
         status: LeaseStatus.DRAFT_RENEWAL,
         approvalStatus: requiresApproval ? 'pending' : 'approved',
+        // Same property, unit and tenant as the lease; only the manager can be reassigned
+        property: renewalData.property?.managedBy
+          ? { ...cleanLease.property, managedBy: renewalData.property.managedBy }
+          : cleanLease.property,
         duration: renewalData.duration || {
           startDate: defaultStartDate,
           endDate: defaultEndDate,
@@ -877,6 +907,8 @@ export class LeaseRenewalService {
         message: `Cannot approve renewal with status ${renewal.status}. Must be draft_renewal.`,
       });
     }
+    // The draft may have been created before verification lapsed or an agreement expired
+    await this.assertRenewalPropertyLeasable(cuid, renewal);
 
     const hasModifications = Object.keys(renewalData).length > 0;
     const updateData: any = {
@@ -1003,11 +1035,11 @@ export class LeaseRenewalService {
   async renewLease(
     cuid: string,
     luid: string,
-    renewalData: Partial<ILeaseFormData>,
+    renewalData: ILeaseRenewalData,
     ctx: IRequestContext,
     validateLeaseDataFn?: (
       cuid: string,
-      data: ILeaseFormData,
+      data: ILeaseRequestData,
       property: IPropertyDocument
     ) => Promise<{ hasErrors: boolean; errors: any }>
   ): IPromiseReturnedData<ILeaseDocument> {
@@ -1018,6 +1050,19 @@ export class LeaseRenewalService {
    * Renewals are created without documents; generate the agreement once approved so it can be
    * sent for signature (auto-send skips renewals that have no active PDF).
    */
+  /** The lease's property must pass the full leasing ownership checks (see assertPropertyLeasable). */
+  private async assertRenewalPropertyLeasable(cuid: string, lease: ILeaseDocument): Promise<void> {
+    const propertyRef = lease.property.id as any;
+    const property = await this.propertyDAO.findFirst(
+      { _id: propertyRef?._id ?? propertyRef, cuid, deletedAt: null },
+      { select: LEASING_CHECK_SELECT }
+    );
+    if (!property) {
+      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+    assertPropertyLeasable(property);
+  }
+
   private async queueRenewalPdfGeneration(renewal: ILeaseDocument, actorId: string): Promise<void> {
     try {
       await queueLeasePdf(this.queueFactory, renewal, actorId);

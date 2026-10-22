@@ -15,6 +15,7 @@ import { PermissionService } from '@services/permission/permission.service';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
+import { getPropertyLeasingBlock, PropertyLeasingBlock } from '@utils/propertyLeasing';
 import { getImportFieldsResponse, isKnownImportField } from '@services/csv/propertyImportFields';
 import {
   PropertyCsvProcessor,
@@ -41,6 +42,7 @@ import {
   IRequestContext,
   ResourceContext,
   IPaginateResult,
+  UploadResult,
 } from '@interfaces/utils.interface';
 import {
   MaintenanceRequestDAO,
@@ -74,6 +76,7 @@ import {
   MAX_ASSIGNED_STAFF,
   getRequestDuration,
   calcOccupancyRate,
+  generateShortUID,
   calcTotalPages,
   createLogger,
   escapeRegExp,
@@ -94,12 +97,15 @@ import {
   getAccessiblePropertyFilter,
   cleanUpRemovedPropertyMedia,
   filterPropertyByDepartment,
-  assertConnectedEmployees,
+  resolveConnectedUserIds,
+  resolveConnectedUserId,
   withoutPendingUploads,
   isFinancialRestricted,
   canViewInspections,
   canViewMaintenance,
   pendingMediaItems,
+  getUidsByUserId,
+  getUserIdsByUid,
 } from './propertyHelpers';
 
 interface IConstructor {
@@ -368,7 +374,8 @@ export class PropertyService implements ICronProvider {
 
   async addProperty(
     cxt: IRequestContext,
-    propertyData: { scannedFiles?: ExtractedMediaFile[] } & NewPropertyType
+    propertyData: NewPropertyType,
+    newFiles?: ExtractedMediaFile[]
   ): Promise<ISuccessReturnData> {
     const {
       params: { cuid },
@@ -531,8 +538,12 @@ export class PropertyService implements ICronProvider {
 
     cleanPropertyData.createdBy = new Types.ObjectId(currentuser.sub);
 
+    // managedBy and assignedStaff arrive as user uids; they are stored as User ObjectIds
     if (cleanPropertyData.managedBy) {
-      cleanPropertyData.managedBy = new Types.ObjectId(cleanPropertyData.managedBy);
+      cleanPropertyData.managedBy = await this.resolvePropertyManagerId(
+        cuid,
+        String(cleanPropertyData.managedBy)
+      );
     } else if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
       // admin/manager can manage their own properties
       cleanPropertyData.managedBy = new Types.ObjectId(currentuser.sub);
@@ -563,47 +574,77 @@ export class PropertyService implements ICronProvider {
     const config = subscriptionPlanConfig.getConfig(subscription.planName);
     const maxProperties = config.limits.maxProperties;
 
-    const session = await this.propertyDAO.startSession();
-    const result = await this.propertyDAO.withTransaction(session, async (txSession) => {
-      const result = await this.subscriptionDAO.updateResourceCount(
-        'property',
-        subscription.client,
-        1,
-        maxProperties,
-        txSession
-      );
+    // Uploaded after every check, so a rejected create uploads nothing, and saved with the
+    // property in the same write. The pid is chosen here so the S3 keys carry it.
+    const pid = generateShortUID();
+    const uploads = newFiles?.length
+      ? await this.mediaUploadService.uploadRequestFiles(
+          { scannedFiles: newFiles },
+          {
+            resourceName: 'property',
+            resourceId: pid,
+            fieldName: 'media',
+            actorId: currentuser.sub,
+          }
+        )
+      : [];
+    const newMedia = this.propertyDAO.buildMediaItems(
+      { documents: cleanPropertyData.documents as IPropertyDocument['documents'] },
+      uploads,
+      currentuser.sub
+    );
 
-      if (!result) {
-        throw new BadRequestError({
-          message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
-        });
-      }
+    let result: IPropertyDocument;
+    try {
+      const session = await this.propertyDAO.startSession();
+      result = await this.propertyDAO.withTransaction(session, async (txSession) => {
+        const result = await this.subscriptionDAO.updateResourceCount(
+          'property',
+          subscription.client,
+          1,
+          maxProperties,
+          txSession
+        );
 
-      // Every new property starts unverified, regardless of ownership type or uploaded
-      // documents — only an admin review (PropertyVerificationService) can verify it.
-      const verificationStatus = VerificationStatusEnum.UNVERIFIED;
+        if (!result) {
+          throw new BadRequestError({
+            message: `Property limit reached. Your ${subscription.planName} plan allows ${maxProperties} properties (including archived).`,
+          });
+        }
 
-      const property = await this.propertyDAO.createProperty(
-        {
+        // Every new property starts unverified, regardless of ownership type or uploaded
+        // documents — only an admin review (PropertyVerificationService) can verify it.
+        const verificationStatus = VerificationStatusEnum.UNVERIFIED;
+
+        const newPropertyData = {
           ...cleanPropertyData,
+          images: [...(cleanPropertyData.images ?? []), ...newMedia.images],
+          documents: [...(cleanPropertyData.documents ?? []), ...newMedia.documents],
+          pid,
           cuid,
           approvalStatus,
           approvalDetails,
           verificationStatus,
-        },
-        txSession
-      );
+        } as Partial<IPropertyDocument>;
+        const property = await this.propertyDAO.createProperty(newPropertyData, txSession);
 
-      if (!property) {
-        throw new BadRequestError({
-          message: t('common.errors.operationFailed', { action: 'create property' }),
-        });
-      }
+        if (!property) {
+          throw new BadRequestError({
+            message: t('common.errors.operationFailed', { action: 'create property' }),
+          });
+        }
 
-      return property;
-    });
+        return property;
+      });
+    } catch (error) {
+      await this.removeUploadsAfterFailedWrite(uploads, pid);
+      throw error;
+    }
+
+    this.emitUploadCompleted(uploads, pid, currentuser.sub);
 
     await this.propertyCache.cacheProperty(cuid, result.id, result);
+    await this.propertyCache.invalidatePropertyLists(cuid);
     await this.propertyCache.invalidateLeaseableProperties(cuid);
 
     if (approvalStatus === PropertyApprovalStatusEnum.PENDING) {
@@ -632,7 +673,40 @@ export class PropertyService implements ICronProvider {
       }
     }
 
-    return { success: true, data: result, message };
+    return { success: true, data: await this.withSignedMediaUrls(result), message };
+  }
+
+  /** AssetService turns UPLOAD_COMPLETED into document-library asset records. */
+  private emitUploadCompleted(uploads: UploadResult[], pid: string, actorId: string): void {
+    if (!uploads.length) return;
+    this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
+      results: uploads,
+      actorId,
+      resourceType: 'document',
+      resourceName: 'property',
+      resourceId: pid,
+      fieldName: 'media',
+    });
+  }
+
+  /** The write that would have referenced these files failed, so nothing points at them. */
+  private async removeUploadsAfterFailedWrite(uploads: UploadResult[], pid: string) {
+    try {
+      await this.mediaUploadService.removeUploadedFiles(uploads);
+    } catch (error) {
+      this.log.error('Failed to remove files uploaded for a failed property write', { pid, error });
+    }
+  }
+
+  /**
+   * Media URLs are signed on every read, so the write response signs them too — the client
+   * can show the new files straight away. The stored URLs are left untouched.
+   */
+  private async withSignedMediaUrls(property: IPropertyDocument) {
+    const plain = (property.toObject ? property.toObject() : property) as IPropertyDocument;
+    if (plain.images?.length) await this.s3Service.signFileUrls(plain.images);
+    if (plain.documents?.length) await this.s3Service.signFileUrls(plain.documents);
+    return plain;
   }
 
   /**
@@ -642,22 +716,35 @@ export class PropertyService implements ICronProvider {
    */
   private async resolveInitialAssignedStaff(
     cuid: string,
-    requestedUserIds: string[],
+    requestedUids: string[],
     managedById: string
   ): Promise<Types.ObjectId[]> {
-    const userIds = [...new Set(requestedUserIds)].filter((id) => id !== managedById);
+    const idsByUid = await resolveConnectedUserIds(
+      this.userDAO,
+      cuid,
+      requestedUids,
+      t('common.errors.notFound', { resource: 'User' })
+    );
+    const userIds = [...new Set([...idsByUid.values()].map(String))].filter(
+      (id) => id !== managedById
+    );
     if (userIds.length > MAX_ASSIGNED_STAFF) {
       throw new BadRequestError({
         message: `Cannot assign more than ${MAX_ASSIGNED_STAFF} staff members to a property`,
       });
     }
-    await assertConnectedEmployees(
+    return userIds.map((id) => new Types.ObjectId(id));
+  }
+
+  /** A property's manager is given by uid and must be an employee connected to this client. */
+  private resolvePropertyManagerId(cuid: string, managerUid: string): Promise<Types.ObjectId> {
+    return resolveConnectedUserId(
       this.userDAO,
       cuid,
-      userIds,
-      t('common.errors.notFound', { resource: 'User' })
+      managerUid,
+      'Property manager must be an active employee of this account',
+      ROLE_GROUPS.EMPLOYEE_ROLES
     );
-    return userIds.map((id) => new Types.ObjectId(id));
   }
 
   private propertyTypeValidation(propertyData: NewPropertyType): void {
@@ -963,8 +1050,10 @@ export class PropertyService implements ICronProvider {
         scopeClauses.push({ $or: searchOr });
       }
 
+      // managedBy is the manager's public uid; an unknown or other-client uid matches nothing
       if (filters.managedBy) {
-        filter.managedBy = new Types.ObjectId(filters.managedBy as string);
+        const managerIds = await getUserIdsByUid(this.userDAO, cuid, [String(filters.managedBy)]);
+        filter.managedBy = managerIds.get(String(filters.managedBy)) ?? new Types.ObjectId();
       }
     }
 
@@ -1088,12 +1177,14 @@ export class PropertyService implements ICronProvider {
 
     // Fetch property manager details
     let propertyManager = null;
+    // Public uid of the manager, so edit forms can preselect them without the internal _id
+    let managedByUid: string | null = null;
     if (property.managedBy) {
       const managerProfile = await this.profileDAO.findFirst(
         { user: property.managedBy, deletedAt: null },
         {
           select: 'personalInfo.firstName personalInfo.lastName personalInfo.phoneNumber user',
-          populate: { path: 'user', select: 'email' },
+          populate: { path: 'user', select: 'email uid' },
         }
       );
 
@@ -1105,6 +1196,12 @@ export class PropertyService implements ICronProvider {
           phoneNumber: managerProfile.personalInfo?.phoneNumber || '',
         };
       }
+      managedByUid =
+        (managerProfile as any)?.user?.uid ??
+        (await getUidsByUserId(this.userDAO, [property.managedBy])).get(
+          property.managedBy.toString()
+        ) ??
+        null;
     }
 
     // Fetch assigned staff details
@@ -1204,6 +1301,8 @@ export class PropertyService implements ICronProvider {
           {
             sort: { createdAt: -1 },
             limit: 20,
+            // The technician is identified publicly by uid; the internal user ref stays server-side
+            projection: { 'assignedTechnician.userId': 0 },
             populate: [
               { path: 'propertyId', select: 'pid name address' },
               {
@@ -1293,6 +1392,7 @@ export class PropertyService implements ICronProvider {
       ...(pendingChangesPreview && { pendingChangesPreview }),
       fees: MoneyUtils.formatMoneyDisplay(propertyObj.fees),
       manager: propertyManager,
+      managedByUid,
       assignedStaff: assignedStaffList,
     };
 
@@ -1405,6 +1505,14 @@ export class PropertyService implements ICronProvider {
     const { images, documents, ...restUpdateData } = updateData;
     const cleanUpdateData: Partial<IPropertyDocument> = { ...restUpdateData };
 
+    // The new manager arrives as a user uid; staff edits hold the resolved ObjectId for approval
+    if (cleanUpdateData.managedBy) {
+      cleanUpdateData.managedBy = await this.resolvePropertyManagerId(
+        cuid,
+        String(cleanUpdateData.managedBy)
+      );
+    }
+
     // Parse money fields
     if (cleanUpdateData.fees) {
       cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
@@ -1515,16 +1623,7 @@ export class PropertyService implements ICronProvider {
         });
       }
 
-      if (uploads.length) {
-        this.emitterService.emit(EventTypes.UPLOAD_COMPLETED, {
-          results: uploads,
-          actorId: ctx.currentuser.sub,
-          resourceType: 'document',
-          resourceName: 'property',
-          resourceId: pid,
-          fieldName: 'media',
-        });
-      }
+      this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
 
       // Send notification to approvers
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, false);
@@ -1591,13 +1690,45 @@ export class PropertyService implements ICronProvider {
         $push: pushOperations,
       };
 
-      const result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
+      // New files are saved in this same write. An edited list in the payload replaces the
+      // stored one, so the uploads go after it — Mongo rejects $set and $push on one path.
+      const uploads = ctx.newFiles?.length
+        ? await this.mediaUploadService.uploadRequestFiles(
+            { scannedFiles: ctx.newFiles },
+            {
+              resourceName: 'property',
+              resourceId: pid,
+              fieldName: 'media',
+              actorId: ctx.currentuser.sub,
+            }
+          )
+        : [];
+      const newMedia = this.propertyDAO.buildMediaItems(property, uploads, ctx.currentuser.sub);
+      for (const field of ['images', 'documents'] as const) {
+        const uploaded = newMedia[field] as any[];
+        if (!uploaded.length) continue;
+
+        if (cleanUpdateData[field] !== undefined) {
+          updateOperation.$set[field] = [...(cleanUpdateData[field] as any[]), ...uploaded];
+        } else {
+          updateOperation.$push[field] = { $each: uploaded };
+        }
+      }
+
+      let result: IPropertyDocument | null = null;
+      try {
+        result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
+      } finally {
+        if (!result) await this.removeUploadsAfterFailedWrite(uploads, pid);
+      }
 
       if (!result) {
         throw new BadRequestError({
           message: t('common.errors.operationFailed', { action: 'update property' }),
         });
       }
+
+      this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
 
       const discardedMedia = pendingMediaItems(property.pendingChanges?.pendingMedia);
       if (discardedMedia.length) {
@@ -1634,6 +1765,7 @@ export class PropertyService implements ICronProvider {
 
       await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
       await this.propertyCache.invalidatePropertyDetail(ctx.cuid, result.pid);
+      await this.propertyCache.invalidatePropertyLists(ctx.cuid);
       await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
       await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
 
@@ -1666,7 +1798,7 @@ export class PropertyService implements ICronProvider {
       const baseMessage = t('common.success.updated', { resource: 'Property' });
       const message = hasPendingChanges ? `${baseMessage}${overrideMessage}` : baseMessage;
 
-      return { success: true, data: result, message };
+      return { success: true, data: await this.withSignedMediaUrls(result), message };
     }
 
     throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });
@@ -2405,6 +2537,8 @@ export class PropertyService implements ICronProvider {
       // Add projection to shape the response
       pipeline.push({
         $project: {
+          // uid is what assignment forms send back (managedBy, assignedStaff)
+          uid: 1,
           puid: '$profile.puid',
           email: 1,
           displayName: '$profile.personalInfo.displayName',
@@ -2518,17 +2652,18 @@ export class PropertyService implements ICronProvider {
   ): Promise<
     ISuccessReturnData<{
       items: Array<{
-        id: string;
+        pid: string;
         name: string;
         address: string;
         propertyType: string;
+        leasingBlockedReason: PropertyLeasingBlock | null;
         financialInfo?: {
           rentAmount?: number;
           securityDeposit?: number;
           currency?: string;
         };
         units?: Array<{
-          id: string;
+          puid: string;
           unitNumber: string;
           status: string;
           financialInfo?: {
@@ -2542,7 +2677,7 @@ export class PropertyService implements ICronProvider {
         totalProperties: number;
         filteredCount: number;
         filteredProperties?: Array<{
-          id: string;
+          pid: string;
           name: string;
           propertyType: string;
           reason: string;
@@ -2594,7 +2729,10 @@ export class PropertyService implements ICronProvider {
       const properties = await this.propertyDAO.list(filter, {
         limit: 1000,
         sort: { name: 1 },
-        projection: '_id name address propertyType fees',
+        // owner/authorization/verificationGracePeriod are select: false — they feed the
+        // leasing check below
+        projection:
+          '_id pid name address propertyType fees approvalStatus verificationStatus owner authorization verificationGracePeriod',
       });
 
       if (!properties.items.length) {
@@ -2608,7 +2746,7 @@ export class PropertyService implements ICronProvider {
       // Map properties to simplified format and filter multi-unit properties without units
       const leaseableProperties: any[] = [];
       const filteredProperties: Array<{
-        id: string;
+        pid: string;
         name: string;
         propertyType: string;
         reason: string;
@@ -2627,7 +2765,7 @@ export class PropertyService implements ICronProvider {
           // Filter out multi-unit properties with no units
           if (!unitsResult.items || unitsResult.items.length === 0) {
             filteredProperties.push({
-              id: propertyObj._id.toString(),
+              pid: propertyObj.pid,
               name: propertyObj.name,
               propertyType: propertyObj.propertyType,
               reason: 'requires_units',
@@ -2639,12 +2777,14 @@ export class PropertyService implements ICronProvider {
           }
         }
 
-        // Build leaseable property object
+        // Build leaseable property object — public ids only; the lease form sends them back
         const result: any = {
-          id: propertyObj._id.toString(),
+          pid: propertyObj.pid,
           name: propertyObj.name,
           address: propertyObj.address?.fullAddress || '',
           propertyType: propertyObj.propertyType,
+          // Listed but not selectable in the lease form until resolved (e.g. imported, unverified)
+          leasingBlockedReason: getPropertyLeasingBlock(propertyObj),
         };
 
         // Add financial info if available
@@ -2666,7 +2806,7 @@ export class PropertyService implements ICronProvider {
             result.units = unitsResult.items.map((unit) => {
               const unitObj = unit.toObject ? unit.toObject() : unit;
               const unitData: any = {
-                id: unitObj._id.toString(),
+                puid: unitObj.puid,
                 unitNumber: unitObj.unitNumber,
                 status: unitObj.status,
               };
@@ -2737,7 +2877,7 @@ export class PropertyService implements ICronProvider {
 
   async assignStaff(
     ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
-    userId: string
+    staffUid: string
   ): Promise<ISuccessReturnData> {
     const { cuid, pid } = ctx;
 
@@ -2749,7 +2889,8 @@ export class PropertyService implements ICronProvider {
     }
 
     const user = await this.userDAO.findFirst({
-      _id: new Types.ObjectId(userId),
+      uid: staffUid,
+      deletedAt: null,
       cuids: { $elemMatch: { cuid, isConnected: true } },
     });
     if (!user) {
@@ -2757,6 +2898,7 @@ export class PropertyService implements ICronProvider {
         message: t('common.errors.notFound', { resource: 'User' }),
       });
     }
+    const userId = user._id.toString();
 
     if (property.managedBy?.toString() === userId) {
       throw new BadRequestError({
@@ -2790,7 +2932,7 @@ export class PropertyService implements ICronProvider {
 
   async unassignStaff(
     ctx: { cuid: string; pid: string; currentuser: ICurrentUser },
-    userId: string
+    staffUid: string
   ): Promise<ISuccessReturnData> {
     const { cuid, pid } = ctx;
 
@@ -2801,9 +2943,20 @@ export class PropertyService implements ICronProvider {
       });
     }
 
+    // Not scoped to connected users: staff who left the account must still be removable
+    const user = await this.userDAO.findFirst(
+      { uid: staffUid, 'cuids.cuid': cuid },
+      { projection: '_id' }
+    );
+    if (!user) {
+      throw new NotFoundError({
+        message: t('common.errors.notFound', { resource: 'User' }),
+      });
+    }
+
     const updated = await this.propertyDAO.update(
       { _id: property._id },
-      { $pull: { assignedStaff: new Types.ObjectId(userId) } }
+      { $pull: { assignedStaff: user._id } }
     );
 
     return {

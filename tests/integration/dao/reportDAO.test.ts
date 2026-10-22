@@ -151,6 +151,17 @@ describe('ReportDAO Integration Tests', () => {
       expect(result.items).toHaveLength(0);
     });
 
+    it('should not return the raw failure reason of failed reports', async () => {
+      await ReportModel.create(
+        makeReport({ status: ReportStatus.FAILED, failedReason: 'PDF generation timed out' })
+      );
+
+      const result = await dao.listByClient(BASE_CUID);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].failedReason).toBeUndefined();
+    });
+
     it('should return reports for the given client only', async () => {
       await ReportModel.create([makeReport(), makeReport(), makeReport({ cuid: 'OTHER_CLIENT' })]);
 

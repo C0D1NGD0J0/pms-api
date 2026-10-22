@@ -487,7 +487,7 @@ describe('PaymentController Integration Tests', () => {
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
         .send({
           mruid: 'MR-TEST-001',
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
           amount: 45000,
           description: 'Pipe replacement charge',
         })
@@ -513,7 +513,7 @@ describe('PaymentController Integration Tests', () => {
 
       await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
-        .send({ mruid: 'MR-TEST-005', tenantId: tenantUser._id.toString(), amount: 1 })
+        .send({ mruid: 'MR-TEST-005', tenantUid: tenantUser.uid, amount: 1 })
         .expect(201);
 
       const created = await Payment.findOne({ maintenanceRequestUid: 'MR-TEST-005' });
@@ -525,7 +525,7 @@ describe('PaymentController Integration Tests', () => {
 
       await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
-        .send({ mruid: 'MR-TEST-006', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .send({ mruid: 'MR-TEST-006', tenantUid: tenantUser.uid, amount: 30000 })
         .expect(400);
 
       expect(await Payment.findOne({ maintenanceRequestUid: 'MR-TEST-006' })).toBeNull();
@@ -536,7 +536,7 @@ describe('PaymentController Integration Tests', () => {
 
       await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
-        .send({ mruid: 'MR-TEST-007', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .send({ mruid: 'MR-TEST-007', tenantUid: tenantUser.uid, amount: 30000 })
         .expect(400);
     });
 
@@ -544,7 +544,7 @@ describe('PaymentController Integration Tests', () => {
       await seedBillableRequest('MR-TEST-008', 30000);
       const firstResponse = await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
-        .send({ mruid: 'MR-TEST-008', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .send({ mruid: 'MR-TEST-008', tenantUid: tenantUser.uid, amount: 30000 })
         .expect(201);
       await Payment.updateOne(
         { pytuid: firstResponse.body.data.pytuid },
@@ -553,7 +553,7 @@ describe('PaymentController Integration Tests', () => {
 
       await request(app)
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
-        .send({ mruid: 'MR-TEST-008', tenantId: tenantUser._id.toString(), amount: 30000 })
+        .send({ mruid: 'MR-TEST-008', tenantUid: tenantUser.uid, amount: 30000 })
         .expect(201);
 
       const charges = await Payment.find({ maintenanceRequestUid: 'MR-TEST-008' });
@@ -566,7 +566,7 @@ describe('PaymentController Integration Tests', () => {
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
         .send({
           mruid: 'MR-TEST-002',
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
           amount: 20000,
           description: 'HVAC filter replacement',
         })
@@ -582,7 +582,7 @@ describe('PaymentController Integration Tests', () => {
         .post(`/api/v1/payments/${localClient.cuid}/maintenance-charge`)
         .send({
           mruid: 'MR-TEST-003',
-          tenantId: '000000000000000000000000', // non-existent user ObjectId
+          tenantUid: 'NOSUCHTENANT', // no such tenant in this client
           amount: 10000,
         })
         .expect(404);
@@ -595,7 +595,7 @@ describe('PaymentController Integration Tests', () => {
         .post('/api/v1/payments/NONEXISTENT-CUID/maintenance-charge')
         .send({
           mruid: 'MR-TEST-004',
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
           amount: 10000,
         })
         .expect(404);
@@ -618,6 +618,9 @@ describe('PaymentController Integration Tests', () => {
         },
         { upsert: true, new: true }
       );
+      // Tenant scoping resolves the user and profile, which the outer clear also removed
+      await User.collection.insertOne(adminUser.toObject());
+      await Profile.collection.insertOne(testProfile.toObject());
     });
 
     it('returns 200 with stats for admin role (client-wide)', async () => {
@@ -644,9 +647,9 @@ describe('PaymentController Integration Tests', () => {
       expect(typeof response.body.data.collected).toBe('number');
     });
 
-    it('returns 200 with filtered stats when tenantId query param is provided as admin', async () => {
+    it('returns 200 with filtered stats when tenantUid query param is provided as admin', async () => {
       const response = await request(app)
-        .get(`/api/v1/payments/${testClient.cuid}/stats?tenantId=${testProfile._id.toString()}`)
+        .get(`/api/v1/payments/${testClient.cuid}/stats?tenantUid=${adminUser.uid}`)
         .expect(200);
 
       expect(response.body.success).toBe(true);
@@ -684,7 +687,7 @@ describe('PaymentController Integration Tests', () => {
           paymentMethod: PaymentMethod.CASH,
           baseAmount: 120000,
           paidAt: new Date('2026-04-01').toISOString(),
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
           period: { month: 4, year: 2026 },
         })
         .expect(201);
@@ -700,7 +703,7 @@ describe('PaymentController Integration Tests', () => {
           paymentMethod: PaymentMethod.CASH,
           baseAmount: 120000,
           paidAt: new Date('2026-04-01').toISOString(),
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
           period: { month: 4, year: 2026 },
         })
         .expect(201);
@@ -724,7 +727,7 @@ describe('PaymentController Integration Tests', () => {
           paymentMethod: PaymentMethod.CASH,
           baseAmount: 80000,
           paidAt: new Date('2026-05-01').toISOString(),
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
           period: { month: 5, year: 2026 },
         })
         .expect(201);
@@ -740,7 +743,7 @@ describe('PaymentController Integration Tests', () => {
           paymentMethod: PaymentMethod.CASH,
           baseAmount: 100000,
           paidAt: new Date().toISOString(),
-          tenantId: tenantUser._id.toString(),
+          tenantUid: tenantUser.uid,
         })
         .expect(404);
 
@@ -755,7 +758,7 @@ describe('PaymentController Integration Tests', () => {
           paymentMethod: PaymentMethod.CASH,
           baseAmount: 100000,
           paidAt: new Date().toISOString(),
-          tenantId: '000000000000000000000000',
+          tenantUid: 'NONEXISTENT-UID',
         })
         .expect(404);
 

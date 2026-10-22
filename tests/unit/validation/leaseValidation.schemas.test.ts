@@ -1,6 +1,8 @@
 import {
+  LeaseStatsQuerySchema,
   SignatureActionSchema,
   TerminateLeaseSchema,
+  InternalNoteSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
   RenewLeaseSchema,
@@ -11,8 +13,13 @@ jest.mock('@di/setup', () => ({
 }));
 
 const baseCreatePayload = {
-  tenantInfo: { id: null, email: 'new.tenant@example.com', firstName: 'Ada', lastName: 'Lovelace' },
-  property: { id: '507f1f77bcf86cd799439011', unitId: '507f1f77bcf86cd799439012' },
+  tenantInfo: {
+    uid: null,
+    email: 'new.tenant@example.com',
+    firstName: 'Ada',
+    lastName: 'Lovelace',
+  },
+  property: { pid: 'PROPERTY0001', puid: 'UNIT00000001' },
   duration: { startDate: '2026-01-01', endDate: '2026-12-31', moveInDate: '2026-01-01' },
   fees: { rentAmount: 1500, currency: 'CAD', rentDueDay: 1, securityDeposit: 1500 },
   type: 'fixed_term',
@@ -20,8 +27,9 @@ const baseCreatePayload = {
 
 // Shape returned by GET /leases/:cuid/:luid/lease_renewal and submitted back unchanged by the UI
 const renewalFormPayload = {
-  property: { id: '507f1f77bcf86cd799439011', unitId: '', address: '1 Main St' },
-  tenant: { id: '507f1f77bcf86cd799439013', fullname: 'Ada Lovelace' },
+  property: { pid: 'PROPERTY0001', puid: '', address: '1 Main St', managedBy: 'MANAGER00001' },
+  tenantInfo: { uid: 'TENANT000001' },
+  tenant: { fullname: 'Ada Lovelace' },
   duration: { startDate: '2027-01-01', endDate: '2027-12-31', moveInDate: '2027-01-01' },
   fees: {
     rentAmount: 1600,
@@ -52,7 +60,6 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
       const result = await CreateLeaseSchema.parseAsync(baseCreatePayload);
 
       expect(result.tenantInfo).toEqual({
-        id: null,
         email: 'new.tenant@example.com',
         firstName: 'Ada',
         lastName: 'Lovelace',
@@ -98,6 +105,31 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
       expect(result.success).toBe(false);
     });
 
+    it('identifies the property, unit, manager and tenant by public ids only', async () => {
+      const result = await CreateLeaseSchema.parseAsync({
+        ...baseCreatePayload,
+        tenantInfo: { uid: 'TENANT000001' },
+        property: { pid: 'PROPERTY0001', puid: '', managedBy: 'MANAGER00001', id: 'x' },
+      });
+
+      expect(result.tenantInfo).toEqual({ uid: 'TENANT000001' });
+      // a blank unit means none; the legacy ObjectId field is stripped
+      expect(result.property).toEqual({ pid: 'PROPERTY0001', managedBy: 'MANAGER00001' });
+    });
+
+    it.each([
+      ['an ObjectId property ref', { property: { id: '507f1f77bcf86cd799439011' } }],
+      ['an ObjectId tenant id', { tenantInfo: { uid: '507f1f77bcf86cd799439013' } }],
+      [
+        'an ObjectId manager',
+        { property: { pid: 'PROPERTY0001', managedBy: '507f1f77bcf86cd7994390' } },
+      ],
+    ])('rejects %s', async (_label, override) => {
+      const result = await CreateLeaseSchema.safeParseAsync({ ...baseCreatePayload, ...override });
+
+      expect(result.success).toBe(false);
+    });
+
     it('still strips undeclared keys (mass-assignment guard)', async () => {
       const result = await CreateLeaseSchema.parseAsync({
         ...baseCreatePayload,
@@ -132,11 +164,11 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
         signedDate: new Date().toISOString(),
         approvalStatus: 'approved',
         signatures: [{ signatureMethod: 'manual' }],
-        internalNotes: [{ note: 'Checked', author: 'Admin', authorId: 'u1' }],
+        internalNotes: [{ note: 'Checked', author: 'Admin', authorId: 'ADMIN0000001' }],
       });
 
       expect(result).toEqual({
-        internalNotes: [{ note: 'Checked', author: 'Admin', authorId: 'u1' }],
+        internalNotes: [{ note: 'Checked', author: 'Admin', authorId: 'ADMIN0000001' }],
       });
     });
   });
@@ -176,9 +208,31 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
       const result = await RenewLeaseSchema.parseAsync(renewalFormPayload);
 
       expect(result.fees).not.toHaveProperty('currency');
-      for (const field of ['status', 'tenant', 'property', 'leaseNumber', 'signingMethod']) {
+      for (const field of ['status', 'tenant', 'leaseNumber', 'signingMethod']) {
         expect(result).not.toHaveProperty(field);
       }
+    });
+
+    it('names the property, unit, manager and tenant by public ids only', async () => {
+      const result = await RenewLeaseSchema.parseAsync({
+        ...renewalFormPayload,
+        property: { ...renewalFormPayload.property, id: '507f1f77bcf86cd799439011' },
+      });
+
+      // a blank unit means none; the address and the legacy ObjectId field are stripped
+      expect(result.property).toEqual({ pid: 'PROPERTY0001', managedBy: 'MANAGER00001' });
+      expect(result.tenantInfo).toEqual({ uid: 'TENANT000001' });
+    });
+
+    it.each([
+      ['an ObjectId property', { property: { pid: '507f1f77bcf86cd799439011' } }],
+      ['an ObjectId unit', { property: { puid: '507f1f77bcf86cd799439012' } }],
+      ['an ObjectId manager', { property: { managedBy: '507f1f77bcf86cd799439014' } }],
+      ['an ObjectId tenant', { tenantInfo: { uid: '507f1f77bcf86cd799439013' } }],
+    ])('rejects %s', async (_label, override) => {
+      const result = await RenewLeaseSchema.safeParseAsync({ ...renewalFormPayload, ...override });
+
+      expect(result.success).toBe(false);
     });
 
     it("accepts the '' placeholders the renewal form data uses for unset values", async () => {
@@ -199,6 +253,42 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
       });
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('InternalNoteSchema', () => {
+    const note = { note: 'Called the tenant', author: 'Pat Manager' };
+
+    it("names the author by user uid, or not at all for the current user's new note", async () => {
+      expect(
+        (await InternalNoteSchema.parseAsync({ ...note, authorId: 'MANAGER00001' })).authorId
+      ).toBe('MANAGER00001');
+      expect(
+        (await InternalNoteSchema.parseAsync({ ...note, authorId: '' })).authorId
+      ).toBeUndefined();
+    });
+
+    it('rejects an ObjectId author', async () => {
+      const result = await InternalNoteSchema.safeParseAsync({
+        ...note,
+        authorId: '507f1f77bcf86cd799439011',
+      });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('LeaseStatsQuerySchema', () => {
+    it('filters by the property pid, not its ObjectId', async () => {
+      expect((await LeaseStatsQuerySchema.parseAsync({ pid: 'PROPERTY0001' })).pid).toBe(
+        'PROPERTY0001'
+      );
+      expect(
+        (await LeaseStatsQuerySchema.safeParseAsync({ pid: '507f1f77bcf86cd799439011' })).success
+      ).toBe(false);
+      expect(
+        await LeaseStatsQuerySchema.parseAsync({ propertyId: '507f1f77bcf86cd799439011' })
+      ).toEqual({});
     });
   });
 

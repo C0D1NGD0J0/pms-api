@@ -33,18 +33,27 @@ export class UserWorker {
    * Arrow function to preserve `this` binding when passed as a queue callback.
    */
   handleVendorTeamDisconnect = async (job: Job<IVendorTeamDisconnectJobData>) => {
-    const { primaryVendorUserId, cuid, clientId, companyName } = job.data;
+    const { primaryVendorUserId, vuid, cuid, clientId, companyName } = job.data;
     const startTime = Date.now();
 
     this.log.info(
-      { jobId: job.id, primaryVendorUserId, cuid },
+      { jobId: job.id, primaryVendorUserId, vuid, cuid },
       'UserWorker: processing vendor team disconnect job'
     );
+
+    // Jobs queued before team members were linked by vuid carry no vuid — nothing safe to match on
+    if (!vuid) {
+      this.log.warn(
+        { jobId: job.id, primaryVendorUserId, cuid },
+        'UserWorker: vendor team disconnect job has no vuid, skipping'
+      );
+      return { success: false, disconnected: 0, duration: Date.now() - startTime };
+    }
 
     try {
       await job.progress(10);
 
-      const linkedUsers = await this.userDAO.getLinkedVendorUsers(primaryVendorUserId, cuid);
+      const linkedUsers = await this.userDAO.getLinkedVendorUsers(vuid, cuid);
 
       await job.progress(30);
 

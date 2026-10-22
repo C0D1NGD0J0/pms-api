@@ -92,7 +92,7 @@ export const INVITATION_IMPORTABLE_FIELDS: InvitationImportableField[] = [
   },
   {
     key: 'employeeInfo_reportsTo',
-    label: 'Reports To',
+    label: "Reports To (supervisor's user ID)",
     group: 'employee',
     required: false,
     synonyms: ['reports to', 'manager', 'supervisor'],

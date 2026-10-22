@@ -5,7 +5,6 @@ import { t } from '@shared/languages';
 import { UserDAO } from '@dao/userDAO';
 import { LeaseDAO } from '@dao/leaseDAO';
 import { VendorDAO } from '@dao/vendorDAO';
-import { createLogger } from '@utils/index';
 import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { escapeRegExp } from '@utils/helpers';
@@ -15,15 +14,18 @@ import { S3Service } from '@services/fileUpload';
 import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { SSEService } from '@services/sse/sse.service';
 import { LeaseStatus } from '@interfaces/lease.interface';
-import { UploadResult } from '@interfaces/utils.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { generateShortUID, createLogger } from '@utils/index';
 import { SMSService } from '@services/smsService/sms.service';
 import { MaintenanceRequestDAO } from '@dao/maintenanceRequestDAO';
 import { assertRecordOwnership } from '@utils/authorization.utils';
 import { TenantPaymentStatus } from '@interfaces/invoice.interface';
 import ROLES, { ROLE_GROUPS } from '@shared/constants/roles.constants';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
+import { ExtractedMediaFile, UploadResult } from '@interfaces/utils.interface';
+import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { ISuccessReturnData, IPaginationQuery, IRequestContext } from '@interfaces/utils.interface';
@@ -62,12 +64,14 @@ interface IConstructor {
   maintenanceInvoiceService: MaintenanceInvoiceService;
   vendorSuggestionService: VendorSuggestionService;
   maintenanceRequestDAO: MaintenanceRequestDAO;
+  mediaUploadService: MediaUploadService;
   emitterService: EventEmitterService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyDAO: PropertyDAO;
   invoiceDAO: InvoiceDAO;
   paymentDAO: PaymentDAO;
   smsService: SMSService;
+  sseService: SSEService;
   vendorDAO: VendorDAO;
   s3Service: S3Service;
   leaseDAO: LeaseDAO;
@@ -89,6 +93,8 @@ export class MaintenanceRequestService {
   private readonly vendorSuggestionService: VendorSuggestionService;
   private readonly maintenanceInvoiceService: MaintenanceInvoiceService;
   private readonly maintenanceRequestDAO: MaintenanceRequestDAO;
+  private readonly mediaUploadService: MediaUploadService;
+  private readonly sseService: SSEService;
   private readonly s3Service: S3Service;
 
   constructor({
@@ -104,6 +110,8 @@ export class MaintenanceRequestService {
     maintenanceRequestDAO,
     vendorSuggestionService,
     maintenanceInvoiceService,
+    mediaUploadService,
+    sseService,
     s3Service,
   }: IConstructor) {
     this.userDAO = userDAO;
@@ -118,6 +126,8 @@ export class MaintenanceRequestService {
     this.maintenanceRequestDAO = maintenanceRequestDAO;
     this.vendorSuggestionService = vendorSuggestionService;
     this.maintenanceInvoiceService = maintenanceInvoiceService;
+    this.mediaUploadService = mediaUploadService;
+    this.sseService = sseService;
     this.s3Service = s3Service;
     this.log = createLogger('MaintenanceRequestService');
   }
@@ -127,33 +137,67 @@ export class MaintenanceRequestService {
     this.emitterService.on(EventTypes.MAINTENANCE_CHARGE_PAID, this.handleChargePaid.bind(this));
   }
 
-  async persistUploadedMedia(
-    mruid: string,
-    results: UploadResult[],
-    actorId: string
-  ): Promise<string | null> {
-    if (!results?.length) return null;
-
-    const mediaItems: MaintenanceRequestMedia[] = results.map((r) => ({
-      url: r.url,
-      key: r.key,
-      filename: r.filename,
+  private toMediaItems(uploads: UploadResult[], actorId: string): MaintenanceRequestMedia[] {
+    return uploads.map((upload) => ({
+      url: upload.url,
+      key: upload.key,
+      filename: upload.filename,
       uploadedBy: new Types.ObjectId(actorId),
       uploadedAt: new Date(),
       status: 'active',
     }));
+  }
 
-    const updated = await this.maintenanceRequestDAO.update(
-      { mruid },
-      { $push: { media: { $each: mediaItems } } }
+  private uploadRequestMedia(
+    files: ExtractedMediaFile[] | undefined,
+    mruid: string,
+    actorId: string
+  ): Promise<UploadResult[]> {
+    if (!files?.length) return Promise.resolve([]);
+    return this.mediaUploadService.uploadRequestFiles(
+      { scannedFiles: files },
+      { resourceName: 'maintenance', resourceId: mruid, fieldName: 'media', actorId }
     );
+  }
 
-    this.log.info(
-      { mruid, count: mediaItems.length },
-      '[MaintenanceRequestService] media persisted after S3 upload'
-    );
+  /** The write that would have referenced these files failed, so nothing points at them. */
+  private async removeUploadsAfterFailedWrite(uploads: UploadResult[], mruid: string) {
+    if (!uploads.length) return;
+    try {
+      await this.mediaUploadService.removeUploadedFiles(uploads);
+    } catch (error) {
+      this.log.error({ error, mruid }, 'Failed to remove files uploaded for a failed write');
+    }
+  }
 
-    return updated?.cuid ?? null;
+  /** Lets everyone viewing the request in this client refetch it with the new media. */
+  private async notifyMediaAdded(cuid: string, mruid: string, count: number): Promise<void> {
+    if (!count) return;
+    try {
+      await this.sseService.broadcastToClient(
+        cuid,
+        { resource: 'maintenance', action: 'media-updated', resourceUId: mruid, count },
+        'resource-event'
+      );
+    } catch (error) {
+      this.log.warn({ error, mruid }, 'SSE media-updated notify failed (non-fatal)');
+    }
+  }
+
+  /**
+   * Shapes a written request like a read does: deleted media dropped and media URLs signed,
+   * so the client can show newly uploaded files straight away.
+   */
+  private async withSignedMedia(request: IMaintenanceRequestDocument | null) {
+    if (!request) return request;
+    const plain: any = request.toObject ? request.toObject() : request;
+    if (Array.isArray(plain.media)) {
+      plain.media = plain.media.filter(
+        (item: MaintenanceRequestMedia) => item.status !== 'deleted'
+      );
+      await this.s3Service.signFileUrls(plain.media);
+    }
+    return plain;
   }
 
   /**
@@ -282,7 +326,8 @@ export class MaintenanceRequestService {
 
   async createRequest(
     ctx: IRequestContext,
-    data: ICreateMaintenanceRequest
+    data: ICreateMaintenanceRequest,
+    newFiles?: ExtractedMediaFile[]
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
@@ -383,32 +428,46 @@ export class MaintenanceRequestService {
       }
     }
 
-    const session = await this.maintenanceRequestDAO.startSession();
-    const request = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      return this.maintenanceRequestDAO.insert(
-        {
-          cuid,
-          tenantId:
-            currentuser.client.role === 'tenant' ? new Types.ObjectId(currentuser.sub) : undefined,
-          propertyId: property._id,
-          propertyUnitId: unit?._id,
-          managedBy: property.managedBy,
-          createdBy: new Types.ObjectId(currentuser.sub),
-          title: data.title,
-          description: data.description,
-          category: data.category,
-          priority: data.priority,
-          locationDescription: data.locationDescription,
-          permissionToEnter: data.permissionToEnter,
-          hasPet: data.hasPet ?? leasePetDefault,
-          status: MaintenanceRequestStatus.OPEN,
-          isBillable: false,
-          media: data.media || [],
-          availabilityInfo: data.availabilityInfo,
-        },
-        session
-      );
-    });
+    // Uploaded after every check and saved with the request in the same write; the mruid
+    // is chosen here so the S3 keys carry it.
+    const mruid = generateShortUID();
+    const uploads = await this.uploadRequestMedia(newFiles, mruid, currentuser.sub);
+
+    let request: IMaintenanceRequestDocument;
+    try {
+      const session = await this.maintenanceRequestDAO.startSession();
+      request = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+        return this.maintenanceRequestDAO.insert(
+          {
+            mruid,
+            cuid,
+            tenantId:
+              currentuser.client.role === 'tenant'
+                ? new Types.ObjectId(currentuser.sub)
+                : undefined,
+            propertyId: property._id,
+            propertyUnitId: unit?._id,
+            managedBy: property.managedBy,
+            createdBy: new Types.ObjectId(currentuser.sub),
+            title: data.title,
+            description: data.description,
+            category: data.category,
+            priority: data.priority,
+            locationDescription: data.locationDescription,
+            permissionToEnter: data.permissionToEnter,
+            hasPet: data.hasPet ?? leasePetDefault,
+            status: MaintenanceRequestStatus.OPEN,
+            isBillable: false,
+            media: [...(data.media || []), ...this.toMediaItems(uploads, currentuser.sub)],
+            availabilityInfo: data.availabilityInfo,
+          },
+          session
+        );
+      });
+    } catch (error) {
+      await this.removeUploadsAfterFailedWrite(uploads, mruid);
+      throw error;
+    }
 
     // ── Optional vendor assignment on creation ──────────────────────────────────
     if (data.vendorVuid && currentuser.client.role !== ROLES.TENANT) {
@@ -465,9 +524,11 @@ export class MaintenanceRequestService {
         this.log.error({ err, mruid: request.mruid }, 'AI triage background task failed')
       );
 
+    await this.notifyMediaAdded(cuid, request.mruid, uploads.length);
+
     return {
       success: true,
-      data: request,
+      data: await this.withSignedMedia(request),
       message: t('common.success.created', { resource: 'Maintenance request' }),
     };
   }
@@ -528,11 +589,14 @@ export class MaintenanceRequestService {
     if (tenant) baseFilter.tenantId = tenant._id;
     if (managedBy) baseFilter.managedBy = managedBy._id;
 
-    if (filters.assignedTechnicianSub) {
-      if (isVendorTeamMember && filters.assignedTechnicianSub !== currentuser.sub) {
+    if (filters.assignedTechnicianUid) {
+      if (isVendorTeamMember && filters.assignedTechnicianUid !== currentuser.uid) {
         throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
       }
-      baseFilter['assignedTechnician.userId'] = new Types.ObjectId(filters.assignedTechnicianSub);
+      baseFilter['assignedTechnician.userId'] = await this.resolveTechnicianFilter(
+        filters.assignedTechnicianUid,
+        currentuser
+      );
     }
 
     const result = await this.maintenanceRequestDAO.listWithDetails(
@@ -708,6 +772,10 @@ export class MaintenanceRequestService {
         vendorDoc?.companyName ||
         `${vendor?.profile?.personalInfo?.firstName || ''} ${vendor?.profile?.personalInfo?.lastName || ''}`.trim() ||
         vendor.email;
+      // Public id the client uses to (re)assign this vendor
+      plain.vendorVuid = vendorDoc?.vuid ?? null;
+    } else {
+      plain.vendorVuid = null;
     }
     // Collapse vendorId back to a plain string after populate (interface declares string)
     plain.vendorId = vendor?._id?.toString() ?? null;
@@ -875,37 +943,30 @@ export class MaintenanceRequestService {
       }
     }
 
-    if (data.technician?.userId) {
-      await this.assertTechnicianOnVendorTeam(request, cuid, data.technician.userId);
-    }
+    const requestedTechnician = data.technician?.uid ? data.technician : undefined;
+    const technicianUser = requestedTechnician
+      ? await this.resolveTechnicianOnVendorTeam(request, cuid, requestedTechnician.uid!)
+      : { _id: new Types.ObjectId(currentuser.sub), uid: currentuser.uid };
+    const technicianDetails = requestedTechnician ?? {
+      phone: '',
+      email: currentuser.email,
+      name: currentuser.fullname || currentuser.displayName || 'Assigned Technician',
+    };
 
     const session = await this.maintenanceRequestDAO.startSession();
     const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      if (!data.technician?.userId) {
-        data.technician = {
-          phone: '',
-          email: currentuser.email,
-          userId: currentuser.sub.toString(),
-          name: currentuser.fullname || currentuser.displayName || 'Assigned Technician',
-        };
-      }
-
       return this.maintenanceRequestDAO.updateById(
         request._id.toString(),
         {
           $set: {
             status: MaintenanceRequestStatus.IN_PROGRESS,
-            ...(data.technician && {
-              assignedTechnician: {
-                name: data.technician.name,
-                phone: data.technician.phone,
-                email: data.technician.email,
-                ...(data.technician.userId &&
-                  Types.ObjectId.isValid(data.technician.userId) && {
-                    userId: new Types.ObjectId(data.technician.userId),
-                  }),
-              },
-            }),
+            assignedTechnician: {
+              userId: technicianUser._id,
+              uid: technicianUser.uid,
+              name: technicianDetails.name,
+              phone: technicianDetails.phone,
+              email: technicianDetails.email,
+            },
           },
         },
         undefined,
@@ -1310,21 +1371,39 @@ export class MaintenanceRequestService {
   }
 
   /**
-   * The technician must be the assigned (primary) vendor user or a connected team member of
-   * that vendor in this client. Team members store linkedVendorUid as either the vendor's vuid
-   * or the primary account holder's User._id, depending on the invitation path.
+   * Resolves a technician UID to the user it names. The technician must be connected to this
+   * client and be either the assigned (primary) vendor user or a team member whose
+   * linkedVendorUid is that vendor's vuid.
    */
-  private async assertTechnicianOnVendorTeam(
+  private async resolveTechnicianOnVendorTeam(
     request: { vendorId?: any },
     cuid: string,
-    technicianUserId: string
-  ): Promise<void> {
+    technicianUid: string
+  ): Promise<{ _id: Types.ObjectId; uid: string }> {
     const notOnTeamError = new ForbiddenError({
       message: 'Selected technician is not a member of your team',
     });
-    const primaryVendorUserId = request.vendorId?.toString();
-    if (!primaryVendorUserId || !Types.ObjectId.isValid(technicianUserId)) throw notOnTeamError;
-    if (technicianUserId === primaryVendorUserId) return;
+    const primaryVendorUserId = request.vendorId?._id?.toString() ?? request.vendorId?.toString();
+    if (!primaryVendorUserId || !Types.ObjectId.isValid(primaryVendorUserId)) {
+      throw notOnTeamError;
+    }
+
+    const technician = await this.userDAO.findFirst(
+      {
+        uid: technicianUid,
+        deletedAt: null,
+        cuids: { $elemMatch: { cuid, isConnected: true } },
+      },
+      undefined,
+      { _id: 1, uid: 1, cuids: 1 }
+    );
+    if (!technician) throw notOnTeamError;
+
+    const technicianRef = {
+      _id: new Types.ObjectId(technician._id.toString()),
+      uid: technician.uid,
+    };
+    if (technicianRef._id.toString() === primaryVendorUserId) return technicianRef;
 
     const vendor = await this.vendorDAO.findFirst(
       {
@@ -1342,18 +1421,31 @@ export class MaintenanceRequestService {
     );
     if (!vendor) throw notOnTeamError;
 
-    const teamMember = await this.userDAO.findFirst({
-      _id: new Types.ObjectId(technicianUserId),
-      deletedAt: null,
-      cuids: {
-        $elemMatch: {
-          cuid,
-          isConnected: true,
-          linkedVendorUid: { $in: [vendor.vuid, primaryVendorUserId] },
-        },
-      },
-    });
-    if (!teamMember) throw notOnTeamError;
+    const isOnVendorTeam = (technician.cuids ?? []).some(
+      (connection) =>
+        connection.cuid === cuid &&
+        connection.isConnected &&
+        connection.linkedVendorUid === vendor.vuid
+    );
+    if (!isOnVendorTeam) throw notOnTeamError;
+    return technicianRef;
+  }
+
+  /**
+   * Resolves the assignedTechnicianUid list filter to the internal user ref. An unknown UID
+   * matches nothing rather than silently dropping the filter.
+   */
+  private async resolveTechnicianFilter(
+    technicianUid: string,
+    currentuser: { uid: string; sub: string }
+  ): Promise<Types.ObjectId | { $in: [] }> {
+    if (technicianUid === currentuser.uid) return new Types.ObjectId(currentuser.sub);
+    const technician = await this.userDAO.findFirst(
+      { uid: technicianUid, deletedAt: null },
+      undefined,
+      { _id: 1 }
+    );
+    return technician ? new Types.ObjectId(technician._id.toString()) : { $in: [] };
   }
 
   private buildUnassignUpdate() {
@@ -1443,7 +1535,8 @@ export class MaintenanceRequestService {
   async updateRequest(
     ctx: IRequestContext,
     mruid: string,
-    data: IUpdateMaintenancePayload
+    data: IUpdateMaintenancePayload,
+    newFiles?: ExtractedMediaFile[]
   ): Promise<ISuccessReturnData> {
     const currentuser = ctx.currentuser;
     const { cuid } = ctx.request.params;
@@ -1479,6 +1572,11 @@ export class MaintenanceRequestService {
       throw new ForbiddenError({ message: t('maintenance.errors.editNotAllowed') });
     }
 
+    // New files are accepted on both edit paths and saved in the same write as the edit
+    const uploads = await this.uploadRequestMedia(newFiles, request.mruid, currentuser.sub);
+    const newMedia = this.toMediaItems(uploads, currentuser.sub);
+    const pushNewMedia = newMedia.length ? { $push: { media: { $each: newMedia } } } : {};
+
     // Limited-edit path: only hasPet, preferredDate, availabilityInfo are accepted.
     // All other fields are ignored and AI re-triage is skipped.
     if (isLimitedEditable) {
@@ -1487,12 +1585,17 @@ export class MaintenanceRequestService {
       if (data.availabilityInfo !== undefined)
         limitedFields.availabilityInfo = data.availabilityInfo;
 
-      const updated = await this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        { $set: limitedFields },
-        undefined,
-        undefined
-      );
+      let updated: IMaintenanceRequestDocument | null = null;
+      try {
+        updated = await this.maintenanceRequestDAO.updateById(
+          request._id.toString(),
+          { $set: limitedFields, ...pushNewMedia },
+          undefined,
+          undefined
+        );
+      } finally {
+        if (!updated) await this.removeUploadsAfterFailedWrite(uploads, request.mruid);
+      }
 
       this.emitterService.emit(EventTypes.MAINTENANCE_REQUEST_UPDATED, {
         requestId: request._id.toString(),
@@ -1503,10 +1606,11 @@ export class MaintenanceRequestService {
         managedBy: request.managedBy?.toString(),
         propertyId: request.propertyId?.toString(),
       });
+      await this.notifyMediaAdded(cuid, request.mruid, uploads.length);
 
       return {
         success: true,
-        data: updated,
+        data: await this.withSignedMedia(updated),
         message: t('common.success.updated', { resource: 'Maintenance request' }),
       };
     }
@@ -1539,34 +1643,41 @@ export class MaintenanceRequestService {
       updateFields['aiAnalysis'] = {};
     }
 
-    const session = await this.maintenanceRequestDAO.startSession();
-    const updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
-      const ops: Record<string, unknown> = { $set: updateFields };
+    let updated: IMaintenanceRequestDocument | null = null;
+    try {
+      const session = await this.maintenanceRequestDAO.startSession();
+      updated = await this.maintenanceRequestDAO.withTransaction(session, async (session) => {
+        if (data.mediaToRemove?.length) {
+          // Soft-delete: mark matching media items as 'deleted' so they are excluded from
+          // future queries without immediately purging from S3. New files are pushed in a
+          // second write of the same transaction — Mongo rejects both on 'media' in one update.
+          const softDeleted = await this.maintenanceRequestDAO.updateById(
+            request._id.toString(),
+            { $set: { ...updateFields, 'media.$[elem].status': 'deleted' } },
+            {
+              arrayFilters: [{ 'elem.key': { $in: data.mediaToRemove } }],
+            } as any,
+            session
+          );
+          if (!newMedia.length) return softDeleted;
+          return this.maintenanceRequestDAO.updateById(
+            request._id.toString(),
+            pushNewMedia,
+            undefined,
+            session
+          );
+        }
 
-      if (data.mediaToRemove?.length) {
-        // Soft-delete: mark matching media items as 'deleted' so they are
-        // excluded from future queries without immediately purging from S3.
-        ops['$set'] = {
-          ...updateFields,
-          'media.$[elem].status': 'deleted',
-        };
         return this.maintenanceRequestDAO.updateById(
           request._id.toString(),
-          ops,
-          {
-            arrayFilters: [{ 'elem.key': { $in: data.mediaToRemove } }],
-          } as any,
+          { $set: updateFields, ...pushNewMedia },
+          undefined,
           session
         );
-      }
-
-      return this.maintenanceRequestDAO.updateById(
-        request._id.toString(),
-        { $set: updateFields },
-        undefined,
-        session
-      );
-    });
+      });
+    } finally {
+      if (!updated) await this.removeUploadsAfterFailedWrite(uploads, request.mruid);
+    }
 
     // Re-run AI triage when title or description changed and no suggestion was
     // previously accepted. Fire-and-forget — never blocks the response.
@@ -1587,10 +1698,11 @@ export class MaintenanceRequestService {
       managedBy: request.managedBy?.toString(),
       propertyId: request.propertyId?.toString(),
     });
+    await this.notifyMediaAdded(cuid, request.mruid, uploads.length);
 
     return {
       success: true,
-      data: updated,
+      data: await this.withSignedMedia(updated),
       message: t('common.success.updated', { resource: 'Maintenance request' }),
     };
   }

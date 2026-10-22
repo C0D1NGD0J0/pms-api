@@ -3,7 +3,7 @@ import { Response } from 'express';
 import { PdfQueue } from '@queues/index';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
-import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
+import { AppRequest } from '@interfaces/utils.interface';
 import { LeaseTemplateService, MediaUploadService, LeaseService } from '@services/index';
 
 export class LeaseController {
@@ -33,37 +33,18 @@ export class LeaseController {
 
   createLease = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
-    const result = await this.leaseService.createLease(cuid, req.body, req.context);
-    const uploadResult = await this.attachUploadedLeaseDocuments(req, result.data);
+    // The service uploads `leaseDocument[i].file` parts and saves them with the lease in the
+    // same write, so the response already lists them on lease.leaseDocuments.
+    const result = await this.leaseService.createLease(
+      cuid,
+      req.body,
+      req.context,
+      req.scannedFiles
+    );
 
-    res.status(httpStatusCodes.OK).json({
-      success: true,
-      data: result,
-      ...uploadResult,
-    });
-  };
-
-  /**
-   * Same pipeline as property documents: upload the scanned `leaseDocument[i].file` parts to S3,
-   * then queue persistence onto lease.leaseDocuments (upload worker → LeasePdfService).
-   * Runs after the lease write so a rejected create/update never uploads anything; temp files
-   * are removed by uploadFilesToS3 on success and by the error handler if the write throws.
-   */
-  private attachUploadedLeaseDocuments = async (
-    req: AppRequest,
-    lease: { _id: { toString(): string } } | undefined
-  ): Promise<{ fileUpload?: string; processedFiles?: Record<string, unknown> }> => {
-    if (!lease?._id) return {};
-
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: lease._id.toString(),
-      uploadedBy: req.context.currentuser!.sub,
-      resourceContext: ResourceContext.LEASE,
-    });
-
-    return uploadResult.hasFiles
-      ? { fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : {};
+    // `documents` matches the lease detail GET: signed URLs, filtered for the viewer's role
+    const documents = this.leaseService.documentsForViewer(result.data, req.context.currentuser!);
+    res.status(httpStatusCodes.OK).json({ success: true, data: { ...result, documents } });
   };
 
   getFilteredLeases = async (req: AppRequest, res: Response) => {
@@ -90,8 +71,8 @@ export class LeaseController {
     ]);
     const filterOpts = {
       status: VALID_LEASE_STATUSES.has(filter.status) ? filter.status : undefined,
+      // tenantId is never taken from the client; the service scopes a tenant to their own leases
       search: typeof filter.search === 'string' ? filter.search : undefined,
-      tenantId: typeof filter.tenantId === 'string' ? filter.tenantId : undefined,
       unitPuid: typeof filter.unitPuid === 'string' ? filter.unitPuid : undefined,
     };
 
@@ -115,15 +96,32 @@ export class LeaseController {
   };
 
   updateLease = async (req: AppRequest, res: Response) => {
-    const { luid } = req.params;
+    const { cuid, luid } = req.params;
     const updateData = req.body;
     const cxt = req.context;
 
     this.log.info(`Updating lease ${luid}`);
+    // Files are uploaded only once the edit is accepted, then attached in this same request
     const result = await this.leaseService.updateLease(cxt, luid, updateData);
-    const uploadResult = await this.attachUploadedLeaseDocuments(req, result.data?.lease);
+    const leaseWithDocuments = await this.leaseService.addUploadedDocuments(
+      cuid,
+      luid,
+      req.scannedFiles,
+      cxt.currentuser!.sub
+    );
 
-    res.status(httpStatusCodes.OK).json({ ...result, ...uploadResult });
+    res.status(httpStatusCodes.OK).json(
+      leaseWithDocuments
+        ? {
+            ...result,
+            data: {
+              ...(result.data ?? {}),
+              lease: leaseWithDocuments,
+              documents: this.leaseService.documentsForViewer(leaseWithDocuments, cxt.currentuser!),
+            },
+          }
+        : result
+    );
   };
 
   deleteLease = async (req: AppRequest, res: Response) => {
@@ -315,14 +313,15 @@ export class LeaseController {
           progress: jobStatus.progress,
           result: jobStatus.result,
           completedOn: jobStatus.completedOn,
-          failedReason: jobStatus.failedReason,
+          // The raw failure is a server error message; it stays in the logs and job record
+          failedReason: jobStatus.failedReason ? 'Failed to generate the lease PDF' : undefined,
         },
       });
     } catch (error) {
       this.log.error({ error, jobId }, 'Failed to get job status');
       res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Failed to get job status',
+        message: 'Failed to get job status',
       });
     }
   };

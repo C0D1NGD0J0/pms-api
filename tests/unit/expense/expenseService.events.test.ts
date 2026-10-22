@@ -55,6 +55,7 @@ const makeService = (overrides: Record<string, any> = {}) => {
           .mockReturnValue(Promise.resolve({ _id: new Types.ObjectId(), cuid: CUID })),
         aggregate: jest.fn().mockReturnValue(Promise.resolve([])),
       } as any,
+      propertyUnitDAO: { findFirst: jest.fn() } as any,
       paymentDAO: {} as any,
       emitterService,
     }),
@@ -72,7 +73,7 @@ describe('ExpenseService — event emission', () => {
     expenseDAO.insert.mockReturnValue(Promise.resolve(doc));
 
     await service.createExpense(CUID, USER_ID, {
-      propertyId: new Types.ObjectId(),
+      pid: 'PROPERTYPID1',
       amount: 25000,
       category: 'repairs_maintenance' as any,
       date: new Date(),

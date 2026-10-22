@@ -472,7 +472,7 @@
     <thead><tr><th>Property</th><th class="text-right">Amount</th></tr></thead>
     <tbody>
       <% for (const p of curr.income.byProperty) { %>
-      <tr><td><%= p.name || p.propertyId %></td><td class="text-right"><%= formatCurrency(p.amount, curr.currency) %></td></tr>
+      <tr><td><%= p.name || p.pid || 'Unknown' %></td><td class="text-right"><%= formatCurrency(p.amount, curr.currency) %></td></tr>
       <% } %>
     </tbody>
   </table>
@@ -719,7 +719,7 @@
     <tbody>
       <% for (const e of expenseByProperty) { %>
       <tr>
-        <td><%= e._propertyName || e._id.propertyId %></td>
+        <td><%= e._propertyName || 'Unknown' %></td>
         <td><%= e._id.currency %></td>
         <td class="text-right"><%= formatCurrency(e.total, e._id.currency) %></td>
       </tr>

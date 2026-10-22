@@ -190,7 +190,7 @@ router.patch(
     PermissionAction.UPDATE,
     (req: AppRequest) => ({ ownerId: req.context?.currentuser?.sub })
   ),
-  diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+  diskUpload(['personalInfo.avatar.file']),
   scanFile,
   validateRequest({
     body: ProfileValidations.profileUpdate,
@@ -353,7 +353,7 @@ router
     basicLimiter(),
     isAuthenticated,
     requireUserPermission(PermissionAction.UPDATE),
-    diskUpload(['documents.items[*].file', 'personalInfo.avatar.file']),
+    diskUpload(['personalInfo.avatar.file']),
     scanFile,
     validateRequest({
       params: ClientValidations.clientIdParam.merge(ClientValidations.userIdParam),

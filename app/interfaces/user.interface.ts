@@ -366,18 +366,6 @@ export interface ITenantFilterOptions extends IUserFilterOptions {
   unitType?: string;
 }
 
-export interface IVendorTeamMember
-  extends Pick<
-    IBaseUserProfile,
-    'displayName' | 'phoneNumber' | 'firstName' | 'isActive' | 'lastName' | 'email' | 'uid'
-  > {
-  lastLogin: Date | null;
-  isTeamMember: boolean;
-  joinedDate: Date;
-  role: string;
-  sub: string; // MongoDB _id as hex string — used to filter assignedTechnician.userId
-}
-
 export interface FilteredUserTableData extends Pick<IUser, 'email'> {
   employeeInfo?: FilteredUserEmployeeInfo;
   tenantInfo?: FilteredUserTenantInfo;
@@ -421,6 +409,17 @@ export interface FilteredUserTenantInfo {
   leaseStatus?: string; // active, pending_signature, no_active_lease, etc.
   rentAmount?: number; // Monthly rent amount
   rentStatus?: string; // paid, overdue, pending, etc.
+}
+
+export interface IVendorTeamMember
+  extends Pick<
+    IBaseUserProfile,
+    'displayName' | 'phoneNumber' | 'firstName' | 'isActive' | 'lastName' | 'email' | 'uid'
+  > {
+  lastLogin: Date | null;
+  isTeamMember: boolean;
+  joinedDate: Date;
+  role: string;
 }
 
 export interface IBaseUserProfile {

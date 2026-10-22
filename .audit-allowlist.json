@@ -1,0 +1,11 @@
+{
+  "advisories": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "No patched release exists (3.0.3 is latest and affected). Reached only via awilix -> fast-glob -> micromatch, used by awilix.loadModules/listModules, which the app never calls; container registrations are explicit and no user input reaches a glob.",
+      "addedOn": "2026-10-21",
+      "reviewBy": "2027-01-21"
+    }
+  ]
+}

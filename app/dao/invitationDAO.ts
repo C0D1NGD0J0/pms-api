@@ -65,7 +65,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       };
 
       if (invitationData.linkedVendorUid) {
-        invitationToInsert.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
+        invitationToInsert.linkedVendorUid = invitationData.linkedVendorUid;
       }
 
       const invitation = await this.insert(invitationToInsert, session);
@@ -199,7 +199,7 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
       };
 
       if (invitationData.linkedVendorUid) {
-        updateData.$set.linkedVendorUid = new Types.ObjectId(invitationData.linkedVendorUid);
+        updateData.$set.linkedVendorUid = invitationData.linkedVendorUid;
       } else {
         updateData.$unset.linkedVendorUid = 1;
       }

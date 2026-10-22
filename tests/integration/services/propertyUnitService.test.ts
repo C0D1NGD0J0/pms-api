@@ -135,7 +135,7 @@ describe('PropertyUnitService Integration Tests', () => {
                 currency: 'USD',
               },
               status: 'available' as const,
-              managedBy: adminUser._id,
+              managedBy: adminUser.uid,
             },
           ],
           cuid: testClient.cuid,
@@ -188,7 +188,7 @@ describe('PropertyUnitService Integration Tests', () => {
                 specifications: { totalArea: 850 },
                 fees: { rentAmount: 1500, currency: 'USD' },
                 status: 'available',
-                managedBy: adminUser._id,
+                managedBy: adminUser.uid,
               },
             ],
             cuid: testClient.cuid,
@@ -210,7 +210,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: { totalArea: 650, bedrooms: 1, bathrooms: 1 },
               fees: { rentAmount: 1200, currency: 'USD' },
               status: 'available' as const,
-              managedBy: adminUser._id,
+              managedBy: adminUser.uid,
             },
             {
               unitNumber: '102',
@@ -219,7 +219,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: { totalArea: 850, bedrooms: 2, bathrooms: 1 },
               fees: { rentAmount: 1500, currency: 'USD' },
               status: 'available' as const,
-              managedBy: adminUser._id,
+              managedBy: adminUser.uid,
             },
             {
               unitNumber: '103',
@@ -228,7 +228,7 @@ describe('PropertyUnitService Integration Tests', () => {
               specifications: { totalArea: 950, bedrooms: 2, bathrooms: 2 },
               fees: { rentAmount: 1700, currency: 'USD' },
               status: 'available' as const,
-              managedBy: adminUser._id,
+              managedBy: adminUser.uid,
             },
           ],
           cuid: testClient.cuid,
@@ -623,7 +623,7 @@ describe('PropertyUnitService Integration Tests', () => {
           isActive: false,
           specifications: { maxOccupants: 4 } as any,
           fees: { currency: 'USD' } as any,
-          managedBy: managerUser._id.toString() as any,
+          managedBy: managerUser.uid as any,
         });
 
         const saved = await PropertyUnit.findById(unit._id);
@@ -664,10 +664,10 @@ describe('PropertyUnitService Integration Tests', () => {
         ] as const;
 
         for (const [caller, role] of callers) {
-          for (const outsider of [tenantUser, foreignAdmin, { _id: new Types.ObjectId() }]) {
+          for (const outsider of [tenantUser, foreignAdmin, { uid: 'NOSUCHUSER01' }]) {
             await expect(
               propertyUnitService.updatePropertyUnit(asUser(unit.puid, caller, role), {
-                managedBy: outsider._id.toString() as any,
+                managedBy: outsider.uid as any,
               })
             ).rejects.toThrow(BadRequestError);
           }
@@ -940,7 +940,7 @@ describe('PropertyUnitService Integration Tests', () => {
       it('re-checks the unit manager is still an employee on approval', async () => {
         const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
         await propertyUnitService.updatePropertyUnit(asStaff(unit.puid), {
-          managedBy: otherStaffUser._id.toString() as any,
+          managedBy: otherStaffUser.uid as any,
         });
         await User.updateOne(
           { _id: otherStaffUser._id, 'cuids.cuid': testClient.cuid },

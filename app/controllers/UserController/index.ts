@@ -2,13 +2,13 @@ import Logger from 'bunyan';
 import { Response } from 'express';
 import { createLogger } from '@utils/index';
 import { httpStatusCodes } from '@utils/constants';
+import { AppRequest } from '@interfaces/utils.interface';
 import { UserService, SMSService } from '@services/index';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 import { ProfileService } from '@services/profile/profile.service';
 import { QueueFactory } from '@services/queue/queueFactory.service';
 import { IUserFilterOptions } from '@dao/interfaces/userDAO.interface';
 import { UnauthorizedError, BadRequestError } from '@shared/customErrors';
-import { ResourceContext, AppRequest } from '@interfaces/utils.interface';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 
 export class UserController {
@@ -168,19 +168,21 @@ export class UserController {
   };
 
   updateUserProfile = async (req: AppRequest, res: Response): Promise<void> => {
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: req.context.currentuser?.uid as string,
-      uploadedBy: req.context.currentuser?.sub as string,
-      resourceContext: ResourceContext.USER_PROFILE,
-    });
+    const { cuid } = req.params;
+    const targetUid = (req.query.uid as string | undefined) ?? req.context.currentuser!.uid;
 
+    // The avatar is uploaded only once the edit passes its checks, and saved in this request
     const result = await this.profileService.updateUserProfile(req.context, req.body);
+    const profileWithAvatar = await this.profileService.saveUploadedAvatar(
+      cuid,
+      targetUid,
+      req.scannedFiles,
+      req.context.currentuser!.sub
+    );
 
-    const response = uploadResult.hasFiles
-      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : result;
-
-    res.status(httpStatusCodes.OK).json(response);
+    res
+      .status(httpStatusCodes.OK)
+      .json(profileWithAvatar ? { ...result, data: profileWithAvatar } : result);
   };
 
   getNotificationPreferences = async (req: AppRequest, res: Response): Promise<void> => {
@@ -264,19 +266,26 @@ export class UserController {
 
   updateTenantProfile = async (req: AppRequest, res: Response): Promise<void> => {
     const { cuid, uid } = req.params;
-    const uploadResult = await this.mediaUploadService.handleFiles(req, {
-      primaryResourceId: uid,
-      uploadedBy: req.context.currentuser?.sub as string,
-      resourceContext: ResourceContext.USER_PROFILE,
-    });
 
     const result = await this.userService.updateTenantProfile(cuid, uid, req.body, req.context);
+    const profileWithAvatar = await this.profileService.saveUploadedAvatar(
+      cuid,
+      uid,
+      req.scannedFiles,
+      req.context.currentuser!.sub
+    );
 
-    const response = uploadResult.hasFiles
-      ? { ...result, fileUpload: uploadResult.message, processedFiles: uploadResult.processedFiles }
-      : result;
-
-    res.status(httpStatusCodes.OK).json(response);
+    res.status(httpStatusCodes.OK).json(
+      profileWithAvatar
+        ? {
+            ...result,
+            data: {
+              ...result.data,
+              personalInfo: { avatar: profileWithAvatar.personalInfo?.avatar },
+            },
+          }
+        : result
+    );
   };
 
   deactivateTenant = async (req: AppRequest, res: Response): Promise<void> => {

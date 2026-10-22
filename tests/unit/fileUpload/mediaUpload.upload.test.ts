@@ -83,52 +83,6 @@ describe('MediaUploadService.uploadFilesToS3', () => {
   });
 });
 
-describe('MediaUploadService.handleFiles', () => {
-  const context = {
-    primaryResourceId: 'PID1',
-    uploadedBy: 'user-1',
-    resourceContext: ResourceContext.PROPERTY,
-  };
-
-  it('uploads in this process and queues only the S3 results', async () => {
-    const { service, s3Service, uploadQueue } = makeService();
-    const file = makeTempFile('a.jpg');
-    const results = [uploadResultFor(file)];
-    s3Service.uploadFiles.mockResolvedValue(results);
-
-    const outcome = await service.handleFiles({ scannedFiles: [file], body: {} } as any, context);
-
-    expect(outcome.totalQueued).toBe(1);
-    expect(uploadQueue.addToUploadQueue).toHaveBeenCalledWith(expect.any(String), {
-      resource: expect.objectContaining({ resourceName: 'property', resourceId: 'PID1' }),
-      results,
-    });
-    // No local path ever crosses into the job
-    expect(JSON.stringify(uploadQueue.addToUploadQueue.mock.calls[0][1])).not.toContain(file.path);
-  });
-
-  it('emits UPLOAD_FAILED and queues nothing when a group fails to upload', async () => {
-    const { service, s3Service, uploadQueue, emitterService } = makeService();
-    s3Service.uploadFiles.mockRejectedValue(new Error('S3 unavailable'));
-
-    const outcome = await service.handleFiles(
-      { scannedFiles: [makeTempFile('a.jpg')], body: {} } as any,
-      context
-    );
-
-    expect(outcome.totalQueued).toBe(0);
-    expect(uploadQueue.addToUploadQueue).not.toHaveBeenCalled();
-    expect(emitterService.emit).toHaveBeenCalledWith(
-      EventTypes.UPLOAD_FAILED,
-      expect.objectContaining({
-        resourceName: 'property',
-        resourceId: 'PID1',
-        error: { message: 'S3 unavailable' },
-      })
-    );
-  });
-});
-
 describe('MediaUploadService.uploadRequestFiles', () => {
   it('returns [] when the request has no files', async () => {
     const { service, s3Service } = makeService();
@@ -247,5 +201,94 @@ describe('MediaUploadService.handleBuffer', () => {
     await service.handleBuffer(Buffer.from('%PDF-1.4'), fileName, leaseContext);
 
     expect(fs.existsSync(path.join(process.cwd(), 'uploads', fileName))).toBe(false);
+  });
+});
+
+describe('MediaUploadService file routing (generated files queued through handleBuffer)', () => {
+  const echoUploads = (s3Service: ReturnType<typeof makeService>['s3Service']) =>
+    s3Service.uploadFiles.mockImplementation(async (files: any[]) =>
+      files.map((file) => ({ key: file.fileName, url: 'https://s3/x.pdf', fieldName: 'x' }))
+    );
+  const queuedResource = (uploadQueue: ReturnType<typeof makeService>['uploadQueue']) =>
+    uploadQueue.addToUploadQueue.mock.calls[0][1].resource;
+  const bufferName = () => `routing-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+
+  it('routes a user-profile avatar upload to the profile avatar', async () => {
+    const { service, s3Service, uploadQueue } = makeService();
+    echoUploads(s3Service);
+
+    await service.handleBuffer(Buffer.from('%PDF-1.4'), bufferName(), {
+      primaryResourceId: 'UID1',
+      uploadedBy: 'user-1',
+      resourceContext: ResourceContext.USER_PROFILE,
+      fieldName: 'personalInfo.avatar.file',
+    });
+
+    expect(queuedResource(uploadQueue)).toEqual(
+      expect.objectContaining({
+        resourceName: 'profile',
+        resourceId: 'UID1',
+        fieldName: 'avatar',
+      })
+    );
+  });
+
+  it.each([
+    [ResourceContext.PROPERTY, 'documents[0].file', 'property', 'documents'],
+    [ResourceContext.PROPERTY, 'images[0].file', 'property', 'images'],
+    [ResourceContext.LEASE, 'document', 'lease', 'document'],
+    [ResourceContext.PAYMENT, 'invoiceDocument', 'payment-invoice', 'invoiceDocument'],
+    [ResourceContext.INSPECTION, 'reportDocument', 'inspection', 'reportDocument'],
+    [ResourceContext.MAINTENANCE, 'media[0][file]', 'maintenance', 'media'],
+  ])(
+    'routes a %s %s upload to %s.%s',
+    async (resourceContext, fieldName, resourceName, routedField) => {
+      const { service, s3Service, uploadQueue } = makeService();
+      echoUploads(s3Service);
+
+      await service.handleBuffer(Buffer.from('%PDF-1.4'), bufferName(), {
+        primaryResourceId: 'R1',
+        uploadedBy: 'user-1',
+        resourceContext,
+        fieldName,
+      });
+
+      expect(queuedResource(uploadQueue)).toEqual(
+        expect.objectContaining({ resourceName, fieldName: routedField })
+      );
+    }
+  );
+
+  it('emits UPLOAD_FAILED and queues nothing when the generated file fails to upload', async () => {
+    const { service, s3Service, uploadQueue, emitterService } = makeService();
+    s3Service.uploadFiles.mockRejectedValue(new Error('S3 unavailable'));
+
+    const outcome = await service.handleBuffer(Buffer.from('%PDF-1.4'), bufferName(), {
+      primaryResourceId: 'L1',
+      uploadedBy: 'user-1',
+      resourceContext: ResourceContext.LEASE,
+    });
+
+    expect(outcome.totalQueued).toBe(0);
+    expect(uploadQueue.addToUploadQueue).not.toHaveBeenCalled();
+    expect(emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.UPLOAD_FAILED,
+      expect.objectContaining({ resourceName: 'lease', error: { message: 'S3 unavailable' } })
+    );
+  });
+
+  it('queues only the S3 results, never a local file path', async () => {
+    const { service, s3Service, uploadQueue } = makeService();
+    echoUploads(s3Service);
+
+    await service.handleBuffer(Buffer.from('%PDF-1.4'), bufferName(), {
+      primaryResourceId: 'L1',
+      uploadedBy: 'user-1',
+      resourceContext: ResourceContext.LEASE,
+    });
+
+    expect(JSON.stringify(uploadQueue.addToUploadQueue.mock.calls[0][1])).not.toContain(
+      path.join(process.cwd(), 'uploads')
+    );
   });
 });

@@ -1,10 +1,7 @@
 import { Schema, Types, model } from 'mongoose';
 import { MAX_ASSIGNED_STAFF, generateShortUID, createLogger } from '@utils/index';
-import {
-  VerificationStatusEnum,
-  IPropertyDocument,
-  OwnershipType,
-} from '@interfaces/property.interface';
+import { VerificationStatusEnum, IPropertyDocument } from '@interfaces/property.interface';
+import { isManagementAuthorizedFor, isVerifiedForLeasingFor } from '@utils/propertyLeasing';
 
 const logger = createLogger('PropertyModel');
 
@@ -492,18 +489,7 @@ PropertySchema.virtual('maintenanceRequests', {
  * For external owners, checks authorization status and expiry
  */
 PropertySchema.methods.isManagementAuthorized = function (this: IPropertyDocument): boolean {
-  if (this.owner?.type === OwnershipType.COMPANY_OWNED) {
-    return true;
-  }
-  if (!this.authorization || !this.authorization.isActive) {
-    return false;
-  }
-
-  if (this.authorization.expiresAt && new Date(this.authorization.expiresAt) < new Date()) {
-    return false;
-  }
-
-  return true;
+  return isManagementAuthorizedFor(this);
 };
 
 /**
@@ -511,12 +497,7 @@ PropertySchema.methods.isManagementAuthorized = function (this: IPropertyDocumen
  * Returns true if verified, or if an active grace period covers the current date.
  */
 PropertySchema.methods.isVerifiedForLeasing = function (this: IPropertyDocument): boolean {
-  if (this.verificationStatus === VerificationStatusEnum.VERIFIED) return true;
-
-  const grace = this.verificationGracePeriod;
-  if (grace?.expiresAt && new Date(grace.expiresAt) > new Date()) return true;
-
-  return false;
+  return isVerifiedForLeasingFor(this);
 };
 
 /**

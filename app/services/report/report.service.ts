@@ -334,7 +334,7 @@ export class ReportService implements ICronProvider {
       startDate: report.startDate,
       endDate: report.endDate,
       sections: report.sections,
-      failedReason: report.failedReason,
+      // failedReason is withheld: it holds the raw server error, and status FAILED tells the client
       createdAt: report.createdAt,
       completedAt: report.completedAt,
     };

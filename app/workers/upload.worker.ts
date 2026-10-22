@@ -69,8 +69,6 @@ export class UploadWorker {
 
       job.progress(100);
       this.log.info('Generated file persisted successfully');
-
-      Promise.resolve('Documents uploaded successfully');
     } catch (error: any) {
       this.log.error(
         {

@@ -61,7 +61,7 @@ describe('InvitationValidations', () => {
       };
 
       await expect(schema.parseAsync(invalidData)).rejects.toThrow(
-        'linkedVendorUid must be a valid vendor UID'
+        'linkedVendorUid is not a valid vendor ID'
       );
     });
 
@@ -77,7 +77,7 @@ describe('InvitationValidations', () => {
       };
 
       await expect(schema.parseAsync(invalidData)).rejects.toThrow(
-        'linkedVendorUid must be a valid vendor UID'
+        'linkedVendorUid is not a valid vendor ID'
       );
     });
 
@@ -93,7 +93,7 @@ describe('InvitationValidations', () => {
       };
 
       await expect(schema.parseAsync(invalidData)).rejects.toThrow(
-        'linkedVendorUid must be a valid vendor UID'
+        'linkedVendorUid is not a valid vendor ID'
       );
     });
   });

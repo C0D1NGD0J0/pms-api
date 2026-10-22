@@ -58,7 +58,8 @@ export class ReportDAO extends BaseDAO<IReportDocument> {
         skip: (page - 1) * limit,
         limit,
         sort: { createdAt: -1 },
-        projection: '-file',
+        // failedReason holds the raw server error; it is for logs, not clients
+        projection: '-file -failedReason',
       });
     } catch (error: any) {
       this.log.error({ error, cuid }, 'Error listing reports');

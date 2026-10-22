@@ -313,14 +313,15 @@ export class LeaseController {
           progress: jobStatus.progress,
           result: jobStatus.result,
           completedOn: jobStatus.completedOn,
-          failedReason: jobStatus.failedReason,
+          // The raw failure is a server error message; it stays in the logs and job record
+          failedReason: jobStatus.failedReason ? 'Failed to generate the lease PDF' : undefined,
         },
       });
     } catch (error) {
       this.log.error({ error, jobId }, 'Failed to get job status');
       res.status(httpStatusCodes.INTERNAL_SERVER_ERROR).json({
         success: false,
-        message: error instanceof Error ? error.message : 'Failed to get job status',
+        message: 'Failed to get job status',
       });
     }
   };

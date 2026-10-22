@@ -348,11 +348,13 @@ export class PermissionService {
       };
     }
 
-    // If no assignedUsers is provided, we can't validate assignment
+    // No record to check against: holding the grant is enough here — the service scopes the
+    // results to the caller's assignments. resolveStaffScope only reaches this for reads/lists
+    // and SERVICE_SCOPED_RESOURCES; other writes require the record's assignees.
     if (!context.assignedUsers || context.assignedUsers.length === 0) {
       this.log.warn('Assigned scope check requested but no assignedUsers provided');
       return {
-        granted: true, // Allow for now, but log warning
+        granted: true,
         reason: 'Assigned scope permission granted (no assignment validation possible)',
       };
     }
@@ -414,11 +416,11 @@ export class PermissionService {
       };
     }
 
-    // If no resourceOwnerId is provided, we can't validate ownership
+    // No existing record to own yet (e.g. hasMineScopeGrant on create): holding the grant is enough
     if (!context.resourceOwnerId) {
       this.log.warn('Mine scope check requested but no resourceOwnerId provided');
       return {
-        granted: true, // Allow for now, but log warning
+        granted: true,
         reason: 'Mine scope permission granted (no ownership validation possible)',
       };
     }

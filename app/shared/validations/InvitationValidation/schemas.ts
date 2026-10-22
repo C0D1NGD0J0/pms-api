@@ -215,9 +215,11 @@ export const invitationDataSchema = z.object({
     .string()
     .trim()
     .optional()
-    .refine((val) => !val || SHORT_UID_REGEX.test(val), {
-      message: 'Vendor ID must be a valid vendor UID (12 characters)',
-    }),
+    // Chosen from a dropdown, so a malformed value means the submitted data was altered
+    .refine(
+      (val) => !val || SHORT_UID_REGEX.test(val),
+      (val) => ({ message: `Corrupted user data detected (${val})` })
+    ),
 
   personalInfo: z.object({
     firstName: z
@@ -435,7 +437,7 @@ export const invitationCsvSchema = z
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message:
-              'linkedVendorUid must be a valid vendor UID (12 characters: letters, numbers, dashes, underscores)',
+              'linkedVendorUid is not a valid vendor ID. Check the value for typos or extra characters.',
           });
           return z.NEVER;
         }
@@ -551,7 +553,8 @@ export const invitationCsvSchema = z
         if (!SHORT_UID_REGEX.test(trimmed)) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
-            message: "Reports To must be the supervisor's user ID (12 characters)",
+            message:
+              'Reports To is not a valid supervisor ID. Check the value for typos or extra characters.',
           });
           return z.NEVER;
         }

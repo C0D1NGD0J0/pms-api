@@ -183,15 +183,23 @@ export class InspectionController {
     const result = await this.inspectionAIService.analyzeInspection(cuid, iuid, planName);
 
     if (!result.ok) {
-      const statusMap: Record<string, number> = {
-        feature_disabled: 403,
-        plan_not_eligible: 403,
-        budget_exceeded: 429,
-        inspection_not_found: 404,
-        analysis_error: 500,
+      const failureMap: Record<string, { status: number; message: string }> = {
+        feature_disabled: { status: 403, message: 'AI analysis is not available' },
+        plan_not_eligible: {
+          status: 403,
+          message: 'AI analysis is not included in your current plan',
+        },
+        budget_exceeded: {
+          status: 429,
+          message: 'AI analysis limit reached for this period. Please try again later.',
+        },
+        inspection_not_found: { status: 404, message: 'Inspection not found' },
+        analysis_error: { status: 500, message: 'AI analysis failed. Please try again.' },
       };
-      const status = statusMap[result.reason] || 500;
-      return res.status(status).json({ success: false, message: result.reason });
+      const failure = failureMap[result.reason] ?? failureMap.analysis_error;
+      return res
+        .status(failure.status)
+        .json({ success: false, message: failure.message, code: result.reason });
     }
 
     return res.status(200).json({ success: true, data: result.analysis });

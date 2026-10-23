@@ -1,49 +1,14 @@
-import Decimal from 'decimal.js';
+import { FinancialCalculator } from '@utils/financial';
 
 export const MoneyUtils = {
-  // ── Conversion ───────────────────────────────────────────────────────────────
+  // ── Conversion (delegates to FinancialCalculator) ────────────────────────────
 
-  /** Dollars → cents. e.g. 12.50 → 1250 */
-  toCents: (dollars: number): number =>
-    new Decimal(dollars).times(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toNumber(),
-
-  /** Cents → dollars rounded to 2 decimal places. e.g. 1250 → 12.50 */
-  fromCents: (cents: number): number =>
-    new Decimal(cents).div(100).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber(),
-
-  /** Cents → fixed-decimal string. e.g. 1250 → "12.50" */
-  centsToDisplay: (cents: number, decimalPlaces = 2): string =>
-    new Decimal(cents).div(100).toFixed(decimalPlaces),
-
-  centsToString: (cents: number | null | undefined, decimalPlaces = 2): string => {
-    if (cents == null) return '0.00';
-    if (typeof cents !== 'number' || isNaN(cents)) return '0.00';
-    return new Decimal(cents).div(100).toFixed(decimalPlaces);
-  },
-
-  stringToCents: (dollarString: string | number): number => {
-    if (dollarString == null) return 0;
-    const numericValue = typeof dollarString === 'string' ? parseFloat(dollarString) : dollarString;
-    if (isNaN(numericValue)) return 0;
-    return new Decimal(numericValue)
-      .times(100)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
-  },
-
-  formatCurrency: (
-    cents: number | null | undefined,
-    currency = 'USD',
-    locale = 'en-US'
-  ): string => {
-    if (cents == null)
-      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
-    if (typeof cents !== 'number' || isNaN(cents))
-      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(0);
-
-    const dollars = new Decimal(cents).div(100).toNumber();
-    return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(dollars);
-  },
+  toCents: FinancialCalculator.toCents,
+  fromCents: FinancialCalculator.fromCents,
+  centsToDisplay: FinancialCalculator.centsToDisplay,
+  centsToString: FinancialCalculator.centsToString,
+  stringToCents: FinancialCalculator.stringToCents,
+  formatCurrency: FinancialCalculator.formatCurrency,
 
   // ── Object-level helpers ─────────────────────────────────────────────────────
 

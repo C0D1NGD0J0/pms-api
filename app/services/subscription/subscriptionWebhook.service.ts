@@ -5,7 +5,7 @@ import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { MoneyUtils } from '@utils/money.utils';
 import { EmailQueue } from '@queues/email.queue';
-import { calcSeatCost } from '@utils/financial.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { BadRequestError } from '@shared/customErrors';
@@ -400,7 +400,7 @@ export class SubscriptionWebhookService {
     if (overageCount === 0 || !previousPeriod.billing?.customerId) return;
 
     const feeCents = subscriptionPlanConfig.getManualRecordOverageFeeCents();
-    const totalCents = overageCount * feeCents;
+    const totalCents = FinancialCalculator.quantityCost(overageCount, feeCents);
 
     const result = await this.paymentGatewayService.createInvoiceItem(
       IPaymentGatewayProvider.STRIPE,
@@ -544,7 +544,7 @@ export class SubscriptionWebhookService {
         if (seatItem) {
           const newSeatQuantity = seatItem.quantity || 0;
           // Always recalculate with the ACTIVE plan's per-seat price
-          const newAdditionalCost = calcSeatCost(
+          const newAdditionalCost = FinancialCalculator.seatCost(
             newSeatQuantity,
             activeConfig.seatPricing.additionalSeatPriceCents
           );

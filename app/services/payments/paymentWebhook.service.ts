@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { UserCache } from '@caching/user.cache';
+import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SMSService } from '@services/smsService/sms.service';
@@ -639,10 +640,10 @@ export class PaymentWebhookService {
     try {
       const subscription = await this.subscriptionDAO.findFirst({ cuid });
       if (subscription?.planName) {
-        const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
-          subscription.planName
+        const recalculated = FinancialCalculator.percentOf(
+          retryAmount,
+          this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
         );
-        const recalculated = Math.round(retryAmount * (cardTxFeePercent / 100));
         if (recalculated > cardApplicationFee) {
           cardApplicationFee = recalculated;
           this.log.info(
@@ -1830,10 +1831,10 @@ export class PaymentWebhookService {
         // Card payment — use plan's card transaction fee rate
         const subscription = await this.subscriptionDAO.findFirst({ cuid });
         if (subscription?.planName) {
-          const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
-            subscription.planName
+          actualApplicationFee = FinancialCalculator.percentOf(
+            payment.baseAmount,
+            this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
           );
-          actualApplicationFee = Math.round(payment.baseAmount * (cardTxFeePercent / 100));
         }
       } else if (isAcss) {
         // ACSS payment — use ACH application fee rate

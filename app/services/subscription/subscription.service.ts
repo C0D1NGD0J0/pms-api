@@ -12,12 +12,12 @@ import { EmailQueue } from '@queues/email.queue';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { FinancialCalculator } from '@utils/financial';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionCache, AuthCache } from '@caching/index';
 import { calcDaysRemaining, createLogger } from '@utils/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
-import { calcAnnualToMonthly, calcSeatCost } from '@utils/financial.utils';
 import { InternalServerError, BadRequestError } from '@shared/customErrors';
 import {
   ISubscriptionEntitlements,
@@ -331,7 +331,9 @@ export class SubscriptionService {
       }
 
       const monthlyEquivalent =
-        billingInterval === 'annual' ? calcAnnualToMonthly(actualBilledAmount) : actualBilledAmount;
+        billingInterval === 'annual'
+          ? FinancialCalculator.annualToMonthly(actualBilledAmount)
+          : actualBilledAmount;
 
       const status = isPaidPlan ? ISubscriptionStatus.PENDING_PAYMENT : ISubscriptionStatus.ACTIVE;
       const pendingDowngradeAt = isPaidPlan ? dayjs().add(48, 'hour').toDate() : undefined;
@@ -880,7 +882,7 @@ export class SubscriptionService {
             remaining: remainingFor(count, quota),
             overageFeeCents: feeCents,
             overageCount,
-            projectedOverageCents: overageCount * feeCents,
+            projectedOverageCents: FinancialCalculator.quantityCost(overageCount, feeCents),
           };
         })(),
         smsUsage: (() => {
@@ -1256,11 +1258,11 @@ export class SubscriptionService {
         }
 
         // Calculate new pricing — all values in cents to stay consistent with totalMonthlyPrice
-        const newAdditionalCost = calcSeatCost(
+        const newAdditionalCost = FinancialCalculator.seatCost(
           newAdditionalCount,
           config.seatPricing.additionalSeatPriceCents
         );
-        const monthlyCostChange = calcSeatCost(
+        const monthlyCostChange = FinancialCalculator.seatCost(
           seatDelta,
           config.seatPricing.additionalSeatPriceCents
         );
@@ -1477,7 +1479,7 @@ export class SubscriptionService {
               checkoutData.billingInterval || subscription.billingInterval || 'monthly';
 
             // Recalculate seat costs with the new plan's pricing
-            const newSeatCost = calcSeatCost(
+            const newSeatCost = FinancialCalculator.seatCost(
               subscription.seats.additional ?? 0,
               planConfig.seatPricing.additionalSeatPriceCents
             );
@@ -1837,7 +1839,10 @@ export class SubscriptionService {
       let seatCost = 0;
       if (seatItem) {
         const qty = seatItem.quantity || 0;
-        seatCost = calcSeatCost(qty, activeConfig.seatPricing.additionalSeatPriceCents);
+        seatCost = FinancialCalculator.seatCost(
+          qty,
+          activeConfig.seatPricing.additionalSeatPriceCents
+        );
         updateData['seats.additional'] = qty;
         updateData['seats.additionalCost'] = seatCost;
         if (seatItem.id) updateData['billing.seatItemId'] = seatItem.id;

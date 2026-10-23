@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { calcGatewayFee } from '@utils/financial.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { ISubscriptionPlansConfig, PlanName } from '@interfaces/subscription.interface';
 
 export {
@@ -32,7 +32,7 @@ function applyAnnualDiscount(plans: Record<string, any>, discountPercent: number
     throw new Error(`Invalid annualDiscountPercent: ${discountPercent}`);
   }
   const toAnnual = (monthlyCents: number) =>
-    Math.round((monthlyCents * 12 * (100 - discountPercent)) / 100);
+    FinancialCalculator.annualFromMonthly(monthlyCents, discountPercent);
 
   for (const config of Object.values(plans)) {
     const { monthly, annual } = config.pricing ?? {};
@@ -144,15 +144,17 @@ export class SubscriptionPlanConfig {
         ? customPriceInCents
         : config.pricing[billingInterval].priceInCents;
 
-    // Calculate additional seats cost
-    const additionalSeatsCost = additionalSeatsCount * config.seatPricing.additionalSeatPriceCents;
+    const additionalSeatsCost = this.calculateAdditionalSeatsCost(planName, additionalSeatsCount);
 
-    return basePrice + additionalSeatsCost;
+    return FinancialCalculator.sum([basePrice, additionalSeatsCost]);
   }
 
   public calculateAdditionalSeatsCost(planName: PlanName, additionalSeatsCount: number): number {
     const config = this.getConfig(planName);
-    return additionalSeatsCount * config.seatPricing.additionalSeatPriceCents;
+    return FinancialCalculator.seatCost(
+      additionalSeatsCount,
+      config.seatPricing.additionalSeatPriceCents
+    );
   }
 
   public canAddProperty(currentProperties: number, planName: PlanName): boolean {
@@ -208,10 +210,38 @@ export class SubscriptionPlanConfig {
   }
 
   public calculateAchApplicationFee(amountInCents: number): number {
-    const rate = this.getAchPercentRate();
-    const fee = Math.round(amountInCents * (rate / 100));
+    const fee = FinancialCalculator.percentOf(amountInCents, this.getAchPercentRate());
     const cap = this.getAchFeeCapCents();
     return cap != null ? Math.min(fee, cap) : fee;
+  }
+
+  /**
+   * Splits a rent amount into the platform's application fee, the estimated gateway cost,
+   * and what the platform nets (which can be negative).
+   */
+  public calculateRentFees(
+    totalAmount: number,
+    transactionFeePercent: number,
+    provider: string = 'stripe',
+    paymentMethodType?: string
+  ): {
+    baseAmount: number;
+    applicationFee: number;
+    gatewayProcessingFee: number;
+    platformNetRevenue: number;
+  } {
+    const { applicationFee, gatewayFee, platformRevenue } = FinancialCalculator.applicationFeeSplit(
+      totalAmount,
+      transactionFeePercent,
+      (amount) => this.calculatePaymentGatewayFee(amount, provider, paymentMethodType)
+    );
+
+    return {
+      baseAmount: totalAmount,
+      gatewayProcessingFee: gatewayFee,
+      platformNetRevenue: platformRevenue,
+      applicationFee,
+    };
   }
 
   public getFormattedPrice(
@@ -361,7 +391,12 @@ export class SubscriptionPlanConfig {
     }
     const isAch = paymentMethodType === 'auto-debit';
     const fees = isAch ? gateway.acssProcessingFee : gateway.processingFee;
-    return calcGatewayFee(amountInCents, fees.percentRate, fees.fixedFeeCents, fees.maxFeeCents);
+    return FinancialCalculator.gatewayFee(
+      amountInCents,
+      fees.percentRate,
+      fees.fixedFeeCents,
+      fees.maxFeeCents
+    );
   }
 
   /**

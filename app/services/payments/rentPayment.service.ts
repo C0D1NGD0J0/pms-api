@@ -10,7 +10,6 @@ import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, JOB_NAME } from '@utils/constants';
-import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
@@ -590,7 +589,7 @@ export class RentPaymentService {
         const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
           subscription.planName
         );
-        feeBreakdown = this.calculateRentFees(
+        feeBreakdown = this.subscriptionPlanConfig.calculateRentFees(
           totalAmountInCents,
           transactionFeePercent,
           'stripe',
@@ -969,7 +968,10 @@ export class RentPaymentService {
           const transactionFeePercent = subscription
             ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
             : 0;
-          const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
+          const feeBreakdown = this.subscriptionPlanConfig.calculateRentFees(
+            payment.baseAmount,
+            transactionFeePercent
+          );
 
           const { chargeId } = await this.createTenantCharge({
             tenantCustomerId,
@@ -1082,7 +1084,10 @@ export class RentPaymentService {
       const transactionFeePercent = subscription
         ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
         : 0;
-      const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
+      const feeBreakdown = this.subscriptionPlanConfig.calculateRentFees(
+        payment.baseAmount,
+        transactionFeePercent
+      );
       const isDeposit = payment.paymentType === PaymentRecordType.SECURITY_DEPOSIT;
 
       let activeInvoiceId = payment.gatewayPaymentId;
@@ -1476,32 +1481,6 @@ export class RentPaymentService {
         );
       }
     }
-  }
-
-  private calculateRentFees(
-    totalAmount: number,
-    transactionFeePercent: number,
-    provider: string = 'stripe',
-    paymentMethodType?: string
-  ): {
-    baseAmount: number;
-    applicationFee: number;
-    gatewayProcessingFee: number;
-    platformNetRevenue: number;
-  } {
-    const { applicationFee, gatewayFee, platformRevenue } = calcApplicationFeeSplit(
-      totalAmount,
-      transactionFeePercent,
-      (amount) =>
-        this.subscriptionPlanConfig.calculatePaymentGatewayFee(amount, provider, paymentMethodType)
-    );
-
-    return {
-      baseAmount: totalAmount,
-      gatewayProcessingFee: gatewayFee,
-      platformNetRevenue: platformRevenue,
-      applicationFee,
-    };
   }
 
   handleLeaseActivated = async (payload: {

@@ -5,6 +5,7 @@ import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { MoneyUtils } from '@utils/money.utils';
 import { type QueryFilter, Types } from 'mongoose';
+import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PdfGeneratorService } from '@services/pdfGenerator';
@@ -2213,10 +2214,10 @@ export class PaymentService implements ICronProvider {
         try {
           const subscription = await this.subscriptionDAO.findFirst({ cuid });
           if (subscription?.planName) {
-            const cardTxFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(
-              subscription.planName
+            const recalculated = FinancialCalculator.percentOf(
+              totalAmountCents,
+              this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
             );
-            const recalculated = Math.round(totalAmountCents * (cardTxFeePercent / 100));
             // Only use the recalculated fee if it's higher — never lower the fee
             // below what was originally set (protects against config edge cases).
             if (recalculated > cardApplicationFee) {
@@ -2227,7 +2228,7 @@ export class PaymentService implements ICronProvider {
                   cuid,
                   originalFee: payment.applicationFee,
                   cardFee: cardApplicationFee,
-                  rate: cardTxFeePercent,
+                  rate: this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName),
                 },
                 'Recalculated application fee for card checkout'
               );

@@ -101,6 +101,7 @@ const makeServiceWithMocks = (
     calculatePaymentGatewayFee: jest.fn().mockReturnValue(80),
     calculateAchApplicationFee: jest.fn().mockReturnValue(100),
     getTransactionFeePercent: jest.fn().mockReturnValue(2.5),
+    calculateRentFees: SubscriptionPlanConfig.prototype.calculateRentFees,
   } as unknown as jest.Mocked<SubscriptionPlanConfig>;
   const queueFactory = { getQueue: jest.fn() } as any;
   const invoiceDAO = {} as any;
@@ -6508,12 +6509,7 @@ describe('PaymentService — calculateRentFees fee model', () => {
 
   it('uses the bank-debit gateway fee (1% + $0.40, max $5) when paymentMethodType is auto-debit', () => {
     // 1.99% on $1,500 = $29.85 applicationFee; gateway cost = 1% + $0.40 capped at $5; platform nets $24.85
-    const result = (paymentService as any).rentPaymentService.calculateRentFees(
-      150000,
-      1.99,
-      'stripe',
-      'auto-debit'
-    );
+    const result = subscriptionPlanConfig.calculateRentFees(150000, 1.99, 'stripe', 'auto-debit');
 
     expect(result.baseAmount).toBe(150000);
     expect(result.applicationFee).toBe(2985); // 1.99% of $1,500 in cents
@@ -6523,12 +6519,7 @@ describe('PaymentService — calculateRentFees fee model', () => {
 
   it('uses card gateway fee (2.9% + $0.30) when paymentMethodType is card', () => {
     // 4.5% on $1,500 = $67.50; gateway = 2.9% × $1,500 + $0.30 = $43.80; platform nets $23.70
-    const result = (paymentService as any).rentPaymentService.calculateRentFees(
-      150000,
-      4.5,
-      'stripe',
-      'card'
-    );
+    const result = subscriptionPlanConfig.calculateRentFees(150000, 4.5, 'stripe', 'card');
 
     expect(result.baseAmount).toBe(150000);
     expect(result.applicationFee).toBe(6750); // 4.5% of $1,500
@@ -6537,24 +6528,14 @@ describe('PaymentService — calculateRentFees fee model', () => {
   });
 
   it('defaults to card gateway fee when no paymentMethodType provided', () => {
-    const result = (paymentService as any).rentPaymentService.calculateRentFees(150000, 4.5);
+    const result = subscriptionPlanConfig.calculateRentFees(150000, 4.5);
 
     expect(result.gatewayProcessingFee).toBe(4380);
   });
 
   it('ACH nets more platform revenue per transaction than card despite lower application fee', () => {
-    const ach = (paymentService as any).rentPaymentService.calculateRentFees(
-      150000,
-      1.99,
-      'stripe',
-      'auto-debit'
-    );
-    const card = (paymentService as any).rentPaymentService.calculateRentFees(
-      150000,
-      4.5,
-      'stripe',
-      'card'
-    );
+    const ach = subscriptionPlanConfig.calculateRentFees(150000, 1.99, 'stripe', 'auto-debit');
+    const card = subscriptionPlanConfig.calculateRentFees(150000, 4.5, 'stripe', 'card');
 
     expect(ach.platformNetRevenue).toBeGreaterThan(card.platformNetRevenue);
   });

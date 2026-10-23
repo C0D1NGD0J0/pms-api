@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { InvoiceDAO } from '@dao/invoiceDAO';
+import { FinancialCalculator } from '@utils/financial';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
 import { SMSService } from '@services/smsService/sms.service';
@@ -310,9 +311,11 @@ export class MaintenancePaymentService {
     amount: number,
     planName: PlanName
   ): { serviceFeeCents: number; totalAmount: number } {
-    const transactionFeePercent = this.subscriptionPlanConfig.getTransactionFeePercent(planName);
-    const serviceFeeCents = Math.round((amount * transactionFeePercent) / 100);
-    return { serviceFeeCents, totalAmount: amount + serviceFeeCents };
+    const serviceFeeCents = FinancialCalculator.percentOf(
+      amount,
+      this.subscriptionPlanConfig.getTransactionFeePercent(planName)
+    );
+    return { serviceFeeCents, totalAmount: FinancialCalculator.sum([amount, serviceFeeCents]) };
   }
 
   /**

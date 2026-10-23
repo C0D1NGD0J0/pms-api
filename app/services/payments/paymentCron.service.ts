@@ -10,7 +10,6 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { SMSService } from '@services/smsService/sms.service';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
-import { calcApplicationFeeSplit } from '@utils/financial.utils';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { computeLeaseMonthlyFees } from '@services/lease/leaseHelpers';
 import { StripeService } from '@services/external/stripe/stripe.service';
@@ -363,32 +362,6 @@ export class PaymentCronService implements ICronProvider {
     });
 
     return payment;
-  }
-
-  calculateRentFees(
-    totalAmount: number,
-    transactionFeePercent: number,
-    provider: string = 'stripe',
-    paymentMethodType?: string
-  ): {
-    baseAmount: number;
-    applicationFee: number;
-    gatewayProcessingFee: number;
-    platformNetRevenue: number;
-  } {
-    const { applicationFee, gatewayFee, platformRevenue } = calcApplicationFeeSplit(
-      totalAmount,
-      transactionFeePercent,
-      (amount) =>
-        this.subscriptionPlanConfig.calculatePaymentGatewayFee(amount, provider, paymentMethodType)
-    );
-
-    return {
-      baseAmount: totalAmount,
-      gatewayProcessingFee: gatewayFee,
-      platformNetRevenue: platformRevenue,
-      applicationFee,
-    };
   }
 
   private isAutoDebitLease(lease: ILeaseDocument): boolean {
@@ -1394,7 +1367,10 @@ export class PaymentCronService implements ICronProvider {
     const transactionFeePercent = subscription
       ? this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
       : 0;
-    const feeBreakdown = this.calculateRentFees(payment.baseAmount, transactionFeePercent);
+    const feeBreakdown = this.subscriptionPlanConfig.calculateRentFees(
+      payment.baseAmount,
+      transactionFeePercent
+    );
 
     let activeInvoiceId = payment.gatewayPaymentId;
 

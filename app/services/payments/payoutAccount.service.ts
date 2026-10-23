@@ -3,6 +3,7 @@ import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
+import { FinancialCalculator } from '@utils/financial';
 import { IPaymentGatewayProvider } from '@interfaces/index';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
@@ -541,7 +542,7 @@ export class PayoutAccountService {
       // Stripe rejects a single instant payout above its maximum. Pay out the maximum now and
       // leave the rest for the weekly payout; the fee shown is pro-rated, and the actual fee
       // comes back on the payout (application_fee_amount).
-      const cappedFee = Math.round((fee * maxPayout) / net.amount);
+      const cappedFee = FinancialCalculator.proportionalShare(fee, maxPayout, net.amount);
       return {
         eligible: true,
         capped: true,

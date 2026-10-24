@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { Types } from 'mongoose';
 import { envVariables } from '@shared/config';
-import { MoneyUtils } from '@utils/money.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { MailType } from '@interfaces/utils.interface';
 import { SSEResource } from '@interfaces/sse.interface';
 import { ROLES } from '@shared/constants/roles.constants';
@@ -303,7 +303,7 @@ export async function findPaymentForNotice(
 }
 
 export const formatNoticeAmount = (cents: number | null | undefined, currency: string): string =>
-  MoneyUtils.formatCurrency(cents ?? 0, currency.toUpperCase());
+  FinancialCalculator.formatCurrency(cents ?? 0, currency.toUpperCase());
 
 /** All payment notices show dates the same way, e.g. "Oct 7, 2026". */
 export const formatNoticeDate = (date: Date | string | null | undefined): string =>

@@ -6,7 +6,9 @@
  * All monetary values are converted from cents to dollars before sending.
  */
 
-const c2d = (cents: number): number => Math.round(cents) / 100;
+import { FinancialCalculator } from '@utils/financial';
+
+const c2d = (cents: number): number => FinancialCalculator.fromCents(cents);
 
 export const REPORT_ANALYSIS_SYSTEM_PROMPT = `You are a property management analyst reviewing a portfolio performance report.
 

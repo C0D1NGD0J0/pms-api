@@ -15,6 +15,7 @@ import { UserCache } from '@caching/user.cache';
 import { AuthCache } from '@caching/auth.cache';
 import { EmailQueue } from '@queues/email.queue';
 import { InspectionDAO } from '@dao/inspectionDAO';
+import { FinancialCalculator } from '@utils/financial';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { IUserDocument } from '@interfaces/user.interface';
@@ -1390,7 +1391,7 @@ export class OffboardingService {
     if (outstandingPayments.count > 0) {
       warnings.push({
         type: 'outstanding_payments',
-        message: `${outstandingPayments.count} outstanding payment(s) totaling ${(outstandingPayments.totalCents / 100).toFixed(2)}. These will be cancelled.`,
+        message: `${outstandingPayments.count} outstanding payment(s) totaling ${FinancialCalculator.centsToDisplay(outstandingPayments.totalCents)}. These will be cancelled.`,
         ...outstandingPayments,
       });
     }
@@ -1398,7 +1399,7 @@ export class OffboardingService {
     if (unpaidInvoices.count > 0) {
       warnings.push({
         type: 'unpaid_vendor_invoices',
-        message: `${unpaidInvoices.count} approved vendor invoice(s) totaling ${(unpaidInvoices.totalCents / 100).toFixed(2)} have not been paid out. Vendors will be disconnected without payment.`,
+        message: `${unpaidInvoices.count} approved vendor invoice(s) totaling ${FinancialCalculator.centsToDisplay(unpaidInvoices.totalCents)} have not been paid out. Vendors will be disconnected without payment.`,
         ...unpaidInvoices,
       });
     }
@@ -1406,7 +1407,7 @@ export class OffboardingService {
     if (heldDeposits.count > 0) {
       warnings.push({
         type: 'security_deposits',
-        message: `${heldDeposits.count} active lease(s) hold security deposits totaling ${(heldDeposits.totalCents / 100).toFixed(2)}. Deposits will need to be refunded after move-out inspections.`,
+        message: `${heldDeposits.count} active lease(s) hold security deposits totaling ${FinancialCalculator.centsToDisplay(heldDeposits.totalCents)}. Deposits will need to be refunded after move-out inspections.`,
         ...heldDeposits,
       });
     }

@@ -1,6 +1,6 @@
 import { Types } from 'mongoose';
 import { envVariables } from '@shared/config';
-import { MoneyUtils } from '@utils/money.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import {
@@ -280,6 +280,62 @@ export async function handlePaymentFailed(
   }
 }
 
+export async function handleSubscriptionRenewalUpcoming(
+  ctx: INotificationContext,
+  payload: SubscriptionRenewalUpcomingPayload
+): Promise<void> {
+  try {
+    const { cuid, planName, amountInCents, currency, renewalDate } = payload;
+    const fmt = FinancialCalculator.formatCurrency(
+      amountInCents || 0,
+      (currency || 'usd').toUpperCase()
+    );
+    const renewalDateStr = formatNoticeDate(renewalDate);
+
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      'payment.subscriptionRenewalUpcoming',
+      { planName, amount: fmt, renewalDate: renewalDateStr },
+      MGMT_ROLES,
+      { stripeSubscriptionId: payload.stripeSubscriptionId, planName, renewalDate: renewalDateStr },
+      NotificationPriorityEnum.MEDIUM,
+      FINANCE_DEPARTMENTS
+    );
+
+    // Also email the account admin
+    try {
+      const client = await ctx.clientDAO.findFirst({ cuid });
+      const accountAdminId = client?.accountAdmin
+        ? typeof client.accountAdmin === 'object' && client.accountAdmin._id
+          ? client.accountAdmin._id.toString()
+          : client.accountAdmin.toString()
+        : null;
+
+      if (accountAdminId) {
+        const adminUser = await ctx.userDAO.findFirst({
+          _id: new Types.ObjectId(accountAdminId),
+          deletedAt: null,
+        });
+        if (adminUser?.email) {
+          ctx.emailQueue.addToEmailQueue('subscriptionRenewalUpcoming', {
+            to: adminUser.email,
+            requestId: ctx.requestId,
+            emailType: MailType.SUBSCRIPTION_RENEWAL_UPCOMING,
+            subject: '',
+            data: { planName, amount: fmt, renewalDate: renewalDateStr, currentUser: adminUser },
+          });
+        }
+      }
+    } catch (err) {
+      ctx.log.error({ err }, 'Failed to enqueue subscriptionRenewalUpcoming email');
+    }
+  } catch (error) {
+    ctx.log.error('Error sending subscription renewal upcoming notification', { error, payload });
+  }
+}
+
 /**
  * PAD mandate confirmed — Rule H1 confirmation email (sent within 5 days of the mandate):
  * terms, payee contact, recourse rights, advance-notice period and how to cancel.
@@ -329,59 +385,6 @@ export async function handlePadMandateConfirmed(
     ctx.log.info({ tenantId, cuid, mandateId }, 'PAD mandate confirmation email queued');
   } catch (error) {
     ctx.log.error('Error handling PAD mandate confirmed', { error, payload });
-  }
-}
-
-export async function handleSubscriptionRenewalUpcoming(
-  ctx: INotificationContext,
-  payload: SubscriptionRenewalUpcomingPayload
-): Promise<void> {
-  try {
-    const { cuid, planName, amountInCents, currency, renewalDate } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
-    const renewalDateStr = formatNoticeDate(renewalDate);
-
-    await notifyAnnouncement(
-      ctx,
-      cuid,
-      NotificationTypeEnum.PAYMENT,
-      'payment.subscriptionRenewalUpcoming',
-      { planName, amount: fmt, renewalDate: renewalDateStr },
-      MGMT_ROLES,
-      { stripeSubscriptionId: payload.stripeSubscriptionId, planName, renewalDate: renewalDateStr },
-      NotificationPriorityEnum.MEDIUM,
-      FINANCE_DEPARTMENTS
-    );
-
-    // Also email the account admin
-    try {
-      const client = await ctx.clientDAO.findFirst({ cuid });
-      const accountAdminId = client?.accountAdmin
-        ? typeof client.accountAdmin === 'object' && client.accountAdmin._id
-          ? client.accountAdmin._id.toString()
-          : client.accountAdmin.toString()
-        : null;
-
-      if (accountAdminId) {
-        const adminUser = await ctx.userDAO.findFirst({
-          _id: new Types.ObjectId(accountAdminId),
-          deletedAt: null,
-        });
-        if (adminUser?.email) {
-          ctx.emailQueue.addToEmailQueue('subscriptionRenewalUpcoming', {
-            to: adminUser.email,
-            requestId: ctx.requestId,
-            emailType: MailType.SUBSCRIPTION_RENEWAL_UPCOMING,
-            subject: '',
-            data: { planName, amount: fmt, renewalDate: renewalDateStr, currentUser: adminUser },
-          });
-        }
-      }
-    } catch (err) {
-      ctx.log.error({ err }, 'Failed to enqueue subscriptionRenewalUpcoming email');
-    }
-  } catch (error) {
-    ctx.log.error('Error sending subscription renewal upcoming notification', { error, payload });
   }
 }
 
@@ -702,7 +705,10 @@ export async function handlePayoutFailed(
 ): Promise<void> {
   try {
     const { cuid, amountInCents, currency, reason } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
+    const fmt = FinancialCalculator.formatCurrency(
+      amountInCents || 0,
+      (currency || 'usd').toUpperCase()
+    );
     const messageKey =
       payload.ownerType === 'vendor'
         ? 'payment.payoutFailed'
@@ -732,7 +738,10 @@ export async function handlePayoutPaid(
 ): Promise<void> {
   try {
     const { cuid, amountInCents, currency } = payload;
-    const fmt = MoneyUtils.formatCurrency(amountInCents || 0, (currency || 'usd').toUpperCase());
+    const fmt = FinancialCalculator.formatCurrency(
+      amountInCents || 0,
+      (currency || 'usd').toUpperCase()
+    );
     const messageKey =
       payload.ownerType === 'vendor'
         ? 'payment.payoutPaid'

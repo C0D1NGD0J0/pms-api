@@ -9,10 +9,10 @@ import { PaymentDAO } from '@dao/paymentDAO';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { escapeRegExp } from '@utils/helpers';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { MoneyUtils } from '@utils/money.utils';
 import { S3Service } from '@services/fileUpload';
 import { SMSMessageType } from '@interfaces/index';
 import { CurrentUser } from '@utils/currentUserRole';
+import { FinancialCalculator } from '@utils/financial';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { LeaseStatus } from '@interfaces/lease.interface';
@@ -489,7 +489,7 @@ export class MaintenanceRequestService {
               status: MaintenanceRequestStatus.ASSIGNED,
               ...(data.scheduledDate && { scheduledDate: new Date(data.scheduledDate) }),
               ...(data.estimatedCost !== undefined && {
-                estimatedCost: MoneyUtils.toCents(data.estimatedCost),
+                estimatedCost: FinancialCalculator.toCents(data.estimatedCost),
               }),
             },
           });
@@ -886,7 +886,7 @@ export class MaintenanceRequestService {
             status: MaintenanceRequestStatus.ASSIGNED,
             ...(data.scheduledDate && { scheduledDate: new Date(data.scheduledDate) }),
             ...(data.estimatedCost !== undefined && {
-              estimatedCost: MoneyUtils.toCents(data.estimatedCost),
+              estimatedCost: FinancialCalculator.toCents(data.estimatedCost),
             }),
           },
         },

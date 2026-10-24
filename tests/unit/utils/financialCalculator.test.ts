@@ -1,6 +1,4 @@
-import { MoneyUtils } from '@utils/money.utils';
 import { describe, expect, it } from '@jest/globals';
-import * as financialUtils from '@utils/financial.utils';
 import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 
 describe('FinancialCalculator.percentOf', () => {
@@ -11,17 +9,8 @@ describe('FinancialCalculator.percentOf', () => {
   });
 });
 
-describe('FinancialCalculator.sum', () => {
-  it('adds integer cents and treats missing values as 0', () => {
-    expect(FinancialCalculator.sum([150000, 2500, undefined, null, 0])).toBe(152500);
-    expect(FinancialCalculator.sum([])).toBe(0);
-  });
-});
-
-describe('FinancialCalculator.quantityCost', () => {
-  it('multiplies a count by a unit price in cents', () => {
-    expect(FinancialCalculator.quantityCost(3, 150)).toBe(450);
-    expect(FinancialCalculator.quantityCost(0, 150)).toBe(0);
+describe('FinancialCalculator.seatCost', () => {
+  it('multiplies seats by the price per seat', () => {
     expect(FinancialCalculator.seatCost(2, 1500)).toBe(3000);
   });
 });
@@ -40,6 +29,67 @@ describe('FinancialCalculator.annualFromMonthly', () => {
     expect(FinancialCalculator.annualFromMonthly(4900, 0)).toBe(58800);
     expect(FinancialCalculator.annualFromMonthly(4900, 20)).toBe(47040);
     expect(FinancialCalculator.annualFromMonthly(999, 15)).toBe(10190); // 10189.8 → 10190
+  });
+});
+
+describe('FinancialCalculator.daysLate', () => {
+  const dueDate = new Date('2026-10-01T00:00:00Z');
+
+  it('counts whole calendar days after the due date', () => {
+    expect(FinancialCalculator.daysLate(dueDate, new Date('2026-10-06T00:00:00Z'))).toBe(5);
+    expect(FinancialCalculator.daysLate(dueDate, new Date('2026-10-06T23:59:59Z'))).toBe(5);
+  });
+
+  it('is 0 on or before the due date', () => {
+    expect(FinancialCalculator.daysLate(dueDate, new Date('2026-10-01T18:00:00Z'))).toBe(0);
+    expect(FinancialCalculator.daysLate(dueDate, new Date('2026-09-28T00:00:00Z'))).toBe(0);
+  });
+
+  it('ignores the time of day on the due date', () => {
+    const afternoonDue = new Date('2026-10-01T15:00:00Z');
+    expect(FinancialCalculator.daysLate(afternoonDue, new Date('2026-10-06T10:00:00Z'))).toBe(5);
+  });
+
+  it('counts across month and DST boundaries without drift', () => {
+    expect(
+      FinancialCalculator.daysLate(
+        new Date('2026-10-30T00:00:00Z'),
+        new Date('2026-11-03T00:00:00Z')
+      )
+    ).toBe(4);
+  });
+
+  it('defaults asOf to now', () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    expect(FinancialCalculator.daysLate(yesterday)).toBe(1);
+  });
+});
+
+describe('FinancialCalculator.paymentTotal', () => {
+  it('leaves out the absorbed gateway cost on online payments', () => {
+    const online = { baseAmount: 150000, processingFee: 4380, paymentMethod: 'online' };
+    expect(FinancialCalculator.tenantProcessingFee(online)).toBe(0);
+    expect(FinancialCalculator.paymentTotal(online)).toBe(150000);
+  });
+
+  it('adds the fee a PM recorded on a manual entry', () => {
+    const manual = { baseAmount: 150000, processingFee: 500, paymentMethod: 'check' };
+    expect(FinancialCalculator.tenantProcessingFee(manual)).toBe(500);
+    expect(FinancialCalculator.paymentTotal(manual)).toBe(150500);
+  });
+
+  it('treats a missing fee as 0', () => {
+    expect(FinancialCalculator.paymentTotal({ baseAmount: 1000, paymentMethod: 'cash' })).toBe(
+      1000
+    );
+  });
+});
+
+describe('FinancialCalculator.refundableRemaining', () => {
+  it('subtracts what was already refunded and never goes below 0', () => {
+    expect(FinancialCalculator.refundableRemaining(150000, 30000)).toBe(120000);
+    expect(FinancialCalculator.refundableRemaining(150000)).toBe(150000);
+    expect(FinancialCalculator.refundableRemaining(150000, 999999)).toBe(0);
   });
 });
 
@@ -157,23 +207,5 @@ describe('FinancialCalculator.leaseMonthlyFees', () => {
       FinancialCalculator.leaseMonthlyFees({ ...lease, includeManagementFee: true })
         .totalMonthlyRent
     ).toBe(162500);
-  });
-});
-
-describe('compatibility layers delegate to FinancialCalculator', () => {
-  it('financial.utils exports the same functions', () => {
-    expect(financialUtils.calcLateFee(150000, 'percentage', 5)).toBe(
-      FinancialCalculator.lateFee(150000, 'percentage', 5)
-    );
-    expect(financialUtils.proRateAmount(200000, new Date(2024, 2, 15))).toEqual(
-      FinancialCalculator.proRateFirstMonth(200000, new Date(2024, 2, 15))
-    );
-  });
-
-  it('MoneyUtils conversions keep working when called detached', () => {
-    const { toCents, centsToString, stringToCents } = MoneyUtils;
-    expect(toCents(12.5)).toBe(1250);
-    expect(centsToString(1250)).toBe('12.50');
-    expect(stringToCents('19.99')).toBe(1999);
   });
 });

@@ -1184,6 +1184,7 @@ export class UserDAO extends BaseDAO<IUserDocument> implements IUserDAO {
       }
 
       const stats: any = result[0];
+      stats.averageRent = Math.round(stats.averageRent ?? 0); // whole cents
 
       // Process property distribution — array of property ObjectIds (null entries filtered out)
       const propertyMap = new Map<string, number>();

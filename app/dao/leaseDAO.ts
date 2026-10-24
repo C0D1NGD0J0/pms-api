@@ -1,10 +1,10 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
-import { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { type QueryFilter, ClientSession, Model } from 'mongoose';
 import { calcPercentage, roundToDecimal } from '@utils/math.utils';
 import { paginateResult, createLogger, escapeRegExp } from '@utils/index';
+import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import {
   ListResultWithPagination,
   IPaginationQuery,
@@ -221,7 +221,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         const unitNumber = leaseObj.property?.unitId?.unitNumber || null;
         const unitPuid = leaseObj.property?.unitId?.puid || null;
 
-        const { totalMonthlyRent } = computeLeaseMonthlyFees(leaseObj);
+        const { totalMonthlyRent } = FinancialCalculator.leaseMonthlyFees(leaseObj);
 
         return {
           luid: leaseObj.luid,
@@ -231,7 +231,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           unitPuid,
           rentAmount: totalMonthlyRent,
           currency: leaseObj.fees?.currency ?? 'USD',
-          lateFeesGracePeriod: leaseObj.fees?.lateFeeDays ?? 3,
+          lateFeesGracePeriod: leaseObj.fees?.lateFeeDays || DEFAULT_LATE_FEE_GRACE_DAYS,
           rentDueDay: leaseObj.fees?.rentDueDay ?? 1,
           acceptedPaymentMethod: leaseObj.fees?.acceptedPaymentMethod ?? null,
           startDate: leaseObj.duration?.startDate,

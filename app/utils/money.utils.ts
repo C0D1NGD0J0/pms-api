@@ -1,15 +1,10 @@
 import { FinancialCalculator } from '@utils/financial';
 
+/**
+ * Maps the money fields of request/response objects between display strings and cents.
+ * The conversions themselves live in FinancialCalculator.
+ */
 export const MoneyUtils = {
-  // ── Conversion (delegates to FinancialCalculator) ────────────────────────────
-
-  toCents: FinancialCalculator.toCents,
-  fromCents: FinancialCalculator.fromCents,
-  centsToDisplay: FinancialCalculator.centsToDisplay,
-  centsToString: FinancialCalculator.centsToString,
-  stringToCents: FinancialCalculator.stringToCents,
-  formatCurrency: FinancialCalculator.formatCurrency,
-
   // ── Object-level helpers ─────────────────────────────────────────────────────
 
   /** Cents → display strings for all known money fields. Missing fields are not injected. */
@@ -19,19 +14,19 @@ export const MoneyUtils = {
     return {
       ...moneyData,
       ...(moneyData.rentAmount !== undefined && {
-        rentAmount: MoneyUtils.centsToString(moneyData.rentAmount),
+        rentAmount: FinancialCalculator.centsToString(moneyData.rentAmount),
       }),
       ...(moneyData.managementFees !== undefined && {
-        managementFees: MoneyUtils.centsToString(moneyData.managementFees),
+        managementFees: FinancialCalculator.centsToString(moneyData.managementFees),
       }),
       ...(moneyData.securityDeposit !== undefined && {
-        securityDeposit: MoneyUtils.centsToString(moneyData.securityDeposit),
+        securityDeposit: FinancialCalculator.centsToString(moneyData.securityDeposit),
       }),
       ...(moneyData.rentAmount !== undefined && {
-        rentAmount: MoneyUtils.centsToString(moneyData.rentAmount),
+        rentAmount: FinancialCalculator.centsToString(moneyData.rentAmount),
       }),
       ...(moneyData.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.centsToString(moneyData.lateFeeAmount),
+        lateFeeAmount: FinancialCalculator.centsToString(moneyData.lateFeeAmount),
       }),
     };
   },
@@ -43,19 +38,19 @@ export const MoneyUtils = {
     return {
       ...moneyData,
       ...(moneyData.rentAmount !== undefined && {
-        rentAmount: MoneyUtils.stringToCents(moneyData.rentAmount),
+        rentAmount: FinancialCalculator.stringToCents(moneyData.rentAmount),
       }),
       ...(moneyData.managementFees !== undefined && {
-        managementFees: MoneyUtils.stringToCents(moneyData.managementFees),
+        managementFees: FinancialCalculator.stringToCents(moneyData.managementFees),
       }),
       ...(moneyData.securityDeposit !== undefined && {
-        securityDeposit: MoneyUtils.stringToCents(moneyData.securityDeposit),
+        securityDeposit: FinancialCalculator.stringToCents(moneyData.securityDeposit),
       }),
       ...(moneyData.rentAmount !== undefined && {
-        rentAmount: MoneyUtils.stringToCents(moneyData.rentAmount),
+        rentAmount: FinancialCalculator.stringToCents(moneyData.rentAmount),
       }),
       ...(moneyData.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.stringToCents(moneyData.lateFeeAmount),
+        lateFeeAmount: FinancialCalculator.stringToCents(moneyData.lateFeeAmount),
       }),
     };
   },
@@ -74,10 +69,10 @@ export const MoneyUtils = {
     if (!fees || typeof fees !== 'object') return fees;
     return {
       ...fees,
-      rentAmount: MoneyUtils.centsToString(fees.rentAmount),
-      securityDeposit: MoneyUtils.centsToString(fees.securityDeposit),
+      rentAmount: FinancialCalculator.centsToString(fees.rentAmount),
+      securityDeposit: FinancialCalculator.centsToString(fees.securityDeposit),
       ...(fees.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.centsToString(fees.lateFeeAmount),
+        lateFeeAmount: FinancialCalculator.centsToString(fees.lateFeeAmount),
       }),
     };
   },
@@ -86,10 +81,10 @@ export const MoneyUtils = {
     if (!fees || typeof fees !== 'object') return fees;
     return {
       ...fees,
-      rentAmount: MoneyUtils.stringToCents(fees.rentAmount),
-      securityDeposit: MoneyUtils.stringToCents(fees.securityDeposit),
+      rentAmount: FinancialCalculator.stringToCents(fees.rentAmount),
+      securityDeposit: FinancialCalculator.stringToCents(fees.securityDeposit),
       ...(fees.lateFeeAmount !== undefined && {
-        lateFeeAmount: MoneyUtils.stringToCents(fees.lateFeeAmount),
+        lateFeeAmount: FinancialCalculator.stringToCents(fees.lateFeeAmount),
       }),
     };
   },
@@ -100,10 +95,10 @@ export const MoneyUtils = {
     return {
       ...petPolicy,
       ...(petPolicy.deposit != null && {
-        deposit: MoneyUtils.stringToCents(petPolicy.deposit),
+        deposit: FinancialCalculator.stringToCents(petPolicy.deposit),
       }),
       ...(petPolicy.monthlyFee != null && {
-        monthlyFee: MoneyUtils.stringToCents(petPolicy.monthlyFee),
+        monthlyFee: FinancialCalculator.stringToCents(petPolicy.monthlyFee),
       }),
     };
   },
@@ -114,10 +109,10 @@ export const MoneyUtils = {
     return {
       ...petPolicy,
       ...(petPolicy.deposit != null && {
-        deposit: MoneyUtils.centsToString(petPolicy.deposit),
+        deposit: FinancialCalculator.centsToString(petPolicy.deposit),
       }),
       ...(petPolicy.monthlyFee != null && {
-        monthlyFee: MoneyUtils.centsToString(petPolicy.monthlyFee),
+        monthlyFee: FinancialCalculator.centsToString(petPolicy.monthlyFee),
       }),
     };
   },

@@ -23,6 +23,7 @@ import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import { getUidsByUserId, getUserIdsByUid } from '@services/property/propertyHelpers';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
@@ -1759,7 +1760,7 @@ export class LeaseService {
         amount: lease.fees.lateFeeAmount || 0,
         type: lease.fees.lateFeeType || 'fixed',
         percentage: lease.fees.lateFeePercentage || 0,
-        lateFeesGracePeriod: lease.fees.lateFeeDays || 5,
+        lateFeesGracePeriod: lease.fees.lateFeeDays || DEFAULT_LATE_FEE_GRACE_DAYS,
       },
 
       petPolicy: lease.petPolicy,
@@ -1773,7 +1774,7 @@ export class LeaseService {
         lease.includeManagementFee && Number(property.fees?.managementFees ?? 0) > 0
           ? {
               amount: property.fees.managementFees,
-              formatted: MoneyUtils.formatCurrency(
+              formatted: FinancialCalculator.formatCurrency(
                 property.fees.managementFees as number,
                 lease.fees.currency || 'USD'
               ),
@@ -2528,11 +2529,11 @@ export class LeaseService {
     const baseRentCents = unitId ? unit?.fees?.rentAmount : propertyRecord.fees?.rentAmount;
 
     if (baseRentCents && Number(baseRentCents) > 0) {
-      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.rentAmount);
+      const proposedRentCents = FinancialCalculator.stringToCents(leaseData.fees.rentAmount);
       if (Number(proposedRentCents) < Number(baseRentCents)) {
         if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
         validationErrors['fees.rentAmount'].push(
-          `Monthly rent cannot be lower than the base rental fee of ${MoneyUtils.centsToDisplay(Number(baseRentCents))}`
+          `Monthly rent cannot be lower than the base rental fee of ${FinancialCalculator.centsToDisplay(Number(baseRentCents))}`
         );
       }
     }
@@ -2664,10 +2665,13 @@ export class LeaseService {
             unitNumber: property?.unitId?.unitNumber || null,
             startDate: lease.duration.startDate.toISOString(),
             endDate: lease.duration.endDate.toISOString(),
-            rentAmount: MoneyUtils.formatCurrency(lease.fees.rentAmount, lease.fees.currency),
+            rentAmount: FinancialCalculator.formatCurrency(
+              lease.fees.rentAmount,
+              lease.fees.currency
+            ),
             firstPaymentDate: lease.duration.startDate.toLocaleDateString(),
             securityDepositInfo: lease.fees.securityDeposit
-              ? MoneyUtils.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)
+              ? FinancialCalculator.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)
               : 'N/A',
             leaseUrl: lease.leaseDocuments?.[0]?.url || '',
             propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,

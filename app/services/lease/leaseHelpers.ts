@@ -8,15 +8,8 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import type { PdfJobData } from '@interfaces/pdfGenerator.interface';
-import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
-import {
-  PROPERTY_LEASING_BLOCK_MESSAGE_KEYS,
-  getPropertyLeasingBlock,
-  LeasingCheckFields,
-} from '@utils/propertyLeasing';
-export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
-export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import { PaymentRecordStatus, IPaymentDocument } from '@interfaces/payments.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import {
@@ -31,6 +24,11 @@ import {
   BadRequestError,
   ForbiddenError,
 } from '@shared/customErrors';
+import {
+  PROPERTY_LEASING_BLOCK_MESSAGE_KEYS,
+  getPropertyLeasingBlock,
+  LeasingCheckFields,
+} from '@utils/propertyLeasing';
 import {
   LeaseTerminationReasonCode,
   ILeaseESignatureStatusEnum,
@@ -907,14 +905,14 @@ export const calculateFinancialSummary = (
   payments: IPaymentDocument[] = []
 ): any => {
   const { baseRent, managementFee, petMonthlyFee, petDeposit, securityDeposit, totalMonthlyRent } =
-    computeLeaseMonthlyFees(lease);
+    FinancialCalculator.leaseMonthlyFees(lease);
   const currency = lease.fees.currency || 'USD';
   const startDate = new Date(lease.duration.startDate);
 
   // Pro-rate only the base rent; pet fee and management fee are added as flat/separate items below.
-  const proRated = proRateAmount(baseRent, startDate);
+  const proRated = FinancialCalculator.proRateFirstMonth(baseRent, startDate);
   const proRatedManagementFee =
-    managementFee > 0 ? proRateAmount(managementFee, startDate).amount : 0;
+    managementFee > 0 ? FinancialCalculator.proRateFirstMonth(managementFee, startDate).amount : 0;
 
   // First payment = pro-rated base rent + pro-rated management fee (if opted in)
   //               + pet monthly fee (flat, first month)
@@ -923,22 +921,24 @@ export const calculateFinancialSummary = (
   const depositTotal = securityDeposit + petDeposit;
 
   const endDate = new Date(lease.duration.endDate);
-  const lastMonthProRated = proRateLastMonth(baseRent, endDate);
+  const lastMonthProRated = FinancialCalculator.proRateLastMonth(baseRent, endDate);
 
   const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
 
   return {
-    rentAmount: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
+    rentAmount: FinancialCalculator.formatCurrency(totalMonthlyRent, currency),
     rentAmountRaw: totalMonthlyRent,
     baseRentRaw: baseRent,
-    petFee: petMonthlyFee > 0 ? MoneyUtils.formatCurrency(petMonthlyFee, currency) : undefined,
+    petFee:
+      petMonthlyFee > 0 ? FinancialCalculator.formatCurrency(petMonthlyFee, currency) : undefined,
     petFeeRaw: petMonthlyFee,
-    petDeposit: petDeposit > 0 ? MoneyUtils.formatCurrency(petDeposit, currency) : undefined,
+    petDeposit:
+      petDeposit > 0 ? FinancialCalculator.formatCurrency(petDeposit, currency) : undefined,
     petDepositRaw: petDeposit,
     managementFee:
-      managementFee > 0 ? MoneyUtils.formatCurrency(managementFee, currency) : undefined,
+      managementFee > 0 ? FinancialCalculator.formatCurrency(managementFee, currency) : undefined,
     managementFeeRaw: managementFee,
-    securityDeposit: MoneyUtils.formatCurrency(securityDeposit, currency),
+    securityDeposit: FinancialCalculator.formatCurrency(securityDeposit, currency),
     securityDepositRaw: securityDeposit,
     currency,
     rentDueDay: lease.fees.rentDueDay,
@@ -969,21 +969,24 @@ export const calculateFinancialSummary = (
     ),
     // First-payment breakdown (pro-rated base rent at move-in — pet fee and management fee separate)
     proRatedFirstMonthAmount: proRated.amount,
-    proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRated.amount, currency),
+    proRatedFirstMonthFormatted: FinancialCalculator.formatCurrency(proRated.amount, currency),
     proRatedManagementFeeAmount: proRatedManagementFee,
     proRatedDays: proRated.daysCharged,
     proRatedDaysInMonth: proRated.daysInMonth,
     isFirstMonthFullMonth: proRated.isFullMonth,
     firstPaymentAmount: firstPaymentCents,
-    firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentCents, currency),
+    firstPaymentAmountFormatted: FinancialCalculator.formatCurrency(firstPaymentCents, currency),
     depositAmount: depositTotal,
     depositAmountFormatted:
-      depositTotal > 0 ? MoneyUtils.formatCurrency(depositTotal, currency) : undefined,
+      depositTotal > 0 ? FinancialCalculator.formatCurrency(depositTotal, currency) : undefined,
     firstPaymentDate: startDate,
     firstPaymentMonth: startMonth,
     // Last-month breakdown (pro-rated base rent based on lease end date)
     proRatedLastMonthAmount: lastMonthProRated.amount,
-    proRatedLastMonthFormatted: MoneyUtils.formatCurrency(lastMonthProRated.amount, currency),
+    proRatedLastMonthFormatted: FinancialCalculator.formatCurrency(
+      lastMonthProRated.amount,
+      currency
+    ),
     proRatedLastMonthDays: lastMonthProRated.daysCharged,
     proRatedLastMonthDaysInMonth: lastMonthProRated.daysInMonth,
     proRatedLastMonthDailyRate: lastMonthProRated.dailyRate,
@@ -1033,8 +1036,6 @@ export const calculateNextPaymentDate = (
   if (effectiveEnd && nextPayment.isAfter(effectiveEnd)) return null;
   return nextPayment.toDate();
 };
-
-export type { LeaseMonthlyFees } from '@utils/financial.utils';
 
 /**
  * Get user permissions for a lease based on role
@@ -1202,10 +1203,10 @@ const petPolicyInMajorUnits = (petPolicy: ILeaseDocument['petPolicy']): Record<s
   return {
     ...plainPetPolicy,
     ...(plainPetPolicy.deposit != null && {
-      deposit: MoneyUtils.fromCents(plainPetPolicy.deposit),
+      deposit: FinancialCalculator.fromCents(plainPetPolicy.deposit),
     }),
     ...(plainPetPolicy.monthlyFee != null && {
-      monthlyFee: MoneyUtils.fromCents(plainPetPolicy.monthlyFee),
+      monthlyFee: FinancialCalculator.fromCents(plainPetPolicy.monthlyFee),
     }),
   };
 };
@@ -1258,12 +1259,12 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     },
     // Money fields are major units (e.g. dollars) — the renewal endpoint converts them back to cents
     fees: {
-      rentAmount: MoneyUtils.fromCents(lease.fees?.rentAmount || 0),
+      rentAmount: FinancialCalculator.fromCents(lease.fees?.rentAmount || 0),
       currency: lease.fees?.currency || 'USD',
       rentDueDay: lease.fees?.rentDueDay || 1,
-      securityDeposit: MoneyUtils.fromCents(lease.fees?.securityDeposit || 0),
-      lateFeeAmount: MoneyUtils.fromCents(lease.fees?.lateFeeAmount || 0),
-      lateFeeDays: lease.fees?.lateFeeDays || 5,
+      securityDeposit: FinancialCalculator.fromCents(lease.fees?.securityDeposit || 0),
+      lateFeeAmount: FinancialCalculator.fromCents(lease.fees?.lateFeeAmount || 0),
+      lateFeeDays: lease.fees?.lateFeeDays || DEFAULT_LATE_FEE_GRACE_DAYS,
       lateFeeType: lease.fees?.lateFeeType || 'fixed',
       lateFeePercentage: lease.fees?.lateFeePercentage,
       acceptedPaymentMethod: Array.isArray(lease.fees?.acceptedPaymentMethod)

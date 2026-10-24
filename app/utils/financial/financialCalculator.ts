@@ -6,6 +6,7 @@ Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
 export const DEFAULT_LATE_FEE_GRACE_DAYS = 5;
 
 const NET_INCOME_FACTOR = new Decimal('0.9');
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Minimal shape required to compute monthly fees.
@@ -54,9 +55,10 @@ export interface PropertyFeeBreakdownInput {
 export type LateFeeType = 'percentage' | 'fixed';
 
 /**
- * Single home for money math. Every amount in and out is an integer number of cents,
- * every operation goes through Decimal.js, and each method states its rounding:
- * fees and adjustments round half-up, pro-ration rounds up.
+ * Single home for money math. Every amount in and out is a whole number of cents.
+ * Adding or multiplying whole cents is exact, so that is plain JavaScript. Decimal.js is
+ * only used where a fraction gets rounded (percentages, division, pro-ration):
+ * fees round half-up, pro-ration rounds up.
  *
  * Static and stateless so models, configs and DAOs can use it without the DI container.
  */
@@ -65,7 +67,7 @@ export class FinancialCalculator {
 
   /** Dollars → cents. e.g. 12.50 → 1250 */
   static toCents(dollars: number): number {
-    return new Decimal(dollars).times(100).toDecimalPlaces(0, Decimal.ROUND_HALF_UP).toNumber();
+    return new Decimal(dollars).times(100).round().toNumber();
   }
 
   /** Cents → dollars rounded to 2 decimal places. e.g. 1250 → 12.50 */
@@ -90,10 +92,7 @@ export class FinancialCalculator {
     if (dollarString == null) return 0;
     const numericValue = typeof dollarString === 'string' ? parseFloat(dollarString) : dollarString;
     if (isNaN(numericValue)) return 0;
-    return new Decimal(numericValue)
-      .times(100)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
+    return new Decimal(numericValue).times(100).round().toNumber();
   }
 
   static formatCurrency(
@@ -110,35 +109,12 @@ export class FinancialCalculator {
 
   /** round_half_up(amount × percent / 100) */
   static percentOf(amountCents: number, percent: number): number {
-    return new Decimal(amountCents)
-      .times(percent)
-      .div(100)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
-  }
-
-  /** round_half_up(quantity × unitPrice). e.g. seats, overage records. */
-  static quantityCost(quantity: number, unitPriceCents: number): number {
-    return new Decimal(quantity)
-      .times(unitPriceCents)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
+    return new Decimal(amountCents).times(percent).div(100).round().toNumber();
   }
 
   /** round_half_up(amount × part / whole) — amount scaled to a share of a whole. */
   static proportionalShare(amountCents: number, part: number, whole: number): number {
-    return new Decimal(amountCents)
-      .times(part)
-      .div(whole)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
-  }
-
-  /** Missing entries count as 0. */
-  static sum(amountsCents: Array<number | null | undefined>): number {
-    return amountsCents
-      .reduce<Decimal>((total, amount) => total.plus(amount || 0), new Decimal(0))
-      .toNumber();
+    return new Decimal(amountCents).times(part).div(whole).round().toNumber();
   }
 
   // ── Pro-ration ───────────────────────────────────────────────────────────────
@@ -214,6 +190,21 @@ export class FinancialCalculator {
     return rateOrAmount;
   }
 
+  /**
+   * Whole calendar days from the due date to `asOf`, never negative. Both are read as UTC
+   * calendar days — the convention due dates are stored in. Pass `localCalendarDay(now, tz)`
+   * as `asOf` to count in the client's time zone.
+   */
+  static daysLate(dueDate: Date, asOf: Date = new Date()): number {
+    const dueDay = FinancialCalculator.utcCalendarDayMs(new Date(dueDate));
+    const asOfDay = FinancialCalculator.utcCalendarDayMs(new Date(asOf));
+    return Math.max(0, Math.round((asOfDay - dueDay) / DAY_MS));
+  }
+
+  private static utcCalendarDayMs(date: Date): number {
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  }
+
   // ── Platform / gateway fees ──────────────────────────────────────────────────
 
   /** round_half_up(amount × percentRate / 100) + fixedFeeCents, optionally capped at maxFeeCents. */
@@ -223,9 +214,7 @@ export class FinancialCalculator {
     fixedFeeCents: number,
     maxFeeCents?: number
   ): number {
-    const fee = new Decimal(FinancialCalculator.percentOf(amountCents, percentRate))
-      .plus(fixedFeeCents)
-      .toNumber();
+    const fee = FinancialCalculator.percentOf(amountCents, percentRate) + fixedFeeCents;
     return maxFeeCents != null ? Math.min(fee, maxFeeCents) : fee;
   }
 
@@ -237,8 +226,37 @@ export class FinancialCalculator {
   ): { applicationFee: number; gatewayFee: number; platformRevenue: number } {
     const applicationFee = FinancialCalculator.percentOf(totalAmountCents, transactionFeePercent);
     const gatewayFee = gatewayFeeFn(totalAmountCents);
-    const platformRevenue = new Decimal(applicationFee).minus(gatewayFee).toNumber();
+    const platformRevenue = applicationFee - gatewayFee;
     return { applicationFee, gatewayFee, platformRevenue };
+  }
+
+  // ── Payment totals ───────────────────────────────────────────────────────────
+
+  /**
+   * The processing fee the tenant actually paid. On manual entries the PM records it; on
+   * online payments processingFee is the gateway's cost, which the platform absorbs.
+   */
+  static tenantProcessingFee(payment: {
+    processingFee?: number | null;
+    paymentMethod?: string | null;
+  }): number {
+    return payment.paymentMethod === 'online' ? 0 : payment.processingFee || 0;
+  }
+
+  /** What the tenant paid for a payment record: base amount plus any fee they were charged. */
+  static paymentTotal(payment: {
+    baseAmount?: number | null;
+    processingFee?: number | null;
+    paymentMethod?: string | null;
+  }): number {
+    return (payment.baseAmount || 0) + FinancialCalculator.tenantProcessingFee(payment);
+  }
+
+  // ── Refunds ──────────────────────────────────────────────────────────────────
+
+  /** What can still be refunded on a payment, given the cumulative amount already refunded. */
+  static refundableRemaining(baseAmountCents: number, alreadyRefundedCents = 0): number {
+    return Math.max(0, baseAmountCents - (alreadyRefundedCents || 0));
   }
 
   // ── Rent ─────────────────────────────────────────────────────────────────────
@@ -253,14 +271,15 @@ export class FinancialCalculator {
     }
 
     const newAmount = new Decimal(currentRentCents)
-      .times(new Decimal(1).plus(new Decimal(percentage).div(100)))
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
+      .times(100 + percentage)
+      .div(100)
+      .round()
       .toNumber();
 
     return {
       oldAmount: currentRentCents,
       newAmount,
-      difference: new Decimal(newAmount).minus(currentRentCents).toNumber(),
+      difference: newAmount - currentRentCents,
       percentageApplied: percentage,
     };
   }
@@ -289,7 +308,7 @@ export class FinancialCalculator {
       petMonthlyFee,
       petDeposit,
       securityDeposit,
-      totalMonthlyRent: FinancialCalculator.sum([baseRent, petMonthlyFee, managementFee]),
+      totalMonthlyRent: baseRent + petMonthlyFee + managementFee,
     };
   }
 
@@ -319,12 +338,12 @@ export class FinancialCalculator {
       monthly: {
         rent: rentAmount,
         petFee: petMonthlyFee,
-        total: FinancialCalculator.sum([rentAmount, petMonthlyFee]),
+        total: rentAmount + petMonthlyFee,
       },
       deposits: {
         security: securityDeposit,
         pet: petDeposit,
-        total: FinancialCalculator.sum([securityDeposit, petDeposit]),
+        total: securityDeposit + petDeposit,
       },
       late: {
         daysLate,
@@ -346,7 +365,7 @@ export class FinancialCalculator {
   static propertyFeeBreakdown(fees: PropertyFeeBreakdownInput | null | undefined) {
     const rentAmount = fees?.rentAmount || 0;
     const managementFees = fees?.managementFees || 0;
-    const totalMonthly = FinancialCalculator.sum([rentAmount, managementFees]);
+    const totalMonthly = rentAmount + managementFees;
 
     return {
       monthly: {
@@ -355,7 +374,7 @@ export class FinancialCalculator {
         total: totalMonthly,
       },
       annual: {
-        total: new Decimal(totalMonthly).times(12).toNumber(),
+        total: totalMonthly * 12,
       },
       deposits: {
         security: fees?.securityDeposit || 0,
@@ -373,31 +392,22 @@ export class FinancialCalculator {
   // ── Subscription pricing ─────────────────────────────────────────────────────
 
   static annualToMonthly(annualPriceCents: number): number {
-    return new Decimal(annualPriceCents)
-      .div(12)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
+    return new Decimal(annualPriceCents).div(12).round().toNumber();
   }
 
   /** round_half_up(monthly × 12 × (100 − discount) / 100). */
   static annualFromMonthly(monthlyPriceCents: number, discountPercent: number): number {
-    return FinancialCalculator.percentOf(
-      new Decimal(monthlyPriceCents).times(12).toNumber(),
-      new Decimal(100).minus(discountPercent).toNumber()
-    );
+    return FinancialCalculator.percentOf(monthlyPriceCents * 12, 100 - discountPercent);
   }
 
   static seatCost(seatCount: number, pricePerSeatCents: number): number {
-    return FinancialCalculator.quantityCost(seatCount, pricePerSeatCents);
+    return seatCount * pricePerSeatCents;
   }
 
   // ── Income estimates ─────────────────────────────────────────────────────────
 
   /** 90% of gross rent. For projections only — not for invoicing. */
   static estimateNetIncome(grossRentCents: number): number {
-    return new Decimal(grossRentCents)
-      .times(NET_INCOME_FACTOR)
-      .toDecimalPlaces(0, Decimal.ROUND_HALF_UP)
-      .toNumber();
+    return new Decimal(grossRentCents).times(NET_INCOME_FACTOR).round().toNumber();
   }
 }

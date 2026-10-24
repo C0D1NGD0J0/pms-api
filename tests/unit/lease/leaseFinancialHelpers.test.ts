@@ -1,12 +1,11 @@
+import { FinancialCalculator } from '@utils/financial';
 import { LeaseStatus } from '@interfaces/lease.interface';
 import { ValidationRequestError } from '@shared/customErrors';
-import { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ILeaseESignatureStatusEnum } from '@interfaces/lease.interface';
 import {
   validateLeaseReadyForSignature,
   calculateFinancialSummary,
   calculateNextPaymentDate,
-  calculateProRatedAmount,
 } from '@services/lease/leaseHelpers';
 
 // ---------------------------------------------------------------------------
@@ -107,13 +106,13 @@ describe('validateLeaseReadyForSignature — date guards', () => {
 });
 
 // ---------------------------------------------------------------------------
-// calculateProRatedAmount
+// FinancialCalculator.proRateFirstMonth
 // ---------------------------------------------------------------------------
 
-describe('calculateProRatedAmount', () => {
+describe('FinancialCalculator.proRateFirstMonth', () => {
   it('returns full month when tenant starts on day 1', () => {
     const startDate = new Date(2026, 3, 1); // April 1
-    const result = calculateProRatedAmount(300000, startDate); // $3000 in cents
+    const result = FinancialCalculator.proRateFirstMonth(300000, startDate); // $3000 in cents
     expect(result.isFullMonth).toBe(true);
     expect(result.amount).toBe(300000);
     expect(result.daysCharged).toBe(30);
@@ -123,7 +122,7 @@ describe('calculateProRatedAmount', () => {
   it('pro-rates for mid-month start (April 10 → 21 of 30 days)', () => {
     const startDate = new Date(2026, 3, 10); // April 10 — 30 day month
     const rentAmountInCents = 300000; // $3,000
-    const result = calculateProRatedAmount(rentAmountInCents, startDate);
+    const result = FinancialCalculator.proRateFirstMonth(rentAmountInCents, startDate);
     expect(result.isFullMonth).toBe(false);
     expect(result.daysInMonth).toBe(30);
     expect(result.daysCharged).toBe(21); // 30 - 10 + 1
@@ -133,7 +132,7 @@ describe('calculateProRatedAmount', () => {
 
   it('pro-rates for last day of a 31-day month (1 day charged)', () => {
     const startDate = new Date(2026, 2, 31); // March 31
-    const result = calculateProRatedAmount(310000, startDate);
+    const result = FinancialCalculator.proRateFirstMonth(310000, startDate);
     expect(result.daysCharged).toBe(1);
     expect(result.daysInMonth).toBe(31);
     // ceil(310000 * 1 / 31) = ceil(10000) = 10000
@@ -142,7 +141,7 @@ describe('calculateProRatedAmount', () => {
 
   it('pro-rates correctly for February (28-day month) start day 15', () => {
     const startDate = new Date(2026, 1, 15); // Feb 15, 2026 (not a leap year)
-    const result = calculateProRatedAmount(280000, startDate);
+    const result = FinancialCalculator.proRateFirstMonth(280000, startDate);
     expect(result.daysInMonth).toBe(28);
     expect(result.daysCharged).toBe(14); // 28 - 15 + 1
     // ceil(280000 * 14 / 28) = ceil(140000) = 140000
@@ -153,7 +152,7 @@ describe('calculateProRatedAmount', () => {
     // rent = 100001 cents, start day 2 in a 31-day month → 30 days charged
     // 100001 * 30 / 31 = 96775.16... → ceil = 96776
     const startDate = new Date(2026, 2, 2); // March 2
-    const result = calculateProRatedAmount(100001, startDate);
+    const result = FinancialCalculator.proRateFirstMonth(100001, startDate);
     expect(result.amount).toBe(Math.ceil((100001 * 30) / 31));
   });
 });
@@ -313,7 +312,7 @@ describe('calculateFinancialSummary — first payment composition', () => {
 // computeLeaseMonthlyFees — shared fee helper
 // ---------------------------------------------------------------------------
 
-describe('computeLeaseMonthlyFees', () => {
+describe('FinancialCalculator.leaseMonthlyFees', () => {
   function makeMinimalLease(overrides: Record<string, any> = {}): any {
     return {
       fees: { rentAmount: 150000, securityDeposit: 150000, currency: 'USD', rentDueDay: 1 },
@@ -325,7 +324,7 @@ describe('computeLeaseMonthlyFees', () => {
   }
 
   it('returns correct baseRent, petMonthlyFee, securityDeposit with no extras', () => {
-    const result = computeLeaseMonthlyFees(makeMinimalLease());
+    const result = FinancialCalculator.leaseMonthlyFees(makeMinimalLease());
     expect(result.baseRent).toBe(150000);
     expect(result.petMonthlyFee).toBe(0);
     expect(result.securityDeposit).toBe(150000);
@@ -334,7 +333,7 @@ describe('computeLeaseMonthlyFees', () => {
   });
 
   it('includes petMonthlyFee in totalMonthlyRent', () => {
-    const result = computeLeaseMonthlyFees(
+    const result = FinancialCalculator.leaseMonthlyFees(
       makeMinimalLease({ petPolicy: { monthlyFee: 5000, deposit: 20000 } })
     );
     expect(result.petMonthlyFee).toBe(5000);
@@ -343,7 +342,7 @@ describe('computeLeaseMonthlyFees', () => {
   });
 
   it('reads management fee from propertyInfo virtual when includeManagementFee is true', () => {
-    const result = computeLeaseMonthlyFees(
+    const result = FinancialCalculator.leaseMonthlyFees(
       makeMinimalLease({
         includeManagementFee: true,
         propertyInfo: { fees: { managementFees: 10000 } },
@@ -354,7 +353,7 @@ describe('computeLeaseMonthlyFees', () => {
   });
 
   it('reads management fee from property.id populated ref as fallback', () => {
-    const result = computeLeaseMonthlyFees(
+    const result = FinancialCalculator.leaseMonthlyFees(
       makeMinimalLease({
         includeManagementFee: true,
         property: { id: { fees: { managementFees: 8000 } } },
@@ -365,7 +364,7 @@ describe('computeLeaseMonthlyFees', () => {
   });
 
   it('prefers propertyInfo virtual over property.id when both present', () => {
-    const result = computeLeaseMonthlyFees(
+    const result = FinancialCalculator.leaseMonthlyFees(
       makeMinimalLease({
         includeManagementFee: true,
         propertyInfo: { fees: { managementFees: 12000 } },
@@ -376,7 +375,7 @@ describe('computeLeaseMonthlyFees', () => {
   });
 
   it('ignores management fee when includeManagementFee is false regardless of property value', () => {
-    const result = computeLeaseMonthlyFees(
+    const result = FinancialCalculator.leaseMonthlyFees(
       makeMinimalLease({
         includeManagementFee: false,
         propertyInfo: { fees: { managementFees: 10000 } },

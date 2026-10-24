@@ -781,4 +781,53 @@ describe('UserDAO Integration Tests', () => {
       expect(entry!.requiresOnboarding).toBe(false);
     });
   });
+
+  describe('getTenantStats', () => {
+    const cuid = 'CLIENT_TENANT_STATS_001';
+
+    const createTenant = (uid: string) =>
+      User.create({
+        uid,
+        email: `${uid}@example.com`,
+        password: 'hashed',
+        isActive: true,
+        activecuid: cuid,
+        cuids: [{ cuid, roles: [ROLES.TENANT], isConnected: true, clientDisplayName: 'Test' }],
+      });
+
+    it('averages active-lease rent in whole cents and counts tenants without a lease', async () => {
+      const [first, second] = await Promise.all([
+        createTenant('uid-stats-1'),
+        createTenant('uid-stats-2'),
+        createTenant('uid-stats-3'), // no lease
+      ]);
+      // Raw inserts: the pipeline only reads tenantId, status and fees.rentAmount
+      // (luid and leaseNumber are unique indexes)
+      const activeLease = (tenantId: Types.ObjectId, rentAmount: number, n: number) => ({
+        luid: `L-STATS-${n}`,
+        leaseNumber: `LN-STATS-${n}`,
+        tenantId,
+        status: 'active',
+        fees: { rentAmount },
+      });
+      await Lease.collection.insertMany([
+        activeLease(first._id as Types.ObjectId, 100000, 1),
+        activeLease(second._id as Types.ObjectId, 100001, 2),
+      ]);
+
+      const stats = await userDAO.getTenantStats(cuid);
+
+      expect(stats.total).toBe(3);
+      expect(stats.activeLeases).toBe(2);
+      expect(stats.averageRent).toBe(100001); // 100000.5 rounded
+    });
+
+    it('returns an averageRent of 0 when no tenant has an active lease', async () => {
+      await createTenant('uid-stats-4');
+
+      const stats = await userDAO.getTenantStats(cuid);
+
+      expect(stats.averageRent).toBe(0);
+    });
+  });
 });

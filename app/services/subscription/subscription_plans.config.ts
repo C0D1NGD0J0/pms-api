@@ -146,7 +146,7 @@ export class SubscriptionPlanConfig {
 
     const additionalSeatsCost = this.calculateAdditionalSeatsCost(planName, additionalSeatsCount);
 
-    return FinancialCalculator.sum([basePrice, additionalSeatsCost]);
+    return basePrice + additionalSeatsCost;
   }
 
   public calculateAdditionalSeatsCost(planName: PlanName, additionalSeatsCount: number): number {
@@ -251,7 +251,7 @@ export class SubscriptionPlanConfig {
     const config = this.getConfig(planName);
     const priceInCents = config.pricing[billingInterval].priceInCents;
     if (priceInCents === 0) return 'Free';
-    return `$${(priceInCents / 100).toFixed(2)}`;
+    return `$${FinancialCalculator.centsToDisplay(priceInCents)}`;
   }
 
   public getSeatLimit(planName: PlanName): number {

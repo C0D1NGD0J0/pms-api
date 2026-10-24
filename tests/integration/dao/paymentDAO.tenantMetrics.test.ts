@@ -58,14 +58,14 @@ describe('PaymentDAO — getTenantPaymentMetrics', () => {
     const { metrics } = await paymentDAO.getTenantPaymentMetrics(cuid, tenantId.toString());
 
     // 2 paid payments x (200000 + 1000)
-    expect(metrics.totalRentPaid).toBe(402000);
+    expect(metrics.totalRentPaid).toBe(400000); // online processingFee is the absorbed Stripe cost, not paid by the tenant
     // 1 of 2 paid on time
     expect(metrics.onTimePaymentRate).toBe(50);
     // (0 + 4) / 2
     expect(metrics.averagePaymentDelay).toBe(2);
   });
 
-  it('returns history (newest first, base + fee as amount) only when requested', async () => {
+  it('returns history (newest first, what the tenant paid as amount) only when requested', async () => {
     await Payment.insertMany([
       rentPayment({
         pytuid: 'PAY_001',
@@ -89,7 +89,7 @@ describe('PaymentDAO — getTenantPaymentMetrics', () => {
     });
     expect(withHistory.payments).toHaveLength(2);
     expect(withHistory.payments[0].invoiceNumber).toBe('INV-002');
-    expect(withHistory.payments[0].amount).toBe(201000);
+    expect(withHistory.payments[0].amount).toBe(200000);
 
     const withoutHistory = await paymentDAO.getTenantPaymentMetrics(cuid, tenantId.toString());
     expect(withoutHistory.payments).toEqual([]);

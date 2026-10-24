@@ -4309,6 +4309,28 @@ describe('PaymentService - buildLineItemsFromFees', () => {
     expect(items).toHaveLength(1);
   });
 
+  it('pro-rates the management fee on a mid-month first payment, like rent', () => {
+    // March 15: 17 of 31 days → ceil(12000 × 17 / 31) = 6581
+    const items = callBuild(baseFees, {
+      isFirstPayment: true,
+      startDate: new Date(2024, 2, 15),
+      managementFee: 12000,
+    });
+    expect(items[1]).toEqual({
+      description: 'Pro-rated Management Fee (17 of 31 days)',
+      amountInCents: 6581,
+    });
+  });
+
+  it('charges the full management fee when the first payment starts on the 1st', () => {
+    const items = callBuild(baseFees, {
+      isFirstPayment: true,
+      startDate: new Date(2024, 2, 1),
+      managementFee: 12000,
+    });
+    expect(items[1]).toEqual({ description: 'Management Fee', amountInCents: 12000 });
+  });
+
   it('should throw when no valid fees produce line items', () => {
     const fees = {
       monthly: { rent: 0, petFee: 0, total: 0 },

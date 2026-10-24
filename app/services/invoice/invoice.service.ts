@@ -3,8 +3,8 @@ import { PaymentDAO } from '@dao/index';
 import { PdfQueue } from '@queues/index';
 import { createLogger } from '@utils/index';
 import { QueueFactory } from '@services/queue';
-import { MoneyUtils } from '@utils/money.utils';
 import { EventEmitterService } from '@services/index';
+import { FinancialCalculator } from '@utils/financial';
 import { SSEService } from '@services/sse/sse.service';
 import { ResourceContext } from '@interfaces/utils.interface';
 import { IPaymentPopulated } from '@interfaces/payments.interface';
@@ -106,12 +106,13 @@ export class InvoiceService {
    * with their own `InvoiceRenderData`.
    */
   async buildInvoiceHtml(data: InvoiceTemplateData): Promise<string> {
-    const fmt = (cents: number) => `${data.currency} ${MoneyUtils.centsToDisplay(cents)}`;
+    const fmt = (cents: number) => `${data.currency} ${FinancialCalculator.centsToDisplay(cents)}`;
     const fmtDate = (d: Date) =>
       d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     const titleCase = (s: string) => s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const total = data.baseAmount + (data.processingFee ?? 0);
+    const tenantFee = FinancialCalculator.tenantProcessingFee(data);
+    const total = FinancialCalculator.paymentTotal(data);
 
     const referenceEntries: { key: string; value: string }[] = [];
     if (data.leaseNumber) referenceEntries.push({ key: 'Lease', value: data.leaseNumber });
@@ -131,14 +132,11 @@ export class InvoiceService {
     if (data.description) details.push({ key: 'Notes', value: data.description });
 
     const lineItems = [{ description: titleCase(data.paymentType), amount: fmt(data.baseAmount) }];
-    if (data.processingFee && data.processingFee > 0) {
-      lineItems.push({ description: 'Processing Fee', amount: fmt(data.processingFee) });
+    if (tenantFee > 0) {
+      lineItems.push({ description: 'Processing Fee', amount: fmt(tenantFee) });
     }
 
-    const subtotals =
-      data.processingFee && data.processingFee > 0
-        ? [{ label: 'Subtotal', amount: fmt(data.baseAmount) }]
-        : [];
+    const subtotals = tenantFee > 0 ? [{ label: 'Subtotal', amount: fmt(data.baseAmount) }] : [];
 
     const renderData: InvoiceRenderData = {
       companyName: data.companyName ?? 'Property Management',

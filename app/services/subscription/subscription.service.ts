@@ -7,7 +7,6 @@ import { ClientSession } from 'mongodb';
 import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { MoneyUtils } from '@utils/money.utils';
 import { EmailQueue } from '@queues/email.queue';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
@@ -882,7 +881,7 @@ export class SubscriptionService {
             remaining: remainingFor(count, quota),
             overageFeeCents: feeCents,
             overageCount,
-            projectedOverageCents: FinancialCalculator.quantityCost(overageCount, feeCents),
+            projectedOverageCents: overageCount * feeCents,
           };
         })(),
         smsUsage: (() => {
@@ -944,7 +943,7 @@ export class SubscriptionService {
       const billingHistory = result.data.map((inv) => ({
         invoiceId: inv.id,
         number: inv.number,
-        amountPaid: MoneyUtils.fromCents(inv.amount_paid),
+        amountPaid: FinancialCalculator.fromCents(inv.amount_paid),
         currency: inv.currency.toUpperCase(),
         paidAt: inv.status_transitions?.paid_at
           ? new Date(inv.status_transitions.paid_at * 1000)
@@ -1301,7 +1300,7 @@ export class SubscriptionService {
             cuid,
             seatDelta,
             newTotal: newAdditionalCount,
-            costPerSeat: MoneyUtils.fromCents(config.seatPricing.additionalSeatPriceCents),
+            costPerSeat: FinancialCalculator.fromCents(config.seatPricing.additionalSeatPriceCents),
             monthlyCostChange,
             seatItemId,
           },
@@ -1562,8 +1561,8 @@ export class SubscriptionService {
   }
 
   private formatPrice(priceInCents: number, currency: string = 'usd'): string {
-    if (priceInCents === 0) return MoneyUtils.formatCurrency(0, currency.toUpperCase());
-    return MoneyUtils.formatCurrency(priceInCents, currency.toUpperCase());
+    if (priceInCents === 0) return FinancialCalculator.formatCurrency(0, currency.toUpperCase());
+    return FinancialCalculator.formatCurrency(priceInCents, currency.toUpperCase());
   }
 
   // WEBHOOKS — delegated to SubscriptionWebhookService

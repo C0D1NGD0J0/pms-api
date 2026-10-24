@@ -5,7 +5,7 @@ import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
-import { MoneyUtils } from '@utils/money.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
@@ -13,7 +13,6 @@ import { MAX_CHARGE_ATTEMPTS, JOB_NAME } from '@utils/constants';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
-import { calculateProRatedAmount, computeLeaseMonthlyFees } from '@services/lease/leaseHelpers';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -184,12 +183,29 @@ export class RentPaymentService {
         return;
       }
 
-      const refundAmount = Math.min(payload.refundAmount, depositPayment.baseAmount);
+      // refund.amount is cumulative — an earlier partial refund keeps the deposit PAID, so only
+      // what is left of it can still be refunded.
+      const alreadyRefunded = depositPayment.refund?.amount ?? 0;
+      const refundAmount = Math.min(
+        payload.refundAmount,
+        FinancialCalculator.refundableRemaining(depositPayment.baseAmount, alreadyRefunded)
+      );
+      if (refundAmount <= 0) {
+        this.log.warn(
+          { leaseId: payload.leaseId, pytuid: depositPayment.pytuid, alreadyRefunded },
+          'Security deposit already fully refunded — skipping inspection refund'
+        );
+        return;
+      }
+      const totalRefunded = alreadyRefunded + refundAmount;
+
+      // The staged amount waits in refund.pendingAmount; releaseDepositRefund adds it to
+      // refund.amount once the money actually goes back to the tenant.
       const stageForManagerRelease = (reason: string) =>
         this.paymentDAO.updateById(depositPayment._id.toString(), {
           $set: {
             status: PaymentRecordStatus.PENDING_REFUND,
-            'refund.amount': refundAmount,
+            'refund.pendingAmount': refundAmount,
             'refund.refundedBy': 'system:inspection-approved',
             'refund.reason': reason,
           },
@@ -236,13 +252,13 @@ export class RentPaymentService {
         await this.paymentDAO.updateById(depositPayment._id.toString(), {
           $set: {
             status: PaymentRecordStatus.REFUNDED,
-            'refund.amount': refundAmount,
+            'refund.amount': totalRefunded,
             'refund.refundedAt': new Date(),
             'refund.refundedBy': 'system:inspection-approved',
             'refund.reason': 'Move-out inspection deposit refund',
             'refund.gatewayRefundId': refundResult.data?.refundId,
           },
-          $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1 },
+          $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1, 'refund.pendingAmount': 1 },
         });
         // refund.amount is already stored, so the charge.refunded webhook won't notify — do it here
         this.emitterService.emit(EventTypes.PAYMENT_REFUNDED, {
@@ -250,11 +266,11 @@ export class RentPaymentService {
           pytuid: depositPayment.pytuid,
           tenantId: depositPayment.tenant?.toString(),
           amount: refundAmount,
-          totalRefunded: refundAmount,
+          totalRefunded,
           refundAmount,
           chargeId: depositPayment.gatewayChargeId,
           currency: depositPayment.currency,
-          isPartial: refundAmount < depositPayment.baseAmount,
+          isPartial: totalRefunded < depositPayment.baseAmount,
           reason: 'Move-out inspection deposit refund',
         });
         this.log.info(
@@ -269,7 +285,7 @@ export class RentPaymentService {
       await this.paymentDAO.updateById(depositPayment._id.toString(), {
         $set: {
           status: PaymentRecordStatus.PENDING_REFUND,
-          'refund.amount': refundAmount,
+          'refund.pendingAmount': refundAmount,
           'refund.refundedBy': 'system:inspection-approved',
           'refund.reason': 'Move-out inspection deposit refund — gateway refund failed',
           'refund.failureReason': failureReason,
@@ -525,7 +541,7 @@ export class RentPaymentService {
         if (data.daysLate !== undefined) {
           lateFeeDaysLate = data.daysLate;
         } else if (data.dueDate) {
-          lateFeeDaysLate = Math.max(0, dayjs().diff(dayjs(data.dueDate), 'day'));
+          lateFeeDaysLate = FinancialCalculator.daysLate(new Date(data.dueDate));
         }
       }
 
@@ -1183,7 +1199,10 @@ export class RentPaymentService {
       let rentDescription = 'Monthly Rent';
 
       if (options?.isFirstPayment && options?.startDate) {
-        const proRated = calculateProRatedAmount(fees.monthly.rent, options.startDate);
+        const proRated = FinancialCalculator.proRateFirstMonth(
+          fees.monthly.rent,
+          options.startDate
+        );
         if (!proRated.isFullMonth) {
           rentAmount = proRated.amount;
           const start = dayjs(options.startDate);
@@ -1203,12 +1222,24 @@ export class RentPaymentService {
       });
     }
 
-    // Management fee (if applicable — sourced from property, billed when lease opts in)
+    // Management fee (if applicable — sourced from property, billed when lease opts in).
+    // Pro-rated on the first payment like rent, matching the lease financial summary.
     if (options?.managementFee && options.managementFee > 0) {
-      lineItems.push({
-        description: 'Management Fee',
-        amountInCents: options.managementFee,
-      });
+      let managementAmount = options.managementFee;
+      let managementDescription = 'Management Fee';
+
+      if (options.isFirstPayment && options.startDate) {
+        const proRated = FinancialCalculator.proRateFirstMonth(
+          options.managementFee,
+          options.startDate
+        );
+        if (!proRated.isFullMonth) {
+          managementAmount = proRated.amount;
+          managementDescription = `Pro-rated Management Fee (${proRated.daysCharged} of ${proRated.daysInMonth} days)`;
+        }
+      }
+
+      lineItems.push({ description: managementDescription, amountInCents: managementAmount });
     }
 
     // Late fees are never added here — they are billed as their own LATE_FEE charge.
@@ -1419,7 +1450,7 @@ export class RentPaymentService {
     lease: ILeaseDocument,
     billing: { period?: { month: number; year: number }; dueDate?: Date | string }
   ): { description: string; amountInCents: number }[] {
-    const { baseRent, petMonthlyFee, managementFee } = computeLeaseMonthlyFees(lease);
+    const { baseRent, petMonthlyFee, managementFee } = FinancialCalculator.leaseMonthlyFees(lease);
     return this.buildLineItemsFromFees(
       { monthly: { rent: baseRent, petFee: petMonthlyFee } },
       {
@@ -1588,7 +1619,7 @@ export class RentPaymentService {
     });
 
     if (opts.invoiceDeposit) {
-      const { securityDeposit, petDeposit } = computeLeaseMonthlyFees(lease);
+      const { securityDeposit, petDeposit } = FinancialCalculator.leaseMonthlyFees(lease);
       await this.createDepositTrackingRecord({
         cuid: lease.cuid,
         leaseId: lease._id.toString(),
@@ -1653,7 +1684,7 @@ export class RentPaymentService {
           propertyAddress,
           unitNumber,
           paymentType: paymentTypeLabel,
-          amountDue: MoneyUtils.formatCurrency(opts.amountInCents, opts.currency),
+          amountDue: FinancialCalculator.formatCurrency(opts.amountInCents, opts.currency),
           dueDate: opts.dueDate instanceof Date ? opts.dueDate.toISOString() : opts.dueDate,
           description: opts.description || '',
           isAutoDebit: opts.lease.fees?.acceptedPaymentMethod === 'auto-debit',

@@ -6,12 +6,12 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { NotFoundError } from '@shared/customErrors';
 import { PaymentQueue } from '@queues/payment.queue';
+import { FinancialCalculator } from '@utils/financial';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SMSService } from '@services/smsService/sms.service';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
-import { computeLeaseMonthlyFees } from '@services/lease/leaseHelpers';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
@@ -552,7 +552,7 @@ export class PaymentCronService implements ICronProvider {
       return true;
     }
 
-    const { totalMonthlyRent } = computeLeaseMonthlyFees(lease);
+    const { totalMonthlyRent } = FinancialCalculator.leaseMonthlyFees(lease);
     await this.createManualTrackingPayment({
       cuid: lease.cuid,
       tenantId: lease.tenantId.toString(),
@@ -635,13 +635,6 @@ export class PaymentCronService implements ICronProvider {
     }
   }
 
-  private daysLate(dueDate: Date, startOfLocalToday: Date): number {
-    return Math.max(
-      0,
-      Math.round((startOfLocalToday.getTime() - utcCalendarDay(dueDate).getTime()) / DAY_MS)
-    );
-  }
-
   /**
    * Adds the lease's late fee to past-due rent once it is late enough. Checked on every run —
    * not only the run that first marks the payment overdue — because the lease's late-fee
@@ -668,7 +661,7 @@ export class PaymentCronService implements ICronProvider {
         const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
         if (!lease) continue;
 
-        const daysLate = this.daysLate(payment.dueDate, startOfLocalToday);
+        const daysLate = FinancialCalculator.daysLate(payment.dueDate, startOfLocalToday);
         const fees = lease.calculateFees({ daysLate });
         if (fees.late.fee > 0) {
           await this.paymentDAO.updateById(payment._id.toString(), {
@@ -706,7 +699,7 @@ export class PaymentCronService implements ICronProvider {
         const lease = await this.leaseDAO.findFirst({ _id: payment.lease, deletedAt: null });
         if (!lease) continue;
 
-        const daysLate = this.daysLate(payment.dueDate, startOfLocalToday);
+        const daysLate = FinancialCalculator.daysLate(payment.dueDate, startOfLocalToday);
         if (lease.calculateFees({ daysLate }).late.fee <= 0) continue;
 
         // createRentPayment allows one late fee per lease and period — don't queue a job it rejects
@@ -727,6 +720,8 @@ export class PaymentCronService implements ICronProvider {
           period: payment.period,
           // The rent's due date, so the fee is calculated on (and charged as) days past it
           dueDate: payment.dueDate,
+          // Bills the fee this check approved, instead of recounting days late in UTC
+          daysLate,
           paymentType: PaymentRecordType.LATE_FEE,
           description: `Late fee for ${payment.period.month}/${payment.period.year}`,
         });
@@ -907,7 +902,8 @@ export class PaymentCronService implements ICronProvider {
     timezone: string
   ): Promise<boolean> {
     const now = new Date();
-    const earliestDebitDay = dayjs(localCalendarDay(now, timezone))
+    const earliestDebitDay = dayjs
+      .utc(localCalendarDay(now, timezone))
       .add(this.padNoticeDays, 'day')
       .toDate();
     const dueDay = utcCalendarDay(payment.dueDate);
@@ -945,7 +941,8 @@ export class PaymentCronService implements ICronProvider {
     const tz = timezone ?? 'UTC';
     const cuidFilter = await this.buildCuidFilter(timezone);
     // One extra day so the notice goes out no later than N days before the due date
-    const noticeHorizon = dayjs(localCalendarDay(new Date(), tz))
+    const noticeHorizon = dayjs
+      .utc(localCalendarDay(new Date(), tz))
       .add(this.padNoticeDays + 1, 'day')
       .toDate();
 
@@ -1065,7 +1062,7 @@ export class PaymentCronService implements ICronProvider {
   private async autoChargeDueRentPayments(timezone?: string): Promise<void> {
     const tz = timezone ?? 'UTC';
     const cuidFilter = await this.buildCuidFilter(timezone);
-    const startOfLocalTomorrow = dayjs(localCalendarDay(new Date(), tz)).add(1, 'day').toDate();
+    const startOfLocalTomorrow = dayjs.utc(localCalendarDay(new Date(), tz)).add(1, 'day').toDate();
     const filter = {
       paymentType: { $in: INVOICED_AUTO_CHARGE_TYPES },
       status: { $in: CHARGEABLE_STATUSES },

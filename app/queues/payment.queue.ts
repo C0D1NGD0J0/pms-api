@@ -10,6 +10,7 @@ export interface ICreateRentInvoiceJobData {
   period: IPaymentPeriod;
   description?: string;
   requestId?: string;
+  daysLate?: number; // LATE_FEE only — days late in the client's timezone, as the cron counted them
   tenantId: string; // User._id
   leaseId: string;
   dueDate: Date;

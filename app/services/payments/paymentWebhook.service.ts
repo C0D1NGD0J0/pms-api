@@ -8,9 +8,9 @@ import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SMSService } from '@services/smsService/sms.service';
+import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/utils.interface';
 import { StripeService } from '@services/external/stripe/stripe.service';
-import { MAX_CHARGE_ATTEMPTS, createLogger, MoneyUtils } from '@utils/index';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { PaymentProcessorDAO, SubscriptionDAO, PaymentDAO, ProfileDAO } from '@dao/index';
@@ -335,7 +335,7 @@ export class PaymentWebhookService {
           .sendToUser(
             payment.cuid,
             tenantUserId,
-            `Payment of ${MoneyUtils.formatCurrency(payment.baseAmount, payment.currency || 'USD')} received successfully.`,
+            `Payment of ${FinancialCalculator.formatCurrency(payment.baseAmount, payment.currency || 'USD')} received successfully.`,
             SMSMessageType.SYSTEM
           )
           .catch((err: any) => {

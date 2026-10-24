@@ -3,7 +3,6 @@ import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
-import { MoneyUtils } from '@utils/money.utils';
 import { type QueryFilter, Types } from 'mongoose';
 import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
@@ -876,7 +875,7 @@ export class PaymentService implements ICronProvider {
         baseAmount: p.baseAmount,
         processingFee: p.processingFee || 0,
         applicationFee: p.applicationFee || 0,
-        totalAmount: p.baseAmount + (p.processingFee || 0),
+        totalAmount: FinancialCalculator.paymentTotal(p),
         dueDate: p.dueDate,
         paidAt: p.paidAt,
         description: p.description,
@@ -1750,7 +1749,10 @@ export class PaymentService implements ICronProvider {
       }
 
       const alreadyRefunded = payment.refund?.amount ?? 0;
-      const refundableAmount = payment.baseAmount - alreadyRefunded;
+      const refundableAmount = FinancialCalculator.refundableRemaining(
+        payment.baseAmount,
+        alreadyRefunded
+      );
       if (refundableAmount <= 0) {
         throw new BadRequestError({ message: 'This payment has already been fully refunded' });
       }
@@ -1981,7 +1983,15 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      const refundAmount = payment.refund?.amount ?? payment.baseAmount;
+      // Staged refunds wait in refund.pendingAmount and refund.amount holds what was already
+      // refunded. Refunds staged before pendingAmount existed kept the staged amount in
+      // refund.amount instead.
+      const hasPendingAmount = payment.refund?.pendingAmount != null;
+      const alreadyRefunded = hasPendingAmount ? (payment.refund?.amount ?? 0) : 0;
+      const refundAmount = hasPendingAmount
+        ? (payment.refund?.pendingAmount as number)
+        : (payment.refund?.amount ?? payment.baseAmount);
+      const totalRefunded = alreadyRefunded + refundAmount;
 
       if (data?.isManualRelease || !payment.gatewayChargeId) {
         // PM recorded the refund as processed outside the app, or no Stripe charge exists — DB update only
@@ -1990,14 +2000,15 @@ export class PaymentService implements ICronProvider {
             status: PaymentRecordStatus.REFUNDED,
             'refund.refundedAt': dayjs().toDate(),
             'refund.refundedBy': releasedBy,
-            'refund.amount': refundAmount,
+            'refund.amount': totalRefunded,
             'refund.reason': data?.reason || 'Security deposit refund released by PM (offline)',
           },
+          $unset: { 'refund.pendingAmount': '' },
         });
         this.log.info({ pytuid, cuid, releasedBy }, 'Offline deposit refund released');
-        // refund.amount was set when the refund was staged, so the Stripe webhook won't announce
-        // it — tell the tenant here, offline releases included
-        await this.emitDepositRefunded(payment, refundAmount, data?.reason);
+        // refund.amount already holds the new cumulative total, so the Stripe webhook sees nothing
+        // new to announce — tell the tenant here, offline releases included
+        await this.emitDepositRefunded(payment, refundAmount, totalRefunded, data?.reason);
         return { success: true, data: updated as IPaymentDocument };
       }
 
@@ -2024,11 +2035,11 @@ export class PaymentService implements ICronProvider {
           status: PaymentRecordStatus.REFUNDED,
           'refund.refundedAt': dayjs().toDate(),
           'refund.refundedBy': releasedBy,
-          'refund.amount': refundAmount,
+          'refund.amount': totalRefunded,
           'refund.reason': data?.reason || 'Security deposit refund released by PM',
           'refund.gatewayRefundId': refundResult.data?.refundId,
         },
-        $unset: { 'refund.failureReason': '', 'refund.failedAt': '' },
+        $unset: { 'refund.failureReason': '', 'refund.failedAt': '', 'refund.pendingAmount': '' },
       });
 
       this.log.info(
@@ -2036,7 +2047,7 @@ export class PaymentService implements ICronProvider {
         'Security deposit refund released via Stripe'
       );
 
-      await this.emitDepositRefunded(payment, refundAmount, data?.reason);
+      await this.emitDepositRefunded(payment, refundAmount, totalRefunded, data?.reason);
 
       return { success: true, data: updated as IPaymentDocument };
     } catch (error: any) {
@@ -2048,6 +2059,7 @@ export class PaymentService implements ICronProvider {
   private async emitDepositRefunded(
     payment: IPaymentDocument,
     refundAmount: number,
+    totalRefunded: number,
     reason?: string
   ): Promise<void> {
     try {
@@ -2059,9 +2071,9 @@ export class PaymentService implements ICronProvider {
         tenantId: tenantProfile?.user?.toString() ?? payment.tenant.toString(),
         amount: refundAmount,
         refundAmount,
-        totalRefunded: refundAmount,
+        totalRefunded,
         currency: payment.currency,
-        isPartial: refundAmount < payment.baseAmount,
+        isPartial: totalRefunded < payment.baseAmount,
         reason,
       });
     } catch (err) {
@@ -2460,13 +2472,15 @@ export class PaymentService implements ICronProvider {
           ? lease.property.address
           : lease?.property?.address?.fullAddress || '';
 
-      const fmt = (cents: number) => `${payment.currency} ${MoneyUtils.centsToDisplay(cents)}`;
+      const fmt = (cents: number) =>
+        `${payment.currency} ${FinancialCalculator.centsToDisplay(cents)}`;
       const fmtDate = (d: Date) =>
         d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
       const titleCase = (s: string) =>
         s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-      const total = payment.baseAmount + (payment.processingFee || 0);
+      const tenantFee = FinancialCalculator.tenantProcessingFee(payment);
+      const total = FinancialCalculator.paymentTotal(payment);
 
       const referenceEntries: { key: string; value: string }[] = [];
       if (lease?.leaseNumber) referenceEntries.push({ key: 'Lease', value: lease.leaseNumber });
@@ -2481,8 +2495,8 @@ export class PaymentService implements ICronProvider {
       const lineItems = [
         { description: titleCase(payment.paymentType as string), amount: fmt(payment.baseAmount) },
       ];
-      if (payment.processingFee > 0) {
-        lineItems.push({ description: 'Processing Fee', amount: fmt(payment.processingFee) });
+      if (tenantFee > 0) {
+        lineItems.push({ description: 'Processing Fee', amount: fmt(tenantFee) });
       }
 
       const renderData: InvoiceRenderData = {
@@ -2504,8 +2518,7 @@ export class PaymentService implements ICronProvider {
         detailsTitle: 'Payment Details',
         lineItems,
         lineItemsTitle: 'Amount Breakdown',
-        subtotals:
-          payment.processingFee > 0 ? [{ label: 'Subtotal', amount: fmt(payment.baseAmount) }] : [],
+        subtotals: tenantFee > 0 ? [{ label: 'Subtotal', amount: fmt(payment.baseAmount) }] : [],
         totalAmount: fmt(total),
         footerNote: 'This is an official payment receipt.',
         accentColor: '#16a34a',

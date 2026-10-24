@@ -22,8 +22,17 @@ export class PaymentWorker {
    * Arrow function to preserve `this` binding when passed as callback to processQueueJobs
    */
   handleCreateRentInvoice = async (job: Job<ICreateRentInvoiceJobData>) => {
-    const { cuid, leaseId, tenantId, period, dueDate, paymentType, description, requestId } =
-      job.data;
+    const {
+      cuid,
+      leaseId,
+      tenantId,
+      period,
+      dueDate,
+      paymentType,
+      description,
+      requestId,
+      daysLate,
+    } = job.data;
     const log = requestId ? this.log.child({ requestId }) : this.log;
     const startTime = Date.now();
 
@@ -44,6 +53,7 @@ export class PaymentWorker {
           dueDate: new Date(dueDate),
           period,
           description,
+          daysLate,
           notifyByEmail: true,
         },
         {

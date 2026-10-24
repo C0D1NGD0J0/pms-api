@@ -91,6 +91,21 @@ describe('PaymentWorker', () => {
       expect(result).toEqual(expect.objectContaining({ success: true, pytuid: 'PYT-NEW-001' }));
     });
 
+    it('passes the cron-counted daysLate through for a late-fee job', async () => {
+      mockPaymentService.createRentPayment.mockReturnValue(
+        Promise.resolve({ success: true, data: { pytuid: 'PYT-LATE-001' } as any })
+      );
+
+      const data = makeRentJobData({ paymentType: PaymentRecordType.LATE_FEE, daysLate: 6 });
+      await worker.handleCreateRentInvoice(makeJob(data));
+
+      expect(mockPaymentService.createRentPayment).toHaveBeenCalledWith(
+        data.cuid,
+        expect.objectContaining({ paymentType: PaymentRecordType.LATE_FEE, daysLate: 6 }),
+        expect.any(Object)
+      );
+    });
+
     it('should throw when createRentPayment throws', async () => {
       const err = new Error('Stripe API unavailable');
       mockPaymentService.createRentPayment.mockReturnValue(Promise.reject(err));

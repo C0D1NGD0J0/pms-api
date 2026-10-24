@@ -315,7 +315,7 @@ export class MaintenancePaymentService {
       amount,
       this.subscriptionPlanConfig.getTransactionFeePercent(planName)
     );
-    return { serviceFeeCents, totalAmount: FinancialCalculator.sum([amount, serviceFeeCents]) };
+    return { serviceFeeCents, totalAmount: amount + serviceFeeCents };
   }
 
   /**

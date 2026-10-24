@@ -104,6 +104,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
         type: Number,
         min: [0, 'Refund amount cannot be negative'],
       },
+      // Staged deposit refund awaiting manager release; added to `amount` once released
+      pendingAmount: {
+        type: Number,
+        min: [0, 'Pending refund amount cannot be negative'],
+      },
       reason: { type: String, trim: true },
       gatewayRefundId: { type: String, trim: true },
       vendorTransferReversalId: { type: String, trim: true },

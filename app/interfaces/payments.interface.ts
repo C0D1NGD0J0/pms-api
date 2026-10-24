@@ -50,6 +50,7 @@ export interface IPaymentDocument extends Document {
     refundedAt?: Date;
     refundedBy?: string;
     amount?: number; // CUMULATIVE refunded cents; status stays PAID until fully refunded
+    pendingAmount?: number; // staged deposit refund (PENDING_REFUND) not yet sent; added to amount on release
     reason?: string;
     gatewayRefundId?: string;
     failureReason?: string; // last gateway refund failure — cleared when a refund succeeds

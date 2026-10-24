@@ -252,6 +252,7 @@ describe('PaymentCronService — markOverduePayments', () => {
         tenantId: expect.any(String),
         period: { month: 9, year: 2026 },
         dueDate: rent.dueDate,
+        daysLate: LATE_FEE_DAYS + 1,
         paymentType: PaymentRecordType.LATE_FEE,
         description: 'Late fee for 9/2026',
       });

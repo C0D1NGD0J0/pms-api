@@ -111,7 +111,17 @@ const buildMocks = (property: ReturnType<typeof makeProperty>) => {
     off: jest.fn(),
   } as any;
 
-  return { leaseDAO, profileDAO, propertyDAO, boldSignService, mediaUploadService, emitterService };
+  return {
+    leaseDAO,
+    profileDAO,
+    propertyDAO,
+    boldSignService,
+    mediaUploadService,
+    emitterService,
+    leaseCache: {} as any,
+    sseService: {} as any,
+    s3Service: {} as any,
+  };
 };
 
 // ── tests ───────────────────────────────────────────────────────────────

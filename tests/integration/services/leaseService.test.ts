@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { UserService } from '@services/user/user.service';
 import { ROLES } from '@shared/constants/roles.constants';
+import { EventTypes } from '@interfaces/events.interface';
 import { LeaseService } from '@services/lease/lease.service';
 import { ValidationRequestError } from '@shared/customErrors';
 import { VendorService } from '@services/vendor/vendor.service';
@@ -46,6 +47,20 @@ import {
 } from '../../helpers';
 
 const daysFromToday = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+// The multipart 'signedDocument' file as scanFile hands it to the service
+const signedLeaseFile = (originalFileName = 'signed-lease.pdf') =>
+  ({
+    fieldName: 'signedDocument',
+    mimeType: 'application/pdf',
+    path: `/tmp/${originalFileName}`,
+    originalFileName,
+    filename: originalFileName,
+    fileSize: 2048,
+    uploadedBy: '',
+    status: 'pending',
+    uploadedAt: new Date(),
+  }) as any;
 
 const setupServices = () => {
   const userDAO = new UserDAO({ userModel: User });
@@ -137,6 +152,20 @@ const setupServices = () => {
     uploadFile: jest
       .fn()
       .mockResolvedValue({ success: true, data: { url: 'https://test.com/file.pdf' } }),
+    // Echoes each scanned file back as an S3 upload result
+    uploadRequestFiles: jest.fn(async (req: { scannedFiles?: any[] }, resource: any) =>
+      (req.scannedFiles ?? []).map((file, index) => ({
+        resourceId: resource.resourceId,
+        fieldName: resource.fieldName,
+        publicuid: resource.resourceId,
+        filename: file.originalFileName,
+        key: `lease/${file.originalFileName}|||${resource.resourceId}|||_${Date.now()}${index}.pdf`,
+        url: `https://s3.test/${file.originalFileName}`,
+        mimeType: file.mimeType,
+        size: file.fileSize,
+      }))
+    ),
+    removeUploadedFiles: jest.fn().mockResolvedValue(undefined),
   } as any;
 
   const boldSignService = {
@@ -245,6 +274,8 @@ const setupServices = () => {
   return {
     leaseService,
     leaseRenewalService,
+    mediaUploadService,
+    emitterService,
     leaseDAO,
     userDAO,
     clientDAO,
@@ -2524,12 +2555,19 @@ describe('LeaseService Integration Tests - Read Operations', () => {
           });
         });
 
+        const activate = () =>
+          leaseService.activateLease(
+            testClient.cuid,
+            readyLease.luid,
+            { signedDate: daysFromToday(-1) },
+            actor(),
+            [signedLeaseFile()]
+          );
+
         it('is blocked when ownership verification has lapsed', async () => {
           await setProperty({ verificationStatus: 'unverified' });
 
-          await expect(
-            leaseService.activateLease(testClient.cuid, readyLease.luid, actor())
-          ).rejects.toMatchObject({ statusCode: 400 });
+          await expect(activate()).rejects.toMatchObject({ statusCode: 400 });
           expect((await Lease.findById(readyLease._id))!.status).toBe(
             LeaseStatus.READY_FOR_SIGNATURE
           );
@@ -2541,11 +2579,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
             { authorization: '' }
           );
 
-          const result = await leaseService.activateLease(
-            testClient.cuid,
-            readyLease.luid,
-            actor()
-          );
+          const result = await activate();
           expect(result.success).toBe(true);
         });
       });
@@ -2556,6 +2590,7 @@ describe('LeaseService Integration Tests - Read Operations', () => {
 describe('LeaseService Integration Tests - Workflow Regressions', () => {
   let leaseService: LeaseService;
   let leaseRenewalService: LeaseRenewalService;
+  let emitterService: EventEmitterService;
   let client: any;
   let manager: any;
   let tenant: any;
@@ -2618,6 +2653,7 @@ describe('LeaseService Integration Tests - Workflow Regressions', () => {
     const services = setupServices();
     leaseService = services.leaseService;
     leaseRenewalService = services.leaseRenewalService;
+    emitterService = services.emitterService;
     (mockQueue as any).addToPdfQueue = addToPdfQueue;
   });
 
@@ -2759,37 +2795,186 @@ describe('LeaseService Integration Tests - Workflow Regressions', () => {
     expect(result.data.status).toBe(LeaseStatus.TERMINATED);
   });
 
-  it("records each manual signer's own identity, not the acting manager's", async () => {
-    const lease = await createLeaseFixture({
-      status: LeaseStatus.READY_FOR_SIGNATURE,
-      signingMethod: 'manual',
-      signatures: [],
-      signedDate: undefined,
+  describe('manual activation', () => {
+    const readyForSignature = (overrides: Record<string, any> = {}) =>
+      createLeaseFixture({
+        status: LeaseStatus.READY_FOR_SIGNATURE,
+        signingMethod: 'manual',
+        eSignature: { status: ILeaseESignatureStatusEnum.NOT_SENT },
+        signatures: [],
+        signedDate: undefined,
+        leaseDocuments: [],
+        ...overrides,
+      });
+
+    const activate = (lease: any, data: Record<string, any> = {}, files = [signedLeaseFile()]) =>
+      leaseService.activateLease(
+        client.cuid,
+        lease.luid,
+        { signedDate: daysFromNow(-2), ...data } as any,
+        managerContext(),
+        files
+      );
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('activates with the signed copy stored as signed_lease and a valid ACTIVE lease', async () => {
+      const lease = await readyForSignature({ leaseDocuments: [leaseDocument()] });
+      const signedDate = daysFromNow(-2);
+
+      const result = await activate(lease, { signedDate });
+
+      expect(result.success).toBe(true);
+      const saved = await Lease.findById(lease._id);
+      expect(saved!.status).toBe(LeaseStatus.ACTIVE);
+      expect(saved!.signingMethod).toBe('manual');
+      expect(saved!.signedDate?.getTime()).toBe(signedDate.getTime());
+      expect(saved!.activatedBy?.toString()).toBe(manager._id.toString());
+      expect(saved!.activatedAt).toBeInstanceOf(Date);
+      expect(saved!.lastModifiedBy!.at(-1)!.action).toBe('activated');
+
+      const tenantSignature = saved!.signatures!.find((sig) => sig.role === 'tenant');
+      expect(tenantSignature?.userId?.toString()).toBe(tenant._id.toString());
+      expect(tenantSignature?.signatureMethod).toBe('manual');
+
+      const signedLease = saved!.leaseDocuments!.find((doc) => doc.documentType === 'signed_lease');
+      expect(signedLease).toEqual(
+        expect.objectContaining({ status: 'active', filename: 'signed-lease.pdf' })
+      );
+      // The signed copy sits next to the agreement, it doesn't replace it
+      expect(
+        saved!.leaseDocuments!.find((doc) => doc.documentType === 'lease_agreement')?.status
+      ).toBe('active');
+
+      // pre('validate') holds the ACTIVE invariants (document, signedDate, method, tenant signature)
+      await expect(saved!.validate()).resolves.toBeUndefined();
     });
 
-    await leaseService.markAsManualySigned(
-      client.cuid,
-      lease.luid,
-      [
-        { name: 'Tia Tenant', email: 'tia@test.com', role: 'tenant' },
-        { name: 'Cole CoTenant', email: 'cole@test.com', role: 'co_tenant' },
-        { name: 'Lou Landlord', email: 'lou@test.com', role: 'landlord' },
-      ],
-      manager._id.toString()
-    );
+    it('activates an approved DRAFT lease and records move-in date and notes', async () => {
+      const lease = await readyForSignature({
+        status: LeaseStatus.DRAFT,
+        signingMethod: 'pending',
+      });
+      const moveInDate = daysFromNow(3);
 
-    const saved = await Lease.findById(lease._id).lean();
-    const byRole = Object.fromEntries(saved!.signatures!.map((sig) => [sig.role, sig]));
-    expect(byRole.tenant.userId?.toString()).toBe(tenant._id.toString());
-    expect(byRole.co_tenant.userId).toBeUndefined();
-    expect(byRole.landlord.userId).toBeUndefined();
-    expect(byRole.tenant.signerInfo).toEqual({ name: 'Tia Tenant', email: 'tia@test.com' });
-    expect(byRole.co_tenant.coTenantInfo).toEqual(
-      expect.objectContaining({ name: 'Cole CoTenant', email: 'cole@test.com' })
-    );
-    expect(byRole.landlord.landlordInfo).toEqual(
-      expect.objectContaining({ name: 'Lou Landlord', email: 'lou@test.com' })
-    );
+      await activate(lease, { moveInDate, notes: 'Signed in the office' });
+
+      const saved = await Lease.findById(lease._id).lean();
+      expect(saved!.status).toBe(LeaseStatus.ACTIVE);
+      expect(saved!.duration.moveInDate?.getTime()).toBe(moveInDate.getTime());
+      expect(saved!.internalNotes!.at(-1)).toEqual(
+        expect.objectContaining({ note: 'Signed in the office', author: 'Mia Manager' })
+      );
+    });
+
+    it("records each manual signer's own identity, not the acting manager's", async () => {
+      const lease = await readyForSignature();
+
+      await activate(lease, {
+        signedBy: [
+          { name: 'Tia Tenant', email: 'tia@test.com', role: 'tenant' },
+          { name: 'Cole CoTenant', email: 'cole@test.com', role: 'co_tenant' },
+          { name: 'Lou Landlord', email: 'lou@test.com', role: 'landlord' },
+        ],
+      });
+
+      const saved = await Lease.findById(lease._id).lean();
+      expect(saved!.signatures).toHaveLength(3);
+      const byRole = Object.fromEntries(saved!.signatures!.map((sig) => [sig.role, sig]));
+      expect(byRole.tenant.userId?.toString()).toBe(tenant._id.toString());
+      expect(byRole.co_tenant.userId).toBeUndefined();
+      expect(byRole.landlord.userId).toBeUndefined();
+      expect(byRole.tenant.signerInfo).toEqual({ name: 'Tia Tenant', email: 'tia@test.com' });
+      expect(byRole.co_tenant.coTenantInfo).toEqual(
+        expect.objectContaining({ name: 'Cole CoTenant', email: 'cole@test.com' })
+      );
+      expect(byRole.landlord.landlordInfo).toEqual(
+        expect.objectContaining({ name: 'Lou Landlord', email: 'lou@test.com' })
+      );
+    });
+
+    it('emits LEASE_ESIGNATURE_COMPLETED with the recorded signers', async () => {
+      const emitSpy = jest.spyOn(emitterService, 'emit');
+      const lease = await readyForSignature();
+
+      await activate(lease, {
+        signedBy: [{ name: 'Lou Landlord', email: 'lou@test.com', role: 'landlord' }],
+      });
+
+      expect(emitSpy).toHaveBeenCalledWith(
+        EventTypes.LEASE_ESIGNATURE_COMPLETED,
+        expect.objectContaining({
+          leaseId: lease._id.toString(),
+          luid: lease.luid,
+          tenantId: tenant._id.toString(),
+          propertyId: property._id.toString(),
+          documentId: expect.stringContaining('signed-lease.pdf'),
+          signers: expect.arrayContaining([
+            expect.objectContaining({ role: 'tenant' }),
+            expect.objectContaining({ role: 'landlord', email: 'lou@test.com' }),
+          ]),
+        })
+      );
+    });
+
+    it('rejects a lease set up for electronic signing', async () => {
+      const lease = await readyForSignature({
+        signingMethod: 'electronic',
+        eSignature: { status: ILeaseESignatureStatusEnum.NOT_SENT, provider: 'boldsign' },
+      });
+
+      await expect(activate(lease)).rejects.toMatchObject({
+        message: 'This lease is set up for electronic signing',
+      });
+      expect((await Lease.findById(lease._id))!.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
+    });
+
+    it('rejects a lease that is out for e-signature', async () => {
+      const lease = await readyForSignature({
+        status: LeaseStatus.PENDING_SIGNATURE,
+        leaseDocuments: [leaseDocument()],
+      });
+
+      await expect(activate(lease)).rejects.toBeInstanceOf(ValidationRequestError);
+      expect((await Lease.findById(lease._id))!.status).toBe(LeaseStatus.PENDING_SIGNATURE);
+    });
+
+    it('rejects an unapproved lease', async () => {
+      const lease = await readyForSignature({
+        status: LeaseStatus.DRAFT,
+        approvalStatus: 'pending',
+      });
+
+      await expect(activate(lease)).rejects.toMatchObject({
+        message: expect.stringContaining('Only approved leases can activate'),
+      });
+      expect((await Lease.findById(lease._id))!.status).toBe(LeaseStatus.DRAFT);
+    });
+
+    it('rejects activation without the signed document', async () => {
+      const lease = await readyForSignature();
+
+      await expect(activate(lease, {}, [])).rejects.toBeInstanceOf(ValidationRequestError);
+      const saved = await Lease.findById(lease._id).lean();
+      expect(saved!.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
+      expect(saved!.leaseDocuments).toHaveLength(0);
+    });
+
+    it('rejects staff (managers and above activate)', async () => {
+      const lease = await readyForSignature();
+      const staffContext = managerContext();
+      staffContext.currentuser.client.role = ROLES.STAFF;
+
+      await expect(
+        leaseService.activateLease(
+          client.cuid,
+          lease.luid,
+          { signedDate: daysFromNow(-1) },
+          staffContext,
+          [signedLeaseFile()]
+        )
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
   });
 
   it('finds a tenant of this client whose active client is a different one', async () => {

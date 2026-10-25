@@ -80,11 +80,14 @@ const buildMocks = () => {
     findFirst: jest.fn().mockReturnValue(Promise.resolve(null)),
   } as any;
 
+  const eSignatureQueue = {
+    addToESignatureRequestQueue: jest.fn().mockReturnValue(Promise.resolve({ id: 'job-1' })),
+    addToPdfQueue: jest.fn().mockReturnValue(Promise.resolve({ id: 'job-2' })),
+    addToStoreSignedDocumentQueue: jest.fn().mockReturnValue(Promise.resolve({ id: 'job-3' })),
+  };
+
   const queueFactory = {
-    getQueue: jest.fn().mockReturnValue({
-      addToESignatureRequestQueue: jest.fn().mockReturnValue(Promise.resolve({ id: 'job-1' })),
-      addToPdfQueue: jest.fn().mockReturnValue(Promise.resolve({ id: 'job-2' })),
-    }),
+    getQueue: jest.fn().mockReturnValue(eSignatureQueue),
   } as any;
 
   return {
@@ -99,6 +102,7 @@ const buildMocks = () => {
     leaseCache,
     clientDAO,
     queueFactory,
+    eSignatureQueue,
   };
 };
 
@@ -193,6 +197,86 @@ describe('LeaseSignatureService - handleESignatureWebhook', () => {
           documentId: testEnvelopeId,
         })
       );
+    });
+  });
+
+  describe('Completed event — signed document + activation record', () => {
+    it('should record the completion date as signedDate', async () => {
+      const mocks = buildMocks();
+      const service = buildService(mocks);
+      const completedDate = '2026-03-01T12:00:00.000Z';
+
+      await service.handleESignatureWebhook('Completed', testEnvelopeId, { completedDate });
+
+      expect(mocks.leaseDAO.update).toHaveBeenCalledWith(
+        { _id: leaseId },
+        expect.objectContaining({
+          signedDate: new Date(completedDate),
+          'eSignature.completedAt': new Date(completedDate),
+        })
+      );
+    });
+
+    it('should queue the signed PDF download instead of fetching it inline', async () => {
+      const mocks = buildMocks();
+      const service = buildService(mocks);
+
+      await service.handleESignatureWebhook('Completed', testEnvelopeId, {});
+
+      expect(mocks.queueFactory.getQueue).toHaveBeenCalledWith('eSignatureQueue');
+      expect(mocks.eSignatureQueue.addToStoreSignedDocumentQueue).toHaveBeenCalledWith({
+        leaseId: leaseId.toString(),
+        luid: testLuid,
+        cuid: testCuid,
+        documentId: testEnvelopeId,
+      });
+      expect(mocks.boldSignService.downloadSignedDocument).toBeUndefined();
+    });
+
+    it('should invalidate the lease and lease-list caches', async () => {
+      const mocks = buildMocks();
+      const service = buildService(mocks);
+
+      await service.handleESignatureWebhook('Completed', testEnvelopeId, {});
+
+      expect(mocks.leaseCache.invalidateLease).toHaveBeenCalledWith(testCuid, testLuid);
+      expect(mocks.leaseCache.invalidateLeaseLists).toHaveBeenCalledWith(testCuid);
+    });
+
+    it('should still activate when queueing the download fails', async () => {
+      const mocks = buildMocks();
+      mocks.eSignatureQueue.addToStoreSignedDocumentQueue.mockReturnValue(
+        Promise.reject(new Error('Redis down'))
+      );
+      const service = buildService(mocks);
+
+      await expect(
+        service.handleESignatureWebhook('Completed', testEnvelopeId, {})
+      ).resolves.toBeUndefined();
+      expect(mocks.emitterService.emit).toHaveBeenCalledWith(
+        EventTypes.LEASE_ESIGNATURE_COMPLETED,
+        expect.any(Object)
+      );
+    });
+
+    it('should not re-activate on a redelivered Completed webhook, but still queue the download', async () => {
+      const mocks = buildMocks();
+      mocks.leaseDAO.findFirst.mockReturnValue(
+        Promise.resolve(
+          makeLease({
+            status: LeaseStatus.ACTIVE,
+            eSignature: { envelopeId: testEnvelopeId, status: ILeaseESignatureStatusEnum.SIGNED },
+          })
+        )
+      );
+      const service = buildService(mocks);
+
+      await service.handleESignatureWebhook('Completed', testEnvelopeId, {});
+
+      expect(mocks.leaseDAO.update).not.toHaveBeenCalled();
+      expect(mocks.emitterService.emit).not.toHaveBeenCalled();
+      expect(mocks.sseService.sendToUser).not.toHaveBeenCalled();
+      expect(mocks.eSignatureQueue.addToStoreSignedDocumentQueue).toHaveBeenCalledTimes(1);
     });
   });
 

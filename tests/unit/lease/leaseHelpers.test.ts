@@ -1,3 +1,5 @@
+import { Types } from 'mongoose';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { ValidationRequestError } from '@shared/customErrors';
 import { ILeaseESignatureStatusEnum, LeaseStatus } from '@interfaces/lease.interface';
 import { LIFECYCLE_MANAGED_LEASE_FIELDS, IMMUTABLE_LEASE_FIELDS } from '@utils/constants';
@@ -7,9 +9,13 @@ import {
   generatePendingChangesPreview,
   calculateRenewalMetadata,
   calculateNextPaymentDate,
+  findActiveLeaseAgreement,
   rejectRestrictedFields,
+  buildManualSignatures,
+  filterDocumentsByRole,
   validateAllowedFields,
   hasHighImpactChanges,
+  findActiveLeasePDF,
   hasLeaseBeenSigned,
 } from '@services/lease/leaseHelpers';
 
@@ -249,5 +255,72 @@ describe('hasLeaseBeenSigned — uploaded lease document type', () => {
       { key: 'a', documentType: 'other' },
       { key: 'b', documentType: 'lease_agreement' },
     ]);
+  });
+});
+
+describe('lease contract documents — signed copy vs agreement', () => {
+  const agreement = { key: 'agreement', documentType: 'lease_agreement', status: 'active' };
+  const signedLease = { key: 'signed', documentType: 'signed_lease', status: 'active' };
+  const oldSigned = { key: 'old-signed', documentType: 'signed_lease', status: 'inactive' };
+
+  it('findActiveLeasePDF prefers the active signed copy, else the agreement', () => {
+    expect(findActiveLeasePDF({ leaseDocuments: [agreement, signedLease] } as any)?.key).toBe(
+      'signed'
+    );
+    expect(findActiveLeasePDF({ leaseDocuments: [agreement, oldSigned] } as any)?.key).toBe(
+      'agreement'
+    );
+  });
+
+  it('findActiveLeaseAgreement only returns the agreement (the document sent for signing)', () => {
+    expect(findActiveLeaseAgreement({ leaseDocuments: [signedLease, agreement] } as any)?.key).toBe(
+      'agreement'
+    );
+    expect(findActiveLeaseAgreement({ leaseDocuments: [signedLease] } as any)).toBeUndefined();
+  });
+
+  it('filterDocumentsByRole shows tenants only current documents, staff every version', () => {
+    const documents = [agreement, signedLease, oldSigned, { key: 'gone', status: 'deleted' }];
+
+    expect(filterDocumentsByRole(documents, IUserRole.TENANT).map((doc) => doc.key)).toEqual([
+      'agreement',
+      'signed',
+    ]);
+    expect(filterDocumentsByRole(documents, IUserRole.SUPER_ADMIN)).toHaveLength(4);
+    expect(filterDocumentsByRole(documents, IUserRole.MANAGER)).toHaveLength(4);
+  });
+});
+
+describe('buildManualSignatures', () => {
+  const tenantId = new Types.ObjectId();
+  const managerId = new Types.ObjectId().toString();
+  const signedAt = new Date('2026-01-15');
+
+  it('adds a tenant signature when no tenant signer is listed', () => {
+    const signatures = buildManualSignatures({ tenantId }, [], managerId, signedAt);
+
+    expect(signatures).toEqual([
+      expect.objectContaining({ role: 'tenant', signatureMethod: 'manual', signedAt }),
+    ]);
+    expect(signatures[0].userId?.toString()).toBe(tenantId.toString());
+  });
+
+  it('links tenant and manager signers to their accounts, others by name/email only', () => {
+    const signatures = buildManualSignatures(
+      { tenantId: { _id: tenantId } as any },
+      [
+        { name: 'Tia', email: 'tia@test.com', role: 'tenant' },
+        { name: 'Mia', email: 'mia@test.com', role: 'property_manager' },
+        { name: 'Lou', email: 'lou@test.com', role: 'landlord' },
+      ],
+      managerId,
+      signedAt
+    );
+
+    expect(signatures).toHaveLength(3);
+    expect(signatures[0].userId?.toString()).toBe(tenantId.toString());
+    expect(signatures[1].userId?.toString()).toBe(managerId);
+    expect(signatures[2].userId).toBeUndefined();
+    expect(signatures[2].landlordInfo).toEqual({ name: 'Lou', email: 'lou@test.com' });
   });
 });

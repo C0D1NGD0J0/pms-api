@@ -1018,16 +1018,29 @@ describe('LeaseController Integration Tests', () => {
       });
     });
 
-    it('should activate a DRAFT lease successfully', async () => {
+    // The full activation (multipart signed copy upload) is covered in lease.documentUpload.test.ts
+    it('should require a signedDate', async () => {
       const response = await request(app)
         .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/activate`)
         .set('Cookie', authCookie(managerToken))
         .set('idempotency-key', `activate-${Date.now()}`)
         .send({});
 
-      expect(response.status).toBe(200);
-      expect(response.body.success).toBe(true);
-      expect(response.body.data).toBeDefined();
+      expect(response.status).toBe(422);
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: 'signedDate' })])
+      );
+    });
+
+    it('should require the signed copy of the lease', async () => {
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}/${testLease.luid}/activate`)
+        .set('Cookie', authCookie(managerToken))
+        .set('idempotency-key', `activate-nofile-${Date.now()}`)
+        .send({ signedDate: new Date().toISOString().split('T')[0] });
+
+      expect(response.status).toBe(422);
+      expect((await Lease.findById(testLease._id))!.status).toBe(LeaseStatus.DRAFT);
     });
   });
 

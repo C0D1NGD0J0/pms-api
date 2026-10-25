@@ -52,6 +52,7 @@ describe('Lease document upload (create/update) — saved during the request', (
   let testProperty: any;
   let testUnit: any;
   let managerToken: string;
+  let testManager: any;
   let uploadFilesSpy: jest.SpyInstance;
   let addToUploadQueue: jest.Mock;
 
@@ -124,7 +125,7 @@ describe('Lease document upload (create/update) — saved during the request', (
       entitlements: { eSignature: true, leaseTemplates: true },
     });
 
-    const testManager = await createTestManagerUser(testClient.cuid, testClient._id);
+    testManager = await createTestManagerUser(testClient.cuid, testClient._id);
     testTenant = await createTestTenantUser(testClient.cuid, testClient._id);
     testProperty = await createTestProperty(testClient.cuid, testClient._id, {
       propertyType: 'apartment',
@@ -318,7 +319,7 @@ describe('Lease document upload (create/update) — saved during the request', (
         ],
       });
 
-    // Mirrors markAsManualySigned (a direct update, as the service does)
+    // Mirrors manual activation (a direct update, as LeaseService.activateLease does)
     const markLeaseSigned = (leaseId: Types.ObjectId) =>
       Lease.updateOne(
         { _id: leaseId },
@@ -435,5 +436,143 @@ describe('Lease document upload (create/update) — saved during the request', (
     expect(oldField.status).toBe(400);
     expect(docx.status).toBe(400);
     expect(uploadFilesSpy).not.toHaveBeenCalled();
+  });
+
+  describe('manual activation with the signed copy, then the tenant views it', () => {
+    const AGREEMENT_KEY = 'lease/existing/agreement.pdf';
+    const today = () => new Date().toISOString().split('T')[0];
+
+    const createReadyLease = (tenantId = testTenant._id) =>
+      Lease.create({
+        luid: `lease-activate-${Date.now()}`,
+        cuid: testClient.cuid,
+        tenantId,
+        property: {
+          id: testProperty._id,
+          unitId: testUnit._id,
+          address: testProperty.address.fullAddress,
+        },
+        duration: { startDate: new Date('2026-01-01'), endDate: new Date('2026-12-31') },
+        fees: {
+          rentAmount: 150000,
+          securityDeposit: 150000,
+          rentDueDay: 1,
+          currency: 'USD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        status: LeaseStatus.READY_FOR_SIGNATURE,
+        approvalStatus: 'approved',
+        signingMethod: 'manual',
+        type: LeaseType.FIXED_TERM,
+        leaseNumber: `LEASE-ACT-${Date.now()}`,
+        createdBy: testManager._id,
+        leaseDocuments: [
+          {
+            documentType: 'lease_agreement',
+            status: 'active',
+            filename: 'agreement.pdf',
+            url: 'https://mock-bucket.s3.amazonaws.com/agreement.pdf',
+            key: AGREEMENT_KEY,
+            uploadedBy: testManager._id,
+          },
+        ],
+      });
+
+    const activate = (luid: string, originalName: string) =>
+      request(app)
+        .post(`/api/v1/leases/${testClient.cuid}/${luid}/activate`)
+        .set('Cookie', authCookie(managerToken))
+        .set('idempotency-key', `activate-${Date.now()}`)
+        .field('signedDate', today())
+        .field('notes', 'Signed at the office')
+        .field(
+          'signedBy',
+          JSON.stringify([{ name: 'Tia Tenant', email: 'tia@test.com', role: 'tenant' }])
+        )
+        .attach('signedDocument', PDF_BYTES, {
+          filename: originalName,
+          contentType: 'application/pdf',
+        });
+
+    it('stores the upload as signed_lease and activates the lease', async () => {
+      const lease = await createReadyLease();
+      const originalName = `signed-copy-${Date.now()}.pdf`;
+
+      const response = await activate(lease.luid, originalName);
+
+      expect({ status: response.status, body: response.body }).toMatchObject({ status: 200 });
+      expect(uploadFilesSpy).toHaveBeenCalledWith(
+        [expect.objectContaining({ fieldName: 'signedDocument', mimeType: 'application/pdf' })],
+        expect.objectContaining({ resourceName: 'lease', resourceId: lease._id.toString() })
+      );
+      expect(tempFilesNamed(originalName)).toHaveLength(0);
+
+      const saved = await Lease.findById(lease._id);
+      expect(saved!.status).toBe(LeaseStatus.ACTIVE);
+      expect(saved!.signingMethod).toBe('manual');
+      expect(saved!.signedDate).toBeInstanceOf(Date);
+      expect(
+        saved!.leaseDocuments!.map((doc) => [doc.documentType, doc.status, doc.filename])
+      ).toEqual([
+        ['lease_agreement', 'active', 'agreement.pdf'],
+        ['signed_lease', 'active', originalName],
+      ]);
+      await expect(saved!.validate()).resolves.toBeUndefined();
+    });
+
+    it('rejects activation without the signedDocument file', async () => {
+      const lease = await createReadyLease();
+
+      const response = await request(app)
+        .post(`/api/v1/leases/${testClient.cuid}/${lease.luid}/activate`)
+        .set('Cookie', authCookie(managerToken))
+        .set('idempotency-key', `activate-nofile-${Date.now()}`)
+        .field('signedDate', today());
+
+      expect(response.status).toBe(422);
+      expect((await Lease.findById(lease._id))!.status).toBe(LeaseStatus.READY_FOR_SIGNATURE);
+    });
+
+    it("lists the signed copy and the agreement, with signed URLs, on the tenant's lease detail", async () => {
+      const lease = await createReadyLease();
+      const originalName = `signed-copy-${Date.now()}.pdf`;
+      await activate(lease.luid, originalName);
+      const tenantToken = createAuthToken(testTenant);
+
+      const detail = await request(app)
+        .get(`/api/v1/leases/${testClient.cuid}/${lease.luid}`)
+        .set('Cookie', authCookie(tenantToken));
+      const documentUrl = await request(app)
+        .get(`/api/v1/leases/${testClient.cuid}/${lease.luid}/document`)
+        .set('Cookie', authCookie(tenantToken));
+
+      expect({ status: detail.status, body: detail.body }).toMatchObject({ status: 200 });
+      expect(detail.body.data.documents).toEqual([
+        expect.objectContaining({
+          documentType: 'lease_agreement',
+          status: 'active',
+          url: expect.any(String),
+        }),
+        expect.objectContaining({
+          documentType: 'signed_lease',
+          status: 'active',
+          filename: originalName,
+          url: expect.any(String),
+        }),
+      ]);
+      expect(documentUrl.status).toBe(200);
+      expect(documentUrl.body.data).toEqual(expect.any(String));
+    });
+
+    it("hides another tenant's lease document", async () => {
+      const otherTenant = await createTestTenantUser(testClient.cuid, testClient._id);
+      const lease = await createReadyLease(otherTenant._id);
+
+      const response = await request(app)
+        .get(`/api/v1/leases/${testClient.cuid}/${lease.luid}/document`)
+        .set('Cookie', authCookie(createAuthToken(testTenant)));
+
+      expect(response.status).toBe(404);
+    });
   });
 });

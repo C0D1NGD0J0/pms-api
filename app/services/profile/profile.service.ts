@@ -859,12 +859,18 @@ export class ProfileService {
         context.currentuser!
       );
 
-      // Immutable location guard: block location changes when payment processor is set up
+      // Immutable location guard: the account owner's location sets the payout country, so it
+      // locks once a payment processor is set up. Everyone else's location is informational.
       if (profileData.personalInfo?.location !== undefined) {
-        const existingProfile = await this.profileDAO.findFirst({
-          _id: new Types.ObjectId(profileId),
-        });
-        if (existingProfile?.personalInfo?.location !== profileData.personalInfo.location) {
+        const client = await this.clientDAO.getClientByCuid(cuid);
+        const isAccountOwner = client?.accountAdmin?.toString() === userId;
+        const existingProfile = isAccountOwner
+          ? await this.profileDAO.findFirst({ _id: new Types.ObjectId(profileId) })
+          : null;
+        if (
+          existingProfile &&
+          existingProfile.personalInfo?.location !== profileData.personalInfo.location
+        ) {
           const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
           if (processor?.accountId) {
             throw new BadRequestError({

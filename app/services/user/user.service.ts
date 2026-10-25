@@ -2129,18 +2129,8 @@ export class UserService implements ICronProvider {
         });
       }
 
-      // ── Immutable field guard: individual accounts use personalInfo.location for provider routing ──
-      if (updateData.personalInfo?.location !== undefined) {
-        const client = await this.clientDAO.getClientByCuid(cuid);
-        if (client?.accountType?.category === 'individual') {
-          const processor = await this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null });
-          if (processor) {
-            throw new BadRequestError({
-              message: t('client.errors.immutableFieldLocked'),
-            });
-          }
-        }
-      }
+      // No location lock here: only the account owner's location routes payments, and the
+      // owner is never the tenant being edited.
 
       // Update profile data
       const profileUpdateFields: Record<string, any> = {};

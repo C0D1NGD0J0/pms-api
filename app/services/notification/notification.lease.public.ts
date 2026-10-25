@@ -37,7 +37,8 @@ export function getLeaseLifecycleNotificationContent(
   eventType: string,
   lease: any,
   recipientRole: 'tenant' | 'manager' | 'creator',
-  customMessage?: { title?: string; message?: string }
+  customMessage?: { title?: string; message?: string },
+  details: Record<string, any> = {}
 ): { title: string; message: string; priority: NotificationPriorityEnum } {
   if (customMessage?.title && customMessage?.message) {
     return {
@@ -47,7 +48,56 @@ export function getLeaseLifecycleNotificationContent(
     };
   }
 
+  const requestedTerm = details.requestedTermMonths
+    ? ` for a ${details.requestedTermMonths}-month term`
+    : '';
+  const rejectionReason = details.rejectionReason ? ` Reason: ${details.rejectionReason}` : '';
+  const renewalRequestedManager = {
+    title: 'Renewal Requested',
+    message: `The tenant on lease ${lease.leaseNumber} has requested a renewal${requestedTerm}. Please review the request before the lease ends on ${lease.endDate.toLocaleDateString()}.`,
+    priority: NotificationPriorityEnum.HIGH,
+  };
+  const renewalHoldManager = {
+    title: 'URGENT: Renewal Request Awaiting Decision',
+    message: `Lease ${lease.leaseNumber} has ended but its renewal request has not been reviewed. The request will be declined automatically if no decision is made within 48 hours.`,
+    priority: NotificationPriorityEnum.URGENT,
+  };
+  const renewalAutoRejectedManager = {
+    title: 'Renewal Request Declined Automatically',
+    message: `The renewal request on lease ${lease.leaseNumber} was declined automatically because it was not reviewed before the deadline.`,
+    priority: NotificationPriorityEnum.HIGH,
+  };
+
   const messages: Record<string, Record<string, any>> = {
+    renewal_requested: {
+      manager: renewalRequestedManager,
+      creator: renewalRequestedManager,
+    },
+    renewal_rejected: {
+      tenant: {
+        title: 'Renewal Request Declined',
+        message: `Your renewal request for ${lease.propertyAddress} was declined.${rejectionReason}`,
+        priority: NotificationPriorityEnum.HIGH,
+      },
+    },
+    renewal_hold_urgent: {
+      tenant: {
+        title: 'Renewal Request Under Review',
+        message: `Your lease for ${lease.propertyAddress} has ended and your renewal request is still being reviewed. Your property manager has 48 hours to respond.`,
+        priority: NotificationPriorityEnum.HIGH,
+      },
+      manager: renewalHoldManager,
+      creator: renewalHoldManager,
+    },
+    renewal_auto_rejected: {
+      tenant: {
+        title: 'Renewal Request Not Reviewed',
+        message: `Your renewal request for ${lease.propertyAddress} was not reviewed before the deadline and has been closed. Please contact your property manager.`,
+        priority: NotificationPriorityEnum.HIGH,
+      },
+      manager: renewalAutoRejectedManager,
+      creator: renewalAutoRejectedManager,
+    },
     renewal_created: {
       tenant: {
         title: 'Lease Renewal Prepared',
@@ -144,6 +194,8 @@ export async function notifyLeaseLifecycleEvent(
     eventType:
       | 'renewal_created'
       | 'renewal_approved'
+      | 'renewal_requested'
+      | 'renewal_rejected'
       | 'renewal_hold_urgent'
       | 'renewal_auto_rejected'
       | 'expiring'
@@ -181,7 +233,13 @@ export async function notifyLeaseLifecycleEvent(
     };
 
     if (recipients.tenant) {
-      const n = getLeaseLifecycleNotificationContent(eventType, lease, 'tenant', customMessage);
+      const n = getLeaseLifecycleNotificationContent(
+        eventType,
+        lease,
+        'tenant',
+        customMessage,
+        metadata
+      );
       await ctx.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
         type: NotificationTypeEnum.LEASE,
         priority: n.priority,
@@ -197,7 +255,13 @@ export async function notifyLeaseLifecycleEvent(
     }
 
     if (recipients.createdBy) {
-      const n = getLeaseLifecycleNotificationContent(eventType, lease, 'creator', customMessage);
+      const n = getLeaseLifecycleNotificationContent(
+        eventType,
+        lease,
+        'creator',
+        customMessage,
+        metadata
+      );
       await ctx.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
         type: NotificationTypeEnum.LEASE,
         priority: n.priority,
@@ -211,7 +275,13 @@ export async function notifyLeaseLifecycleEvent(
     }
 
     if (recipients.propertyManager && recipients.propertyManager !== recipients.createdBy) {
-      const n = getLeaseLifecycleNotificationContent(eventType, lease, 'manager', customMessage);
+      const n = getLeaseLifecycleNotificationContent(
+        eventType,
+        lease,
+        'manager',
+        customMessage,
+        metadata
+      );
       await ctx.createNotification(lease.cuid, NotificationTypeEnum.LEASE, {
         type: NotificationTypeEnum.LEASE,
         priority: n.priority,

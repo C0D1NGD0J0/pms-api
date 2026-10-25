@@ -146,11 +146,14 @@ export class BoldSignService {
 
       return buffer;
     } catch (error: any) {
+      const statusCode: number | undefined = error?.statusCode ?? error?.response?.status;
       this.log.error('Failed to download document', {
         error: error.message,
         documentId,
+        statusCode,
       });
-      throw new Error(`BoldSign API Error: ${error.message}`);
+      // Keep the HTTP status so the caller can tell a retryable failure from a permanent one
+      throw Object.assign(new Error(`BoldSign API Error: ${error.message}`), { statusCode });
     }
   }
 

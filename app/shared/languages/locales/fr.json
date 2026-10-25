@@ -611,7 +611,8 @@
       "fieldNotEditable": "Le champ '{{field}}' ne peut pas être modifié par une mise à jour du bail",
       "propertyNotApproved": "Cette propriété est toujours en attente d'approbation. Approuvez-la avant de créer ou de renouveler des baux.",
       "managementNotAuthorized": "Aucun mandat de gestion actif n'est enregistré pour cette propriété. Téléversez le mandat de gestion du propriétaire avant de créer ou de renouveler des baux.",
-      "ownershipUnverified": "La vérification de la propriété est requise avant de louer ce bien. Téléversez les documents de vérification ou demandez un délai de grâce à votre administrateur."
+      "ownershipUnverified": "La vérification de la propriété est requise avant de louer ce bien. Téléversez les documents de vérification ou demandez un délai de grâce à votre administrateur.",
+      "renewalAlreadyExists": "Un renouvellement annulé existe encore pour ce bail. Supprimez-le, puis approuvez à nouveau la demande."
     }
   },
   "common": {

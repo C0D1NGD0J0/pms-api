@@ -57,6 +57,7 @@ export const JOB_NAME = {
   MEDIA_REMOVAL_JOB: 'mediaRemovalJob',
   PDF_GENERATION_JOB: 'pdfGenerationJob',
   REQUEST_SIGNATURE: 'request_signature',
+  STORE_SIGNED_DOCUMENT: 'store_signed_document',
   PROPERTY_UPDATE_JOB: 'propertyUpdateJob',
   PROPERTY_DELETE_JOB: 'propertyDeleteJob',
   PROPERTY_CREATE_JOB: 'propertyCreateJob',

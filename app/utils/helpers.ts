@@ -855,19 +855,25 @@ export function toId(field: any): string {
 
 /**
  * CSV imports send the user-confirmed "file header → field key" mapping as a
- * JSON string form field alongside the file. Returns undefined when absent or malformed.
+ * JSON string form field alongside the file. Routes that run validateRequest arrive here
+ * already parsed (parseJsonFields), so accept both. Returns undefined when absent or malformed.
  */
 export const parseColumnMappingField = (raw: unknown): Record<string, string> | undefined => {
-  if (typeof raw !== 'string' || !raw.trim()) return undefined;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, string>;
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return undefined;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return undefined;
     }
-    return undefined;
-  } catch {
-    return undefined;
   }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const entries = Object.entries(parsed).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string'
+  );
+  return Object.fromEntries(entries);
 };
 
 /**

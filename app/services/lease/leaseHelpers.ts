@@ -32,8 +32,11 @@ import {
 import {
   LeaseTerminationReasonCode,
   ILeaseESignatureStatusEnum,
+  LeaseDocumentType,
+  ILeaseSignature,
   ILeaseDocument,
   ILeaseFormData,
+  IManualSigner,
   LeaseStatus,
 } from '@interfaces/lease.interface';
 import {
@@ -1093,12 +1096,24 @@ export const buildLeaseTimeline = (lease: ILeaseDocument): any => {
   };
 };
 
+const FULL_DOCUMENT_HISTORY_ROLES = [
+  IUserRole.SUPER_ADMIN,
+  IUserRole.ROOT_ADMIN,
+  IUserRole.ADMIN,
+  IUserRole.MANAGER,
+  IUserRole.STAFF,
+];
+
+/**
+ * Staff see every document version; everyone else (tenants) only the current, non-internal
+ * ones — the agreement, the signed copy and supporting documents.
+ */
 export const filterDocumentsByRole = (documents: any[], role: IUserRole): any[] => {
-  if (role === IUserRole.ADMIN || role === IUserRole.MANAGER || role === IUserRole.STAFF) {
+  if (FULL_DOCUMENT_HISTORY_ROLES.includes(role)) {
     return documents;
   }
 
-  return documents.filter((doc) => !doc.isInternal);
+  return documents.filter((doc) => !doc.isInternal && doc.status === 'active');
 };
 
 export const constructActivityFeed = (lease: ILeaseDocument): any[] => {
@@ -1314,13 +1329,71 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
   };
 }
 
+const findActiveLeaseDocument = (lease: ILeaseDocument, documentType: LeaseDocumentType) =>
+  lease.leaseDocuments?.find((doc) => doc.documentType === documentType && doc.status === 'active');
+
 /**
- * Returns the active lease agreement PDF document item, if one exists.
+ * Returns the active (unsigned) lease agreement PDF — the document sent out for e-signature.
+ */
+export const findActiveLeaseAgreement = (lease: ILeaseDocument) =>
+  findActiveLeaseDocument(lease, 'lease_agreement');
+
+/**
+ * Returns the lease's contract PDF: the executed copy once one is stored, else the agreement.
  */
 export const findActiveLeasePDF = (lease: ILeaseDocument) =>
-  lease.leaseDocuments?.find(
-    (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
-  );
+  findActiveLeaseDocument(lease, 'signed_lease') || findActiveLeaseAgreement(lease);
+
+/** A populated ref (document) or a raw ObjectId/string, as a string id */
+export const getRefIdString = (ref: unknown): string => {
+  const maybeDoc = ref as { _id?: unknown } | null;
+  return String(maybeDoc && typeof maybeDoc === 'object' && maybeDoc._id ? maybeDoc._id : ref);
+};
+
+export const buildSignedLeaseFilename = (leaseNumber: string, suffix: string) =>
+  `signed_${leaseNumber}_${suffix}.pdf`;
+
+/**
+ * Lease signatures for signers recorded by hand. Only the tenant and the recording manager
+ * have accounts on the lease; co-tenants and external landlords are identified by name/email.
+ * A tenant signature is added when none is listed — an active lease requires one.
+ */
+export const buildManualSignatures = (
+  lease: Pick<ILeaseDocument, 'tenantId'>,
+  signedBy: IManualSigner[],
+  recordedByUserId: string,
+  signedAt: Date
+): ILeaseSignature[] => {
+  const tenantUserId = new Types.ObjectId(getRefIdString(lease.tenantId));
+  const resolveUserId = (role: string): Types.ObjectId | undefined => {
+    if (role === 'tenant') return tenantUserId;
+    if (role === 'property_manager') return new Types.ObjectId(recordedByUserId);
+    return undefined;
+  };
+
+  const signatures: ILeaseSignature[] = signedBy.map((signer) => {
+    const signerInfo = { name: signer.name, email: signer.email };
+    return {
+      signatureMethod: 'manual',
+      userId: resolveUserId(signer.role),
+      role: signer.role,
+      signedAt,
+      signerInfo,
+      coTenantInfo: signer.role === 'co_tenant' ? signerInfo : undefined,
+      landlordInfo: signer.role === 'landlord' ? signerInfo : undefined,
+    } as ILeaseSignature;
+  });
+
+  if (!signedBy.some((signer) => signer.role === 'tenant')) {
+    signatures.unshift({
+      signatureMethod: 'manual',
+      userId: tenantUserId,
+      role: 'tenant',
+      signedAt,
+    } as ILeaseSignature);
+  }
+  return signatures;
+};
 
 // Statuses a lease can only reach after its contract was executed (the model requires
 // signedDate + signatures for ACTIVE, and the others are only entered from ACTIVE).

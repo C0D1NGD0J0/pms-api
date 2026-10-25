@@ -617,7 +617,8 @@
       "fieldNotEditable": "Field '{{field}}' cannot be modified through a lease update",
       "propertyNotApproved": "This property is still awaiting approval. Approve it before creating or renewing leases.",
       "managementNotAuthorized": "This property has no active management agreement on file. Upload the owner's management agreement before creating or renewing leases.",
-      "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator."
+      "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator.",
+      "renewalAlreadyExists": "A cancelled renewal still exists for this lease. Delete it, then approve the request again."
     }
   },
   "common": {

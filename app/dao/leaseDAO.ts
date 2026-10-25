@@ -24,6 +24,8 @@ import { BaseDAO } from './baseDAO';
 import { ILeaseDAO } from './interfaces/leaseDAO.interface';
 import { IFindOptions } from './interfaces/baseDAO.interface';
 
+const SINGLE_ACTIVE_LEASE_DOCUMENT_TYPES = ['lease_agreement', 'signed_lease'];
+
 export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
   private readonly log: Logger;
 
@@ -896,15 +898,21 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
         return lease;
       }
 
-      // Check if any of the new documents is a lease_agreement
-      const hasLeaseAgreement = processedDocuments.some(
-        (doc) => doc.documentType === 'lease_agreement'
-      );
+      // A lease holds one active agreement and one active signed copy: a new one of either
+      // type retires only the previous document of that same type
+      const replacedTypes = [
+        ...new Set(
+          processedDocuments
+            .map((doc) => doc.documentType)
+            .filter((type) => SINGLE_ACTIVE_LEASE_DOCUMENT_TYPES.includes(type))
+        ),
+      ];
+      const hasLeaseAgreement = replacedTypes.includes('lease_agreement');
 
-      // If uploading a lease_agreement, mark existing active lease_agreements as inactive
-      if (hasLeaseAgreement) {
-        this.log.info('Marking existing active lease_agreement documents as inactive', {
+      if (replacedTypes.length) {
+        this.log.info('Marking existing active lease documents as inactive', {
           leaseId,
+          replacedTypes,
         });
 
         await this.update(
@@ -917,7 +925,7 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
           {
             arrayFilters: [
               {
-                'elem.documentType': 'lease_agreement',
+                'elem.documentType': { $in: replacedTypes },
                 'elem.status': 'active',
               },
             ],
@@ -1312,6 +1320,88 @@ export class LeaseDAO extends BaseDAO<ILeaseDocument> implements ILeaseDAO {
       );
     } catch (error: any) {
       this.log.error('Error deciding renewal request:', error);
+      throw error;
+    }
+  }
+
+  async revertRenewalRequestDecision(
+    cuid: string,
+    leaseId: string
+  ): Promise<ILeaseDocument | null> {
+    try {
+      this.log.info(`Reverting approved renewal request to pending for lease ${leaseId}`);
+
+      return await this.update(
+        {
+          _id: leaseId,
+          cuid,
+          'renewalRequest.status': 'approved',
+          deletedAt: null,
+        },
+        {
+          $set: { 'renewalRequest.status': 'pending' },
+          $unset: { 'renewalRequest.decision': '' },
+        },
+        { returnDocument: 'after' as const }
+      );
+    } catch (error: any) {
+      this.log.error('Error reverting renewal request decision:', error);
+      throw error;
+    }
+  }
+
+  async findOpenRenewalForLease(cuid: string, leaseId: string): Promise<ILeaseDocument | null> {
+    try {
+      return await this.findFirst({
+        previousLeaseId: new Types.ObjectId(leaseId),
+        cuid,
+        deletedAt: null,
+        status: {
+          $in: [
+            LeaseStatus.DRAFT_RENEWAL,
+            LeaseStatus.PENDING_SIGNATURE,
+            LeaseStatus.READY_FOR_SIGNATURE,
+            LeaseStatus.ACTIVE,
+          ],
+        },
+      });
+    } catch (error: any) {
+      this.log.error('Error finding open renewal for lease:', error);
+      throw error;
+    }
+  }
+
+  async getPendingRenewalRequests(cuid: string): Promise<ILeaseDocument[]> {
+    try {
+      this.log.info(`Getting pending renewal requests for client ${cuid}`);
+
+      const result = await this.list(
+        {
+          cuid,
+          'renewalRequest.status': 'pending',
+          deletedAt: null,
+        },
+        {
+          // Soonest expiry first — those are the requests about to be auto-rejected
+          sort: { 'duration.endDate': 1 },
+          populate: [
+            {
+              path: 'tenantId',
+              select: 'uid email',
+              populate: {
+                path: 'profile',
+                select: 'personalInfo.firstName personalInfo.lastName',
+              },
+            },
+            { path: 'property.id', select: 'pid name address.fullAddress' },
+            { path: 'property.unitId', select: 'unitNumber puid' },
+          ],
+        }
+      );
+
+      return result.items;
+    } catch (error: any) {
+      this.log.error('Error getting pending renewal requests:', error);
       throw error;
     }
   }

@@ -70,11 +70,26 @@ export interface BoldSignJobResult {
   error?: string;
 }
 
+/** Copies a completed BoldSign envelope's signed PDF onto the lease as a 'signed_lease' document */
+export interface StoreSignedDocumentJobData {
+  requestId?: string;
+  documentId: string; // BoldSign document ID (lease.eSignature.envelopeId)
+  leaseId: string;
+  cuid: string;
+  luid: string;
+}
+
 export interface ISigner {
   role: 'tenant' | 'co_tenant' | 'landlord' | 'property_manager';
   userId?: Types.ObjectId;
   email: string;
   name: string;
+}
+
+export interface StoreSignedDocumentJobResult {
+  skipped?: boolean;
+  success: boolean;
+  key?: string;
 }
 
 export interface IBoldSignDocumentResponse {

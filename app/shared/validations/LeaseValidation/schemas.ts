@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import dayjs from 'dayjs';
 import { LeaseTerminationReasonCode } from '@interfaces/lease.interface';
 
 import { shortUidString, optionalBlank, calendarDate } from '../UtilsValidation';
@@ -33,7 +34,7 @@ export const UtilityEnum = z.enum([
 
 export const SignatureRoleEnum = z.enum(['tenant', 'co_tenant', 'landlord', 'property_manager']);
 
-export const SignatureActionEnum = z.enum(['send', 'manual', 'cancel']);
+export const SignatureActionEnum = z.enum(['send', 'cancel']);
 
 export const ESignatureProviderEnum = z.enum(['hellosign', 'boldsign', 'docusign', 'pandadoc']);
 
@@ -408,11 +409,23 @@ export const FilterLeasesSchema = z.object({
     .optional(),
 });
 
-// Activate Lease Schema
+// Signers recorded when a lease is activated manually
+export const ManualSignerSchema = z.object({
+  name: z.string().trim().min(1, 'Signer name is required').max(100),
+  email: z.string().email('Invalid signer email format'),
+  role: SignatureRoleEnum,
+});
+
+// Activate Lease Schema — sent as multipart/form-data alongside the 'signedDocument' file,
+// so signedBy may arrive as a JSON string (validateRequest parses it) and blanks mean "not set"
 export const ActivateLeaseSchema = z.object({
-  moveInDate: calendarDate('Move-in date must be a valid date').optional(),
-  signedDate: calendarDate('Signed date must be a valid date').optional(),
-  notes: z.string().max(500, 'Notes must be at most 500 characters').optional(),
+  signedDate: calendarDate('Signed date must be a valid date').refine(
+    (date) => dayjs(date).startOf('day').valueOf() <= dayjs().endOf('day').valueOf(),
+    { message: 'Signed date cannot be in the future' }
+  ),
+  moveInDate: optionalBlank(calendarDate('Move-in date must be a valid date')),
+  notes: optionalBlank(z.string().trim().max(500, 'Notes must be at most 500 characters')),
+  signedBy: z.array(ManualSignerSchema).max(20, 'Too many signers').optional(),
 });
 
 // Terminate Lease Schema
@@ -443,17 +456,9 @@ export const TerminateLeaseSchema = z
     }
   );
 
-// Signers recorded when a lease is marked as manually signed (action: 'manual')
-export const ManualSignerSchema = z.object({
-  name: z.string().trim().min(1, 'Signer name is required').max(100),
-  email: z.string().email('Invalid signer email format'),
-  role: SignatureRoleEnum,
-});
-
-// Signature Action Schema
+// Signature Action Schema — manual signing is recorded through the activate endpoint
 export const SignatureActionSchema = z.object({
   action: SignatureActionEnum,
-  signedBy: z.array(ManualSignerSchema).max(20, 'Too many signers').optional(),
 });
 
 export const LeaseStatsQuerySchema = z.object({

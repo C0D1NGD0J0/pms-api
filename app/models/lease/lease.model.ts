@@ -335,7 +335,8 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       {
         documentType: {
           type: String,
-          enum: ['lease_agreement', 'other'],
+          // signed_lease: the executed copy (BoldSign's completed PDF or a manual upload)
+          enum: ['lease_agreement', 'signed_lease', 'other'],
           default: 'lease_agreement',
         },
         url: {
@@ -388,6 +389,13 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     signedDate: {
       type: Date,
       index: true,
+    },
+    activatedAt: {
+      type: Date,
+    },
+    activatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
     },
     eSignature: {
       provider: {

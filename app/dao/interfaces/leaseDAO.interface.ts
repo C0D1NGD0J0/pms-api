@@ -106,11 +106,16 @@ export interface ILeaseDAO {
 
   getLeaseById(cuid: string, leaseId: string, opts?: IFindOptions): Promise<ILeaseDocument | null>;
 
+  revertRenewalRequestDecision(cuid: string, leaseId: string): Promise<ILeaseDocument | null>;
+
   getLeaseStats(cuid: string, filters?: QueryFilter<ILeaseDocument>): Promise<ILeaseStats>;
 
   updateLeaseStatus(cuid: string, leaseId: string, status: LeaseStatus): Promise<boolean>;
 
   getActiveLeaseByTenant(cuid: string, tenantId: string): Promise<ILeaseDocument | null>;
+
+  /** Draft/pending/active renewal created from this lease, if any */
+  findOpenRenewalForLease(cuid: string, leaseId: string): Promise<ILeaseDocument | null>;
 
   /** Used for field-locking: true if at least one non-draft lease exists for this property */
   hasNonDraftLeaseForProperty(propertyObjectId: string, cuid: string): Promise<boolean>;
@@ -129,6 +134,8 @@ export interface ILeaseDAO {
   getLeasesPendingTenantAcceptance(cuid: string): Promise<ILeaseDocument[]>;
 
   autoRejectRenewalRequest(leaseId: string): Promise<ILeaseDocument | null>;
+
+  getPendingRenewalRequests(cuid: string): Promise<ILeaseDocument[]>;
 
   deleteLease(cuid: string, leaseId: string): Promise<boolean>;
 }

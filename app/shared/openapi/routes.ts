@@ -932,10 +932,11 @@ openApiRegistry.registerPath({
 openApiRegistry.registerPath({
   method: 'post',
   path: '/leases/{cuid}/{luid}/activate',
-  summary: 'Activate a lease',
+  summary:
+    'Manually activate a lease (multipart/form-data: signedDocument PDF, signedDate, moveInDate?, notes?, signedBy?)',
   tags: ['Leases'],
   request: { params: z.object({ cuid: z.string(), luid: z.string() }) },
-  responses: { ...ok200, ...err401, ...err400 },
+  responses: { ...ok200, ...err401, ...err400, ...err403, ...err422 },
 });
 
 openApiRegistry.registerPath({

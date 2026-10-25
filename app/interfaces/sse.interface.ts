@@ -31,6 +31,7 @@ export const SSE_RESOURCES = [
   'clientSettings',
   'report',
   'guestPass',
+  'invitation',
 ] as const;
 /**
  * Delivery is fire-and-forget over Redis pub/sub: a resolved promise means the

@@ -112,6 +112,7 @@ describe('InvitationService Integration Tests', () => {
 
     invitationService = new InvitationService({
       invitationCsvProcessor: {} as any,
+      sseService: { broadcastToClient: jest.fn() } as any,
       invitationDAO,
       userDAO,
       clientDAO,

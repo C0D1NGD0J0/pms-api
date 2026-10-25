@@ -4,6 +4,7 @@ import {
   IInvitationListQuery,
   IInvitationDocument,
   IInvitationStats,
+  InvitationStatus,
   IInvitationData,
 } from '@interfaces/invitation.interface';
 
@@ -14,7 +15,7 @@ export interface IInvitationDAO extends IBaseDAO<IInvitationDocument> {
     invitationId: string,
     clientId: string,
     status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent',
-    session?: ClientSession
+    fromStatuses?: InvitationStatus[]
   ): Promise<IInvitationDocument | null>;
 
   revokeInvitation(

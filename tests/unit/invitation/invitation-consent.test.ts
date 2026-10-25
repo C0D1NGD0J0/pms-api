@@ -111,6 +111,7 @@ describe('Invitation Acceptance — Consent Recording', () => {
 
     invitationService = new InvitationService({
       invitationCsvProcessor: {} as any,
+      sseService: { broadcastToClient: jest.fn() } as any,
       ...mockDAOs,
       queueFactory: {
         getQueue: jest.fn((queueName: string) => {

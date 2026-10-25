@@ -120,6 +120,7 @@ describe('Invitation Metadata Transfer', () => {
 
     invitationService = new InvitationService({
       invitationCsvProcessor: {} as any,
+      sseService: { broadcastToClient: jest.fn() } as any,
       ...mockDAOs,
       queueFactory: {
         getQueue: jest.fn((queueName: string) => {

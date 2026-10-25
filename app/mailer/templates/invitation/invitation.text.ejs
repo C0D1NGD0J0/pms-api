@@ -13,7 +13,7 @@ Message from <%= inviterName %>:
 To accept this invitation, visit:
 <%= invitationUrl %>
 
-This invitation expires on <%= new Date(expiresAt).toLocaleDateString() %>.
+This invitation expires on <%= new Date(expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>.
 
 Next steps after accepting:
 - Create your account or sign in if you already have one

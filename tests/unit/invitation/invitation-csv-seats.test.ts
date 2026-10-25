@@ -81,6 +81,7 @@ describe('Invitation CSV — queueing', () => {
 
     invitationService = new InvitationService({
       invitationCsvProcessor: {} as any,
+      sseService: { broadcastToClient: jest.fn() } as any,
       ...mockDAOs,
       queueFactory: mockQueueFactory,
       emitterService: mockEmitterService,

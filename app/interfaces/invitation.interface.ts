@@ -81,6 +81,7 @@ export interface IInvitationMetadata {
   lastReminderSent?: Date;
   inviteMessage?: string;
   remindersSent: number;
+  emailFailedAt?: Date;
 }
 
 export type IInvitationDocumentPopulated = {

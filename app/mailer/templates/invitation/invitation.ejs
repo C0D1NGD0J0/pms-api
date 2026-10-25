@@ -30,7 +30,7 @@
       <%- include("../shared/html/_quote", { message: customMessage, author: inviterName }) %>
       <% } %>
 
-      <%- include("../shared/html/_notice", { text: 'This invitation expires on <strong>' + new Date(expiresAt).toLocaleDateString() + '</strong>. If you weren\'t expecting this, you can safely ignore this email.', type: 'expiry' }) %>
+      <%- include("../shared/html/_notice", { text: 'This invitation expires on <strong>' + new Date(expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</strong>. If you weren\'t expecting this, you can safely ignore this email.', type: 'expiry' }) %>
     </td>
   </tr>
   <tr>

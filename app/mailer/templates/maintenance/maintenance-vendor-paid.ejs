@@ -21,7 +21,7 @@
           : (amountInCents / 100).toFixed(2) + ' ' + (currency || 'USD').toUpperCase();
         _rows.push({ label: 'Payout Amount', value: _payoutAmount });
         _rows.push({ label: 'Transfer ID', value: transferId });
-        _rows.push({ label: 'Date', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) });
+        _rows.push({ label: 'Date', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
       %>
       <%- include("../shared/html/_detail-table", { rows: _rows }) %>
     </td>

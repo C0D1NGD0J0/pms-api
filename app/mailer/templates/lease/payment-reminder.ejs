@@ -14,7 +14,7 @@
         { label: "Property", value: propertyAddress },
         ...(unitNumber ? [{ label: "Unit", value: unitNumber }] : []),
         { label: "Amount Due", value: '<span style="font-size: 20px; font-weight: 700; color: #062f4f;">' + amountDue + '</span>' },
-        { label: "Due Date", value: '<span style="color: #dc2626; font-weight: 600;">' + new Date(dueDate).toLocaleDateString() + '</span>' },
+        { label: "Due Date", value: '<span style="color: #dc2626; font-weight: 600;">' + new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</span>' },
         { label: "Days Until Due", value: daysUntilDue + ' days' }
       ]}) %>
     </td>
@@ -46,7 +46,7 @@
         <% } %>
       </ul>
 
-      <%- include("../shared/html/_notice", { text: '<strong>Late Fee:</strong> A fee of <strong>' + lateFeeAmount + '</strong> will be charged if payment is not received by <strong>' + new Date(lateFeeDate).toLocaleDateString() + '</strong>.', type: 'warning' }) %>
+      <%- include("../shared/html/_notice", { text: '<strong>Late Fee:</strong> A fee of <strong>' + lateFeeAmount + '</strong> will be charged if payment is not received by <strong>' + new Date(lateFeeDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</strong>.', type: 'warning' }) %>
 
       <% if (currentBalance && currentBalance !== amountDue) { %>
       <%- include("../shared/html/_notice", { text: '<strong>Outstanding Balance:</strong> You have an outstanding balance of <strong>' + currentBalance + '</strong>. Please contact your property manager to discuss payment arrangements.', type: 'danger' }) %>

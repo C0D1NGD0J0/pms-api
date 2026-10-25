@@ -14,8 +14,8 @@
         { label: "Lease Number", value: leaseNumber },
         { label: "Property", value: propertyAddress },
         ...(unitNumber ? [{ label: "Unit", value: unitNumber }] : []),
-        { label: "Start Date", value: new Date(startDate).toLocaleDateString() },
-        { label: "End Date", value: new Date(endDate).toLocaleDateString() },
+        { label: "Start Date", value: new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) },
+        { label: "End Date", value: new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) },
         { label: "Monthly Rent", value: '<span style="color: #16a34a; font-weight: 600;">' + rentAmount + '</span>' }
       ]}) %>
     </td>
@@ -31,7 +31,7 @@
     <td class="content">
       <h3>Next Steps</h3>
       <ul>
-        <li><strong>Move-in Date:</strong> <%= new Date(startDate).toLocaleDateString() %></li>
+        <li><strong>Move-in Date:</strong> <%= new Date(startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %></li>
         <li><strong>First Payment Due:</strong> <%= firstPaymentDate %></li>
         <li><strong>Security Deposit:</strong> <%= securityDepositInfo %></li>
         <li><strong>Keys &amp; Access:</strong> Contact your property manager to arrange key pickup</li>

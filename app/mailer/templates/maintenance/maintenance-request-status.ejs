@@ -42,7 +42,7 @@
           _rows.push({ label: 'Priority', value: request.priority });
           _rows.push({ label: 'Status', value: 'Open', badge: { bg: '#dbeafe', color: '#0369a1' } });
           if (request.preferredDate) {
-            _rows.push({ label: 'Preferred Date', value: new Date(request.preferredDate).toLocaleDateString() });
+            _rows.push({ label: 'Preferred Date', value: new Date(request.preferredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
           }
           if (request.availabilityWindows && request.availabilityWindows.length > 0) {
             _rows.push({ label: 'Availability', value: request.availabilityWindows.join(', ').replace(/_/g, ' ') });
@@ -53,13 +53,13 @@
           _rows.push({ label: 'Priority', value: request.priority.toUpperCase(), badge: { bg: '#fef3c7', color: '#92400e' } });
           _rows.push({ label: 'Property Entry', value: request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' });
           if (request.scheduledDate) {
-            _rows.push({ label: 'Scheduled Date', value: new Date(request.scheduledDate).toLocaleDateString() });
+            _rows.push({ label: 'Scheduled Date', value: new Date(request.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
           }
           if (request.estimatedCost) {
             _rows.push({ label: 'Estimated Cost', value: '$' + (request.estimatedCost / 100).toFixed(2) });
           }
           if (request.preferredDate) {
-            _rows.push({ label: 'Resident Preferred Date', value: new Date(request.preferredDate).toLocaleDateString() });
+            _rows.push({ label: 'Resident Preferred Date', value: new Date(request.preferredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
           }
           if (request.availabilityWindows && request.availabilityWindows.length > 0) {
             _rows.push({ label: 'Resident Availability', value: request.availabilityWindows.join(', ').replace(/_/g, ' ') });
@@ -73,7 +73,7 @@
             _rows.push({ label: 'Technician', value: _techVal });
           }
           if (request.scheduledDate) {
-            _rows.push({ label: 'Scheduled Date', value: new Date(request.scheduledDate).toLocaleDateString() });
+            _rows.push({ label: 'Scheduled Date', value: new Date(request.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
           }
         } else if (_status === 'declined') {
           _rows.push({ label: 'Priority', value: request.priority });
@@ -84,7 +84,7 @@
         } else if (_status === 'completed') {
           _rows.push({ label: 'Category', value: request.category.replace(/_/g, ' ') });
           if (request.completedAt) {
-            _rows.push({ label: 'Completed On', value: new Date(request.completedAt).toLocaleDateString() });
+            _rows.push({ label: 'Completed On', value: new Date(request.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
           }
           if (request.completionNotes && request.completionNotes.length > 0) {
             _rows.push({ label: 'Completion Notes', value: request.completionNotes[request.completionNotes.length - 1].note });

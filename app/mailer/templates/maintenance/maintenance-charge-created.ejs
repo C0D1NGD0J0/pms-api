@@ -2,7 +2,7 @@
   var _autoDebit = typeof isAutoDebit !== 'undefined' && isAutoDebit;
   var _dueDate = (typeof dueDateFormatted !== 'undefined' && dueDateFormatted)
     ? dueDateFormatted
-    : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
   var _amount = (typeof amountFormatted !== 'undefined' && amountFormatted)
     ? amountFormatted
     : (amountInCents / 100).toFixed(2) + ' ' + (currency || 'USD').toUpperCase();

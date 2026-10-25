@@ -18,8 +18,8 @@
         <% if (hasRefund && refundAmount > 0) { %>
         <p>
           Your inspection has been reviewed and approved. A refund of
-          <strong><%= (refundAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> out of your
-          <strong><%= (depositAmount / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) %></strong> security deposit will be processed.
+          <strong><%= (refundAmount / 100).toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' }) %></strong> out of your
+          <strong><%= (depositAmount / 100).toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' }) %></strong> security deposit will be processed.
         </p>
         <% } else if (hasRefund) { %>
         <p>
@@ -71,7 +71,7 @@
           { label: "Status", value: "Approved", badge: { bg: "#dcfce7", color: "#16a34a" } }
         ];
         if (hasRefund) {
-          approvedRows.push({ label: "Deposit Refund", value: ((refundAmount || 0) / 100).toLocaleString(undefined, { style: 'currency', currency: currency || 'USD' }) });
+          approvedRows.push({ label: "Deposit Refund", value: ((refundAmount || 0) / 100).toLocaleString('en-US', { style: 'currency', currency: currency || 'USD' }) });
         }
       %>
       <%- include("../shared/html/_detail-table", { rows: approvedRows }) %>

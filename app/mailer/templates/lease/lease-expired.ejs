@@ -14,7 +14,7 @@
         { label: "Lease Number", value: leaseNumber },
         { label: "Property", value: propertyAddress },
         ...(unitNumber ? [{ label: "Unit", value: unitNumber }] : []),
-        { label: "Lease End Date", value: '<span style="color: #dc2626;">' + new Date(endDate).toLocaleDateString() + '</span>' }
+        { label: "Lease End Date", value: '<span style="color: #dc2626;">' + new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</span>' }
       ], variant: 'amber' }) %>
     </td>
   </tr>

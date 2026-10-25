@@ -271,6 +271,67 @@ describe('NotificationService - New Methods', () => {
       expect(notificationService.createNotification).not.toHaveBeenCalled();
     });
 
+    describe('renewal request templates', () => {
+      const renewalLease = {
+        luid: 'LEASE-123',
+        leaseNumber: 'L-2025-001',
+        cuid: 'client-123',
+        tenantId: 'tenant-123',
+        propertyAddress: '123 Main St',
+        endDate: new Date('2026-12-31'),
+      };
+
+      const sentTo = (recipient: string) =>
+        (notificationService.createNotification as jest.Mock).mock.calls.find(
+          ([, , data]) => data.recipient === recipient
+        )?.[2];
+
+      it('should tell the manager the tenant requested a renewal and link to the lease', async () => {
+        await notificationService.notifyLeaseLifecycleEvent({
+          eventType: 'renewal_requested',
+          lease: renewalLease,
+          recipients: { propertyManager: 'manager-123' },
+          metadata: { luid: 'LEASE-123', requestedTermMonths: 12 },
+        });
+
+        const data = sentTo('manager-123');
+        expect(data.title).toBe('Renewal Requested');
+        expect(data.message).toContain('L-2025-001');
+        expect(data.message).toContain('12-month term');
+        expect(data.priority).toBe(NotificationPriorityEnum.HIGH);
+        expect(data.metadata).toEqual(
+          expect.objectContaining({ luid: 'LEASE-123', leaseId: 'LEASE-123' })
+        );
+      });
+
+      it('should include the rejection reason for the tenant', async () => {
+        await notificationService.notifyLeaseLifecycleEvent({
+          eventType: 'renewal_rejected',
+          lease: renewalLease,
+          recipients: { tenant: true },
+          metadata: { rejectionReason: 'Owner is selling the unit' },
+        });
+
+        const data = sentTo('tenant-123');
+        expect(data.title).toBe('Renewal Request Declined');
+        expect(data.message).toContain('Reason: Owner is selling the unit');
+      });
+
+      it.each(['renewal_hold_urgent', 'renewal_auto_rejected'] as const)(
+        'should use a dedicated template for %s',
+        async (eventType) => {
+          await notificationService.notifyLeaseLifecycleEvent({
+            eventType,
+            lease: renewalLease,
+            recipients: { tenant: true, propertyManager: 'manager-123' },
+          });
+
+          expect(sentTo('tenant-123').title).not.toBe('Lease Update');
+          expect(sentTo('manager-123').title).not.toBe('Lease Update');
+        }
+      );
+    });
+
     it('should not duplicate notifications to same user', async () => {
       const params = {
         eventType: 'renewal_approved' as const,

@@ -169,9 +169,15 @@ export class BaseQueue<T extends JobData = JobData> {
   protected dlq: Queue.Queue;
   protected queue: Queue.Queue;
 
-  constructor({ queueName }: { queueName: string }) {
+  constructor({
+    queueName,
+    limiter,
+  }: {
+    queueName: string;
+    limiter?: BullQueueOptions['limiter'];
+  }) {
     this.log = createLogger(queueName);
-    const queueOptions: BullQueueOptions = DEFAULT_QUEUE_OPTIONS;
+    const queueOptions: BullQueueOptions = { ...DEFAULT_QUEUE_OPTIONS, limiter };
 
     this.queue = new Queue(queueName, queueOptions);
     this.dlq = getSharedDLQ();

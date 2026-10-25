@@ -1,9 +1,9 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
-import { UserDAO } from '@dao/index';
 import { MailService } from '@mailer/index';
 import { createLogger } from '@utils/index';
 import { ProfileService } from '@services/index';
+import { InvitationDAO, UserDAO } from '@dao/index';
 import { EventEmitterService } from '@services/eventEmitter';
 import { IEmailOptions, MailType } from '@interfaces/utils.interface';
 import { getMailPolicy, shouldDeliver } from '@services/notification/notificationPolicy';
@@ -15,23 +15,27 @@ export class EmailWorker {
   emitterService: EventEmitterService;
   profileService: ProfileService;
   userDAO: UserDAO;
+  invitationDAO: InvitationDAO;
 
   constructor({
     mailerService,
     emitterService,
     profileService,
     userDAO,
+    invitationDAO,
   }: {
     mailerService: MailService;
     emitterService: EventEmitterService;
     profileService: ProfileService;
     userDAO: UserDAO;
+    invitationDAO: InvitationDAO;
   }) {
     this.log = createLogger('emailWorker');
     this.mailer = mailerService;
     this.emitterService = emitterService;
     this.profileService = profileService;
     this.userDAO = userDAO;
+    this.invitationDAO = invitationDAO;
   }
 
   sendMail = async (job: Job) => {
@@ -41,6 +45,20 @@ export class EmailWorker {
     log.info({ jobId: job.id, jobName: job.name }, `Processing email job ${job.id} (${job.name})`);
 
     try {
+      if (await this.isClosedInvitation(data)) {
+        log.info('Invitation email skipped: invitation is no longer open', {
+          to: data.to,
+          emailType: data.emailType,
+          cuid: data.client?.cuid,
+        });
+        return {
+          success: true,
+          skipped: true,
+          reason: 'Invitation no longer open',
+          skippedAt: new Date().toISOString(),
+        };
+      }
+
       const shouldSend = await this.checkEmailPreferences(data, log);
 
       if (!shouldSend) {
@@ -79,6 +97,7 @@ export class EmailWorker {
 
       try {
         const payload: EmailFailedPayload = {
+          final: job.attemptsMade + 1 >= (job.opts.attempts ?? 1),
           to: data.to,
           subject: data.subject || '',
           emailType: data.emailType as MailType,
@@ -96,6 +115,24 @@ export class EmailWorker {
       throw error;
     }
   };
+
+  /**
+   * Invitation emails wait in the queue, so the invitation may have been revoked (or
+   * accepted, declined, expired) before the job runs. Only pending/sent ones still email.
+   */
+  private async isClosedInvitation(emailData: IEmailOptions<any>): Promise<boolean> {
+    if (
+      emailData.emailType !== MailType.INVITATION &&
+      emailData.emailType !== MailType.INVITATION_REMINDER
+    ) {
+      return false;
+    }
+    const invitationId = (emailData as { invitationId?: string } & IEmailOptions<any>).invitationId;
+    if (!invitationId) return false;
+
+    const invitation = await this.invitationDAO.findById(invitationId);
+    return !invitation || !['pending', 'sent'].includes(invitation.status);
+  }
 
   /**
    * Whether the recipient's preferences allow this email. Required emails (account,

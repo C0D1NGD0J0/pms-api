@@ -118,6 +118,10 @@ class EnvVariables {
         PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_PASSWORD_PROD || '',
       },
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
+      // Providers reject bursts (Mailtrap's sandbox allows about 1/s; SES starts at 14/s)
+      MAX_PER_SECOND:
+        Number(process.env.EMAIL_MAX_PER_SECOND) ||
+        (process.env.NODE_ENV === 'production' ? 10 : 1),
     };
     this.FRONTEND = {
       URL: (process.env.FRONTEND_URL || '').split(',')[0].trim(),

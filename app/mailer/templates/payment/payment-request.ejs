@@ -2,7 +2,7 @@
   var _autoDebit = typeof isAutoDebit !== 'undefined' && isAutoDebit;
   var _dueDate = isNaN(new Date(dueDate).getTime())
     ? dueDate
-    : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 %>
 <table role="presentation" width="100%">
   <tr>

@@ -60,6 +60,13 @@ export interface BoldsignConfig {
   API_URL: string;
 }
 
+export interface EmailConfig {
+  PROD: EmailProviderConfig;
+  APP_EMAIL_ADDRESS: string;
+  DEV: EmailProviderConfig;
+  MAX_PER_SECOND: number;
+}
+
 export interface TwilioConfig {
   MESSAGING_SERVICE_SID: string;
   VERIFY_SERVICE_SID: string;
@@ -73,12 +80,6 @@ export interface RedisConfig {
   PORT: number;
   HOST: string;
   URL: string;
-}
-
-export interface EmailConfig {
-  PROD: EmailProviderConfig;
-  APP_EMAIL_ADDRESS: string;
-  DEV: EmailProviderConfig;
 }
 
 export interface AwsConfig {

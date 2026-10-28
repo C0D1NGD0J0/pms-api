@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { typeErrors } from '../zodConfig';
+
 // Address validation schema
 const addressSchema = z.object({
   fullAddress: z.string().min(1, 'Full address is required').max(500),
@@ -101,7 +103,7 @@ const businessTypesEnum = z.enum(
     'other',
   ],
   {
-    errorMap: () => ({ message: 'Please select a valid business type' }),
+    error: 'Please select a valid business type',
   }
 );
 
@@ -177,13 +179,13 @@ export const updateTeamMemberSchema = z.object({
 
 // Toggle team member status schema
 export const toggleTeamMemberStatusSchema = z.object({
-  isActive: z.boolean({ required_error: 'isActive is required' }),
+  isActive: z.boolean({ error: typeErrors({ required: 'isActive is required' }) }),
 });
 
 // Vendor reviews query schema
 export const vendorReviewsQuerySchema = z.object({
-  page: z.string().regex(/^\d+$/).transform(Number).optional().default('1'),
-  limit: z.string().regex(/^\d+$/).transform(Number).optional().default('10'),
+  page: z.string().regex(/^\d+$/).transform(Number).optional().default(1),
+  limit: z.string().regex(/^\d+$/).transform(Number).optional().default(10),
 });
 
 // Vendor filter query schema (for filtered vendors endpoint)

@@ -20,7 +20,7 @@ describe('propertyUnitImportFields', () => {
   });
 
   it('only offers columns the CSV schema knows', () => {
-    const schemaKeys = Object.keys((PropertyUnitValidations.csvSchema as any).innerType().shape);
+    const schemaKeys = Object.keys(PropertyUnitValidations.csvSchema.shape);
     for (const field of UNIT_IMPORTABLE_FIELDS) {
       expect(schemaKeys).toContain(field.key);
     }

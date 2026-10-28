@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
+import { typeErrors } from '../zodConfig';
+
 export const InitiateCheckoutSchema = z.object({
   priceId: z.string().min(1, 'Price ID is required'),
   billingInterval: z.enum(['monthly', 'annual'], {
-    errorMap: () => ({ message: 'Billing interval must be monthly or annual' }),
+    error: 'Billing interval must be monthly or annual',
   }),
   lookUpKey: z.string().optional(),
   planName: z.string().optional(),
@@ -14,8 +16,10 @@ export const InitiateCheckoutSchema = z.object({
 export const ManageSeatsSchema = z.object({
   seatDelta: z
     .number({
-      required_error: 'Seat delta is required',
-      invalid_type_error: 'Seat delta must be a number',
+      error: typeErrors({
+        required: 'Seat delta is required',
+        invalidType: 'Seat delta must be a number',
+      }),
     })
     .int('Seat delta must be an integer')
     .refine((val) => val !== 0, {

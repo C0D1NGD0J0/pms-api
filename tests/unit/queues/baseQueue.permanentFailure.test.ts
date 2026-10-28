@@ -111,6 +111,12 @@ describe('BaseQueue permanent-failure hook', () => {
     });
 
     it('reports the same failure again only after the throttle window', async () => {
+      // A local .env may shorten the window; this test pins it
+      const throttle = jest.replaceProperty(
+        envVariables.SERVER,
+        'SENTRY_JOB_FAILURE_THROTTLE_MS',
+        DAY_MS
+      );
       const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
       const err = new Error('throttled sentry failure');
 
@@ -122,9 +128,9 @@ describe('BaseQueue permanent-failure hook', () => {
       now.mockReturnValue(1_000_000 + DAY_MS);
       await handlers.failed(makeJob(3, 3), err);
       expect(Sentry.captureException).toHaveBeenCalledTimes(2);
-      expect(envVariables.SERVER.SENTRY_JOB_FAILURE_THROTTLE_MS).toBe(DAY_MS);
 
       now.mockRestore();
+      throttle.restore();
     });
 
     it('still moves every permanent failure to the DLQ while throttled', async () => {

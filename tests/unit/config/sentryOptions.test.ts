@@ -1,9 +1,5 @@
 import type { ErrorEvent, EventHint } from '@sentry/node';
-import {
-  buildSentryOptions,
-  dropNoisyEvents,
-  sampleRate,
-} from '@shared/config/sentry.options';
+import { buildSentryOptions, dropNoisyEvents, sampleRate } from '@shared/config/sentry.options';
 
 const DSN = 'https://key@o0.ingest.sentry.io/1';
 const event = { event_id: 'e1' } as ErrorEvent;

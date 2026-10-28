@@ -88,7 +88,7 @@ describe('UpdateClientDetailsSchema', () => {
       const result = UpdateClientDetailsSchema.safeParse(body);
 
       expect(result.success).toBe(false);
-      expect(result.error?.errors[0]?.message).toBe(
+      expect(result.error?.issues[0]?.message).toBe(
         'At least one field must be provided for update'
       );
     });

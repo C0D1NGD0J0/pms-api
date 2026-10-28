@@ -2,7 +2,12 @@ import { z } from 'zod';
 import dayjs from 'dayjs';
 import { LeaseTerminationReasonCode } from '@interfaces/lease.interface';
 
-import { shortUidString, optionalBlank, calendarDate } from '../UtilsValidation';
+import {
+  partialWithoutDefaults,
+  shortUidString,
+  optionalBlank,
+  calendarDate,
+} from '../UtilsValidation';
 
 // Enum Schemas
 export const LeaseStatusEnum = z.enum([
@@ -132,7 +137,7 @@ export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, 
       code: z.ZodIssueCode.too_small,
       minimum: 1,
       inclusive: true,
-      type: 'number',
+      origin: 'number',
       message: 'Notice period must be at least 1 day',
       path: ['noticePeriodDays'],
     });
@@ -142,7 +147,7 @@ export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, 
       code: z.ZodIssueCode.too_small,
       minimum: 1,
       inclusive: true,
-      type: 'number',
+      origin: 'number',
       message: 'Renewal term must be at least 1 month',
       path: ['renewalTermMonths'],
     });
@@ -152,7 +157,7 @@ export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, 
       code: z.ZodIssueCode.too_small,
       minimum: 1,
       inclusive: true,
-      type: 'number',
+      origin: 'number',
       message: 'Days before expiry to generate renewal must be at least 1',
       path: ['daysBeforeExpiryToGenerateRenewal'],
     });
@@ -162,7 +167,7 @@ export const RenewalOptionsSchema = RenewalOptionsBaseSchema.superRefine((data, 
       code: z.ZodIssueCode.too_small,
       minimum: 1,
       inclusive: true,
-      type: 'number',
+      origin: 'number',
       message: 'Days before expiry to auto-send signature must be at least 1',
       path: ['daysBeforeExpiryToAutoSendSignature'],
     });
@@ -194,9 +199,9 @@ export const RenewLeaseSchema = z.object({
   duration: LeaseDurationSchema.pick({ startDate: true, endDate: true, moveInDate: true })
     .partial()
     .optional(),
-  fees: LeaseFeesSchema.omit({ currency: true }).partial().optional(),
+  fees: partialWithoutDefaults(LeaseFeesSchema.omit({ currency: true })).optional(),
   petPolicy: PetPolicySchema.optional(),
-  renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
+  renewalOptions: partialWithoutDefaults(RenewalOptionsBaseSchema).optional(),
   utilitiesIncluded: z.array(UtilityEnum).optional(),
   coTenants: z.array(CoTenantSchema).optional(),
   legalTerms: optionalBlank(LegalTermsSchema),
@@ -311,13 +316,13 @@ export const UpdateLeaseSchema = z
   .object({
     property: LeasePropertySchema.partial().optional(),
     duration: LeaseDurationSchema.partial().optional(),
-    fees: LeaseFeesSchema.partial().optional(),
+    fees: partialWithoutDefaults(LeaseFeesSchema).optional(),
     type: LeaseTypeEnum.optional(),
     signingMethod: SigningMethodEnum.optional(),
     utilitiesIncluded: z.array(UtilityEnum).optional(),
     coTenants: z.array(CoTenantSchema).optional(),
     petPolicy: PetPolicySchema.partial().optional(),
-    renewalOptions: RenewalOptionsBaseSchema.partial().optional(),
+    renewalOptions: partialWithoutDefaults(RenewalOptionsBaseSchema).optional(),
     legalTerms: LegalTermsSchema.optional(),
     internalNotes: z.array(InternalNoteSchema).optional(),
     leaseDocument: z.array(LeaseDocumentItemSchema).optional(),

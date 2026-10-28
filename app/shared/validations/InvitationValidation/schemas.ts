@@ -111,7 +111,7 @@ const tenantInfoSchema = z
         z.object({
           cuid: z.string().optional(),
           status: z.enum(['pending', 'approved', 'failed', 'not_required'], {
-            errorMap: () => ({ message: 'Invalid background check status' }),
+            error: 'Invalid background check status',
           }),
           checkedDate: z.date(),
           expiryDate: z.date().optional(),
@@ -161,7 +161,7 @@ const vendorInfoSchema = z
     serviceAreas: z
       .object({
         maxDistance: z.union([z.literal(10), z.literal(15), z.literal(25), z.literal(50)], {
-          errorMap: () => ({ message: 'Max distance must be 10, 15, 25, or 50 km' }),
+          error: 'Max distance must be 10, 15, 25, or 50 km',
         }),
       })
       .optional(),
@@ -207,7 +207,7 @@ export const invitationDataSchema = z.object({
     .max(255, 'Email must be less than 255 characters'),
 
   role: z.enum(ROLE_VALIDATION.INVITABLE_ROLES, {
-    errorMap: () => ({ message: 'Please provide a valid role' }),
+    error: 'Please provide a valid role',
   }),
 
   // vuid of the vendor organisation a team member joins
@@ -216,10 +216,9 @@ export const invitationDataSchema = z.object({
     .trim()
     .optional()
     // Chosen from a dropdown, so a malformed value means the submitted data was altered
-    .refine(
-      (val) => !val || SHORT_UID_REGEX.test(val),
-      (val) => ({ message: `Corrupted user data detected (${val})` })
-    ),
+    .refine((val) => !val || SHORT_UID_REGEX.test(val), {
+      error: (issue) => `Corrupted user data detected (${issue.input})`,
+    }),
 
   personalInfo: z.object({
     firstName: z
@@ -268,7 +267,7 @@ export const invitationDataSchema = z.object({
 
   status: z
     .enum(['draft', 'pending'], {
-      errorMap: () => ({ message: 'Status must be either draft or pending' }),
+      error: 'Status must be either draft or pending',
     })
     .default('pending'),
 });
@@ -328,7 +327,7 @@ export const acceptInvitationSchema = z
     policies: policiesSchema.optional(),
 
     termsAccepted: z.literal(true, {
-      errorMap: () => ({ message: 'You must accept the terms of service and privacy policy' }),
+      error: 'You must accept the terms of service and privacy policy',
     }),
     newsletterOptIn: z.boolean().optional(),
 
@@ -378,12 +377,12 @@ export const getInvitationsQuerySchema = z.object({
         .optional(),
       sortBy: z
         .enum(['createdAt', 'inviteeEmail', 'status'], {
-          errorMap: () => ({ message: 'Invalid sortBy value' }),
+          error: 'Invalid sortBy value',
         })
         .optional(),
       order: z
         .enum(['asc', 'desc'], {
-          errorMap: () => ({ message: 'Invalid sortOrder value' }),
+          error: 'Invalid sortOrder value',
         })
         .optional(),
     })
@@ -392,12 +391,12 @@ export const getInvitationsQuerySchema = z.object({
     .object({
       status: z
         .enum(['draft', 'pending', 'accepted', 'expired', 'revoked', 'sent'], {
-          errorMap: () => ({ message: 'Invalid status value' }),
+          error: 'Invalid status value',
         })
         .optional(),
       role: z
         .enum(ROLE_VALIDATION.ALL_ROLES, {
-          errorMap: () => ({ message: 'Invalid role value' }),
+          error: 'Invalid role value',
         })
         .optional(),
     })
@@ -422,7 +421,7 @@ export const invitationCsvSchema = z
       .max(255, 'Email must be less than 255 characters'),
 
     role: z.enum(ROLE_VALIDATION.INVITABLE_ROLES, {
-      errorMap: () => ({ message: 'Please provide a valid role' }),
+      error: 'Please provide a valid role',
     }),
 
     linkedVendorUid: z
@@ -470,7 +469,7 @@ export const invitationCsvSchema = z
 
     status: z
       .enum(['draft', 'pending'], {
-        errorMap: () => ({ message: 'Status must be either draft or pending' }),
+        error: 'Status must be either draft or pending',
       })
       .default('pending'),
 
@@ -874,13 +873,13 @@ export const invitationCsvSchema = z
 export const processPendingQuerySchema = z.object({
   timeline: z
     .enum(['24h', '48h', '72h', '7d'], {
-      errorMap: () => ({ message: 'Timeline must be one of: 24h, 48h, 72h, 7d' }),
+      error: 'Timeline must be one of: 24h, 48h, 72h, 7d',
     })
     .optional(),
 
   role: z
     .enum(ROLE_VALIDATION.ALL_ROLES, {
-      errorMap: () => ({ message: 'Invalid role value' }),
+      error: 'Invalid role value',
     })
     .optional(),
 

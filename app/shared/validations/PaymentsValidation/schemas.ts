@@ -103,7 +103,7 @@ export const createConnectAccount = z.object({
 });
 
 export const payoutHistoryQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(20).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
   cursor: z.string().optional(),
 });
 

@@ -3,7 +3,8 @@ import { isValidObjectId } from 'mongoose';
 import { UNIT_FLOOR_RANGE } from '@utils/constants';
 import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
 
-import { shortUidString, optionalBlank } from '../UtilsValidation';
+import { typeErrors } from '../zodConfig';
+import { partialWithoutDefaults, shortUidString, optionalBlank } from '../UtilsValidation';
 
 const getContainer = async () => {
   const { container } = await import('@di/setup');
@@ -301,8 +302,8 @@ export const UpdateUnitSchema = z.object({
   managedBy: optionalBlank(shortUidString),
   description: BaseUnitSchema.shape.description,
   // currency must match the property's (enforced by the service)
-  fees: FeesSchema.partial().optional(),
-  specifications: SpecificationsSchema.partial().optional(),
+  fees: partialWithoutDefaults(FeesSchema).optional(),
+  specifications: partialWithoutDefaults(SpecificationsSchema).optional(),
   utilities: UtilitiesSchema.optional(),
   amenities: AmenitiesSchema.optional(),
 });
@@ -359,7 +360,7 @@ export const PaginationSchema = z.object({
   page: z.number().int().min(1).default(1),
   limit: z.number().int().min(1).max(100).default(10),
   sort: z
-    .record(z.enum(['1', '-1']).or(z.union([z.literal(1), z.literal(-1)])))
+    .record(z.string(), z.enum(['1', '-1']).or(z.union([z.literal(1), z.literal(-1)])))
     .optional()
     .transform((val) => {
       if (!val) return undefined;
@@ -458,7 +459,7 @@ export const PropertyUnitCsvSchema = z
       .min(1, 'Unit number must not be empty')
       .max(20, 'Unit number must be at most 20 characters'),
     floor: z.coerce
-      .number({ invalid_type_error: 'Floor is required and must be a number' })
+      .number({ error: typeErrors({ invalidType: 'Floor is required and must be a number' }) })
       .int()
       .min(UNIT_FLOOR_RANGE.min, `Floor cannot be less than ${UNIT_FLOOR_RANGE.min}`)
       .max(UNIT_FLOOR_RANGE.max, `Floor cannot be greater than ${UNIT_FLOOR_RANGE.max}`),
@@ -468,7 +469,7 @@ export const PropertyUnitCsvSchema = z
 
     // Specifications
     specifications_totalArea: z.coerce
-      .number({ invalid_type_error: 'Total area is required and must be a number' })
+      .number({ error: typeErrors({ invalidType: 'Total area is required and must be a number' }) })
       .positive('Total area must be a positive number'),
     specifications_bedrooms: z.coerce
       .number()
@@ -487,10 +488,14 @@ export const PropertyUnitCsvSchema = z
 
     // Fees
     fees_rentAmount: z.coerce
-      .number({ invalid_type_error: 'Rent amount is required and must be a number' })
+      .number({
+        error: typeErrors({ invalidType: 'Rent amount is required and must be a number' }),
+      })
       .min(0, 'Rent amount must be a non-negative number'),
     fees_securityDeposit: z.coerce
-      .number({ invalid_type_error: 'Security deposit is required and must be a number' })
+      .number({
+        error: typeErrors({ invalidType: 'Security deposit is required and must be a number' }),
+      })
       .min(0, 'Security deposit must be a non-negative number'),
 
     // Amenities - using boolean validation with transform

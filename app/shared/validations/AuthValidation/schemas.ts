@@ -50,7 +50,7 @@ export const UserSignupSchema = z
       .min(2, 'Display name must be at least 2 characters')
       .max(45, 'Display name must be at most 45 characters'),
     termsAccepted: z.literal(true, {
-      errorMap: () => ({ message: 'You must accept the terms of service and privacy policy' }),
+      error: 'You must accept the terms of service and privacy policy',
     }),
     accountType: z
       .object({
@@ -340,12 +340,12 @@ export const PasskeyRegVerifySchema = z.object({
     .string({ message: 'A name for this passkey is required.' })
     .min(1, { message: 'Passkey name is required.' })
     .max(100, { message: 'Passkey name must be 100 characters or fewer.' }),
-  registrationResponse: z.record(z.unknown()),
+  registrationResponse: z.record(z.string(), z.unknown()),
 });
 
 export const PasskeyDiscoverableVerifySchema = z.object({
   sessionId: z.string({ message: 'Session ID is required.' }).min(1),
-  passkeyResponse: z.record(z.unknown()),
+  passkeyResponse: z.record(z.string(), z.unknown()),
   rememberMe: z.boolean().optional(),
 });
 

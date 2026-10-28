@@ -13,6 +13,20 @@ export interface FeaturesConfig {
   AI_ENABLED: boolean;
 }
 
+export interface ServerConfig {
+  SENTRY_JOB_FAILURE_THROTTLE_MS: number;
+  ERROR_LOG_ARCHIVE_FLUSH_MS: number;
+  ERROR_LOG_ARCHIVE_ENABLED: boolean;
+  PROCESS_TYPE: 'api' | 'worker';
+  ENABLE_CONSOLE_LOGS: boolean;
+  DLQ_RETENTION_DAYS: number;
+  CLAMDSCAN_SOCKET: string;
+  CRON_ENABLED: boolean;
+  LOG_LEVEL: string;
+  PORT: number;
+  ENV: string;
+}
+
 export interface StripeConfig {
   PAD_PRE_NOTIFICATION_DAYS: number;
   CONNECT_WEBHOOK_SECRET: string;
@@ -32,16 +46,6 @@ export interface JwtConfig {
   EXTENDED_ACCESS_TOKEN_EXPIRY: string;
   EXPIREIN: string;
   SECRET: string;
-}
-
-export interface ServerConfig {
-  PROCESS_TYPE: 'api' | 'worker';
-  ENABLE_CONSOLE_LOGS: boolean;
-  CLAMDSCAN_SOCKET: string;
-  CRON_ENABLED: boolean;
-  LOG_LEVEL: string;
-  PORT: number;
-  ENV: string;
 }
 
 export interface EmailProviderConfig {

@@ -1,5 +1,6 @@
 import Logger from 'bunyan';
 import Redis from 'ioredis';
+import * as Sentry from '@sentry/node';
 import { envVariables } from '@shared/config';
 import { createLogger } from '@utils/helpers';
 import { createBullBoard } from '@bull-board/api';
@@ -132,6 +133,44 @@ const omitUploadedFileContent = <D>(data: D): D => {
   return rest as D;
 };
 
+// Sentry is on the free plan: each distinct permanent job failure is reported at most once per
+// throttle window per process. Every occurrence still reaches the logs, DLQ and S3 error archive.
+const MAX_THROTTLE_ENTRIES = 500;
+const jobFailureLastReportedAt = new Map<string, number>();
+
+const shouldReportJobFailure = (fingerprint: string): boolean => {
+  const now = Date.now();
+  const windowMs = envVariables.SERVER.SENTRY_JOB_FAILURE_THROTTLE_MS;
+  const lastReportedAt = jobFailureLastReportedAt.get(fingerprint);
+  if (lastReportedAt !== undefined && now - lastReportedAt < windowMs) return false;
+
+  if (jobFailureLastReportedAt.size >= MAX_THROTTLE_ENTRIES) {
+    for (const [key, reportedAt] of jobFailureLastReportedAt) {
+      if (now - reportedAt >= windowMs) jobFailureLastReportedAt.delete(key);
+    }
+    if (jobFailureLastReportedAt.size >= MAX_THROTTLE_ENTRIES) jobFailureLastReportedAt.clear();
+  }
+  jobFailureLastReportedAt.set(fingerprint, now);
+  return true;
+};
+
+const reportPermanentJobFailure = (queueName: string, job: Queue.Job, err: Error): void => {
+  const fingerprint = ['queue-job-failed', queueName, job.name, err.message];
+  if (!shouldReportJobFailure(fingerprint.join('|'))) return;
+
+  Sentry.withScope((scope) => {
+    scope.setFingerprint(fingerprint);
+    scope.setTags({
+      queue: queueName,
+      jobName: job.name,
+      jobId: String(job.id),
+      attemptsMade: String(job.attemptsMade),
+    });
+    scope.setContext('job', { data: omitUploadedFileContent(job.data) });
+    Sentry.captureException(err);
+  });
+};
+
 let sharedDLQ: Queue.Queue | null = null;
 
 const getSharedDLQ = (): Queue.Queue => {
@@ -139,6 +178,17 @@ const getSharedDLQ = (): Queue.Queue => {
     sharedDLQ = new Queue('dead-letter-queue', DEFAULT_QUEUE_OPTIONS);
   }
   return sharedDLQ;
+};
+
+/**
+ * Removes dead-letter entries older than `olderThanMs`. Nothing processes the DLQ, so entries
+ * sit in `wait` until removed; full failure history lives in Sentry and the S3 error archive.
+ */
+export const cleanSharedDLQ = async (olderThanMs: number): Promise<number> => {
+  const dlq = getSharedDLQ();
+  const removedWaiting = await dlq.clean(olderThanMs, 'wait');
+  const removedFailed = await dlq.clean(olderThanMs, 'failed');
+  return removedWaiting.length + removedFailed.length;
 };
 
 export const closeSharedDLQ = async (): Promise<void> => {
@@ -228,6 +278,7 @@ export class BaseQueue<T extends JobData = JobData> {
           { jobId: job.id, jobName: job.name },
           `Job ${job.id} reached max attempts. Moving to DLQ: ${this.dlq.name}`
         );
+        reportPermanentJobFailure(this.queue.name, job, err);
         try {
           await this.onJobFailedPermanently(job, err);
         } catch (hookError: any) {

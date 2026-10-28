@@ -16,9 +16,13 @@ export const dropNoisyEvents = (event: ErrorEvent, hint: EventHint): ErrorEvent 
   return event;
 };
 
-export const parseSampleRate = (value: string | undefined): number => {
+/**
+ * A sample rate from env, or `fallback` when it's unset or not between 0 and 1.
+ * Defaults stay low so the free plan's trace quota lasts the month.
+ */
+export const sampleRate = (value: string | undefined, fallback: number): number => {
   const rate = Number(value);
-  return Number.isFinite(rate) && rate >= 0 && rate <= 1 ? rate : 0;
+  return value && rate >= 0 && rate <= 1 ? rate : fallback;
 };
 
 /** Sentry runs only in production (SENTRY_ENABLED=true forces it on for a local test). */
@@ -31,8 +35,8 @@ export const buildSentryOptions = (env: SentryEnv): NodeOptions => {
     enabled: !!env.SENTRY_DSN && (environment === 'production' || forceEnabled),
     environment,
     sendDefaultPii: env.SENTRY_SEND_DEFAULT_PII === 'true',
-    // Performance tracing is off unless explicitly sampled — transactions count against quota
-    tracesSampleRate: parseSampleRate(env.SENTRY_TRACES_SAMPLE_RATE),
+    // Transactions count against quota: trace 5% unless SENTRY_TRACES_SAMPLE_RATE says otherwise
+    tracesSampleRate: sampleRate(env.SENTRY_TRACES_SAMPLE_RATE, 0.05),
     beforeSend: dropNoisyEvents,
   };
 };

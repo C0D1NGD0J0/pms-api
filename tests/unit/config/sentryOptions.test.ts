@@ -2,7 +2,7 @@ import type { ErrorEvent, EventHint } from '@sentry/node';
 import {
   buildSentryOptions,
   dropNoisyEvents,
-  parseSampleRate,
+  sampleRate,
 } from '@shared/config/sentry.options';
 
 const DSN = 'https://key@o0.ingest.sentry.io/1';
@@ -23,21 +23,31 @@ describe('buildSentryOptions (free plan)', () => {
     );
   });
 
-  it('keeps tracing off unless a sample rate is configured', () => {
-    expect(buildSentryOptions({ NODE_ENV: 'production' }).tracesSampleRate).toBe(0);
+  it('traces a low 5% by default, overridable through SENTRY_TRACES_SAMPLE_RATE', () => {
+    expect(buildSentryOptions({ NODE_ENV: 'production' }).tracesSampleRate).toBe(0.05);
     expect(
-      buildSentryOptions({ NODE_ENV: 'production', SENTRY_TRACES_SAMPLE_RATE: '0.05' })
+      buildSentryOptions({ NODE_ENV: 'production', SENTRY_TRACES_SAMPLE_RATE: '0' })
         .tracesSampleRate
-    ).toBe(0.05);
+    ).toBe(0);
+    expect(
+      buildSentryOptions({ NODE_ENV: 'production', SENTRY_TRACES_SAMPLE_RATE: '0.2' })
+        .tracesSampleRate
+    ).toBe(0.2);
   });
 });
 
-describe('parseSampleRate', () => {
-  it('falls back to 0 for missing, invalid or out-of-range values', () => {
-    expect(parseSampleRate(undefined)).toBe(0);
-    expect(parseSampleRate('abc')).toBe(0);
-    expect(parseSampleRate('2')).toBe(0);
-    expect(parseSampleRate('-1')).toBe(0);
+describe('sampleRate', () => {
+  it('uses the env value when it is between 0 and 1', () => {
+    expect(sampleRate('0', 0.05)).toBe(0);
+    expect(sampleRate('1', 0.05)).toBe(1);
+  });
+
+  it('falls back for missing, invalid or out-of-range values', () => {
+    expect(sampleRate(undefined, 0.05)).toBe(0.05);
+    expect(sampleRate('', 0.05)).toBe(0.05);
+    expect(sampleRate('abc', 0.05)).toBe(0.05);
+    expect(sampleRate('2', 0.05)).toBe(0.05);
+    expect(sampleRate('-1', 0.05)).toBe(0.05);
   });
 });
 

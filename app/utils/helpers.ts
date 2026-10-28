@@ -19,6 +19,22 @@ import {
 } from '@interfaces/utils.interface';
 
 import { JWT_KEY_NAMES } from './constants';
+import { ErrorLogArchive } from './errorLogArchive';
+
+let errorLogArchive: ErrorLogArchive | null = null;
+
+/** Shared S3 error-log archive, or null unless ERROR_LOG_ARCHIVE_ENABLED=true */
+export function getErrorLogArchive(): ErrorLogArchive | null {
+  if (!envVariables.SERVER.ERROR_LOG_ARCHIVE_ENABLED) return null;
+  if (!errorLogArchive) {
+    errorLogArchive = new ErrorLogArchive({
+      flushIntervalMs: envVariables.SERVER.ERROR_LOG_ARCHIVE_FLUSH_MS,
+      environment: envVariables.SERVER.ENV,
+      processType: envVariables.SERVER.PROCESS_TYPE,
+    });
+  }
+  return errorLogArchive;
+}
 
 const loggers = new WeakMap<object, bunyan>();
 const loggerKeys = new Map<string, object>();
@@ -117,6 +133,7 @@ export function createLogger(name: string) {
   const resolvedEnv = envVariables.SERVER.ENV;
   const isDevLike = resolvedEnv === 'development' || resolvedEnv === 'dev';
   const forceConsole = envVariables.SERVER.ENABLE_CONSOLE_LOGS;
+  const archive = getErrorLogArchive();
 
   // Dev/ENABLE_CONSOLE_LOGS: colorized console output (type: 'raw')
   // Production: structured JSON to stdout for Railway log drains (type: 'stream')
@@ -127,6 +144,7 @@ export function createLogger(name: string) {
       isDevLike || forceConsole
         ? { type: 'raw' as const, stream: customStream }
         : { type: 'stream' as const, stream: process.stdout },
+      ...(archive ? [{ type: 'raw' as const, level: LOG_LEVELS.ERROR, stream: archive }] : []),
     ],
   });
   loggerKey = {};

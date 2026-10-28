@@ -86,4 +86,18 @@ describe('createLogger stream selection', () => {
     // Bunyan info level = 30
     expect(capturedConfig.level).toBe(30);
   });
+
+  it('adds an error-level archive stream only when ERROR_LOG_ARCHIVE_ENABLED is true', () => {
+    envVariables.SERVER.ENV = 'production';
+    envVariables.SERVER.ERROR_LOG_ARCHIVE_ENABLED = false;
+    let createLogger = loadCreateLogger();
+    createLogger('TestNoArchive');
+    expect(capturedConfig.streams).toHaveLength(1);
+
+    envVariables.SERVER.ERROR_LOG_ARCHIVE_ENABLED = true;
+    createLogger = loadCreateLogger();
+    createLogger('TestArchive');
+    expect(capturedConfig.streams).toHaveLength(2);
+    expect(capturedConfig.streams[1]).toEqual(expect.objectContaining({ type: 'raw', level: 50 }));
+  });
 });

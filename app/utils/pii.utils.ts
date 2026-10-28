@@ -7,6 +7,11 @@
  * (app/services/dsar/dsar.service.ts) which operates on typed documents.
  */
 
+export interface RedactPIIOptions {
+  /** Keep ObjectIds and resource UIDs — they're not personal data, and logs need them to debug */
+  keepIdentifiers?: boolean;
+}
+
 export interface PIIContext {
   addresses?: string[];
   emails?: string[];
@@ -27,9 +32,10 @@ const PHONE_PATTERN = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\
  *
  * @param text    The raw text to sanitize
  * @param context Optional known PII values to explicitly scrub (e.g. tenant name from request context)
+ * @param options keepIdentifiers leaves ObjectIds and resource UIDs in place
  * @returns       Text with PII replaced by generic tokens
  */
-export function redactPII(text: string, context?: PIIContext): string {
+export function redactPII(text: string, context?: PIIContext, options?: RedactPIIOptions): string {
   if (!text) return text;
 
   let result = text;
@@ -59,14 +65,20 @@ export function redactPII(text: string, context?: PIIContext): string {
   }
 
   // Phase 2: regex-based pattern matching — order matters (most specific first)
-  result = result.replace(MONGODB_OBJECTID_PATTERN, '[ID]');
-  result = result.replace(RESOURCE_UID_PATTERN, '[UID]');
+  // Kept identifiers are set aside so the phone/card patterns can't match digits inside them
+  const keptIdentifiers: string[] = [];
+  const identifierToken = (label: string) => (match: string) =>
+    options?.keepIdentifiers ? `\uE000${keptIdentifiers.push(match) - 1}\uE000` : label;
+  result = result.replace(MONGODB_OBJECTID_PATTERN, identifierToken('[ID]'));
+  result = result.replace(RESOURCE_UID_PATTERN, identifierToken('[UID]'));
   result = result.replace(EMAIL_PATTERN, '[EMAIL]');
   result = result.replace(CREDIT_CARD_PATTERN, '[CARD]');
   result = result.replace(SSN_SIN_PATTERN, '[SSN]');
   result = result.replace(PHONE_PATTERN, '[PHONE]');
 
-  return result;
+  return keptIdentifiers.length
+    ? result.replace(/\uE000(\d+)\uE000/g, (_, index) => keptIdentifiers[Number(index)])
+    : result;
 }
 
 /**

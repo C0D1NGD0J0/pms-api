@@ -2,11 +2,12 @@ import './instrument'; // must be first — initialises Sentry before any other 
 process.env.PROCESS_TYPE = 'worker';
 import { container } from '@di/index';
 import * as Sentry from '@sentry/node';
-import { createLogger } from '@utils/helpers';
 import { PidManager } from '@utils/pid-manager';
 import { initQueues } from '@di/registerResources';
 import { closeSharedDLQ } from '@queues/base.queue';
+import { s3ErrorLogUploader } from '@utils/errorLogArchive';
 import { EventListenerSetup } from '@di/eventListenerSetup';
+import { getErrorLogArchive, createLogger } from '@utils/helpers';
 
 class WorkerProcess {
   private log = createLogger('WorkerProcess');
@@ -27,6 +28,10 @@ class WorkerProcess {
       initQueues(container);
       // Listeners must be in place before queues start processing jobs that emit events.
       EventListenerSetup.registerAll(container, 'worker');
+      getErrorLogArchive()?.attachUploader(
+        s3ErrorLogUploader(container.cradle.s3Service),
+        createLogger('ErrorLogArchive')
+      );
       const { queueFactory } = container.cradle;
       const result = await queueFactory.initializeAllQueues();
       this.log.info(
@@ -80,6 +85,7 @@ class WorkerProcess {
     }
 
     this.pidManager.cleanup();
+    await getErrorLogArchive()?.flush();
     await Sentry.flush(2000);
     process.exit(0);
   }

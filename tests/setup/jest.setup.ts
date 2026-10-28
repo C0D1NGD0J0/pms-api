@@ -5,6 +5,8 @@
  * This file is executed by Jest before running test suites.
  */
 
+import '@shared/validations/zodConfig';
+
 import { disconnectTestDatabase, setupTestDatabase } from './testDatabase';
 import { setupAllExternalMocks, resetAllExternalMocks } from './externalMocks';
 

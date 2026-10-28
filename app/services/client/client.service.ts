@@ -248,8 +248,8 @@ export class ClientService {
         });
       } catch (error: any) {
         const enterpriseErrors: string[] = [];
-        if (error.errors) {
-          error.errors.forEach((err: any) => {
+        if (error.issues) {
+          error.issues.forEach((err: any) => {
             enterpriseErrors.push(err.message);
           });
         }

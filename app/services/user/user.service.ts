@@ -1165,6 +1165,11 @@ export class UserService implements ICronProvider {
           accepted: userData.termsAccepted || false,
           acceptedOn: userData.termsAccepted ? new Date() : null,
         },
+        // The account-setup checkbox covers both the Terms of Service and the Privacy Policy
+        privacy: {
+          accepted: userData.termsAccepted || false,
+          acceptedOn: userData.termsAccepted ? new Date() : null,
+        },
         marketing: {
           accepted: userData.newsletterOptIn || false,
           acceptedOn: userData.newsletterOptIn ? new Date() : null,

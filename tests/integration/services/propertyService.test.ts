@@ -284,6 +284,65 @@ describe('PropertyService Integration Tests', () => {
         }
       });
 
+      describe('ownership verification on creation', () => {
+        const propertyWithOwner = (ownerType: string, street: string) => ({
+          name: `Verification Property ${Date.now()}`,
+          propertyType: 'apartment' as const,
+          maxAllowedUnits: 10,
+          fullAddress: `${street}, New York, NY 10001`,
+          address: {
+            street,
+            city: 'New York',
+            state: 'NY',
+            postCode: '10001',
+            country: 'USA',
+            fullAddress: `${street}, New York, NY 10001`,
+          },
+          description: { text: 'Property for the ownership verification tests' },
+          specifications: { totalArea: 5000 },
+          fees: { rentAmount: '850', currency: 'USD' },
+          occupancyStatus: 'vacant' as const,
+          computedLocation: { type: 'Point', coordinates: [-74.006, 40.7128] },
+          owner: { type: ownerType },
+        });
+
+        it('verifies a company-owned property an admin adds, and records why', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            propertyWithOwner('company_owned', '10 Verified Way') as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid })
+            .select('+verificationDetails')
+            .lean();
+          expect(saved!.verificationStatus).toBe('verified');
+          expect(saved!.verificationDetails).toEqual([
+            expect.objectContaining({
+              action: 'verified',
+              notes: expect.stringContaining('Auto-verified'),
+            }),
+          ]);
+          expect(String(saved!.verificationDetails![0].actor)).toBe(adminUser._id.toString());
+        });
+
+        it('leaves an externally owned property for an ownership review', async () => {
+          const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.ADMIN);
+
+          const result = await propertyService.addProperty(
+            ctx as any,
+            propertyWithOwner('external_owner', '20 Review Road') as any
+          );
+
+          const saved = await Property.findOne({ pid: result.data.pid })
+            .select('+verificationDetails')
+            .lean();
+          expect(saved!.verificationStatus).toBe('unverified');
+          expect(saved!.verificationDetails ?? []).toHaveLength(0);
+        });
+      });
+
       describe('with uploaded files', () => {
         const newPropertyData = () => ({
           name: `Uploads Property ${Date.now()}`,
@@ -597,7 +656,9 @@ describe('PropertyService Integration Tests', () => {
             }) as any
           );
 
-          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          const saved = await Property.findOne({ pid: result.data.pid })
+            .select('+verificationDetails')
+            .lean();
           expect(saved!.managedBy!.toString()).toBe(adminUser._id.toString());
           expect(saved!.assignedStaff).toHaveLength(1);
           expect(saved!.assignedStaff![0]).toBeInstanceOf(Types.ObjectId);
@@ -615,7 +676,9 @@ describe('PropertyService Integration Tests', () => {
             }) as any
           );
 
-          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          const saved = await Property.findOne({ pid: result.data.pid })
+            .select('+verificationDetails')
+            .lean();
           expect(saved!.fees.rentAmount).toBe(120000);
           expect(saved!.fees.managementFees).toBe(75000);
         });
@@ -662,7 +725,9 @@ describe('PropertyService Integration Tests', () => {
             }) as any
           );
 
-          const saved = await Property.findOne({ pid: result.data.pid }).lean();
+          const saved = await Property.findOne({ pid: result.data.pid })
+            .select('+verificationDetails')
+            .lean();
           expect(saved!.documents).toHaveLength(0);
           expect(saved!.images).toHaveLength(0);
         });

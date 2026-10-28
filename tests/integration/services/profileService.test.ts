@@ -150,8 +150,98 @@ describe('ProfileService Integration Tests - Write Operations', () => {
       const updatedProfile = await profileDAO.findFirst({ puid: profile.puid });
       expect(updatedProfile).toBeDefined();
       expect(updatedProfile?.employeeInfo).toBeDefined();
-      expect(updatedProfile?.employeeInfo?.department).toBe('management');
       expect(updatedProfile?.employeeInfo?.jobTitle).toBe('Property Manager');
+    });
+
+    it('ignores department and permissions, which change only through assignDepartment', async () => {
+      const client = await createTestClient();
+      const user = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+      const profile = await Profile.create({
+        puid: `puid-test-${Date.now()}-${Math.random()}`,
+        user: user._id,
+        personalInfo: {
+          firstName: 'Sam',
+          lastName: 'Staff',
+          displayName: 'Sam Staff',
+          location: 'Toronto',
+        },
+        employeeInfo: { department: 'maintenance', permissions: ['maintenance'] } as any,
+      });
+
+      // A staff member trying to widen their own access from a profile save
+      await profileService.updateEmployeeInfo(
+        profile._id.toString(),
+        client.cuid,
+        { department: 'management', permissions: ['users'], jobTitle: 'Technician' },
+        ROLES.STAFF
+      );
+
+      const updatedProfile = await profileDAO.findFirst({ puid: profile.puid });
+      expect(updatedProfile?.employeeInfo?.department).toBe('maintenance');
+      expect((updatedProfile?.employeeInfo as any)?.permissions).toEqual(['maintenance']);
+      expect(updatedProfile?.employeeInfo?.jobTitle).toBe('Technician');
+    });
+
+    describe('employee ID and start date', () => {
+      const createStaffProfile = async () => {
+        const client = await createTestClient();
+        const user = await createTestUser(client.cuid, { roles: [ROLES.STAFF] });
+        const profile = await Profile.create({
+          puid: `puid-hr-${Date.now()}-${Math.random()}`,
+          user: user._id,
+          personalInfo: {
+            firstName: 'Hana',
+            lastName: 'Staff',
+            displayName: 'Hana Staff',
+            location: 'Toronto',
+          },
+          employeeInfo: { employeeId: 'EMP-001', startDate: new Date('2024-01-01') } as any,
+        });
+        return { client, profile };
+      };
+      const hrUpdate = { employeeId: 'EMP-999', startDate: new Date('2020-06-01') };
+
+      it.each([ROLES.SUPER_ADMIN, ROLES.ROOT_ADMIN])('lets %s set them', async (actorRole) => {
+        const { client, profile } = await createStaffProfile();
+
+        await profileService.updateEmployeeInfo(
+          profile._id.toString(),
+          client.cuid,
+          hrUpdate,
+          ROLES.STAFF,
+          actorRole
+        );
+
+        // employeeId is select: false
+        const updated = await Profile.findOne({ puid: profile.puid })
+          .select('+employeeInfo.employeeId')
+          .lean();
+        expect(updated?.employeeInfo?.employeeId).toBe('EMP-999');
+        expect(updated?.employeeInfo?.startDate).toEqual(new Date('2020-06-01'));
+      });
+
+      it.each([ROLES.ADMIN, ROLES.MANAGER, ROLES.STAFF])(
+        'ignores them from %s',
+        async (actorRole) => {
+          const { client, profile } = await createStaffProfile();
+
+          await profileService.updateEmployeeInfo(
+            profile._id.toString(),
+            client.cuid,
+            { ...hrUpdate, jobTitle: 'Coordinator' },
+            ROLES.STAFF,
+            actorRole
+          );
+
+          // employeeId is select: false
+          const updated = await Profile.findOne({ puid: profile.puid })
+            .select('+employeeInfo.employeeId')
+            .lean();
+          expect(updated?.employeeInfo?.employeeId).toBe('EMP-001');
+          expect(updated?.employeeInfo?.startDate).toEqual(new Date('2024-01-01'));
+          expect(updated?.employeeInfo?.jobTitle).toBe('Coordinator');
+        }
+      );
     });
 
     it('should throw BadRequestError for invalid employee data', async () => {

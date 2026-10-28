@@ -370,15 +370,18 @@ export const TenantSchema = z.object({
 
 export const completeOnboardingSchema = z
   .object({
-    policies: z.object({
-      tos: z.object({
-        accepted: z.literal(true, { message: 'You must accept the Terms of Service' }),
-      }),
-      privacy: z.object({
-        accepted: z.literal(true, { message: 'You must accept the Privacy Policy' }),
-      }),
-      marketing: z.object({ accepted: z.boolean() }),
-    }),
+    // Optional: users who joined by invitation already accepted these while accepting it
+    policies: z
+      .object({
+        tos: z.object({
+          accepted: z.literal(true, { message: 'You must accept the Terms of Service' }),
+        }),
+        privacy: z.object({
+          accepted: z.literal(true, { message: 'You must accept the Privacy Policy' }),
+        }),
+        marketing: z.object({ accepted: z.boolean() }),
+      })
+      .optional(),
     newPassword: z
       .string()
       .min(8, 'Password must be at least 8 characters')

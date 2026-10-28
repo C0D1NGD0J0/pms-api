@@ -79,6 +79,8 @@ router.patch(
   '/:cuid/users/:uid/department',
   basicLimiter(),
   requirePermission(PermissionResource.USER, PermissionAction.UPDATE),
+  // A department replaces a staff member's permission grants — admins and the owner only
+  requireRole([ROLES.ROOT_ADMIN, ROLES.SUPER_ADMIN, ROLES.ADMIN]),
   idempotency,
   validateRequest({
     params: ClientValidations.userIdParam,

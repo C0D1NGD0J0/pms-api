@@ -1,3 +1,5 @@
+import { IUserRole } from '@shared/constants/roles.constants';
+import { PROPERTY_VERIFICATION_ROLES } from '@utils/constants';
 import { VerificationStatusEnum, OwnershipType } from '@interfaces/property.interface';
 
 /** The fields the checks read — `authorization` and `verificationGracePeriod` are select: false. */
@@ -54,6 +56,20 @@ export const getPropertyLeasingBlock = (
   if (!isVerifiedForLeasingFor(property)) return 'ownership_unverified';
   return null;
 };
+
+export const AUTO_VERIFIED_NOTE =
+  'Auto-verified: company-owned property added by an admin or manager';
+
+/**
+ * A company-owned property added by someone who could verify it anyway (super-admin, admin,
+ * manager) starts verified. Externally owned properties, and ones added by staff or imported,
+ * still wait for an ownership review.
+ */
+export const shouldAutoVerifyOnCreate = (
+  ownerType: string | undefined,
+  creatorRole: IUserRole
+): boolean =>
+  ownerType === OwnershipType.COMPANY_OWNED && PROPERTY_VERIFICATION_ROLES.includes(creatorRole);
 
 /** i18n key for each block, under `lease.errors`. */
 export const PROPERTY_LEASING_BLOCK_MESSAGE_KEYS: Record<PropertyLeasingBlock, string> = {

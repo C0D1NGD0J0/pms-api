@@ -869,6 +869,53 @@ describe('AuthService Integration Tests', () => {
       expect(updatedUser!.consent?.acceptedOn).toBeInstanceOf(Date);
     });
 
+    it('clears the onboarding flag without re-stamping consent an invited user already gave', async () => {
+      const client = await createTestClient();
+      const acceptedOn = new Date('2026-01-15T10:00:00Z');
+      const user = await createTestUser(client.cuid, {
+        email: `onboarding-invited-${Date.now()}@example.com`,
+        cuids: [
+          {
+            cuid: client.cuid,
+            roles: [ROLES.TENANT],
+            isConnected: true,
+            requiresOnboarding: true,
+            clientDisplayName: client.displayName,
+          },
+        ],
+      });
+      await User.updateOne(
+        { _id: user._id },
+        { consent: { acceptedOn, acceptedBy: 'Jordan Lee' } }
+      );
+      const profile = await Profile.create({
+        puid: `puid-inv-${Date.now()}`,
+        user: user._id,
+        personalInfo: {
+          firstName: 'Jordan',
+          lastName: 'Lee',
+          displayName: 'Jordan Lee',
+          location: 'Toronto, Canada',
+        },
+        policies: {
+          tos: { accepted: true, acceptedOn },
+          privacy: { accepted: true, acceptedOn },
+        },
+      });
+
+      const result = await authService.completeOnboarding(user._id.toString(), client.cuid, {});
+
+      expect(result.success).toBe(true);
+      const updatedUser = await User.findById(user._id);
+      expect(updatedUser!.cuids.find((c) => c.cuid === client.cuid)!.requiresOnboarding).toBe(
+        false
+      );
+      expect(updatedUser!.consent?.acceptedOn).toEqual(acceptedOn);
+      const updatedProfile = await Profile.findById(profile._id);
+      expect(updatedProfile!.policies?.tos?.acceptedOn).toEqual(acceptedOn);
+      expect(updatedProfile!.policies?.privacy?.acceptedOn).toEqual(acceptedOn);
+    });
+
     it('should update profile policies with correct timestamps', async () => {
       const client = await createTestClient();
       const user = await createTestUser(client.cuid, {

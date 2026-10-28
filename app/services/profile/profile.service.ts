@@ -114,7 +114,8 @@ export class ProfileService {
     profileId: string,
     cuid: string,
     employeeInfo: any,
-    userRole: IUserRoleType
+    userRole: IUserRoleType,
+    actorRole?: string
   ): Promise<ISuccessReturnData<IProfileDocument>> {
     try {
       const validation = ProfileValidations.updateEmployeeInfo.safeParse(employeeInfo);
@@ -139,7 +140,25 @@ export class ProfileService {
 
       await this.ensureClientRoleInfo(profile.user.toString(), cuid);
 
-      const { reportsTo: supervisorUid, ...employeeFields } = validation.data;
+      // department sets a staff member's permission grants, so it only changes through the
+      // admin-only assignDepartment endpoint (which also refreshes their session) — a profile
+      // save, including someone editing their own profile, must not change it or permissions.
+      const {
+        reportsTo: supervisorUid,
+        department: _department,
+        permissions: _permissions,
+        employeeId,
+        startDate,
+        ...employeeFields
+      } = validation.data;
+      // Employee ID and start date are HR records only the account owner sets
+      const canSetHrFields = actorRole === ROLES.SUPER_ADMIN || actorRole === ROLES.ROOT_ADMIN;
+      if (canSetHrFields) {
+        Object.assign(employeeFields, {
+          ...(employeeId !== undefined && { employeeId }),
+          ...(startDate !== undefined && { startDate }),
+        });
+      }
       const employeeUpdate = supervisorUid
         ? {
             ...employeeFields,
@@ -793,7 +812,8 @@ export class ProfileService {
         profileId,
         cuid,
         profileData.employeeInfo,
-        userRole
+        userRole,
+        currentuser.client.role
       );
       result = employeeResult.data;
       hasUpdates = true;

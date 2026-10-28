@@ -24,6 +24,7 @@ jest.mock('@shared/validations', () => {
     ClientValidations: {
       ...actual.ClientValidations,
       clientIdParam: z.object({ cuid: z.string() }),
+      userIdParam: z.object({ cuid: z.string(), uid: z.string() }),
     },
   };
 });
@@ -50,6 +51,7 @@ const clientService = new ClientService({
 } as any);
 
 const mockController = {
+  assignDepartment: jest.fn((_req: Request, res: Response) => res.status(200).json({})),
   updateClientProfile: jest.fn(async (req: Request, res: Response) => {
     await clientService.updateClientDetails((req as any).context, req.body);
     return res.status(200).json({ body: req.body });
@@ -216,5 +218,37 @@ describe('client routes — PATCH /:cuid (update client details) access control'
 
     expect(res.status).toBe(403);
     expect(mockController.updateClientProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('client routes — PATCH /:cuid/users/:uid/department access control', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const assignDepartment = (as: ITestUser) => {
+    const req = request(app)
+      .patch(`/api/v1/clients/${CUID}/users/STAFFUID001/department`)
+      .set('x-test-role', as.role);
+    if (as.department) req.set('x-test-department', as.department);
+    return req.send({ department: 'accounting' });
+  };
+
+  it.each([ROLES.ROOT_ADMIN, ROLES.SUPER_ADMIN, ROLES.ADMIN])('allows %s', async (role) => {
+    const res = await assignDepartment({ role });
+
+    expect(res.status).toBe(200);
+    expect(mockController.assignDepartment).toHaveBeenCalled();
+  });
+
+  // A department replaces staff permission grants, so even roles that may edit users can't set it
+  it.each([
+    { role: ROLES.MANAGER },
+    { role: ROLES.STAFF, department: 'management' },
+    { role: ROLES.STAFF, department: 'maintenance' },
+    { role: ROLES.TENANT },
+  ])('forbids $role $department', async (as) => {
+    const res = await assignDepartment(as);
+
+    expect(res.status).toBe(403);
+    expect(mockController.assignDepartment).not.toHaveBeenCalled();
   });
 });

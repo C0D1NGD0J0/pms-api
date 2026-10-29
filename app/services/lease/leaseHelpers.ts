@@ -178,6 +178,9 @@ export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => 
  * Validate lease termination date with comprehensive business rules.
  * Exemptions are keyed on the structured reasonCode, never the free-text reason.
  */
+// Matches the lease model default; also the renewal window and the termination notice period
+const DEFAULT_NOTICE_PERIOD_DAYS = 30;
+
 export const validateLeaseTermination = (
   lease: ILeaseDocument,
   terminationDate: Date,
@@ -185,6 +188,10 @@ export const validateLeaseTermination = (
 ): { warnings: string[] } => {
   const errors: Record<string, string[]> = {};
   const warnings: string[] = [];
+  // Every failing rule is reported, not just the last one
+  const addTerminationDateError = (message: string) => {
+    errors.terminationDate = [...(errors.terminationDate ?? []), message];
+  };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -199,34 +206,34 @@ export const validateLeaseTermination = (
 
   // Rule 1: No past dates
   if (termDate < today) {
-    errors.terminationDate = [
-      'Termination date cannot be in the past. Please select today or a future date.',
-    ];
+    addTerminationDateError(
+      'Termination date cannot be in the past. Please select today or a future date.'
+    );
   }
 
   // Rule 2: Must be within lease timeline
   if (termDate < leaseStartDate) {
-    errors.terminationDate = ['Termination date cannot be before lease start date'];
+    addTerminationDateError('Termination date cannot be before lease start date');
   }
 
   if (termDate > leaseEndDate) {
-    errors.terminationDate = [
-      'Termination date cannot be after lease end date. The lease will expire naturally on that date.',
-    ];
+    addTerminationDateError(
+      'Termination date cannot be after lease end date. The lease will expire naturally on that date.'
+    );
   }
 
   // Rule 3: notice period, waived for every specific reason except 'other'
   const requiresNotice = !reasonCode || reasonCode === LeaseTerminationReasonCode.OTHER;
-  const noticePeriodDays = lease.renewalOptions?.noticePeriodDays || 30;
+  const noticePeriodDays = lease.renewalOptions?.noticePeriodDays || DEFAULT_NOTICE_PERIOD_DAYS;
 
   if (requiresNotice) {
     const minimumTerminationDate = new Date(today);
     minimumTerminationDate.setDate(today.getDate() + noticePeriodDays);
 
     if (termDate < minimumTerminationDate) {
-      errors.terminationDate = [
-        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString()}`,
-      ];
+      addTerminationDateError(
+        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString()}`
+      );
     }
   }
 
@@ -236,9 +243,9 @@ export const validateLeaseTermination = (
   );
 
   if (daysSinceStart < 30 && reasonCode !== LeaseTerminationReasonCode.LEASE_VIOLATION) {
-    errors.terminationDate = [
-      `Lease must be active for at least 30 days before termination (currently ${daysSinceStart} days). Exception: lease violations.`,
-    ];
+    addTerminationDateError(
+      `Lease must be active for at least 30 days before termination (currently ${daysSinceStart} days). Exception: lease violations.`
+    );
   }
 
   // Warning: Month-end alignment (not blocking)
@@ -719,12 +726,13 @@ export const sanitizeUpdateData = (
 ): Partial<ILeaseFormData> => {
   const sanitized = { ...updateData };
 
-  // Handle property.unitId - convert empty string to undefined to explicitly unset it
+  // Handle property.unitId - convert empty string to undefined to explicitly unset it.
+  // Copies property so the caller's object isn't changed; callers apply createSafeMongoUpdate.
   if (sanitized.property?.unitId === '' || sanitized.property?.unitId === null) {
-    sanitized.property.unitId = undefined;
+    sanitized.property = { ...sanitized.property, unitId: undefined };
   }
 
-  return createSafeMongoUpdate(sanitized);
+  return sanitized;
 };
 
 /**
@@ -1245,7 +1253,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
 
   const daysUntilExpiry = calcDaysRemaining(endDate, today);
 
-  const renewalWindowDays = lease.renewalOptions?.noticePeriodDays || 60;
+  const renewalWindowDays = lease.renewalOptions?.noticePeriodDays || DEFAULT_NOTICE_PERIOD_DAYS;
   const isWithinWindow = daysUntilExpiry <= renewalWindowDays && daysUntilExpiry > 0;
 
   // Calculate renewal dates - start 1 day after current lease end
@@ -1291,7 +1299,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     renewalOptions: {
       autoRenew: lease.renewalOptions?.autoRenew || false,
       renewalTermMonths: lease.renewalOptions?.renewalTermMonths || 12,
-      noticePeriodDays: lease.renewalOptions?.noticePeriodDays || 30,
+      noticePeriodDays: lease.renewalOptions?.noticePeriodDays || DEFAULT_NOTICE_PERIOD_DAYS,
       autoApproveRenewal: lease.renewalOptions?.autoApproveRenewal ?? false,
       daysBeforeExpiryToGenerateRenewal: lease.renewalOptions?.daysBeforeExpiryToGenerateRenewal,
       daysBeforeExpiryToAutoSendSignature:

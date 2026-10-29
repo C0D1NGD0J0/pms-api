@@ -111,7 +111,7 @@ describe('validateLeaseReadyForSignature — date guards', () => {
 
 describe('FinancialCalculator.proRateFirstMonth', () => {
   it('returns full month when tenant starts on day 1', () => {
-    const startDate = new Date(2026, 3, 1); // April 1
+    const startDate = new Date(Date.UTC(2026, 3, 1)); // April 1
     const result = FinancialCalculator.proRateFirstMonth(300000, startDate); // $3000 in cents
     expect(result.isFullMonth).toBe(true);
     expect(result.amount).toBe(300000);
@@ -120,7 +120,7 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
   });
 
   it('pro-rates for mid-month start (April 10 → 21 of 30 days)', () => {
-    const startDate = new Date(2026, 3, 10); // April 10 — 30 day month
+    const startDate = new Date(Date.UTC(2026, 3, 10)); // April 10 — 30 day month
     const rentAmountInCents = 300000; // $3,000
     const result = FinancialCalculator.proRateFirstMonth(rentAmountInCents, startDate);
     expect(result.isFullMonth).toBe(false);
@@ -131,7 +131,7 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
   });
 
   it('pro-rates for last day of a 31-day month (1 day charged)', () => {
-    const startDate = new Date(2026, 2, 31); // March 31
+    const startDate = new Date(Date.UTC(2026, 2, 31)); // March 31
     const result = FinancialCalculator.proRateFirstMonth(310000, startDate);
     expect(result.daysCharged).toBe(1);
     expect(result.daysInMonth).toBe(31);
@@ -140,7 +140,7 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
   });
 
   it('pro-rates correctly for February (28-day month) start day 15', () => {
-    const startDate = new Date(2026, 1, 15); // Feb 15, 2026 (not a leap year)
+    const startDate = new Date(Date.UTC(2026, 1, 15)); // Feb 15, 2026 (not a leap year)
     const result = FinancialCalculator.proRateFirstMonth(280000, startDate);
     expect(result.daysInMonth).toBe(28);
     expect(result.daysCharged).toBe(14); // 28 - 15 + 1
@@ -151,7 +151,7 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
   it('rounds up fractional cents (ceiling)', () => {
     // rent = 100001 cents, start day 2 in a 31-day month → 30 days charged
     // 100001 * 30 / 31 = 96775.16... → ceil = 96776
-    const startDate = new Date(2026, 2, 2); // March 2
+    const startDate = new Date(Date.UTC(2026, 2, 2)); // March 2
     const result = FinancialCalculator.proRateFirstMonth(100001, startDate);
     expect(result.amount).toBe(Math.ceil((100001 * 30) / 31));
   });
@@ -170,8 +170,8 @@ function makeLeaseDoc(overrides: Record<string, any> = {}): any {
       rentDueDay: 1,
     },
     duration: {
-      startDate: new Date(2024, 2, 1), // March 1 — full month
-      endDate: new Date(2025, 1, 28),
+      startDate: new Date(Date.UTC(2024, 2, 1)), // March 1 — full month
+      endDate: new Date(Date.UTC(2025, 1, 28)),
     },
     petPolicy: {
       allowed: false,
@@ -195,7 +195,10 @@ describe('calculateFinancialSummary — first payment composition', () => {
   it('mid-month start includes pro-rated rent only (deposits invoiced separately)', () => {
     // June 15: daysCharged=16, ceil(200000 × 16/30) = 106667
     const lease = makeLeaseDoc({
-      duration: { startDate: new Date(2024, 5, 15), endDate: new Date(2025, 4, 31) },
+      duration: {
+        startDate: new Date(Date.UTC(2024, 5, 15)),
+        endDate: new Date(Date.UTC(2025, 4, 31)),
+      },
     });
     const summary = calculateFinancialSummary(lease);
     const expectedProRated = Math.ceil((200000 * 16) / 30); // 106667
@@ -280,7 +283,10 @@ describe('calculateFinancialSummary — first payment composition', () => {
   it('includes management fee in firstPaymentAmount (pro-rated on mid-month start)', () => {
     // June 15: daysCharged=16, ceil(200000 × 16/30)=106667, ceil(15000 × 16/30)=8000
     const lease = makeLeaseDoc({
-      duration: { startDate: new Date(2024, 5, 15), endDate: new Date(2025, 4, 31) },
+      duration: {
+        startDate: new Date(Date.UTC(2024, 5, 15)),
+        endDate: new Date(Date.UTC(2025, 4, 31)),
+      },
       includeManagementFee: true,
       propertyInfo: { fees: { managementFees: 15000 } },
     });

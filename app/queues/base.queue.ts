@@ -148,8 +148,15 @@ const shouldReportJobFailure = (fingerprint: string): boolean => {
     for (const [key, reportedAt] of jobFailureLastReportedAt) {
       if (now - reportedAt >= windowMs) jobFailureLastReportedAt.delete(key);
     }
-    if (jobFailureLastReportedAt.size >= MAX_THROTTLE_ENTRIES) jobFailureLastReportedAt.clear();
+    // Still full: forget only the oldest reports (a Map keeps insertion order), so the rest
+    // stay throttled instead of all reporting to Sentry again at once
+    for (const key of jobFailureLastReportedAt.keys()) {
+      if (jobFailureLastReportedAt.size < MAX_THROTTLE_ENTRIES) break;
+      jobFailureLastReportedAt.delete(key);
+    }
   }
+  // Re-insert so the order follows the latest report
+  jobFailureLastReportedAt.delete(fingerprint);
   jobFailureLastReportedAt.set(fingerprint, now);
   return true;
 };

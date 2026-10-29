@@ -1,11 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
 import { FinancialCalculator } from '@utils/financial';
 
-// Dates use new Date(year, month-1, day) (local time) to avoid UTC-parse timezone shifts.
+// Lease dates are stored as midnight UTC, so fixtures use Date.UTC(year, month-1, day).
 
 describe('FinancialCalculator.proRateFirstMonth', () => {
   it('returns full month when start day is 1', () => {
-    const result = FinancialCalculator.proRateFirstMonth(200000, new Date(2024, 2, 1));
+    const result = FinancialCalculator.proRateFirstMonth(200000, new Date(Date.UTC(2024, 2, 1)));
     expect(result).toMatchObject({
       amount: 200000,
       isFullMonth: true,
@@ -16,7 +16,7 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
 
   it('pro-rates mid-month in a 30-day month', () => {
     // June 15: daysCharged = 16; ceil(150000 × 16 / 30) = 80000
-    const result = FinancialCalculator.proRateFirstMonth(150000, new Date(2024, 5, 15));
+    const result = FinancialCalculator.proRateFirstMonth(150000, new Date(Date.UTC(2024, 5, 15)));
     expect(result).toMatchObject({
       amount: 80000,
       isFullMonth: false,
@@ -27,7 +27,7 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
 
   it('pro-rates mid-month in a 31-day month with ceiling rounding', () => {
     // March 15: daysCharged = 17; ceil(200000 × 17 / 31) = 109678
-    const result = FinancialCalculator.proRateFirstMonth(200000, new Date(2024, 2, 15));
+    const result = FinancialCalculator.proRateFirstMonth(200000, new Date(Date.UTC(2024, 2, 15)));
     expect(result).toMatchObject({
       amount: 109678,
       isFullMonth: false,
@@ -38,31 +38,45 @@ describe('FinancialCalculator.proRateFirstMonth', () => {
 
   it('charges 1 day when starting on the last day of the month', () => {
     // March 31: ceil(200000 × 1 / 31) = 6452
-    const result = FinancialCalculator.proRateFirstMonth(200000, new Date(2024, 2, 31));
+    const result = FinancialCalculator.proRateFirstMonth(200000, new Date(Date.UTC(2024, 2, 31)));
     expect(result).toMatchObject({ amount: 6452, daysCharged: 1 });
   });
 
   it('handles February (28 days, non-leap)', () => {
     // Feb 15: daysCharged = 14; ceil(120000 × 14 / 28) = 60000
-    const result = FinancialCalculator.proRateFirstMonth(120000, new Date(2023, 1, 15));
+    const result = FinancialCalculator.proRateFirstMonth(120000, new Date(Date.UTC(2023, 1, 15)));
     expect(result).toMatchObject({ amount: 60000, daysInMonth: 28, daysCharged: 14 });
   });
 
   it('handles February in a leap year (29 days)', () => {
-    const result = FinancialCalculator.proRateFirstMonth(180000, new Date(2024, 1, 1));
+    const result = FinancialCalculator.proRateFirstMonth(180000, new Date(Date.UTC(2024, 1, 1)));
     expect(result).toMatchObject({ isFullMonth: true, daysInMonth: 29 });
   });
 
   it('applies ceiling rounding: ceil(10000 × 1 / 30) = 334', () => {
-    const result = FinancialCalculator.proRateFirstMonth(10000, new Date(2024, 3, 30));
+    const result = FinancialCalculator.proRateFirstMonth(10000, new Date(Date.UTC(2024, 3, 30)));
     expect(result.amount).toBe(334);
+  });
+});
+
+describe('FinancialCalculator pro-ration with stored lease dates', () => {
+  // A date saved from "2026-01-01" is midnight UTC — the 31st of December on a server in a
+  // negative UTC offset, which read with local accessors charged 1 day instead of a full month.
+  it('reads the stored start date as the 1st, whatever the server timezone', () => {
+    const result = FinancialCalculator.proRateFirstMonth(200000, new Date('2026-01-01T00:00:00Z'));
+    expect(result).toMatchObject({ amount: 200000, isFullMonth: true, daysInMonth: 31 });
+  });
+
+  it('reads the stored end date as the last day of the month', () => {
+    const result = FinancialCalculator.proRateLastMonth(200000, new Date('2026-02-28T00:00:00Z'));
+    expect(result).toMatchObject({ amount: 200000, isFullMonth: true, daysInMonth: 28 });
   });
 });
 
 describe('FinancialCalculator.proRateLastMonth', () => {
   it('returns full month when end day is the last day of the month', () => {
     // March 31 — full month
-    const result = FinancialCalculator.proRateLastMonth(200000, new Date(2024, 2, 31));
+    const result = FinancialCalculator.proRateLastMonth(200000, new Date(Date.UTC(2024, 2, 31)));
     expect(result).toMatchObject({
       amount: 200000,
       isFullMonth: true,
@@ -73,7 +87,7 @@ describe('FinancialCalculator.proRateLastMonth', () => {
 
   it('pro-rates mid-month in a 30-day month', () => {
     // June 15: daysCharged=15; ceil(150000 × 15 / 30) = 75000
-    const result = FinancialCalculator.proRateLastMonth(150000, new Date(2024, 5, 15));
+    const result = FinancialCalculator.proRateLastMonth(150000, new Date(Date.UTC(2024, 5, 15)));
     expect(result).toMatchObject({
       amount: 75000,
       isFullMonth: false,
@@ -84,7 +98,7 @@ describe('FinancialCalculator.proRateLastMonth', () => {
 
   it('pro-rates mid-month in a 31-day month with ceiling rounding', () => {
     // March 15: daysCharged=15; ceil(200000 × 15 / 31) = 96775
-    const result = FinancialCalculator.proRateLastMonth(200000, new Date(2024, 2, 15));
+    const result = FinancialCalculator.proRateLastMonth(200000, new Date(Date.UTC(2024, 2, 15)));
     expect(result).toMatchObject({
       amount: 96775,
       isFullMonth: false,
@@ -95,37 +109,37 @@ describe('FinancialCalculator.proRateLastMonth', () => {
 
   it('charges 1 day when ending on the first day of the month', () => {
     // April 1: ceil(200000 × 1 / 30) = 6667
-    const result = FinancialCalculator.proRateLastMonth(200000, new Date(2024, 3, 1));
+    const result = FinancialCalculator.proRateLastMonth(200000, new Date(Date.UTC(2024, 3, 1)));
     expect(result).toMatchObject({ amount: 6667, daysCharged: 1, daysInMonth: 30 });
   });
 
   it('handles February (28 days, non-leap)', () => {
     // Feb 14: daysCharged=14; ceil(120000 × 14 / 28) = 60000
-    const result = FinancialCalculator.proRateLastMonth(120000, new Date(2023, 1, 14));
+    const result = FinancialCalculator.proRateLastMonth(120000, new Date(Date.UTC(2023, 1, 14)));
     expect(result).toMatchObject({ amount: 60000, daysInMonth: 28, daysCharged: 14 });
   });
 
   it('handles February in a leap year (29 days)', () => {
     // Feb 29 — full last month
-    const result = FinancialCalculator.proRateLastMonth(180000, new Date(2024, 1, 29));
+    const result = FinancialCalculator.proRateLastMonth(180000, new Date(Date.UTC(2024, 1, 29)));
     expect(result).toMatchObject({ isFullMonth: true, daysInMonth: 29, daysCharged: 29 });
   });
 
   it('returns dailyRate as ceil(rentAmount / daysInMonth)', () => {
     // June: ceil(150000 / 30) = 5000
-    const result = FinancialCalculator.proRateLastMonth(150000, new Date(2024, 5, 15));
+    const result = FinancialCalculator.proRateLastMonth(150000, new Date(Date.UTC(2024, 5, 15)));
     expect(result.dailyRate).toBe(5000);
   });
 
   it('dailyRate uses ceiling when not evenly divisible', () => {
     // March: ceil(200000 / 31) = 6452
-    const result = FinancialCalculator.proRateLastMonth(200000, new Date(2024, 2, 15));
+    const result = FinancialCalculator.proRateLastMonth(200000, new Date(Date.UTC(2024, 2, 15)));
     expect(result.dailyRate).toBe(6452);
   });
 
   it('mirrors FinancialCalculator.proRateFirstMonth symmetry: first-day start + last-day end = full month each', () => {
-    const first = FinancialCalculator.proRateFirstMonth(200000, new Date(2024, 2, 1));
-    const last = FinancialCalculator.proRateLastMonth(200000, new Date(2024, 2, 31));
+    const first = FinancialCalculator.proRateFirstMonth(200000, new Date(Date.UTC(2024, 2, 1)));
+    const last = FinancialCalculator.proRateLastMonth(200000, new Date(Date.UTC(2024, 2, 31)));
     expect(first.isFullMonth).toBe(true);
     expect(last.isFullMonth).toBe(true);
   });
@@ -134,7 +148,7 @@ describe('FinancialCalculator.proRateLastMonth', () => {
 describe('first payment composition (FinancialCalculator.proRateFirstMonth + deposits)', () => {
   it('full first payment = pro-rated rent + security deposit + pet fee + pet deposit', () => {
     // June 15: daysCharged=16, ceil(150000 × 16/30) = 80000
-    const proRated = FinancialCalculator.proRateFirstMonth(150000, new Date(2024, 5, 15));
+    const proRated = FinancialCalculator.proRateFirstMonth(150000, new Date(Date.UTC(2024, 5, 15)));
     const securityDeposit = 150000;
     const petMonthlyFee = 5000;
     const petDeposit = 25000;
@@ -143,7 +157,7 @@ describe('first payment composition (FinancialCalculator.proRateFirstMonth + dep
   });
 
   it('first payment with no pets = pro-rated rent + security deposit only', () => {
-    const proRated = FinancialCalculator.proRateFirstMonth(200000, new Date(2024, 2, 1)); // full month
+    const proRated = FinancialCalculator.proRateFirstMonth(200000, new Date(Date.UTC(2024, 2, 1))); // full month
     const firstPayment = proRated.amount + 200000;
     expect(firstPayment).toBe(400000);
   });

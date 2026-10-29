@@ -133,6 +133,27 @@ describe('BaseQueue permanent-failure hook', () => {
       throttle.restore();
     });
 
+    it('forgets only the oldest failures when the throttle is full', async () => {
+      const throttle = jest.replaceProperty(
+        envVariables.SERVER,
+        'SENTRY_JOB_FAILURE_THROTTLE_MS',
+        DAY_MS
+      );
+      // 500 distinct failures fill the throttle; a 501st pushes out only the oldest
+      for (let i = 0; i <= 500; i++) {
+        await handlers.failed(makeJob(3, 3), new Error(`full throttle failure ${i}`));
+      }
+      (Sentry.captureException as jest.Mock).mockClear();
+
+      await handlers.failed(makeJob(3, 3), new Error('full throttle failure 500'));
+      await handlers.failed(makeJob(3, 3), new Error('full throttle failure 2'));
+      expect(Sentry.captureException).not.toHaveBeenCalled();
+
+      await handlers.failed(makeJob(3, 3), new Error('full throttle failure 0'));
+      expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+      throttle.restore();
+    });
+
     it('still moves every permanent failure to the DLQ while throttled', async () => {
       const err = new Error('dlq while throttled');
 

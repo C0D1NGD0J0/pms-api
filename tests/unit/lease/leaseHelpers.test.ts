@@ -10,11 +10,13 @@ import {
   calculateRenewalMetadata,
   calculateNextPaymentDate,
   findActiveLeaseAgreement,
+  validateLeaseTermination,
   rejectRestrictedFields,
   buildManualSignatures,
   filterDocumentsByRole,
   validateAllowedFields,
   hasHighImpactChanges,
+  sanitizeUpdateData,
   findActiveLeasePDF,
   hasLeaseBeenSigned,
 } from '@services/lease/leaseHelpers';
@@ -171,6 +173,20 @@ describe('calculateRenewalMetadata — renewal form money in major units', () =>
     });
     expect(formData.tenant).toEqual({ fullname: 'Ada Lovelace' });
   });
+
+  it('uses the same 30-day default for the renewal window and the stored notice period', () => {
+    const lease: any = {
+      status: LeaseStatus.ACTIVE,
+      duration: { endDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000) },
+      renewalOptions: { autoRenew: false },
+    };
+
+    const metadata = calculateRenewalMetadata(lease, true)!;
+
+    expect(metadata.renewalWindowDays).toBe(30);
+    expect(metadata.renewalFormData!.renewalOptions.noticePeriodDays).toBe(30);
+    expect(metadata.isEligible).toBe(false); // 45 days out: window not open yet
+  });
 });
 
 describe('generatePendingChangesPreview — pet fees', () => {
@@ -322,5 +338,55 @@ describe('buildManualSignatures', () => {
     expect(signatures[1].userId?.toString()).toBe(managerId);
     expect(signatures[2].userId).toBeUndefined();
     expect(signatures[2].landlordInfo).toEqual({ name: 'Lou', email: 'lou@test.com' });
+  });
+});
+
+describe('validateLeaseTermination — reports every failing rule', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const daysFromNow = (days: number) => new Date(Date.now() + days * DAY_MS);
+
+  const lease = {
+    duration: { startDate: daysFromNow(-10), endDate: daysFromNow(355) },
+    renewalOptions: { noticePeriodDays: 30 },
+  } as any;
+
+  const termDateErrors = (terminationDate: Date): string[] => {
+    try {
+      validateLeaseTermination(lease, terminationDate);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ValidationRequestError);
+      return (error as ValidationRequestError).errorInfo?.terminationDate ?? [];
+    }
+    return [];
+  };
+
+  it('lists the past-date, notice and minimum-duration errors together', () => {
+    const errors = termDateErrors(daysFromNow(-5));
+
+    expect(errors).toHaveLength(3);
+    expect(errors[0]).toMatch(/cannot be in the past/);
+    expect(errors[1]).toMatch(/Minimum 30-day notice/);
+    expect(errors[2]).toMatch(/active for at least 30 days/);
+  });
+
+  it('passes a date that meets every rule', () => {
+    expect(termDateErrors(daysFromNow(60))).toEqual([]);
+  });
+});
+
+describe('sanitizeUpdateData', () => {
+  it("clears an empty unitId without changing the caller's object", () => {
+    const update: any = { property: { id: 'PROPERTY0001', unitId: '' }, fees: { rentAmount: 1 } };
+
+    const sanitized: any = sanitizeUpdateData(update);
+
+    expect(sanitized.property).toEqual({ id: 'PROPERTY0001', unitId: undefined });
+    expect(update.property.unitId).toBe('');
+  });
+
+  it('leaves nested objects for the caller to convert with createSafeMongoUpdate', () => {
+    const sanitized: any = sanitizeUpdateData({ fees: { rentAmount: 1 } } as any);
+
+    expect(sanitized).toEqual({ fees: { rentAmount: 1 } });
   });
 });

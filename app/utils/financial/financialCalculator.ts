@@ -119,14 +119,17 @@ export class FinancialCalculator {
 
   // ── Pro-ration ───────────────────────────────────────────────────────────────
 
-  /** ceil((rentAmount × daysCharged) / daysInMonth). Returns full month when startDay === 1. */
+  /**
+   * ceil((rentAmount × daysCharged) / daysInMonth). Returns full month when startDay === 1.
+   * Lease dates are stored as midnight UTC, so the calendar day is read in UTC.
+   */
   static proRateFirstMonth(
     rentAmountCents: number,
     startDate: Date
   ): { amount: number; daysCharged: number; daysInMonth: number; isFullMonth: boolean } {
     const start = new Date(startDate);
-    const daysInMonth = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-    const startDay = start.getDate();
+    const daysInMonth = FinancialCalculator.daysInUtcMonth(start);
+    const startDay = start.getUTCDate();
     const daysCharged = daysInMonth - startDay + 1;
 
     if (startDay === 1) {
@@ -141,7 +144,10 @@ export class FinancialCalculator {
     };
   }
 
-  /** ceil((rentAmount × daysCharged) / daysInMonth). Returns full month when endDay === daysInMonth. */
+  /**
+   * ceil((rentAmount × daysCharged) / daysInMonth). Returns full month when endDay === daysInMonth.
+   * Lease dates are stored as midnight UTC, so the calendar day is read in UTC.
+   */
   static proRateLastMonth(
     rentAmountCents: number,
     endDate: Date
@@ -153,8 +159,8 @@ export class FinancialCalculator {
     isFullMonth: boolean;
   } {
     const end = new Date(endDate);
-    const daysInMonth = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
-    const daysCharged = end.getDate();
+    const daysInMonth = FinancialCalculator.daysInUtcMonth(end);
+    const daysCharged = end.getUTCDate();
     const dailyRate = FinancialCalculator.proRateDays(rentAmountCents, 1, daysInMonth);
 
     if (daysCharged === daysInMonth) {
@@ -168,6 +174,10 @@ export class FinancialCalculator {
       dailyRate,
       isFullMonth: false,
     };
+  }
+
+  private static daysInUtcMonth(date: Date): number {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
   }
 
   private static proRateDays(

@@ -169,7 +169,7 @@ describe('ErrorLogArchive', () => {
     await archive.flush();
 
     expect(uploader.mock.calls[0][1]).toMatch(
-      /^error-logs\/production\/worker\/2026\/10\/27\/09-04-03-.+-\d+\.ndjson\.gz$/
+      /^error-logs\/production\/worker\/2026-10-27\/090403-[0-9a-f]{4}\.ndjson\.gz$/
     );
   });
 

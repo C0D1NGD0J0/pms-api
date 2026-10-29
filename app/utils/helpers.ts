@@ -23,9 +23,10 @@ import { ErrorLogArchive } from './errorLogArchive';
 
 let errorLogArchive: ErrorLogArchive | null = null;
 
-/** Shared S3 error-log archive, or null unless ERROR_LOG_ARCHIVE_ENABLED=true */
+/** Shared S3 error-log archive; production only, and only when ERROR_LOG_ARCHIVE_ENABLED=true */
 export function getErrorLogArchive(): ErrorLogArchive | null {
-  if (!envVariables.SERVER.ERROR_LOG_ARCHIVE_ENABLED) return null;
+  const { ENV, ERROR_LOG_ARCHIVE_ENABLED } = envVariables.SERVER;
+  if (ENV !== 'production' || !ERROR_LOG_ARCHIVE_ENABLED) return null;
   if (!errorLogArchive) {
     errorLogArchive = new ErrorLogArchive({
       flushIntervalMs: envVariables.SERVER.ERROR_LOG_ARCHIVE_FLUSH_MS,

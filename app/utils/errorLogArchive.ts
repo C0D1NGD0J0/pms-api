@@ -1,5 +1,5 @@
-import os from 'os';
 import zlib from 'zlib';
+import crypto from 'crypto';
 import bunyan from 'bunyan';
 
 import { redactPII } from './pii.utils';
@@ -160,9 +160,11 @@ export class ErrorLogArchive {
 
   buildKey(date: Date): string {
     const { environment, processType } = this.options;
-    const day = `${date.getUTCFullYear()}/${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())}`;
-    const time = `${pad(date.getUTCHours())}-${pad(date.getUTCMinutes())}-${pad(date.getUTCSeconds())}`;
-    return `error-logs/${environment}/${processType}/${day}/${time}-${os.hostname()}-${process.pid}.ndjson.gz`;
+    const day = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+    const time = `${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}${pad(date.getUTCSeconds())}`;
+    // Random suffix keeps keys unique across replicas uploading in the same second
+    const suffix = crypto.randomBytes(2).toString('hex');
+    return `error-logs/${environment}/${processType}/${day}/${time}-${suffix}.ndjson.gz`;
   }
 
   private add(record: Record<string, unknown>): void {

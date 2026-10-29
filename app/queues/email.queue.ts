@@ -1,4 +1,5 @@
 import { EmailWorker } from '@workers/index';
+import { envVariables } from '@shared/config';
 import { QUEUE_NAMES } from '@utils/constants';
 import { IEmailOptions } from '@interfaces/utils.interface';
 
@@ -12,7 +13,11 @@ export class EmailQueue extends BaseQueue {
   private readonly emailWorker: EmailWorker;
 
   constructor({ emailWorker }: IConstructor) {
-    super({ queueName: QUEUE_NAMES.EMAIL_QUEUE });
+    // Send at the provider's pace instead of bursting and burning retries on rate-limit errors
+    super({
+      queueName: QUEUE_NAMES.EMAIL_QUEUE,
+      limiter: { max: envVariables.EMAIL.MAX_PER_SECOND, duration: 1000 },
+    });
     this.emailWorker = emailWorker;
     // Single wildcard processor handles all email job types (accountActivationJob,
     // invitationJob, leaseEndingSoonJob, etc.). Jobs are still added with specific

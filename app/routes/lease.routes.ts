@@ -82,6 +82,21 @@ router.get(
   })
 );
 
+// Managers list tenant renewal requests awaiting a decision
+router.get(
+  '/:cuid/renewal-requests',
+  basicLimiter(),
+  requirePermission(PermissionResource.LEASE, PermissionAction.LIST),
+  requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER]),
+  validateRequest({
+    params: UtilsValidations.cuid,
+  }),
+  asyncWrapper(async (req: AppRequest, res) => {
+    const controller = req.container.resolve<OffboardingController>('offboardingController');
+    return controller.getPendingRenewalRequests(req, res);
+  })
+);
+
 // PM lists terminated leases with incomplete offboarding
 router.get(
   '/:cuid/active-offboardings',
@@ -231,11 +246,15 @@ router
 // Lifecycle Management Routes
 router.post(
   '/:cuid/:luid/activate',
-  // Activate lease (after all signatures complete, marks unit as occupied)
+  // Manually activate a lease signed outside e-signature (multipart: signedDocument PDF + fields)
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
+  requireActiveTenant(),
+  requireRole([ROLES.ADMIN, ROLES.SUPER_ADMIN, ROLES.MANAGER]),
   requireVerifiedClient,
   requireActiveSubscription,
+  diskUpload(['signedDocument']),
+  scanFile,
   idempotency,
   validateRequest({
     params: UtilsValidations.cuid.merge(UtilsValidations.luid),
@@ -312,13 +331,13 @@ router
 router
   .route('/:cuid/:luid/signature_request')
   .post(
-    // Send for e-signature OR mark as manually signed OR cancel signing
+    // Send for e-signature OR cancel signing (manual signing goes through /activate)
     basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
     requirePermission(PermissionResource.LEASE, PermissionAction.UPDATE),
     requireActiveTenant(),
     subscriptionEntitlements,
     requireActiveSubscription,
-    // No eSignature gate here: 'manual' and 'cancel' work on every plan.
+    // No eSignature gate here: 'cancel' works on every plan.
     // 'send' checks the plan in LeaseService.sendLeaseForSignature.
     idempotency,
     validateRequest({

@@ -1,8 +1,8 @@
 import { Schema, model } from 'mongoose';
 import { generateShortUID } from '@utils/index';
 import { UNIT_FLOOR_RANGE } from '@utils/constants';
+import { FinancialCalculator } from '@utils/financial';
 import { CURRENCIES } from '@interfaces/utils.interface';
-import { calcRentAdjustment } from '@utils/financial.utils';
 import {
   PropertyUnitStatusEnum,
   IPropertyUnitDocument,
@@ -278,7 +278,7 @@ PropertyUnitSchema.pre('save', function (this: IPropertyUnitDocument) {
 });
 
 PropertyUnitSchema.methods.calculateRentAdjustment = function (percentage: number) {
-  return calcRentAdjustment(this.fees.rentAmount, percentage);
+  return FinancialCalculator.rentAdjustment(this.fees.rentAmount, percentage);
 };
 
 PropertyUnitSchema.methods.applyRentAdjustment = async function (

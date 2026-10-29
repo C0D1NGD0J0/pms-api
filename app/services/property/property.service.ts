@@ -15,7 +15,6 @@ import { PermissionService } from '@services/permission/permission.service';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
-import { getPropertyLeasingBlock, PropertyLeasingBlock } from '@utils/propertyLeasing';
 import { getImportFieldsResponse, isKnownImportField } from '@services/csv/propertyImportFields';
 import {
   PropertyCsvProcessor,
@@ -28,6 +27,12 @@ import {
   NotificationTypeEnum,
   RecipientTypeEnum,
 } from '@interfaces/notification.interface';
+import {
+  shouldAutoVerifyOnCreate,
+  getPropertyLeasingBlock,
+  PropertyLeasingBlock,
+  AUTO_VERIFIED_NOTE,
+} from '@utils/propertyLeasing';
 import {
   ValidationRequestError,
   InvalidRequestError,
@@ -612,9 +617,12 @@ export class PropertyService implements ICronProvider {
           });
         }
 
-        // Every new property starts unverified, regardless of ownership type or uploaded
-        // documents — only an admin review (PropertyVerificationService) can verify it.
-        const verificationStatus = VerificationStatusEnum.UNVERIFIED;
+        // New properties wait for an ownership review (PropertyVerificationService), except
+        // company-owned ones added by someone who could verify them anyway.
+        const autoVerified = shouldAutoVerifyOnCreate(cleanPropertyData.owner?.type, userRoleEnum);
+        const verificationStatus = autoVerified
+          ? VerificationStatusEnum.VERIFIED
+          : VerificationStatusEnum.UNVERIFIED;
 
         const newPropertyData = {
           ...cleanPropertyData,
@@ -625,6 +633,16 @@ export class PropertyService implements ICronProvider {
           approvalStatus,
           approvalDetails,
           verificationStatus,
+          ...(autoVerified && {
+            verificationDetails: [
+              {
+                action: 'verified',
+                actor: new Types.ObjectId(currentuser.sub),
+                timestamp: new Date(),
+                notes: AUTO_VERIFIED_NOTE,
+              },
+            ],
+          }),
         } as Partial<IPropertyDocument>;
         const property = await this.propertyDAO.createProperty(newPropertyData, txSession);
 

@@ -1,4 +1,5 @@
 import { Schema, Types, model } from 'mongoose';
+import { FinancialCalculator } from '@utils/financial';
 import { MAX_ASSIGNED_STAFF, generateShortUID, createLogger } from '@utils/index';
 import { VerificationStatusEnum, IPropertyDocument } from '@interfaces/property.interface';
 import { isManagementAuthorizedFor, isVerifiedForLeasingFor } from '@utils/propertyLeasing';
@@ -566,43 +567,15 @@ PropertySchema.methods.getAuthorizationStatus = function (this: IPropertyDocumen
  * @example
  * const fees = property.calculateFees();
  * // {
- * //   monthly: { rental: 200000, management: 17000, tax: 15000, total: 232000 },
- * //   annual: { total: 2784000 },
+ * //   monthly: { rental: 200000, management: 17000, total: 217000 },
+ * //   annual: { total: 2604000 },
  * //   deposits: { security: 400000 },
  * //   analysis: { managementFeePercentage: "8.50" },
  * //   currency: "USD"
  * // }
  */
 PropertySchema.methods.calculateFees = function () {
-  // Monthly fees (in cents - stored values)
-  const rentAmount = this.fees?.rentAmount || 0;
-  const managementFees = this.fees?.managementFees || 0;
-  const totalMonthly = rentAmount + managementFees;
-
-  // Annual calculation
-  const totalAnnual = totalMonthly * 12;
-
-  // Management fee percentage (if rental amount exists)
-  const managementFeePercentage =
-    rentAmount > 0 ? ((managementFees / rentAmount) * 100).toFixed(2) : '0.00';
-
-  return {
-    monthly: {
-      rental: rentAmount, // cents
-      management: managementFees, // cents
-      total: totalMonthly, // cents
-    },
-    annual: {
-      total: totalAnnual, // cents
-    },
-    deposits: {
-      security: this.fees?.securityDeposit || 0, // cents
-    },
-    analysis: {
-      managementFeePercentage, // string (e.g., "8.50")
-    },
-    currency: this.fees?.currency || 'USD',
-  };
+  return FinancialCalculator.propertyFeeBreakdown(this.fees);
 };
 
 // hook to prevent duplicate properties

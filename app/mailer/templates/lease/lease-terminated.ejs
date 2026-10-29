@@ -14,8 +14,8 @@
         { label: "Lease Number", value: leaseNumber },
         { label: "Property", value: propertyAddress },
         ...(unitNumber ? [{ label: "Unit", value: unitNumber }] : []),
-        { label: "Termination Date", value: '<span style="color: #dc2626;">' + new Date(terminationDate).toLocaleDateString() + '</span>' },
-        ...(moveOutDate ? [{ label: "Move-Out Date", value: new Date(moveOutDate).toLocaleDateString() }] : []),
+        { label: "Termination Date", value: '<span style="color: #dc2626;">' + new Date(terminationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</span>' },
+        ...(moveOutDate ? [{ label: "Move-Out Date", value: new Date(moveOutDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) }] : []),
         { label: "Reason", value: terminationReason }
       ], variant: 'amber' }) %>
     </td>
@@ -31,7 +31,7 @@
     <td class="content">
       <h3>Move-Out Checklist</h3>
       <ul>
-        <li><strong>Vacate by:</strong> <%= moveOutDate ? new Date(moveOutDate).toLocaleDateString() : new Date(terminationDate).toLocaleDateString() %></li>
+        <li><strong>Vacate by:</strong> <%= moveOutDate ? new Date(moveOutDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : new Date(terminationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %></li>
         <li><strong>Property Condition:</strong> Return the property in the same condition as move-in, excluding normal wear and tear</li>
         <li><strong>Final Inspection:</strong> Schedule a walk-through with your property manager before your move-out date</li>
         <li><strong>Keys &amp; Access:</strong> Return all keys, access cards, and remotes</li>

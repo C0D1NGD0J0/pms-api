@@ -8,15 +8,8 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import type { PdfJobData } from '@interfaces/pdfGenerator.interface';
-import { computeLeaseMonthlyFees, proRateLastMonth, proRateAmount } from '@utils/financial.utils';
-import {
-  PROPERTY_LEASING_BLOCK_MESSAGE_KEYS,
-  getPropertyLeasingBlock,
-  LeasingCheckFields,
-} from '@utils/propertyLeasing';
-export { proRateAmount as calculateProRatedAmount } from '@utils/financial.utils';
-export { computeLeaseMonthlyFees } from '@utils/financial.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
+import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import { PaymentRecordStatus, IPaymentDocument } from '@interfaces/payments.interface';
 import { PropertyUnitDAO, PropertyDAO, ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import {
@@ -32,10 +25,18 @@ import {
   ForbiddenError,
 } from '@shared/customErrors';
 import {
+  PROPERTY_LEASING_BLOCK_MESSAGE_KEYS,
+  getPropertyLeasingBlock,
+  LeasingCheckFields,
+} from '@utils/propertyLeasing';
+import {
   LeaseTerminationReasonCode,
   ILeaseESignatureStatusEnum,
+  LeaseDocumentType,
+  ILeaseSignature,
   ILeaseDocument,
   ILeaseFormData,
+  IManualSigner,
   LeaseStatus,
 } from '@interfaces/lease.interface';
 import {
@@ -177,6 +178,9 @@ export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => 
  * Validate lease termination date with comprehensive business rules.
  * Exemptions are keyed on the structured reasonCode, never the free-text reason.
  */
+// Matches the lease model default; also the renewal window and the termination notice period
+const DEFAULT_NOTICE_PERIOD_DAYS = 30;
+
 export const validateLeaseTermination = (
   lease: ILeaseDocument,
   terminationDate: Date,
@@ -184,6 +188,10 @@ export const validateLeaseTermination = (
 ): { warnings: string[] } => {
   const errors: Record<string, string[]> = {};
   const warnings: string[] = [];
+  // Every failing rule is reported, not just the last one
+  const addTerminationDateError = (message: string) => {
+    errors.terminationDate = [...(errors.terminationDate ?? []), message];
+  };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -198,34 +206,34 @@ export const validateLeaseTermination = (
 
   // Rule 1: No past dates
   if (termDate < today) {
-    errors.terminationDate = [
-      'Termination date cannot be in the past. Please select today or a future date.',
-    ];
+    addTerminationDateError(
+      'Termination date cannot be in the past. Please select today or a future date.'
+    );
   }
 
   // Rule 2: Must be within lease timeline
   if (termDate < leaseStartDate) {
-    errors.terminationDate = ['Termination date cannot be before lease start date'];
+    addTerminationDateError('Termination date cannot be before lease start date');
   }
 
   if (termDate > leaseEndDate) {
-    errors.terminationDate = [
-      'Termination date cannot be after lease end date. The lease will expire naturally on that date.',
-    ];
+    addTerminationDateError(
+      'Termination date cannot be after lease end date. The lease will expire naturally on that date.'
+    );
   }
 
   // Rule 3: notice period, waived for every specific reason except 'other'
   const requiresNotice = !reasonCode || reasonCode === LeaseTerminationReasonCode.OTHER;
-  const noticePeriodDays = lease.renewalOptions?.noticePeriodDays || 30;
+  const noticePeriodDays = lease.renewalOptions?.noticePeriodDays || DEFAULT_NOTICE_PERIOD_DAYS;
 
   if (requiresNotice) {
     const minimumTerminationDate = new Date(today);
     minimumTerminationDate.setDate(today.getDate() + noticePeriodDays);
 
     if (termDate < minimumTerminationDate) {
-      errors.terminationDate = [
-        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString()}`,
-      ];
+      addTerminationDateError(
+        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString()}`
+      );
     }
   }
 
@@ -235,9 +243,9 @@ export const validateLeaseTermination = (
   );
 
   if (daysSinceStart < 30 && reasonCode !== LeaseTerminationReasonCode.LEASE_VIOLATION) {
-    errors.terminationDate = [
-      `Lease must be active for at least 30 days before termination (currently ${daysSinceStart} days). Exception: lease violations.`,
-    ];
+    addTerminationDateError(
+      `Lease must be active for at least 30 days before termination (currently ${daysSinceStart} days). Exception: lease violations.`
+    );
   }
 
   // Warning: Month-end alignment (not blocking)
@@ -718,12 +726,13 @@ export const sanitizeUpdateData = (
 ): Partial<ILeaseFormData> => {
   const sanitized = { ...updateData };
 
-  // Handle property.unitId - convert empty string to undefined to explicitly unset it
+  // Handle property.unitId - convert empty string to undefined to explicitly unset it.
+  // Copies property so the caller's object isn't changed; callers apply createSafeMongoUpdate.
   if (sanitized.property?.unitId === '' || sanitized.property?.unitId === null) {
-    sanitized.property.unitId = undefined;
+    sanitized.property = { ...sanitized.property, unitId: undefined };
   }
 
-  return createSafeMongoUpdate(sanitized);
+  return sanitized;
 };
 
 /**
@@ -907,14 +916,14 @@ export const calculateFinancialSummary = (
   payments: IPaymentDocument[] = []
 ): any => {
   const { baseRent, managementFee, petMonthlyFee, petDeposit, securityDeposit, totalMonthlyRent } =
-    computeLeaseMonthlyFees(lease);
+    FinancialCalculator.leaseMonthlyFees(lease);
   const currency = lease.fees.currency || 'USD';
   const startDate = new Date(lease.duration.startDate);
 
   // Pro-rate only the base rent; pet fee and management fee are added as flat/separate items below.
-  const proRated = proRateAmount(baseRent, startDate);
+  const proRated = FinancialCalculator.proRateFirstMonth(baseRent, startDate);
   const proRatedManagementFee =
-    managementFee > 0 ? proRateAmount(managementFee, startDate).amount : 0;
+    managementFee > 0 ? FinancialCalculator.proRateFirstMonth(managementFee, startDate).amount : 0;
 
   // First payment = pro-rated base rent + pro-rated management fee (if opted in)
   //               + pet monthly fee (flat, first month)
@@ -923,22 +932,24 @@ export const calculateFinancialSummary = (
   const depositTotal = securityDeposit + petDeposit;
 
   const endDate = new Date(lease.duration.endDate);
-  const lastMonthProRated = proRateLastMonth(baseRent, endDate);
+  const lastMonthProRated = FinancialCalculator.proRateLastMonth(baseRent, endDate);
 
   const startMonth = startDate.toLocaleString('en-US', { month: 'short' });
 
   return {
-    rentAmount: MoneyUtils.formatCurrency(totalMonthlyRent, currency),
+    rentAmount: FinancialCalculator.formatCurrency(totalMonthlyRent, currency),
     rentAmountRaw: totalMonthlyRent,
     baseRentRaw: baseRent,
-    petFee: petMonthlyFee > 0 ? MoneyUtils.formatCurrency(petMonthlyFee, currency) : undefined,
+    petFee:
+      petMonthlyFee > 0 ? FinancialCalculator.formatCurrency(petMonthlyFee, currency) : undefined,
     petFeeRaw: petMonthlyFee,
-    petDeposit: petDeposit > 0 ? MoneyUtils.formatCurrency(petDeposit, currency) : undefined,
+    petDeposit:
+      petDeposit > 0 ? FinancialCalculator.formatCurrency(petDeposit, currency) : undefined,
     petDepositRaw: petDeposit,
     managementFee:
-      managementFee > 0 ? MoneyUtils.formatCurrency(managementFee, currency) : undefined,
+      managementFee > 0 ? FinancialCalculator.formatCurrency(managementFee, currency) : undefined,
     managementFeeRaw: managementFee,
-    securityDeposit: MoneyUtils.formatCurrency(securityDeposit, currency),
+    securityDeposit: FinancialCalculator.formatCurrency(securityDeposit, currency),
     securityDepositRaw: securityDeposit,
     currency,
     rentDueDay: lease.fees.rentDueDay,
@@ -969,21 +980,24 @@ export const calculateFinancialSummary = (
     ),
     // First-payment breakdown (pro-rated base rent at move-in — pet fee and management fee separate)
     proRatedFirstMonthAmount: proRated.amount,
-    proRatedFirstMonthFormatted: MoneyUtils.formatCurrency(proRated.amount, currency),
+    proRatedFirstMonthFormatted: FinancialCalculator.formatCurrency(proRated.amount, currency),
     proRatedManagementFeeAmount: proRatedManagementFee,
     proRatedDays: proRated.daysCharged,
     proRatedDaysInMonth: proRated.daysInMonth,
     isFirstMonthFullMonth: proRated.isFullMonth,
     firstPaymentAmount: firstPaymentCents,
-    firstPaymentAmountFormatted: MoneyUtils.formatCurrency(firstPaymentCents, currency),
+    firstPaymentAmountFormatted: FinancialCalculator.formatCurrency(firstPaymentCents, currency),
     depositAmount: depositTotal,
     depositAmountFormatted:
-      depositTotal > 0 ? MoneyUtils.formatCurrency(depositTotal, currency) : undefined,
+      depositTotal > 0 ? FinancialCalculator.formatCurrency(depositTotal, currency) : undefined,
     firstPaymentDate: startDate,
     firstPaymentMonth: startMonth,
     // Last-month breakdown (pro-rated base rent based on lease end date)
     proRatedLastMonthAmount: lastMonthProRated.amount,
-    proRatedLastMonthFormatted: MoneyUtils.formatCurrency(lastMonthProRated.amount, currency),
+    proRatedLastMonthFormatted: FinancialCalculator.formatCurrency(
+      lastMonthProRated.amount,
+      currency
+    ),
     proRatedLastMonthDays: lastMonthProRated.daysCharged,
     proRatedLastMonthDaysInMonth: lastMonthProRated.daysInMonth,
     proRatedLastMonthDailyRate: lastMonthProRated.dailyRate,
@@ -1033,8 +1047,6 @@ export const calculateNextPaymentDate = (
   if (effectiveEnd && nextPayment.isAfter(effectiveEnd)) return null;
   return nextPayment.toDate();
 };
-
-export type { LeaseMonthlyFees } from '@utils/financial.utils';
 
 /**
  * Get user permissions for a lease based on role
@@ -1092,12 +1104,24 @@ export const buildLeaseTimeline = (lease: ILeaseDocument): any => {
   };
 };
 
+const FULL_DOCUMENT_HISTORY_ROLES = [
+  IUserRole.SUPER_ADMIN,
+  IUserRole.ROOT_ADMIN,
+  IUserRole.ADMIN,
+  IUserRole.MANAGER,
+  IUserRole.STAFF,
+];
+
+/**
+ * Staff see every document version; everyone else (tenants) only the current, non-internal
+ * ones — the agreement, the signed copy and supporting documents.
+ */
 export const filterDocumentsByRole = (documents: any[], role: IUserRole): any[] => {
-  if (role === IUserRole.ADMIN || role === IUserRole.MANAGER || role === IUserRole.STAFF) {
+  if (FULL_DOCUMENT_HISTORY_ROLES.includes(role)) {
     return documents;
   }
 
-  return documents.filter((doc) => !doc.isInternal);
+  return documents.filter((doc) => !doc.isInternal && doc.status === 'active');
 };
 
 export const constructActivityFeed = (lease: ILeaseDocument): any[] => {
@@ -1202,10 +1226,10 @@ const petPolicyInMajorUnits = (petPolicy: ILeaseDocument['petPolicy']): Record<s
   return {
     ...plainPetPolicy,
     ...(plainPetPolicy.deposit != null && {
-      deposit: MoneyUtils.fromCents(plainPetPolicy.deposit),
+      deposit: FinancialCalculator.fromCents(plainPetPolicy.deposit),
     }),
     ...(plainPetPolicy.monthlyFee != null && {
-      monthlyFee: MoneyUtils.fromCents(plainPetPolicy.monthlyFee),
+      monthlyFee: FinancialCalculator.fromCents(plainPetPolicy.monthlyFee),
     }),
   };
 };
@@ -1229,7 +1253,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
 
   const daysUntilExpiry = calcDaysRemaining(endDate, today);
 
-  const renewalWindowDays = lease.renewalOptions?.noticePeriodDays || 60;
+  const renewalWindowDays = lease.renewalOptions?.noticePeriodDays || DEFAULT_NOTICE_PERIOD_DAYS;
   const isWithinWindow = daysUntilExpiry <= renewalWindowDays && daysUntilExpiry > 0;
 
   // Calculate renewal dates - start 1 day after current lease end
@@ -1258,12 +1282,12 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     },
     // Money fields are major units (e.g. dollars) — the renewal endpoint converts them back to cents
     fees: {
-      rentAmount: MoneyUtils.fromCents(lease.fees?.rentAmount || 0),
+      rentAmount: FinancialCalculator.fromCents(lease.fees?.rentAmount || 0),
       currency: lease.fees?.currency || 'USD',
       rentDueDay: lease.fees?.rentDueDay || 1,
-      securityDeposit: MoneyUtils.fromCents(lease.fees?.securityDeposit || 0),
-      lateFeeAmount: MoneyUtils.fromCents(lease.fees?.lateFeeAmount || 0),
-      lateFeeDays: lease.fees?.lateFeeDays || 5,
+      securityDeposit: FinancialCalculator.fromCents(lease.fees?.securityDeposit || 0),
+      lateFeeAmount: FinancialCalculator.fromCents(lease.fees?.lateFeeAmount || 0),
+      lateFeeDays: lease.fees?.lateFeeDays || DEFAULT_LATE_FEE_GRACE_DAYS,
       lateFeeType: lease.fees?.lateFeeType || 'fixed',
       lateFeePercentage: lease.fees?.lateFeePercentage,
       acceptedPaymentMethod: Array.isArray(lease.fees?.acceptedPaymentMethod)
@@ -1275,7 +1299,7 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
     renewalOptions: {
       autoRenew: lease.renewalOptions?.autoRenew || false,
       renewalTermMonths: lease.renewalOptions?.renewalTermMonths || 12,
-      noticePeriodDays: lease.renewalOptions?.noticePeriodDays || 30,
+      noticePeriodDays: lease.renewalOptions?.noticePeriodDays || DEFAULT_NOTICE_PERIOD_DAYS,
       autoApproveRenewal: lease.renewalOptions?.autoApproveRenewal ?? false,
       daysBeforeExpiryToGenerateRenewal: lease.renewalOptions?.daysBeforeExpiryToGenerateRenewal,
       daysBeforeExpiryToAutoSendSignature:
@@ -1313,13 +1337,71 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
   };
 }
 
+const findActiveLeaseDocument = (lease: ILeaseDocument, documentType: LeaseDocumentType) =>
+  lease.leaseDocuments?.find((doc) => doc.documentType === documentType && doc.status === 'active');
+
 /**
- * Returns the active lease agreement PDF document item, if one exists.
+ * Returns the active (unsigned) lease agreement PDF — the document sent out for e-signature.
+ */
+export const findActiveLeaseAgreement = (lease: ILeaseDocument) =>
+  findActiveLeaseDocument(lease, 'lease_agreement');
+
+/**
+ * Returns the lease's contract PDF: the executed copy once one is stored, else the agreement.
  */
 export const findActiveLeasePDF = (lease: ILeaseDocument) =>
-  lease.leaseDocuments?.find(
-    (doc) => doc.documentType === 'lease_agreement' && doc.status === 'active'
-  );
+  findActiveLeaseDocument(lease, 'signed_lease') || findActiveLeaseAgreement(lease);
+
+/** A populated ref (document) or a raw ObjectId/string, as a string id */
+export const getRefIdString = (ref: unknown): string => {
+  const maybeDoc = ref as { _id?: unknown } | null;
+  return String(maybeDoc && typeof maybeDoc === 'object' && maybeDoc._id ? maybeDoc._id : ref);
+};
+
+export const buildSignedLeaseFilename = (leaseNumber: string, suffix: string) =>
+  `signed_${leaseNumber}_${suffix}.pdf`;
+
+/**
+ * Lease signatures for signers recorded by hand. Only the tenant and the recording manager
+ * have accounts on the lease; co-tenants and external landlords are identified by name/email.
+ * A tenant signature is added when none is listed — an active lease requires one.
+ */
+export const buildManualSignatures = (
+  lease: Pick<ILeaseDocument, 'tenantId'>,
+  signedBy: IManualSigner[],
+  recordedByUserId: string,
+  signedAt: Date
+): ILeaseSignature[] => {
+  const tenantUserId = new Types.ObjectId(getRefIdString(lease.tenantId));
+  const resolveUserId = (role: string): Types.ObjectId | undefined => {
+    if (role === 'tenant') return tenantUserId;
+    if (role === 'property_manager') return new Types.ObjectId(recordedByUserId);
+    return undefined;
+  };
+
+  const signatures: ILeaseSignature[] = signedBy.map((signer) => {
+    const signerInfo = { name: signer.name, email: signer.email };
+    return {
+      signatureMethod: 'manual',
+      userId: resolveUserId(signer.role),
+      role: signer.role,
+      signedAt,
+      signerInfo,
+      coTenantInfo: signer.role === 'co_tenant' ? signerInfo : undefined,
+      landlordInfo: signer.role === 'landlord' ? signerInfo : undefined,
+    } as ILeaseSignature;
+  });
+
+  if (!signedBy.some((signer) => signer.role === 'tenant')) {
+    signatures.unshift({
+      signatureMethod: 'manual',
+      userId: tenantUserId,
+      role: 'tenant',
+      signedAt,
+    } as ILeaseSignature);
+  }
+  return signatures;
+};
 
 // Statuses a lease can only reach after its contract was executed (the model requires
 // signedDate + signatures for ACTIVE, and the others are only entered from ACTIVE).

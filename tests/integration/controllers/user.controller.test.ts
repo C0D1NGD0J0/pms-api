@@ -11,8 +11,17 @@ import { setupAllExternalMocks } from '@tests/setup/externalMocks';
 import { ProfileService } from '@services/profile/profile.service';
 import { PermissionService } from '@services/permission/permission.service';
 import { beforeEach, beforeAll, describe, expect, it } from '@jest/globals';
-import { PropertyUnit, Property, Profile, Client, Vendor, User } from '@models/index';
 import {
+  PaymentProcessor,
+  PropertyUnit,
+  Property,
+  Profile,
+  Client,
+  Vendor,
+  User,
+} from '@models/index';
+import {
+  PaymentProcessorDAO,
   PropertyUnitDAO,
   PropertyDAO,
   ProfileDAO,
@@ -39,6 +48,7 @@ describe('UserController Integration Tests', () => {
   let tenantUser: any;
 
   let resetContextOverrides: ReturnType<typeof createControllerTestApp>['resetContextOverrides'];
+  let setContextUser: ReturnType<typeof createControllerTestApp>['setContextUser'];
 
   // Route path constants
   const FILTERED_USERS_PATH = '/api/v1/users/:cuid/users';
@@ -166,7 +176,7 @@ describe('UserController Integration Tests', () => {
         invalidateUserDetail: jest.fn().mockResolvedValue(undefined),
         invalidateUserLists: jest.fn().mockResolvedValue(undefined),
       } as any,
-      paymentProcessorDAO: {} as any,
+      paymentProcessorDAO: new PaymentProcessorDAO({ paymentProcessorModel: PaymentProcessor }),
       subscriptionDAO: {} as any,
       leaseDAO: {
         list: jest.fn().mockResolvedValue({ items: [], pagination: { total: 0 } }),
@@ -324,6 +334,7 @@ describe('UserController Integration Tests', () => {
 
     app = testApp.app;
     resetContextOverrides = testApp.resetContextOverrides;
+    setContextUser = testApp.setContextUser;
   });
 
   beforeEach(async () => {
@@ -446,6 +457,43 @@ describe('UserController Integration Tests', () => {
         .expect(httpStatusCodes.OK);
 
       expect(response.body.success).toBe(true);
+    });
+
+    describe('location lock once a payment processor is set up', () => {
+      beforeEach(async () => {
+        await PaymentProcessor.create({
+          cuid: testClient.cuid,
+          client: testClient._id,
+          accountId: 'acct_location_lock',
+        });
+      });
+
+      it("blocks a change to the account owner's location", async () => {
+        await Client.updateOne({ _id: testClient._id }, { accountAdmin: adminUser._id });
+
+        const response = await request(app)
+          .patch(`/api/v1/users/${testClient.cuid}/profile`)
+          .send({ personalInfo: { location: 'Casablanca, Morocco' } })
+          .expect(httpStatusCodes.BAD_REQUEST);
+
+        expect(response.body.success).toBe(false);
+      });
+
+      it.each([
+        ['tenant', () => tenantUser, 'Casablanca, Morocco'],
+        ['staff member', () => staffUser, 'Toronto, Canada'],
+      ])('lets a %s change their own location', async (_label, getUser, location) => {
+        const user = getUser();
+        setContextUser(UPDATE_PROFILE_PATH, user, 'patch');
+
+        await request(app)
+          .patch(`/api/v1/users/${testClient.cuid}/profile`)
+          .send({ personalInfo: { location } })
+          .expect(httpStatusCodes.OK);
+
+        const profile = await Profile.findOne({ user: user._id }).lean();
+        expect(profile?.personalInfo?.location).toBe(location);
+      });
     });
   });
 

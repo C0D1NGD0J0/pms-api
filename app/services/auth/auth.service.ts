@@ -1031,7 +1031,7 @@ export class AuthService {
     userId: string,
     cuid: string,
     body: {
-      policies: {
+      policies?: {
         tos: { accepted: true };
         privacy: { accepted: true };
         marketing: { accepted: boolean };
@@ -1048,20 +1048,27 @@ export class AuthService {
     }
 
     const now = new Date();
-    const updateFields: Record<string, any> = {
-      'policies.tos.accepted': true,
-      'policies.tos.acceptedOn': now,
-      'policies.privacy.accepted': true,
-      'policies.privacy.acceptedOn': now,
-      'policies.marketing.accepted': body.policies.marketing.accepted,
-      'policies.marketing.acceptedOn': body.policies.marketing.accepted ? now : null,
-    };
+    const updateFields: Record<string, any> = {};
+
+    // Invited users consented while accepting; only re-stamp when consent is given here
+    if (body.policies) {
+      Object.assign(updateFields, {
+        'policies.tos.accepted': true,
+        'policies.tos.acceptedOn': now,
+        'policies.privacy.accepted': true,
+        'policies.privacy.acceptedOn': now,
+        'policies.marketing.accepted': body.policies.marketing.accepted,
+        'policies.marketing.acceptedOn': body.policies.marketing.accepted ? now : null,
+      });
+    }
 
     if (body.lang) updateFields['settings.lang'] = body.lang;
     if (body.timeZone) updateFields['settings.timeZone'] = body.timeZone;
     if (body.location) updateFields['personalInfo.location'] = body.location;
 
-    await this.profileDAO.updateById(profile._id.toString(), { $set: updateFields });
+    if (Object.keys(updateFields).length > 0) {
+      await this.profileDAO.updateById(profile._id.toString(), { $set: updateFields });
+    }
 
     const user = await this.userDAO.getUserById(userId);
     if (body.newPassword) {
@@ -1071,13 +1078,15 @@ export class AuthService {
       }
     }
 
-    await this.userDAO.updateById(userId, {
-      $set: {
-        'consent.acceptedOn': now,
-        'consent.acceptedBy':
-          `${profile.personalInfo?.firstName ?? ''} ${profile.personalInfo?.lastName ?? ''}`.trim(),
-      },
-    });
+    if (body.policies) {
+      await this.userDAO.updateById(userId, {
+        $set: {
+          'consent.acceptedOn': now,
+          'consent.acceptedBy':
+            `${profile.personalInfo?.firstName ?? ''} ${profile.personalInfo?.lastName ?? ''}`.trim(),
+        },
+      });
+    }
 
     await this.userDAO.clearOnboardingFlag(userId, cuid);
     await this.authCache.invalidateCurrentUser(userId, cuid).catch((err) => {

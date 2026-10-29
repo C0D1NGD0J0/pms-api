@@ -7,7 +7,9 @@ import { BaseCSVProcessorService } from '@services/csv/base';
 import { ROLE_VALIDATION } from '@shared/constants/roles.constants';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 
+import { invalidDateMessage, typeErrors } from '../zodConfig';
 import {
+  partialWithoutDefaults,
   emptyToUndefined,
   shortUidString,
   objectIdString,
@@ -195,14 +197,7 @@ const PropertyMediaDocumentSchema = z.object({
   status: z.enum(['active', 'inactive', 'deleted', 'pending', 'processing']).default('active'),
   externalUrl: optionalBlank(z.string().url('Invalid external URL format')),
   uploadedAt: z.coerce
-    .date({
-      errorMap: (issue, { defaultError }) => ({
-        message:
-          issue.code === z.ZodIssueCode.invalid_date
-            ? 'Invalid date format for uploaded date'
-            : defaultError,
-      }),
-    })
+    .date({ error: invalidDateMessage('Invalid date format for uploaded date') })
     .default(() => new Date()),
   uploadedBy: z.string().optional(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
@@ -216,14 +211,7 @@ const PropertyImageSchema = z.object({
   filename: z.string().optional(),
   key: z.string().optional(),
   uploadedAt: z.coerce
-    .date({
-      errorMap: (issue, { defaultError }) => ({
-        message:
-          issue.code === z.ZodIssueCode.invalid_date
-            ? 'Invalid date format for uploaded date'
-            : defaultError,
-      }),
-    })
+    .date({ error: invalidDateMessage('Invalid date format for uploaded date') })
     .default(() => new Date()),
   uploadedBy: z.string().optional(),
   description: z.string().max(150, 'Description must be at most 150 characters').optional(),
@@ -355,7 +343,7 @@ export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefi
 
 // assignedStaff changes after creation go through the assign/unassign endpoints,
 // which verify each user belongs to the client.
-export const UpdatePropertySchema = CreatePropertySchema.partial()
+export const UpdatePropertySchema = partialWithoutDefaults(CreatePropertySchema)
   .omit({ cuid: true, assignedStaff: true })
   .extend({
     id: z.string().optional(),
@@ -414,10 +402,7 @@ export const PropertyClientRelationshipSchema = PropertyClientRelationship.super
         message: 'Property not found for the given client ID.',
         path: ['propertyId'],
       });
-      return false;
     }
-
-    return true;
   }
 );
 
@@ -441,7 +426,9 @@ const PropertyCsvSchemaBase = z.object({
   status: PropertyStatusEnum.optional().default('available'),
   occupancyStatus: OccupancyStatusEnum,
   maxAllowedUnits: z.coerce
-    .number({ invalid_type_error: 'Number of units is required and must be a number' })
+    .number({
+      error: typeErrors({ invalidType: 'Number of units is required and must be a number' }),
+    })
     .int()
     .min(1, 'Number of units must be at least 1')
     .max(500),
@@ -460,7 +447,7 @@ const PropertyCsvSchemaBase = z.object({
 
   // Specifications
   specifications_totalArea: z.coerce
-    .number({ invalid_type_error: 'Total area is required and must be a number' })
+    .number({ error: typeErrors({ invalidType: 'Total area is required and must be a number' }) })
     .positive('Total area must be a positive number'),
   specifications_bedrooms: z.coerce
     .number()
@@ -672,15 +659,13 @@ export const AddressValidationSchema = z.object({
 export const GetAssignableUsersSchema = z.object({
   role: z
     .enum([...ROLE_VALIDATION.EMPLOYEE_ROLES, 'all'] as [string, ...string[]], {
-      errorMap: () => ({ message: 'Role must be admin, staff, manager, or all' }),
+      error: 'Role must be admin, staff, manager, or all',
     })
     .optional(),
   department: z
     .enum(['maintenance', 'operations', 'accounting', 'management', 'other', 'security'], {
-      errorMap: () => ({
-        message:
-          'Department must be maintenance, operations, accounting, management, other, or security',
-      }),
+      error:
+        'Department must be maintenance, operations, accounting, management, other, or security',
     })
     .optional(),
   search: z.string().max(100, 'Search term must be less than 100 characters').optional(),

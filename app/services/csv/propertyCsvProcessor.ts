@@ -143,7 +143,7 @@ export class PropertyCsvProcessor {
         errors: [],
       };
     } else {
-      const formattedErrors = validationResult.error.errors.map((err) => ({
+      const formattedErrors = validationResult.error.issues.map((err) => ({
         field: err.path.join('.'),
         error: err.message,
       }));

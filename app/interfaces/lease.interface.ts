@@ -57,6 +57,7 @@ export interface ILease {
   generateFirstPaymentOnActivation?: boolean;
   previousLeaseId?: Types.ObjectId | string;
   approvalDetails?: ILeaseApprovalEntry[];
+  activatedBy?: Types.ObjectId | string;
   signingMethod: SigningMethod | string;
   leaseDocuments?: ILeaseDocumentItem[];
   approvalStatus?: LeaseApprovalStatus;
@@ -85,6 +86,7 @@ export interface ILease {
   petPolicy?: IPetPolicy;
   leaseNumber: string;
   status: LeaseStatus;
+  activatedAt?: Date;
   signedDate?: Date;
   fees: ILeaseFees;
   deletedAt?: Date;
@@ -494,6 +496,34 @@ export interface IRentRollItem {
   luid: string;
 }
 
+/** Dashboard row for a tenant renewal request awaiting a manager decision */
+export interface IPendingRenewalRequestItem {
+  property: { pid?: string; name?: string; address?: string; unitNumber?: string; puid?: string };
+  tenant: { uid?: string; email?: string; fullName: string };
+  requestedTermMonths?: number;
+  currentEndDate: Date;
+  leaseNumber: string;
+  submittedAt: Date;
+  holdUntil?: Date;
+  message?: string;
+  luid: string;
+}
+
+/** Embedded subdocument on the Lease model -- tenant requests lease renewal */
+export interface IRenewalRequest {
+  decision?: {
+    // 'system' when the expiry cron auto-rejects an unreviewed request
+    decidedBy: Types.ObjectId | 'system';
+    decidedAt: Date;
+    rejectionReason?: string;
+  };
+  status: 'pending' | 'approved' | 'rejected';
+  requestedTermMonths?: number;
+  submittedAt: Date;
+  message?: string;
+  holdUntil?: Date;
+}
+
 export interface IRentRollReport {
   summary: {
     totalLeases: number;
@@ -590,8 +620,8 @@ export interface LeaseESignatureSentPayload {
 
 export interface ILeaseDocumentItem {
   status: 'active' | 'inactive' | 'failed' | 'deleted';
-  documentType?: 'lease_agreement' | 'other';
   uploadedBy: Types.ObjectId | string;
+  documentType?: LeaseDocumentType;
   mimeType?: string;
   uploadedAt?: Date;
   filename: string;
@@ -638,20 +668,6 @@ export interface IOffboardingStatus {
   leaseTerminated: boolean;
   terminationDate?: Date;
   depositAmount?: number;
-}
-
-/** Embedded subdocument on the Lease model -- tenant requests lease renewal */
-export interface IRenewalRequest {
-  decision?: {
-    decidedBy: Types.ObjectId;
-    decidedAt: Date;
-    rejectionReason?: string;
-  };
-  status: 'pending' | 'approved' | 'rejected';
-  requestedTermMonths?: number;
-  submittedAt: Date;
-  message?: string;
-  holdUntil?: Date;
 }
 
 export interface ILeaseESignature {
@@ -868,6 +884,14 @@ export interface IVacateRequestDecision {
   approved: boolean;
 }
 
+/** Body of POST /leases/:cuid/:luid/activate (the signed copy arrives as the 'signedDocument' file) */
+export interface ILeaseActivationData {
+  signedBy?: IManualSigner[];
+  moveInDate?: Date;
+  signedDate: Date;
+  notes?: string;
+}
+
 export type LeasePropertyType =
   | 'apartment'
   | 'house'
@@ -876,16 +900,23 @@ export type LeasePropertyType =
   | 'commercial'
   | 'industrial';
 
-export interface ILeaseActivationData {
-  signedDate?: Date | string;
-  moveInDate?: Date | string;
-  notes?: string;
+/** Result of a manager's renewal request decision; renewalLuid links to the draft renewal */
+export interface IRenewalRequestDecisionResult {
+  renewalLuid: string | null;
+  lease: ILeaseDocument;
 }
 
 export interface ICoTenant {
   occupation?: string;
   email: string;
   phone: string;
+  name: string;
+}
+
+/** A signer recorded by hand when a lease is activated manually */
+export interface IManualSigner {
+  role: SignerRole;
+  email: string;
   name: string;
 }
 
@@ -900,6 +931,8 @@ export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager
 export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
 
 export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
+
+export type LeaseDocumentType = 'lease_agreement' | 'signed_lease' | 'other';
 
 export type VacateRequestStatus = 'pending' | 'approved' | 'rejected';
 

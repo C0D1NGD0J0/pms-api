@@ -6,6 +6,7 @@ import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
 import { AuthCache } from '@caching/auth.cache';
 import { UserCache } from '@caching/user.cache';
+import { FinancialCalculator } from '@utils/financial';
 import { SSEService } from '@services/sse/sse.service';
 import { ClientValidations } from '@shared/validations';
 import { ICurrentUser } from '@interfaces/user.interface';
@@ -247,8 +248,8 @@ export class ClientService {
         });
       } catch (error: any) {
         const enterpriseErrors: string[] = [];
-        if (error.errors) {
-          error.errors.forEach((err: any) => {
+        if (error.issues) {
+          error.issues.forEach((err: any) => {
             enterpriseErrors.push(err.message);
           });
         }
@@ -1273,7 +1274,7 @@ export class ClientService {
     chargeId,
   }: PaymentDisputeCreatedPayload): Promise<void> {
     try {
-      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      const amountFormatted = `${FinancialCalculator.centsToDisplay(amount)} ${currency.toUpperCase()}`;
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
@@ -1299,7 +1300,7 @@ export class ClientService {
     chargeId,
   }: PaymentDisputeWonPayload): Promise<void> {
     try {
-      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      const amountFormatted = `${FinancialCalculator.centsToDisplay(amount)} ${currency.toUpperCase()}`;
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
@@ -1324,7 +1325,7 @@ export class ClientService {
     chargeId,
   }: PaymentDisputeLostPayload): Promise<void> {
     try {
-      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      const amountFormatted = `${FinancialCalculator.centsToDisplay(amount)} ${currency.toUpperCase()}`;
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,
@@ -1413,7 +1414,7 @@ export class ClientService {
     currency,
   }: PaymentDisputeReversalFailedPayload): Promise<void> {
     try {
-      const amountFormatted = `${(amount / 100).toFixed(2)} ${currency.toUpperCase()}`;
+      const amountFormatted = `${FinancialCalculator.centsToDisplay(amount)} ${currency.toUpperCase()}`;
       await this.notificationService.createNotification(cuid, NotificationTypeEnum.PAYMENT, {
         type: NotificationTypeEnum.PAYMENT,
         recipientType: RecipientTypeEnum.ANNOUNCEMENT,

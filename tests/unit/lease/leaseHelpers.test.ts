@@ -1,3 +1,5 @@
+import { Types } from 'mongoose';
+import { IUserRole } from '@shared/constants/roles.constants';
 import { ValidationRequestError } from '@shared/customErrors';
 import { ILeaseESignatureStatusEnum, LeaseStatus } from '@interfaces/lease.interface';
 import { LIFECYCLE_MANAGED_LEASE_FIELDS, IMMUTABLE_LEASE_FIELDS } from '@utils/constants';
@@ -7,9 +9,15 @@ import {
   generatePendingChangesPreview,
   calculateRenewalMetadata,
   calculateNextPaymentDate,
+  findActiveLeaseAgreement,
+  validateLeaseTermination,
   rejectRestrictedFields,
+  buildManualSignatures,
+  filterDocumentsByRole,
   validateAllowedFields,
   hasHighImpactChanges,
+  sanitizeUpdateData,
+  findActiveLeasePDF,
   hasLeaseBeenSigned,
 } from '@services/lease/leaseHelpers';
 
@@ -165,6 +173,20 @@ describe('calculateRenewalMetadata — renewal form money in major units', () =>
     });
     expect(formData.tenant).toEqual({ fullname: 'Ada Lovelace' });
   });
+
+  it('uses the same 30-day default for the renewal window and the stored notice period', () => {
+    const lease: any = {
+      status: LeaseStatus.ACTIVE,
+      duration: { endDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000) },
+      renewalOptions: { autoRenew: false },
+    };
+
+    const metadata = calculateRenewalMetadata(lease, true)!;
+
+    expect(metadata.renewalWindowDays).toBe(30);
+    expect(metadata.renewalFormData!.renewalOptions.noticePeriodDays).toBe(30);
+    expect(metadata.isEligible).toBe(false); // 45 days out: window not open yet
+  });
 });
 
 describe('generatePendingChangesPreview — pet fees', () => {
@@ -249,5 +271,122 @@ describe('hasLeaseBeenSigned — uploaded lease document type', () => {
       { key: 'a', documentType: 'other' },
       { key: 'b', documentType: 'lease_agreement' },
     ]);
+  });
+});
+
+describe('lease contract documents — signed copy vs agreement', () => {
+  const agreement = { key: 'agreement', documentType: 'lease_agreement', status: 'active' };
+  const signedLease = { key: 'signed', documentType: 'signed_lease', status: 'active' };
+  const oldSigned = { key: 'old-signed', documentType: 'signed_lease', status: 'inactive' };
+
+  it('findActiveLeasePDF prefers the active signed copy, else the agreement', () => {
+    expect(findActiveLeasePDF({ leaseDocuments: [agreement, signedLease] } as any)?.key).toBe(
+      'signed'
+    );
+    expect(findActiveLeasePDF({ leaseDocuments: [agreement, oldSigned] } as any)?.key).toBe(
+      'agreement'
+    );
+  });
+
+  it('findActiveLeaseAgreement only returns the agreement (the document sent for signing)', () => {
+    expect(findActiveLeaseAgreement({ leaseDocuments: [signedLease, agreement] } as any)?.key).toBe(
+      'agreement'
+    );
+    expect(findActiveLeaseAgreement({ leaseDocuments: [signedLease] } as any)).toBeUndefined();
+  });
+
+  it('filterDocumentsByRole shows tenants only current documents, staff every version', () => {
+    const documents = [agreement, signedLease, oldSigned, { key: 'gone', status: 'deleted' }];
+
+    expect(filterDocumentsByRole(documents, IUserRole.TENANT).map((doc) => doc.key)).toEqual([
+      'agreement',
+      'signed',
+    ]);
+    expect(filterDocumentsByRole(documents, IUserRole.SUPER_ADMIN)).toHaveLength(4);
+    expect(filterDocumentsByRole(documents, IUserRole.MANAGER)).toHaveLength(4);
+  });
+});
+
+describe('buildManualSignatures', () => {
+  const tenantId = new Types.ObjectId();
+  const managerId = new Types.ObjectId().toString();
+  const signedAt = new Date('2026-01-15');
+
+  it('adds a tenant signature when no tenant signer is listed', () => {
+    const signatures = buildManualSignatures({ tenantId }, [], managerId, signedAt);
+
+    expect(signatures).toEqual([
+      expect.objectContaining({ role: 'tenant', signatureMethod: 'manual', signedAt }),
+    ]);
+    expect(signatures[0].userId?.toString()).toBe(tenantId.toString());
+  });
+
+  it('links tenant and manager signers to their accounts, others by name/email only', () => {
+    const signatures = buildManualSignatures(
+      { tenantId: { _id: tenantId } as any },
+      [
+        { name: 'Tia', email: 'tia@test.com', role: 'tenant' },
+        { name: 'Mia', email: 'mia@test.com', role: 'property_manager' },
+        { name: 'Lou', email: 'lou@test.com', role: 'landlord' },
+      ],
+      managerId,
+      signedAt
+    );
+
+    expect(signatures).toHaveLength(3);
+    expect(signatures[0].userId?.toString()).toBe(tenantId.toString());
+    expect(signatures[1].userId?.toString()).toBe(managerId);
+    expect(signatures[2].userId).toBeUndefined();
+    expect(signatures[2].landlordInfo).toEqual({ name: 'Lou', email: 'lou@test.com' });
+  });
+});
+
+describe('validateLeaseTermination — reports every failing rule', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const daysFromNow = (days: number) => new Date(Date.now() + days * DAY_MS);
+
+  const lease = {
+    duration: { startDate: daysFromNow(-10), endDate: daysFromNow(355) },
+    renewalOptions: { noticePeriodDays: 30 },
+  } as any;
+
+  const termDateErrors = (terminationDate: Date): string[] => {
+    try {
+      validateLeaseTermination(lease, terminationDate);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ValidationRequestError);
+      return (error as ValidationRequestError).errorInfo?.terminationDate ?? [];
+    }
+    return [];
+  };
+
+  it('lists the past-date, notice and minimum-duration errors together', () => {
+    const errors = termDateErrors(daysFromNow(-5));
+
+    expect(errors).toHaveLength(3);
+    expect(errors[0]).toMatch(/cannot be in the past/);
+    expect(errors[1]).toMatch(/Minimum 30-day notice/);
+    expect(errors[2]).toMatch(/active for at least 30 days/);
+  });
+
+  it('passes a date that meets every rule', () => {
+    expect(termDateErrors(daysFromNow(60))).toEqual([]);
+  });
+});
+
+describe('sanitizeUpdateData', () => {
+  it("clears an empty unitId without changing the caller's object", () => {
+    const update: any = { property: { id: 'PROPERTY0001', unitId: '' }, fees: { rentAmount: 1 } };
+
+    const sanitized: any = sanitizeUpdateData(update);
+
+    expect(sanitized.property).toEqual({ id: 'PROPERTY0001', unitId: undefined });
+    expect(update.property.unitId).toBe('');
+  });
+
+  it('leaves nested objects for the caller to convert with createSafeMongoUpdate', () => {
+    const sanitized: any = sanitizeUpdateData({ fees: { rentAmount: 1 } } as any);
+
+    expect(sanitized).toEqual({ fees: { rentAmount: 1 } });
   });
 });

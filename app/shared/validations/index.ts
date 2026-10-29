@@ -1,3 +1,5 @@
+import './zodConfig';
+
 export * from './MaintenanceRequestValidation';
 export * from './EmailTemplateValidation';
 export * from './NotificationValidation';

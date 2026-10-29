@@ -77,7 +77,7 @@ export const GuestPassValidations = {
     .object({
       reason: optionalBlank(z.string().trim().max(500)),
     })
-    .default({}),
+    .prefault({}),
 
   statsQuery: z.object({
     propertyId: resourceId.optional(),

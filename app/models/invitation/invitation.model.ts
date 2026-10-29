@@ -118,6 +118,10 @@ const InvitationSchema = new Schema<IInvitationDocument>(
       lastReminderSent: {
         type: Date,
       },
+      // Set when the invitation email failed on every attempt; cleared on resend
+      emailFailedAt: {
+        type: Date,
+      },
     },
     acceptedAt: {
       type: Date,

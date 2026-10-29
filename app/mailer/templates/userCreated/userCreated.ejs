@@ -49,7 +49,7 @@
 
       <% if (expectedStartDate) { %>
       <p style="font-size: 14px; color: #64748b;">
-        Your expected start date is <strong><%= new Date(expectedStartDate).toLocaleDateString() %></strong>.
+        Your expected start date is <strong><%= new Date(expectedStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %></strong>.
       </p>
       <% } %>
     </td>

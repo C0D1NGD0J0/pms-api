@@ -2,6 +2,7 @@ import {
   LeaseStatsQuerySchema,
   SignatureActionSchema,
   TerminateLeaseSchema,
+  ActivateLeaseSchema,
   InternalNoteSchema,
   CreateLeaseSchema,
   UpdateLeaseSchema,
@@ -293,24 +294,69 @@ describe('LeaseValidation schemas — fields kept after strict parsing', () => {
   });
 
   describe('SignatureActionSchema', () => {
-    it('keeps signedBy for manual signing', async () => {
+    it('accepts send and cancel', async () => {
+      expect(await SignatureActionSchema.parseAsync({ action: 'send' })).toEqual({
+        action: 'send',
+      });
+      expect(await SignatureActionSchema.parseAsync({ action: 'cancel' })).toEqual({
+        action: 'cancel',
+      });
+    });
+
+    it('rejects manual signing (it goes through the activate endpoint)', async () => {
+      const result = await SignatureActionSchema.safeParseAsync({ action: 'manual' });
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ActivateLeaseSchema', () => {
+    const today = () => new Date().toISOString().split('T')[0];
+    const daysFromToday = (days: number) =>
+      new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    it('keeps signedBy (sent as a JSON string in multipart, parsed before validation)', async () => {
       const signedBy = [
         { name: 'Ada Lovelace', email: 'ada@example.com', role: 'tenant' },
         { name: 'Pat Landlord', email: 'pat@example.com', role: 'landlord' },
       ];
 
-      const result = await SignatureActionSchema.parseAsync({ action: 'manual', signedBy });
+      const result = await ActivateLeaseSchema.parseAsync({ signedDate: today(), signedBy });
 
-      expect(result).toEqual({ action: 'manual', signedBy });
+      expect(result.signedBy).toEqual(signedBy);
+      expect(result.signedDate).toBeInstanceOf(Date);
     });
 
-    it('rejects signers with an unknown role', async () => {
-      const result = await SignatureActionSchema.safeParseAsync({
-        action: 'manual',
-        signedBy: [{ name: 'Ada', email: 'ada@example.com', role: 'owner' }],
+    it('requires signedDate and rejects a future one', async () => {
+      expect((await ActivateLeaseSchema.safeParseAsync({})).success).toBe(false);
+      const future = await ActivateLeaseSchema.safeParseAsync({ signedDate: daysFromToday(2) });
+      expect(future.success).toBe(false);
+      expect(future.error?.issues[0].message).toBe('Signed date cannot be in the future');
+    });
+
+    it('treats blank multipart fields as not set', async () => {
+      const result = await ActivateLeaseSchema.parseAsync({
+        signedDate: today(),
+        moveInDate: '',
+        notes: '',
       });
 
-      expect(result.success).toBe(false);
+      expect(result.moveInDate).toBeUndefined();
+      expect(result.notes).toBeUndefined();
+    });
+
+    it('rejects signers with an unknown role and long notes', async () => {
+      const badSigner = await ActivateLeaseSchema.safeParseAsync({
+        signedDate: today(),
+        signedBy: [{ name: 'Ada', email: 'ada@example.com', role: 'owner' }],
+      });
+      const longNotes = await ActivateLeaseSchema.safeParseAsync({
+        signedDate: today(),
+        notes: 'x'.repeat(501),
+      });
+
+      expect(badSigner.success).toBe(false);
+      expect(longNotes.success).toBe(false);
     });
   });
 

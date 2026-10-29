@@ -358,7 +358,7 @@ export const MaintenanceSchemas = {
         })
       )
       .optional(),
-    rawPayload: z.record(z.unknown()).optional().default({}),
+    rawPayload: z.record(z.string(), z.unknown()).optional().default({}),
   }),
 
   tenantFeedbackBody: z

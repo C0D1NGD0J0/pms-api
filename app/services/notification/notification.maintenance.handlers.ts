@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
 import mongoose, { Types } from 'mongoose';
-import { MoneyUtils } from '@utils/money.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
 import {
@@ -87,7 +87,7 @@ export async function handleInvoiceApproved(
     currency,
     approvedBy,
   } = payload;
-  const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+  const fmt = FinancialCalculator.formatCurrency(amount || 0, currency || 'USD');
 
   if (vendorId) {
     try {
@@ -159,7 +159,7 @@ export async function handleInvoiceApproved(
         const tenantChargeTotal = payload.tenantChargeTotalInCents ?? amount;
         const { title, message } = getFormattedNotification('maintenance.invoiceBillableNotice', {
           mruid,
-          amount: MoneyUtils.formatCurrency(
+          amount: FinancialCalculator.formatCurrency(
             tenantChargeTotal || 0,
             (currency || 'USD').toUpperCase()
           ),
@@ -274,7 +274,7 @@ export async function handleInvoiceSubmitted(
 ): Promise<void> {
   try {
     const { cuid, mruid, amount, currency } = payload;
-    const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+    const fmt = FinancialCalculator.formatCurrency(amount || 0, currency || 'USD');
     await notifyAnnouncement(
       ctx,
       cuid,
@@ -313,7 +313,7 @@ export async function handleInvoiceSubmitted(
 
     // Only notify if the primary holder is different from the submitter
     if (primaryHolderId && primaryHolderId !== vendorId) {
-      const fmt = MoneyUtils.formatCurrency(amount || 0, currency || 'USD');
+      const fmt = FinancialCalculator.formatCurrency(amount || 0, currency || 'USD');
       await notifyIndividuals(
         ctx,
         cuid,

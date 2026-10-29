@@ -747,6 +747,54 @@ describe('InvitationDAO Integration Tests', () => {
     });
   });
 
+  describe('updateInvitationStatus with fromStatuses', () => {
+    const createPending = (email: string, token: string) =>
+      Invitation.create({
+        invitedBy: testInviterId,
+        inviteeEmail: email,
+        clientId: testClientId,
+        role: IUserRole.STAFF,
+        status: 'pending',
+        invitationToken: token,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        personalInfo: { firstName: 'Sent', lastName: 'Test' },
+        metadata: { remindersSent: 0 },
+      });
+
+    it('should mark a pending invitation as sent', async () => {
+      const created = await createPending('mark-sent@example.com', 'mark-sent-token');
+
+      const updated = await invitationDAO.updateInvitationStatus(
+        created._id.toString(),
+        testClientId.toString(),
+        'sent',
+        ['pending']
+      );
+
+      expect(updated?.status).toBe('sent');
+    });
+
+    it('should not overwrite an invitation revoked before its email finished sending', async () => {
+      const created = await createPending('revoked-first@example.com', 'revoked-first-token');
+      await invitationDAO.revokeInvitation(
+        created.iuid,
+        testClientId.toString(),
+        testInviterId.toString()
+      );
+
+      const updated = await invitationDAO.updateInvitationStatus(
+        created._id.toString(),
+        testClientId.toString(),
+        'sent',
+        ['pending']
+      );
+
+      expect(updated).toBeNull();
+      const stored = await Invitation.findById(created._id);
+      expect(stored?.status).toBe('revoked');
+    });
+  });
+
   describe('revokeInvitation', () => {
     it('should revoke invitation with reason', async () => {
       const created = await Invitation.create({
@@ -779,6 +827,7 @@ describe('InvitationDAO Integration Tests', () => {
       expect(updated?.revokedBy).toEqual(revokerId);
       expect(updated?.revokedAt).toBeInstanceOf(Date);
       expect(updated?.revokeReason).toBe('No longer needed');
+      expect(updated?.invitationToken).toBeUndefined();
     });
 
     it('should revoke invitation without reason', async () => {

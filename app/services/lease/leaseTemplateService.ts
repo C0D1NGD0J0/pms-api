@@ -1,7 +1,8 @@
 import fs from 'fs';
 import ejs from 'ejs';
 import path from 'path';
-import { createLogger, MoneyUtils } from '@utils/index';
+import { createLogger } from '@utils/index';
+import { FinancialCalculator } from '@utils/financial';
 import { LeasePreviewData } from '@interfaces/lease.interface';
 
 export interface LeaseTemplateMetadata {
@@ -128,12 +129,15 @@ export class LeaseTemplateService {
         ownershipType: previewData.ownershipType || 'company_owned',
         isUnitLease: !!(previewData.unitNumber && previewData.isMultiUnit),
 
-        // Lease Terms - Use MoneyUtils.formatCurrency for consistency
+        // Lease Terms - Use FinancialCalculator.formatCurrency for consistency
         leaseType: this.formatLeaseType(previewData.leaseType),
         startDate: this.formatDate(previewData.startDate),
         endDate: this.formatDate(previewData.endDate),
-        rentAmount: MoneyUtils.formatCurrency(previewData.rentAmount, previewData.currency),
-        securityDeposit: MoneyUtils.formatCurrency(
+        rentAmount: FinancialCalculator.formatCurrency(
+          previewData.rentAmount,
+          previewData.currency
+        ),
+        securityDeposit: FinancialCalculator.formatCurrency(
           previewData.securityDeposit,
           previewData.currency
         ),
@@ -151,7 +155,10 @@ export class LeaseTemplateService {
                 type: previewData.lateFee.type,
                 amount:
                   previewData.lateFee.type === 'fixed'
-                    ? MoneyUtils.formatCurrency(previewData.lateFee.amount, previewData.currency)
+                    ? FinancialCalculator.formatCurrency(
+                        previewData.lateFee.amount,
+                        previewData.currency
+                      )
                     : `${previewData.lateFee.percentage}%`,
                 gracePeriodDays: previewData.lateFee.lateFeesGracePeriod || 5,
               }
@@ -339,10 +346,10 @@ export class LeaseTemplateService {
       allowed: true,
       maxPets: petPolicy.maxPets || 1,
       types: this.transformArrayToString(petPolicy.types) || 'Pets',
-      deposit: MoneyUtils.formatCurrency(petPolicy.deposit, currency),
+      deposit: FinancialCalculator.formatCurrency(petPolicy.deposit, currency),
       monthlyFee:
         (petPolicy.monthlyFee ?? 0) > 0
-          ? MoneyUtils.formatCurrency(petPolicy.monthlyFee!, currency)
+          ? FinancialCalculator.formatCurrency(petPolicy.monthlyFee!, currency)
           : null,
     };
   }

@@ -247,7 +247,7 @@ export const VendorDetailSchema = z
         companyName: z.string().optional(),
         businessType: z.string().optional(),
         yearsInBusiness: z.number().optional(),
-        servicesOffered: z.record(z.boolean()).optional(),
+        servicesOffered: z.record(z.string(), z.boolean()).optional(),
         contactPerson: z
           .object({
             name: z.string().optional(),

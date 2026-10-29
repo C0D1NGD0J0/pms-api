@@ -28,7 +28,7 @@ Temporary Password: <%= temporaryPassword %>
 Please change your password immediately after your first login.
 
 <% if (expectedStartDate) { %>
-Your expected start date is <%= new Date(expectedStartDate).toLocaleDateString() %>.
+Your expected start date is <%= new Date(expectedStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>.
 <% } %>
 
 Log in here: <%= loginUrl %>

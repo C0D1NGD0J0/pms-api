@@ -107,7 +107,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
       );
 
       expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
-        $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1 },
+        $unset: { 'refund.failureReason': 1, 'refund.failedAt': 1, 'refund.pendingAmount': 1 },
         $set: expect.objectContaining({
           status: PaymentRecordStatus.REFUNDED,
           'refund.amount': 100000,
@@ -173,7 +173,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
       expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
         $set: expect.objectContaining({
           status: PaymentRecordStatus.PENDING_REFUND,
-          'refund.amount': 100000,
+          'refund.pendingAmount': 100000,
           'refund.failureReason': 'Card expired',
           'refund.failedAt': expect.any(Date),
         }),
@@ -210,6 +210,56 @@ describe('RentPaymentService — handleDepositRefund', () => {
         expect.objectContaining({ amountInCents: 175000 })
       );
     });
+
+    it('caps at what is left after an earlier partial refund and stores the cumulative total', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      // $1,500 deposit, $300 already refunded — only $1,200 can still go back
+      const deposit = makeDepositPayment({ refund: { amount: 30000 } });
+      mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
+
+      await handler({ refundAmount: 150000, leaseId: LEASE_ID, cuid: CUID });
+
+      expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
+        IPaymentGatewayProvider.STRIPE,
+        expect.objectContaining({ amountInCents: 120000 })
+      );
+      expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(
+        deposit._id.toString(),
+        expect.objectContaining({
+          $set: expect.objectContaining({ 'refund.amount': 150000 }),
+        })
+      );
+      expect(mockEmitterService.emit).toHaveBeenCalledWith(
+        EventTypes.PAYMENT_REFUNDED,
+        expect.objectContaining({ refundAmount: 120000, totalRefunded: 150000, isPartial: false })
+      );
+    });
+
+    it('skips the refund when the deposit was already fully refunded', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      const deposit = makeDepositPayment({ refund: { amount: 150000 } });
+      mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
+
+      await handler({ refundAmount: 50000, leaseId: LEASE_ID, cuid: CUID });
+
+      expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
+      expect(mockPaymentDAO.updateById).not.toHaveBeenCalled();
+    });
+
+    it('stages only the remaining amount and keeps the earlier refund total', async () => {
+      const handler = registeredListeners[EventTypes.INSPECTION_APPROVED];
+      mockClientDAO.findFirst.mockReturnValue(
+        Promise.resolve({ settings: { requireDepositRefundApproval: true } })
+      );
+      const deposit = makeDepositPayment({ refund: { amount: 30000 } });
+      mockPaymentDAO.findFirst.mockReturnValue(Promise.resolve(deposit));
+
+      await handler({ refundAmount: 150000, leaseId: LEASE_ID, cuid: CUID });
+
+      const [, update] = mockPaymentDAO.updateById.mock.calls[0];
+      expect(update.$set['refund.pendingAmount']).toBe(120000);
+      expect(update.$set).not.toHaveProperty('refund.amount');
+    });
   });
 
   // ─── Offline deposit path ──────────────────────────────────────────────────
@@ -227,7 +277,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
       expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
         $set: expect.objectContaining({
           status: PaymentRecordStatus.PENDING_REFUND,
-          'refund.amount': 80000,
+          'refund.pendingAmount': 80000,
           'refund.refundedBy': 'system:inspection-approved',
           'refund.reason':
             'Move-out inspection deposit refund (offline) — awaiting manager release',
@@ -257,7 +307,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
       expect(mockPaymentDAO.updateById).toHaveBeenCalledWith(deposit._id.toString(), {
         $set: expect.objectContaining({
           status: PaymentRecordStatus.PENDING_REFUND,
-          'refund.amount': 100000,
+          'refund.pendingAmount': 100000,
           'refund.refundedBy': 'system:inspection-approved',
           'refund.reason': 'Move-out inspection deposit refund — awaiting PM approval',
         }),

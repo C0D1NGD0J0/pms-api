@@ -1,3 +1,4 @@
+import { FinancialCalculator } from '@utils/financial';
 import {
   IInspectionDocument,
   IInspectionMedia,
@@ -402,11 +403,6 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** Formats a cent-based amount as currency (e.g., 15000 → $150.00) */
-function formatCurrency(amount: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(amount / 100);
-}
-
 function isHttpsUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -414,4 +410,9 @@ function isHttpsUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Formats a cent-based amount as currency (e.g., 15000 → $150.00) */
+function formatCurrency(amount: number, currency = 'USD'): string {
+  return FinancialCalculator.formatCurrency(amount, currency);
 }

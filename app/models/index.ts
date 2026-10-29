@@ -2,7 +2,6 @@ import User from '@models/user/user.model';
 import SMSLog from '@models/sms/sms.model';
 import Lease from '@models/lease/lease.model';
 import Asset from '@models/asset/asset.model';
-import UnitModel from '@models/unit/unit.model';
 import Client from '@models/client/client.model';
 import Vendor from '@models/vendor/vendor.model';
 import Report from '@models/report/report.model';
@@ -33,7 +32,6 @@ export {
   Inspection,
   Invitation,
   GuestPass,
-  UnitModel,
   Property,
   Invoice,
   Expense,

@@ -10,7 +10,7 @@
       <%- include("../shared/html/_quote", { message: customMessage, author: resenderName }) %>
       <% } %>
 
-      <%- include("../shared/html/_notice", { text: 'This invitation expires on <strong>' + new Date(expiresAt).toLocaleDateString() + '</strong>. Accept before then to avoid needing a new one.', type: 'expiry' }) %>
+      <%- include("../shared/html/_notice", { text: 'This invitation expires on <strong>' + new Date(expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</strong>. Accept before then to avoid needing a new one.', type: 'expiry' }) %>
 
       <p style="font-size: 14px; color: #64748b;">
         Already have a PropertyDesk account? The invitation will automatically link <%= companyName %> to your existing account when you accept.

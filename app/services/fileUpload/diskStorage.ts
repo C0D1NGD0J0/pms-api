@@ -128,6 +128,12 @@ export class DiskStorage {
       fileTypes: ['jpeg', 'jpg', 'png', 'webp', 'pdf'],
     },
     {
+      name: 'signedDocument', // Signed lease copy uploaded on manual activation
+      maxCount: 1,
+      maxSize: 20 * 1024 * 1024, // 20MB
+      fileTypes: ['pdf'],
+    },
+    {
       name: 'document', // Lease document upload
       maxCount: 1,
       maxSize: 20 * 1024 * 1024, // 20MB

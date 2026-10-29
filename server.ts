@@ -6,7 +6,6 @@ import { asValue } from 'awilix';
 import { createClient } from 'redis';
 import * as Sentry from '@sentry/node';
 import { IAppSetup, App } from '@root/app';
-import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import express, { Application } from 'express';
 import { closeSharedDLQ } from '@queues/index';
@@ -15,6 +14,8 @@ import { Server as SocketIOServer } from 'socket.io';
 import { runSchemaSync } from '@database/schema-sync';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { EventListenerSetup, container } from '@di/index';
+import { s3ErrorLogUploader } from '@utils/errorLogArchive';
+import { getErrorLogArchive, createLogger } from '@utils/index';
 import { DatabaseService, RedisService, Environments } from '@database/index';
 import { SERVICE_RESOURCE_NAMES, QUEUE_RESOURCE_NAMES } from '@di/registerResources';
 
@@ -64,6 +65,10 @@ class Server {
 
     // Subscribe every in-process event listener before the first request can emit an event.
     EventListenerSetup.registerAll(container, 'api');
+    getErrorLogArchive()?.attachUploader(
+      s3ErrorLogUploader(container.cradle.s3Service),
+      createLogger('ErrorLogArchive')
+    );
 
     // Queues/workers run in separate worker_process.ts
     // Only load Bull Board UI (readonly) for monitoring via /admin/queues
@@ -259,11 +264,13 @@ class Server {
 
       clearTimeout(shutdownTimeout);
       this.log.info('Graceful shutdown completed');
+      await getErrorLogArchive()?.flush();
       await Sentry.flush(2000);
       process.exit(exitCode);
     } catch (error) {
       clearTimeout(shutdownTimeout);
       this.log.error('Error during shutdown:', error);
+      await getErrorLogArchive()?.flush();
       await Sentry.flush(2000);
       process.exit(1);
     }

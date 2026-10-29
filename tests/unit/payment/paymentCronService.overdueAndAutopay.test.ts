@@ -7,6 +7,7 @@ jest.mock('@shared/middlewares', () => ({
 jest.mock('@di/index', () => ({ container: {} }));
 
 import { EventTypes } from '@interfaces/events.interface';
+import { SubscriptionPlanConfig } from '@services/subscription';
 import { PaymentCronService } from '@services/payments/paymentCron.service';
 import {
   PaymentRecordStatus,
@@ -251,6 +252,7 @@ describe('PaymentCronService — markOverduePayments', () => {
         tenantId: expect.any(String),
         period: { month: 9, year: 2026 },
         dueDate: rent.dueDate,
+        daysLate: LATE_FEE_DAYS + 1,
         paymentType: PaymentRecordType.LATE_FEE,
         description: 'Late fee for 9/2026',
       });
@@ -664,7 +666,10 @@ describe('PaymentCronService — autoChargeOverdueMaintenancePayments', () => {
     paymentDAO.list.mockResolvedValueOnce({ items: [charge] });
     paymentDAO.findFirst.mockResolvedValueOnce(charge);
     service.subscriptionDAO = { findFirst: jest.fn().mockResolvedValue(null) };
-    service.subscriptionPlanConfig = { calculatePaymentGatewayFee: jest.fn().mockReturnValue(0) };
+    service.subscriptionPlanConfig = {
+      calculatePaymentGatewayFee: jest.fn().mockReturnValue(0),
+      calculateRentFees: SubscriptionPlanConfig.prototype.calculateRentFees,
+    };
 
     await service.autoChargeOverdueMaintenancePayments();
 

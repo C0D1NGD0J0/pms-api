@@ -2,20 +2,32 @@ import { Job } from 'bull';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
 import { LeaseDAO } from '@dao/leaseDAO';
+import { LeaseCache } from '@caching/index';
 import { createLogger } from '@utils/index';
 import { ProfileDAO } from '@dao/profileDAO';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { EventEmitterService } from '@services/index';
+import { S3Service } from '@services/fileUpload';
 import { EventTypes } from '@interfaces/events.interface';
 import { OwnershipType } from '@interfaces/property.interface';
+import { EventEmitterService, SSEService } from '@services/index';
+import { buildSignedLeaseFilename } from '@services/lease/leaseHelpers';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
-import { BoldSignJobResult, BoldSignJobData } from '@interfaces/esignature.interface';
 import {
   LeaseESignatureRequestedPayload,
   LeaseESignatureFailedPayload,
   LeaseESignatureSentPayload,
 } from '@interfaces/lease.interface';
+import {
+  StoreSignedDocumentJobResult,
+  StoreSignedDocumentJobData,
+  BoldSignJobResult,
+  BoldSignJobData,
+} from '@interfaces/esignature.interface';
+
+// BoldSign can briefly answer 404/409 right after Completed while it finalises the PDF;
+// these (and throttling/timeouts) are retried, every other 4xx is permanent
+const RETRYABLE_DOWNLOAD_STATUSES = [404, 408, 409, 429];
 
 interface IConstructor {
   mediaUploadService: MediaUploadService;
@@ -23,6 +35,9 @@ interface IConstructor {
   boldSignService: BoldSignService;
   propertyDAO: PropertyDAO;
   profileDAO: ProfileDAO;
+  leaseCache: LeaseCache;
+  sseService: SSEService;
+  s3Service: S3Service;
   leaseDAO: LeaseDAO;
 }
 
@@ -34,6 +49,9 @@ export class ESignatureWorker {
   private readonly leaseDAO: LeaseDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly propertyDAO: PropertyDAO;
+  private readonly leaseCache: LeaseCache;
+  private readonly sseService: SSEService;
+  private readonly s3Service: S3Service;
 
   constructor({
     emitterService,
@@ -42,6 +60,9 @@ export class ESignatureWorker {
     leaseDAO,
     profileDAO,
     propertyDAO,
+    leaseCache,
+    sseService,
+    s3Service,
   }: IConstructor) {
     this.log = createLogger('ESignatureWorker');
     this.emitterService = emitterService;
@@ -50,6 +71,9 @@ export class ESignatureWorker {
     this.leaseDAO = leaseDAO;
     this.profileDAO = profileDAO;
     this.propertyDAO = propertyDAO;
+    this.leaseCache = leaseCache;
+    this.sseService = sseService;
+    this.s3Service = s3Service;
   }
 
   sendForSignature = async (job: Job<BoldSignJobData>): Promise<BoldSignJobResult> => {
@@ -238,5 +262,106 @@ export class ESignatureWorker {
         error: error.message,
       };
     }
+  };
+
+  /**
+   * Copies a completed envelope's signed PDF from BoldSign onto the lease as 'signed_lease'.
+   * Safe to re-run: the S3 key is derived from the envelope, so a retry overwrites the same
+   * object and updateLeaseDocuments skips a key the lease already holds.
+   */
+  storeSignedDocument = async (
+    job: Job<StoreSignedDocumentJobData>
+  ): Promise<StoreSignedDocumentJobResult> => {
+    const { cuid, luid, leaseId, documentId } = job.data;
+    const log = this.log.child({ jobId: job.id, luid, cuid, documentId });
+
+    const lease = await this.leaseDAO.findFirst({
+      _id: new Types.ObjectId(leaseId),
+      cuid,
+      deletedAt: null,
+    });
+    if (!lease) {
+      // Nothing to attach the document to; retrying won't change that
+      log.warn('Lease not found, skipping signed document storage');
+      return { success: false, skipped: true };
+    }
+
+    const filename = buildSignedLeaseFilename(lease.leaseNumber, documentId);
+    const s3Key = `lease/signed_${lease.leaseNumber}|||${leaseId}|||_${documentId}.pdf`;
+    const alreadyStored = lease.leaseDocuments?.some(
+      (doc) =>
+        doc.documentType === 'signed_lease' && (doc.key === s3Key || doc.filename === filename)
+    );
+    if (alreadyStored) {
+      log.info('Signed document already stored, skipping');
+      return { success: true, skipped: true, key: s3Key };
+    }
+
+    let pdfBuffer: Buffer;
+    try {
+      pdfBuffer = await this.boldSignService.downloadSignedDocument(documentId);
+    } catch (error: any) {
+      const statusCode: number | undefined = error?.statusCode;
+      const isPermanent =
+        !!statusCode &&
+        statusCode >= 400 &&
+        statusCode < 500 &&
+        !RETRYABLE_DOWNLOAD_STATUSES.includes(statusCode);
+      if (isPermanent) {
+        log.error(
+          { statusCode, error: error?.message },
+          'BoldSign refused the signed document download; not retrying'
+        );
+        await job.discard();
+      }
+      throw error;
+    }
+    await job.progress(50);
+
+    const uploaded = await this.s3Service.uploadBuffer(
+      pdfBuffer,
+      s3Key,
+      'application/pdf',
+      leaseId
+    );
+    await job.progress(80);
+
+    await this.leaseDAO.updateLeaseDocuments(
+      leaseId,
+      [
+        {
+          resourceId: leaseId,
+          fieldName: 'leaseDocument',
+          publicuid: luid,
+          documentType: 'signed_lease',
+          mimeType: 'application/pdf',
+          actorId: lease.createdBy.toString(),
+          size: pdfBuffer.length,
+          url: uploaded.url,
+          key: uploaded.key,
+          filename,
+        },
+      ],
+      lease.createdBy.toString(),
+      cuid
+    );
+
+    await Promise.allSettled([
+      this.leaseCache.invalidateLease(cuid, luid),
+      this.leaseCache.invalidateLeaseLists(cuid),
+    ]);
+    try {
+      // Everyone viewing the lease refetches and sees the signed copy
+      await this.sseService.broadcastToClient(
+        cuid,
+        { resource: 'lease', action: 'document-added', resourceUId: luid },
+        'resource-event'
+      );
+    } catch (sseErr) {
+      log.warn({ sseErr }, 'SSE notify failed (non-fatal)');
+    }
+
+    log.info({ key: uploaded.key }, 'Stored signed lease document');
+    return { success: true, key: uploaded.key };
   };
 }

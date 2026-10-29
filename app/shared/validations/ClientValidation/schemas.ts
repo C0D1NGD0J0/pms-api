@@ -53,7 +53,7 @@ export const ClientSettingsSchema = z.object({
     .string()
     .trim()
     .toUpperCase()
-    .pipe(z.nativeEnum(CURRENCIES, { errorMap: () => ({ message: 'Invalid currency code' }) }))
+    .pipe(z.nativeEnum(CURRENCIES, { error: 'Invalid currency code' }))
     .optional(),
   requireDepositRefundApproval: z.boolean().optional(),
 });
@@ -105,19 +105,15 @@ export const RoleParamSchema = z.object({
 
 export const AssignRoleSchema = z.object({
   role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
-    errorMap: () => ({
-      message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
-    }),
+    error: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
   }),
 });
 
 export const AssignDepartmentSchema = z.object({
   department: z
     .enum(['maintenance', 'operations', 'accounting', 'management', 'other', 'security'], {
-      errorMap: () => ({
-        message:
-          'Invalid department. Must be one of: maintenance, operations, accounting, management, other, security',
-      }),
+      error:
+        'Invalid department. Must be one of: maintenance, operations, accounting, management, other, security',
     })
     .describe('Department to assign to the employee'),
 });

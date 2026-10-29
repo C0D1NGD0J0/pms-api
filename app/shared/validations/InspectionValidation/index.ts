@@ -5,10 +5,11 @@ import {
   InspectionType,
 } from '@interfaces/inspection.interface';
 
+import { typeErrors } from '../zodConfig';
 import { UtilsValidations, queryBoolean, safeString } from '../UtilsValidation';
 
 const conditionEnum = z.enum(Object.values(ConditionRating) as [string, ...string[]], {
-  errorMap: () => ({ message: 'Please select a valid condition rating' }),
+  error: 'Please select a valid condition rating',
 });
 
 const richTextSchema = (maxLen: number, fieldLabel = 'Notes') =>
@@ -58,7 +59,7 @@ export const InspectionValidations = {
   createBody: z
     .object({
       type: z.enum(Object.values(InspectionType) as [string, ...string[]], {
-        errorMap: () => ({ message: 'Please select a valid inspection type' }),
+        error: 'Please select a valid inspection type',
       }),
       leaseId: safeString.pipe(z.string().min(1, 'Lease selection is required')).optional(),
       propertyId: safeString.optional(),
@@ -80,7 +81,7 @@ export const InspectionValidations = {
 
   approveBody: z.object({
     refundAmount: z
-      .number({ invalid_type_error: 'Refund amount must be a number' })
+      .number({ error: typeErrors({ invalidType: 'Refund amount must be a number' }) })
       .min(0, 'Refund amount cannot be negative')
       .optional(),
   }),
@@ -107,7 +108,7 @@ export const InspectionValidations = {
     overallCondition: conditionEnum.optional(),
     overallNotes: richTextSchema(2000, 'Overall notes').optional(),
     refundAmount: z
-      .number({ invalid_type_error: 'Refund amount must be a number' })
+      .number({ error: typeErrors({ invalidType: 'Refund amount must be a number' }) })
       .min(0, 'Refund amount cannot be negative')
       .optional(),
   }),

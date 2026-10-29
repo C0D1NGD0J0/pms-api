@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ExpensePaymentMethod, ExpenseCategory } from '@interfaces/expense.interface';
 
+import { typeErrors } from '../zodConfig';
 import { shortUidString } from '../UtilsValidation';
 
 const categories = Object.values(ExpenseCategory) as [string, ...string[]];
@@ -13,7 +14,7 @@ export const ExpenseValidations = {
     amount: z.number().int().min(1, 'Amount must be at least 1 cent'),
     currency: z.string().length(3).toUpperCase().optional(),
     category: z.enum(categories, { message: `Category must be one of: ${categories.join(', ')}` }),
-    date: z.coerce.date({ invalid_type_error: 'Date must be a valid date' }),
+    date: z.coerce.date({ error: typeErrors({ invalidType: 'Date must be a valid date' }) }),
     description: z.string().min(1).max(500),
     vendor: z.string().max(200).optional(),
     paymentMethod: z.enum(paymentMethods, {
@@ -33,7 +34,9 @@ export const ExpenseValidations = {
     amount: z.number().int().min(1).optional(),
     currency: z.string().length(3).toUpperCase().optional(),
     category: z.enum(categories).optional(),
-    date: z.coerce.date({ invalid_type_error: 'Date must be a valid date' }).optional(),
+    date: z.coerce
+      .date({ error: typeErrors({ invalidType: 'Date must be a valid date' }) })
+      .optional(),
     description: z.string().min(1).max(500).optional(),
     vendor: z.string().max(200).optional(),
     paymentMethod: z.enum(paymentMethods).optional(),

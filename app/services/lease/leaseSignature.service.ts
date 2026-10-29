@@ -28,6 +28,7 @@ import {
   ResourceContext,
 } from '@interfaces/utils.interface';
 import {
+  LeaseESignatureCompletedPayload,
   LeaseESignatureFailedPayload,
   LeaseESignatureSentPayload,
   ILeaseESignatureStatusEnum,
@@ -39,13 +40,14 @@ import {
   validateLeaseReadyForSignature,
   fetchPropertyManagerWithUser,
   validateResourceAvailable,
+  findActiveLeaseAgreement,
   assertPropertyLeasable,
   fetchTenantWithUser,
-  findActiveLeasePDF,
   fetchPropertyUnit,
   validateUserRole,
   fetchLeaseByLuid,
   buildSenderInfo,
+  getRefIdString,
   queueLeasePdf,
 } from './leaseHelpers';
 
@@ -190,7 +192,7 @@ export class LeaseSignatureService {
 
     const senderInfo = buildSenderInfo(client);
 
-    const leasePDF = findActiveLeasePDF(lease);
+    const leasePDF = findActiveLeaseAgreement(lease);
     if (!leasePDF || !leasePDF.key) {
       await queueLeasePdf(this.queueFactory, lease, cxt.currentuser?.sub || 'system', {
         senderInfo,
@@ -230,76 +232,6 @@ export class LeaseSignatureService {
         processId: job?.id,
       },
     };
-  }
-
-  /**
-   * Mark a lease as manually signed
-   */
-  async markAsManualySigned(
-    cuid: string,
-    leaseId: string,
-    signedBy: { name: string; email: string; role: string }[],
-    userId: string
-  ): IPromiseReturnedData<ILeaseDocument> {
-    const lease = await this.leaseDAO.findFirst({ luid: leaseId, cuid, deletedAt: null });
-    if (!lease) {
-      throw new BadRequestError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
-    }
-
-    if (lease.status !== LeaseStatus.READY_FOR_SIGNATURE && lease.status !== LeaseStatus.DRAFT) {
-      throw new BadRequestError({ message: 'Lease is not in a signable state' });
-    }
-
-    const now = new Date();
-    const signatures = signedBy.map((signer) => {
-      const signerInfo = { name: signer.name, email: signer.email };
-      return {
-        signatureMethod: 'manual' as const,
-        // Only the tenant and the recording manager have accounts on the lease;
-        // co-tenants and external landlords are identified by name/email alone.
-        userId: this.resolveManualSignerUserId(lease, signer.role, userId),
-        role: signer.role,
-        signedAt: now,
-        signerInfo,
-        coTenantInfo: signer.role === 'co_tenant' ? signerInfo : undefined,
-        landlordInfo: signer.role === 'landlord' ? signerInfo : undefined,
-      };
-    });
-
-    const updated = await this.leaseDAO.update(
-      { _id: lease._id },
-      {
-        $set: {
-          status: LeaseStatus.ACTIVE,
-          signingMethod: 'manual',
-          signedDate: now,
-          updatedAt: now,
-        },
-        $push: { signatures: { $each: signatures } },
-      }
-    );
-
-    if (!updated) {
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'mark lease as signed' }),
-      });
-    }
-
-    this.log.info(
-      { leaseId, cuid, signerCount: signedBy.length },
-      'Lease marked as manually signed'
-    );
-    return { success: true, data: updated };
-  }
-
-  private resolveManualSignerUserId(
-    lease: ILeaseDocument,
-    role: string,
-    recordedByUserId: string
-  ): Types.ObjectId | undefined {
-    if (role === 'tenant') return new Types.ObjectId(lease.tenantId.toString());
-    if (role === 'property_manager') return new Types.ObjectId(recordedByUserId);
-    return undefined;
   }
 
   /**
@@ -515,52 +447,38 @@ export class LeaseSignatureService {
           break;
 
         case 'Completed':
-          result = await this.leaseDAO.update(
-            { _id: lease._id },
-            {
-              // 'signed' (not 'completed') — the lease model only activates electronic leases with eSignature.status === 'signed'
-              'eSignature.status': ILeaseESignatureStatusEnum.SIGNED,
-              'eSignature.completedAt': new Date(data?.completedDate || Date.now()),
-              status: LeaseStatus.ACTIVE,
-              updatedAt: new Date(),
-            }
-          );
+          const completedAt = new Date(data?.completedDate || Date.now());
+          // BoldSign retries a webhook whose response it didn't see: only the first one activates
+          const alreadyActivated =
+            lease.status === LeaseStatus.ACTIVE &&
+            lease.eSignature?.status === ILeaseESignatureStatusEnum.SIGNED;
 
-          this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_COMPLETED, {
-            leaseId: lease._id.toString(),
-            luid: lease.luid,
-            cuid: lease.cuid,
-            tenantId: lease.tenantId.toString(),
-            propertyId: lease.property.id.toString(),
-            propertyUnitId: lease.property.unitId?.toString(),
-            propertyManagerId: lease.createdBy.toString(),
-            documentId,
-            completedAt: new Date(data?.completedDate || Date.now()),
-            signers: data?.signers || [],
-          });
+          if (!alreadyActivated) {
+            result = await this.leaseDAO.update(
+              { _id: lease._id },
+              {
+                // 'signed' (not 'completed') — the lease model only activates electronic leases with eSignature.status === 'signed'
+                'eSignature.status': ILeaseESignatureStatusEnum.SIGNED,
+                'eSignature.completedAt': completedAt,
+                status: LeaseStatus.ACTIVE,
+                signedDate: completedAt,
+                activatedAt: new Date(),
+                updatedAt: new Date(),
+              }
+            );
+          }
 
-          // Push real-time SSE refresh signal to both tenant and PM so their
-          // lease list / lease detail pages refetch without a manual reload.
-          const ssePayload: IResourceEvent = {
-            resource: 'lease',
-            action: 'status-changed',
-            resourceUId: lease.luid,
-            status: LeaseStatus.ACTIVE,
-          };
-          await Promise.allSettled([
-            this.sseService.sendToUser(
-              lease.tenantId.toString(),
-              lease.cuid,
-              ssePayload,
-              'resource-event'
-            ),
-            this.sseService.sendToUser(
-              lease.createdBy.toString(),
-              lease.cuid,
-              ssePayload,
-              'resource-event'
-            ),
-          ]);
+          // Fetched by the worker, never inline: a failed download here would make BoldSign
+          // redeliver the webhook. Queued even on a redelivery — the jobId dedupes it.
+          await this.queueSignedDocumentStorage(lease, documentId);
+
+          if (!alreadyActivated) {
+            await this.announceLeaseActivated(lease, {
+              signers: data?.signers || [],
+              documentId,
+              completedAt,
+            });
+          }
           break;
 
         case 'Declined':
@@ -733,6 +651,75 @@ export class LeaseSignatureService {
         stack: error.stack,
       });
       throw error;
+    }
+  }
+
+  /**
+   * Side effects shared by every route to ACTIVE (completed e-signature, manual activation):
+   * fresh caches, LEASE_ESIGNATURE_COMPLETED (rent, deposit, unit occupancy, emails) and an
+   * SSE refresh for the tenant and the lease's creator.
+   */
+  async announceLeaseActivated(
+    lease: Pick<ILeaseDocument, '_id' | 'luid' | 'cuid' | 'tenantId' | 'createdBy' | 'property'>,
+    details: Pick<LeaseESignatureCompletedPayload, 'documentId' | 'signers' | 'completedAt'>
+  ): Promise<void> {
+    const tenantId = getRefIdString(lease.tenantId);
+    const propertyId = getRefIdString(lease.property.id);
+
+    await Promise.allSettled([
+      this.leaseCache.invalidateLease(lease.cuid, lease.luid),
+      this.leaseCache.invalidateLeaseLists(lease.cuid),
+    ]);
+
+    this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_COMPLETED, {
+      leaseId: lease._id.toString(),
+      luid: lease.luid,
+      cuid: lease.cuid,
+      tenantId,
+      propertyId,
+      propertyUnitId: lease.property.unitId ? getRefIdString(lease.property.unitId) : undefined,
+      propertyManagerId: lease.createdBy.toString(),
+      ...details,
+    });
+
+    // Push real-time SSE refresh signal to both tenant and PM so their
+    // lease list / lease detail pages refetch without a manual reload.
+    const ssePayload: IResourceEvent = {
+      resource: 'lease',
+      action: 'status-changed',
+      resourceUId: lease.luid,
+      status: LeaseStatus.ACTIVE,
+    };
+    await Promise.allSettled([
+      this.sseService.sendToUser(tenantId, lease.cuid, ssePayload, 'resource-event'),
+      this.sseService.sendToUser(
+        lease.createdBy.toString(),
+        lease.cuid,
+        ssePayload,
+        'resource-event'
+      ),
+    ]);
+  }
+
+  private async queueSignedDocumentStorage(
+    lease: Pick<ILeaseDocument, '_id' | 'luid' | 'cuid'>,
+    documentId: string
+  ): Promise<void> {
+    try {
+      const eSignatureQueue = this.queueFactory.getQueue('eSignatureQueue') as ESignatureQueue;
+      await eSignatureQueue.addToStoreSignedDocumentQueue({
+        leaseId: lease._id.toString(),
+        luid: lease.luid,
+        cuid: lease.cuid,
+        documentId,
+      });
+    } catch (error: any) {
+      // The lease is still active; the signed copy can be stored by re-queueing this job
+      this.log.error('Failed to queue signed document storage', {
+        luid: lease.luid,
+        documentId,
+        error: error?.message,
+      });
     }
   }
 

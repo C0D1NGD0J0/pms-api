@@ -9,12 +9,13 @@ import { PropertyDAO } from '@dao/propertyDAO';
 import { S3Service } from '@services/fileUpload';
 import { InspectionDAO } from '@dao/inspectionDAO';
 import { getSystemBotUserId } from '@utils/systemBot';
+import { FinancialCalculator } from '@utils/financial';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { SSEService } from '@services/sse/sse.service';
 import { EventEmitterService } from '@services/eventEmitter';
+import { LEASE_CONSTANTS, createLogger, toId } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { PropertyUnitStatusEnum } from '@interfaces/propertyUnit.interface';
-import { LEASE_CONSTANTS, createLogger, MoneyUtils, toId } from '@utils/index';
 import { DEFAULT_INSPECTION_ROOMS } from '@models/inspection/inspection.model';
 import { MediaUploadService } from '@services/mediaUpload/mediaUpload.service';
 import { PaymentRefundedPayload, EventTypes } from '@interfaces/events.interface';
@@ -1603,7 +1604,7 @@ export class InspectionService implements ICronProvider {
 
           const noResponseNote = 'Auto-closed: tenant did not respond within 7 days of submission.';
           const closingNote = inspection.refundInfo
-            ? `${noResponseNote} Deposit refund proposed by the property manager: ${MoneyUtils.formatCurrency(proposedRefund, inspection.refundInfo.currency)}.`
+            ? `${noResponseNote} Deposit refund proposed by the property manager: ${FinancialCalculator.formatCurrency(proposedRefund, inspection.refundInfo.currency)}.`
             : noResponseNote;
 
           await this.inspectionDAO.updateById(inspection._id.toString(), {

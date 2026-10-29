@@ -40,9 +40,9 @@ describe('InvitationCsvProcessor', () => {
   });
 
   it('accepts exactly the columns the CSV schema validates (import fields and schema stay in sync)', () => {
-    const schemaKeys = Object.keys(
-      (InvitationValidations.invitationCsv as any)._def.schema.shape
-    ).filter((key) => key !== 'cuid');
+    const schemaKeys = Object.keys(InvitationValidations.invitationCsv.in.shape).filter(
+      (key) => key !== 'cuid'
+    );
 
     expect(INVITATION_IMPORTABLE_FIELDS.map((f) => f.key).sort()).toEqual(schemaKeys.sort());
   });

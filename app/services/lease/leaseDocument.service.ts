@@ -4,6 +4,8 @@ import { t } from '@shared/languages';
 import { LeaseDAO } from '@dao/index';
 import { createLogger } from '@utils/index';
 import { S3Service } from '@services/fileUpload';
+import { ICurrentUser } from '@interfaces/user.interface';
+import { ROLES } from '@shared/constants/roles.constants';
 import { ILeaseDocument } from '@interfaces/lease.interface';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
@@ -64,10 +66,19 @@ export class LeaseDocumentService {
     };
   }
 
-  async getLeaseDocumentUrl(cuid: string, leaseId: string): IPromiseReturnedData<string> {
+  async getLeaseDocumentUrl(
+    cuid: string,
+    leaseId: string,
+    viewer?: ICurrentUser
+  ): IPromiseReturnedData<string> {
     const lease = await this._findLease(leaseId, cuid);
 
-    // Prefer the agreement over supporting documents uploaded after signing
+    // A tenant's read grant is scoped to their own leases
+    if (viewer?.client?.role === ROLES.TENANT && lease.tenantId?.toString() !== viewer.sub) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Lease' }) });
+    }
+
+    // Prefer the signed copy, then the agreement, over supporting documents
     const activeDoc =
       findActiveLeasePDF(lease) || lease.leaseDocuments?.find((d: any) => d.status === 'active');
     if (!activeDoc?.key) {

@@ -209,6 +209,42 @@ describe('PaymentService.releaseDepositRefund — tenant is told once the refund
     expectRefundAnnounced();
   });
 
+  it('sends only the staged pendingAmount to Stripe and adds it to the earlier refund total', async () => {
+    // $2,000 deposit: $300 already refunded, $1,200 staged by the move-out inspection
+    const deposit = await createStagedDeposit({
+      refund: { amount: 30000, pendingAmount: 120000 },
+    });
+
+    await paymentService.releaseDepositRefund(CUID, deposit.pytuid, MANAGER_ID);
+
+    expect(mockGateway.createRefund).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ amountInCents: 120000 })
+    );
+    const stored = await Payment.findById(deposit._id).lean();
+    expect(stored!.refund?.amount).toBe(150000);
+    expect(stored!.refund?.pendingAmount).toBeUndefined();
+    expect(mockEmitter.emit).toHaveBeenCalledWith(
+      EventTypes.PAYMENT_REFUNDED,
+      expect.objectContaining({ refundAmount: 120000, totalRefunded: 150000, isPartial: true })
+    );
+  });
+
+  it('releases a staged pendingAmount offline without calling Stripe', async () => {
+    const deposit = await createStagedDeposit({
+      refund: { amount: 30000, pendingAmount: 120000 },
+    });
+
+    await paymentService.releaseDepositRefund(CUID, deposit.pytuid, MANAGER_ID, {
+      isManualRelease: true,
+    });
+
+    expect(mockGateway.createRefund).not.toHaveBeenCalled();
+    const stored = await Payment.findById(deposit._id).lean();
+    expect(stored!.refund?.amount).toBe(150000);
+    expect(stored!.refund?.pendingAmount).toBeUndefined();
+  });
+
   it('does not announce anything when the Stripe refund fails', async () => {
     const deposit = await createStagedDeposit();
     mockGateway.createRefund.mockResolvedValue({ success: false, data: null, message: 'nope' });

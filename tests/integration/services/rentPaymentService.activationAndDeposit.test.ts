@@ -8,7 +8,7 @@ import { ProfileDAO } from '@dao/profileDAO';
 import { envVariables } from '@shared/config';
 import { clearTestDatabase } from '@tests/helpers';
 import { runSchemaSync } from '@database/schema-sync';
-import { proRateAmount } from '@utils/financial.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { subscriptionPlanConfig } from '@services/subscription';
@@ -239,7 +239,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
       const [rent] = await paymentsOf(lease._id, PaymentRecordType.RENT);
       expect(rent.paymentMethod).toBe(PaymentMethod.CASH);
-      expect(rent.baseAmount).toBe(proRateAmount(RENT, startDate).amount);
+      expect(rent.baseAmount).toBe(FinancialCalculator.proRateFirstMonth(RENT, startDate).amount);
       expect(rent.baseAmount).toBeLessThan(RENT);
       expect(rent.lineItems?.[0].description).toMatch(/Pro-rated Rent/);
       expect(await paymentsOf(lease._id, PaymentRecordType.SECURITY_DEPOSIT)).toHaveLength(0);
@@ -502,7 +502,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       const updated = await Payment.findById(deposit._id).lean();
       expect(updated?.status).toBe(PaymentRecordStatus.PENDING_REFUND);
       expect(updated?.refund?.failureReason).toBe('insufficient balance');
-      expect(updated?.refund?.amount).toBe(90_000);
+      expect(updated?.refund?.pendingAmount).toBe(90_000);
       expect(emitterService.emit).toHaveBeenCalledWith(
         EventTypes.DEPOSIT_REFUND_FAILED,
         expect.objectContaining({ pytuid: deposit.pytuid, amount: 90_000, currency: 'CAD' })
@@ -603,7 +603,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
 
       const updated = await Payment.findById(deposit._id).lean();
       expect(updated?.status).toBe(PaymentRecordStatus.PENDING_REFUND);
-      expect(updated?.refund?.amount).toBe(SECURITY_DEPOSIT);
+      expect(updated?.refund?.pendingAmount).toBe(SECURITY_DEPOSIT);
     });
   });
 

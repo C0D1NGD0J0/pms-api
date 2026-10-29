@@ -36,7 +36,7 @@
         { label: "Lease Number", value: leaseNumber },
         { label: "Property", value: propertyAddress },
         ...(unitNumber ? [{ label: "Unit", value: unitNumber }] : []),
-        { label: "Lease End Date", value: '<span style="color: #dc2626; font-weight: 600;">' + new Date(endDate).toLocaleDateString() + '</span>' },
+        { label: "Lease End Date", value: '<span style="color: #dc2626; font-weight: 600;">' + new Date(endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</span>' },
         { label: "Days Remaining", value: daysRemaining + ' days' }
       ], variant: isAutoRenewing ? undefined : 'amber' }) %>
     </td>
@@ -54,7 +54,7 @@
         <p style="margin: 8px 0; color: #555; font-style: italic; font-size: 14px;"><%= renewalTerms %></p>
         <% } %>
       </div>
-      <%- include("../shared/html/_notice", { text: '<strong>Planning to move out instead?</strong> You must provide <strong>' + noticePeriod + ' days</strong> written notice by <strong>' + new Date(noticeDeadline).toLocaleDateString() + '</strong>.', type: 'warning' }) %>
+      <%- include("../shared/html/_notice", { text: '<strong>Planning to move out instead?</strong> You must provide <strong>' + noticePeriod + ' days</strong> written notice by <strong>' + new Date(noticeDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</strong>.', type: 'warning' }) %>
       <% } else { %>
       <h3>Your Options</h3>
 
@@ -84,15 +84,15 @@
       <div class="option-card option-move">
         <h4>Option 3 — Move Out</h4>
         <p style="margin: 8px 0; color: #555;">
-          If you plan to move out, provide written notice by <strong><%= new Date(noticeDeadline).toLocaleDateString() %></strong> as required by your lease.
+          If you plan to move out, provide written notice by <strong><%= new Date(noticeDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %></strong> as required by your lease.
         </p>
       </div>
       <% } %>
 
-      <%- include("../shared/html/_notice", { text: '<strong>Notice Deadline:</strong> Written notice is required <strong>' + noticePeriod + ' days</strong> in advance if you plan to move out. Deadline: <strong>' + new Date(noticeDeadline).toLocaleDateString() + '</strong>.', type: 'danger' }) %>
+      <%- include("../shared/html/_notice", { text: '<strong>Notice Deadline:</strong> Written notice is required <strong>' + noticePeriod + ' days</strong> in advance if you plan to move out. Deadline: <strong>' + new Date(noticeDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) + '</strong>.', type: 'danger' }) %>
 
       <ul style="margin-top: 16px; font-size: 14px; color: #475569;">
-        <li><strong>Respond by:</strong> <%= new Date(responseDeadline).toLocaleDateString() %></li>
+        <li><strong>Respond by:</strong> <%= new Date(responseDeadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %></li>
         <li><strong>Contact:</strong> <a href="mailto:<%= propertyManagerEmail %>"><%= propertyManagerEmail %></a> or <%= propertyManagerPhone %></li>
         <li><strong>State clearly:</strong> whether you are renewing, going month-to-month, or moving out</li>
       </ul>

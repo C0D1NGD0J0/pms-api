@@ -192,7 +192,7 @@ export class InvitationCsvProcessor {
     if (!validationResult.success) {
       return {
         isValid: false,
-        errors: validationResult.error.errors.map((err) => ({
+        errors: validationResult.error.issues.map((err) => ({
           field: err.path.join('.') || 'unknown',
           error: err.message,
         })),

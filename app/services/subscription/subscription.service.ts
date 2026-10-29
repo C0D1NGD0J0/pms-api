@@ -7,17 +7,16 @@ import { ClientSession } from 'mongodb';
 import { ClientDAO } from '@dao/clientDAO';
 import { Subscription } from '@models/index';
 import { PropertyDAO } from '@dao/propertyDAO';
-import { MoneyUtils } from '@utils/money.utils';
 import { EmailQueue } from '@queues/email.queue';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { FinancialCalculator } from '@utils/financial';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionCache, AuthCache } from '@caching/index';
 import { calcDaysRemaining, createLogger } from '@utils/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { PaymentGatewayService } from '@services/paymentGateway';
-import { calcAnnualToMonthly, calcSeatCost } from '@utils/financial.utils';
 import { InternalServerError, BadRequestError } from '@shared/customErrors';
 import {
   ISubscriptionEntitlements,
@@ -331,7 +330,9 @@ export class SubscriptionService {
       }
 
       const monthlyEquivalent =
-        billingInterval === 'annual' ? calcAnnualToMonthly(actualBilledAmount) : actualBilledAmount;
+        billingInterval === 'annual'
+          ? FinancialCalculator.annualToMonthly(actualBilledAmount)
+          : actualBilledAmount;
 
       const status = isPaidPlan ? ISubscriptionStatus.PENDING_PAYMENT : ISubscriptionStatus.ACTIVE;
       const pendingDowngradeAt = isPaidPlan ? dayjs().add(48, 'hour').toDate() : undefined;
@@ -942,7 +943,7 @@ export class SubscriptionService {
       const billingHistory = result.data.map((inv) => ({
         invoiceId: inv.id,
         number: inv.number,
-        amountPaid: MoneyUtils.fromCents(inv.amount_paid),
+        amountPaid: FinancialCalculator.fromCents(inv.amount_paid),
         currency: inv.currency.toUpperCase(),
         paidAt: inv.status_transitions?.paid_at
           ? new Date(inv.status_transitions.paid_at * 1000)
@@ -1256,11 +1257,11 @@ export class SubscriptionService {
         }
 
         // Calculate new pricing — all values in cents to stay consistent with totalMonthlyPrice
-        const newAdditionalCost = calcSeatCost(
+        const newAdditionalCost = FinancialCalculator.seatCost(
           newAdditionalCount,
           config.seatPricing.additionalSeatPriceCents
         );
-        const monthlyCostChange = calcSeatCost(
+        const monthlyCostChange = FinancialCalculator.seatCost(
           seatDelta,
           config.seatPricing.additionalSeatPriceCents
         );
@@ -1299,7 +1300,7 @@ export class SubscriptionService {
             cuid,
             seatDelta,
             newTotal: newAdditionalCount,
-            costPerSeat: MoneyUtils.fromCents(config.seatPricing.additionalSeatPriceCents),
+            costPerSeat: FinancialCalculator.fromCents(config.seatPricing.additionalSeatPriceCents),
             monthlyCostChange,
             seatItemId,
           },
@@ -1477,7 +1478,7 @@ export class SubscriptionService {
               checkoutData.billingInterval || subscription.billingInterval || 'monthly';
 
             // Recalculate seat costs with the new plan's pricing
-            const newSeatCost = calcSeatCost(
+            const newSeatCost = FinancialCalculator.seatCost(
               subscription.seats.additional ?? 0,
               planConfig.seatPricing.additionalSeatPriceCents
             );
@@ -1560,8 +1561,8 @@ export class SubscriptionService {
   }
 
   private formatPrice(priceInCents: number, currency: string = 'usd'): string {
-    if (priceInCents === 0) return MoneyUtils.formatCurrency(0, currency.toUpperCase());
-    return MoneyUtils.formatCurrency(priceInCents, currency.toUpperCase());
+    if (priceInCents === 0) return FinancialCalculator.formatCurrency(0, currency.toUpperCase());
+    return FinancialCalculator.formatCurrency(priceInCents, currency.toUpperCase());
   }
 
   // WEBHOOKS — delegated to SubscriptionWebhookService
@@ -1837,7 +1838,10 @@ export class SubscriptionService {
       let seatCost = 0;
       if (seatItem) {
         const qty = seatItem.quantity || 0;
-        seatCost = calcSeatCost(qty, activeConfig.seatPricing.additionalSeatPriceCents);
+        seatCost = FinancialCalculator.seatCost(
+          qty,
+          activeConfig.seatPricing.additionalSeatPriceCents
+        );
         updateData['seats.additional'] = qty;
         updateData['seats.additionalCost'] = seatCost;
         if (seatItem.id) updateData['billing.seatItemId'] = seatItem.id;

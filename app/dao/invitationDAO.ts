@@ -211,14 +211,23 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
     }
   }
 
+  /**
+   * `fromStatuses` limits the change to invitations currently in one of those statuses;
+   * returns null (and changes nothing) otherwise.
+   */
   async updateInvitationStatus(
     invitationId: string,
     clientId: string,
-    status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent'
+    status: 'pending' | 'accepted' | 'expired' | 'revoked' | 'sent',
+    fromStatuses?: InvitationStatus[]
   ): Promise<IInvitationDocument | null> {
     try {
       return await this.update(
-        { _id: new Types.ObjectId(invitationId), clientId: new Types.ObjectId(clientId) },
+        {
+          _id: new Types.ObjectId(invitationId),
+          clientId: new Types.ObjectId(clientId),
+          ...(fromStatuses && { status: { $in: fromStatuses } }),
+        },
         { $set: { status } }
       );
     } catch (error) {
@@ -241,6 +250,8 @@ export class InvitationDAO extends BaseDAO<IInvitationDocument> implements IInvi
           revokedAt: new Date(),
           revokedBy: new Types.ObjectId(revokedBy),
         },
+        // The link must stop working, not only read as revoked
+        $unset: { invitationToken: 1 },
       };
 
       if (reason) {

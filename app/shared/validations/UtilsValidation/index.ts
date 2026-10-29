@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import dayjs from 'dayjs';
 import { isValidObjectId } from 'mongoose';
+
+import '../zodConfig';
 import {
   NotificationDAO,
   PropertyUnitDAO,
@@ -26,6 +28,21 @@ export const emptyToUndefined = (value: unknown) =>
 
 export const optionalBlank = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess(emptyToUndefined, schema.optional());
+
+const withoutDefault = (field: z.ZodType): z.ZodType =>
+  field instanceof z.ZodDefault ? withoutDefault(field.unwrap() as z.ZodType) : field;
+
+/**
+ * `.partial()` for PATCH payloads. Zod 4 applies a field's `.default()` even when the field is
+ * optional, so a plain `.partial()` would fill omitted fields with their create-time defaults and
+ * overwrite stored values. This drops those defaults: omitted fields stay undefined.
+ */
+export const partialWithoutDefaults = <T extends z.ZodObject>(schema: T) => {
+  const shapeWithoutDefaults = Object.fromEntries(
+    Object.entries(schema.shape).map(([key, field]) => [key, withoutDefault(field as z.ZodType)])
+  );
+  return schema.extend(shapeWithoutDefaults).partial() as unknown as ReturnType<T['partial']>;
+};
 
 export const objectIdString = z.string().regex(/^[a-f\d]{24}$/i, 'Must be a valid ID');
 

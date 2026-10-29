@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
+import { FinancialCalculator } from '@utils/financial';
 import { calcPercentage, createLogger, msToDays } from '@utils/index';
 import { ListResultWithPagination } from '@interfaces/utils.interface';
 import { type PipelineStage, type QueryFilter, Model, Types } from 'mongoose';
@@ -8,6 +9,11 @@ import { PaymentRecordStatus, PaymentRecordType, IPaymentDocument } from '@inter
 import { BaseDAO } from './baseDAO';
 import { IFindOptions } from './interfaces/baseDAO.interface';
 import { IPaymentDAO } from './interfaces/paymentsDAO.interface';
+
+/** A payment's base amount net of its (cumulative) refunds, for revenue aggregations. */
+const NET_OF_REFUNDS_EXPR = {
+  $subtract: ['$baseAmount', { $min: [{ $ifNull: ['$refund.amount', 0] }, '$baseAmount'] }],
+};
 
 export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO {
   private readonly log: Logger;
@@ -287,7 +293,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
 
       const paidPayments = allPayments.filter((p: any) => p.status === PaymentRecordStatus.PAID);
       const totalRentPaid = paidPayments.reduce(
-        (sum: number, p: any) => sum + (p.baseAmount || 0) + (p.processingFee || 0),
+        (sum: number, p: any) => sum + FinancialCalculator.paymentTotal(p),
         0
       );
 
@@ -314,17 +320,12 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
         totalRelevant > 0 ? calcPercentage(onTimePayments.length, totalRelevant) : 0;
 
       // Delay calculation — combines paid late delays with currently overdue delays
-      const paidDelays = paidWithDueDate.map((p: any) => {
-        const dueDayEnd = dayjs(p.dueDate).endOf('day');
-        const delayDays = dayjs(p.paidAt).diff(dueDayEnd, 'day', true);
-        return Math.max(0, Math.ceil(delayDays));
-      });
+      const paidDelays = paidWithDueDate.map((p: any) =>
+        FinancialCalculator.daysLate(p.dueDate, p.paidAt)
+      );
       const overdueDelays = overduePayments
         .filter((p: any) => p.dueDate)
-        .map((p: any) => {
-          const dueDayEnd = dayjs(p.dueDate).endOf('day');
-          return Math.max(0, Math.ceil(dayjs().diff(dueDayEnd, 'day', true)));
-        });
+        .map((p: any) => FinancialCalculator.daysLate(p.dueDate));
 
       const allDelays = [...paidDelays, ...overdueDelays];
       const averagePaymentDelay =
@@ -339,7 +340,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
             pytuid: payment.pytuid,
             invoiceNumber: payment.invoiceNumber,
             paymentType: payment.paymentType,
-            amount: (payment.baseAmount || 0) + (payment.processingFee || 0),
+            amount: FinancialCalculator.paymentTotal(payment),
             status: payment.status,
             dueDate: payment.dueDate,
             paidAt: payment.paidAt,
@@ -433,16 +434,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
                 managerReviewRequired: { $ne: true },
               },
             },
-            {
-              $addFields: {
-                netAmount: {
-                  $subtract: [
-                    '$baseAmount',
-                    { $min: [{ $ifNull: ['$refund.amount', 0] }, '$baseAmount'] },
-                  ],
-                },
-              },
-            },
+            { $addFields: { netAmount: NET_OF_REFUNDS_EXPR } },
             {
               $group: {
                 _id: '$currency',
@@ -577,9 +569,16 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
   > {
     const results = await this.aggregate([
       {
+        // Income is verified rent-side money kept by the client: held security deposits and
+        // deposit refunds aren't income, unreviewed staff entries aren't verified yet, and
+        // refunded amounts are netted out (same rules as dashboard revenue, minus deposits).
         $match: {
           cuid,
           status: PaymentRecordStatus.PAID,
+          paymentType: {
+            $nin: [PaymentRecordType.SECURITY_DEPOSIT, PaymentRecordType.DEPOSIT_REFUND],
+          },
+          managerReviewRequired: { $ne: true },
           paidAt: dateMatch,
           deletedAt: null,
           vendorId: { $exists: false },
@@ -609,7 +608,7 @@ export class PaymentDAO extends BaseDAO<IPaymentDocument> implements IPaymentDAO
       {
         $group: {
           _id: { currency: '$currency', propertyId: '$leaseDoc.property.id' },
-          total: { $sum: '$baseAmount' },
+          total: { $sum: NET_OF_REFUNDS_EXPR },
           propertyName: {
             $first: {
               $ifNull: [{ $arrayElemAt: ['$_propertyDoc.name', 0] }, '$leaseDoc.property.address'],

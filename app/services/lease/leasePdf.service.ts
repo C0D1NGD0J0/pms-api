@@ -4,7 +4,6 @@ import { t } from '@shared/languages';
 import { LeaseCache } from '@caching/index';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { QueueFactory } from '@services/queue';
-import { MoneyUtils } from '@utils/money.utils';
 import { SSEService } from '@services/sse/sse.service';
 import { ProfileDAO, ClientDAO, LeaseDAO } from '@dao/index';
 import { determineTemplateType, createLogger } from '@utils/index';
@@ -13,6 +12,7 @@ import { EventEmitterService, NotificationService } from '@services/index';
 import { ResourceContext, UploadResult } from '@interfaces/utils.interface';
 import { ValidationRequestError, BadRequestError } from '@shared/customErrors';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import { ILeaseDocument, SigningMethod, LeaseStatus } from '@interfaces/lease.interface';
 import { NotificationPriorityEnum, NotificationTypeEnum } from '@interfaces/notification.interface';
 import {
@@ -267,7 +267,7 @@ export class LeasePdfService {
         amount: lease.fees.lateFeeAmount || 0,
         type: lease.fees.lateFeeType || 'fixed',
         percentage: lease.fees.lateFeePercentage || 0,
-        lateFeesGracePeriod: lease.fees.lateFeeDays || 5,
+        lateFeesGracePeriod: lease.fees.lateFeeDays || DEFAULT_LATE_FEE_GRACE_DAYS,
       },
 
       petPolicy: lease.petPolicy,
@@ -281,7 +281,7 @@ export class LeasePdfService {
         lease.includeManagementFee && Number(property.fees?.managementFees ?? 0) > 0
           ? {
               amount: property.fees.managementFees,
-              formatted: MoneyUtils.formatCurrency(
+              formatted: FinancialCalculator.formatCurrency(
                 property.fees.managementFees as number,
                 lease.fees.currency || 'USD'
               ),

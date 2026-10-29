@@ -104,6 +104,7 @@ describe('EmailWorker — requestId child logger', () => {
       emitterService: mockEmitter as any,
       profileService: mockProfileService as any,
       userDAO: {} as any,
+      invitationDAO: {} as any,
     });
 
     childLogSpy = jest.fn().mockReturnValue({

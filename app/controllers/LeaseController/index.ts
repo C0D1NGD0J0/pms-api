@@ -133,7 +133,14 @@ export class LeaseController {
 
   activateLease = async (req: AppRequest, res: Response) => {
     const { cuid, luid } = req.params;
-    const result = await this.leaseService.activateLease(cuid, luid, req.context);
+    // The signed copy arrives as the multipart 'signedDocument' file (diskUpload + scanFile)
+    const result = await this.leaseService.activateLease(
+      cuid,
+      luid,
+      req.body,
+      req.context,
+      req.scannedFiles
+    );
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -196,7 +203,11 @@ export class LeaseController {
 
   getLeaseDocument = async (req: AppRequest, res: Response) => {
     const { cuid, luid } = req.params;
-    const result = await this.leaseService.getLeaseDocumentUrl(cuid, luid);
+    const result = await this.leaseService.getLeaseDocumentUrl(
+      cuid,
+      luid,
+      req.context.currentuser!
+    );
     res.status(httpStatusCodes.OK).json(result);
   };
 
@@ -212,18 +223,6 @@ export class LeaseController {
     let result;
 
     switch (action) {
-      case 'manual': {
-        const { cuid: manualCuid, luid: manualLuid } = req.params;
-        const { currentuser: manualUser } = req.context;
-        const { signedBy } = req.body;
-        result = await this.leaseService.markAsManualySigned(
-          manualCuid,
-          manualLuid,
-          signedBy || [],
-          manualUser!.sub
-        );
-        break;
-      }
       case 'cancel': {
         const { cuid: cancelCuid, luid: cancelLuid } = req.params;
         const { currentuser } = req.context;

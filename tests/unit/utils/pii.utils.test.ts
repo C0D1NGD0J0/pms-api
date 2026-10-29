@@ -37,6 +37,15 @@ describe('redactPII', () => {
     expect(result).not.toContain('PR-XYZ789012');
   });
 
+  it('should keep ObjectIds and resource UIDs with keepIdentifiers, still redacting PII', () => {
+    const result = redactPII(
+      'User 507f1f77bcf86cd799439011 (jane@example.com) on MR-ABC12345',
+      undefined,
+      { keepIdentifiers: true }
+    );
+    expect(result).toBe('User 507f1f77bcf86cd799439011 ([EMAIL]) on MR-ABC12345');
+  });
+
   it('should redact known names from PIIContext', () => {
     const result = redactPII('Marcus Johnson reported a leak in unit 4A', {
       names: ['Marcus Johnson'],

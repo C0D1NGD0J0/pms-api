@@ -1712,4 +1712,120 @@ describe('LeaseDAO Integration Tests', () => {
       expect(leases.length).toBe(0);
     });
   });
+  describe('renewal request methods', () => {
+    const createLease = (overrides: Record<string, any> = {}) =>
+      Lease.create({
+        cuid: testCuid,
+        type: LeaseType.FIXED_TERM,
+        templateType: 'residential-apartment',
+        tenantId: testTenantId,
+        status: LeaseStatus.ACTIVE,
+        property: { id: testPropertyId, unitId: testUnitId.toString(), address: '123 Main St' },
+        duration: { startDate: new Date('2025-11-01'), endDate: new Date('2026-10-31') },
+        fees: {
+          rentAmount: 2000,
+          securityDeposit: 2000,
+          rentDueDay: 1,
+          currency: 'CAD',
+          acceptedPaymentMethod: 'e-transfer',
+        },
+        signingMethod: SigningMethod.MANUAL,
+        approvalStatus: 'approved',
+        signedDate: new Date(),
+        createdBy: testCreatorId,
+        leaseDocuments: [
+          {
+            url: 'https://example.com/lease.pdf',
+            key: 'lease-key',
+            filename: 'lease.pdf',
+            uploadedBy: testCreatorId,
+            status: 'active',
+          },
+        ],
+        signatures: [
+          {
+            userId: testTenantId,
+            role: 'tenant',
+            signedAt: new Date(),
+            signatureMethod: 'manual',
+          },
+        ],
+        ...overrides,
+      });
+
+    it('getPendingRenewalRequests returns only pending requests, soonest end date first', async () => {
+      const later = await createLease({
+        duration: { startDate: new Date('2025-12-01'), endDate: new Date('2026-11-30') },
+        renewalRequest: { status: 'pending', requestedTermMonths: 12, submittedAt: new Date() },
+      });
+      const sooner = await createLease({
+        renewalRequest: { status: 'pending', requestedTermMonths: 6, submittedAt: new Date() },
+      });
+      await createLease({
+        renewalRequest: { status: 'rejected', submittedAt: new Date() },
+      });
+      await createLease({
+        cuid: 'OTHER_CLIENT',
+        renewalRequest: { status: 'pending', submittedAt: new Date() },
+      });
+
+      const leases = await leaseDAO.getPendingRenewalRequests(testCuid);
+
+      expect(leases.map((l) => l.luid)).toEqual([sooner.luid, later.luid]);
+      expect((leases[0].tenantId as any).email).toBe('tenant@example.com');
+      expect((leases[0].property.id as any).name).toBe('Test Property');
+    });
+
+    it('revertRenewalRequestDecision puts an approved request back to pending', async () => {
+      const lease = await createLease({
+        renewalRequest: { status: 'pending', requestedTermMonths: 12, submittedAt: new Date() },
+      });
+      await leaseDAO.decideRenewalRequest(testCuid, lease._id.toString(), {
+        approved: true,
+        decidedBy: testCreatorId.toString(),
+      });
+
+      const reverted = await leaseDAO.revertRenewalRequestDecision(testCuid, lease._id.toString());
+
+      expect(reverted?.renewalRequest?.status).toBe('pending');
+      expect(reverted?.renewalRequest?.decision?.decidedAt).toBeUndefined();
+      expect(reverted?.renewalRequest?.requestedTermMonths).toBe(12);
+    });
+
+    it('revertRenewalRequestDecision leaves a rejected request alone', async () => {
+      const lease = await createLease({
+        renewalRequest: { status: 'rejected', submittedAt: new Date() },
+      });
+
+      const reverted = await leaseDAO.revertRenewalRequestDecision(testCuid, lease._id.toString());
+
+      expect(reverted).toBeNull();
+    });
+
+    it('findOpenRenewalForLease finds a draft renewal created from the lease', async () => {
+      const original = await createLease();
+
+      expect(await leaseDAO.findOpenRenewalForLease(testCuid, original._id.toString())).toBeNull();
+
+      const draft = await createLease({
+        previousLeaseId: original._id,
+        status: LeaseStatus.DRAFT_RENEWAL,
+        duration: { startDate: new Date('2026-11-01'), endDate: new Date('2027-10-31') },
+      });
+
+      const found = await leaseDAO.findOpenRenewalForLease(testCuid, original._id.toString());
+      expect(found?.luid).toBe(draft.luid);
+    });
+
+    it('findOpenRenewalForLease ignores a cancelled renewal', async () => {
+      const original = await createLease();
+      await createLease({
+        previousLeaseId: original._id,
+        status: LeaseStatus.CANCELLED,
+        duration: { startDate: new Date('2026-11-01'), endDate: new Date('2027-10-31') },
+      });
+
+      expect(await leaseDAO.findOpenRenewalForLease(testCuid, original._id.toString())).toBeNull();
+    });
+  });
 });

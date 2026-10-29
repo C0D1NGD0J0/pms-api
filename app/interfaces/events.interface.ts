@@ -18,6 +18,8 @@ export enum EventTypes {
   MAINTENANCE_WORK_ORDER_REJECTED = 'maintenance:work_order:rejected',
   PAYMENT_DISPUTE_REVERSAL_FAILED = 'payment:dispute:reversal:failed',
   MAINTENANCE_AI_TRIAGE_COMPLETED = 'maintenance:ai:triage:completed',
+  LEASE_RENEWAL_REQUEST_APPROVED = 'lease:renewal:request:approved',
+  LEASE_RENEWAL_REQUEST_REJECTED = 'lease:renewal:request:rejected',
   PAYMENT_METHOD_SETUP_COMPLETED = 'payment:method:setup:completed',
   MAINTENANCE_FEEDBACK_SUBMITTED = 'maintenance:feedback:submitted',
   MAINTENANCE_REQUEST_WORK_DONE = 'maintenance:request:work_done',
@@ -167,6 +169,8 @@ export type EventPayloadMap = {
   [EventTypes.MAINTENANCE_WORK_ORDER_APPROVED]: MaintenanceWorkOrderApprovedPayload;
   [EventTypes.MAINTENANCE_WORK_ORDER_REJECTED]: MaintenanceWorkOrderRejectedPayload;
   [EventTypes.LEASE_RENEWAL_REQUESTED]: LeaseRenewalRequestedPayload;
+  [EventTypes.LEASE_RENEWAL_REQUEST_APPROVED]: LeaseRenewalRequestDecisionPayload;
+  [EventTypes.LEASE_RENEWAL_REQUEST_REJECTED]: LeaseRenewalRequestDecisionPayload;
   [EventTypes.PAYMENT_PROCESSOR_VERIFIED]: PaymentProcessorVerifiedPayload;
   [EventTypes.PAYMENT_DISPUTE_CREATED]: PaymentDisputeCreatedPayload;
   [EventTypes.PAYMENT_DISPUTE_WON]: PaymentDisputeWonPayload;
@@ -371,6 +375,19 @@ export interface InvitationEventPayload {
   cuid: string; // Client unique ID
 }
 
+export interface EmailFailedPayload {
+  error: {
+    message: string;
+    code?: string;
+  };
+  jobData: Record<string, any>;
+  emailType: MailType;
+  subject: string;
+  /** True on the last attempt: the email will not be retried. */
+  final: boolean;
+  to: string;
+}
+
 /**
  * Emitted when an approved billable invoice could not be turned into a tenant charge
  * (no tenant on the request, or the tenant's profile is missing). The PM must bill manually.
@@ -514,6 +531,17 @@ export interface MaintenanceRequestCompletedPayload {
   cuid: string;
 }
 
+export interface LeaseRenewalRequestDecisionPayload {
+  rejectionReason?: string;
+  renewalLuid?: string;
+  decidedBy: string;
+  approved: boolean;
+  tenantId: string;
+  leaseId: string;
+  luid: string;
+  cuid: string;
+}
+
 export interface VacateRequestDecisionPayload {
   adjustedMoveOutDate?: Date;
   rejectionReason?: string;
@@ -555,7 +583,6 @@ export interface InspectionApprovedPayload {
   iuid: string;
   cuid: string;
 }
-
 export interface PaymentFailedPayload {
   hostedInvoiceUrl?: string;
   failureReason?: string;
@@ -566,6 +593,7 @@ export interface PaymentFailedPayload {
   pytuid: string;
   cuid: string;
 }
+
 export interface MaintenanceInvoiceSubmittedPayload {
   invoiceId?: string;
   requestId: string;
@@ -725,17 +753,6 @@ export interface PaymentDisputeLostPayload {
   pytuid: string;
   amount: number;
   cuid: string;
-}
-
-export interface EmailFailedPayload {
-  error: {
-    message: string;
-    code?: string;
-  };
-  jobData: Record<string, any>;
-  emailType: MailType;
-  subject: string;
-  to: string;
 }
 
 export interface PaymentDisputeWonPayload {

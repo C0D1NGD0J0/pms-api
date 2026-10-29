@@ -52,6 +52,12 @@ class EnvVariables {
       ENABLE_CONSOLE_LOGS: process.env.ENABLE_CONSOLE_LOGS === 'true',
       PROCESS_TYPE: (process.env.PROCESS_TYPE as 'api' | 'worker') || 'api',
       CRON_ENABLED: process.env.CRON_ENABLED === 'true',
+      ERROR_LOG_ARCHIVE_ENABLED: process.env.ERROR_LOG_ARCHIVE_ENABLED === 'true',
+      ERROR_LOG_ARCHIVE_FLUSH_MS:
+        Number(process.env.ERROR_LOG_ARCHIVE_FLUSH_MS) || 4 * 60 * 60 * 1000,
+      SENTRY_JOB_FAILURE_THROTTLE_MS:
+        Number(process.env.SENTRY_JOB_FAILURE_THROTTLE_MS) || 24 * 60 * 60 * 1000,
+      DLQ_RETENTION_DAYS: Number(process.env.DLQ_RETENTION_DAYS ?? 30),
       CLAMDSCAN_SOCKET: process.env.CLAMDSCAN_SOCKET || '/tmp/clamd.sock',
     };
     this.AUTH_COOKIE = {
@@ -118,6 +124,10 @@ class EnvVariables {
         PROVIDER_PASSWORD: process.env.EMAIL_PROVIDER_PASSWORD_PROD || '',
       },
       APP_EMAIL_ADDRESS: process.env.APP_EMAIL_ADDRESS || '',
+      // Providers reject bursts (Mailtrap's sandbox allows about 1/s; SES starts at 14/s)
+      MAX_PER_SECOND:
+        Number(process.env.EMAIL_MAX_PER_SECOND) ||
+        (process.env.NODE_ENV === 'production' ? 10 : 1),
     };
     this.FRONTEND = {
       URL: (process.env.FRONTEND_URL || '').split(',')[0].trim(),

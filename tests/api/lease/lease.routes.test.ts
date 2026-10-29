@@ -243,13 +243,9 @@ describe('Lease Routes - API Integration Tests', () => {
     it.todo('should require LEASE:DELETE permission');
   });
 
-  describe('POST /:cuid/:leaseId/activate - Activate Lease', () => {
-    it.todo('should return 501 NOT_IMPLEMENTED');
-    it.todo('should activate lease when implemented');
-    it.todo('should validate all signatures complete');
-    it.todo('should check no overlapping leases');
-    it.todo('should require authentication');
-  });
+  // POST /:cuid/:luid/activate — role access and body validation run against the real router in
+  // tests/unit/routes/lease.activate.access.test.ts; activation rules in the LeaseService
+  // integration suite ('manual activation').
 
   describe('POST /:cuid/:leaseId/terminate - Terminate Lease', () => {
     it.todo('should return 501 NOT_IMPLEMENTED');

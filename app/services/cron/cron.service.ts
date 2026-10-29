@@ -82,6 +82,7 @@ export class CronService {
       smsService,
       metricsService,
       dsarService,
+      queueFactory,
     ].filter(Boolean);
 
     // Async init: register jobs then clean up stale schedules

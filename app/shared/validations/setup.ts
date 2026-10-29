@@ -1,12 +1,13 @@
+import { ZodError, ZodType } from 'zod';
 import { envVariables } from '@shared/config';
 import { EventTypes } from '@interfaces/index';
 import { httpStatusCodes } from '@utils/constants';
 import { EventEmitterService } from '@services/index';
 import { NextFunction, Response, Request } from 'express';
-import { ZodTypeDef, ZodSchema, ZodError, ZodType } from 'zod';
 import { extractMulterFiles, parseJsonFields, createLogger } from '@utils/helpers';
 
 import { collectStrippedPaths } from './strippedPaths';
+import './zodConfig';
 
 const log = createLogger('ValidateRequest');
 
@@ -24,9 +25,9 @@ const warnAboutStrippedFields = (req: Request, raw: { body?: unknown; query?: un
 };
 
 export const validateRequest = (schema: {
-  query?: ZodType<any, ZodTypeDef, any>;
-  params?: ZodType<any, ZodTypeDef, any>;
-  body?: ZodSchema;
+  query?: ZodType<any, any>;
+  params?: ZodType<any, any>;
+  body?: ZodType;
 }) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     const { emitterService }: { emitterService: EventEmitterService } = req.container.cradle;
@@ -64,7 +65,7 @@ export const validateRequest = (schema: {
         res.status(httpStatusCodes.UNPROCESSABLE).json({
           success: false,
           message: 'Validation failed',
-          errors: error.errors.map((err) => ({
+          errors: error.issues.map((err) => ({
             path: err.path.join('.'),
             message: err.message,
           })),

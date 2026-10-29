@@ -949,6 +949,8 @@ export class NotificationService {
     eventType:
       | 'renewal_created'
       | 'renewal_approved'
+      | 'renewal_requested'
+      | 'renewal_rejected'
       | 'renewal_hold_urgent'
       | 'renewal_auto_rejected'
       | 'expiring'

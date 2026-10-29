@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { SEARCH_CONSTANTS } from '@utils/constants';
 
+import { typeErrors } from '../zodConfig';
+
 export const SearchSchemas = {
   globalSearchQuery: z.object({
     q: z
-      .string({ required_error: 'Search term is required' })
+      .string({ error: typeErrors({ required: 'Search term is required' }) })
       .trim()
       .min(
         SEARCH_CONSTANTS.MIN_TERM_LENGTH,

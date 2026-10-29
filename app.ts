@@ -8,7 +8,6 @@ import hpp from 'hpp';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import * as Sentry from '@sentry/node';
 import { routes } from '@routes/index';
 import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
@@ -61,8 +60,9 @@ export class App implements IAppSetup {
       initBullBoardAdapter();
     }
     this.routes(this.expApp);
-    // Registers Sentry's error handler (same order: after routes, before ours)
-    Sentry.setupExpressErrorHandler(this.expApp);
+    // errorHandlerMiddleware is the only Sentry reporter: it captures true 500s with requestId and
+    // user tags. Sentry's Express handler ran first and treated status-less errors (validation,
+    // JWT) as 500s, and marked the error as captured so our tagged capture was skipped.
     this.expApp.use(errorHandlerMiddleware);
   };
 

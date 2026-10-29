@@ -42,6 +42,12 @@ export class OffboardingController {
     res.status(httpStatusCodes.OK).json(result);
   };
 
+  getPendingRenewalRequests = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const result = await this.offboardingService.getPendingRenewalRequests(cuid);
+    res.status(httpStatusCodes.OK).json(result);
+  };
+
   getActiveOffboardings = async (req: AppRequest, res: Response) => {
     const { cuid } = req.params;
     const page = Number(req.query.page) || 1;

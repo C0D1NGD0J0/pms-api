@@ -27,14 +27,14 @@
 
         if (_status === 'submitted') {
           _rows.push({ label: 'Invoice Amount', value: '$' + (amount / 100).toFixed(2) + ' ' + ((request.invoice && request.invoice.currency) ? request.invoice.currency.toUpperCase() : 'USD') });
-          _rows.push({ label: 'Submitted', value: new Date().toLocaleDateString() });
+          _rows.push({ label: 'Submitted', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
           if (request.invoice && request.invoice.description) {
             _rows.push({ label: 'Description', value: request.invoice.description });
           }
         } else if (_status === 'approved' && request.invoice) {
           _rows.push({ label: 'Approved Amount', value: '$' + (request.invoice.amount / 100).toFixed(2) + ' ' + request.invoice.currency.toUpperCase() });
           _rows.push({ label: 'Approved By', value: approvedBy.firstName || approvedBy.email });
-          _rows.push({ label: 'Approved On', value: new Date().toLocaleDateString() });
+          _rows.push({ label: 'Approved On', value: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) });
         } else if (_status === 'rejected') {
           _rows.push({ label: 'Rejected By', value: rejectedBy.firstName || rejectedBy.email });
           _rows.push({ label: 'Reason', value: rejectionReason });

@@ -3,7 +3,12 @@
     "browser": true,
     "es2015": true
   },
-  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended", "prettier", "plugin:perfectionist/recommended-line-length-legacy"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "prettier",
+    "plugin:perfectionist/recommended-line-length-legacy"
+  ],
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
     "ecmaVersion": "latest",
@@ -49,7 +54,36 @@
         "varsIgnorePattern": "^_"
       }
     ],
-    "quotes": ["error", "single", { "avoidEscape": true }],
-    "semi": [2, "always"]
-  }
+    "quotes": [
+      "error",
+      "single",
+      {
+        "avoidEscape": true
+      }
+    ],
+    "semi": [2, "always"],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "BinaryExpression[operator=/^[*\\/]$/][right.value=100][left.name=/(^(cents|amount|price|fee|fees|rent|deposit|refund|payout|balance|dollars))|((Cents|Amount|Price|Fee|Fees|Rent|Deposit|Refund|Payout|Balance|Dollars)([A-Z0-9_]|$))/]",
+        "message": "Money conversion: use FinancialCalculator (toCents, fromCents, centsToDisplay, formatCurrency) from '@utils/financial' instead of * 100 or / 100."
+      },
+      {
+        "selector": "BinaryExpression[operator=/^[*\\/]$/][right.value=100][left.property.name=/(^(cents|amount|price|fee|fees|rent|deposit|refund|payout|balance|dollars))|((Cents|Amount|Price|Fee|Fees|Rent|Deposit|Refund|Payout|Balance|Dollars)([A-Z0-9_]|$))/]",
+        "message": "Money conversion: use FinancialCalculator (toCents, fromCents, centsToDisplay, formatCurrency) from '@utils/financial' instead of * 100 or / 100."
+      },
+      {
+        "selector": "BinaryExpression[operator='*'][right.value=100][left.callee.name='parseFloat']",
+        "message": "Money conversion: use FinancialCalculator.stringToCents from '@utils/financial' instead of parseFloat(x) * 100."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["app/utils/financial/**/*.ts"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
 }

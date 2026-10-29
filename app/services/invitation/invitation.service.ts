@@ -7,6 +7,7 @@ import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { ProfileService } from '@services/profile';
 import { createLogger, JOB_NAME } from '@utils/index';
+import { SSEService } from '@services/sse/sse.service';
 import { MailType } from '@interfaces/utils.interface';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { InvitationQueue, EmailQueue } from '@queues/index';
@@ -58,6 +59,7 @@ interface IConstructor {
   queueFactory: QueueFactory;
   userService: UserService;
   subscriptionService: any;
+  sseService: SSEService;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   userCache: UserCache;
@@ -70,6 +72,7 @@ const RESENDABLE_INVITATION_STATUSES: string[] = ['draft', 'pending', 'sent'];
 export class InvitationService {
   private readonly log: Logger;
   private readonly invitationDAO: InvitationDAO;
+  private readonly sseService: SSEService;
   private readonly invitationCsvProcessor: InvitationCsvProcessor;
   private readonly queueFactory: QueueFactory;
   private readonly userDAO: UserDAO;
@@ -101,6 +104,7 @@ export class InvitationService {
     subscriptionService,
     paymentProcessorDAO,
     paymentGatewayService,
+    sseService,
   }: IConstructor) {
     this.userDAO = userDAO;
     this.clientDAO = clientDAO;
@@ -117,6 +121,7 @@ export class InvitationService {
     this.paymentGatewayService = paymentGatewayService;
     this.userCache = userCache;
     this.leaseDAO = leaseDAO;
+    this.sseService = sseService;
     this.log = createLogger('InvitationService');
   }
 
@@ -690,6 +695,7 @@ export class InvitationService {
     } catch (err) {
       this.log.warn({ err, cuid }, 'Cache invalidation failed after invitation acceptance');
     }
+    await this.publishInvitationChange(cuid, invitation.iuid, 'accepted');
 
     return {
       success: true,
@@ -840,6 +846,7 @@ export class InvitationService {
     if (!declinedInvitation) {
       throw new BadRequestError({ message: t('invitation.errors.declineFailed') });
     }
+    await this.publishInvitationChange(cuid, declinedInvitation.iuid, 'declined');
     return {
       success: true,
       data: declinedInvitation,
@@ -932,6 +939,14 @@ export class InvitationService {
         await this.invitationDAO.incrementReminderCount(
           invitation._id.toString(),
           invitation.clientId.toString()
+        );
+      }
+
+      // A fresh attempt: drop any earlier delivery failure
+      if (invitation.metadata?.emailFailedAt) {
+        await this.invitationDAO.update(
+          { _id: invitation._id },
+          { $unset: { 'metadata.emailFailedAt': 1 } }
         );
       }
 
@@ -1324,6 +1339,29 @@ export class InvitationService {
     }
   }
 
+  /**
+   * Status changes that happen outside the inviter's own request (email delivered or
+   * failed, invitee accepted or declined) refresh any open invitations table.
+   */
+  private async publishInvitationChange(
+    cuid: string | undefined,
+    iuid: string,
+    action: 'sent' | 'emailFailed' | 'accepted' | 'declined'
+  ): Promise<void> {
+    if (!cuid) return;
+    try {
+      await this.sseService.broadcastToClient(
+        cuid,
+        { resource: 'invitation', action, resourceUId: iuid },
+        'resource-event',
+        undefined,
+        [...ROLE_GROUPS.MANAGEMENT_ROLES]
+      );
+    } catch (error) {
+      this.log.warn({ error, cuid, iuid }, 'Failed to publish invitation change');
+    }
+  }
+
   private readonly onEmailSent = this.handleEmailSent.bind(this);
   private readonly onEmailFailed = this.handleEmailFailed.bind(this);
 
@@ -1342,8 +1380,22 @@ export class InvitationService {
 
       if (invitationId && clientId) {
         try {
-          await this.invitationDAO.updateInvitationStatus(invitationId, clientId, 'sent');
-          this.log.info(`Updated invitation ${invitationId} status to 'sent'`);
+          // The email can finish after the invitation was revoked, accepted or declined;
+          // only a still-pending invitation becomes 'sent'
+          const updated = await this.invitationDAO.updateInvitationStatus(
+            invitationId,
+            clientId,
+            'sent',
+            ['pending']
+          );
+          if (updated) {
+            this.log.info(`Updated invitation ${invitationId} status to 'sent'`);
+            await this.publishInvitationChange(payload.jobData?.client?.cuid, updated.iuid, 'sent');
+          } else {
+            this.log.info(
+              `Invitation ${invitationId} email sent, but it is no longer pending; status left as is`
+            );
+          }
         } catch (error) {
           this.log.error(`Failed to update invitation ${invitationId} status:`, error);
         }
@@ -1353,18 +1405,35 @@ export class InvitationService {
 
   private async handleEmailFailed(payload: EmailFailedPayload): Promise<void> {
     if (
-      payload.emailType === MailType.INVITATION ||
-      payload.emailType === MailType.INVITATION_REMINDER
+      payload.emailType !== MailType.INVITATION &&
+      payload.emailType !== MailType.INVITATION_REMINDER
     ) {
-      const invitationId = payload.jobData?.invitationId;
+      return;
+    }
+    const invitationId = payload.jobData?.invitationId;
+    const clientId = payload.jobData?.client?.id;
+    this.log.error(`Email failed for invitation ${invitationId}: ${payload.error.message}`);
+    // Retries still to come; only a final failure is worth showing to the inviter
+    if (!payload.final || !invitationId || !clientId) return;
 
-      if (invitationId) {
-        try {
-          this.log.error(`Email failed for invitation ${invitationId}: ${payload.error.message}`);
-        } catch (error) {
-          this.log.error(`Failed to handle email failure for invitation ${invitationId}:`, error);
-        }
+    try {
+      const updated = await this.invitationDAO.update(
+        {
+          _id: new Types.ObjectId(invitationId),
+          clientId: new Types.ObjectId(clientId),
+          status: 'pending',
+        },
+        { $set: { 'metadata.emailFailedAt': new Date() } }
+      );
+      if (updated) {
+        await this.publishInvitationChange(
+          payload.jobData?.client?.cuid,
+          updated.iuid,
+          'emailFailed'
+        );
       }
+    } catch (error) {
+      this.log.error(`Failed to record email failure for invitation ${invitationId}:`, error);
     }
   }
 

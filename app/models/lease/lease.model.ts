@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { Schema, model } from 'mongoose';
 import { LEASE_CONSTANTS } from '@utils/constants';
-import { calcLateFee } from '@utils/financial.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { generateShortUID, createLogger } from '@utils/index';
 import {
   ILeaseESignatureStatusEnum,
@@ -335,7 +335,8 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       {
         documentType: {
           type: String,
-          enum: ['lease_agreement', 'other'],
+          // signed_lease: the executed copy (BoldSign's completed PDF or a manual upload)
+          enum: ['lease_agreement', 'signed_lease', 'other'],
           default: 'lease_agreement',
         },
         url: {
@@ -388,6 +389,13 @@ const LeaseSchema = new Schema<ILeaseDocument>(
     signedDate: {
       type: Date,
       index: true,
+    },
+    activatedAt: {
+      type: Date,
+    },
+    activatedBy: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
     },
     eSignature: {
       provider: {
@@ -749,11 +757,7 @@ LeaseSchema.virtual('isActive').get(function (this: ILeaseDocument) {
  * calculates total monthly fees including rent and pet fees
  */
 LeaseSchema.virtual('totalMonthlyFees').get(function (this: ILeaseDocument) {
-  let total = this.fees?.rentAmount || 0;
-  if (this.petPolicy?.monthlyFee) {
-    total += this.petPolicy.monthlyFee;
-  }
-  return total;
+  return FinancialCalculator.leaseFeeBreakdown(this).monthly.total;
 });
 
 /**
@@ -925,47 +929,7 @@ LeaseSchema.methods.softDelete = async function (userId: any) {
  * @returns Complete fee breakdown with all values in cents
  */
 LeaseSchema.methods.calculateFees = function (options?: { daysLate?: number }) {
-  const daysLate = options?.daysLate || 0;
-
-  const rentAmount = this.fees?.rentAmount || 0;
-  const petMonthlyFee = this.petPolicy?.monthlyFee || 0;
-  const totalMonthly = rentAmount + petMonthlyFee;
-
-  const securityDeposit = this.fees?.securityDeposit || 0;
-  const petDeposit = this.petPolicy?.deposit || 0;
-  const totalDeposits = securityDeposit + petDeposit;
-
-  let lateFee = 0;
-  const lateFeeGracePeriod = this.fees?.lateFeeDays || 5;
-
-  if (daysLate >= lateFeeGracePeriod) {
-    if (this.fees?.lateFeeType === 'percentage' && this.fees?.lateFeePercentage) {
-      lateFee = calcLateFee(rentAmount, 'percentage', this.fees.lateFeePercentage);
-    } else {
-      lateFee = calcLateFee(rentAmount, 'fixed', this.fees?.lateFeeAmount || 0);
-    }
-  }
-
-  return {
-    monthly: {
-      rent: rentAmount,
-      petFee: petMonthlyFee,
-      total: totalMonthly,
-    },
-    deposits: {
-      security: securityDeposit,
-      pet: petDeposit,
-      total: totalDeposits,
-    },
-    late: {
-      daysLate,
-      fee: lateFee,
-      type: this.fees?.lateFeeType || 'fixed',
-      percentage: this.fees?.lateFeePercentage,
-      gracePeriod: lateFeeGracePeriod,
-    },
-    currency: this.fees?.currency || 'USD',
-  };
+  return FinancialCalculator.leaseFeeBreakdown(this, options);
 };
 
 // Compound index to prevent duplicate renewals for the same lease

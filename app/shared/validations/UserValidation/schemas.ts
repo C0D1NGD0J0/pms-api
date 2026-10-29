@@ -45,8 +45,6 @@ export const UserFilterQuerySchema = z.object({
 export const UserRoleParamSchema = z.object({
   cuid: z.string().trim().min(8, 'Client ID must be at least 8 characters'),
   role: z.enum(ROLE_VALIDATION.ALL_ROLES, {
-    errorMap: () => ({
-      message: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
-    }),
+    error: 'Invalid role. Must be one of: admin, manager, tenant, staff, vendor',
   }),
 });

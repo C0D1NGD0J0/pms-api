@@ -193,10 +193,7 @@ const tenantInfoSchema = z.object({
     })
     .optional(),
 
-  backgroundCheckStatus: z
-    .enum(['pending', 'approved', 'failed', 'not_required'])
-    .default('not_required')
-    .optional(),
+  backgroundCheckStatus: z.enum(['pending', 'approved', 'failed', 'not_required']).optional(),
 });
 
 const policiesSchema = z.object({

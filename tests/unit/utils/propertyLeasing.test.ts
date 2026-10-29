@@ -1,4 +1,5 @@
-import { getPropertyLeasingBlock } from '@utils/propertyLeasing';
+import { IUserRole } from '@shared/constants/roles.constants';
+import { shouldAutoVerifyOnCreate, getPropertyLeasingBlock } from '@utils/propertyLeasing';
 
 const day = 24 * 60 * 60 * 1000;
 const leasable = {
@@ -78,4 +79,24 @@ describe('getPropertyLeasingBlock', () => {
       )
     ).toBe('ownership_unverified');
   });
+});
+
+describe('shouldAutoVerifyOnCreate', () => {
+  it.each([IUserRole.SUPER_ADMIN, IUserRole.ADMIN, IUserRole.MANAGER])(
+    'verifies a company-owned property added by %s',
+    (role) => {
+      expect(shouldAutoVerifyOnCreate('company_owned', role)).toBe(true);
+    }
+  );
+
+  it('leaves company-owned properties added by staff for review', () => {
+    expect(shouldAutoVerifyOnCreate('company_owned', IUserRole.STAFF)).toBe(false);
+  });
+
+  it.each(['external_owner', 'self_owned', undefined])(
+    'leaves a %s property for review even when an admin adds it',
+    (ownerType) => {
+      expect(shouldAutoVerifyOnCreate(ownerType, IUserRole.ADMIN)).toBe(false);
+    }
+  );
 });

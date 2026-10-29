@@ -3,9 +3,8 @@ import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
-import { MoneyUtils } from '@utils/money.utils';
 import { EmailQueue } from '@queues/email.queue';
-import { calcSeatCost } from '@utils/financial.utils';
+import { FinancialCalculator } from '@utils/financial';
 import { SSEService } from '@services/sse/sse.service';
 import { SubscriptionDAO } from '@dao/subscriptionDAO';
 import { BadRequestError } from '@shared/customErrors';
@@ -316,7 +315,10 @@ export class SubscriptionWebhookService {
               const adminName =
                 adminUser.profile?.personalInfo?.firstName || adminUser.fullname || adminUser.email;
               const amount = rawInvoice.amount_paid
-                ? MoneyUtils.formatCurrency(rawInvoice.amount_paid, rawInvoice.currency || 'usd')
+                ? FinancialCalculator.formatCurrency(
+                    rawInvoice.amount_paid,
+                    rawInvoice.currency || 'usd'
+                  )
                 : undefined;
               const nextBillingDate = updateData.endDate
                 ? new Date(updateData.endDate).toLocaleDateString('en-US', {
@@ -408,7 +410,7 @@ export class SubscriptionWebhookService {
         customerId: previousPeriod.billing.customerId,
         amountInCents: totalCents,
         currency: 'usd',
-        description: `Manual payment record overage: ${overageCount} record(s) over ${quota} free @ $${(feeCents / 100).toFixed(2)} each`,
+        description: `Manual payment record overage: ${overageCount} record(s) over ${quota} free @ ${FinancialCalculator.formatCurrency(feeCents, 'USD')} each`,
       }
     );
     if (!result.success) {
@@ -544,7 +546,7 @@ export class SubscriptionWebhookService {
         if (seatItem) {
           const newSeatQuantity = seatItem.quantity || 0;
           // Always recalculate with the ACTIVE plan's per-seat price
-          const newAdditionalCost = calcSeatCost(
+          const newAdditionalCost = FinancialCalculator.seatCost(
             newSeatQuantity,
             activeConfig.seatPricing.additionalSeatPriceCents
           );

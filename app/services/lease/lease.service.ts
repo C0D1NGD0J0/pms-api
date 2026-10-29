@@ -23,6 +23,7 @@ import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { IPropertyDocument, SMSMessageType, ICronJob } from '@interfaces/index';
 import { SubscriptionService } from '@services/subscription/subscription.service';
+import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import { getUidsByUserId, getUserIdsByUid } from '@services/property/propertyHelpers';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
@@ -58,19 +59,6 @@ import {
   MailType,
 } from '@interfaces/utils.interface';
 import {
-  ILeaseRenewalRequestData,
-  ILeaseTerminationData,
-  ILeaseFilterOptions,
-  ILeaseRenewalData,
-  ILeaseRequestData,
-  ILeaseDocument,
-  ILeaseFormData,
-  ILeaseListItem,
-  IInternalNote,
-  SigningMethod,
-  LeaseStatus,
-} from '@interfaces/lease.interface';
-import {
   LIFECYCLE_MANAGED_LEASE_FIELDS,
   PROPERTY_APPROVAL_ROLES,
   IMMUTABLE_LEASE_FIELDS,
@@ -83,6 +71,20 @@ import {
   MoneyUtils,
   JOB_NAME,
 } from '@utils/index';
+import {
+  ILeaseRenewalRequestData,
+  ILeaseTerminationData,
+  ILeaseActivationData,
+  ILeaseFilterOptions,
+  ILeaseRenewalData,
+  ILeaseRequestData,
+  ILeaseDocument,
+  ILeaseFormData,
+  ILeaseListItem,
+  IInternalNote,
+  SigningMethod,
+  LeaseStatus,
+} from '@interfaces/lease.interface';
 
 import { LeasePdfService } from './leasePdf.service';
 import { LeaseRenewalService } from './leaseRenewal.service';
@@ -96,11 +98,13 @@ import {
   generatePendingChangesPreview,
   handlePendingSignatureUpdate,
   calculateFinancialSummary,
+  buildSignedLeaseFilename,
   validateLeaseTermination,
   handleClosedStatusUpdate,
   calculateRenewalMetadata,
   rejectRestrictedFields,
   assertPropertyLeasable,
+  buildManualSignatures,
   constructActivityFeed,
   filterDocumentsByRole,
   handleActiveUpdate,
@@ -109,6 +113,7 @@ import {
   buildLandlordInfo,
   filterLeaseByRole,
   handleDraftUpdate,
+  validateUserRole,
   fetchLeaseByLuid,
   queueLeasePdf,
 } from './leaseHelpers';
@@ -720,16 +725,9 @@ export class LeaseService {
         throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
       }
 
-      if (!includeFormattedData) {
-        return {
-          success: true,
-          message: t('common.success.retrieved', { resource: 'Lease' }),
-          data: { lease: await this.withLeasePublicIds(lease) },
-        };
-      }
-
       const userRole = convertUserRoleToEnum(cxt.currentuser!.client.role);
 
+      // Checked before either response shape — a tenant only ever reads their own lease
       if (userRole === IUserRole.TENANT) {
         const tenantIdStr =
           typeof lease.tenantId === 'object' && lease.tenantId !== null
@@ -739,6 +737,14 @@ export class LeaseService {
         if (tenantIdStr !== cxt.currentuser!.sub) {
           throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
         }
+      }
+
+      if (!includeFormattedData) {
+        return {
+          success: true,
+          message: t('common.success.retrieved', { resource: 'Lease' }),
+          data: { lease: await this.withLeasePublicIds(lease) },
+        };
       }
 
       const filteredLease = filterLeaseByRole(lease, cxt.currentuser!.sub, userRole);
@@ -1540,16 +1546,21 @@ export class LeaseService {
     }
   }
 
+  /**
+   * Manual activation: the manager records a lease signed outside the e-signature flow and
+   * uploads the executed copy, which is stored as the lease's 'signed_lease' document.
+   */
   async activateLease(
     cuid: string,
     luid: string,
-    ctx: IRequestContext
+    data: ILeaseActivationData,
+    ctx: IRequestContext,
+    signedDocument?: ExtractedMediaFile[]
   ): IPromiseReturnedData<ILeaseDocument> {
     const currentUser = ctx.currentuser!;
+    validateUserRole(currentUser, PROPERTY_APPROVAL_ROLES, 'activate leases');
 
-    const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid, {
-      populate: ['tenantId', 'property.id'],
-    });
+    const lease = await fetchLeaseByLuid(this.leaseDAO, luid, cuid);
 
     if (lease.status === LeaseStatus.ACTIVE) {
       throw new ValidationRequestError({
@@ -1560,16 +1571,27 @@ export class LeaseService {
       });
     }
 
-    if (
-      lease.status === LeaseStatus.TERMINATED ||
-      lease.status === LeaseStatus.CANCELLED ||
-      lease.status === LeaseStatus.EXPIRED
-    ) {
+    if (lease.signingMethod === 'electronic') {
+      throw new ValidationRequestError({
+        message: 'This lease is set up for electronic signing',
+        errorInfo: {
+          signingMethod: [
+            'Cancel the e-signature request and switch the lease to manual signing before activating it manually.',
+          ],
+        },
+      });
+    }
+
+    const isActivatable =
+      lease.status === LeaseStatus.READY_FOR_SIGNATURE ||
+      (lease.status === LeaseStatus.DRAFT && lease.approvalStatus === 'approved');
+    if (!isActivatable) {
+      enforceLeaseApprovalRequirement(lease, 'activate');
       throw new ValidationRequestError({
         message: `Cannot activate ${lease.status} lease`,
         errorInfo: {
           status: [
-            `Cannot activate a lease with status: ${lease.status}. Only DRAFT or PENDING_SIGNATURE leases can be activated.`,
+            `Cannot activate a lease with status: ${lease.status}. Only approved leases that are ready for signature can be activated.`,
           ],
         },
       });
@@ -1578,10 +1600,16 @@ export class LeaseService {
     enforceLeaseApprovalRequirement(lease, 'activate');
     validateLeaseReadyForActivation(lease);
 
+    if (!signedDocument?.length) {
+      throw new ValidationRequestError({
+        message: 'The signed lease is required',
+        errorInfo: { signedDocument: ['Upload the signed copy of the lease to activate it.'] },
+      });
+    }
+
     // Verification may have lapsed since the lease was drafted (e.g. a grace period expired)
-    const propertyRef = lease.property.id as any;
     const leasingProperty = await this.propertyDAO.findFirst(
-      { _id: propertyRef?._id ?? propertyRef, cuid, deletedAt: null },
+      { _id: lease.property.id, cuid, deletedAt: null },
       { select: LEASING_CHECK_SELECT }
     );
     if (!leasingProperty) {
@@ -1589,13 +1617,49 @@ export class LeaseService {
     }
     assertPropertyLeasable(leasingProperty, { requireManagementAuth: false });
 
+    // The signed copy is on the lease before it turns ACTIVE (the model requires a document)
+    const signedLeaseDocument = await this.storeManualSignedLease(lease, signedDocument, ctx);
+
+    const now = new Date();
+    const signedDate = new Date(data.signedDate);
+    const signatures = buildManualSignatures(
+      lease,
+      data.signedBy ?? [],
+      currentUser.sub,
+      signedDate
+    );
+    const notes = data.notes?.trim();
+
     const activatedLease = await this.leaseDAO.update(
-      { _id: lease._id },
+      // Status in the filter: a concurrent activation finds nothing to update
+      { _id: lease._id, status: lease.status },
       {
-        status: LeaseStatus.ACTIVE,
-        activatedAt: new Date(),
-        activatedBy: currentUser.sub,
-        updatedAt: new Date(),
+        $set: {
+          status: LeaseStatus.ACTIVE,
+          signingMethod: SigningMethod.MANUAL,
+          signedDate,
+          activatedAt: now,
+          activatedBy: new Types.ObjectId(currentUser.sub),
+          updatedAt: now,
+          ...(data.moveInDate && { 'duration.moveInDate': new Date(data.moveInDate) }),
+        },
+        $push: {
+          signatures: { $each: signatures },
+          lastModifiedBy: {
+            userId: new Types.ObjectId(currentUser.sub),
+            name: currentUser.fullname || 'Property Manager',
+            date: now,
+            action: 'activated',
+          },
+          ...(notes && {
+            internalNotes: {
+              note: sanitizeHtml(notes),
+              author: currentUser.fullname || 'Property Manager',
+              authorId: new Types.ObjectId(currentUser.sub),
+              timestamp: now,
+            },
+          }),
+        },
       }
     );
 
@@ -1605,21 +1669,21 @@ export class LeaseService {
       });
     }
 
-    await this.leaseCache.invalidateLease(cuid, luid);
-    await this.leaseCache.invalidateLeaseLists(cuid);
+    this.log.info(
+      { luid, cuid, signerCount: signatures.length, documentKey: signedLeaseDocument.key },
+      'Lease activated manually'
+    );
 
-    // This triggers all existing listeners: PropertyService, PropertyUnitService, ProfileService, NotificationService
-    this.emitterService.emit(EventTypes.LEASE_ESIGNATURE_COMPLETED, {
-      leaseId: activatedLease._id.toString(),
-      luid: activatedLease.luid,
-      cuid: activatedLease.cuid,
-      tenantId: activatedLease.tenantId.toString(),
-      propertyId: activatedLease.property.id.toString(),
-      propertyUnitId: activatedLease.property.unitId?.toString(),
-      propertyManagerId: activatedLease.createdBy.toString(),
-      documentId: '', // manual activation - no e-signature document
-      signers: [], // manual activation - no e-signature signers
-      completedAt: new Date(),
+    // Listeners create the first rent payment + deposit invoice, occupy the unit and notify
+    await this.leaseSignatureService.announceLeaseActivated(activatedLease, {
+      documentId: signedLeaseDocument.key || '',
+      signers: signatures.map((signature) => ({
+        name: signature.signerInfo?.name || '',
+        email: signature.signerInfo?.email || '',
+        role: signature.role,
+        signedAt: signature.signedAt,
+      })),
+      completedAt: now,
     });
 
     // SMS notification to tenant
@@ -1636,9 +1700,49 @@ export class LeaseService {
 
     return {
       success: true,
-      data: activatedLease,
+      data: await this.withSignedDocuments(activatedLease),
       message: t('common.success.updated', { resource: 'Lease' }),
     };
+  }
+
+  /** Uploads the manager's signed copy and attaches it to the lease as 'signed_lease'. */
+  private async storeManualSignedLease(
+    lease: ILeaseDocument,
+    signedDocument: ExtractedMediaFile[],
+    ctx: IRequestContext
+  ): Promise<UploadResult> {
+    const actorId = ctx.currentuser!.sub;
+    const leaseId = lease._id.toString();
+    const [upload] = await this.mediaUploadService.uploadRequestFiles(
+      { scannedFiles: signedDocument.slice(0, 1) },
+      { resourceName: 'lease', resourceId: leaseId, fieldName: 'signedDocument', actorId }
+    );
+    if (!upload?.key) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'upload the signed lease' }),
+      });
+    }
+
+    const signedLease: UploadResult = {
+      ...upload,
+      documentType: 'signed_lease',
+      publicuid: lease.luid,
+      resourceId: leaseId,
+      filename: upload.filename || buildSignedLeaseFilename(lease.leaseNumber, 'manual'),
+    };
+
+    let updated: ILeaseDocument | null = null;
+    try {
+      updated = await this.leaseDAO.updateLeaseDocuments(
+        leaseId,
+        [signedLease],
+        actorId,
+        lease.cuid
+      );
+    } finally {
+      if (!updated) await this.removeUploadsAfterFailedWrite([upload], leaseId);
+    }
+    return signedLease;
   }
 
   async uploadLeaseDocument(
@@ -1650,8 +1754,12 @@ export class LeaseService {
     return this.leaseDocumentService.uploadLeaseDocument(cuid, leaseId, document, uploadedBy);
   }
 
-  async getLeaseDocumentUrl(cuid: string, leaseId: string): IPromiseReturnedData<string> {
-    return this.leaseDocumentService.getLeaseDocumentUrl(cuid, leaseId);
+  async getLeaseDocumentUrl(
+    cuid: string,
+    leaseId: string,
+    viewer?: ICurrentUser
+  ): IPromiseReturnedData<string> {
+    return this.leaseDocumentService.getLeaseDocumentUrl(cuid, leaseId, viewer);
   }
 
   async removeLeaseDocument(
@@ -1660,18 +1768,6 @@ export class LeaseService {
     userId: string
   ): IPromiseReturnedData<ILeaseDocument> {
     return this.leaseDocumentService.removeLeaseDocument(cuid, leaseId, userId);
-  }
-
-  /**
-   * Delegate to LeaseSignatureService
-   */
-  async markAsManualySigned(
-    cuid: string,
-    leaseId: string,
-    signedBy: any[],
-    userId: string
-  ): IPromiseReturnedData<ILeaseDocument> {
-    return this.leaseSignatureService.markAsManualySigned(cuid, leaseId, signedBy, userId);
   }
 
   /**
@@ -1759,7 +1855,7 @@ export class LeaseService {
         amount: lease.fees.lateFeeAmount || 0,
         type: lease.fees.lateFeeType || 'fixed',
         percentage: lease.fees.lateFeePercentage || 0,
-        lateFeesGracePeriod: lease.fees.lateFeeDays || 5,
+        lateFeesGracePeriod: lease.fees.lateFeeDays || DEFAULT_LATE_FEE_GRACE_DAYS,
       },
 
       petPolicy: lease.petPolicy,
@@ -1773,7 +1869,7 @@ export class LeaseService {
         lease.includeManagementFee && Number(property.fees?.managementFees ?? 0) > 0
           ? {
               amount: property.fees.managementFees,
-              formatted: MoneyUtils.formatCurrency(
+              formatted: FinancialCalculator.formatCurrency(
                 property.fees.managementFees as number,
                 lease.fees.currency || 'USD'
               ),
@@ -2528,11 +2624,11 @@ export class LeaseService {
     const baseRentCents = unitId ? unit?.fees?.rentAmount : propertyRecord.fees?.rentAmount;
 
     if (baseRentCents && Number(baseRentCents) > 0) {
-      const proposedRentCents = MoneyUtils.stringToCents(leaseData.fees.rentAmount);
+      const proposedRentCents = FinancialCalculator.stringToCents(leaseData.fees.rentAmount);
       if (Number(proposedRentCents) < Number(baseRentCents)) {
         if (!validationErrors['fees.rentAmount']) validationErrors['fees.rentAmount'] = [];
         validationErrors['fees.rentAmount'].push(
-          `Monthly rent cannot be lower than the base rental fee of ${MoneyUtils.centsToDisplay(Number(baseRentCents))}`
+          `Monthly rent cannot be lower than the base rental fee of ${FinancialCalculator.centsToDisplay(Number(baseRentCents))}`
         );
       }
     }
@@ -2664,10 +2760,13 @@ export class LeaseService {
             unitNumber: property?.unitId?.unitNumber || null,
             startDate: lease.duration.startDate.toISOString(),
             endDate: lease.duration.endDate.toISOString(),
-            rentAmount: MoneyUtils.formatCurrency(lease.fees.rentAmount, lease.fees.currency),
+            rentAmount: FinancialCalculator.formatCurrency(
+              lease.fees.rentAmount,
+              lease.fees.currency
+            ),
             firstPaymentDate: lease.duration.startDate.toLocaleDateString(),
             securityDepositInfo: lease.fees.securityDeposit
-              ? MoneyUtils.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)
+              ? FinancialCalculator.formatCurrency(lease.fees.securityDeposit, lease.fees.currency)
               : 'N/A',
             leaseUrl: lease.leaseDocuments?.[0]?.url || '',
             propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,

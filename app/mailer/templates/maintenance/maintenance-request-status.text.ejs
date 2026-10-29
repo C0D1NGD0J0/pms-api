@@ -13,7 +13,7 @@ Title:       <%= request.title %>
 Category:    <%= request.category.replace(/_/g, ' ') %>
 Priority:    <%= request.priority %>
 Status:      Open
-<% if (request.preferredDate) { %>Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString() %>
+<% if (request.preferredDate) { %>Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Availability:   <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
 <% } %>
 Keep your reference number for follow-ups: <%= request.mruid %>
@@ -34,9 +34,9 @@ Description:    <%= request.description %>
 Category:       <%= request.category.replace(/_/g, ' ') %>
 Priority:       <%= request.priority.toUpperCase() %>
 Property Entry: <%= request.permissionToEnter ? 'Permission granted' : 'Must coordinate with resident' %>
-<% if (request.scheduledDate) { %>Scheduled Date: <%= new Date(request.scheduledDate).toLocaleDateString() %>
+<% if (request.scheduledDate) { %>Scheduled Date: <%= new Date(request.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% } %><% if (request.estimatedCost) { %>Estimated Cost: $<%= (request.estimatedCost / 100).toFixed(2) %>
-<% } %><% if (request.preferredDate) { %>Resident Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString() %>
+<% } %><% if (request.preferredDate) { %>Resident Preferred Date: <%= new Date(request.preferredDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% } %><% if (request.availabilityWindows && request.availabilityWindows.length > 0) { %>Resident Availability: <%= request.availabilityWindows.join(', ').replace(/_/g, ' ') %>
 <% } %>
 Log in to the portal to accept or decline this assignment.
@@ -57,7 +57,7 @@ Title:       <%= request.title %>
 Category:    <%= request.category.replace(/_/g, ' ') %>
 Priority:    <%= request.priority.toUpperCase() %>
 <% if (request.assignedTechnician && request.assignedTechnician.name) { %>Technician:  <%= request.assignedTechnician.name %><% if (request.assignedTechnician.phone) { %> — <%= request.assignedTechnician.phone %><% } %>
-<% } %><% if (request.scheduledDate) { %>Scheduled:   <%= new Date(request.scheduledDate).toLocaleDateString() %>
+<% } %><% if (request.scheduledDate) { %>Scheduled:   <%= new Date(request.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% } %>
 You will be contacted to confirm the schedule. Please ensure access is available at the agreed time.
 
@@ -91,7 +91,7 @@ REQUEST SUMMARY
 Reference #: <%= request.mruid %>
 Title:       <%= request.title %>
 Category:    <%= request.category.replace(/_/g, ' ') %>
-<% if (request.completedAt) { %>Completed:   <%= new Date(request.completedAt).toLocaleDateString() %>
+<% if (request.completedAt) { %>Completed:   <%= new Date(request.completedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% } %><% if (request.completionNotes && request.completionNotes.length > 0) { %>Notes:       <%= request.completionNotes[request.completionNotes.length - 1].note %>
 <% } %>
 If the issue has not been resolved or you have concerns, please contact your property manager.

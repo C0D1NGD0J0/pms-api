@@ -10,7 +10,7 @@ INVOICE SUMMARY
 Reference #:    <%= request.mruid %>
 Job Title:      <%= request.title %>
 Invoice Amount: $<%= (amount / 100).toFixed(2) %> <%= (request.invoice && request.invoice.currency) ? request.invoice.currency.toUpperCase() : 'USD' %>
-Submitted:      <%= new Date().toLocaleDateString() %>
+Submitted:      <%= new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% if (request.invoice && request.invoice.description) { %>Description:    <%= request.invoice.description %>
 <% } %>
 Log in to the portal to approve or reject this invoice.
@@ -27,7 +27,7 @@ Reference #:    <%= request.mruid %>
 Job:            <%= request.title %>
 <% if (request.invoice) { %>Approved Amount: $<%= (request.invoice.amount / 100).toFixed(2) %> <%= request.invoice.currency.toUpperCase() %>
 Approved By:    <%= approvedBy.firstName || approvedBy.email %>
-Approved On:    <%= new Date().toLocaleDateString() %>
+Approved On:    <%= new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) %>
 <% } %>
 For questions about payment timing, contact the property manager directly.
 <% } else if (_status === 'rejected') { %>

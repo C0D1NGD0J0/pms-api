@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { FinancialCalculator } from '@utils/financial';
 import { MailType } from '@interfaces/utils.interface';
 import {
   NotificationPriorityEnum,
@@ -23,7 +24,7 @@ import { INotificationContext } from './notification.types';
 const formatType = (type: string) => type.replace(/_/g, '-');
 const formatDate = (d: Date | string) => new Date(d).toLocaleDateString();
 const formatMoney = (cents: number, currency = 'USD') =>
-  (cents / 100).toLocaleString(undefined, { style: 'currency', currency });
+  FinancialCalculator.formatCurrency(cents, currency);
 
 export async function handleInspectionApproved(
   ctx: INotificationContext,

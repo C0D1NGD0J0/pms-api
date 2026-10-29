@@ -100,4 +100,12 @@ describe('createLogger stream selection', () => {
     expect(capturedConfig.streams).toHaveLength(2);
     expect(capturedConfig.streams[1]).toEqual(expect.objectContaining({ type: 'raw', level: 50 }));
   });
+
+  it('never adds the archive stream outside production', () => {
+    envVariables.SERVER.ENV = 'development';
+    envVariables.SERVER.ERROR_LOG_ARCHIVE_ENABLED = true;
+    const createLogger = loadCreateLogger();
+    createLogger('TestDevNoArchive');
+    expect(capturedConfig.streams).toHaveLength(1);
+  });
 });

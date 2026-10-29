@@ -18,6 +18,7 @@ export type Environments = 'development' | 'production' | 'test';
 export class DatabaseService implements IDatabaseService {
   private log;
   private connected = false;
+  private closingIntentionally = false;
   private redisService: RedisService;
   private mongoMemoryServer: MongoMemoryServer | null = null;
 
@@ -25,6 +26,12 @@ export class DatabaseService implements IDatabaseService {
     this.log = createLogger('DatabaseService');
     this.redisService = redisService;
   }
+
+  private handleDisconnected = (): void => {
+    this.connected = false;
+    if (this.closingIntentionally) return;
+    this.log.error('MongoDB disconnected unexpectedly');
+  };
 
   isConnected(): boolean {
     return this.connected && mongoose.connection.readyState === 1;
@@ -58,6 +65,9 @@ export class DatabaseService implements IDatabaseService {
       }
     }
 
+    // Cleared before connecting so a failed attempt never leaves real drops silenced
+    this.closingIntentionally = false;
+
     try {
       mongoose.set('strictQuery', true);
 
@@ -88,10 +98,9 @@ export class DatabaseService implements IDatabaseService {
         throw new Error(redisResult.error || 'Redis connection failed');
       }
 
-      mongoose.connection.on('disconnected', () => {
-        this.connected = false;
-        this.log.error('MongoDB disconnected....');
-      });
+      // Reconnects call connect() again; remove first so only one listener is ever attached
+      mongoose.connection.off('disconnected', this.handleDisconnected);
+      mongoose.connection.on('disconnected', this.handleDisconnected);
 
       this.connected = true;
       this.log.info(`🔗 Connected to ${env} database`);
@@ -115,6 +124,7 @@ export class DatabaseService implements IDatabaseService {
         return true;
       }
 
+      this.closingIntentionally = true;
       await mongoose.connection.close();
 
       if (env === 'test' && this.mongoMemoryServer) {

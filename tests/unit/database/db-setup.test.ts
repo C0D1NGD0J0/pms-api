@@ -15,6 +15,7 @@ import { DatabaseService } from '@database/db-setup';
 
 describe('DatabaseService disconnect logging', () => {
   let service: DatabaseService;
+  let redisService: { connect: jest.Mock };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -22,7 +23,7 @@ describe('DatabaseService disconnect logging', () => {
     mockConnection.close.mockImplementation(async () => {
       mockConnection.emit('disconnected');
     });
-    const redisService = { connect: jest.fn().mockResolvedValue({ success: true }) };
+    redisService = { connect: jest.fn().mockResolvedValue({ success: true }) };
     service = new DatabaseService({ redisService } as any);
     await service.connect('development');
   });
@@ -49,6 +50,17 @@ describe('DatabaseService disconnect logging', () => {
 
     expect(mockConnection.listenerCount('disconnected')).toBe(1);
     expect(mockLog.error).toHaveBeenCalledTimes(1);
+    expect(mockLog.error).toHaveBeenCalledWith('MongoDB disconnected unexpectedly');
+  });
+
+  it('still logs unexpected drops when a reconnect fails after MongoDB opened', async () => {
+    await service.disconnect('development');
+    redisService.connect.mockResolvedValueOnce({ success: false, error: 'Redis down' });
+    await expect(service.connect('development')).rejects.toThrow('Redis down');
+    mockLog.error.mockClear();
+
+    mockConnection.emit('disconnected');
+
     expect(mockLog.error).toHaveBeenCalledWith('MongoDB disconnected unexpectedly');
   });
 });

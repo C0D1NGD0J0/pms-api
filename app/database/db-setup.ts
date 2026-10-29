@@ -65,6 +65,9 @@ export class DatabaseService implements IDatabaseService {
       }
     }
 
+    // Cleared before connecting so a failed attempt never leaves real drops silenced
+    this.closingIntentionally = false;
+
     try {
       mongoose.set('strictQuery', true);
 
@@ -100,7 +103,6 @@ export class DatabaseService implements IDatabaseService {
       mongoose.connection.on('disconnected', this.handleDisconnected);
 
       this.connected = true;
-      this.closingIntentionally = false;
       this.log.info(`🔗 Connected to ${env} database`);
 
       // Align every model's indexes once the connection is open. Fire-and-forget so a slow

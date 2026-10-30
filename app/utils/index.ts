@@ -4,6 +4,7 @@ import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
 
 export * from './authorization.utils';
+export * from './jurisdiction.utils';
 export * from './unitTypeConstants';
 export * from './profileCompletion';
 export * from './currency.utils';

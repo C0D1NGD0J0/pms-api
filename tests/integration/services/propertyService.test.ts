@@ -1759,6 +1759,58 @@ describe('PropertyService Integration Tests', () => {
         expect(result.data.property).toBeDefined();
         expect(result.data.unitInfo).toBeDefined();
       });
+
+      describe('jurisdiction compliance', () => {
+        const asAdmin = () =>
+          ({
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          }) as any;
+
+        it('includes supported compliance for an Ontario property', async () => {
+          const prop = await createTestProperty(testClient.cuid, testClient._id);
+          await Property.updateOne({ pid: prop.pid }, { 'address.state': 'Ontario' });
+
+          const result = await propertyService.getClientProperty(
+            testClient.cuid,
+            prop.pid,
+            asAdmin()
+          );
+
+          expect(result.data.compliance?.isSupported).toBe(true);
+          expect(result.data.compliance?.jurisdiction?.code).toBe('ON');
+          expect(result.data.compliance?.rentIncreaseRules?.noticeForm).toBe('N1');
+          expect(result.data.compliance?.forms.length).toBeGreaterThan(0);
+        });
+
+        it('marks compliance unsupported for a US-state property', async () => {
+          const prop = await createTestProperty(testClient.cuid, testClient._id);
+          await Property.updateOne({ pid: prop.pid }, { 'address.state': 'Texas' });
+
+          const result = await propertyService.getClientProperty(
+            testClient.cuid,
+            prop.pid,
+            asAdmin()
+          );
+
+          expect(result.data.compliance?.isSupported).toBe(false);
+          expect(result.data.compliance?.jurisdiction).toBeNull();
+        });
+
+        it('returns unsupported compliance when the property has no state', async () => {
+          const prop = await createTestProperty(testClient.cuid, testClient._id);
+          await Property.updateOne({ pid: prop.pid }, { $unset: { 'address.state': '' } });
+
+          const result = await propertyService.getClientProperty(
+            testClient.cuid,
+            prop.pid,
+            asAdmin()
+          );
+
+          expect(result.data.compliance?.isSupported).toBe(false);
+          expect(result.data.compliance?.jurisdiction).toBeNull();
+        });
+      });
     }); // End getClientProperty
 
     describe('getPendingApprovals', () => {

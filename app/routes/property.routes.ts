@@ -159,6 +159,19 @@ router.get(
 );
 
 router.get(
+  '/:cuid/:pid/compliance',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  validateRequest({
+    params: PropertyValidations.validatePropertyAndClientIds,
+  }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getPropertyCompliance(req, res);
+  })
+);
+
+router.get(
   '/:cuid/:pid',
   basicLimiter(),
   requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),

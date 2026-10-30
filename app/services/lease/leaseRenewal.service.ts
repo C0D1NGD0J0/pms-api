@@ -8,9 +8,11 @@ import { UserService } from '@services/index';
 import { QueueFactory } from '@services/queue';
 import { PropertyDAO } from '@dao/propertyDAO';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
+import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { LEASING_CHECK_SELECT } from '@utils/propertyLeasing';
+import { jurisdictionRulesConfig } from '@services/jurisdiction';
 import { getUidsByUserId } from '@services/property/propertyHelpers';
 import { InvalidRequestError, BadRequestError } from '@shared/customErrors';
 import { IPropertyDocument, ICurrentUser, ICronJob } from '@interfaces/index';
@@ -36,6 +38,7 @@ import {
 import {
   convertUserRoleToEnum,
   preventTenantConflict,
+  normalizeStateToCode,
   calcDaysRemaining,
   calcDaysElapsed,
   LEASE_CONSTANTS,
@@ -119,6 +122,58 @@ export class LeaseRenewalService {
    * Get renewal form data for a lease
    * Returns pre-populated form data for creating a lease renewal
    */
+  /**
+   * Compute the rent-increase guideline for a lease's renewal, from the
+   * property's jurisdiction and the renewal year. Amounts are returned in both
+   * major units (to match the renewal form) and cents (for server-side
+   * comparison). Returns null when the jurisdiction is unsupported, the
+   * guideline year is unpublished, or rent is missing. Never throws — guideline
+   * info is advisory and must not block a renewal.
+   */
+  private computeRenewalGuideline(lease: ILeaseDocument): {
+    year: number;
+    guidelinePercentage: number;
+    currentRent: number;
+    maxAllowedRent: number;
+    currentRentCents: number;
+    maxAllowedRentCents: number;
+    source?: string;
+    exemptionNote?: string;
+    rentIncreaseForm: { code: string; name: string; url: string; description: string } | null;
+  } | null {
+    try {
+      const state = (lease as any).propertyInfo?.address?.state;
+      const code = normalizeStateToCode(state);
+      const currentRentCents = lease.fees?.rentAmount;
+      if (!code || !currentRentCents) return null;
+
+      const renewalYear = dayjs(lease.duration.endDate).add(1, 'day').year();
+      const guideline = jurisdictionRulesConfig.getRentGuideline(code, renewalYear);
+      if (!guideline) return null;
+
+      const jurisdiction = jurisdictionRulesConfig.getJurisdiction(code);
+      const maxAllowedRentCents = Math.round(currentRentCents * (1 + guideline.percentage / 100));
+      const form = jurisdictionRulesConfig.getFormsByContext(code, 'rentIncrease')[0];
+
+      return {
+        year: renewalYear,
+        guidelinePercentage: guideline.percentage,
+        currentRent: FinancialCalculator.fromCents(currentRentCents),
+        maxAllowedRent: FinancialCalculator.fromCents(maxAllowedRentCents),
+        currentRentCents,
+        maxAllowedRentCents,
+        source: guideline.source,
+        exemptionNote: jurisdiction?.rentIncreaseRules.notes,
+        rentIncreaseForm: form
+          ? { code: form.code, name: form.name, url: form.url, description: form.description }
+          : null,
+      };
+    } catch (err) {
+      this.log.warn('Failed to compute renewal rent guideline', { err });
+      return null;
+    }
+  }
+
   async getRenewalFormData(cxt: IRequestContext, luid: string): Promise<ISuccessReturnData<any>> {
     try {
       const { cuid } = cxt.request.params;
@@ -166,6 +221,8 @@ export class LeaseRenewalService {
         lease.tenantId,
       ]);
 
+      const guideline = this.computeRenewalGuideline(lease);
+
       return {
         success: true,
         message: t('common.success.retrieved', { resource: 'Renewal form data' }),
@@ -176,6 +233,17 @@ export class LeaseRenewalService {
             managedBy: uidsByUserId.get(String(lease.property.managedBy)) ?? '',
           },
           tenantInfo: { uid: uidsByUserId.get(String(lease.tenantId)) ?? '' },
+          ...(guideline && {
+            rentGuideline: {
+              year: guideline.year,
+              guidelinePercentage: guideline.guidelinePercentage,
+              maxAllowedRent: guideline.maxAllowedRent,
+              currentRent: guideline.currentRent,
+              source: guideline.source,
+              exemptionNote: guideline.exemptionNote,
+              rentIncreaseForm: guideline.rentIncreaseForm,
+            },
+          }),
         },
       };
     } catch (error: any) {
@@ -537,7 +605,30 @@ export class LeaseRenewalService {
       }
     }
 
-    return { data: renewalLease.data, success: renewalLease.success };
+    // Advisory rent-guideline warning (never blocks the renewal). Based on the
+    // original lease's current rent vs. the jurisdiction guideline.
+    const warnings: Array<{ type: string; message: string; [key: string]: any }> = [];
+    const guideline = this.computeRenewalGuideline(existingLease);
+    const proposedRentCents = renewalLease.data?.fees?.rentAmount;
+    if (guideline && proposedRentCents && proposedRentCents > guideline.maxAllowedRentCents) {
+      warnings.push({
+        type: 'rentGuidelineExceeded',
+        message:
+          `Proposed rent exceeds the ${guideline.guidelinePercentage}% ${(existingLease as any).propertyInfo?.address?.state ?? ''} guideline for ${guideline.year} (max ${guideline.maxAllowedRent}). Legal exceptions may apply.`.replace(
+            /\s+/g,
+            ' '
+          ),
+        year: guideline.year,
+        guidelinePercentage: guideline.guidelinePercentage,
+        maxAllowedRent: guideline.maxAllowedRent,
+      });
+    }
+
+    return {
+      data: renewalLease.data,
+      success: renewalLease.success,
+      ...(warnings.length > 0 && { warnings }),
+    };
   }
 
   /**

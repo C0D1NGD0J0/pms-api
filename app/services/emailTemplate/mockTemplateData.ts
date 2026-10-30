@@ -107,6 +107,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
 
     // ── Lease ────────────────────────────────────────────────────
     LEASE_ACTIVATED: {
+      isUSProperty: true,
       tenantName: 'John Smith',
       propertyAddress: '456 Oak Avenue, Toronto, ON M5V 2T6',
       leaseNumber: 'LS-2026-0042',
@@ -128,6 +129,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       leaseUrl: 'http://localhost:3000/leases/LS-2026-0042',
     },
     LEASE_ENDING_SOON: {
+      isUSProperty: true,
       notificationStage: '60-day',
       daysRemaining: 60,
       tenantName: 'John Smith',
@@ -150,6 +152,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       officeHours: 'Mon-Fri 9AM-5PM',
     },
     LEASE_TERMINATED: {
+      isUSProperty: true,
       tenantName: 'John Smith',
       propertyAddress: '456 Oak Avenue, Toronto, ON M5V 2T6',
       leaseNumber: 'LS-2026-0042',
@@ -163,6 +166,7 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       propertyManagerPhone: '(416) 555-0123',
     },
     LEASE_EXPIRED: {
+      isUSProperty: true,
       tenantName: 'Sarah Johnson',
       propertyAddress: '38 Bourdillon Rd, Ikoyi, Lagos 106104, Lagos, Nigeria',
       leaseNumber: 'L2026-XYNU6',

@@ -50,9 +50,11 @@
       </p>
     </td>
   </tr>
+  <% if (typeof isUSProperty !== 'undefined' && isUSProperty) { %>
   <tr>
     <td class="content">
       <%- include("../shared/html/_housing-notice") %>
     </td>
   </tr>
+  <% } %>
 </table>

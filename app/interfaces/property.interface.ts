@@ -3,6 +3,7 @@ import { Document, Types } from 'mongoose';
 import { IClientInfo } from './client.interface';
 import { IUserRole } from '../shared/constants/roles.constants';
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
+import { IPropertyCompliance } from '../services/jurisdiction/jurisdiction.types';
 
 export enum PropertyApprovalStatusEnum {
   APPROVED = 'approved',
@@ -169,6 +170,7 @@ export type IPropertyWithUnitInfo = {
   };
   paymentHistory?: any[];
   maintenanceHistory?: any[];
+  compliance?: IPropertyCompliance;
 } & Partial<{ property: IPropertyDocument }>;
 
 export interface IPropertyDocument extends IProperty, Document {

@@ -8,6 +8,7 @@ import { type QueryFilter, Types } from 'mongoose';
 import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
+import { normalizeStateToCode } from '@utils/jurisdiction.utils';
 import { EmployeeDepartment } from '@interfaces/profile.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { isWithinLimit, isUnlimited } from '@utils/planLimits.utils';
@@ -15,6 +16,7 @@ import { PermissionService } from '@services/permission/permission.service';
 import { PropertyTypeManager } from '@services/property/PropertyTypeManager';
 import { PaymentRecordStatus, LeaseStatus, EventTypes } from '@interfaces/index';
 import ROLES, { ROLE_GROUPS, IUserRole } from '@shared/constants/roles.constants';
+import { jurisdictionRulesConfig, IPropertyCompliance } from '@services/jurisdiction';
 import { getImportFieldsResponse, isKnownImportField } from '@services/csv/propertyImportFields';
 import {
   PropertyCsvProcessor,
@@ -1420,6 +1422,7 @@ export class PropertyService implements ICronProvider {
       department
     );
     const hideFinancials = isFinancialRestricted(department);
+    const compliance = this.buildPropertyCompliance(propertyObj);
 
     return {
       success: true,
@@ -1428,6 +1431,7 @@ export class PropertyService implements ICronProvider {
         authorizationStatus,
         hasLeaseHistory,
         unitInfo,
+        compliance,
         metrics: hideFinancials ? undefined : metrics,
         ...(!hideFinancials && paymentHistory !== undefined && { paymentHistory }),
         ...(canViewMaintenance(department) &&
@@ -1436,6 +1440,78 @@ export class PropertyService implements ICronProvider {
         ...(canViewInspections(department) &&
           inspectionHistory !== undefined && { inspectionHistory }),
       },
+    };
+  }
+
+  /**
+   * Return jurisdiction compliance reference data for a single property, for
+   * lightweight consumers (lease create/edit forms) that only need the
+   * jurisdiction guideline + notice rules + forms, not the full property detail.
+   */
+  async getPropertyCompliance(
+    cuid: string,
+    pid: string
+  ): Promise<ISuccessReturnData<{ compliance: IPropertyCompliance }>> {
+    if (!cuid || !pid) {
+      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+    }
+
+    const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
+    if (!property) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
+    }
+
+    return {
+      success: true,
+      data: { compliance: this.buildPropertyCompliance(property) },
+    };
+  }
+
+  /**
+   * Build jurisdiction compliance reference data for a property from its
+   * address state. Scoped to jurisdiction + current-year guideline + notice
+   * rules + government forms — no per-property rent math (a multi-unit property
+   * has many rents). Returns `isSupported: false` for unknown jurisdictions.
+   */
+  private buildPropertyCompliance(property: any): IPropertyCompliance {
+    const unsupported: IPropertyCompliance = {
+      jurisdiction: null,
+      rentGuideline: null,
+      rentIncreaseRules: null,
+      forms: [],
+      isSupported: false,
+    };
+
+    const code = normalizeStateToCode(property?.address?.state);
+    if (!code) return unsupported;
+
+    const jurisdiction = jurisdictionRulesConfig.getJurisdiction(code);
+    if (!jurisdiction) return unsupported;
+
+    const currentYear = new Date().getFullYear();
+    const guideline = jurisdictionRulesConfig.getRentGuideline(code, currentYear);
+
+    return {
+      jurisdiction: {
+        code: jurisdiction.code,
+        name: jurisdiction.name,
+        legislation: jurisdiction.legislation,
+      },
+      rentGuideline: guideline
+        ? {
+            year: guideline.year,
+            guidelinePercentage: guideline.percentage,
+            source: guideline.source,
+          }
+        : null,
+      rentIncreaseRules: {
+        noticePeriodDays: jurisdiction.rentIncreaseRules.noticePeriodDays,
+        noticeForm: jurisdiction.rentIncreaseRules.noticeForm,
+        minMonthsBetweenIncreases: jurisdiction.rentIncreaseRules.minMonthsBetweenIncreases,
+        exemptionNote: jurisdiction.rentIncreaseRules.notes,
+      },
+      forms: jurisdictionRulesConfig.getForms(code),
+      isSupported: true,
     };
   }
 

@@ -1,5 +1,5 @@
-import { EmailTemplateService } from '@services/emailTemplate/emailTemplate.service';
 import { getMockTemplateData } from '@services/emailTemplate/mockTemplateData';
+import { EmailTemplateService } from '@services/emailTemplate/emailTemplate.service';
 
 /**
  * Compliance (Group B): verifies the shared email footer no longer has a dead

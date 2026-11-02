@@ -194,13 +194,30 @@ export const resolveNewPropertyAddress = async (
   };
 };
 
+/** A $push value as a list of entries: `{ $each: [a, b] }` → [a, b], `a` → [a]. */
+const pushEntries = (pushValue: any): unknown[] => pushValue?.$each ?? [pushValue];
+
+/** Two pushes to the same array become one `$each` push, so neither entry is lost. */
+const combinePushes = (
+  existing: Record<string, unknown>,
+  added: Record<string, unknown>
+): Record<string, unknown> => {
+  const combined = { ...existing };
+  for (const [field, entry] of Object.entries(added)) {
+    combined[field] =
+      field in combined
+        ? { $each: [...pushEntries(combined[field]), ...pushEntries(entry)] }
+        : entry;
+  }
+  return combined;
+};
+
 export const mergeUpdateOperations = <T extends IMongoUpdateOperation>(
   target: T,
   addition: IMongoUpdateOperation
 ): T => {
-  for (const operator of ['$set', '$unset', '$push'] as const) {
-    if (!addition[operator]) continue;
-    target[operator] = { ...(target[operator] ?? {}), ...addition[operator] } as any;
-  }
+  if (addition.$set) target.$set = { ...target.$set, ...addition.$set };
+  if (addition.$unset) target.$unset = { ...target.$unset, ...addition.$unset };
+  if (addition.$push) target.$push = combinePushes(target.$push ?? {}, addition.$push);
   return target;
 };

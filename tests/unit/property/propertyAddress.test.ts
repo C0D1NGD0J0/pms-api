@@ -5,6 +5,7 @@ import { OwnershipType } from '@interfaces/property.interface';
 import {
   resolveNewPropertyAddress,
   buildVerificationReset,
+  mergeUpdateOperations,
   ADDRESS_CHANGED_NOTE,
   buildAddressUpdate,
   isAddressMove,
@@ -210,5 +211,35 @@ describe('resolveNewPropertyAddress', () => {
       log
     );
     expect(result.computedLocation).toBeUndefined();
+  });
+});
+
+describe('mergeUpdateOperations', () => {
+  it('keeps both entries when two pushes target the same array', () => {
+    const merged = mergeUpdateOperations(
+      { $set: { name: 'A' }, $push: { verificationDetails: { action: 'verified' } } },
+      {
+        $set: { address: { fullAddress: 'x' } },
+        $push: {
+          verificationDetails: { action: 'reset' },
+          approvalDetails: { action: 'approved' },
+        },
+      }
+    );
+
+    expect(merged.$set).toEqual({ name: 'A', address: { fullAddress: 'x' } });
+    expect(merged.$push).toEqual({
+      verificationDetails: { $each: [{ action: 'verified' }, { action: 'reset' }] },
+      approvalDetails: { action: 'approved' },
+    });
+  });
+
+  it('adds to an existing $each push', () => {
+    const merged = mergeUpdateOperations(
+      { $push: { images: { $each: [{ key: 'a' }, { key: 'b' }] } } },
+      { $push: { images: { key: 'c' } } }
+    );
+
+    expect(merged.$push).toEqual({ images: { $each: [{ key: 'a' }, { key: 'b' }, { key: 'c' }] } });
   });
 });

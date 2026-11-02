@@ -55,6 +55,12 @@ import {
   queueLeasePdf,
 } from './leaseHelpers';
 
+/** The populated property's province; a lease's property address can also be a plain string. */
+const leasePropertyState = (lease: ILeaseDocument): string | undefined => {
+  const address = lease.propertyInfo?.address;
+  return typeof address === 'object' ? address?.state : undefined;
+};
+
 interface IConstructor {
   notificationService: NotificationService;
   invitationService: InvitationService;
@@ -142,8 +148,7 @@ export class LeaseRenewalService {
     rentIncreaseForm: { code: string; name: string; url: string; description: string } | null;
   } | null {
     try {
-      const state = (lease as any).propertyInfo?.address?.state;
-      const code = normalizeStateToCode(state);
+      const code = normalizeStateToCode(leasePropertyState(lease));
       const currentRentCents = lease.fees?.rentAmount;
       if (!code || !currentRentCents) return null;
 
@@ -613,11 +618,12 @@ export class LeaseRenewalService {
     if (guideline && proposedRentCents && proposedRentCents > guideline.maxAllowedRentCents) {
       warnings.push({
         type: 'rentGuidelineExceeded',
-        message:
-          `Proposed rent exceeds the ${guideline.guidelinePercentage}% ${(existingLease as any).propertyInfo?.address?.state ?? ''} guideline for ${guideline.year} (max ${guideline.maxAllowedRent}). Legal exceptions may apply.`.replace(
-            /\s+/g,
-            ' '
-          ),
+        message: t('lease.warnings.rentGuidelineExceeded', {
+          guidelinePercentage: guideline.guidelinePercentage,
+          jurisdiction: leasePropertyState(existingLease) ?? '',
+          year: guideline.year,
+          maxAllowedRent: guideline.maxAllowedRent,
+        }),
         year: guideline.year,
         guidelinePercentage: guideline.guidelinePercentage,
         maxAllowedRent: guideline.maxAllowedRent,

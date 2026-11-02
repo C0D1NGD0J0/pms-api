@@ -618,6 +618,9 @@
       "managementNotAuthorized": "Aucun mandat de gestion actif n'est enregistré pour cette propriété. Téléversez le mandat de gestion du propriétaire avant de créer ou de renouveler des baux.",
       "ownershipUnverified": "La vérification de la propriété est requise avant de louer ce bien. Téléversez les documents de vérification ou demandez un délai de grâce à votre administrateur.",
       "renewalAlreadyExists": "Un renouvellement annulé existe encore pour ce bail. Supprimez-le, puis approuvez à nouveau la demande."
+    },
+    "warnings": {
+      "rentGuidelineExceeded": "Le loyer proposé dépasse la ligne directrice de {{guidelinePercentage}} % ({{jurisdiction}}) pour {{year}} (maximum {{maxAllowedRent}}). Des exceptions prévues par la loi peuvent s’appliquer."
     }
   },
   "common": {

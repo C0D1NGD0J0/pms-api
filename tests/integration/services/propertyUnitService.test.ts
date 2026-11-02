@@ -851,6 +851,8 @@ describe('PropertyUnitService Integration Tests', () => {
         const unit = await createTestPropertyUnit(testClient.cuid, testProperty._id);
         await submitStaffEdit(unit);
         const propertyApprovalService = new PropertyApprovalService({
+          geoCoderService: {} as any,
+          leaseDAO: {} as any,
           propertyDAO,
           propertyUnitDAO,
           propertyCache: mockPropertyCache as any,

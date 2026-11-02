@@ -99,6 +99,8 @@ describe('Property staff edits with file uploads (pending media)', () => {
     const propertyDAO = new PropertyDAO({ propertyModel: Property, propertyUnitDAO });
 
     approvalService = new PropertyApprovalService({
+      geoCoderService: {} as any,
+      leaseDAO: { hasNonDraftLeaseForProperty: jest.fn().mockResolvedValue(false) } as any,
       propertyDAO,
       propertyUnitDAO,
       mediaUploadService: mockMediaUploadService,
@@ -158,39 +160,29 @@ describe('Property staff edits with file uploads (pending media)', () => {
     });
   });
 
-  it('holds staff uploads in pendingChanges instead of attaching them to the property', async () => {
+  it('saves staff uploads on the property straight away while other fields wait', async () => {
     const result = await staffEdit({ name: 'Staff Name' }, [
       imageUpload('front.png'),
       documentUpload('deed.pdf', 'deed'),
     ]);
 
-    expect(result.data.pendingChanges.pendingMedia).toEqual({
-      images: [expect.objectContaining({ key: 'property/front.png' })],
-      documents: [expect.objectContaining({ key: 'property/deed.pdf', documentType: 'deed' })],
-    });
+    expect(result.data.heldForApproval).toEqual(['name']);
     const saved = await reload();
     expect(saved.name).toBe('Media Target');
-    expect(saved.images).toHaveLength(0);
-    expect(saved.documents).toHaveLength(0);
+    expect(saved.approvalStatus).toBe(PropertyApprovalStatusEnum.APPROVED);
+    expect(saved.images).toEqual([expect.objectContaining({ key: 'property/front.png' })]);
+    expect(saved.documents).toEqual([
+      expect.objectContaining({ key: 'property/deed.pdf', documentType: 'deed' }),
+    ]);
+    expect(saved.pendingChanges.name).toBe('Staff Name');
+    expect(saved.pendingChanges.pendingMedia).toBeUndefined();
     expect(mockEventEmitter.emit).toHaveBeenCalledWith(
       EventTypes.UPLOAD_COMPLETED,
       expect.objectContaining({ resourceName: 'property', resourceId: property.pid })
     );
-
-    const { data: detail } = await propertyService.getClientProperty(
-      client.cuid,
-      property.pid,
-      asUser(staffUser, ROLES.STAFF) as any
-    );
-    const preview = (detail.property as any).pendingChangesPreview;
-    expect(preview.updatedFields).toEqual(['name']);
-    expect(preview.pendingMedia).toEqual({
-      images: [expect.objectContaining({ key: 'property/front.png', filename: 'front.png' })],
-      documents: [expect.objectContaining({ key: 'property/deed.pdf' })],
-    });
   });
 
-  it('attaches the pending files after any edited media list when the changes are approved', async () => {
+  it('keeps a staff media edit and its uploads in place through approval', async () => {
     await Property.findByIdAndUpdate(property._id, {
       images: [
         { key: 'property/old-a.png', url: 'https://s3.test/a', uploadedBy: staffUser._id },
@@ -216,8 +208,21 @@ describe('Property staff edits with file uploads (pending media)', () => {
     expect(mockMediaUploadService.removeUploadedFiles).not.toHaveBeenCalled();
   });
 
-  it('deletes the pending files and attaches nothing when the changes are rejected', async () => {
-    await staffEdit({ name: 'Staff Name' }, [imageUpload('front.png')]);
+  it('deletes files an older submission held when its changes are rejected', async () => {
+    await Property.findByIdAndUpdate(property._id, {
+      pendingChanges: {
+        name: 'Staff Name',
+        updatedBy: staffUser._id,
+        updatedAt: new Date(),
+        displayName: 'Staff Member',
+        pendingMedia: {
+          images: [
+            { key: 'property/front.png', url: 'https://s3.test/f', uploadedBy: staffUser._id },
+          ],
+          documents: [],
+        },
+      },
+    });
 
     await approvalService.rejectProperty(
       client.cuid,

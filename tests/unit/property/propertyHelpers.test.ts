@@ -93,9 +93,9 @@ describe('validatePropertyLeaseImmutableFields', () => {
     }
 
     expect(caught).toBeInstanceOf(ValidationRequestError);
-    const fieldMessages: string[] = (caught as any).errorInfo?.fields ?? [];
-    expect(fieldMessages.some((m: string) => m.includes("'address'"))).toBe(true);
-    expect(fieldMessages.some((m: string) => m.includes("'propertyType'"))).toBe(true);
+    // Keyed by the form field that shows each error
+    expect(Object.keys(caught.errorInfo).sort()).toEqual(['address.fullAddress', 'propertyType']);
+    expect(caught.errorInfo['address.fullAddress']).toEqual([expect.any(String)]);
   });
 
   it('passes through non-locked fields even when lease history exists', async () => {

@@ -91,6 +91,8 @@ describe('PropertyService — currency stays the same on edit', () => {
     leaseDAO = new LeaseDAO({ leaseModel: Lease });
 
     const propertyApprovalService = new PropertyApprovalService({
+      geoCoderService: mockGeoCoderService as any,
+      leaseDAO,
       propertyDAO,
       propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,

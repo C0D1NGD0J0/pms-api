@@ -50,6 +50,12 @@ describe('OpenAPI document generation', () => {
     expect(doc.paths?.['/properties/{cuid}/{pid}']).toBeDefined();
   });
 
+  it('registers both compliance routes with the PropertyCompliance schema', () => {
+    expect(doc.paths?.['/properties/{cuid}/compliance']?.get).toBeDefined();
+    expect(doc.paths?.['/properties/{cuid}/{pid}/compliance']?.get).toBeDefined();
+    expect(doc.components?.schemas?.PropertyCompliance).toBeDefined();
+  });
+
   it('registers lease routes', () => {
     expect(doc.paths?.['/leases/{cuid}']).toBeDefined();
     expect(doc.paths?.['/leases/{cuid}']?.post).toBeDefined();

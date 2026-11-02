@@ -113,6 +113,40 @@ export const PropertyDetailSchema = PropertySummarySchema.extend({
   .passthrough()
   .openapi('PropertyDetail');
 
+// Mirrors IPropertyCompliance in app/services/jurisdiction/jurisdiction.types.ts
+export const PropertyComplianceSchema = z
+  .object({
+    isSupported: z.boolean(),
+    jurisdiction: z
+      .object({ code: z.string(), name: z.string(), legislation: z.string() })
+      .nullable(),
+    rentGuideline: z
+      .object({
+        year: z.number(),
+        guidelinePercentage: z.number(),
+        source: z.string().optional(),
+      })
+      .nullable(),
+    rentIncreaseRules: z
+      .object({
+        noticePeriodDays: z.number(),
+        noticeForm: z.string(),
+        minMonthsBetweenIncreases: z.number(),
+        exemptionNote: z.string().optional(),
+      })
+      .nullable(),
+    forms: z.array(
+      z.object({
+        code: z.string(),
+        name: z.string(),
+        url: z.string(),
+        context: z.string(),
+        description: z.string(),
+      })
+    ),
+  })
+  .openapi('PropertyCompliance');
+
 // ─── Property Units ───────────────────────────────────────────────────
 
 export const PropertyUnitSummarySchema = z

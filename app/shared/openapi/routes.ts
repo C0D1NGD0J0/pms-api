@@ -4,6 +4,7 @@ import { StandardSuccessSchema, StandardErrorSchema, openApiRegistry } from './r
 import {
   MaintenanceRequestSummarySchema,
   MaintenanceRequestDetailSchema,
+  PropertyComplianceSchema,
   InvitationSummarySchema,
   InspectionSummarySchema,
   InspectionDetailSchema,
@@ -645,6 +646,40 @@ openApiRegistry.registerPath({
   tags: ['Properties'],
   request: { params: cuidParams },
   responses: { ...ok200, ...err401 },
+});
+
+const PropertyComplianceDataSchema = z.object({ compliance: PropertyComplianceSchema });
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/properties/{cuid}/compliance',
+  summary: 'Get jurisdiction compliance for a province (no saved property needed)',
+  description:
+    'Rent-increase guideline, notice rules and government forms for a free-text state/province. Missing or unsupported provinces return `isSupported: false`.',
+  tags: ['Properties'],
+  request: {
+    params: cuidParams,
+    query: z.object({ state: z.string().optional().openapi({ example: 'ON' }) }),
+  },
+  responses: {
+    ...successWith(PropertyComplianceDataSchema, 'PropertyComplianceByState'),
+    ...err401,
+    ...err403,
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/properties/{cuid}/{pid}/compliance',
+  summary: "Get jurisdiction compliance for a property's province",
+  tags: ['Properties'],
+  request: { params: z.object({ cuid: z.string(), pid: z.string() }) },
+  responses: {
+    ...successWith(PropertyComplianceDataSchema, 'PropertyCompliance'),
+    ...err401,
+    ...err403,
+    ...err404,
+  },
 });
 
 openApiRegistry.registerPath({

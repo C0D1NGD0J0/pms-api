@@ -341,6 +341,43 @@ describe('buildManualSignatures', () => {
   });
 });
 
+describe("validateLeaseTermination — 'today' is the account's day", () => {
+  // 9 PM in Toronto on Nov 1 — already Nov 2 in UTC
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-02T01:00:00Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const lease = {
+    duration: {
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      endDate: new Date('2026-12-31T00:00:00Z'),
+    },
+    renewalOptions: { noticePeriodDays: 30 },
+  } as any;
+
+  const pastDateError = (timeZone: string) => {
+    try {
+      // Emergency waives the notice period, so only the past-date rule applies
+      validateLeaseTermination(lease, new Date('2026-11-01T00:00:00Z'), 'emergency', timeZone);
+    } catch (error) {
+      return ((error as ValidationRequestError).errorInfo?.terminationDate ?? []).some((m) =>
+        m.includes('cannot be in the past')
+      );
+    }
+    return false;
+  };
+
+  it("accepts terminating today in the account's timezone", () => {
+    expect(pastDateError('America/Toronto')).toBe(false);
+  });
+
+  it('treats the same day as past for an account on UTC', () => {
+    expect(pastDateError('UTC')).toBe(true);
+  });
+});
+
 describe('validateLeaseTermination — reports every failing rule', () => {
   const DAY_MS = 24 * 60 * 60 * 1000;
   const daysFromNow = (days: number) => new Date(Date.now() + days * DAY_MS);

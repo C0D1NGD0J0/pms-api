@@ -1307,10 +1307,12 @@ export class LeaseService {
 
     const terminationDate = new Date(terminationData.terminationDate);
 
+    const client = await this.clientDAO.getClientByCuid(cuid);
     const { warnings } = validateLeaseTermination(
       lease,
       terminationDate,
-      terminationData.reasonCode
+      terminationData.reasonCode,
+      client?.settings?.timeZone
     );
 
     this.log.info(`Terminating lease ${luid}`, {
@@ -3125,7 +3127,7 @@ export class LeaseService {
    */
   private isUSProperty(country?: string | null): boolean {
     if (!country) return false;
-    return ['US', 'USA', 'UNITED STATES'].includes(String(country).trim().toUpperCase());
+    return ['UNITED STATES', 'USA', 'US'].includes(String(country).trim().toUpperCase());
   }
 
   private async buildEmailData(

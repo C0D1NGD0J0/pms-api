@@ -8,6 +8,7 @@ import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
 import type { PdfJobData } from '@interfaces/pdfGenerator.interface';
+import { storedCalendarDay, localCalendarDay } from '@utils/timezone.utils';
 import { ISuccessReturnData, IRequestContext } from '@interfaces/utils.interface';
 import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financial';
 import { PaymentRecordStatus, IPaymentDocument } from '@interfaces/payments.interface';
@@ -184,7 +185,8 @@ const DEFAULT_NOTICE_PERIOD_DAYS = 30;
 export const validateLeaseTermination = (
   lease: ILeaseDocument,
   terminationDate: Date,
-  reasonCode?: string
+  reasonCode?: string,
+  timeZone = 'UTC'
 ): { warnings: string[] } => {
   const errors: Record<string, string[]> = {};
   const warnings: string[] = [];
@@ -192,17 +194,11 @@ export const validateLeaseTermination = (
   const addTerminationDateError = (message: string) => {
     errors.terminationDate = [...(errors.terminationDate ?? []), message];
   };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const leaseStartDate = new Date(lease.duration.startDate);
-  leaseStartDate.setHours(0, 0, 0, 0);
-
-  const leaseEndDate = new Date(lease.duration.endDate);
-  leaseEndDate.setHours(0, 0, 0, 0);
-
-  const termDate = new Date(terminationDate);
-  termDate.setHours(0, 0, 0, 0);
+  // Calendar days, all as UTC midnight: "today" is the account's, the rest are stored dates
+  const today = localCalendarDay(new Date(), timeZone);
+  const leaseStartDate = storedCalendarDay(lease.duration.startDate);
+  const leaseEndDate = storedCalendarDay(lease.duration.endDate);
+  const termDate = storedCalendarDay(terminationDate);
 
   // Rule 1: No past dates
   if (termDate < today) {
@@ -228,11 +224,11 @@ export const validateLeaseTermination = (
 
   if (requiresNotice) {
     const minimumTerminationDate = new Date(today);
-    minimumTerminationDate.setDate(today.getDate() + noticePeriodDays);
+    minimumTerminationDate.setUTCDate(today.getUTCDate() + noticePeriodDays);
 
     if (termDate < minimumTerminationDate) {
       addTerminationDateError(
-        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString()}`
+        `Minimum ${noticePeriodDays}-day notice required for this termination reason. Earliest allowed date: ${minimumTerminationDate.toLocaleDateString(undefined, { timeZone: 'UTC' })}`
       );
     }
   }
@@ -249,17 +245,21 @@ export const validateLeaseTermination = (
   }
 
   // Warning: Month-end alignment (not blocking)
-  const lastDayOfMonth = new Date(termDate.getFullYear(), termDate.getMonth() + 1, 0).getDate();
-  const isEndOfMonth = termDate.getDate() === lastDayOfMonth;
+  const lastDayOfMonth = new Date(
+    Date.UTC(termDate.getUTCFullYear(), termDate.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  const isEndOfMonth = termDate.getUTCDate() === lastDayOfMonth;
 
   if (
     !isEndOfMonth &&
     reasonCode !== LeaseTerminationReasonCode.LEASE_VIOLATION &&
     reasonCode !== LeaseTerminationReasonCode.EMERGENCY
   ) {
-    const suggestedDate = new Date(termDate.getFullYear(), termDate.getMonth() + 1, 0);
+    const suggestedDate = new Date(
+      Date.UTC(termDate.getUTCFullYear(), termDate.getUTCMonth() + 1, 0)
+    );
     warnings.push(
-      `Termination mid-month may complicate rent prorating. Consider ${suggestedDate.toLocaleDateString()} (end of month) for cleaner accounting.`
+      `Termination mid-month may complicate rent prorating. Consider ${suggestedDate.toLocaleDateString(undefined, { timeZone: 'UTC' })} (end of month) for cleaner accounting.`
     );
   }
 
@@ -273,7 +273,7 @@ export const validateLeaseTermination = (
   return { warnings };
 };
 
-export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
+export const validateLeaseReadyForSignature = (lease: ILeaseDocument, timeZone = 'UTC'): void => {
   // Check lease status
   if (![LeaseStatus.READY_FOR_SIGNATURE].includes(lease.status)) {
     throw new ValidationRequestError({
@@ -291,12 +291,9 @@ export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
     });
   }
 
-  // Date guard 1: no backdated start dates
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const startDate = new Date(lease.duration.startDate);
-  startDate.setHours(0, 0, 0, 0);
+  // Date guard 1: no backdated start dates — compared as calendar days in the account's zone
+  const today = localCalendarDay(new Date(), timeZone);
+  const startDate = storedCalendarDay(lease.duration.startDate);
 
   if (startDate < today) {
     throw new ValidationRequestError({
@@ -306,7 +303,7 @@ export const validateLeaseReadyForSignature = (lease: ILeaseDocument): void => {
   }
 
   // Date guard 2: end date must leave a meaningful remaining term
-  const endDate = new Date(lease.duration.endDate);
+  const endDate = storedCalendarDay(lease.duration.endDate);
   const remainingDays = Math.floor((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
   if (remainingDays < LEASE_CONSTANTS.MINIMUM_ACTIVE_DURATION_DAYS) {

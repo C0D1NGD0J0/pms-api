@@ -338,7 +338,7 @@ export interface IAssignableUsersFilter {
 }
 
 export interface IVerificationDetailEntry {
-  action: 'submitted' | 'verified' | 'rejected' | 'grace_granted';
+  action: 'submitted' | 'verified' | 'rejected' | 'grace_granted' | 'reset';
   rejectionReason?: string;
   actor: Types.ObjectId;
   timestamp: Date;

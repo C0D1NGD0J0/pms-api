@@ -407,7 +407,7 @@ const PropertySchema = new Schema<IPropertyDocument>(
         {
           action: {
             type: String,
-            enum: ['submitted', 'verified', 'rejected', 'grace_granted'],
+            enum: ['submitted', 'verified', 'rejected', 'grace_granted', 'reset'],
             required: true,
           },
           actor: { type: Schema.Types.ObjectId, ref: 'User', required: true },

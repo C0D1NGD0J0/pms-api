@@ -154,11 +154,16 @@
       "singleUnitCannotBePartiallyOccupied": "Single-unit properties cannot be partially occupied",
       "occupancyStatusValidationFailed": "Occupancy status change validation failed",
       "csvFilePathMissing": "CSV file path missing",
-      "csvValidationFailed": "Unable to validate csv for this account."
+      "csvValidationFailed": "Unable to validate csv for this account.",
+      "pendingChangesUpdated": "These changes were edited after you opened them. Review the latest version and try again.",
+      "structuralFieldsLocked": "Cannot change structural fields on a property that has or has had a lease",
+      "lockedByLeaseHistory": "This can't change once the property has had a lease"
     },
     "success": {
       "csvImportStarted": "CSV import job started",
-      "csvValidationStarted": "CSV validation process started."
+      "csvValidationStarted": "CSV validation process started.",
+      "changesSubmittedForApproval": "Property changes submitted for approval",
+      "savedWithChangesForApproval": "Property updated. Some changes are waiting for manager approval."
     }
   },
   "propertyUnit": {

@@ -3,17 +3,21 @@ import { t } from '@shared/languages';
 import { PropertyCache } from '@caching/index';
 import { type QueryFilter, Types } from 'mongoose';
 import { createSafeMongoUpdate } from '@utils/index';
-import { PropertyUnitDAO, PropertyDAO } from '@dao/index';
+import { GeoCoderService } from '@services/external';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
 import type { MediaUploadService } from '@services/mediaUpload';
 import { IPropertyDocument } from '@interfaces/property.interface';
+import { PropertyUnitDAO, PropertyDAO, LeaseDAO } from '@dao/index';
 import { IPropertyUnitDocument } from '@interfaces/propertyUnit.interface';
 import { InvalidRequestError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import { PROPERTY_APPROVAL_ROLES, convertUserRoleToEnum, createLogger } from '@utils/index';
 import { ISuccessReturnData, IPaginationQuery, IPaginateResult } from '@interfaces/utils.interface';
 
+import { mergeUpdateOperations, buildAddressUpdate } from './propertyAddress';
 import {
+  validatePropertyLeaseImmutableFields,
+  validateOccupancyStatusChange,
   cleanUpRemovedPropertyMedia,
   getOriginalRequesterId,
   pendingMediaItems,
@@ -21,12 +25,25 @@ import {
 
 const BULK_DECISION_CONCURRENCY = 5;
 
+/**
+ * Whether the property has ever been live. Staff edits used to switch live properties to
+ * 'pending', so history counts too; properties older than approval have no status at all.
+ */
+const wasEverApproved = (property: IPropertyDocument): boolean =>
+  !property.approvalStatus ||
+  property.approvalStatus === 'approved' ||
+  (property.approvalDetails ?? []).some((entry) =>
+    ['overridden', 'approved', 'updated'].includes(entry.action)
+  );
+
 interface IConstructor {
   notificationService: NotificationService;
   mediaUploadService: MediaUploadService;
+  geoCoderService: GeoCoderService;
   propertyUnitDAO: PropertyUnitDAO;
   propertyCache: PropertyCache;
   propertyDAO: PropertyDAO;
+  leaseDAO: LeaseDAO;
 }
 
 export class PropertyApprovalService {
@@ -36,6 +53,8 @@ export class PropertyApprovalService {
   private readonly propertyCache: PropertyCache;
   private readonly notificationService: NotificationService;
   private readonly mediaUploadService: MediaUploadService;
+  private readonly geoCoderService: GeoCoderService;
+  private readonly leaseDAO: LeaseDAO;
 
   constructor({
     propertyDAO,
@@ -43,7 +62,11 @@ export class PropertyApprovalService {
     propertyUnitDAO,
     notificationService,
     mediaUploadService,
+    geoCoderService,
+    leaseDAO,
   }: IConstructor) {
+    this.geoCoderService = geoCoderService;
+    this.leaseDAO = leaseDAO;
     this.mediaUploadService = mediaUploadService;
     this.propertyDAO = propertyDAO;
     this.propertyUnitDAO = propertyUnitDAO;
@@ -68,7 +91,8 @@ export class PropertyApprovalService {
     const filter: QueryFilter<IPropertyDocument> = {
       cuid,
       deletedAt: null,
-      approvalStatus: 'pending',
+      // Staff edits to a live property keep it approved, so they're found by their changes
+      $or: [{ approvalStatus: 'pending' }, { pendingChanges: { $ne: null } }],
     };
 
     const opts: IPaginationQuery = {
@@ -129,18 +153,41 @@ export class PropertyApprovalService {
       });
     }
 
+    const pendingSubmittedAt = property.pendingChanges?.updatedAt;
     const updatedProperty = await this.propertyDAO.update(
-      { pid, cuid, deletedAt: null },
-      this.buildApprovalUpdate(property, currentuser, notes)
+      {
+        pid,
+        cuid,
+        deletedAt: null,
+        // The submission was edited since it was read: approve what the manager actually saw
+        ...(property.pendingChanges && { 'pendingChanges.updatedAt': pendingSubmittedAt }),
+      },
+      await this.buildApprovalUpdate(cuid, property, currentuser, notes)
     );
 
     if (!updatedProperty) {
       throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'approve property' }),
+        message: property.pendingChanges
+          ? t('property.errors.pendingChangesUpdated')
+          : t('common.errors.operationFailed', { action: 'approve property' }),
       });
     }
 
+    // A newly approved manager can't also be assigned staff
+    const newManagerId = property.pendingChanges?.managedBy?.toString();
+    if (
+      newManagerId &&
+      updatedProperty.assignedStaff?.some((id: any) => id.toString() === newManagerId)
+    ) {
+      await this.propertyDAO.update(
+        { _id: updatedProperty._id },
+        { $pull: { assignedStaff: new Types.ObjectId(newManagerId) } }
+      );
+    }
+
     await this.propertyCache.invalidateProperty(cuid, property.id);
+    await this.propertyCache.invalidatePropertyDetail(cuid, property.pid);
+    await this.propertyCache.invalidateLeaseableProperties(cuid);
 
     // Approved staff edits can remove images/documents — clean up their assets
     // now that the change is applied. Logged, not thrown: approval succeeded.
@@ -303,17 +350,19 @@ export class PropertyApprovalService {
     return {
       success: true,
       data: updatedProperty,
-      message: property.pendingChanges
-        ? 'Property changes rejected. Original data preserved.'
-        : 'Property rejected',
+      message:
+        property.pendingChanges && updatedProperty.approvalStatus === 'approved'
+          ? 'Property changes rejected. Original data preserved.'
+          : 'Property rejected',
     };
   }
 
-  private buildApprovalUpdate(
+  private async buildApprovalUpdate(
+    cuid: string,
     property: IPropertyDocument,
     currentuser: ICurrentUser,
     notes?: string
-  ): Record<string, any> {
+  ): Promise<Record<string, any>> {
     const pendingMedia = property.pendingChanges?.pendingMedia;
     const approvalEntry = {
       action: 'approved' as const,
@@ -329,8 +378,20 @@ export class PropertyApprovalService {
     };
 
     if (property.pendingChanges) {
-      const { pendingMedia: _pendingMedia, ...fieldChanges } = property.pendingChanges;
-      const safeChanges = createSafeMongoUpdate(fieldChanges);
+      const {
+        pendingMedia: _pendingMedia,
+        updatedBy: _updatedBy,
+        updatedAt: _updatedAt,
+        displayName: _displayName,
+        ...fieldChanges
+      } = property.pendingChanges;
+
+      // Leases or units may have changed while the edit waited
+      if (fieldChanges.occupancyStatus) validateOccupancyStatusChange(property, fieldChanges);
+      await validatePropertyLeaseImmutableFields(property, cuid, fieldChanges, this.leaseDAO);
+
+      const { address: pendingAddress, ...otherChanges } = fieldChanges;
+      const safeChanges = createSafeMongoUpdate(otherChanges);
 
       updateData.$set = {
         ...safeChanges,
@@ -367,6 +428,23 @@ export class PropertyApprovalService {
         };
       }
 
+      if (pendingAddress) {
+        mergeUpdateOperations(
+          updateData,
+          await buildAddressUpdate(
+            { propertyDAO: this.propertyDAO, geoCoderService: this.geoCoderService, log: this.log },
+            {
+              cuid,
+              property,
+              incoming: pendingAddress as any,
+              ownerType: fieldChanges.owner?.type,
+              actorRole: convertUserRoleToEnum(currentuser.client.role),
+              actorId: currentuser.sub,
+            }
+          )
+        );
+      }
+
       this.log.info('Applying pending changes during approval with safe updates', {
         propertyId: property.id,
         pendingChanges: Object.keys(property.pendingChanges),
@@ -395,15 +473,10 @@ export class PropertyApprovalService {
       $push: { approvalDetails: rejectionEntry },
     };
 
-    // If property has pending changes, clear them; the live data is still the approved version.
-    // Staff submissions set approvalStatus to 'pending', so it must be reset explicitly.
-    if (property.pendingChanges) {
-      updateData.pendingChanges = null;
-      updateData.approvalStatus = 'approved';
-    } else {
-      // If no pending changes, this is a new property being rejected
-      updateData.approvalStatus = 'rejected';
-    }
+    // Rejected changes to a live property leave it live. A property that was never approved
+    // is rejected as a whole, edits and all — like a new property with no changes.
+    if (property.pendingChanges) updateData.pendingChanges = null;
+    updateData.approvalStatus = wasEverApproved(property) ? 'approved' : 'rejected';
 
     return updateData;
   }

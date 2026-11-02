@@ -148,11 +148,16 @@
       "singleUnitCannotBePartiallyOccupied": "Les propriétés à unité unique ne peuvent pas être partiellement occupées",
       "occupancyStatusValidationFailed": "La validation du changement de statut d'occupation a échoué",
       "csvFilePathMissing": "Chemin de fichier CSV manquant",
-      "csvValidationFailed": "Impossible de valider le csv pour ce compte."
+      "csvValidationFailed": "Impossible de valider le csv pour ce compte.",
+      "pendingChangesUpdated": "Ces modifications ont été changées après leur ouverture. Consultez la dernière version et réessayez.",
+      "structuralFieldsLocked": "Impossible de modifier les champs structurels d'une propriété qui a ou a eu un bail",
+      "lockedByLeaseHistory": "Ce champ ne peut plus changer une fois que la propriété a eu un bail"
     },
     "success": {
       "csvImportStarted": "Tâche d'importation CSV démarrée",
-      "csvValidationStarted": "Processus de validation CSV démarré."
+      "csvValidationStarted": "Processus de validation CSV démarré.",
+      "changesSubmittedForApproval": "Modifications de la propriété soumises pour approbation",
+      "savedWithChangesForApproval": "Propriété mise à jour. Certaines modifications attendent l'approbation d'un gestionnaire."
     }
   },
   "propertyUnit": {

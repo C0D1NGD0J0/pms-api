@@ -104,11 +104,16 @@
       "singleUnitCannotBePartiallyOccupied": "Single-unit properties no fit be partially occupied",
       "occupancyStatusValidationFailed": "Occupancy status change validation fail",
       "csvFilePathMissing": "CSV file path no dey",
-      "csvValidationFailed": "We no fit validate csv for dis account."
+      "csvValidationFailed": "We no fit validate csv for dis account.",
+      "pendingChangesUpdated": "Somebody don change these changes after you open am. Check the latest one and try again.",
+      "structuralFieldsLocked": "You no fit change these fields because dis property don get lease before",
+      "lockedByLeaseHistory": "Dis one no fit change again because dis property don get lease before"
     },
     "success": {
       "csvImportStarted": "CSV import job don start",
-      "csvValidationStarted": "CSV validation process don start."
+      "csvValidationStarted": "CSV validation process don start.",
+      "changesSubmittedForApproval": "Property changes don go for approval",
+      "savedWithChangesForApproval": "Property don update. Some changes dey wait for manager approval."
     }
   },
   "propertyUnit": {

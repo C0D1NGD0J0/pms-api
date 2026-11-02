@@ -10,6 +10,7 @@ import { IPropertyDocument, IPendingChanges } from '@interfaces/property.interfa
 import { PermissionResource, PermissionAction, PermissionScope } from '@interfaces/utils.interface';
 import {
   IMMUTABLE_PROPERTY_FIELDS_WITH_LEASE_HISTORY,
+  OPERATIONAL_PROPERTY_FIELDS,
   PROPERTY_APPROVAL_ROLES,
   convertUserRoleToEnum,
   PROPERTY_STAFF_ROLES,
@@ -442,7 +443,7 @@ export const validateOccupancyStatusChange = (
 
   if (errors.length > 0) {
     throw new ValidationRequestError({
-      message: t('property.errors.occupancyValidationFailed'),
+      message: t('property.errors.occupancyStatusValidationFailed'),
       errorInfo: { occupancyStatus: errors },
     });
   }
@@ -469,13 +470,91 @@ export const validatePropertyLeaseImmutableFields = async (
   const hasLeaseHistory = await leaseDAO.hasNonDraftLeaseForProperty(property._id.toString(), cuid);
 
   if (hasLeaseHistory) {
+    // Keyed by the form field that shows the error (the address input is address.fullAddress)
+    const errorInfo = Object.fromEntries(
+      lockedFieldsAttempted.map((field) => [
+        field === 'address' ? 'address.fullAddress' : field,
+        [t('property.errors.lockedByLeaseHistory')],
+      ])
+    );
     throw new ValidationRequestError({
-      message: 'Cannot modify structural fields on a property with active or historical leases',
-      errorInfo: {
-        fields: lockedFieldsAttempted.map(
-          (f) => `'${f}' is locked — this property has or has had a non-draft lease`
-        ),
-      },
+      message: t('property.errors.structuralFieldsLocked'),
+      errorInfo,
     });
   }
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  !(value instanceof Date) &&
+  !(value instanceof Types.ObjectId);
+
+/** Compares only the keys the edit sends, so a partial nested object isn't read as a change. */
+const differsFromStored = (next: unknown, stored: unknown): boolean => {
+  if (isPlainObject(next)) {
+    const storedObject = isPlainObject(stored) ? stored : {};
+    return Object.entries(next).some(([key, value]) => differsFromStored(value, storedObject[key]));
+  }
+  if (Array.isArray(next)) return JSON.stringify(next) !== JSON.stringify(stored ?? []);
+  if (next instanceof Date || stored instanceof Date) {
+    return new Date(next as Date).getTime() !== new Date(stored as Date).getTime();
+  }
+  return String(next ?? '') !== String(stored ?? '');
+};
+
+/**
+ * Splits a staff edit: operational fields (OPERATIONAL_PROPERTY_FIELDS) are saved straight
+ * away, the rest wait for a manager — and only when they change what is stored.
+ */
+export const splitStaffPropertyChanges = (
+  property: IPropertyDocument,
+  changes: Partial<IPropertyDocument>
+): { direct: Partial<IPropertyDocument>; held: Partial<IPropertyDocument> } => {
+  const stored: Record<string, unknown> =
+    typeof property.toObject === 'function' ? property.toObject() : property;
+  const direct: Record<string, unknown> = {};
+  const held: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === undefined) continue;
+    if (OPERATIONAL_PROPERTY_FIELDS.includes(key)) {
+      direct[key] = value;
+    } else if (differsFromStored(value, stored[key])) {
+      held[key] = value;
+    }
+  }
+
+  return { direct, held } as {
+    direct: Partial<IPropertyDocument>;
+    held: Partial<IPropertyDocument>;
+  };
+};
+
+/**
+ * A staff member's new held changes on top of what they already submitted, so a second
+ * edit doesn't drop the first one's fields.
+ */
+export const mergePendingFieldChanges = (
+  existing: IPendingChanges | null | undefined,
+  held: Partial<IPropertyDocument>
+): Record<string, unknown> => {
+  const {
+    pendingMedia: _pendingMedia,
+    updatedBy: _updatedBy,
+    updatedAt: _updatedAt,
+    displayName: _displayName,
+    ...existingFields
+  } = (existing ?? {}) as Record<string, any>;
+
+  const merged: Record<string, unknown> = { ...existingFields };
+  for (const [key, value] of Object.entries(held)) {
+    // An address is always sent whole; other objects are partial and combine
+    merged[key] =
+      isPlainObject(value) && isPlainObject(merged[key]) && key !== 'address'
+        ? { ...(merged[key] as Record<string, unknown>), ...value }
+        : value;
+  }
+  return merged;
 };

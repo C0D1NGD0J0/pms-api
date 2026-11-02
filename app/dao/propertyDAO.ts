@@ -358,10 +358,12 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
     }
   }
 
+  /** `excludePid` skips the property being edited, so it doesn't count as its own duplicate. */
   async findPropertyByAddress(
     address: string,
     clientId: string,
-    opts?: IFindOptions
+    opts?: IFindOptions,
+    excludePid?: string
   ): Promise<IPropertyDocument | null> {
     try {
       if (!address || !clientId) {
@@ -373,6 +375,7 @@ export class PropertyDAO extends BaseDAO<IPropertyDocument> implements IProperty
         'address.fullAddress': { $regex: new RegExp(`^${escapeRegExp(normalizedAddress)}$`, 'i') },
         cuid: clientId,
         deletedAt: null,
+        ...(excludePid && { pid: { $ne: excludePid } }),
       };
 
       return await this.findFirst(query, opts);

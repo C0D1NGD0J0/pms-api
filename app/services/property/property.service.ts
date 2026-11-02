@@ -70,6 +70,7 @@ import {
   IPropertyWithUnitInfo,
   IPropertyFilterQuery,
   IPropertyDocument,
+  IPendingChanges,
   IAssignableUser,
   NewPropertyType,
   OwnershipType,
@@ -98,12 +99,21 @@ import { PropertyValidationService } from './propertyValidation.service';
 import { PropertyVerificationService } from './propertyVerification.service';
 import { subscriptionPlanConfig } from '../subscription/subscription_plans.config';
 import {
+  resolveNewPropertyAddress,
+  assertAddressAvailable,
+  mergeUpdateOperations,
+  buildAddressUpdate,
+  isAddressMove,
+} from './propertyAddress';
+import {
   validatePropertyLeaseImmutableFields,
   generatePendingChangesPreview,
   validateOccupancyStatusChange,
   getAccessiblePropertyFilter,
   cleanUpRemovedPropertyMedia,
   filterPropertyByDepartment,
+  splitStaffPropertyChanges,
+  mergePendingFieldChanges,
   resolveConnectedUserIds,
   resolveConnectedUserId,
   withoutPendingUploads,
@@ -475,12 +485,16 @@ export class PropertyService implements ICronProvider {
 
     const fullAddress = cleanPropertyData.address.fullAddress;
     if (fullAddress) {
-      const existingProperty = await this.propertyDAO.findPropertyByAddress(fullAddress, cuid);
-      if (existingProperty) {
-        throw new InvalidRequestError({
-          message: t('property.errors.duplicateAddress'),
-        });
-      }
+      await assertAddressAvailable(this.propertyDAO, fullAddress, cuid);
+
+      // Fills in parts the form left out and places the property for nearby/vendor lookups
+      const { address, computedLocation } = await resolveNewPropertyAddress(
+        this.geoCoderService,
+        cleanPropertyData.address as any,
+        this.log
+      );
+      cleanPropertyData.address = address;
+      if (computedLocation) cleanPropertyData.computedLocation = computedLocation as any;
     }
 
     this.propertyTypeValidation(cleanPropertyData);
@@ -1141,7 +1155,7 @@ export class PropertyService implements ICronProvider {
     include?: string[]
   ): Promise<ISuccessReturnData<IPropertyWithUnitInfo>> {
     if (!cuid || !pid) {
-      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+      throw new BadRequestError({ message: t('property.errors.clientIdAndPropertyIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
@@ -1453,7 +1467,7 @@ export class PropertyService implements ICronProvider {
     pid: string
   ): Promise<ISuccessReturnData<{ compliance: IPropertyCompliance }>> {
     if (!cuid || !pid) {
-      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+      throw new BadRequestError({ message: t('property.errors.clientIdAndPropertyIdRequired') });
     }
 
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null });
@@ -1468,12 +1482,38 @@ export class PropertyService implements ICronProvider {
   }
 
   /**
-   * Build jurisdiction compliance reference data for a property from its
-   * address state. Scoped to jurisdiction + current-year guideline + notice
-   * rules + government forms — no per-property rent math (a multi-unit property
-   * has many rents). Returns `isSupported: false` for unknown jurisdictions.
+   * Return jurisdiction compliance reference for a free-text state/province
+   * (no saved property needed). Used by the property create/edit form, which
+   * reacts to the province field as the user fills it in.
+   */
+  async getComplianceByState(
+    cuid: string,
+    state: string
+  ): Promise<ISuccessReturnData<{ compliance: IPropertyCompliance }>> {
+    if (!cuid) {
+      throw new BadRequestError({ message: t('property.errors.clientIdAndPropertyIdRequired') });
+    }
+
+    return {
+      success: true,
+      data: { compliance: this.buildComplianceForState(state) },
+    };
+  }
+
+  /**
+   * Build jurisdiction compliance reference data from a property document (reads
+   * `address.state`). See `buildComplianceForState` for the core logic.
    */
   private buildPropertyCompliance(property: any): IPropertyCompliance {
+    return this.buildComplianceForState(property?.address?.state);
+  }
+
+  /**
+   * Build jurisdiction compliance reference data for a free-text state/province.
+   * Scoped to jurisdiction + current-year guideline + notice rules + government
+   * forms — no rent math. Returns `isSupported: false` for unknown jurisdictions.
+   */
+  private buildComplianceForState(state?: string | null): IPropertyCompliance {
     const unsupported: IPropertyCompliance = {
       jurisdiction: null,
       rentGuideline: null,
@@ -1482,7 +1522,7 @@ export class PropertyService implements ICronProvider {
       isSupported: false,
     };
 
-    const code = normalizeStateToCode(property?.address?.state);
+    const code = normalizeStateToCode(state);
     if (!code) return unsupported;
 
     const jurisdiction = jurisdictionRulesConfig.getJurisdiction(code);
@@ -1575,11 +1615,11 @@ export class PropertyService implements ICronProvider {
 
     // Validate input and permissions
     if (!cuid || !pid) {
-      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+      throw new BadRequestError({ message: t('property.errors.clientIdAndPropertyIdRequired') });
     }
 
-    // Select +owner when owner update is included to preserve ownership history
-    const selectOpts = updateData.owner ? { select: '+owner' } : {};
+    // owner is select: false — needed for ownership history and to re-verify a moved address
+    const selectOpts = updateData.owner || updateData.address ? { select: '+owner' } : {};
     const property = await this.propertyDAO.findFirst({ pid, cuid, deletedAt: null }, selectOpts);
     if (!property) {
       throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Property' }) });
@@ -1649,182 +1689,166 @@ export class PropertyService implements ICronProvider {
     // Enforce lease-history immutability (applies to all roles — no admin bypass)
     await validatePropertyLeaseImmutableFields(property, cuid, cleanUpdateData, this.leaseDAO);
 
-    // Smart Approval Workflow Logic
-    const hasPendingChanges = !!property.pendingChanges;
-    let pendingChangesInfo: any = null;
+    const isApprover = PROPERTY_APPROVAL_ROLES.includes(userRoleEnum);
+    const existingPending = property.pendingChanges as IPendingChanges | null | undefined;
+    const pendingChangesInfo = existingPending
+      ? {
+          updatedBy: existingPending.updatedBy?.toString(),
+          displayName: existingPending.displayName || 'Unknown User',
+          updatedAt: existingPending.updatedAt,
+        }
+      : null;
 
-    if (hasPendingChanges) {
-      const pendingChanges = property.pendingChanges as any;
-      pendingChangesInfo = {
-        updatedBy: pendingChanges.updatedBy?.toString(),
-        displayName: pendingChanges.displayName || 'Unknown User',
-        updatedAt: pendingChanges.updatedAt,
-      };
+    // Staff save operational fields straight away; the rest wait for a manager
+    const { direct, held } = isApprover
+      ? { direct: cleanUpdateData, held: {} as Partial<IPropertyDocument> }
+      : splitStaffPropertyChanges(property, cleanUpdateData);
+    const heldFields = Object.keys(held);
+
+    // Only one person's changes can wait at a time
+    if (
+      heldFields.length &&
+      pendingChangesInfo?.updatedBy &&
+      pendingChangesInfo.updatedBy !== ctx.currentuser.sub
+    ) {
+      const lockedAt = pendingChangesInfo.updatedAt
+        ? new Date(pendingChangesInfo.updatedAt).toLocaleString()
+        : 'recently';
+      throw new BadRequestError({
+        message: `Cannot edit property - ${pendingChangesInfo.displayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
+      });
     }
 
-    // STAFF LOGIC: Block if another user has pending changes
-    if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
-      if (hasPendingChanges) {
-        const lockedByUserId = pendingChangesInfo.updatedBy;
-
-        // Block if another user has pending changes
-        if (lockedByUserId && lockedByUserId !== ctx.currentuser.sub) {
-          const lockedAt = pendingChangesInfo.updatedAt
-            ? new Date(pendingChangesInfo.updatedAt).toLocaleString()
-            : 'recently';
-
-          throw new BadRequestError({
-            message: `Cannot edit property - ${pendingChangesInfo.displayName} has pending changes since ${lockedAt}. Changes must be approved or rejected before further edits can be made.`,
-          });
-        }
-      }
-
-      const uploads = await this.mediaUploadService.uploadRequestFiles(
-        { scannedFiles: ctx.newFiles },
-        {
-          resourceName: 'property',
-          resourceId: pid,
-          fieldName: 'media',
-          actorId: ctx.currentuser.sub,
-        }
-      );
-      const pendingChanges = this.buildStaffPendingChanges(
-        ctx.currentuser,
-        property.pendingChanges,
-        cleanUpdateData,
-        this.propertyDAO.buildMediaItems(property, uploads, ctx.currentuser.sub)
-      );
-
-      let result: IPropertyDocument | null = null;
-      try {
-        result = await this.propertyDAO.update(
-          { cuid, pid, deletedAt: null, pendingChanges: hasPendingChanges ? { $ne: null } : null },
-          {
-            $set: {
-              pendingChanges,
-              approvalStatus: PropertyApprovalStatusEnum.PENDING,
-              lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
-            },
-          }
-        );
-      } finally {
-        if (!result) await this.mediaUploadService.removeUploadedFiles(uploads);
-      }
-
-      if (!result) {
-        throw new BadRequestError({
-          message: t('common.errors.operationFailed', { action: 'update property' }),
-        });
-      }
-
-      this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
-
-      // Send notification to approvers
-      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, false);
-
-      return {
-        success: true,
-        data: result,
-        message: 'Property changes submitted for approval',
-      };
+    // A duplicate address fails now, not when a manager approves it
+    if (held.address && isAddressMove(property, held.address)) {
+      await assertAddressAvailable(this.propertyDAO, String(held.address.fullAddress), cuid, pid);
     }
 
-    // ADMIN/MANAGER LOGIC: direct update with override handling
-    if (PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)) {
-      let overrideMessage = '';
-      let notifyStaffOfOverride = false;
-      let originalRequesterId: string | undefined;
+    const actorId = new Types.ObjectId(ctx.currentuser.sub);
+    const { address: directAddress, ...directFields } = direct;
+    const updateOperation: Record<string, any> = {
+      $set: { ...createSafeMongoUpdate(directFields), lastModifiedBy: actorId },
+      $push: {},
+    };
 
-      // are we overriding pending changes
-      if (hasPendingChanges) {
-        originalRequesterId = pendingChangesInfo.updatedBy;
+    let overrideMessage = '';
+    if (isApprover) {
+      if (pendingChangesInfo) {
         overrideMessage = ` (overriding pending changes from ${pendingChangesInfo.displayName})`;
-        notifyStaffOfOverride = true;
-
         this.log.info('Admin overriding pending changes', {
           propertyId: property.id,
           adminId: ctx.currentuser.sub,
-          adminName: ctx.currentuser.displayName,
-          originalRequesterId,
-          originalRequesterName: pendingChangesInfo.displayName,
+          originalRequesterId: pendingChangesInfo.updatedBy,
         });
       }
 
-      // apply admin changes directly and clear pending changes
-      const safeUpdateData = createSafeMongoUpdate(cleanUpdateData);
-
-      // Preserve ownership history when owner changes
-      const pushOperations: Record<string, any> = {
-        approvalDetails: {
-          timestamp: new Date(),
-          action: hasPendingChanges ? 'overridden' : 'updated',
-          actor: new Types.ObjectId(ctx.currentuser.sub),
-          ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
-        },
+      updateOperation.$set.approvalStatus = PropertyApprovalStatusEnum.APPROVED;
+      updateOperation.$set.pendingChanges = null;
+      updateOperation.$push.approvalDetails = {
+        timestamp: new Date(),
+        action: pendingChangesInfo ? 'overridden' : 'updated',
+        actor: actorId,
+        ...(overrideMessage && { notes: `Direct update${overrideMessage}` }),
       };
 
+      // Preserve ownership history when owner changes
       if (cleanUpdateData.owner && property.owner) {
-        pushOperations.ownershipHistory = {
+        updateOperation.$push.ownershipHistory = {
           owner: property.owner,
           effectiveFrom: property.createdAt || new Date(),
           effectiveTo: new Date(),
           transferNote: 'Ownership updated',
-          recordedBy: new Types.ObjectId(ctx.currentuser.sub),
+          recordedBy: actorId,
           recordedAt: new Date(),
         };
       }
-
-      const updateOperation: any = {
-        $set: {
-          ...safeUpdateData,
-          approvalStatus: PropertyApprovalStatusEnum.APPROVED,
-          lastModifiedBy: new Types.ObjectId(ctx.currentuser.sub),
-          pendingChanges: null, // Clear any pending changes
-        },
-        $push: pushOperations,
-      };
-
-      // New files are saved in this same write. An edited list in the payload replaces the
-      // stored one, so the uploads go after it — Mongo rejects $set and $push on one path.
-      const uploads = ctx.newFiles?.length
-        ? await this.mediaUploadService.uploadRequestFiles(
-            { scannedFiles: ctx.newFiles },
-            {
-              resourceName: 'property',
-              resourceId: pid,
-              fieldName: 'media',
-              actorId: ctx.currentuser.sub,
-            }
-          )
-        : [];
-      const newMedia = this.propertyDAO.buildMediaItems(property, uploads, ctx.currentuser.sub);
-      for (const field of ['images', 'documents'] as const) {
-        const uploaded = newMedia[field] as any[];
-        if (!uploaded.length) continue;
-
-        if (cleanUpdateData[field] !== undefined) {
-          updateOperation.$set[field] = [...(cleanUpdateData[field] as any[]), ...uploaded];
-        } else {
-          updateOperation.$push[field] = { $each: uploaded };
-        }
+    } else if (heldFields.length) {
+      updateOperation.$set.pendingChanges = this.buildStaffPendingChanges(
+        ctx.currentuser,
+        existingPending,
+        held
+      );
+      // A live property stays approved — and leasable — while the edit waits; a new or
+      // rejected one goes back into review
+      if (
+        property.approvalStatus &&
+        property.approvalStatus !== PropertyApprovalStatusEnum.APPROVED
+      ) {
+        updateOperation.$set.approvalStatus = PropertyApprovalStatusEnum.PENDING;
       }
+    }
 
-      let result: IPropertyDocument | null = null;
-      try {
-        result = await this.propertyDAO.update({ cuid, pid, deletedAt: null }, updateOperation);
-      } finally {
-        if (!result) await this.removeUploadsAfterFailedWrite(uploads, pid);
+    if (directAddress) {
+      mergeUpdateOperations(
+        updateOperation,
+        await buildAddressUpdate(
+          { propertyDAO: this.propertyDAO, geoCoderService: this.geoCoderService, log: this.log },
+          {
+            cuid,
+            property,
+            incoming: directAddress as any,
+            ownerType: direct.owner?.type,
+            actorRole: userRoleEnum,
+            actorId: ctx.currentuser.sub,
+          }
+        )
+      );
+    }
+
+    // New files are saved in this same write. An edited list in the payload replaces the
+    // stored one, so the uploads go after it — Mongo rejects $set and $push on one path.
+    const uploads = ctx.newFiles?.length
+      ? await this.mediaUploadService.uploadRequestFiles(
+          { scannedFiles: ctx.newFiles },
+          {
+            resourceName: 'property',
+            resourceId: pid,
+            fieldName: 'media',
+            actorId: ctx.currentuser.sub,
+          }
+        )
+      : [];
+    const newMedia = this.propertyDAO.buildMediaItems(property, uploads, ctx.currentuser.sub);
+    for (const field of ['images', 'documents'] as const) {
+      const uploaded = newMedia[field] as any[];
+      if (!uploaded.length) continue;
+
+      if (direct[field] !== undefined) {
+        updateOperation.$set[field] = [...(direct[field] as any[]), ...uploaded];
+      } else {
+        updateOperation.$push[field] = { $each: uploaded };
       }
+    }
+    if (!Object.keys(updateOperation.$push).length) delete updateOperation.$push;
 
-      if (!result) {
-        throw new BadRequestError({
-          message: t('common.errors.operationFailed', { action: 'update property' }),
-        });
-      }
+    const filter: Record<string, unknown> = {
+      cuid,
+      pid,
+      deletedAt: null,
+      // A submission that lands between the read above and this write must not be overwritten
+      ...(heldFields.length &&
+        (pendingChangesInfo
+          ? { 'pendingChanges.updatedAt': pendingChangesInfo.updatedAt }
+          : { pendingChanges: null })),
+    };
 
-      this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
+    let result: IPropertyDocument | null = null;
+    try {
+      result = await this.propertyDAO.update(filter, updateOperation);
+    } finally {
+      if (!result) await this.removeUploadsAfterFailedWrite(uploads, pid);
+    }
 
-      const discardedMedia = pendingMediaItems(property.pendingChanges?.pendingMedia);
+    if (!result) {
+      throw new BadRequestError({
+        message: t('common.errors.operationFailed', { action: 'update property' }),
+      });
+    }
+
+    this.emitUploadCompleted(uploads, pid, ctx.currentuser.sub);
+
+    if (isApprover) {
+      const discardedMedia = pendingMediaItems(existingPending?.pendingMedia);
       if (discardedMedia.length) {
         try {
           await this.mediaUploadService.removeUploadedFiles(discardedMedia, { deleteAssets: true });
@@ -1832,89 +1856,102 @@ export class PropertyService implements ICronProvider {
           this.log.error('Failed to delete files from overridden pending changes', { pid, error });
         }
       }
-
-      // The update is already applied — a cleanup failure is logged, not thrown.
-      try {
-        await cleanUpRemovedPropertyMedia(
-          this.mediaUploadService,
-          property,
-          { images: cleanUpdateData.images, documents: cleanUpdateData.documents },
-          ctx.currentuser.sub,
-          hardDelete
-        );
-      } catch (error) {
-        this.log.error('Failed to clean up removed property media', { pid, error });
-      }
-
-      // If managedBy changed, remove new manager from assignedStaff (can't be both)
-      if (cleanUpdateData.managedBy && result.assignedStaff?.length) {
-        const newManagerId = cleanUpdateData.managedBy.toString();
-        if (result.assignedStaff.some((id: any) => id.toString() === newManagerId)) {
-          await this.propertyDAO.update(
-            { _id: result._id },
-            { $pull: { assignedStaff: new Types.ObjectId(newManagerId) } }
-          );
-        }
-      }
-
-      await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
-      await this.propertyCache.invalidatePropertyDetail(ctx.cuid, result.pid);
-      await this.propertyCache.invalidatePropertyLists(ctx.cuid);
-      await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
-      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
-
-      // notify staff if their pending changes were overridden
-      if (notifyStaffOfOverride && originalRequesterId) {
-        try {
-          await this.notificationService.notifyPendingChangesOverridden(
-            property.pid,
-            property.name || 'Unknown Property',
-            ctx.currentuser.sub,
-            ctx.currentuser.displayName,
-            originalRequesterId,
-            cuid,
-            {
-              address: property.address?.fullAddress,
-              overriddenAt: new Date(),
-              overrideReason: 'Direct admin update with higher priority',
-            }
-          );
-        } catch (notificationError) {
-          this.log.error('Failed to send override notification to staff', {
-            error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
-            propertyId: property.pid,
-            adminId: ctx.currentuser.sub,
-            originalRequesterId,
-          });
-        }
-      }
-
-      const baseMessage = t('common.success.updated', { resource: 'Property' });
-      const message = hasPendingChanges ? `${baseMessage}${overrideMessage}` : baseMessage;
-
-      return { success: true, data: await this.withSignedMediaUrls(result), message };
     }
 
-    throw new ForbiddenError({ message: 'Unable to determine update strategy for user role.' });
-  }
+    // The update is already applied — a cleanup failure is logged, not thrown.
+    try {
+      await cleanUpRemovedPropertyMedia(
+        this.mediaUploadService,
+        property,
+        { images: direct.images, documents: direct.documents },
+        ctx.currentuser.sub,
+        hardDelete
+      );
+    } catch (error) {
+      this.log.error('Failed to clean up removed property media', { pid, error });
+    }
 
-  /** A re-edit keeps the files the earlier submission already uploaded. */
-  private buildStaffPendingChanges(
-    currentuser: ICurrentUser,
-    existingPendingChanges: IPropertyDocument['pendingChanges'],
-    cleanUpdateData: Partial<IPropertyDocument>,
-    newMedia: ReturnType<PropertyDAO['buildMediaItems']>
-  ): Record<string, unknown> {
-    const pendingMedia = {
-      images: [...(existingPendingChanges?.pendingMedia?.images ?? []), ...newMedia.images],
-      documents: [
-        ...(existingPendingChanges?.pendingMedia?.documents ?? []),
-        ...newMedia.documents,
-      ],
-    };
+    // If managedBy changed, remove new manager from assignedStaff (can't be both)
+    if (direct.managedBy && result.assignedStaff?.length) {
+      const newManagerId = direct.managedBy.toString();
+      if (result.assignedStaff.some((id: any) => id.toString() === newManagerId)) {
+        await this.propertyDAO.update(
+          { _id: result._id },
+          { $pull: { assignedStaff: new Types.ObjectId(newManagerId) } }
+        );
+      }
+    }
+
+    await this.propertyCache.invalidateProperty(ctx.cuid, result.id);
+    await this.propertyCache.invalidatePropertyDetail(ctx.cuid, result.pid);
+    await this.propertyCache.invalidatePropertyLists(ctx.cuid);
+    await this.propertyCache.invalidateLeaseableProperties(ctx.cuid);
+
+    if (isApprover) {
+      await this.handleUpdateNotifications(ctx, result, cleanUpdateData, true);
+      if (pendingChangesInfo?.updatedBy) {
+        await this.notifyStaffOfOverride(ctx, property, pendingChangesInfo.updatedBy);
+      }
+    } else if (heldFields.length) {
+      await this.handleUpdateNotifications(ctx, result, held, false);
+    }
+
+    const savedDirectly = Object.keys(direct).length > 0 || uploads.length > 0;
+    let message = `${t('common.success.updated', { resource: 'Property' })}${overrideMessage}`;
+    if (heldFields.length) {
+      message = savedDirectly
+        ? t('property.success.savedWithChangesForApproval')
+        : t('property.success.changesSubmittedForApproval');
+    }
 
     return {
-      ...cleanUpdateData,
+      success: true,
+      // heldForApproval: the fields of this edit that wait for a manager
+      data: { ...(await this.withSignedMediaUrls(result)), heldForApproval: heldFields },
+      message,
+    };
+  }
+
+  private async notifyStaffOfOverride(
+    ctx: { cuid: string; currentuser: ICurrentUser },
+    property: IPropertyDocument,
+    originalRequesterId: string
+  ): Promise<void> {
+    try {
+      await this.notificationService.notifyPendingChangesOverridden(
+        property.pid,
+        property.name || 'Unknown Property',
+        ctx.currentuser.sub,
+        ctx.currentuser.displayName,
+        originalRequesterId,
+        ctx.cuid,
+        {
+          address: property.address?.fullAddress,
+          overriddenAt: new Date(),
+          overrideReason: 'Direct admin update with higher priority',
+        }
+      );
+    } catch (notificationError) {
+      this.log.error('Failed to send override notification to staff', {
+        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+        propertyId: property.pid,
+        adminId: ctx.currentuser.sub,
+        originalRequesterId,
+      });
+    }
+  }
+
+  /** A re-edit adds to the earlier submission and keeps any files it already holds. */
+  private buildStaffPendingChanges(
+    currentuser: ICurrentUser,
+    existingPendingChanges: IPendingChanges | null | undefined,
+    held: Partial<IPropertyDocument>
+  ): Record<string, unknown> {
+    // Staff uploads are saved directly now; this only carries files an older submission held
+    const pendingMedia = existingPendingChanges?.pendingMedia;
+
+    return {
+      ...mergePendingFieldChanges(existingPendingChanges, held),
       updatedBy: new Types.ObjectId(currentuser.sub),
       updatedAt: new Date(),
       displayName: currentuser.fullname,
@@ -2089,7 +2126,7 @@ export class PropertyService implements ICronProvider {
   ): Promise<ISuccessReturnData> {
     if (!cuid || !pid) {
       this.log.error('Client ID and Property ID are required');
-      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+      throw new BadRequestError({ message: t('property.errors.clientIdAndPropertyIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);
@@ -2298,7 +2335,7 @@ export class PropertyService implements ICronProvider {
   async unarchiveClientProperty(cuid: string, pid: string): Promise<ISuccessReturnData> {
     if (!cuid || !pid) {
       this.log.error('Client ID and Property ID are required');
-      throw new BadRequestError({ message: t('property.errors.clientAndPropertyIdRequired') });
+      throw new BadRequestError({ message: t('property.errors.clientIdAndPropertyIdRequired') });
     }
 
     const client = await this.clientDAO.getClientByCuid(cuid);

@@ -158,6 +158,19 @@ router.get(
   })
 );
 
+// Jurisdiction compliance by province (form-driven; no saved property needed).
+// Literal 2-segment route — must be registered before the /:cuid/:pid catch-all.
+router.get(
+  '/:cuid/compliance',
+  basicLimiter(),
+  requirePermission(PermissionResource.PROPERTY, PermissionAction.READ),
+  validateRequest({ params: PropertyValidations.validatecuid }),
+  asyncWrapper((req, res) => {
+    const propertyController = req.container.resolve<PropertyController>('propertyController');
+    return propertyController.getComplianceByState(req, res);
+  })
+);
+
 router.get(
   '/:cuid/:pid/compliance',
   basicLimiter(),

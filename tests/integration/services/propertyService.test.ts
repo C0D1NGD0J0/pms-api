@@ -2123,17 +2123,11 @@ describe('PropertyService Integration Tests', () => {
         });
 
         it('getComplianceByState resolves a province without a saved property', async () => {
-          const ontario = await propertyService.getComplianceByState(
-            testClient.cuid,
-            'Ontario'
-          );
+          const ontario = await propertyService.getComplianceByState(testClient.cuid, 'Ontario');
           expect(ontario.data.compliance.isSupported).toBe(true);
           expect(ontario.data.compliance.jurisdiction?.code).toBe('ON');
 
-          const texas = await propertyService.getComplianceByState(
-            testClient.cuid,
-            'Texas'
-          );
+          const texas = await propertyService.getComplianceByState(testClient.cuid, 'Texas');
           expect(texas.data.compliance.isSupported).toBe(false);
         });
       });

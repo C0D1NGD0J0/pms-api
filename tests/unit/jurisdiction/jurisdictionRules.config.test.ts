@@ -44,7 +44,10 @@ describe('jurisdictionRulesConfig', () => {
         jurisdictionRulesConfig.getFormsByContext('ON', 'rentIncrease').map((f) => f.code)
       ).toEqual(['N1']);
       expect(
-        jurisdictionRulesConfig.getFormsByContext('ON', 'arrears').map((f) => f.code).sort()
+        jurisdictionRulesConfig
+          .getFormsByContext('ON', 'arrears')
+          .map((f) => f.code)
+          .sort()
       ).toEqual(['L1', 'N4']);
     });
 

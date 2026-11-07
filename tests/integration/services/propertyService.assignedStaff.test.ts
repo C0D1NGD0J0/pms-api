@@ -160,6 +160,8 @@ describe('PropertyService — assignedStaff & department filtering', () => {
     leaseDAO = new LeaseDAO({ leaseModel: Lease });
 
     const propertyApprovalService = new PropertyApprovalService({
+      geoCoderService: mockGeoCoderService as any,
+      leaseDAO,
       propertyDAO,
       propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,

@@ -341,12 +341,33 @@ export const CreatePropertySchemaWithValidation = CreatePropertySchema.superRefi
   }
 );
 
+// Updates carry only the sub-fields that changed, so none may fall back to a create-time
+// default — a fees edit without rentAmount would otherwise save the rent as 0. A field sent
+// blank still means 0.
+const updateMoney = (message: string) =>
+  z.preprocess(
+    (v) => (v === undefined ? v : (emptyToUndefined(v) ?? 0)),
+    z.coerce.number().min(0, message).optional()
+  );
+
+const UpdateFeesSchema = z.object({
+  currency: z.nativeEnum(CURRENCIES).optional(),
+  rentAmount: updateMoney('Rental amount must be a non-negative number'),
+  managementFees: updateMoney('Management fees must be a non-negative number'),
+  securityDeposit: updateMoney('Security deposit must be a non-negative number'),
+});
+
 // assignedStaff changes after creation go through the assign/unassign endpoints,
-// which verify each user belongs to the client.
+// which verify each user belongs to the client. verificationStatus only changes through
+// the verification endpoints (verify, reject, grace period).
 export const UpdatePropertySchema = partialWithoutDefaults(CreatePropertySchema)
-  .omit({ cuid: true, assignedStaff: true })
+  .omit({ cuid: true, assignedStaff: true, verificationStatus: true })
   .extend({
     id: z.string().optional(),
+    fees: UpdateFeesSchema.optional(),
+    utilities: partialWithoutDefaults(UtilitiesSchema).optional(),
+    interiorAmenities: partialWithoutDefaults(InteriorAmenitiesSchema).optional(),
+    communityAmenities: partialWithoutDefaults(CommunityAmenitiesSchema).optional(),
   });
 
 export const PropertySearchSchema = z.object({

@@ -3,6 +3,7 @@ import { Document, Types } from 'mongoose';
 import { IClientInfo } from './client.interface';
 import { IUserRole } from '../shared/constants/roles.constants';
 import { IPaginationQuery, CURRENCIES } from './utils.interface';
+import { IPropertyCompliance } from '../services/jurisdiction/jurisdiction.types';
 
 export enum PropertyApprovalStatusEnum {
   APPROVED = 'approved',
@@ -169,6 +170,7 @@ export type IPropertyWithUnitInfo = {
   };
   paymentHistory?: any[];
   maintenanceHistory?: any[];
+  compliance?: IPropertyCompliance;
 } & Partial<{ property: IPropertyDocument }>;
 
 export interface IPropertyDocument extends IProperty, Document {
@@ -336,7 +338,7 @@ export interface IAssignableUsersFilter {
 }
 
 export interface IVerificationDetailEntry {
-  action: 'submitted' | 'verified' | 'rejected' | 'grace_granted';
+  action: 'submitted' | 'verified' | 'rejected' | 'grace_granted' | 'reset';
   rejectionReason?: string;
   actor: Types.ObjectId;
   timestamp: Date;

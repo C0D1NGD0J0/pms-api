@@ -23,16 +23,44 @@ function makeLease(overrides: Record<string, any> = {}): any {
   };
 }
 
+// Date-only lease fields are stored as UTC midnight
 function daysFromNow(days: number): Date {
   const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + days);
+  d.setUTCHours(0, 0, 0, 0);
+  d.setUTCDate(d.getUTCDate() + days);
   return d;
 }
 
 // ---------------------------------------------------------------------------
 // validateLeaseReadyForSignature — date guards
 // ---------------------------------------------------------------------------
+
+describe('validateLeaseReadyForSignature — "today" is the account\'s day', () => {
+  // 9 PM in Toronto on Nov 1 — already Nov 2 in UTC
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-11-02T01:00:00Z'));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const startingNov1 = () =>
+    makeLease({
+      duration: {
+        startDate: new Date('2026-11-01T00:00:00Z'), // picked as "2026-11-01"
+        endDate: new Date('2027-10-31T00:00:00Z'),
+      },
+    });
+
+  it("accepts a lease starting today in the account's timezone", () => {
+    expect(() => validateLeaseReadyForSignature(startingNov1(), 'America/Toronto')).not.toThrow();
+  });
+
+  it('treats the same start as past for an account on UTC, where it is already tomorrow', () => {
+    expect(() => validateLeaseReadyForSignature(startingNov1(), 'UTC')).toThrow(
+      /start date cannot be in the past/
+    );
+  });
+});
 
 describe('validateLeaseReadyForSignature — date guards', () => {
   it('throws when lease is not READY_FOR_SIGNATURE', () => {
@@ -55,10 +83,8 @@ describe('validateLeaseReadyForSignature — date guards', () => {
   });
 
   it('passes when start date is today', () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const lease = makeLease({
-      duration: { startDate: today, endDate: daysFromNow(60) },
+      duration: { startDate: daysFromNow(0), endDate: daysFromNow(60) },
     });
     expect(() => validateLeaseReadyForSignature(lease)).not.toThrow();
   });

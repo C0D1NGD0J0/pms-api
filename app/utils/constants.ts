@@ -117,6 +117,22 @@ export const PROPERTY_VERIFICATION_ROLES = [
  */
 export const PROPERTY_STAFF_ROLES = [IUserRole.STAFF];
 
+/**
+ * Property fields staff can change without approval. Top-level keys: everything else a
+ * staff edit touches (name, type, address, fees, statuses, manager, owner…) waits for a manager.
+ */
+export const OPERATIONAL_PROPERTY_FIELDS = [
+  'description',
+  'notes',
+  'images',
+  'documents',
+  'utilities',
+  'interiorAmenities',
+  'communityAmenities',
+  'specifications',
+  'yearBuilt',
+];
+
 export const MAX_ASSIGNED_STAFF = 10;
 
 /**

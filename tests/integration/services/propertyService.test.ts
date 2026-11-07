@@ -37,6 +37,8 @@ const mockMediaUploadService = {
 } as any;
 
 const mockGeoCoderService = {
+  // Address lookups default to "provider down" — saves still go through without a location
+  parseLocation: jest.fn().mockResolvedValue({ success: false, data: null, reason: 'unavailable' }),
   geocode: jest.fn().mockResolvedValue({
     success: true,
     data: {
@@ -130,6 +132,8 @@ describe('PropertyService Integration Tests', () => {
 
     // Initialize real extracted services
     propertyApprovalService = new PropertyApprovalService({
+      geoCoderService: mockGeoCoderService as any,
+      leaseDAO,
       propertyDAO,
       propertyUnitDAO,
       mediaUploadService: mockMediaUploadService as any,
@@ -805,13 +809,15 @@ describe('PropertyService Integration Tests', () => {
 
         expect(result.success).toBe(true);
         expect(result.message).toContain('approval');
+        expect(result.data.heldForApproval).toEqual(['name']);
 
         // Verify pending changes exist
         const updatedProperty = await Property.findById(property._id);
         expect(updatedProperty!.name).toBe('Staff Update Test'); // Original name unchanged
         expect(updatedProperty!.pendingChanges).toBeDefined();
         expect((updatedProperty!.pendingChanges as any).name).toBe('Staff Updated Name');
-        expect(updatedProperty!.approvalStatus).toBe(PropertyApprovalStatusEnum.PENDING);
+        // A live property stays approved, so leasing isn't blocked while the edit waits
+        expect(updatedProperty!.approvalStatus).toBe(PropertyApprovalStatusEnum.APPROVED);
       });
 
       it('lets an admin override pending staff changes and records an overridden entry', async () => {
@@ -951,7 +957,7 @@ describe('PropertyService Integration Tests', () => {
           expect(mockMediaUploadService.handleMediaDeletion).not.toHaveBeenCalled();
         });
 
-        it('stages a staff removal for approval without deleting anything yet', async () => {
+        it('applies a staff removal straight away — images need no approval', async () => {
           const property = await createPropertyWithImages();
 
           await propertyService.updateClientProperty(
@@ -964,9 +970,9 @@ describe('PropertyService Integration Tests', () => {
           );
 
           const updated = await Property.findById(property._id).lean();
-          expect(updated!.images).toHaveLength(2);
-          expect((updated!.pendingChanges as any).images).toEqual([]);
-          expect(mockMediaUploadService.handleMediaDeletion).not.toHaveBeenCalled();
+          expect(updated!.images).toHaveLength(0);
+          expect(updated!.pendingChanges).toBeNull();
+          expect(mockMediaUploadService.handleMediaDeletion).toHaveBeenCalled();
         });
       });
 
@@ -989,6 +995,307 @@ describe('PropertyService Integration Tests', () => {
         ).rejects.toThrow(NotFoundError);
       });
     }); // End updateClientProperty
+
+    describe('address changes and staff approvals', () => {
+      const userFor = (user: any, role: string) =>
+        ({
+          sub: user._id.toString(),
+          displayName: user.firstName,
+          fullname: `${user.firstName} ${user.lastName}`,
+          client: { cuid: testClient.cuid, role },
+        }) as any;
+
+      const edit = (pid: string, user: any, role: string, updateData: Record<string, unknown>) =>
+        propertyService.updateClientProperty(
+          { cuid: testClient.cuid, pid, currentuser: userFor(user, role) },
+          updateData as any
+        );
+
+      const newAddress = {
+        fullAddress: '40 Oak Ave, Toronto, ON M5V 2T6, Canada',
+        streetNumber: '40',
+        street: 'Oak Ave',
+      };
+
+      const geocodeOnce = () =>
+        mockGeoCoderService.parseLocation.mockResolvedValueOnce({
+          success: true,
+          data: {
+            street: 'Oak Ave',
+            streetNumber: '40',
+            city: 'Toronto',
+            state: 'Ontario',
+            postCode: 'M5V 2T6',
+            country: 'Canada',
+            fullAddress: newAddress.fullAddress,
+            coordinates: [-79.39, 43.64],
+          },
+        });
+
+      const externallyOwned = async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+        await Property.findByIdAndUpdate(property._id, {
+          owner: { type: 'external_owner', name: 'Jo Owner' },
+          verificationGracePeriod: {
+            expiresAt: new Date(Date.now() + 86400000),
+            grantedBy: adminUser._id,
+          },
+        });
+        return property;
+      };
+
+      it('a manager move replaces the address, geocodes it and resets verification', async () => {
+        const property = await externallyOwned();
+        geocodeOnce();
+
+        await edit(property.pid, adminUser, ROLES.ADMIN, { address: newAddress });
+
+        const saved = await Property.findById(property._id)
+          .select('+verificationGracePeriod +verificationDetails')
+          .lean();
+        expect(saved!.address).toEqual({
+          ...newAddress,
+          city: 'Toronto',
+          state: 'Ontario',
+          postCode: 'M5V 2T6',
+          country: 'Canada',
+        });
+        expect(saved!.computedLocation!.coordinates).toEqual([-79.39, 43.64]);
+        expect(saved!.verificationStatus).toBe('unverified');
+        expect(saved!.verificationGracePeriod).toBeUndefined();
+        expect(saved!.verificationDetails!.at(-1)).toMatchObject({ action: 'reset' });
+      });
+
+      it('saves a move without a location when the geocoder is down', async () => {
+        const property = await externallyOwned();
+
+        await edit(property.pid, adminUser, ROLES.ADMIN, { address: newAddress });
+
+        const saved = await Property.findById(property._id).lean();
+        expect(saved!.address.fullAddress).toBe(newAddress.fullAddress);
+        expect(saved!.address.city).toBeUndefined(); // the old city doesn't survive the move
+        expect(saved!.computedLocation).toBeUndefined();
+      });
+
+      it('rejects a move onto another property address', async () => {
+        const other = await createTestProperty(testClient.cuid, testClient._id);
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+
+        await expect(
+          edit(property.pid, adminUser, ROLES.ADMIN, {
+            address: { fullAddress: other.address.fullAddress!.toUpperCase(), streetNumber: '1' },
+          })
+        ).rejects.toThrow('A property with this address already exists for this client');
+      });
+
+      it('holds a staff move for approval, then applies it in full', async () => {
+        const property = await externallyOwned();
+        const originalAddress = property.address.fullAddress;
+
+        const result = await edit(property.pid, staffUser, ROLES.STAFF, { address: newAddress });
+
+        expect(result.data.heldForApproval).toEqual(['address']);
+        let saved = await Property.findById(property._id).lean();
+        expect(saved!.address.fullAddress).toBe(originalAddress);
+        expect(saved!.approvalStatus).toBe('approved');
+        expect(saved!.verificationStatus).toBe('verified');
+
+        geocodeOnce();
+        await propertyService.approveProperty(
+          testClient.cuid,
+          property.pid,
+          userFor(adminUser, ROLES.ADMIN)
+        );
+
+        saved = await Property.findById(property._id).lean();
+        expect(saved!.address).toMatchObject({ ...newAddress, city: 'Toronto' });
+        expect(saved!.computedLocation!.coordinates).toEqual([-79.39, 43.64]);
+        expect(saved!.verificationStatus).toBe('unverified');
+        expect(saved!.pendingChanges).toBeNull();
+        expect(saved).not.toHaveProperty('displayName');
+      });
+
+      it('rejects a staff move onto another property address before it reaches a manager', async () => {
+        const other = await createTestProperty(testClient.cuid, testClient._id);
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+
+        await expect(
+          edit(property.pid, staffUser, ROLES.STAFF, {
+            address: { fullAddress: other.address.fullAddress, streetNumber: '1' },
+          })
+        ).rejects.toThrow('A property with this address already exists for this client');
+      });
+
+      it('saves operational staff fields now and holds the rest', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id, {
+          name: 'Before',
+        });
+
+        const result = await edit(property.pid, staffUser, ROLES.STAFF, {
+          name: 'After',
+          description: { text: 'Freshly painted' },
+          utilities: { water: true },
+        });
+
+        expect(result.data.heldForApproval).toEqual(['name']);
+        expect(result.message).toBe(
+          'Property updated. Some changes are waiting for manager approval.'
+        );
+        const saved = await Property.findById(property._id).lean();
+        expect(saved!.description?.text).toBe('Freshly painted');
+        expect(saved!.utilities!.water).toBe(true);
+        expect(saved!.name).toBe('Before');
+        expect((saved!.pendingChanges as any).name).toBe('After');
+      });
+
+      it('saves an operational-only staff edit with nothing pending', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+
+        const result = await edit(property.pid, staffUser, ROLES.STAFF, {
+          description: { text: 'New text' },
+        });
+
+        expect(result.data.heldForApproval).toEqual([]);
+        expect(mockNotificationService.handlePropertyUpdateNotifications).not.toHaveBeenCalled();
+        const saved = await Property.findById(property._id).lean();
+        expect(saved!.pendingChanges).toBeNull();
+      });
+
+      it("lets staff save operational fields while someone else's changes wait", async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+        await Property.findByIdAndUpdate(property._id, {
+          pendingChanges: {
+            name: 'Other Staff Name',
+            updatedBy: adminUser._id,
+            updatedAt: new Date(),
+            displayName: 'Someone Else',
+          },
+        });
+
+        await edit(property.pid, staffUser, ROLES.STAFF, { description: { text: 'Allowed' } });
+        await expect(
+          edit(property.pid, staffUser, ROLES.STAFF, { name: 'Blocked' })
+        ).rejects.toThrow(BadRequestError);
+
+        const saved = await Property.findById(property._id).lean();
+        expect(saved!.description?.text).toBe('Allowed');
+        expect((saved!.pendingChanges as any).name).toBe('Other Staff Name');
+      });
+
+      it('adds a second staff submission to the first instead of replacing it', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+
+        await edit(property.pid, staffUser, ROLES.STAFF, { name: 'First' });
+        await edit(property.pid, staffUser, ROLES.STAFF, { operationalStatus: 'maintenance' });
+
+        const saved = await Property.findById(property._id).lean();
+        expect(saved!.pendingChanges).toMatchObject({
+          name: 'First',
+          operationalStatus: 'maintenance',
+        });
+      });
+
+      it("keeps the rent when a fees edit doesn't send it", async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+        await Property.findByIdAndUpdate(property._id, {
+          fees: { currency: 'USD', rentAmount: 150000, managementFees: 0, securityDeposit: 0 },
+        });
+
+        await edit(property.pid, adminUser, ROLES.ADMIN, { fees: { managementFees: 25 } });
+
+        const saved = await Property.findById(property._id).lean();
+        expect(saved!.fees.rentAmount).toBe(150000);
+        expect(saved!.fees.managementFees).toBe(2500);
+      });
+
+      describe('rejecting waiting changes', () => {
+        const stageStaffChanges = (approvalStatus: string, approvalDetails: any[] = []) =>
+          createTestProperty(testClient.cuid, testClient._id, { name: 'Original' }).then(
+            async (property) => {
+              await Property.findByIdAndUpdate(property._id, {
+                approvalStatus,
+                approvalDetails,
+                pendingChanges: {
+                  name: 'Staff Name',
+                  updatedBy: staffUser._id,
+                  updatedAt: new Date(),
+                  displayName: 'Staff Member',
+                },
+              });
+              return property;
+            }
+          );
+
+        const reject = (pid: string) =>
+          propertyService.rejectProperty(
+            testClient.cuid,
+            pid,
+            userFor(adminUser, ROLES.ADMIN),
+            'Not right'
+          );
+
+        it('rejects a property that was never approved instead of approving it', async () => {
+          const property = await stageStaffChanges('pending', [
+            { action: 'created', actor: staffUser._id, timestamp: new Date() },
+          ]);
+
+          const result = await reject(property.pid);
+
+          const saved = await Property.findById(property._id).lean();
+          expect(saved!.approvalStatus).toBe('rejected');
+          expect(saved!.pendingChanges).toBeNull();
+          expect(saved!.name).toBe('Original');
+          expect(result.message).toBe('Property rejected');
+        });
+
+        it('keeps a live property approved when only its changes are rejected', async () => {
+          const property = await stageStaffChanges('approved');
+
+          await reject(property.pid);
+
+          const saved = await Property.findById(property._id).lean();
+          expect(saved!.approvalStatus).toBe('approved');
+          expect(saved!.name).toBe('Original');
+        });
+
+        it('restores a live property an older staff edit switched to pending', async () => {
+          const property = await stageStaffChanges('pending', [
+            { action: 'approved', actor: adminUser._id, timestamp: new Date() },
+          ]);
+
+          await reject(property.pid);
+
+          const saved = await Property.findById(property._id).lean();
+          expect(saved!.approvalStatus).toBe('approved');
+        });
+      });
+
+      it('returns the duplicate address against the address field', async () => {
+        const other = await createTestProperty(testClient.cuid, testClient._id);
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+
+        await expect(
+          edit(property.pid, adminUser, ROLES.ADMIN, {
+            address: { fullAddress: other.address.fullAddress, streetNumber: '1' },
+          })
+        ).rejects.toMatchObject({
+          errorInfo: { 'address.fullAddress': [expect.stringContaining('already exists')] },
+        });
+      });
+
+      it('lists an approved property with waiting staff changes for approval', async () => {
+        const property = await createTestProperty(testClient.cuid, testClient._id);
+        await edit(property.pid, staffUser, ROLES.STAFF, { name: 'Needs review' });
+
+        const result = await propertyService.getPendingApprovals(
+          testClient.cuid,
+          userFor(adminUser, ROLES.ADMIN),
+          { page: 1, limit: 10 } as any
+        );
+
+        expect(result.data.items.map((item: any) => item.pid)).toContain(property.pid);
+      });
+    });
 
     describe('approveProperty', () => {
       it('should approve property and apply pending changes', async () => {
@@ -1070,6 +1377,8 @@ describe('PropertyService Integration Tests', () => {
 
         await Property.findByIdAndUpdate(property._id, {
           approvalStatus: PropertyApprovalStatusEnum.PENDING,
+          // Live before the staff edit, which (in older data) switched it to pending
+          approvalDetails: [{ action: 'approved', actor: adminUser._id, timestamp: new Date() }],
           pendingChanges: {
             name: 'Rejected Name',
             updatedBy: staffUser._id,
@@ -1158,6 +1467,8 @@ describe('PropertyService Integration Tests', () => {
         const property = await createTestProperty(testClient.cuid, testClient._id, { name });
         await Property.findByIdAndUpdate(property._id, {
           approvalStatus: PropertyApprovalStatusEnum.PENDING,
+          // Live before the staff edit, which (in older data) switched it to pending
+          approvalDetails: [{ action: 'approved', actor: adminUser._id, timestamp: new Date() }],
           pendingChanges: {
             name: proposedName,
             updatedBy: staffUser._id,
@@ -1758,6 +2069,67 @@ describe('PropertyService Integration Tests', () => {
         expect(result.success).toBe(true);
         expect(result.data.property).toBeDefined();
         expect(result.data.unitInfo).toBeDefined();
+      });
+
+      describe('jurisdiction compliance', () => {
+        const asAdmin = () =>
+          ({
+            sub: adminUser._id.toString(),
+            client: { cuid: testClient.cuid, role: ROLES.ADMIN },
+          }) as any;
+
+        it('includes supported compliance for an Ontario property', async () => {
+          const prop = await createTestProperty(testClient.cuid, testClient._id);
+          await Property.updateOne({ pid: prop.pid }, { 'address.state': 'Ontario' });
+
+          const result = await propertyService.getClientProperty(
+            testClient.cuid,
+            prop.pid,
+            asAdmin()
+          );
+
+          expect(result.data.compliance?.isSupported).toBe(true);
+          expect(result.data.compliance?.jurisdiction?.code).toBe('ON');
+          expect(result.data.compliance?.rentIncreaseRules?.noticeForm).toBe('N1');
+          expect(result.data.compliance?.forms.length).toBeGreaterThan(0);
+        });
+
+        it('marks compliance unsupported for a US-state property', async () => {
+          const prop = await createTestProperty(testClient.cuid, testClient._id);
+          await Property.updateOne({ pid: prop.pid }, { 'address.state': 'Texas' });
+
+          const result = await propertyService.getClientProperty(
+            testClient.cuid,
+            prop.pid,
+            asAdmin()
+          );
+
+          expect(result.data.compliance?.isSupported).toBe(false);
+          expect(result.data.compliance?.jurisdiction).toBeNull();
+        });
+
+        it('returns unsupported compliance when the property has no state', async () => {
+          const prop = await createTestProperty(testClient.cuid, testClient._id);
+          await Property.updateOne({ pid: prop.pid }, { $unset: { 'address.state': '' } });
+
+          const result = await propertyService.getClientProperty(
+            testClient.cuid,
+            prop.pid,
+            asAdmin()
+          );
+
+          expect(result.data.compliance?.isSupported).toBe(false);
+          expect(result.data.compliance?.jurisdiction).toBeNull();
+        });
+
+        it('getComplianceByState resolves a province without a saved property', async () => {
+          const ontario = await propertyService.getComplianceByState(testClient.cuid, 'Ontario');
+          expect(ontario.data.compliance.isSupported).toBe(true);
+          expect(ontario.data.compliance.jurisdiction?.code).toBe('ON');
+
+          const texas = await propertyService.getComplianceByState(testClient.cuid, 'Texas');
+          expect(texas.data.compliance.isSupported).toBe(false);
+        });
       });
     }); // End getClientProperty
 

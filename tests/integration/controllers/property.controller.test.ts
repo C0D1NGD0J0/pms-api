@@ -630,6 +630,8 @@ describe('PropertyController Integration Tests', () => {
       });
       await Property.findByIdAndUpdate(pendingProperty._id, {
         approvalStatus: PropertyApprovalStatusEnum.PENDING,
+        // Live before the staff edit, which (in older data) switched it to pending
+        approvalDetails: [{ action: 'approved', actor: adminUser._id, timestamp: new Date() }],
         pendingChanges: {
           name: 'Rejected Name',
           updatedBy: staffUser._id,

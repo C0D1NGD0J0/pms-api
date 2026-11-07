@@ -91,15 +91,40 @@ describe('PropertyValidation schema — FormData coercion', () => {
       }
     });
 
-    it('defaults unset checkbox fields to false', () => {
-      const result = UpdatePropertySchema.safeParse({ utilities: {} });
+    it('leaves checkboxes the update does not send unset, so stored values survive', () => {
+      const result = UpdatePropertySchema.safeParse({ utilities: { water: 'false' } });
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.utilities).toEqual(
-          expect.objectContaining({ water: false, gas: false, electricity: false })
-        );
+        expect(result.data.utilities).toEqual({ water: false });
       }
+    });
+  });
+
+  describe('partial fees', () => {
+    it('does not fill omitted fees with 0', () => {
+      const result = UpdatePropertySchema.safeParse({ fees: { managementFees: '50' } });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.fees).toEqual({ managementFees: 50 });
+      }
+    });
+
+    it('still reads a fee sent blank as 0', () => {
+      const result = UpdatePropertySchema.safeParse({ fees: { securityDeposit: '' } });
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.fees).toEqual({ securityDeposit: 0 });
+    });
+  });
+
+  describe('verificationStatus', () => {
+    it('is dropped from updates — it only changes through the verification endpoints', () => {
+      const result = UpdatePropertySchema.safeParse({ verificationStatus: 'verified' });
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).not.toHaveProperty('verificationStatus');
     });
   });
 

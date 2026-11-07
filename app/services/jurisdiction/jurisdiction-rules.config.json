@@ -1,0 +1,111 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-10-29",
+  "description": "Jurisdiction-specific rent-increase compliance rules for Canadian provinces. Percentages verified against ontario.ca and gov.bc.ca. Update annually (guidelines are announced ~Aug-Oct).",
+  "jurisdictions": {
+    "ON": {
+      "code": "ON",
+      "name": "Ontario",
+      "country": "CA",
+      "legislation": "Residential Tenancies Act, 2006 (RTA)",
+      "rentIncreaseGuidelines": [
+        {
+          "year": 2025,
+          "percentage": 2.5,
+          "source": "ontario.ca — RTA s.120, guideline capped at 2.5%"
+        },
+        { "year": 2026, "percentage": 2.1, "source": "ontario.ca — RTA s.120" },
+        { "year": 2027, "percentage": 1.9, "source": "ontario.ca — RTA s.120" }
+      ],
+      "rentIncreaseRules": {
+        "noticeForm": "N1",
+        "noticePeriodDays": 90,
+        "minMonthsBetweenIncreases": 12,
+        "maxGuidelineCapPercent": 2.5,
+        "notes": "Guideline is capped at 2.5% even when inflation is higher. Units first occupied after November 15, 2018 are exempt from the guideline (rent control does not apply)."
+      },
+      "noticePeriods": {
+        "N4": { "days": 14, "description": "Termination for non-payment of rent" },
+        "N1": { "days": 90, "description": "Notice of rent increase" }
+      },
+      "forms": {
+        "N1": {
+          "name": "Notice of Rent Increase",
+          "url": "https://tribunalsontario.ca/documents/ltb/Notices%20of%20Rent%20Increase%20&%20Instructions/N1.pdf",
+          "context": "rentIncrease",
+          "description": "Required 90-day written notice before increasing rent"
+        },
+        "N4": {
+          "name": "Notice to End Tenancy — Non-Payment of Rent",
+          "url": "https://tribunalsontario.ca/documents/ltb/Notices%20of%20Termination%20&%20Instructions/N4.pdf",
+          "context": "arrears",
+          "description": "14-day notice when tenant has not paid rent"
+        },
+        "N11": {
+          "name": "Agreement to End the Tenancy",
+          "url": "https://tribunalsontario.ca/documents/ltb/Other%20Forms/N11.pdf",
+          "context": "endTenancy",
+          "description": "Mutual agreement between landlord and tenant to end early"
+        },
+        "N12": {
+          "name": "Notice to End Tenancy — Landlord's Own Use",
+          "url": "https://tribunalsontario.ca/documents/ltb/Notices%20of%20Termination%20&%20Instructions/N12.pdf",
+          "context": "landlordUse",
+          "description": "60-day notice when landlord needs the unit for personal use"
+        },
+        "L1": {
+          "name": "Application to Evict for Non-Payment of Rent",
+          "url": "https://tribunalsontario.ca/documents/ltb/Landlord%20Applications%20&%20Instructions/L1.pdf",
+          "context": "arrears",
+          "description": "Filed with the LTB after the N4 notice period expires"
+        }
+      }
+    },
+    "BC": {
+      "code": "BC",
+      "name": "British Columbia",
+      "country": "CA",
+      "legislation": "Residential Tenancy Act (RSBC 2002, c.78)",
+      "rentIncreaseGuidelines": [
+        { "year": 2025, "percentage": 3.0, "source": "gov.bc.ca — capped at inflation" },
+        { "year": 2026, "percentage": 2.3, "source": "gov.bc.ca — capped at inflation" },
+        { "year": 2027, "percentage": 2.2, "source": "gov.bc.ca — capped at inflation" }
+      ],
+      "rentIncreaseRules": {
+        "noticeForm": "RTB-7",
+        "noticePeriodDays": 90,
+        "minMonthsBetweenIncreases": 12,
+        "notes": "Three full calendar months' written notice required. Increase can only occur once every 12 months."
+      },
+      "noticePeriods": {
+        "RTB-7": { "days": 90, "description": "Notice of rent increase (3 full calendar months)" }
+      },
+      "forms": {
+        "RTB-7": {
+          "name": "Notice of Rent Increase",
+          "url": "https://www2.gov.bc.ca/assets/gov/housing-and-tenancy/residential-tenancies/forms/rtb7.pdf",
+          "context": "rentIncrease",
+          "description": "Three full calendar months' written notice before increasing rent"
+        },
+        "RTB-30": {
+          "name": "Notice to End Tenancy for Unpaid Rent",
+          "url": "https://www2.gov.bc.ca/assets/gov/housing-and-tenancy/residential-tenancies/forms/rtb30.pdf",
+          "context": "arrears",
+          "description": "10-day notice when tenant has not paid rent"
+        },
+        "RTB-8": {
+          "name": "Mutual Agreement to End Tenancy",
+          "url": "https://www2.gov.bc.ca/assets/gov/housing-and-tenancy/residential-tenancies/forms/rtb8.pdf",
+          "context": "endTenancy",
+          "description": "Both landlord and tenant agree to end the tenancy early"
+        },
+        "RTB-32L": {
+          "name": "Notice to End Tenancy — Landlord Occupancy",
+          "url": "https://www2.gov.bc.ca/assets/gov/housing-and-tenancy/residential-tenancies/forms/rtb32l.pdf",
+          "context": "landlordUse",
+          "description": "Notice when landlord needs the unit for personal use"
+        }
+      }
+    }
+  }
+}

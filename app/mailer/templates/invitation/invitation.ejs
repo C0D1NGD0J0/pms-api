@@ -38,4 +38,11 @@
       <%- include("../shared/html/_button", { url: invitationUrl, label: role === ROLES.TENANT ? "Activate My Account" : "Accept Invitation" }) %>
     </td>
   </tr>
+  <% if (role === ROLES.TENANT && typeof isUSProperty !== 'undefined' && isUSProperty) { %>
+  <tr>
+    <td class="content">
+      <%- include("../shared/html/_housing-notice") %>
+    </td>
+  </tr>
+  <% } %>
 </table>

@@ -145,7 +145,7 @@ export class LeaseSignatureService {
       lease.status = LeaseStatus.READY_FOR_SIGNATURE;
     }
 
-    validateLeaseReadyForSignature(lease);
+    validateLeaseReadyForSignature(lease, client.settings?.timeZone);
     if (lease.signingMethod !== 'electronic') {
       throw new BadRequestError({
         message: 'Lease must be set to electronic signing method to use e-signature',

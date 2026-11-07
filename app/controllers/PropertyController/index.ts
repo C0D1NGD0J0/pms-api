@@ -170,6 +170,19 @@ export class PropertyController {
     res.status(httpStatusCodes.OK).json(data);
   };
 
+  getPropertyCompliance = async (req: AppRequest, res: Response) => {
+    const { cuid, pid } = req.params;
+    const data = await this.propertyService.getPropertyCompliance(cuid, pid);
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
+  getComplianceByState = async (req: AppRequest, res: Response) => {
+    const { cuid } = req.params;
+    const state = (req.query.state as string) || '';
+    const data = await this.propertyService.getComplianceByState(cuid, state);
+    res.status(httpStatusCodes.OK).json(data);
+  };
+
   getProperty = async (req: AppRequest, res: Response) => {
     const { cuid, pid } = req.params;
     const { currentuser } = req.context;

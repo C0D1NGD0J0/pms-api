@@ -13,6 +13,7 @@ import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { StripeService } from '@services/external/stripe/stripe.service';
+import { getLocalDateParts, localCalendarDay } from '@utils/timezone.utils';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { MaintenanceFundsAvailablePayload, EventTypes } from '@interfaces/events.interface';
@@ -1876,40 +1877,7 @@ export function rentDueDateForMonth(monthAnchor: dayjs.Dayjs, rentDueDay: number
   return monthStart.date(Math.min(rentDueDay, monthStart.daysInMonth())).startOf('day');
 }
 
-/**
- * The client's local calendar date for `date`, as UTC midnight — the convention rent due dates
- * are stored in. Comparing stored due dates against this treats them as calendar days.
- */
-export function localCalendarDay(date: Date, timeZone: string): Date {
-  const { year, month, day } = getLocalDateParts(date, timeZone);
-  return new Date(Date.UTC(year, month - 1, day));
-}
-
-function getLocalDateParts(
-  date: Date,
-  timeZone: string
-): { year: number; month: number; day: number; hour: number } {
-  let parts: Intl.DateTimeFormatPart[];
-  try {
-    parts = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric',
-      hour: 'numeric',
-      hourCycle: 'h23',
-    }).formatToParts(date);
-  } catch {
-    return getLocalDateParts(date, 'UTC');
-  }
-  const valueOf = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  return {
-    year: valueOf('year'),
-    month: valueOf('month'),
-    day: valueOf('day'),
-    hour: valueOf('hour') % 24,
-  };
-}
+export { localCalendarDay };
 
 function isAmountTooLargeError(err: any): boolean {
   if (err?.code === 'amount_too_large' || err?.raw?.code === 'amount_too_large') return true;

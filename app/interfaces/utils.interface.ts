@@ -320,6 +320,16 @@ export interface IPermissionConfig {
   roles: Record<string, IRoleConfig>;
 }
 
+export type ISuccessReturnData<T = any> = {
+  errors?: [{ path: string; message: string }];
+  warnings?: Array<{ type: string; message: string; [key: string]: any }>;
+  routeToCard?: boolean;
+  success: boolean;
+  message?: string;
+  error?: string;
+  data: T;
+};
+
 export interface IRoleConfig {
   [resource: string]: string[] | Record<string, Record<string, string[]>> | undefined;
   departments?: Record<string, Record<string, string[]>>;
@@ -335,15 +345,6 @@ export interface IPaginateResult {
   perPage: number;
   total: number;
 }
-
-export type ISuccessReturnData<T = any> = {
-  errors?: [{ path: string; message: string }];
-  routeToCard?: boolean;
-  success: boolean;
-  message?: string;
-  error?: string;
-  data: T;
-};
 
 export interface UploadedFile {
   originalFileName?: string;

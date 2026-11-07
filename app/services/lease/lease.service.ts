@@ -1307,10 +1307,12 @@ export class LeaseService {
 
     const terminationDate = new Date(terminationData.terminationDate);
 
+    const client = await this.clientDAO.getClientByCuid(cuid);
     const { warnings } = validateLeaseTermination(
       lease,
       terminationDate,
-      terminationData.reasonCode
+      terminationData.reasonCode,
+      client?.settings?.timeZone
     );
 
     this.log.info(`Terminating lease ${luid}`, {
@@ -1413,6 +1415,7 @@ export class LeaseService {
                 leaseUrl: lease.leaseDocuments?.[0]?.url || '',
                 propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
                 propertyManagerPhone: property?.id?.contactPhone || 'N/A',
+                isUSProperty: this.isUSProperty(property?.id?.address?.country),
               },
             },
             MailType.LEASE_TERMINATED
@@ -2771,6 +2774,7 @@ export class LeaseService {
             leaseUrl: lease.leaseDocuments?.[0]?.url || '',
             propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
             propertyManagerPhone: property?.id?.contactPhone || 'N/A',
+            isUSProperty: this.isUSProperty(property?.id?.address?.country),
           },
         },
         MailType.LEASE_ACTIVATED
@@ -3117,6 +3121,15 @@ export class LeaseService {
   /**
    * Build email template data for lease expiry notification
    */
+  /**
+   * Whether a property's country is the US. Used to gate the fair-housing notice
+   * in tenant emails (US Fair Housing Act concept) to US properties only.
+   */
+  private isUSProperty(country?: string | null): boolean {
+    if (!country) return false;
+    return ['UNITED STATES', 'USA', 'US'].includes(String(country).trim().toUpperCase());
+  }
+
   private async buildEmailData(
     lease: ILeaseDocument,
     daysRemaining: number,
@@ -3126,6 +3139,12 @@ export class LeaseService {
     const noticeDeadline = dayjs(lease.duration.endDate).subtract(noticePeriod, 'days').toDate();
     const responseDeadline = dayjs().add(14, 'days').toDate();
     let propertyManager: IUserBasicInfo | null = null;
+
+    const propertyForCountry = await this.propertyDAO.findFirst(
+      { _id: new Types.ObjectId(lease.property.id) },
+      { projection: 'address.country' }
+    );
+    const isUSProperty = this.isUSProperty(propertyForCountry?.address?.country);
 
     if (lease.property.id && !lease.property.unitId) {
       const property = await this.propertyDAO.findFirst({
@@ -3179,6 +3198,7 @@ export class LeaseService {
       unitNumber: lease.property.unitNumber || '',
       endDate: lease.duration.endDate,
       daysRemaining,
+      isUSProperty,
 
       // Expiry threshold info (e.g., '30_day_notice', '14_day_notice', '7_day_notice')
       leaseExpiryThreshold,
@@ -3482,6 +3502,11 @@ export class LeaseService {
             leaseUrl,
             propertyManagerEmail: envVariables.EMAIL.APP_EMAIL_ADDRESS,
             propertyManagerPhone: pmPhone,
+            isUSProperty: this.isUSProperty(
+              typeof property?.address === 'object'
+                ? property?.address?.country
+                : lease.propertyInfo?.address?.country
+            ),
           },
         },
         MailType.LEASE_EXPIRED

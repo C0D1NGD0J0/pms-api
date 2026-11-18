@@ -9,6 +9,7 @@ import {
   mockReportDAO,
   mockClientDAO,
   mockS3Service,
+  mockSubscriptionDAO,
 } from './__mocks__';
 
 const CUID = 'TEST_CLIENT_001';
@@ -156,6 +157,23 @@ describe('ReportService', () => {
       expect(jobData.prevEndDate).toBeDefined();
       expect(jobData.prevEndDate.getTime()).toBeLessThan(jobData.startDate.getTime());
     });
+
+    it('rolls back the report + quota and does not set cooldown when enqueue fails', async () => {
+      mockQueueFactory.getQueue.mockReturnValue({
+        addReportJob: jest.fn().mockRejectedValue(new Error('queue down')),
+      });
+
+      await expect(
+        service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS })
+      ).rejects.toThrow(/Failed to queue report generation/);
+
+      expect(mockReportDAO.deleteItem).toHaveBeenCalledWith({ _id: expect.anything() });
+      expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+        CUID,
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+    });
   });
 
   // ─── getReportStatus ──────────────────────────────────────────────
@@ -222,6 +240,7 @@ describe('ReportService', () => {
       expect(result.data.filename).toBe('report.pdf');
       expect(mockS3Service.getSignedUrl).toHaveBeenCalledWith('reports/test/report.pdf', {
         disposition: 'inline',
+        filename: 'report.pdf',
       });
     });
 

@@ -138,4 +138,57 @@ describe('S3Service', () => {
       await expect(service.signFileUrls(undefined as any)).resolves.toBeUndefined();
     });
   });
+
+  describe('getSignedUrl', () => {
+    const signedCommandInput = () => mockGetSignedUrl.mock.calls[0][1].input;
+
+    beforeEach(() => {
+      mockGetSignedUrl.mockResolvedValue('https://signed/x');
+    });
+
+    it('sets no Content-Disposition without options', async () => {
+      await service.getSignedUrl('reports/r.pdf');
+
+      expect(signedCommandInput().ResponseContentDisposition).toBeUndefined();
+    });
+
+    it('sends the disposition alone when no filename is given', async () => {
+      await service.getSignedUrl('reports/r.pdf', { disposition: 'attachment' });
+
+      expect(signedCommandInput().ResponseContentDisposition).toBe('attachment');
+    });
+
+    it('names the download when a filename is given', async () => {
+      await service.getSignedUrl('reports/r.pdf', {
+        disposition: 'attachment',
+        filename: 'Rent Roll - Nov 2026.pdf',
+      });
+
+      expect(signedCommandInput().ResponseContentDisposition).toBe(
+        'attachment; filename="Rent Roll - Nov 2026.pdf"'
+      );
+    });
+
+    it('strips quotes and line breaks so the filename cannot break the header', async () => {
+      await service.getSignedUrl('reports/r.pdf', {
+        disposition: 'attachment',
+        filename: 'bad"name\r\nX-Injected: 1.pdf',
+      });
+
+      expect(signedCommandInput().ResponseContentDisposition).toBe(
+        'attachment; filename="badnameX-Injected: 1.pdf"'
+      );
+    });
+
+    it('ignores a filename without a disposition', async () => {
+      await service.getSignedUrl('reports/r.pdf', { filename: 'r.pdf' });
+
+      expect(signedCommandInput().ResponseContentDisposition).toBeUndefined();
+    });
+
+    it('rejects an empty key', async () => {
+      await expect(service.getSignedUrl('')).rejects.toThrow('S3 key is required');
+      expect(mockGetSignedUrl).not.toHaveBeenCalled();
+    });
+  });
 });

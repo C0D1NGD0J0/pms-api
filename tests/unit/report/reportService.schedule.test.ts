@@ -296,6 +296,39 @@ describe('ReportService — Schedule Management', () => {
       expect(mockReportScheduleDAO.advanceNextRunAt).toHaveBeenCalledTimes(1);
     });
 
+    it('rolls back and still advances nextRunAt when job enqueue fails', async () => {
+      const schedule = {
+        _id: new Types.ObjectId(SCHEDULE_ID),
+        cuid: CUID,
+        createdBy: new Types.ObjectId(USER_ID),
+        frequency: ScheduleFrequency.MONTHLY,
+        sections: [...REPORT_SECTIONS],
+        emailRecipients: ['pm@test.com'],
+        propertyId: PROPERTY_ID,
+        isActive: true,
+        nextRunAt: new Date('2026-08-01'),
+      };
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([schedule]);
+      mockReportDAO.createReport.mockResolvedValue({ _id: new Types.ObjectId(REPORT_ID) });
+      const addReportJob = jest.fn().mockRejectedValue(new Error('queue down'));
+      mockQueueFactory.getQueue.mockReturnValue({ addReportJob });
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      // Orphaned PENDING report removed + quota slot refunded
+      expect(mockReportDAO.deleteItem).toHaveBeenCalledWith({ _id: expect.anything() });
+      expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+        CUID,
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+      // Schedule still advances so it does not re-fire the same window next cron
+      expect(mockReportScheduleDAO.advanceNextRunAt).toHaveBeenCalledTimes(1);
+      // Not counted as an unviewed delivery
+      expect(mockReportScheduleDAO.incrementUnviewedCount).not.toHaveBeenCalled();
+    });
+
     it('should use LAST_90_DAYS for quarterly schedules', async () => {
       const schedule = {
         _id: new Types.ObjectId(SCHEDULE_ID),

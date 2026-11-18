@@ -14,10 +14,10 @@ import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
+import { InternalServerError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   ReportAnalysisAIService,
   PdfGeneratorService,
@@ -294,22 +294,42 @@ export class ReportService implements ICronProvider {
       emailRecipients,
     });
 
-    this._setCooldown(cuid);
-
     const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
-    await reportQueue.addReportJob({
-      reportId: report._id.toString(),
-      cuid,
-      userId,
-      period,
-      startDate,
-      endDate,
-      prevStartDate,
-      prevEndDate,
-      propertyId,
-      sections,
-      emailRecipients,
-    });
+    try {
+      await reportQueue.addReportJob({
+        reportId: report._id.toString(),
+        cuid,
+        userId,
+        period,
+        startDate,
+        endDate,
+        prevStartDate,
+        prevEndDate,
+        propertyId,
+        sections,
+        emailRecipients,
+      });
+    } catch (enqueueError: any) {
+      // A failed enqueue must not consume the quota slot or leave a stuck PENDING
+      // report. Usage is reconciled against report-doc count, so deleting the doc
+      // refunds the slot; decrement immediately for correctness before the sync.
+      await this.reportDAO.deleteItem({ _id: report._id });
+      await this.subscriptionDAO.incrementUsageCounter(
+        cuid,
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+      this.log.error(
+        { error: enqueueError.message, cuid, reportId: report._id.toString() },
+        'Failed to enqueue report job — rolled back report + quota'
+      );
+      throw new InternalServerError({
+        message: 'Failed to queue report generation. Please try again.',
+      });
+    }
+
+    // Only start the cooldown once the job is actually queued.
+    this._setCooldown(cuid);
 
     return {
       success: true,
@@ -342,6 +362,7 @@ export class ReportService implements ICronProvider {
     if (report.status === ReportStatus.COMPLETED && report.file?.key) {
       response.presignedUrl = await this.s3Service.getSignedUrl(report.file.key, {
         disposition: 'inline',
+        filename: report.file.filename,
       });
       response.expiresAt = new Date(Date.now() + 3600 * 1000);
       response.filename = report.file.filename;
@@ -757,19 +778,40 @@ export class ReportService implements ICronProvider {
         });
 
         const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
-        await reportQueue.addReportJob({
-          reportId: report._id.toString(),
-          cuid: schedule.cuid,
-          userId: schedule.createdBy.toString(),
-          period,
-          startDate,
-          endDate,
-          prevStartDate,
-          prevEndDate,
-          propertyId: schedule.propertyId,
-          sections: schedule.sections,
-          emailRecipients: schedule.emailRecipients,
-        });
+        try {
+          await reportQueue.addReportJob({
+            reportId: report._id.toString(),
+            cuid: schedule.cuid,
+            userId: schedule.createdBy.toString(),
+            period,
+            startDate,
+            endDate,
+            prevStartDate,
+            prevEndDate,
+            propertyId: schedule.propertyId,
+            sections: schedule.sections,
+            emailRecipients: schedule.emailRecipients,
+          });
+        } catch (enqueueError: any) {
+          // Roll back the orphaned PENDING report and refund the quota slot, then
+          // still advance nextRunAt so the schedule does not re-fire this same
+          // window (and re-create reports) on every subsequent cron run.
+          await this.reportDAO.deleteItem({ _id: report._id });
+          await this.subscriptionDAO.incrementUsageCounter(
+            schedule.cuid,
+            'reportGenerationUsage.countThisPeriod',
+            -1
+          );
+          await this.reportScheduleDAO.advanceNextRunAt(
+            schedule._id.toString(),
+            this._computeNextRunAt(schedule.frequency)
+          );
+          this.log.error(
+            { error: enqueueError.message, cuid: schedule.cuid, reportId: report._id.toString() },
+            'Failed to enqueue scheduled report job — rolled back report + quota, advanced schedule'
+          );
+          continue;
+        }
 
         const nextRunAt = this._computeNextRunAt(schedule.frequency);
         await this.reportScheduleDAO.advanceNextRunAt(schedule._id.toString(), nextRunAt);
@@ -1227,9 +1269,9 @@ export class ReportService implements ICronProvider {
 
       const trackedCount = subscription.reportGenerationUsage?.countThisPeriod ?? 0;
 
-      this.log.info(
+      this.log.debug(
         { cuid, periodStart: new Date(periodStart).toISOString(), actualCount, trackedCount },
-        '>>> Usage counter sync check'
+        'Report usage counter sync check'
       );
 
       if (actualCount !== trackedCount) {

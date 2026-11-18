@@ -23,14 +23,14 @@ jest.mock('@branding/index', () => ({
 }));
 
 import {
-  createReportService,
-  mockReportDAO,
-  mockClientDAO,
+  mockReportAnalysisAIService,
   mockPdfGeneratorService,
-  mockS3Service,
+  createReportService,
   mockSseService,
   mockEmailQueue,
-  mockReportAnalysisAIService,
+  mockReportDAO,
+  mockClientDAO,
+  mockS3Service,
 } from './__mocks__';
 
 const CUID = 'TEST_CLIENT_001';

@@ -32,7 +32,7 @@ export class ReportScheduleDAO extends BaseDAO<IReportScheduleDocument> {
         throw new Error(`Failed to upsert schedule for cuid: ${cuid}`);
       }
 
-      return result as unknown as IReportScheduleDocument;
+      return result;
     } catch (error: any) {
       this.log.error({ error, cuid }, 'Error upserting report schedule');
       throw this.throwErrorHandler(error);

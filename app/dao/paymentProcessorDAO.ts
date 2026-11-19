@@ -1,6 +1,6 @@
 import Logger from 'bunyan';
+import { Model } from 'mongoose';
 import { createLogger } from '@utils/index';
-import { ModifyResult, Model } from 'mongoose';
 import {
   IPaymentProcessorDocument,
   IPaymentProcessorFormData,
@@ -36,7 +36,7 @@ export class PaymentProcessorDAO extends BaseDAO<IPaymentProcessorDocument> {
    */
   async upsertForVendor(
     data: Partial<IPaymentProcessorFormData>
-  ): Promise<ModifyResult<IPaymentProcessorDocument> | null> {
+  ): Promise<IPaymentProcessorDocument | null> {
     const { vuid, cuid, client, ownerType, accountId, ...statusFields } = data;
     return this.upsert(
       {

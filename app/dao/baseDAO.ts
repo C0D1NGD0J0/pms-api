@@ -10,7 +10,6 @@ import {
   PopulateOptions,
   PipelineStage,
   ClientSession,
-  ModifyResult,
   UpdateQuery,
   Document,
   Types,
@@ -129,26 +128,24 @@ export class BaseDAO<T extends Document> implements IBaseDAO<T> {
   async upsert(
     data: UpdateQuery<T>,
     filter: QueryFilter<T>,
-    options?: any,
+    options?: Record<string, any>,
     session?: ClientSession
-  ): Promise<ModifyResult<T> | null> {
+  ): Promise<T | null> {
     try {
       const queryOptions = {
-        new: true,
+        returnDocument: 'after' as const,
         upsert: true,
         runValidators: true,
         context: 'query' as const,
         ...options,
       };
+      let query = this.model.findOneAndUpdate(filter, data, queryOptions);
 
       if (session) {
-        const result = await this.model
-          .findOneAndUpdate(filter, data, queryOptions)
-          .session(session);
-        return result;
+        query = query.session(session);
       }
 
-      return await this.model.findOneAndUpdate(filter, data, queryOptions);
+      return await query.exec();
     } catch (error) {
       throw this.throwErrorHandler(error);
     }

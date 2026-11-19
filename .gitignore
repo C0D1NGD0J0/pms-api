@@ -141,6 +141,9 @@ scripts/
 # Tests for local-only migration scripts (scripts/ is not committed)
 tests/unit/migrations/
 *.md
+# Shared with everyone who clones the repo: setup guide, and the git hooks + audit allowlist
+!/README.md
+!.husky/README.md
 uploads/
 .vscode/*
 .vscode/settings.json

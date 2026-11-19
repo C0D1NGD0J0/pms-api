@@ -329,6 +329,34 @@ describe('ReportService — Schedule Management', () => {
       expect(mockReportScheduleDAO.incrementUnviewedCount).not.toHaveBeenCalled();
     });
 
+    it('still advances nextRunAt when the rollback itself fails', async () => {
+      mockReportScheduleDAO.getDueSchedules.mockResolvedValue([
+        {
+          _id: new Types.ObjectId(SCHEDULE_ID),
+          cuid: CUID,
+          createdBy: new Types.ObjectId(USER_ID),
+          frequency: ScheduleFrequency.MONTHLY,
+          sections: [...REPORT_SECTIONS],
+          emailRecipients: ['pm@test.com'],
+          propertyId: PROPERTY_ID,
+          isActive: true,
+          nextRunAt: new Date('2026-08-01'),
+        },
+      ]);
+      mockReportDAO.createReport.mockResolvedValue({ _id: new Types.ObjectId(REPORT_ID) });
+      mockQueueFactory.getQueue.mockReturnValue({
+        addReportJob: jest.fn().mockRejectedValue(new Error('queue down')),
+      });
+      mockReportDAO.deleteItem.mockRejectedValueOnce(new Error('db blip'));
+      mockSubscriptionDAO.incrementUsageCounter.mockRejectedValueOnce(new Error('db blip'));
+
+      const cronJobs = service.getCronJobs();
+      await cronJobs[0].handler();
+
+      // Without this the schedule would re-create a report on every later cron run
+      expect(mockReportScheduleDAO.advanceNextRunAt).toHaveBeenCalledTimes(1);
+    });
+
     it('should use LAST_90_DAYS for quarterly schedules', async () => {
       const schedule = {
         _id: new Types.ObjectId(SCHEDULE_ID),

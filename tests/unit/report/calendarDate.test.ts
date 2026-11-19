@@ -82,7 +82,9 @@ describe('calendarDate validator (dayjs)', () => {
     });
 
     afterAll(() => {
-      process.env.TZ = originalTimeZone;
+      // Assigning undefined would store the string "undefined", so remove the variable instead
+      if (originalTimeZone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimeZone;
     });
 
     it('accepts a date-only string and keeps its calendar day', () => {

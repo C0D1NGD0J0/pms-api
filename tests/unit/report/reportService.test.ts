@@ -174,6 +174,23 @@ describe('ReportService', () => {
         -1
       );
     });
+
+    it('still refunds the quota and reports the enqueue failure when deleting the report fails', async () => {
+      mockQueueFactory.getQueue.mockReturnValue({
+        addReportJob: jest.fn().mockRejectedValue(new Error('queue down')),
+      });
+      mockReportDAO.deleteItem.mockRejectedValueOnce(new Error('db blip'));
+
+      await expect(
+        service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS })
+      ).rejects.toThrow(/Failed to queue report generation/);
+
+      expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
+        CUID,
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+    });
   });
 
   // ─── getReportStatus ──────────────────────────────────────────────

@@ -6,6 +6,13 @@
       "reason": "No patched release exists (3.0.3 is latest and affected). Reached only via awilix -> fast-glob -> micromatch, used by awilix.loadModules/listModules, which the app never calls; container registrations are explicit and no user input reaches a glob.",
       "addedOn": "2026-10-21",
       "reviewBy": "2027-01-21"
+    },
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "reason": "No patched release exists (advisory covers <= 4.0.7, all published versions). The only production path is awilix -> fast-glob -> micromatch -> picomatch@2.3.2, used by awilix.loadModules/listModules, which the app never calls (verified 2026-11-18 by grep); container registrations are explicit and no user input reaches a glob pattern.",
+      "addedOn": "2026-11-18",
+      "reviewBy": "2027-02-18"
     }
   ]
 }

@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import { isValidObjectId } from 'mongoose';
+
+dayjs.extend(utc);
 
 import '../zodConfig';
 import {
@@ -79,14 +82,18 @@ export const calendarDate = (errorMessage?: string) =>
     .refine(
       (val): boolean => {
         if (val instanceof Date) return dayjs(val).isValid();
-        const parsed = dayjs(val as string);
+        // Parse as UTC so the check is timezone-stable: dayjs(val) would parse a
+        // date-only string at LOCAL midnight, and toISOString() could then shift
+        // the date portion a day in non-UTC timezones (rejecting valid dates).
+        const parsed = dayjs.utc(val as string);
         // isValid() alone doesn't reject overflow dates (dayjs normalises them);
         // the startsWith check catches them by comparing the UTC date portion.
         return parsed.isValid() && parsed.toISOString().startsWith((val as string).split('T')[0]);
       },
       { message: errorMessage ?? 'Invalid date: this day does not exist in the calendar' }
     )
-    .transform((val) => (val instanceof Date ? val : dayjs(val as string).toDate()));
+    // Same UTC parse as the check above: a date-only string is stored as UTC midnight of that day
+    .transform((val) => (val instanceof Date ? val : dayjs.utc(val as string).toDate()));
 
 export const ValidateCuidSchema = z.object({
   cuid: z.string().refine(

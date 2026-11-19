@@ -72,6 +72,37 @@ describe('calendarDate validator (dayjs)', () => {
     });
   });
 
+  // A date-only string must mean the same calendar day in every server time zone. East of
+  // UTC, local midnight is still the previous day in UTC, which used to reject valid dates.
+  describe.each(['Asia/Tokyo', 'America/Toronto'])('in the %s time zone', (timeZone) => {
+    const originalTimeZone = process.env.TZ;
+
+    beforeAll(() => {
+      process.env.TZ = timeZone;
+    });
+
+    afterAll(() => {
+      // Assigning undefined would store the string "undefined", so remove the variable instead
+      if (originalTimeZone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimeZone;
+    });
+
+    it('accepts a date-only string and keeps its calendar day', () => {
+      const result = schema.safeParse('2026-08-15');
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.toISOString().startsWith('2026-08-15')).toBe(true);
+    });
+
+    it('accepts the first day of a year', () => {
+      expect(schema.safeParse('2027-01-01').success).toBe(true);
+    });
+
+    it('still rejects impossible dates', () => {
+      expect(schema.safeParse('2026-02-30').success).toBe(false);
+      expect(schema.safeParse('2025-02-29').success).toBe(false);
+    });
+  });
+
   describe('custom error message', () => {
     it('should use provided error message', () => {
       const customSchema = calendarDate('Move-in date is invalid');

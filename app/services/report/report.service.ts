@@ -14,10 +14,10 @@ import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { PlanName } from '@interfaces/subscription.interface';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
+import { InternalServerError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   ReportAnalysisAIService,
   PdfGeneratorService,
@@ -294,22 +294,31 @@ export class ReportService implements ICronProvider {
       emailRecipients,
     });
 
-    this._setCooldown(cuid);
-
     const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
-    await reportQueue.addReportJob({
-      reportId: report._id.toString(),
-      cuid,
-      userId,
-      period,
-      startDate,
-      endDate,
-      prevStartDate,
-      prevEndDate,
-      propertyId,
-      sections,
-      emailRecipients,
-    });
+    try {
+      await reportQueue.addReportJob({
+        reportId: report._id.toString(),
+        cuid,
+        userId,
+        period,
+        startDate,
+        endDate,
+        prevStartDate,
+        prevEndDate,
+        propertyId,
+        sections,
+        emailRecipients,
+      });
+    } catch (enqueueError: any) {
+      // A failed enqueue must not consume the quota slot or leave a stuck PENDING report
+      await this._rollBackUnqueuedReport(cuid, report._id.toString(), enqueueError);
+      throw new InternalServerError({
+        message: 'Failed to queue report generation. Please try again.',
+      });
+    }
+
+    // Only start the cooldown once the job is actually queued.
+    this._setCooldown(cuid);
 
     return {
       success: true,
@@ -342,6 +351,7 @@ export class ReportService implements ICronProvider {
     if (report.status === ReportStatus.COMPLETED && report.file?.key) {
       response.presignedUrl = await this.s3Service.getSignedUrl(report.file.key, {
         disposition: 'inline',
+        filename: report.file.filename,
       });
       response.expiresAt = new Date(Date.now() + 3600 * 1000);
       response.filename = report.file.filename;
@@ -757,19 +767,37 @@ export class ReportService implements ICronProvider {
         });
 
         const reportQueue = this.queueFactory.getQueue('reportQueue') as ReportQueue;
-        await reportQueue.addReportJob({
-          reportId: report._id.toString(),
-          cuid: schedule.cuid,
-          userId: schedule.createdBy.toString(),
-          period,
-          startDate,
-          endDate,
-          prevStartDate,
-          prevEndDate,
-          propertyId: schedule.propertyId,
-          sections: schedule.sections,
-          emailRecipients: schedule.emailRecipients,
-        });
+        try {
+          await reportQueue.addReportJob({
+            reportId: report._id.toString(),
+            cuid: schedule.cuid,
+            userId: schedule.createdBy.toString(),
+            period,
+            startDate,
+            endDate,
+            prevStartDate,
+            prevEndDate,
+            propertyId: schedule.propertyId,
+            sections: schedule.sections,
+            emailRecipients: schedule.emailRecipients,
+          });
+        } catch (enqueueError: any) {
+          await this._rollBackUnqueuedReport(schedule.cuid, report._id.toString(), enqueueError);
+          // Still advance nextRunAt, even if the rollback failed, so the schedule does not
+          // re-fire this window (and re-create reports) on every later cron run.
+          try {
+            await this.reportScheduleDAO.advanceNextRunAt(
+              schedule._id.toString(),
+              this._computeNextRunAt(schedule.frequency)
+            );
+          } catch (error: any) {
+            this.log.warn(
+              { error: error.message, cuid: schedule.cuid, scheduleId: schedule._id.toString() },
+              'Could not advance nextRunAt after a failed enqueue; the schedule may run again'
+            );
+          }
+          continue;
+        }
 
         const nextRunAt = this._computeNextRunAt(schedule.frequency);
         await this.reportScheduleDAO.advanceNextRunAt(schedule._id.toString(), nextRunAt);
@@ -791,6 +819,44 @@ export class ReportService implements ICronProvider {
   }
 
   // ─── Private helpers ──────────────────────────────────────────────
+
+  /**
+   * Undoes a report whose job never reached the queue: deletes the PENDING report and refunds
+   * its quota slot. Each step runs on its own, so one failing doesn't skip the other, and a
+   * failure is logged for manual reconciliation (the usage sync also corrects the count).
+   */
+  private async _rollBackUnqueuedReport(
+    cuid: string,
+    reportId: string,
+    enqueueError: any
+  ): Promise<void> {
+    this.log.error(
+      { error: enqueueError?.message, cuid, reportId },
+      'Failed to enqueue report job — rolling back report + quota'
+    );
+
+    try {
+      await this.reportDAO.deleteItem({ _id: reportId });
+    } catch (error: any) {
+      this.log.warn(
+        { error: error.message, cuid, reportId },
+        'Rollback: could not delete the unqueued PENDING report'
+      );
+    }
+
+    try {
+      await this.subscriptionDAO.incrementUsageCounter(
+        cuid,
+        'reportGenerationUsage.countThisPeriod',
+        -1
+      );
+    } catch (error: any) {
+      this.log.warn(
+        { error: error.message, cuid, reportId },
+        'Rollback: could not refund the report quota slot'
+      );
+    }
+  }
 
   /** Resolves a client-supplied pid to the internal property _id string stored on reports. */
   private async _resolvePropertyId(cuid: string, pid?: string): Promise<string | undefined> {
@@ -1227,9 +1293,9 @@ export class ReportService implements ICronProvider {
 
       const trackedCount = subscription.reportGenerationUsage?.countThisPeriod ?? 0;
 
-      this.log.info(
+      this.log.debug(
         { cuid, periodStart: new Date(periodStart).toISOString(), actualCount, trackedCount },
-        '>>> Usage counter sync check'
+        'Report usage counter sync check'
       );
 
       if (actualCount !== trackedCount) {

@@ -6,7 +6,6 @@ import {
   PopulateOptions,
   PipelineStage,
   ClientSession,
-  ModifyResult,
   UpdateQuery,
   Document,
   Types,
@@ -41,9 +40,10 @@ export interface IBaseDAO<T extends Document> {
     operations: (session?: ClientSession) => Promise<T>
   ): Promise<T>;
 
-  upsert(data: UpdateQuery<T>, filter: QueryFilter<T>, opts?: any): Promise<ModifyResult<T> | null>;
-
   update(filter: QueryFilter<T> | Types.ObjectId, data: UpdateQuery<T>): Promise<T | null>;
+
+  /** Returns the saved document (findOneAndUpdate with `returnDocument: 'after'`), or null. */
+  upsert(data: UpdateQuery<T>, filter: QueryFilter<T>, opts?: any): Promise<T | null>;
 
   findById(id: string | Types.ObjectId, session?: ClientSession): Promise<T | null>;
 

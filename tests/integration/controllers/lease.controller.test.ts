@@ -1058,9 +1058,10 @@ describe('LeaseController Integration Tests', () => {
           unitId: testUnit._id,
           address: testProperty.address.fullAddress,
         },
+        // Relative to today: the termination below is 45 days out and must stay inside the lease
         duration: {
-          startDate: new Date('2025-01-01'),
-          endDate: new Date('2026-12-31'),
+          startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+          endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
         },
         fees: {
           rentAmount: 150000,

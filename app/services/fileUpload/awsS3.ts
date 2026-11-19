@@ -184,13 +184,21 @@ export class S3Service {
 
   async getSignedUrl(
     s3Key: string,
-    options?: { disposition?: 'inline' | 'attachment' }
+    options?: { disposition?: 'inline' | 'attachment'; filename?: string }
   ): Promise<string> {
     if (!s3Key) {
       throw new Error('S3 key is required');
     }
 
     this.log.debug(`Generating signed URL for ${s3Key}`);
+
+    // Build Content-Disposition — carry the filename so downloads are named even
+    // for cross-origin presigned URLs (the <a download> attribute is ignored there).
+    const contentDisposition = options?.disposition
+      ? options.filename
+        ? `${options.disposition}; filename="${options.filename.replace(/["\r\n]/g, '')}"`
+        : options.disposition
+      : undefined;
 
     try {
       return await this.breaker.exec(() =>
@@ -199,7 +207,7 @@ export class S3Service {
             const command = new GetObjectCommand({
               Bucket: this.bucketName,
               Key: s3Key,
-              ...(options?.disposition ? { ResponseContentDisposition: options.disposition } : {}),
+              ...(contentDisposition ? { ResponseContentDisposition: contentDisposition } : {}),
             });
             return getSignedUrl(this.s3, command, { expiresIn: 3600 });
           },

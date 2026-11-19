@@ -1,3 +1,4 @@
+import os from 'os';
 import mongoose from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 
@@ -35,7 +36,11 @@ export const connectTestDatabase = async (): Promise<void> => {
     maxPoolSize: 10,
     minPoolSize: 2,
     directConnection: !USE_LOCAL_MONGO,
-  });
+    // The driver (7.x) loads `os` with a dynamic import(), which Jest's CommonJS sandbox
+    // rejects. The driver then sends empty client metadata and the server refuses every
+    // connection ("Missing required sub-document 'driver'"). Hand it `os` directly.
+    runtimeAdapters: { os },
+  } as mongoose.ConnectOptions);
 
   // Build every model's indexes now that the connection is open, so unique-index validators
   // (countDocuments) don't time out mid-test. Shares the app's single implementation, imported

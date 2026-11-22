@@ -370,6 +370,76 @@ describe('LeaseService Integration Tests - Write Operations', () => {
       expect(savedLease!.tenantId.toString()).toBe(tenant._id.toString());
     });
 
+    describe('yearly rent', () => {
+      // Rent paid yearly is a Nigerian-market option (MARKET_RULES)
+      const createYearly = async (fees: Record<string, unknown>, country = 'Nigeria') => {
+        const client = await createTestClient();
+        const manager = await createTestManagerUser(client.cuid, client._id);
+        const tenant = await createTestTenantUser(client.cuid, client._id);
+        const property = await createTestProperty(client.cuid, client._id, {
+          propertyType: 'house',
+        });
+        await Property.findByIdAndUpdate(property._id, {
+          approvalStatus: 'approved',
+          owner: { type: 'company_owned' },
+          authorization: { isActive: true },
+          'address.country': country,
+        });
+
+        return leaseService.createLease(
+          client.cuid,
+          {
+            tenantInfo: { uid: tenant.uid },
+            property: { pid: property.pid, address: property.address.fullAddress },
+            duration: { startDate: new Date('2025-01-01'), endDate: new Date('2026-01-01') },
+            // Money input is in major units, like the lease form sends it
+            fees: {
+              rentAmount: 1,
+              securityDeposit: 0,
+              rentDueDay: 1,
+              currency: 'USD',
+              acceptedPaymentMethod: 'bank-transfer',
+              paymentFrequency: 'annual',
+              annualRentAmount: 24000,
+              paymentInstructions: 'Wire to account 0123456789',
+              ...fees,
+            },
+            type: LeaseType.FIXED_TERM,
+          } as any,
+          {
+            currentuser: {
+              uid: manager.uid,
+              sub: manager._id.toString(),
+              client: { cuid: client.cuid, role: ROLES.MANAGER },
+            },
+          } as any
+        );
+      };
+
+      it('stores the annual rent and sets the monthly rent to annual / 12', async () => {
+        const result = await createYearly({});
+
+        const saved = await Lease.findOne({ luid: result.data.luid }).lean();
+        expect(saved!.fees.paymentFrequency).toBe('annual');
+        expect(saved!.fees.annualRentAmount).toBe(2_400_000);
+        expect(saved!.fees.rentAmount).toBe(200_000);
+        expect(saved!.fees.acceptedPaymentMethod).toBe('bank-transfer');
+        expect(saved!.fees.paymentInstructions).toBe('Wire to account 0123456789');
+      });
+
+      it('rejects rent paid yearly for a property outside those markets', async () => {
+        await expect(createYearly({}, 'Canada')).rejects.toMatchObject({
+          errorInfo: { 'fees.paymentFrequency': expect.any(Array) },
+        });
+      });
+
+      it('rejects a percentage late fee on a yearly lease', async () => {
+        await expect(
+          createYearly({ lateFeeType: 'percentage', lateFeePercentage: 5 })
+        ).rejects.toMatchObject({ errorInfo: { 'fees.lateFeeType': expect.any(Array) } });
+      });
+    });
+
     it('should store pet fees in cents (input in major units, like fees)', async () => {
       const client = await createTestClient();
       const manager = await createTestManagerUser(client.cuid, client._id);
@@ -2717,6 +2787,43 @@ describe('LeaseService Integration Tests - Workflow Regressions', () => {
         resource: expect.objectContaining({ resourceId: renewal._id.toString() }),
       })
     );
+  });
+
+  it('applies a yearly rent change when approving a draft renewal of a yearly lease', async () => {
+    const yearlyFees = {
+      rentAmount: 200000,
+      annualRentAmount: 2400000,
+      paymentFrequency: 'annual',
+      securityDeposit: 0,
+      rentDueDay: 1,
+      currency: 'USD',
+      acceptedPaymentMethod: 'bank-transfer',
+    };
+    const original = await createLeaseFixture({ fees: yearlyFees });
+    const renewal = await createLeaseFixture({
+      previousLeaseId: original._id,
+      status: LeaseStatus.DRAFT_RENEWAL,
+      approvalStatus: 'pending',
+      duration: { startDate: daysFromNow(301), endDate: daysFromNow(666) },
+      fees: yearlyFees,
+      signingMethod: 'electronic',
+      signatures: [],
+      signedDate: undefined,
+      leaseDocuments: [],
+    });
+
+    // The manager raises the yearly rent (major units, as the renewal form sends it)
+    await leaseRenewalService.approveRenewalForSignature(
+      client.cuid,
+      renewal.luid,
+      managerContext().currentuser,
+      { fees: { annualRentAmount: 26400 } } as any
+    );
+
+    const saved = await Lease.findById(renewal._id).lean();
+    expect(saved!.fees.annualRentAmount).toBe(2640000);
+    expect(saved!.fees.rentAmount).toBe(220000); // monthly follows the yearly amount
+    expect(saved!.fees.paymentFrequency).toBe('annual');
   });
 
   it('auto-send cron reads the e-signature provider of ready renewals', async () => {

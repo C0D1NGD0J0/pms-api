@@ -6,7 +6,6 @@ import { PropertyCache } from '@caching/index';
 import { QueueFactory } from '@services/queue';
 import { type QueryFilter, Types } from 'mongoose';
 import { GeoCoderService } from '@services/external';
-import { allowsAnnualRent } from '@utils/marketRules';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { NotificationService } from '@services/notification';
 import { normalizeStateToCode } from '@utils/jurisdiction.utils';
@@ -2789,7 +2788,6 @@ export class PropertyService implements ICronProvider {
         address: string;
         propertyType: string;
         leasingBlockedReason: PropertyLeasingBlock | null;
-        annualRentAllowed: boolean;
         financialInfo?: {
           rentAmount?: number;
           securityDeposit?: number;
@@ -2918,8 +2916,6 @@ export class PropertyService implements ICronProvider {
           propertyType: propertyObj.propertyType,
           // Listed but not selectable in the lease form until resolved (e.g. imported, unverified)
           leasingBlockedReason: getPropertyLeasingBlock(propertyObj),
-          // Whether the lease form offers rent paid yearly here (MARKET_RULES)
-          annualRentAllowed: allowsAnnualRent(propertyObj.address),
         };
 
         // Add financial info if available

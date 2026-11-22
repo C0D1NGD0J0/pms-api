@@ -1,6 +1,5 @@
 <%
   var _autoDebit = typeof isAutoDebit !== 'undefined' && isAutoDebit;
-  var _instructions = typeof paymentInstructions !== 'undefined' ? paymentInstructions : '';
   var _dueDate = isNaN(new Date(dueDate).getTime())
     ? dueDate
     : new Date(dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -28,15 +27,6 @@
       ]}) %>
     </td>
   </tr>
-
-  <% if (!_autoDebit && _instructions) { %>
-  <tr>
-    <td class="content" style="padding-top: 0;">
-      <p><strong>How to pay</strong></p>
-      <p style="white-space: pre-line;"><%= _instructions %></p>
-    </td>
-  </tr>
-  <% } %>
 
   <% if (paymentUrl) { %>
   <tr>

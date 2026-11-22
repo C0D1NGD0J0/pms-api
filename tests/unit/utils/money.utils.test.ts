@@ -88,15 +88,6 @@ describe('MoneyUtils.parseMoneyInput', () => {
   it('returns 0 for an invalid string field', () => {
     expect(MoneyUtils.parseMoneyInput({ rentAmount: 'bad' }).rentAmount).toBe(0);
   });
-  it('converts the annual rent of a yearly lease, and leaves it out when absent', () => {
-    expect(MoneyUtils.parseMoneyInput({ annualRentAmount: '24000.50' }).annualRentAmount).toBe(
-      2400050
-    );
-    expect(MoneyUtils.formatMoneyDisplay({ annualRentAmount: 2400050 }).annualRentAmount).toBe(
-      '24000.50'
-    );
-    expect(MoneyUtils.parseMoneyInput({ rentAmount: '10' })).not.toHaveProperty('annualRentAmount');
-  });
 });
 
 describe('MoneyUtils.formatLeaseFees / parseLeaseFees', () => {

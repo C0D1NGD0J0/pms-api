@@ -382,13 +382,7 @@
       "cannotUpdateOwnLease": "You no fit update your own lease information - conflict of interest",
       "propertyNotApproved": "This property is still awaiting approval. Approve it before creating or renewing leases.",
       "managementNotAuthorized": "This property has no active management agreement on file. Upload the owner's management agreement before creating or renewing leases.",
-      "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator.",
-      "rentFrequencyLocked": "How often rent is paid can't change once the tenancy is active",
-      "annualRentRequired": "Enter the annual rent for a tenancy paid yearly",
-      "annualLateFeeMustBeFixed": "Tenancies paid yearly can only use a fixed late fee",
-      "annualRequiresFixedTerm": "Lease wey dem dey pay every year must get fixed end date",
-      "annualMinimumTerm": "Lease wey dem dey pay every year must run at least 12 months — end date must reach one year after start",
-      "annualRentNotAvailable": "Yearly rent no dey available for property for dis country"
+      "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator."
     },
     "warnings": {
       "rentGuidelineExceeded": "Proposed rent exceeds the {{guidelinePercentage}}% {{jurisdiction}} guideline for {{year}} (max {{maxAllowedRent}}). Legal exceptions may apply."

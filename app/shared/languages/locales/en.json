@@ -623,13 +623,7 @@
       "propertyNotApproved": "This property is still awaiting approval. Approve it before creating or renewing leases.",
       "managementNotAuthorized": "This property has no active management agreement on file. Upload the owner's management agreement before creating or renewing leases.",
       "ownershipUnverified": "Property ownership verification is required before leasing this property. Upload verification documents or request a grace period from your administrator.",
-      "renewalAlreadyExists": "A cancelled renewal still exists for this lease. Delete it, then approve the request again.",
-      "rentFrequencyLocked": "How often rent is paid can't change once the lease is active",
-      "annualRentRequired": "Enter the annual rent for a lease paid yearly",
-      "annualLateFeeMustBeFixed": "Leases paid yearly can only use a fixed late fee",
-      "annualRequiresFixedTerm": "Leases paid yearly must be fixed-term",
-      "annualMinimumTerm": "Leases paid yearly run at least 12 months — the end date must be at least a year after the start",
-      "annualRentNotAvailable": "Rent paid yearly isn't available for properties in this country"
+      "renewalAlreadyExists": "A cancelled renewal still exists for this lease. Delete it, then approve the request again."
     },
     "warnings": {
       "rentGuidelineExceeded": "Proposed rent exceeds the {{guidelinePercentage}}% {{jurisdiction}} guideline for {{year}} (max {{maxAllowedRent}}). Legal exceptions may apply."

@@ -28,9 +28,6 @@ export const MoneyUtils = {
       ...(moneyData.lateFeeAmount !== undefined && {
         lateFeeAmount: FinancialCalculator.centsToString(moneyData.lateFeeAmount),
       }),
-      ...(moneyData.annualRentAmount != null && {
-        annualRentAmount: FinancialCalculator.centsToString(moneyData.annualRentAmount),
-      }),
     };
   },
 
@@ -55,9 +52,6 @@ export const MoneyUtils = {
       ...(moneyData.lateFeeAmount !== undefined && {
         lateFeeAmount: FinancialCalculator.stringToCents(moneyData.lateFeeAmount),
       }),
-      ...(moneyData.annualRentAmount != null && {
-        annualRentAmount: FinancialCalculator.stringToCents(moneyData.annualRentAmount),
-      }),
     };
   },
 
@@ -80,9 +74,6 @@ export const MoneyUtils = {
       ...(fees.lateFeeAmount !== undefined && {
         lateFeeAmount: FinancialCalculator.centsToString(fees.lateFeeAmount),
       }),
-      ...(fees.annualRentAmount != null && {
-        annualRentAmount: FinancialCalculator.centsToString(fees.annualRentAmount),
-      }),
     };
   },
 
@@ -94,9 +85,6 @@ export const MoneyUtils = {
       securityDeposit: FinancialCalculator.stringToCents(fees.securityDeposit),
       ...(fees.lateFeeAmount !== undefined && {
         lateFeeAmount: FinancialCalculator.stringToCents(fees.lateFeeAmount),
-      }),
-      ...(fees.annualRentAmount != null && {
-        annualRentAmount: FinancialCalculator.stringToCents(fees.annualRentAmount),
       }),
     };
   },

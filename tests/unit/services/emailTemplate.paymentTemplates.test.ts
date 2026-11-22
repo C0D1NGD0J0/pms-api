@@ -10,8 +10,6 @@ describe('EmailTemplateService — payment notice templates', () => {
     PAYMENT_RETRIED_WITH_CARD: ['ending in 4242', 'Insufficient funds'],
     PAYMENT_REFUNDED: ['partial', 'Overpayment'],
     DEPOSIT_REFUND_FAILED: ['Bank account closed', 'PYT-DEP456'],
-    // Offline lease: the landlord's bank details are shown under "How to pay"
-    PAYMENT_REQUEST_CREATED: ['How to pay', 'Account 0123456789'],
   };
 
   it('lists the new payment templates', async () => {

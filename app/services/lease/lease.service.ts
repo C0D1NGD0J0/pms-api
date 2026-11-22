@@ -84,7 +84,6 @@ import {
   IInternalNote,
   SigningMethod,
   LeaseStatus,
-  ILeaseFees,
 } from '@interfaces/lease.interface';
 
 import { LeasePdfService } from './leasePdf.service';
@@ -99,13 +98,10 @@ import {
   generatePendingChangesPreview,
   handlePendingSignatureUpdate,
   calculateFinancialSummary,
-  assertAnnualRentAvailable,
   buildSignedLeaseFilename,
   validateLeaseTermination,
   handleClosedStatusUpdate,
   calculateRenewalMetadata,
-  applyRentFrequencyRules,
-  validateAnnualLeaseTerm,
   rejectRestrictedFields,
   assertPropertyLeasable,
   buildManualSignatures,
@@ -302,17 +298,6 @@ export class LeaseService {
       });
     }
 
-    // Before any upload, so a rejected annual setup leaves no files behind
-    const leaseFees = MoneyUtils.parseLeaseFees(data.fees);
-    applyRentFrequencyRules(leaseFees);
-    assertAnnualRentAvailable(leaseFees.paymentFrequency, property.address);
-    validateAnnualLeaseTerm({
-      paymentFrequency: leaseFees.paymentFrequency,
-      type: data.type,
-      startDate: data.duration?.startDate,
-      endDate: data.duration?.endDate,
-    });
-
     if (!tenantInfo || !tenantInfo.tenantId) {
       throw new BadRequestError({
         message:
@@ -461,7 +446,7 @@ export class LeaseService {
           signingMethod: data.signingMethod || SigningMethod.PENDING,
           templateType: data.templateType || 'residential-single-family',
           landlordName: landlordInfo.landlordName,
-          fees: leaseFees,
+          fees: MoneyUtils.parseLeaseFees(data.fees),
           ...(data.petPolicy && { petPolicy: MoneyUtils.parsePetPolicyFees(data.petPolicy) }),
           internalNotes,
           legalTerms: data.legalTerms
@@ -905,26 +890,7 @@ export class LeaseService {
 
       if (cleanUpdateData.fees) {
         cleanUpdateData.fees = MoneyUtils.parseMoneyInput(cleanUpdateData.fees);
-        applyRentFrequencyRules(cleanUpdateData.fees!, { fees: lease.fees, status: lease.status });
-        // The lease keeps its property's address, so no property lookup is needed
-        assertAnnualRentAvailable(
-          (cleanUpdateData.fees as Partial<ILeaseFees>).paymentFrequency,
-          lease.property?.address as any,
-          lease.fees?.paymentFrequency
-        );
-      }
-      // Only when the edit touches the term, so older yearly leases stay editable otherwise
-      if (cleanUpdateData.fees || cleanUpdateData.type || cleanUpdateData.duration) {
-        validateAnnualLeaseTerm({
-          paymentFrequency:
-            (cleanUpdateData.fees as Partial<ILeaseFees> | undefined)?.paymentFrequency ??
-            lease.fees?.paymentFrequency,
-          type: cleanUpdateData.type ?? lease.type,
-          startDate: cleanUpdateData.duration?.startDate ?? lease.duration?.startDate,
-          endDate: cleanUpdateData.duration?.endDate ?? lease.duration?.endDate,
-        });
-      }
-      if (cleanUpdateData.fees) {
+
         // Enforce currency from property — same rule as createLease (line ~256)
         // Guard: only run if the lease has a property reference (may be absent in test fixtures / legacy data)
         if ((lease.property as any)?.id) {

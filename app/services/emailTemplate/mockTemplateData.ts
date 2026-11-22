@@ -203,7 +203,6 @@ export function getMockTemplateData(templateType: string): Record<string, any> {
       amountDue: '$2,100.00',
       dueDate: 'August 1, 2026',
       description: 'Monthly rent payment for August 2026',
-      paymentInstructions: 'Bank transfer to: Maple Properties Ltd\nAccount 0123456789',
       paymentUrl: 'http://localhost:3000/payments/pay',
     },
     PAYMENT_RECEIPT: {

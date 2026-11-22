@@ -30,12 +30,20 @@ import {
   PaymentRecordStatus,
   PaymentRecordType,
   IPaymentDocument,
+  IPaymentPeriod,
   ILeaseDocument,
   SMSMessageType,
   PaymentMethod,
   PaymentSource,
   LeaseStatus,
 } from '@interfaces/index';
+
+import {
+  annualYearIndexForPeriod,
+  buildAnnualRentLineItems,
+  latestAnnualDueDate,
+  isAnnualLease,
+} from './annualRent';
 
 interface IConstructor {
   maintenancePaymentService: MaintenancePaymentService;
@@ -319,7 +327,7 @@ export class PaymentCronService implements ICronProvider {
     paymentType: PaymentRecordType;
     paymentMethod: PaymentMethod;
     leaseId?: string;
-    period?: { month: number; year: number };
+    period?: IPaymentPeriod;
     maintenanceRequestUid?: string;
     description?: string;
     currency?: string;
@@ -408,12 +416,19 @@ export class PaymentCronService implements ICronProvider {
             this.isAutoDebitLease(lease) ? this.padNoticeDays + AUTO_DEBIT_EXTRA_LEAD_DAYS : 7,
             'day'
           );
-          const candidates = [
-            rentDueDateForMonth(today, lease.fees.rentDueDay),
-            rentDueDateForMonth(today.add(1, 'month'), lease.fees.rentDueDay),
-          ].filter(
-            (due) =>
-              !due.isBefore(today) && !due.isAfter(windowEnd) && this.isWithinLeaseTerm(lease, due)
+          // Annual leases are due once a year, on the start-date anniversary
+          const dueDates = isAnnualLease(lease)
+            ? [latestAnnualDueDate(lease.duration.startDate, windowEnd)]
+            : [
+                rentDueDateForMonth(today, lease.fees.rentDueDay),
+                rentDueDateForMonth(today.add(1, 'month'), lease.fees.rentDueDay),
+              ];
+          const candidates = dueDates.filter(
+            (due): due is dayjs.Dayjs =>
+              !!due &&
+              !due.isBefore(today) &&
+              !due.isAfter(windowEnd) &&
+              this.isWithinLeaseTerm(lease, due)
           );
 
           for (const dueDayjs of candidates) {
@@ -467,13 +482,21 @@ export class PaymentCronService implements ICronProvider {
             this.isAutoDebitLease(lease) ? this.padNoticeDays + 1 : 1,
             'day'
           );
-          const thisMonthDue = rentDueDateForMonth(today, lease.fees.rentDueDay);
-          const nextMonthDue = rentDueDateForMonth(today.add(1, 'month'), lease.fees.rentDueDay);
-          const candidates = [
-            // This month's rent, even if its due date already passed
-            ...(thisMonthDue.isAfter(windowEnd) ? [] : [thisMonthDue]),
-            ...(nextMonthDue.isAfter(windowEnd) ? [] : [nextMonthDue]),
-          ].filter((due) => this.isWithinLeaseTerm(lease, due));
+          let dueDates: dayjs.Dayjs[];
+          if (isAnnualLease(lease)) {
+            // This lease-year's rent, even if its anniversary already passed
+            const latestDue = latestAnnualDueDate(lease.duration.startDate, windowEnd);
+            dueDates = latestDue ? [latestDue] : [];
+          } else {
+            const thisMonthDue = rentDueDateForMonth(today, lease.fees.rentDueDay);
+            const nextMonthDue = rentDueDateForMonth(today.add(1, 'month'), lease.fees.rentDueDay);
+            dueDates = [
+              // This month's rent, even if its due date already passed
+              ...(thisMonthDue.isAfter(windowEnd) ? [] : [thisMonthDue]),
+              ...(nextMonthDue.isAfter(windowEnd) ? [] : [nextMonthDue]),
+            ];
+          }
+          const candidates = dueDates.filter((due) => this.isWithinLeaseTerm(lease, due));
 
           for (const dueDayjs of candidates) {
             if (
@@ -511,7 +534,13 @@ export class PaymentCronService implements ICronProvider {
     context: string
   ): Promise<boolean> {
     const dueDate = dueDayjs.toDate();
-    const period = { month: dueDayjs.month() + 1, year: dueDayjs.year() };
+    const annual = isAnnualLease(lease);
+    // An annual due date is the anniversary, so its month/year is the lease-year's period
+    const period: IPaymentPeriod = {
+      month: dueDayjs.month() + 1,
+      year: dueDayjs.year(),
+      ...(annual && { frequency: 'annual' as const }),
+    };
     const existing = await this.paymentDAO.findByPeriod(
       lease.cuid,
       lease._id.toString(),
@@ -553,12 +582,22 @@ export class PaymentCronService implements ICronProvider {
       return true;
     }
 
-    const { totalMonthlyRent } = FinancialCalculator.leaseMonthlyFees(lease);
+    // Offline leases (cash, cheque, transfer) are only tracked here — never charged
+    let baseAmount: number;
+    let lineItems: { description: string; amountInCents: number }[] | undefined;
+    if (annual) {
+      const yearIndex = annualYearIndexForPeriod(lease.duration.startDate, period) ?? 0;
+      lineItems = buildAnnualRentLineItems(lease, yearIndex);
+      baseAmount = lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
+    } else {
+      baseAmount = FinancialCalculator.leaseMonthlyFees(lease).totalMonthlyRent;
+    }
+
     await this.createManualTrackingPayment({
       cuid: lease.cuid,
       tenantId: lease.tenantId.toString(),
       dueDate,
-      baseAmount: totalMonthlyRent,
+      baseAmount,
       paymentType: PaymentRecordType.RENT,
       paymentMethod: this.mapLeasePaymentMethod(lease.fees?.acceptedPaymentMethod),
       leaseId: lease._id.toString(),
@@ -566,6 +605,7 @@ export class PaymentCronService implements ICronProvider {
       currency: lease.fees?.currency,
       paymentSource: 'cron',
       acceptedPaymentMethod: lease.fees?.acceptedPaymentMethod,
+      lineItems,
     });
     return true;
   }
@@ -1807,6 +1847,7 @@ export class PaymentCronService implements ICronProvider {
 
   private mapLeasePaymentMethod(acceptedPaymentMethod: string | undefined): PaymentMethod {
     switch (acceptedPaymentMethod) {
+      case 'bank-transfer':
       case 'e-transfer':
         return PaymentMethod.BANK_TRANSFER;
       case 'check':

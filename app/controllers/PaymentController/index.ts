@@ -367,10 +367,10 @@ export class PaymentController {
     // so it works in both API and worker processes without relying on CronService registration
     const jobMap: Record<string, [string, string]> = {
       // Payment
-      'weekly-invoices': ['paymentService', 'queueWeeklyRentInvoices'],
-      'daily-safety-net': ['paymentService', 'queueDailySafetyNetInvoices'],
-      'reconcile-processing': ['paymentService', 'reconcileStaleProcessingPayments'],
-      'auto-payout-vendors': ['paymentService', 'autoPayoutVendors'],
+      'weekly-invoices': ['paymentCronService', 'queueWeeklyRentInvoices'],
+      'daily-safety-net': ['paymentCronService', 'queueDailySafetyNetInvoices'],
+      'reconcile-processing': ['paymentCronService', 'reconcileStaleProcessingPayments'],
+      'auto-payout-vendors': ['paymentCronService', 'autoPayoutVendors'],
       // Lease
       'mark-expired-leases': ['leaseService', 'markExpiredLeases'],
       'process-expiring-leases': ['leaseService', 'processExpiringLeases'],

@@ -1080,6 +1080,12 @@ export class LeaseRenewalService {
 
       const requestedFrequency = (renewalData.fees as Partial<ILeaseFees> | undefined)
         ?.paymentFrequency;
+      // Same market rule as the draft: yearly rent only where it's offered (MARKET_RULES)
+      assertAnnualRentAvailable(
+        requestedFrequency,
+        renewal.property?.address as any,
+        renewal.fees?.paymentFrequency
+      );
       if (renewalData.duration || requestedFrequency) {
         validateAnnualLeaseTerm({
           paymentFrequency: requestedFrequency ?? renewal.fees?.paymentFrequency,

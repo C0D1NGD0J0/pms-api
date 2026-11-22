@@ -2826,6 +2826,34 @@ describe('LeaseService Integration Tests - Workflow Regressions', () => {
     expect(saved!.fees.paymentFrequency).toBe('annual');
   });
 
+  it('refuses to switch a renewal to yearly rent outside a market that offers it', async () => {
+    // The test property is in the USA, where rent is monthly
+    const original = await createLeaseFixture();
+    const renewal = await createLeaseFixture({
+      previousLeaseId: original._id,
+      status: LeaseStatus.DRAFT_RENEWAL,
+      approvalStatus: 'pending',
+      duration: { startDate: daysFromNow(301), endDate: daysFromNow(666) },
+      signingMethod: 'electronic',
+      signatures: [],
+      signedDate: undefined,
+      leaseDocuments: [],
+    });
+
+    await expect(
+      leaseRenewalService.approveRenewalForSignature(
+        client.cuid,
+        renewal.luid,
+        managerContext().currentuser,
+        { fees: { paymentFrequency: 'annual', annualRentAmount: 24000 } } as any
+      )
+    ).rejects.toMatchObject({ errorInfo: { 'fees.paymentFrequency': expect.any(Array) } });
+
+    const saved = await Lease.findById(renewal._id).lean();
+    expect(saved!.status).toBe(LeaseStatus.DRAFT_RENEWAL);
+    expect(saved!.fees.paymentFrequency ?? 'monthly').toBe('monthly');
+  });
+
   it('auto-send cron reads the e-signature provider of ready renewals', async () => {
     const original = await createLeaseFixture({
       duration: { startDate: daysFromNow(-358), endDate: daysFromNow(7) },

@@ -7,6 +7,7 @@ import { LeaseCache } from '@caching/index';
 import { UserService } from '@services/index';
 import { QueueFactory } from '@services/queue';
 import { PropertyDAO } from '@dao/propertyDAO';
+import { allowsAnnualRent } from '@utils/marketRules';
 import { PropertyUnitDAO } from '@dao/propertyUnitDAO';
 import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
@@ -34,6 +35,7 @@ import {
   ILeaseDocument,
   ILeaseFormData,
   LeaseStatus,
+  ILeaseFees,
 } from '@interfaces/lease.interface';
 import {
   convertUserRoleToEnum,
@@ -48,7 +50,10 @@ import {
 } from '@utils/index';
 
 import {
+  assertAnnualRentAvailable,
   calculateRenewalMetadata,
+  applyRentFrequencyRules,
+  validateAnnualLeaseTerm,
   assertPropertyLeasable,
   createSystemContext,
   findActiveLeasePDF,
@@ -236,6 +241,8 @@ export class LeaseRenewalService {
           property: {
             ...renewalFormData.property,
             managedBy: uidsByUserId.get(String(lease.property.managedBy)) ?? '',
+            // Whether rent can be billed yearly in the property's market (MARKET_RULES)
+            annualRentAllowed: allowsAnnualRent(lease.property?.address as any),
           },
           tenantInfo: { uid: uidsByUserId.get(String(lease.tenantId)) ?? '' },
           ...(guideline && {
@@ -421,6 +428,27 @@ export class LeaseRenewalService {
       const requiresApproval =
         isSystemCall && existingLease.renewalOptions?.autoApproveRenewal !== true;
 
+      // Renewal money input is in major units (same as create/edit) — stored as cents
+      const renewalFees = {
+        ...cleanLease.fees,
+        ...(renewalData.fees && MoneyUtils.parseMoneyInput(renewalData.fees)),
+      };
+      applyRentFrequencyRules(renewalFees);
+      assertAnnualRentAvailable(
+        renewalFees.paymentFrequency,
+        existingLease.property?.address as any,
+        existingLease.fees?.paymentFrequency
+      );
+      // Dates someone entered; the cron's default renewal dates are left as they are
+      if (renewalData.duration) {
+        validateAnnualLeaseTerm({
+          paymentFrequency: renewalFees.paymentFrequency,
+          type: cleanLease.type,
+          startDate: renewalData.duration.startDate,
+          endDate: renewalData.duration.endDate,
+        });
+      }
+
       const newLeaseData = {
         ...cleanLease,
         previousLeaseId: existingLease._id,
@@ -436,11 +464,7 @@ export class LeaseRenewalService {
           moveInDate: defaultStartDate,
         },
 
-        // Renewal money input is in major units (same as create/edit) — stored as cents
-        fees: {
-          ...cleanLease.fees,
-          ...(renewalData.fees && MoneyUtils.parseMoneyInput(renewalData.fees)),
-        },
+        fees: renewalFees,
 
         renewalOptions: renewalData.renewalOptions || existingLease.renewalOptions,
         utilitiesIncluded: renewalData.utilitiesIncluded || existingLease.utilitiesIncluded,
@@ -1054,6 +1078,23 @@ export class LeaseRenewalService {
         }
       }
 
+      const requestedFrequency = (renewalData.fees as Partial<ILeaseFees> | undefined)
+        ?.paymentFrequency;
+      // Same market rule as the draft: yearly rent only where it's offered (MARKET_RULES)
+      assertAnnualRentAvailable(
+        requestedFrequency,
+        renewal.property?.address as any,
+        renewal.fees?.paymentFrequency
+      );
+      if (renewalData.duration || requestedFrequency) {
+        validateAnnualLeaseTerm({
+          paymentFrequency: requestedFrequency ?? renewal.fees?.paymentFrequency,
+          type: renewal.type,
+          startDate: renewalData.duration?.startDate ?? renewal.duration?.startDate,
+          endDate: renewalData.duration?.endDate ?? renewal.duration?.endDate,
+        });
+      }
+
       if (renewalData.fees?.rentAmount !== undefined && renewalData.fees.rentAmount < 0) {
         throw new BadRequestError({ message: 'Monthly rent cannot be negative' });
       }
@@ -1067,7 +1108,9 @@ export class LeaseRenewalService {
 
       // Money input is in major units; set per-field so a partial edit keeps the other fees
       if (fees) {
-        for (const [field, value] of Object.entries(MoneyUtils.parseMoneyInput(fees))) {
+        const parsedFees = MoneyUtils.parseMoneyInput(fees);
+        applyRentFrequencyRules(parsedFees, { fees: renewal.fees, status: renewal.status });
+        for (const [field, value] of Object.entries(parsedFees)) {
           updateData[`fees.${field}`] = value;
         }
       }

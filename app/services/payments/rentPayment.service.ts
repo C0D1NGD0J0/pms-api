@@ -29,6 +29,7 @@ import {
   IPaymentDocument,
   IPaymentFormData,
   IProfileWithUser,
+  IPaymentPeriod,
   ILeaseDocument,
   PaymentSource,
   PaymentMethod,
@@ -37,6 +38,12 @@ import {
 
 import { PaymentCronService } from './paymentCron.service';
 import { PaymentWebhookService } from './paymentWebhook.service';
+import {
+  annualYearIndexForPeriod,
+  buildAnnualRentLineItems,
+  annualRentPeriod,
+  isAnnualLease,
+} from './annualRent';
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -405,6 +412,20 @@ export class RentPaymentService {
       //   2. Existing record is active (PENDING/OVERDUE/PAID) → reject with a clear message
       const effectivePaymentType =
         data.paymentType === 'late_fee' ? PaymentRecordType.LATE_FEE : PaymentRecordType.RENT;
+
+      // Annual leases are billed once per lease-year, on the start-date anniversary
+      if (effectivePaymentType === PaymentRecordType.RENT && isAnnualLease(lease)) {
+        const yearIndex = data.period
+          ? annualYearIndexForPeriod(lease.duration.startDate, data.period)
+          : null;
+        if (yearIndex === null) {
+          throw new BadRequestError({
+            message:
+              'This lease is paid yearly — choose the lease-year (the start-date anniversary month) to bill.',
+          });
+        }
+        data.period = annualRentPeriod(lease.duration.startDate, yearIndex);
+      }
 
       if (data.period) {
         const existingForPeriod = await this.paymentDAO.findFirst({
@@ -1430,7 +1451,7 @@ export class RentPaymentService {
   /** True when the billed period (or, without one, the due date) is the lease's first month. */
   private static isLeaseFirstMonth(
     lease: ILeaseDocument,
-    billing: { period?: { month: number; year: number }; dueDate?: Date | string }
+    billing: { period?: IPaymentPeriod; dueDate?: Date | string }
   ): boolean {
     const start = dayjs(lease.duration.startDate);
     const billedMonth =
@@ -1448,8 +1469,16 @@ export class RentPaymentService {
    */
   private buildRentLineItems(
     lease: ILeaseDocument,
-    billing: { period?: { month: number; year: number }; dueDate?: Date | string }
+    billing: { period?: IPaymentPeriod; dueDate?: Date | string }
   ): { description: string; amountInCents: number }[] {
+    // Annual leases bill the whole lease-year; there is no first-month pro-ration
+    if (isAnnualLease(lease)) {
+      const yearIndex = billing.period
+        ? annualYearIndexForPeriod(lease.duration.startDate, billing.period)
+        : null;
+      return buildAnnualRentLineItems(lease, yearIndex ?? 0);
+    }
+
     const { baseRent, petMonthlyFee, managementFee } = FinancialCalculator.leaseMonthlyFees(lease);
     return this.buildLineItemsFromFees(
       { monthly: { rent: baseRent, petFee: petMonthlyFee } },
@@ -1529,7 +1558,10 @@ export class RentPaymentService {
       if (!lease) return;
 
       const startDate = dayjs(lease.duration.startDate);
-      const period = { month: startDate.month() + 1, year: startDate.year() };
+      // Annual leases: the first record is the whole first lease-year
+      const period = isAnnualLease(lease)
+        ? annualRentPeriod(lease.duration.startDate, 0)
+        : { month: startDate.month() + 1, year: startDate.year() };
       // A renewal carries the original deposit forward — only a new tenancy is invoiced for it.
       const invoiceDeposit = !lease.previousLeaseId;
 
@@ -1575,7 +1607,7 @@ export class RentPaymentService {
    */
   private async createAutoDebitFirstMonth(
     lease: ILeaseDocument,
-    opts: { tenantId: string; period: { month: number; year: number }; invoiceDeposit: boolean }
+    opts: { tenantId: string; period: IPaymentPeriod; invoiceDeposit: boolean }
   ): Promise<void> {
     const dueDate = dayjs(lease.duration.startDate).toDate();
     try {
@@ -1688,6 +1720,8 @@ export class RentPaymentService {
           dueDate: opts.dueDate instanceof Date ? opts.dueDate.toISOString() : opts.dueDate,
           description: opts.description || '',
           isAutoDebit: opts.lease.fees?.acceptedPaymentMethod === 'auto-debit',
+          // e.g. the landlord's bank details for a lease paid by bank transfer
+          paymentInstructions: opts.lease.fees?.paymentInstructions || '',
           paymentUrl: `${envVariables.FRONTEND.URL}/tenants/${opts.cuid}/${profile?.user?.uid}/payments`,
         },
       });
@@ -1703,6 +1737,7 @@ export class RentPaymentService {
    */
   static mapLeasePaymentMethod(acceptedPaymentMethod: string | undefined): PaymentMethod {
     switch (acceptedPaymentMethod) {
+      case 'bank-transfer':
       case 'e-transfer':
         return PaymentMethod.BANK_TRANSFER;
       case 'check':

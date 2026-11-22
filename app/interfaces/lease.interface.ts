@@ -278,6 +278,23 @@ export interface IRenewalMetadata {
   canRenew: boolean;
 }
 
+export interface ILeaseFees {
+  acceptedPaymentMethod?: PaymentMethodType;
+  paymentFrequency?: RentPaymentFrequency; // missing = monthly
+  // Shown to the tenant for offline payments (e.g. the landlord's bank details for a wire)
+  paymentInstructions?: string;
+  lateFeePercentage?: number;
+  // Annual leases: the amount billed once per lease-year. rentAmount is then annual / 12.
+  annualRentAmount?: number;
+  lateFeeType?: LateFeeType;
+  securityDeposit: number;
+  lateFeeAmount?: number;
+  lateFeeDays?: number;
+  rentAmount: number; // always the monthly amount
+  rentDueDay: number; // 1-31; annual leases are due on the start-date anniversary instead
+  currency: string;
+}
+
 /**
  * Lease preview request data from frontend
  * Used to generate lease document preview before actual lease creation
@@ -645,18 +662,6 @@ export interface ILeaseTimeline {
   endDate: Date;
 }
 
-export interface ILeaseFees {
-  acceptedPaymentMethod?: PaymentMethodType;
-  lateFeePercentage?: number;
-  lateFeeType?: LateFeeType;
-  securityDeposit: number;
-  lateFeeAmount?: number;
-  lateFeeDays?: number;
-  rentAmount: number;
-  rentDueDay: number; // 1-31
-  currency: string;
-}
-
 /**
  * Offboarding Status (derived at query time — not persisted)
  */
@@ -913,6 +918,8 @@ export interface ICoTenant {
   name: string;
 }
 
+export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check' | 'bank-transfer';
+
 /** A signer recorded by hand when a lease is activated manually */
 export interface IManualSigner {
   role: SignerRole;
@@ -930,10 +937,10 @@ export type SignerRole = 'tenant' | 'co_tenant' | 'landlord' | 'property_manager
 
 export type LeaseApprovalStatus = 'approved' | 'rejected' | 'pending' | 'draft';
 
-export type PaymentMethodType = 'auto-debit' | 'cash' | 'e-transfer' | 'check';
-
 export type LeaseDocumentType = 'lease_agreement' | 'signed_lease' | 'other';
 
 export type VacateRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export type RentPaymentFrequency = 'monthly' | 'annual';
 
 export type LateFeeType = 'fixed' | 'percentage';

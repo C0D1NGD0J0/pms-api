@@ -2,8 +2,8 @@ import { Document, Types } from 'mongoose';
 
 import { IPropertyDocument } from './property.interface';
 import { IPropertyUnitDocument } from './propertyUnit.interface';
-import { ILeaseDocument, ILeaseProperty } from './lease.interface';
 import { IProfileDocument, IProfileWithUser } from './profile.interface';
+import { RentPaymentFrequency, ILeaseDocument, ILeaseProperty } from './lease.interface';
 
 export enum PaymentRecordStatus {
   PENDING_REFUND = 'pending_refund', // deposit approved for refund, awaiting PM/admin release (when requireDepositRefundApproval is enabled)
@@ -235,6 +235,13 @@ export interface IVendorEarningItem {
   paidAt?: Date;
 }
 
+export interface IPaymentPeriod {
+  // Annual leases bill one period per lease-year, keyed by its anniversary month. Missing = monthly.
+  frequency?: RentPaymentFrequency;
+  month: number;
+  year: number;
+}
+
 /**
  * Fully populated payment: tenant includes the populated User doc,
  * lease includes the populated Property and PropertyUnit docs.
@@ -267,8 +274,3 @@ export interface ILeaseDocumentPopulated extends Omit<ILeaseDocument, 'property'
 }
 
 export type PaymentSource = 'cron' | 'pm_initiated' | 'staff_initiated';
-
-export interface IPaymentPeriod {
-  month: number;
-  year: number;
-}

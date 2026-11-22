@@ -23,7 +23,14 @@ export const LeaseTypeEnum = z.enum(['fixed_term', 'month_to_month']);
 
 export const SigningMethodEnum = z.enum(['electronic', 'manual', 'pending']);
 
-export const PaymentMethodEnum = z.enum(['auto-debit', 'cash', 'e-transfer', 'check']);
+export const PaymentMethodEnum = z.enum([
+  'auto-debit',
+  'cash',
+  'e-transfer',
+  'check',
+  'bank-transfer',
+]);
+export const RentPaymentFrequencyEnum = z.enum(['monthly', 'annual']);
 
 export const UtilityEnum = z.enum([
   'water',
@@ -71,8 +78,18 @@ const LeaseOptionFlagsSchema = z.object({
 });
 
 // Nested Object Schemas
+// Annual leases also send annualRentAmount; the service then sets rentAmount to annual / 12
+// and applies the annual rules (see applyRentFrequencyRules in leaseHelpers).
 export const LeaseFeesSchema = z.object({
   rentAmount: z.coerce.number().positive('Monthly rent must be a positive number'),
+  paymentFrequency: RentPaymentFrequencyEnum.optional(),
+  // 0 is allowed here (monthly forms send it); annual leases are checked by the service
+  annualRentAmount: z.coerce.number().min(0, 'Annual rent cannot be negative').optional(),
+  paymentInstructions: z
+    .string()
+    .trim()
+    .max(1000, 'Payment instructions cannot exceed 1000 characters')
+    .optional(),
   currency: z.string().length(3, 'Currency must be a 3-letter code').default('USD'),
   rentDueDay: z.coerce.number().int().min(1, 'Rent due day must be between 1-31').max(31),
   securityDeposit: z.coerce.number().min(0, 'Security deposit must be non-negative'),

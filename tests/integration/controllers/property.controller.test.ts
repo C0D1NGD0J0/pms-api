@@ -693,6 +693,36 @@ describe('PropertyController Integration Tests', () => {
       expect(response.body.data.items.length).toBeGreaterThan(0);
       expect(response.body.data.metadata).toBeDefined();
     });
+
+    it('offers yearly rent only for properties in a market that allows it (Nigeria)', async () => {
+      // Houses: a multi-unit property with no units is left out of the leaseable list
+      await createTestProperty(testClient.cuid, testClient._id, {
+        name: 'Lagos House',
+        propertyType: 'house',
+      });
+      await Property.updateMany(
+        { cuid: testClient.cuid },
+        { status: 'available', approvalStatus: PropertyApprovalStatusEnum.APPROVED }
+      );
+      await Property.updateOne(
+        { cuid: testClient.cuid, name: 'Lagos House' },
+        { 'address.country': 'Nigeria' }
+      );
+      await Property.updateOne(
+        { cuid: testClient.cuid, name: 'Available Property 2' },
+        { 'address.country': 'Canada' }
+      );
+
+      const response = await request(app)
+        .get(`/api/v1/properties/${testClient.cuid}/leaseable`)
+        .expect(200);
+
+      const byName = Object.fromEntries(
+        response.body.data.items.map((item: any) => [item.name, item.annualRentAllowed])
+      );
+      expect(byName['Lagos House']).toBe(true);
+      expect(byName['Available Property 2']).toBe(false);
+    });
   });
 
   describe('DELETE /api/v1/properties/:cuid/:pid', () => {

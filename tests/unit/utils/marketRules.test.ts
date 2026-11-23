@@ -31,4 +31,15 @@ describe('marketRules', () => {
     expect(allowsAnnualRent('12 Admiralty Way, Lekki, Lagos, Nigeria')).toBe(true);
     expect(allowsAnnualRent('100 King St W, Toronto, ON, Canada')).toBe(false);
   });
+
+  it('reads a Nigerian address that ends with the country, as autocomplete gives it', () => {
+    expect(allowsAnnualRent({ fullAddress: 'Victoria Island, Lagos, Nigeria' })).toBe(true);
+    expect(allowsAnnualRent({ fullAddress: '15 Admiralty Way, Lekki, Lagos, NG' })).toBe(true);
+  });
+
+  it('fails safe to monthly when an address names no country it can resolve', () => {
+    // Properties get the country from address autocomplete or CSV geocoding, so this is rare;
+    // when it happens yearly rent is simply not offered
+    expect(allowsAnnualRent({ fullAddress: '123 Victoria Island, Lagos' })).toBe(false);
+  });
 });

@@ -306,6 +306,20 @@ describe('PaymentCronService — rent invoice crons', () => {
     expect(paymentDAO.insert).not.toHaveBeenCalled();
   });
 
+  it('skips, rather than bills, an annual lease for a date that is not its anniversary', async () => {
+    const { service, paymentDAO } = makeService();
+    const lease = makeLease({
+      duration: { startDate: new Date('2026-03-15'), endDate: new Date('2028-03-14') },
+      fees: annualFees('bank-transfer'),
+    });
+
+    // October is not the March anniversary
+    const queued = await service.queueRentForPeriod(lease, dayjs('2026-10-15'), new Map(), 'Test');
+
+    expect(queued).toBe(false);
+    expect(paymentDAO.insert).not.toHaveBeenCalled();
+  });
+
   it('safety net: tracks a bank-transfer annual lease once and never sends it for charging', async () => {
     jest.useFakeTimers({ now: new Date(2026, 9, 7, 5) });
     const { service, leaseDAO, paymentDAO, paymentQueue } = makeService();

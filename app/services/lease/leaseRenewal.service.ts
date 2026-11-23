@@ -55,6 +55,7 @@ import {
   applyRentFrequencyRules,
   validateAnnualLeaseTerm,
   assertPropertyLeasable,
+  getLeaseMarketAddress,
   createSystemContext,
   findActiveLeasePDF,
   queueLeasePdf,
@@ -242,7 +243,9 @@ export class LeaseRenewalService {
             ...renewalFormData.property,
             managedBy: uidsByUserId.get(String(lease.property.managedBy)) ?? '',
             // Whether rent can be billed yearly in the property's market (MARKET_RULES)
-            annualRentAllowed: allowsAnnualRent(lease.property?.address as any),
+            annualRentAllowed: allowsAnnualRent(
+              await getLeaseMarketAddress(this.propertyDAO, lease)
+            ),
           },
           tenantInfo: { uid: uidsByUserId.get(String(lease.tenantId)) ?? '' },
           ...(guideline && {
@@ -436,7 +439,7 @@ export class LeaseRenewalService {
       applyRentFrequencyRules(renewalFees);
       assertAnnualRentAvailable(
         renewalFees.paymentFrequency,
-        existingLease.property?.address as any,
+        await getLeaseMarketAddress(this.propertyDAO, existingLease),
         existingLease.fees?.paymentFrequency
       );
       // Dates someone entered; the cron's default renewal dates are left as they are
@@ -1083,7 +1086,7 @@ export class LeaseRenewalService {
       // Same market rule as the draft: yearly rent only where it's offered (MARKET_RULES)
       assertAnnualRentAvailable(
         requestedFrequency,
-        renewal.property?.address as any,
+        await getLeaseMarketAddress(this.propertyDAO, renewal),
         renewal.fees?.paymentFrequency
       );
       if (renewalData.duration || requestedFrequency) {

@@ -18,6 +18,7 @@ import {
   validateAnnualLeaseTerm,
   applyRentFrequencyRules,
   rejectRestrictedFields,
+  getLeaseMarketAddress,
   buildManualSignatures,
   filterDocumentsByRole,
   validateAllowedFields,
@@ -663,5 +664,37 @@ describe('assertAnnualRentAvailable', () => {
 
   it('ignores monthly rent', () => {
     expect(() => assertAnnualRentAvailable('monthly', canada)).not.toThrow();
+  });
+});
+
+describe('getLeaseMarketAddress', () => {
+  const propertyId = new Types.ObjectId();
+
+  it("uses the property record's address, which has a country, over the lease's address text", async () => {
+    const propertyDAO = {
+      findFirst: jest.fn().mockResolvedValue({ address: { country: 'Nigeria' } }),
+    } as any;
+
+    const address = await getLeaseMarketAddress(propertyDAO, {
+      cuid: 'C1',
+      property: { id: propertyId, address: '123 Victoria Island, Lagos' },
+    } as any);
+
+    expect(address).toEqual({ country: 'Nigeria' });
+    expect(propertyDAO.findFirst).toHaveBeenCalledWith(
+      { _id: propertyId, cuid: 'C1' },
+      { select: 'address' }
+    );
+  });
+
+  it('falls back to the lease address text when the property is gone', async () => {
+    const propertyDAO = { findFirst: jest.fn().mockResolvedValue(null) } as any;
+
+    const address = await getLeaseMarketAddress(propertyDAO, {
+      cuid: 'C1',
+      property: { id: propertyId, address: '12 Admiralty Way, Lagos, Nigeria' },
+    } as any);
+
+    expect(address).toBe('12 Admiralty Way, Lagos, Nigeria');
   });
 });

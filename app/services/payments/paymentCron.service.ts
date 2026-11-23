@@ -541,6 +541,9 @@ export class PaymentCronService implements ICronProvider {
       year: dueDayjs.year(),
       ...(annual && { frequency: 'annual' as const }),
     };
+    // Looked up by month/year only, on purpose: a lease bills either monthly or yearly (fixed
+    // once active), so frequency never needs to tell two records apart — the same key the
+    // payments unique index uses
     const existing = await this.paymentDAO.findByPeriod(
       lease.cuid,
       lease._id.toString(),
@@ -586,7 +589,16 @@ export class PaymentCronService implements ICronProvider {
     let baseAmount: number;
     let lineItems: { description: string; amountInCents: number }[] | undefined;
     if (annual) {
-      const yearIndex = annualYearIndexForPeriod(lease.duration.startDate, period) ?? 0;
+      // The cron builds the period from the anniversary, so this shouldn't miss; if it does,
+      // skip rather than bill the wrong lease-year
+      const yearIndex = annualYearIndexForPeriod(lease.duration.startDate, period);
+      if (yearIndex === null) {
+        this.log.warn(
+          { leaseId: lease._id, period },
+          `${context} annual rent skipped: period is not a lease-year anniversary`
+        );
+        return false;
+      }
       lineItems = buildAnnualRentLineItems(lease, yearIndex);
       baseAmount = lineItems.reduce((sum, item) => sum + item.amountInCents, 0);
     } else {
@@ -680,6 +692,8 @@ export class PaymentCronService implements ICronProvider {
    * Adds the lease's late fee to past-due rent once it is late enough. Checked on every run —
    * not only the run that first marks the payment overdue — because the lease's late-fee
    * threshold (lateFeeDays, default 5) is usually reached days after the due date.
+   * Applies to offline leases too (cash, cheque, bank transfer): the fee is recorded on the
+   * charge so the PM and tenant see what's owed, but nothing is ever collected automatically.
    */
   private async addDueLateFees(
     payments: IPaymentDocument[],

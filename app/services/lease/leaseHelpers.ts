@@ -234,6 +234,30 @@ export const applyRentFrequencyRules = (
 };
 
 /**
+ * The address to check market rules against for an existing lease: the property's own address
+ * record, which has a country field. The lease only keeps the address as text, which may not
+ * name the country (e.g. "123 Victoria Island, Lagos"). Falls back to that text if the
+ * property can't be found.
+ */
+export const getLeaseMarketAddress = async (
+  propertyDAO: PropertyDAO,
+  lease: Pick<ILeaseDocument, 'property' | 'cuid'>
+): Promise<Parameters<typeof allowsAnnualRent>[0]> => {
+  const propertyRef = (lease.property as any)?.id;
+  // Already loaded (populated): use its address directly
+  if (propertyRef?.address) return propertyRef.address;
+  const propertyId = propertyRef?._id ?? propertyRef;
+  if (propertyId && Types.ObjectId.isValid(String(propertyId))) {
+    const property = await propertyDAO.findFirst(
+      { _id: new Types.ObjectId(String(propertyId)), cuid: lease.cuid },
+      { select: 'address' }
+    );
+    if (property?.address) return property.address as any;
+  }
+  return lease.property?.address as any;
+};
+
+/**
  * Rent can only be switched to yearly where that's the norm (MARKET_RULES). Leases already
  * paid yearly keep working wherever they are.
  */

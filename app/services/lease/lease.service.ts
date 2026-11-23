@@ -108,6 +108,7 @@ import {
   validateAnnualLeaseTerm,
   rejectRestrictedFields,
   assertPropertyLeasable,
+  getLeaseMarketAddress,
   buildManualSignatures,
   constructActivityFeed,
   filterDocumentsByRole,
@@ -909,7 +910,7 @@ export class LeaseService {
         // The lease keeps its property's address, so no property lookup is needed
         assertAnnualRentAvailable(
           (cleanUpdateData.fees as Partial<ILeaseFees>).paymentFrequency,
-          lease.property?.address as any,
+          await getLeaseMarketAddress(this.propertyDAO, lease),
           lease.fees?.paymentFrequency
         );
       }

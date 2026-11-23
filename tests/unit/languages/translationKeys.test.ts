@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
+import i18next from 'i18next';
 import en from '@shared/languages/locales/en.json';
 import fr from '@shared/languages/locales/fr.json';
+import { I18nextConfig } from '@shared/languages/i18next.config';
 
 // Every fixed key passed to t('…') in app code must exist, or users see the raw key
 // (e.g. "lease.errors.rentMustBePositive") instead of a message. en-nig falls back to en.
@@ -48,5 +50,13 @@ describe('translation keys used in app code', () => {
       .map(([key, file]) => `${key} (${file})`);
 
     expect(missing).toEqual([]);
+  });
+
+  it('falls back to English for en-nig, so its keys never show raw', async () => {
+    await I18nextConfig.getInstance().initialize();
+    const nigerianEnglish = i18next.getFixedT('en-nig');
+
+    // A key that only exists in en.json
+    expect(nigerianEnglish('lease.errors.rentMustBePositive')).toBe('Rent must be greater than 0');
   });
 });

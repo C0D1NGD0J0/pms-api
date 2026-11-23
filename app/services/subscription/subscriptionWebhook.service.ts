@@ -227,16 +227,17 @@ export class SubscriptionWebhookService {
     // Only while that paid period is still running — a replayed old invoice proves nothing about
     // the current period (and would be expired again by the next cron run).
     const paidPeriodIsCurrent = !effectiveEndDate || effectiveEndDate > new Date();
-    if (subscription.status !== ISubscriptionStatus.ACTIVE && !paidPeriodIsCurrent) {
-      this.log.warn(
-        { stripeSubscriptionId, invoiceId: rawInvoice.id, endDate: effectiveEndDate },
-        'invoice.paid: paid period already over — not reactivating'
-      );
-    }
-    if (subscription.status !== ISubscriptionStatus.ACTIVE && paidPeriodIsCurrent) {
-      updateData.status = ISubscriptionStatus.ACTIVE;
-      if (!subscription.billing?.subscriberId) {
-        updateData['billing.subscriberId'] = stripeSubscriptionId;
+    if (subscription.status !== ISubscriptionStatus.ACTIVE) {
+      if (paidPeriodIsCurrent) {
+        updateData.status = ISubscriptionStatus.ACTIVE;
+        if (!subscription.billing?.subscriberId) {
+          updateData['billing.subscriberId'] = stripeSubscriptionId;
+        }
+      } else {
+        this.log.warn(
+          { stripeSubscriptionId, invoiceId: rawInvoice.id, endDate: effectiveEndDate },
+          'invoice.paid: paid period already over — not reactivating'
+        );
       }
     }
 

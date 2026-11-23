@@ -303,7 +303,9 @@ describe('SubscriptionService - Webhook Handlers', () => {
         // On a renewal invoice this is when the old period ended — about now
         period_end: invoiceCreatedAt,
         lines: {
-          data: [{ period: { start: invoiceCreatedAt, end: newPeriodEnd.getTime() / 1000 } }],
+          data: [
+            { period: { start: invoiceCreatedAt, end: Math.floor(newPeriodEnd.getTime() / 1000) } },
+          ],
         },
       });
 

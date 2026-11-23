@@ -49,12 +49,6 @@
       }
     }
   },
-  "notification": {
-    "success": {
-      "all_marked_as_read": "notification.success.all_marked_as_read",
-      "marked_as_read": "notification.success.marked_as_read"
-    }
-  },
   "tenant": {
     "success": {
       "profileUpdated": "tenant.success.profileUpdated"
@@ -68,14 +62,6 @@
   "auth": {
     "success": {
       "otpSent": "auth.success.otpSent"
-    },
-    "errors": {
-      "forbidden": "auth.errors.forbidden"
-    }
-  },
-  "profile": {
-    "success": {
-      "employeeInfoUpdated": "profile.success.employeeInfoUpdated"
     }
   }
 }

@@ -212,18 +212,28 @@ export class SubscriptionWebhookService {
 
     const updateData: Record<string, any> = {};
 
-    // Advance endDate when Stripe provides it (renewal cycle primary source; also present on first invoice)
-    if (rawInvoice.period_end) {
-      const newEndDate = new Date(rawInvoice.period_end * 1000);
-      // Only overwrite if newer than what we have, to avoid racing customer.subscription.updated
-      if (!subscription.endDate || subscription.endDate < newEndDate) {
-        updateData.endDate = newEndDate;
-      }
+    // The end of the period this invoice paid for. Not invoice.period_end: on a renewal invoice
+    // that's the end of the *previous* period (about when the invoice was created), so saving it
+    // left the subscription "ending" right away and the expiry cron switched it off again.
+    const paidPeriodEnd = this.getPaidPeriodEnd(rawInvoice);
+    // Only overwrite if newer than what we have, to avoid racing customer.subscription.updated
+    if (paidPeriodEnd && (!subscription.endDate || subscription.endDate < paidPeriodEnd)) {
+      updateData.endDate = paidPeriodEnd;
     }
+    const effectiveEndDate: Date | undefined = updateData.endDate ?? subscription.endDate;
 
     // Resilience: a successful payment is proof Stripe considers the subscription active.
     // Activate locally if customer.subscription.updated was missed (e.g. Railway sandbox sleep).
-    if (subscription.status !== ISubscriptionStatus.ACTIVE) {
+    // Only while that paid period is still running — a replayed old invoice proves nothing about
+    // the current period (and would be expired again by the next cron run).
+    const paidPeriodIsCurrent = !effectiveEndDate || effectiveEndDate > new Date();
+    if (subscription.status !== ISubscriptionStatus.ACTIVE && !paidPeriodIsCurrent) {
+      this.log.warn(
+        { stripeSubscriptionId, invoiceId: rawInvoice.id, endDate: effectiveEndDate },
+        'invoice.paid: paid period already over — not reactivating'
+      );
+    }
+    if (subscription.status !== ISubscriptionStatus.ACTIVE && paidPeriodIsCurrent) {
       updateData.status = ISubscriptionStatus.ACTIVE;
       if (!subscription.billing?.subscriberId) {
         updateData['billing.subscriberId'] = stripeSubscriptionId;
@@ -938,5 +948,18 @@ export class SubscriptionWebhookService {
     const rawSub = rawInvoice.subscription ?? rawInvoice.parent?.subscription_details?.subscription;
     if (!rawSub) return undefined;
     return typeof rawSub === 'string' ? rawSub : rawSub?.id;
+  }
+
+  /**
+   * End of the service period an invoice paid for: the latest `period.end` on its line items
+   * (e.g. Nov 23 → Dec 23 for a monthly renewal). Falls back to `period_end` only when the
+   * payload carries no lines.
+   */
+  private getPaidPeriodEnd(rawInvoice: any): Date | undefined {
+    const lineEnds: number[] = (rawInvoice.lines?.data ?? [])
+      .map((line: any) => line?.period?.end)
+      .filter((end: unknown): end is number => typeof end === 'number');
+    const end = lineEnds.length ? Math.max(...lineEnds) : rawInvoice.period_end;
+    return end ? new Date(end * 1000) : undefined;
   }
 }

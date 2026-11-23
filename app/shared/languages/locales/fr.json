@@ -45,7 +45,9 @@
       "noPaymentMethodOnFile": "Aucun mode de paiement enregistré.",
       "mustKeepOnePaymentMethod": "Vous devez conserver au moins un mode de paiement enregistré.",
       "noPaymentMethodForManager": "Aucun mode de paiement trouvé pour ce gestionnaire immobilier.",
-      "tenantOnlyFirstPayment": "Seuls les locataires peuvent effectuer un premier paiement."
+      "tenantOnlyFirstPayment": "Seuls les locataires peuvent effectuer un premier paiement.",
+      "insufficientRole": "Votre rôle ne permet pas cette action",
+      "forbidden": "Vous n'avez pas l'autorisation d'effectuer cette action"
     },
     "success": {
       "tokenRefreshed": "Jeton rafraîchi avec succès",
@@ -58,7 +60,9 @@
       "passwordResetEmailSent": "Email de réinitialisation de mot de passe envoyé à {{email}}",
       "otpRequested": "Si la connexion par SMS est configurée pour ce compte, nous avons envoyé un code de vérification à son téléphone.",
       "logoutSuccessful": "Déconnexion réussie.",
-      "onboardingCompleted": "Intégration complétée avec succès."
+      "onboardingCompleted": "Intégration complétée avec succès.",
+      "loginTypeResolved": "Veuillez saisir votre mot de passe.",
+      "activationLinkSent": "Le lien d’activation a été envoyé à {{email}}."
     }
   },
   "connection": {
@@ -110,7 +114,11 @@
       "verificationFailed": "[FR] Failed to verify account.",
       "noTenantFeaturesProvided": "[FR] At least one tenant feature must be provided.",
       "immutableFieldLocked": "Ce champ est verrouillé et ne peut pas être modifié. Veuillez contacter le support si une mise à jour est nécessaire.",
-      "restrictedFieldsRequireSuperAdmin": "Seul un super-administrateur peut modifier : {{fields}}."
+      "restrictedFieldsRequireSuperAdmin": "Seul un super-administrateur peut modifier : {{fields}}.",
+      "fetchFailed": "Impossible de charger les informations du compte",
+      "missingParameters": "Des informations de compte obligatoires sont manquantes",
+      "cannotArchiveSelf": "Vous ne pouvez pas archiver votre propre compte",
+      "userNotFoundInClient": "Utilisateur introuvable dans ce compte"
     },
     "success": {
       "roleAssigned": "Rôle {{role}} assigné avec succès",
@@ -118,7 +126,19 @@
       "departmentAssigned": "[FR] Department '{{department}}' assigned successfully"
     },
     "logging": {
-      "validationCompleted": "Validation client terminée"
+      "validationCompleted": "Validation client terminée",
+      "validationFailed": "La mise à jour du compte n’a pas passé la validation",
+      "updateFailed": "Échec de la mise à jour des informations du compte",
+      "missingParameters": "Paramètres obligatoires manquants dans la demande de compte",
+      "detailsNotFound": "Informations du compte introuvables",
+      "roleAssigned": "Rôle attribué à l’utilisateur",
+      "roleRemoved": "Rôle retiré de l’utilisateur",
+      "userDisconnected": "Utilisateur déconnecté du compte",
+      "userReconnected": "Utilisateur reconnecté au compte"
+    },
+    "validation": {
+      "invalidEmailFormat": "Saisissez une adresse courriel valide",
+      "displayNameEmpty": "Le nom affiché ne peut pas être vide"
     }
   },
   "property": {
@@ -126,7 +146,10 @@
       "cleaningUp": "Nettoyage des ressources de propriété et des écouteurs d'événements",
       "eventListenersRemoved": "Écouteurs d'événements de propriété supprimés avec succès",
       "ignoringUploadEvent": "Ignorer l'événement de téléchargement pour une ressource non-propriété",
-      "eventListenersInitialized": "Écouteurs d'événements de propriété initialisés"
+      "eventListenersInitialized": "Écouteurs d'événements de propriété initialisés",
+      "receivedUploadFailedEvent": "Événement d’échec de téléversement reçu",
+      "processedUploadFailedEvent": "Événement d’échec de téléversement traité",
+      "errorProcessingUploadFailed": "Erreur lors du traitement de l’échec de téléversement"
     },
     "errors": {
       "noCsvFileUploaded": "Aucun fichier CSV téléchargé",
@@ -151,7 +174,15 @@
       "csvValidationFailed": "Impossible de valider le csv pour ce compte.",
       "pendingChangesUpdated": "Ces modifications ont été changées après leur ouverture. Consultez la dernière version et réessayez.",
       "structuralFieldsLocked": "Impossible de modifier les champs structurels d'une propriété qui a ou a eu un bail",
-      "lockedByLeaseHistory": "Ce champ ne peut plus changer une fois que la propriété a eu un bail"
+      "lockedByLeaseHistory": "Ce champ ne peut plus changer une fois que la propriété a eu un bail",
+      "notApproved": "Cette propriété n'a pas encore été approuvée",
+      "inactive": "Cette propriété est inactive",
+      "noCsvFile": "Aucun fichier CSV n’a été fourni",
+      "noCsvUploaded": "Téléversez un fichier CSV pour continuer",
+      "unableToValidateCsv": "Impossible de valider le fichier CSV",
+      "fileTooLarge": "Le fichier est trop volumineux. La taille maximale est de 10 Mo",
+      "unknownError": "Une erreur s’est produite. Veuillez réessayer",
+      "notPropertyOwner": "Vous ne pouvez archiver que les propriétés que vous avez créées"
     },
     "success": {
       "csvImportStarted": "Tâche d'importation CSV démarrée",
@@ -184,7 +215,13 @@
       "patternInconsistency": "Incohérence de modèle détectée: {{recommendation}}",
       "unitNumberAlreadyExists": "Une unité avec le numéro '{{unitNumber}}' existe déjà pour cette propriété",
       "noPendingChanges": "Cette unité n'a aucune modification en attente à examiner",
-      "pendingChangesModified": "Les modifications en attente ont été mises à jour pendant votre examen. Rechargez l'unité et examinez-les à nouveau."
+      "pendingChangesModified": "Les modifications en attente ont été mises à jour pendant votre examen. Rechargez l'unité et examinez-les à nouveau.",
+      "unableToUpdate": "Impossible de mettre à jour le logement",
+      "requiredFieldsMissing": "Des champs obligatoires du logement sont manquants",
+      "noCsvUploaded": "Téléversez un fichier CSV pour continuer",
+      "fileTooLarge": "Le fichier est trop volumineux. La taille maximale est de 10 Mo",
+      "csvValidationFailed": "Le fichier CSV des logements n’a pas passé la validation",
+      "csvImportFailed": "Échec de l’importation des logements depuis le fichier CSV"
     },
     "success": {
       "unitCreationQueued": "Tâche de création d'unité mise en file d'attente avec succès",
@@ -193,7 +230,8 @@
       "csvValidated": "Fichier CSV des unités de propriété validé avec succès",
       "csvImported": "Unités de propriété importées avec succès depuis le fichier CSV",
       "changesApproved": "Modifications de l'unité approuvées et appliquées",
-      "changesRejected": "Modifications de l'unité refusées. L'unité conserve ses informations actuelles."
+      "changesRejected": "Modifications de l'unité refusées. L'unité conserve ses informations actuelles.",
+      "jobQueued": "Importation des logements lancée. Vous serez averti une fois terminée"
     }
   },
   "validation": {
@@ -449,7 +487,8 @@
       "pendingProcessed": "{{processed}} invitations sur {{total}} en attente traitées"
     },
     "info": {
-      "noPendingFound": "Aucune invitation en attente trouvée"
+      "noPendingFound": "Aucune invitation en attente trouvée",
+      "notFound": "Invitation introuvable"
     },
     "errors": {
       "notFound": "Invitation introuvable",
@@ -468,7 +507,14 @@
       "roleNotInvitable": "Le rôle {{role}} ne peut pas être attribué par invitation",
       "adminInviteRequiresAdmin": "Seuls les administrateurs peuvent inviter d'autres administrateurs",
       "unverifiedTenantLimit": "Les comptes non vérifiés sont limités à 5 invitations de locataires en attente. Vérifiez votre compte pour en inviter davantage.",
-      "seatLimitReached": "Limite de places atteinte. Votre forfait permet {{total}} places."
+      "seatLimitReached": "Limite de places atteinte. Votre forfait permet {{total}} places.",
+      "missingParams": "Des informations d’invitation obligatoires sont manquantes",
+      "canOnlyEditDraft": "Seules les invitations en brouillon peuvent être modifiées",
+      "updateFailed": "Échec de la mise à jour de l’invitation",
+      "cannotRevoke": "Cette invitation ne peut pas être révoquée",
+      "cannotDecline": "Cette invitation ne peut pas être refusée",
+      "declineFailed": "Échec du refus de l’invitation",
+      "reactivationFailed": "Échec de la réactivation de l’invitation"
     },
     "csv": {
       "noValidRows": "Aucune ligne valide trouvée dans le fichier CSV",
@@ -487,7 +533,13 @@
   },
   "profile": {
     "success": {
-      "roleInitialized": "Rôle utilisateur initialisé avec succès"
+      "roleInitialized": "Rôle utilisateur initialisé avec succès",
+      "employeeInfoUpdated": "Informations de l’employé mises à jour",
+      "vendorInfoUpdated": "Informations du fournisseur mises à jour",
+      "tenantInfoUpdated": "Informations du locataire mises à jour"
+    },
+    "errors": {
+      "invalidParameters": "Informations de profil non valides"
     }
   },
   "vendor": {
@@ -502,7 +554,8 @@
       "notConnectedToClient": "[FR] Vendor is not connected to this account.",
       "cannotChangeOwnStatus": "[FR] You cannot change your own active status.",
       "payoutAccountNotFound": "Compte de paiement introuvable.",
-      "notOwnPayoutAccount": "Les fournisseurs ne peuvent gérer que le compte de versement de leur propre organisation"
+      "notOwnPayoutAccount": "Les fournisseurs ne peuvent gérer que le compte de versement de leur propre organisation",
+      "notAssociatedWithClient": "Ce fournisseur n'est pas associé à votre compte"
     }
   },
   "tenant": {
@@ -511,7 +564,8 @@
       "profileUpdated": "Profil du locataire mis à jour avec succès"
     },
     "errors": {
-      "notFound": "Locataire introuvable"
+      "notFound": "Locataire introuvable",
+      "notTenant": "Cet utilisateur n'est pas un locataire"
     }
   },
   "user": {
@@ -593,7 +647,8 @@
       "recipientOptedOut": "[FR] Recipient has not opted in to SMS notifications.",
       "phoneNumberMismatch": "[FR] Please update your profile phone number before verifying.",
       "cooldownActive": "[FR] A verification code was recently sent. Please wait before requesting a new one.",
-      "invalidCode": "[FR] The verification code entered is incorrect. Please try again."
+      "invalidCode": "[FR] The verification code entered is incorrect. Please try again.",
+      "phoneNotVerified": "Vérifiez votre numéro de téléphone avant d’utiliser les SMS"
     },
     "success": {
       "otpSent": "[FR] Verification code sent successfully.",
@@ -623,11 +678,17 @@
       "annualLateFeeMustBeFixed": "Un bail payé une fois par an ne peut avoir que des frais de retard fixes",
       "annualRequiresFixedTerm": "Les baux payés à l'année doivent être à durée déterminée",
       "annualMinimumTerm": "Les baux payés à l'année durent au moins 12 mois — la date de fin doit être au moins un an après le début",
-      "annualRentNotAvailable": "Le loyer annuel n'est pas disponible pour les propriétés de ce pays"
+      "annualRentNotAvailable": "Le loyer annuel n'est pas disponible pour les propriétés de ce pays",
+      "endDateMustBeAfterStartDate": "La date de fin doit être postérieure à la date de début",
+      "moveInDateMustBeOnOrAfterStartDate": "La date d’emménagement ne peut pas précéder la date de début",
+      "rentMustBePositive": "Le loyer doit être supérieur à 0",
+      "depositCannotBeNegative": "Le dépôt de garantie ne peut pas être négatif",
+      "rentDueDayMustBeBetween1And31": "Le jour d’échéance du loyer doit être compris entre 1 et 31"
     },
     "warnings": {
       "rentGuidelineExceeded": "Le loyer proposé dépasse la ligne directrice de {{guidelinePercentage}} % ({{jurisdiction}}) pour {{year}} (maximum {{maxAllowedRent}}). Des exceptions prévues par la loi peuvent s’appliquer."
-    }
+    },
+    "updateSubmittedForApproval": "Modifications du bail soumises pour approbation"
   },
   "common": {
     "errors": {
@@ -642,7 +703,8 @@
       "alreadyInState": "{{resource}} est déjà {{state}}.",
       "tryAgainLater": "Un problème est survenu. Veuillez réessayer plus tard.",
       "invalidUserRole": "Rôle utilisateur invalide spécifié.",
-      "featureNotAvailable": "Cette fonctionnalité n'est pas disponible sur votre forfait actuel."
+      "featureNotAvailable": "Cette fonctionnalité n'est pas disponible sur votre forfait actuel.",
+      "forbidden": "Vous n'avez pas l'autorisation d'effectuer cette action"
     },
     "success": {
       "retrieved": "{{resource}} récupéré(e) avec succès.",
@@ -693,7 +755,8 @@
       "workOrderSubmitted": "[FR] Work order submitted successfully",
       "workOrderApproved": "[FR] Work order approved",
       "workOrderRejected": "[FR] Work order rejected",
-      "feedbackSubmitted": "[FR] Thank you for your feedback"
+      "feedbackSubmitted": "[FR] Thank you for your feedback",
+      "released": "Affectation libérée"
     }
   },
   "notifications": {
@@ -987,6 +1050,14 @@
   "report": {
     "errors": {
       "tooManyEmailRecipients": "Votre forfait autorise jusqu'à {{max}} destinataires de courriel"
+    }
+  },
+  "notification": {
+    "success": {
+      "marked_as_read": "Notification marquée comme lue",
+      "all_marked_as_read": "Toutes les notifications ont été marquées comme lues",
+      "archived": "Notification archivée",
+      "all_read_archived": "Toutes les notifications lues ont été archivées"
     }
   }
 }

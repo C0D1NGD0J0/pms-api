@@ -13,7 +13,7 @@ jest.mock('@utils/helpers', () => ({
 }));
 
 const WEBHOOK_LOCK_TTL = 60 * 30; // 30 min processing lock
-const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24 * 3; // 72 hours processed status
+const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24; // 24 hours processed status (non-production value)
 const ROUTE_TTL = 60 * 5; // 5 min (non-production value)
 
 /** Build a minimal mock Redis client */
@@ -127,6 +127,32 @@ describe('IdempotencyCache', () => {
 
       // Act — no error thrown means success
       await expect(cache.markWebhookProcessed('evt_overwrite')).resolves.toBeUndefined();
+    });
+
+    it("keeps processed events for 72 hours in production (Stripe's retry window)", async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        let ProductionCache: typeof IdempotencyCache;
+        jest.isolateModules(() => {
+          ProductionCache = jest.requireActual('@caching/idempotency.cache').IdempotencyCache;
+        });
+        const prodClient = buildMockClient();
+        prodClient.SETEX.mockReturnValue(Promise.resolve('OK'));
+        const prodCache = new ProductionCache!({
+          redisService: buildMockRedisService(prodClient) as any,
+        });
+
+        await prodCache.markWebhookProcessed('evt_prod');
+
+        expect(prodClient.SETEX).toHaveBeenCalledWith(
+          'idmp:wh:evt_prod',
+          60 * 60 * 24 * 3,
+          'processed'
+        );
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
     });
   });
 

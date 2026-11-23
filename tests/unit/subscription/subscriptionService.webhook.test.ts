@@ -1,3 +1,4 @@
+import dayjs from 'dayjs';
 import { Types } from 'mongoose';
 import { UserDAO } from '@dao/userDAO';
 import { ClientDAO } from '@dao/clientDAO';
@@ -261,11 +262,13 @@ describe('SubscriptionService - Webhook Handlers', () => {
         data: { payment_method_details: { card: { last4: '4444', brand: 'mastercard' } } },
       });
 
+      const newPeriodEnd = dayjs().add(1, 'month').startOf('second').toDate();
       await subscriptionService.handleInvoicePaid({
         id: 'in_renewal',
         subscription: 'sub_test123',
         billing_reason: 'subscription_cycle',
-        period_end: Math.floor(new Date('2026-06-01').getTime() / 1000),
+        period_end: Math.floor(Date.now() / 1000),
+        lines: { data: [{ period: { end: Math.floor(newPeriodEnd.getTime() / 1000) } }] },
       });
 
       expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
@@ -273,12 +276,64 @@ describe('SubscriptionService - Webhook Handlers', () => {
         {
           $set: expect.objectContaining({
             status: ISubscriptionStatus.ACTIVE,
-            endDate: expect.any(Date),
+            endDate: newPeriodEnd,
             'billing.cardLast4': '4444',
             'billing.cardBrand': 'mastercard',
           }),
         }
       );
+    });
+
+    it('uses the paid line period, not invoice.period_end (the previous period end), for endDate', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        status: ISubscriptionStatus.ACTIVE,
+        billing: { subscriberId: 'sub_test123' },
+        endDate: dayjs().subtract(1, 'hour').toDate(),
+      };
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+      mockSubscriptionDAO.update.mockResolvedValue(mockSubscription as any);
+
+      const invoiceCreatedAt = Math.floor(Date.now() / 1000);
+      const newPeriodEnd = dayjs().add(1, 'month').startOf('second').toDate();
+      await subscriptionService.handleInvoicePaid({
+        id: 'in_cycle',
+        subscription: 'sub_test123',
+        billing_reason: 'subscription_cycle',
+        // On a renewal invoice this is when the old period ended — about now
+        period_end: invoiceCreatedAt,
+        lines: {
+          data: [{ period: { start: invoiceCreatedAt, end: newPeriodEnd.getTime() / 1000 } }],
+        },
+      });
+
+      expect(mockSubscriptionDAO.update).toHaveBeenCalledWith(
+        { _id: mockSubscription._id },
+        { $set: expect.objectContaining({ endDate: newPeriodEnd }) }
+      );
+    });
+
+    it('does not reactivate an expired subscription when an old invoice is replayed', async () => {
+      const mockSubscription = {
+        _id: new Types.ObjectId(),
+        status: ISubscriptionStatus.INACTIVE,
+        billing: { subscriberId: 'sub_test123' },
+        endDate: dayjs().subtract(10, 'day').toDate(),
+      };
+      mockSubscriptionDAO.findFirst.mockResolvedValue(mockSubscription as any);
+
+      // An invoice for a period that already ended
+      await subscriptionService.handleInvoicePaid({
+        id: 'in_old',
+        subscription: 'sub_test123',
+        billing_reason: 'subscription_cycle',
+        lines: { data: [{ period: { end: dayjs().subtract(7, 'day').unix() } }] },
+      });
+
+      const statusUpdates = mockSubscriptionDAO.update.mock.calls.filter(
+        (call: any[]) => call[1]?.$set?.status
+      );
+      expect(statusUpdates).toHaveLength(0);
     });
 
     it('should skip charge fetch but still activate if no charge ID is provided', async () => {

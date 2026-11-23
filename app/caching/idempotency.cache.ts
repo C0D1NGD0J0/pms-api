@@ -4,7 +4,10 @@ import { RedisService } from '@database/index';
 import { BaseCache } from './base.cache';
 
 const WEBHOOK_PROCESSING_LOCK_TTL = 60 * 30; // 30 min — enough for one webhook job; expires if worker crashes
-const WEBHOOK_PROCESSED_TTL = 60 * 60 * 24 * 3; // 72 hours — covers Stripe's full retry window
+// In production: 72 h covers Stripe's full retry window.
+// Elsewhere: 24 h, so a resent test event can be processed again the next day.
+const WEBHOOK_PROCESSED_TTL =
+  process.env.NODE_ENV === 'production' ? 60 * 60 * 24 * 3 : 60 * 60 * 24;
 // In production: 24 h keeps the window wide enough to catch all client retries.
 // In development: 5 min so developers can re-test the same form action without manually clearing Redis.
 const ROUTE_TTL = process.env.NODE_ENV === 'production' ? 60 * 60 * 24 : 60 * 5;
@@ -43,7 +46,7 @@ export class IdempotencyCache extends BaseCache {
     return result === 'OK';
   }
 
-  /** Mark a webhook event as fully processed. Uses the full 72h TTL to cover Stripe's retry window. */
+  /** Mark a webhook event as fully processed (72 h in production — Stripe's retry window; 24 h elsewhere). */
   async markWebhookProcessed(eventId: string): Promise<void> {
     await this.setItem(`idmp:wh:${eventId}`, 'processed', WEBHOOK_PROCESSED_TTL);
   }

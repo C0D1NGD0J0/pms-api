@@ -38,8 +38,8 @@ type AddressInput =
   | undefined;
 
 /**
- * The ISO-2 country of a property address — the property's address record, or the address
- * text a lease keeps (`lease.property.address`).
+ * The ISO-2 country of a property address — the property's address record, or (as a last
+ * resort) the address text a lease keeps (`lease.property.address`).
  *
  * Lookup order, and why:
  * 1. `address.country` as a 2-letter code ("NG") — used as-is.
@@ -49,9 +49,12 @@ type AddressInput =
  *    Places-formatted addresses end with the country, so this resolves them; a bare
  *    "123 Victoria Island, Lagos" does not, and falls through to null (see marketRules.test.ts).
  *
- * Editing and renewing a lease read the lease's own address text rather than loading the
- * property again: it is required on every lease and already in hand. Creating a lease uses the
- * property it has loaded, whose separate country field is the more reliable source.
+ * Which address is checked: creating a lease uses the property it has already loaded. Editing
+ * and renewing use getLeaseMarketAddress (leaseHelpers.ts), which reads the PROPERTY's address
+ * record too — its separate country field is the reliable source, whereas the lease's own copy
+ * is plain text that may not name the country ("123 Victoria Island, Lagos"). The lease text is
+ * only the fallback when the property can't be found. Using the lease text alone was tried and
+ * rejected for that reason.
  */
 export const getPropertyCountryCode = (input?: AddressInput): string | null => {
   const address = typeof input === 'string' ? { fullAddress: input } : input;

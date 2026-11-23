@@ -47,7 +47,9 @@
       "noPaymentMethodOnFile": "No payment method on file.",
       "mustKeepOnePaymentMethod": "You must keep at least one payment method on file.",
       "noPaymentMethodForManager": "No payment method found for this property manager.",
-      "tenantOnlyFirstPayment": "Only tenants can initiate a first payment."
+      "tenantOnlyFirstPayment": "Only tenants can initiate a first payment.",
+      "insufficientRole": "Your role doesn't allow this action",
+      "forbidden": "You don't have permission to do this"
     },
     "success": {
       "tokenRefreshed": "Token refreshed successfully",
@@ -115,7 +117,11 @@
       "verificationFailed": "Failed to verify account.",
       "noTenantFeaturesProvided": "At least one tenant feature must be provided.",
       "immutableFieldLocked": "This field is locked and cannot be changed. Please contact support if an update is required.",
-      "restrictedFieldsRequireSuperAdmin": "Only a super-admin can change: {{fields}}."
+      "restrictedFieldsRequireSuperAdmin": "Only a super-admin can change: {{fields}}.",
+      "fetchFailed": "Couldn't load account details",
+      "missingParameters": "Required account details are missing",
+      "cannotArchiveSelf": "You can't archive your own account",
+      "userNotFoundInClient": "User not found in this account"
     },
     "success": {
       "roleAssigned": "Role {{role}} assigned successfully",
@@ -123,7 +129,19 @@
       "departmentAssigned": "Department '{{department}}' assigned successfully"
     },
     "logging": {
-      "validationCompleted": "Client validation completed"
+      "validationCompleted": "Client validation completed",
+      "validationFailed": "Account update failed validation",
+      "updateFailed": "Failed to update account details",
+      "missingParameters": "Account request is missing required parameters",
+      "detailsNotFound": "Account details not found",
+      "roleAssigned": "Role assigned to user",
+      "roleRemoved": "Role removed from user",
+      "userDisconnected": "User disconnected from account",
+      "userReconnected": "User reconnected to account"
+    },
+    "validation": {
+      "invalidEmailFormat": "Enter a valid email address",
+      "displayNameEmpty": "Display name can't be empty"
     }
   },
   "property": {
@@ -131,7 +149,10 @@
       "cleaningUp": "Cleaning up property resources and event listeners",
       "eventListenersRemoved": "Property event listeners removed successfully",
       "ignoringUploadEvent": "Ignoring upload event for non-property resource",
-      "eventListenersInitialized": "Property event listeners initialized"
+      "eventListenersInitialized": "Property event listeners initialized",
+      "receivedUploadFailedEvent": "Received an upload-failed event",
+      "processedUploadFailedEvent": "Processed the upload-failed event",
+      "errorProcessingUploadFailed": "Error while processing the upload-failed event"
     },
     "errors": {
       "noCsvFileUploaded": "No CSV file uploaded",
@@ -157,7 +178,14 @@
       "csvValidationFailed": "Unable to validate csv for this account.",
       "pendingChangesUpdated": "These changes were edited after you opened them. Review the latest version and try again.",
       "structuralFieldsLocked": "Cannot change structural fields on a property that has or has had a lease",
-      "lockedByLeaseHistory": "This can't change once the property has had a lease"
+      "lockedByLeaseHistory": "This can't change once the property has had a lease",
+      "notApproved": "This property hasn't been approved yet",
+      "inactive": "This property is inactive",
+      "noCsvFile": "No CSV file was provided",
+      "noCsvUploaded": "Upload a CSV file to continue",
+      "unableToValidateCsv": "Couldn't validate the CSV file",
+      "fileTooLarge": "The file is too large. The maximum size is 10 MB",
+      "unknownError": "Something went wrong. Please try again"
     },
     "success": {
       "csvImportStarted": "CSV import job started",
@@ -190,7 +218,13 @@
       "patternInconsistency": "Pattern inconsistency detected: {{recommendation}}",
       "unitNumberAlreadyExists": "A unit with number '{{unitNumber}}' already exists for this property",
       "noPendingChanges": "This unit has no pending changes to review",
-      "pendingChangesModified": "The pending changes were updated while you were reviewing them. Reload the unit and review again."
+      "pendingChangesModified": "The pending changes were updated while you were reviewing them. Reload the unit and review again.",
+      "unableToUpdate": "Couldn't update the unit",
+      "requiredFieldsMissing": "Required unit fields are missing",
+      "noCsvUploaded": "Upload a CSV file to continue",
+      "fileTooLarge": "The file is too large. The maximum size is 10 MB",
+      "csvValidationFailed": "The unit CSV file failed validation",
+      "csvImportFailed": "Failed to import units from the CSV file"
     },
     "success": {
       "unitCreationQueued": "Unit creation job queued successfully",
@@ -199,7 +233,8 @@
       "csvValidated": "Property units CSV file validated successfully",
       "csvImported": "Property units imported successfully from CSV file",
       "changesApproved": "Unit changes approved and applied",
-      "changesRejected": "Unit changes rejected. The unit keeps its current details."
+      "changesRejected": "Unit changes rejected. The unit keeps its current details.",
+      "jobQueued": "Unit import started. You’ll be notified when it’s done"
     }
   },
   "validation": {
@@ -455,7 +490,8 @@
       "pendingProcessed": "Processed {{processed}} of {{total}} pending invitations"
     },
     "info": {
-      "noPendingFound": "No pending invitations found"
+      "noPendingFound": "No pending invitations found",
+      "notFound": "Invitation not found"
     },
     "errors": {
       "notFound": "Invitation not found",
@@ -474,7 +510,14 @@
       "roleNotInvitable": "The {{role}} role can't be granted by invitation",
       "adminInviteRequiresAdmin": "Only admins can invite other admins",
       "unverifiedTenantLimit": "Unverified accounts are limited to 5 pending tenant invitations. Verify your account to invite more.",
-      "seatLimitReached": "Seat limit reached. Your plan allows {{total}} seats."
+      "seatLimitReached": "Seat limit reached. Your plan allows {{total}} seats.",
+      "missingParams": "Required invitation details are missing",
+      "canOnlyEditDraft": "Only draft invitations can be edited",
+      "updateFailed": "Failed to update the invitation",
+      "cannotRevoke": "This invitation can't be revoked",
+      "cannotDecline": "This invitation can't be declined",
+      "declineFailed": "Failed to decline the invitation",
+      "reactivationFailed": "Failed to reactivate the invitation"
     },
     "csv": {
       "noValidRows": "No valid rows found in the CSV file",
@@ -493,7 +536,13 @@
   },
   "profile": {
     "success": {
-      "roleInitialized": "User role initialized successfully"
+      "roleInitialized": "User role initialized successfully",
+      "employeeInfoUpdated": "Employee information updated",
+      "vendorInfoUpdated": "Vendor information updated",
+      "tenantInfoUpdated": "Tenant information updated"
+    },
+    "errors": {
+      "invalidParameters": "Invalid profile details provided"
     }
   },
   "vendor": {
@@ -508,7 +557,8 @@
       "notConnectedToClient": "Vendor is not connected to this account.",
       "cannotChangeOwnStatus": "You cannot change your own active status.",
       "payoutAccountNotFound": "Payout account not found.",
-      "notOwnPayoutAccount": "Vendors can only manage their own organisation's payout account"
+      "notOwnPayoutAccount": "Vendors can only manage their own organisation's payout account",
+      "notAssociatedWithClient": "This vendor isn't connected to your account"
     }
   },
   "tenant": {
@@ -517,7 +567,8 @@
       "profileUpdated": "Tenant profile updated successfully"
     },
     "errors": {
-      "notFound": "Tenant not found"
+      "notFound": "Tenant not found",
+      "notTenant": "This user is not a tenant"
     }
   },
   "user": {
@@ -599,7 +650,8 @@
       "recipientOptedOut": "Recipient has not opted in to SMS notifications.",
       "phoneNumberMismatch": "Please update your profile phone number before verifying.",
       "cooldownActive": "A verification code was recently sent. Please wait before requesting a new one.",
-      "invalidCode": "The verification code entered is incorrect. Please try again."
+      "invalidCode": "The verification code entered is incorrect. Please try again.",
+      "phoneNotVerified": "Verify your phone number before using SMS"
     },
     "success": {
       "otpSent": "Verification code sent successfully.",
@@ -629,11 +681,17 @@
       "annualLateFeeMustBeFixed": "Leases paid yearly can only use a fixed late fee",
       "annualRequiresFixedTerm": "Leases paid yearly must be fixed-term",
       "annualMinimumTerm": "Leases paid yearly run at least 12 months — the end date must be at least a year after the start",
-      "annualRentNotAvailable": "Rent paid yearly isn't available for properties in this country"
+      "annualRentNotAvailable": "Rent paid yearly isn't available for properties in this country",
+      "endDateMustBeAfterStartDate": "End date must be after the start date",
+      "moveInDateMustBeOnOrAfterStartDate": "Move-in date can't be before the start date",
+      "rentMustBePositive": "Rent must be greater than 0",
+      "depositCannotBeNegative": "Security deposit can't be negative",
+      "rentDueDayMustBeBetween1And31": "Rent due day must be between 1 and 31"
     },
     "warnings": {
       "rentGuidelineExceeded": "Proposed rent exceeds the {{guidelinePercentage}}% {{jurisdiction}} guideline for {{year}} (max {{maxAllowedRent}}). Legal exceptions may apply."
-    }
+    },
+    "updateSubmittedForApproval": "Lease changes submitted for approval"
   },
   "common": {
     "errors": {
@@ -648,7 +706,8 @@
       "alreadyInState": "{{resource}} is already {{state}}.",
       "tryAgainLater": "Something went wrong. Please try again later.",
       "invalidUserRole": "Invalid user role specified.",
-      "featureNotAvailable": "This feature is not available on your current plan."
+      "featureNotAvailable": "This feature is not available on your current plan.",
+      "forbidden": "You don't have permission to do this"
     },
     "success": {
       "retrieved": "{{resource}} retrieved successfully.",
@@ -997,6 +1056,14 @@
   "report": {
     "errors": {
       "tooManyEmailRecipients": "Your plan allows up to {{max}} email recipients"
+    }
+  },
+  "notification": {
+    "success": {
+      "marked_as_read": "Notification marked as read",
+      "all_marked_as_read": "All notifications marked as read",
+      "archived": "Notification archived",
+      "all_read_archived": "All read notifications archived"
     }
   }
 }

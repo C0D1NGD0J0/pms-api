@@ -186,8 +186,13 @@ export class WebhookController {
               stripeSubscriptionId: subscription.id,
               stripeCustomerId: subscription.customer,
               status: subscription.status,
-              currentPeriodStart: subscription.current_period_start,
-              currentPeriodEnd: subscription.current_period_end,
+              // Newer Stripe API versions moved the period onto the subscription items
+              currentPeriodStart:
+                subscription.current_period_start ??
+                subscription.items?.data?.[0]?.current_period_start,
+              currentPeriodEnd:
+                subscription.current_period_end ??
+                subscription.items?.data?.[0]?.current_period_end,
               items: subscription.items?.data,
             });
             break;

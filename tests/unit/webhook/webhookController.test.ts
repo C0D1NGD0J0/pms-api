@@ -257,6 +257,41 @@ describe('WebhookController - Stripe Webhooks', () => {
       expect(mockResponse.status).toHaveBeenCalledWith(200);
     });
 
+    it('reads the period from the subscription items (newer Stripe API versions)', async () => {
+      const mockItems = [
+        {
+          id: 'si_base',
+          price: { lookup_key: 'growth_monthly_price' },
+          quantity: 1,
+          current_period_start: 1700000000,
+          current_period_end: 1702592000,
+        },
+      ];
+      mockRequest.headers = { 'stripe-signature': 'test_signature' };
+      mockStripeService.verifyWebhookSignature.mockResolvedValue({
+        id: 'evt_items',
+        type: 'customer.subscription.updated',
+        data: {
+          object: {
+            id: 'sub_test123',
+            customer: 'cus_test123',
+            status: 'active',
+            items: { data: mockItems },
+          },
+        },
+      });
+      mockSubscriptionService.handleSubscriptionUpdated.mockResolvedValue({
+        success: true,
+        data: {} as any,
+      });
+
+      await webhookController.handleStripeWebhook(mockRequest as Request, mockResponse as Response);
+
+      expect(mockSubscriptionService.handleSubscriptionUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({ currentPeriodStart: 1700000000, currentPeriodEnd: 1702592000 })
+      );
+    });
+
     it('should handle customer.subscription.deleted event', async () => {
       const mockEvent = {
         id: 'evt_test123',

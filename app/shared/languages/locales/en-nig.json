@@ -393,5 +393,13 @@
     "warnings": {
       "rentGuidelineExceeded": "Proposed rent exceeds the {{guidelinePercentage}}% {{jurisdiction}} guideline for {{year}} (max {{maxAllowedRent}}). Legal exceptions may apply."
     }
+  },
+  "notification": {
+    "success": {
+      "marked_as_read": "Notification marked as read",
+      "all_marked_as_read": "All notifications marked as read",
+      "archived": "Notification archived",
+      "all_read_archived": "All read notifications archived"
+    }
   }
 }

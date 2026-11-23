@@ -206,7 +206,27 @@ const LeaseSchema = new Schema<ILeaseDocument>(
       acceptedPaymentMethod: {
         type: String,
         required: true,
-        enum: ['auto-debit', 'cash', 'e-transfer', 'check'],
+        enum: ['auto-debit', 'cash', 'e-transfer', 'check', 'bank-transfer'],
+      },
+      paymentInstructions: {
+        type: String,
+        trim: true,
+        maxlength: [1000, 'Payment instructions cannot exceed 1000 characters'],
+      },
+      paymentFrequency: {
+        type: String,
+        enum: ['monthly', 'annual'],
+        default: 'monthly',
+      },
+      annualRentAmount: {
+        type: Number,
+        min: [1, 'Annual rent must be greater than 0'],
+        required: [
+          function (this: ILeaseDocument) {
+            return this.fees?.paymentFrequency === 'annual';
+          },
+          'Annual rent is required for leases paid yearly',
+        ],
       },
     },
     coTenants: [

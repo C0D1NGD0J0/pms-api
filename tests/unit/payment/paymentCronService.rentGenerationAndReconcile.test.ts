@@ -255,6 +255,103 @@ describe('PaymentCronService — rent invoice crons', () => {
 
     expect(queuedDueDates(paymentQueue)).toEqual(['2026-10-31']);
   });
+
+  const annualFees = (acceptedPaymentMethod: string) => ({
+    paymentFrequency: 'annual',
+    annualRentAmount: 120000000,
+    rentAmount: 10000000,
+    rentDueDay: 1,
+    acceptedPaymentMethod,
+    currency: 'NGN',
+  });
+
+  it('weekly: bills an annual lease once, on its start-date anniversary', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 4, 2) }); // Sun Oct 4 2026
+    const { service, leaseDAO, paymentQueue } = makeService();
+    leaseDAO.list.mockResolvedValueOnce({
+      items: [
+        makeLease({
+          duration: { startDate: new Date('2025-10-15'), endDate: new Date('2028-10-14') },
+          fees: annualFees('auto-debit'),
+        }),
+      ],
+    });
+
+    await service.queueWeeklyRentInvoices();
+
+    // The rentDueDay (1st) is ignored: annual rent is due on the anniversary
+    expect(queuedDueDates(paymentQueue)).toEqual(['2026-10-15']);
+    expect(paymentQueue.addCreateRentInvoiceJob.mock.calls[0][0].period).toEqual({
+      month: 10,
+      year: 2026,
+      frequency: 'annual',
+    });
+  });
+
+  it('weekly: never creates a monthly record for an annual lease between anniversaries', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 4, 2) });
+    const { service, leaseDAO, paymentDAO, paymentQueue } = makeService();
+    leaseDAO.list.mockResolvedValueOnce({
+      items: [
+        makeLease({
+          duration: { startDate: new Date('2026-03-15'), endDate: new Date('2028-03-14') },
+          fees: annualFees('auto-debit'),
+        }),
+      ],
+    });
+
+    await service.queueWeeklyRentInvoices();
+
+    expect(paymentQueue.addCreateRentInvoiceJob).not.toHaveBeenCalled();
+    expect(paymentDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('skips, rather than bills, an annual lease for a date that is not its anniversary', async () => {
+    const { service, paymentDAO } = makeService();
+    const lease = makeLease({
+      duration: { startDate: new Date('2026-03-15'), endDate: new Date('2028-03-14') },
+      fees: annualFees('bank-transfer'),
+    });
+
+    // October is not the March anniversary
+    const queued = await service.queueRentForPeriod(lease, dayjs('2026-10-15'), new Map(), 'Test');
+
+    expect(queued).toBe(false);
+    expect(paymentDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('safety net: tracks a bank-transfer annual lease once and never sends it for charging', async () => {
+    jest.useFakeTimers({ now: new Date(2026, 9, 7, 5) });
+    const { service, leaseDAO, paymentDAO, paymentQueue } = makeService();
+    leaseDAO.list.mockResolvedValue({
+      items: [
+        makeLease({
+          duration: { startDate: new Date('2026-03-15'), endDate: new Date('2028-03-14') },
+          fees: annualFees('bank-transfer'),
+        }),
+      ],
+    });
+
+    await service.queueDailySafetyNetInvoices();
+
+    // This lease-year's record, even though its anniversary has passed — tracked, not charged
+    expect(paymentQueue.addCreateRentInvoiceJob).not.toHaveBeenCalled();
+    expect(paymentDAO.insert).toHaveBeenCalledTimes(1);
+    expect(paymentDAO.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        paymentMethod: 'bank_transfer',
+        baseAmount: 120000000,
+        period: { month: 3, year: 2026, frequency: 'annual' },
+        lineItems: [{ description: 'Annual Rent (Mar 2026 – Feb 2027)', amountInCents: 120000000 }],
+      })
+    );
+
+    // Next day the record exists, so nothing new is created
+    paymentDAO.findByPeriod.mockResolvedValue({ _id: new Types.ObjectId(), status: 'pending' });
+    jest.setSystemTime(new Date(2026, 9, 8, 5));
+    await service.queueDailySafetyNetInvoices();
+    expect(paymentDAO.insert).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('PaymentCronService — PAD pre-debit notice job', () => {

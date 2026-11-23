@@ -168,6 +168,11 @@ const PaymentSchema = new Schema<IPaymentDocument>(
         type: Number,
         min: 2020,
       },
+      // Annual leases bill one period per lease-year (keyed by its anniversary month); missing = monthly
+      frequency: {
+        type: String,
+        enum: ['monthly', 'annual'],
+      },
     },
     currency: {
       type: String,

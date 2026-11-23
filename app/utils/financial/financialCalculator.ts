@@ -176,6 +176,19 @@ export class FinancialCalculator {
     };
   }
 
+  /**
+   * ceil(annualAmount × monthsCharged / 12), for an annual lease's last lease-year when it is
+   * shorter than 12 months. Partial months are counted as whole months by the caller.
+   */
+  static proRatePartialYear(annualAmountCents: number, monthsCharged: number): number {
+    if (monthsCharged >= 12) return annualAmountCents;
+    return new Decimal(annualAmountCents)
+      .times(monthsCharged)
+      .div(12)
+      .toDecimalPlaces(0, Decimal.ROUND_CEIL)
+      .toNumber();
+  }
+
   private static daysInUtcMonth(date: Date): number {
     return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
   }

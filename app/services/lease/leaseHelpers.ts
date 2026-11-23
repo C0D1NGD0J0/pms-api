@@ -4,6 +4,7 @@ import { t } from '@shared/languages';
 import type { PdfQueue } from '@queues/index';
 import { envVariables } from '@shared/config';
 import type { QueueFactory } from '@services/queue';
+import { allowsAnnualRent } from '@utils/marketRules';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
 import { IClientDocument } from '@interfaces/client.interface';
@@ -31,6 +32,12 @@ import {
   LeasingCheckFields,
 } from '@utils/propertyLeasing';
 import {
+  buildAnnualRentLineItems,
+  latestAnnualDueDate,
+  annualRentDueDate,
+  isAnnualLease,
+} from '@services/payments/annualRent';
+import {
   LeaseTerminationReasonCode,
   ILeaseESignatureStatusEnum,
   LeaseDocumentType,
@@ -39,6 +46,8 @@ import {
   ILeaseFormData,
   IManualSigner,
   LeaseStatus,
+  ILeaseFees,
+  LeaseType,
 } from '@interfaces/lease.interface';
 import {
   SIGNATURE_INVALIDATING_LEASE_FIELDS,
@@ -170,6 +179,134 @@ export const validateLeaseReadyForActivation = (lease: ILeaseDocument): void => 
   if (Object.keys(errors).length > 0) {
     throw new ValidationRequestError({
       message: 'Lease is missing required information for activation',
+      errorInfo: errors,
+    });
+  }
+};
+
+/**
+ * Rules for how often rent is billed, applied to incoming fees (already in cents) on create,
+ * update and renewal. `current` is the stored lease's fees on an update.
+ * - Annual leases need annualRentAmount; rentAmount is set to annual / 12 so every monthly view
+ *   (reports, dashboards, unit rent) keeps working.
+ * - Annual leases only allow a fixed late fee (a percentage of a year's rent is out of scale).
+ * - How often rent is billed can't change once the lease is active.
+ * Throws a ValidationRequestError keyed by form field. Mutates `fees`.
+ */
+export const applyRentFrequencyRules = (
+  fees: Partial<ILeaseFees>,
+  current?: { fees?: Partial<ILeaseFees>; status?: LeaseStatus }
+): void => {
+  const frequency = fees.paymentFrequency ?? current?.fees?.paymentFrequency ?? 'monthly';
+  const errors: Record<string, string[]> = {};
+
+  if (
+    current?.status === LeaseStatus.ACTIVE &&
+    fees.paymentFrequency &&
+    fees.paymentFrequency !== (current.fees?.paymentFrequency ?? 'monthly')
+  ) {
+    errors['fees.paymentFrequency'] = [t('lease.errors.rentFrequencyLocked')];
+  }
+
+  if (frequency !== 'annual') {
+    // A monthly lease has no annual rent; forms may send 0, which must not be stored
+    delete fees.annualRentAmount;
+  } else {
+    const annualRentAmount = fees.annualRentAmount ?? current?.fees?.annualRentAmount;
+    if (!annualRentAmount || annualRentAmount <= 0) {
+      errors['fees.annualRentAmount'] = [t('lease.errors.annualRentRequired')];
+    } else {
+      fees.rentAmount = FinancialCalculator.annualToMonthly(annualRentAmount);
+    }
+
+    const lateFeeType = fees.lateFeeType ?? current?.fees?.lateFeeType;
+    if (lateFeeType === 'percentage') {
+      errors['fees.lateFeeType'] = [t('lease.errors.annualLateFeeMustBeFixed')];
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    throw new ValidationRequestError({
+      message: t('lease.errors.validationFailed'),
+      errorInfo: errors,
+    });
+  }
+};
+
+/**
+ * The address to check market rules against for an existing lease: the property's own address
+ * record, which has a country field. The lease only keeps the address as text, which may not
+ * name the country (e.g. "123 Victoria Island, Lagos"). Falls back to that text if the
+ * property can't be found.
+ */
+export const getLeaseMarketAddress = async (
+  propertyDAO: PropertyDAO,
+  lease: Pick<ILeaseDocument, 'property' | 'cuid'>
+): Promise<Parameters<typeof allowsAnnualRent>[0]> => {
+  const propertyRef = (lease.property as any)?.id;
+  // Already loaded (populated): use its address directly
+  if (propertyRef?.address) return propertyRef.address;
+  const propertyId = propertyRef?._id ?? propertyRef;
+  if (propertyId && Types.ObjectId.isValid(String(propertyId))) {
+    const property = await propertyDAO.findFirst(
+      { _id: new Types.ObjectId(String(propertyId)), cuid: lease.cuid },
+      { select: 'address' }
+    );
+    if (property?.address) return property.address as any;
+  }
+  return lease.property?.address as any;
+};
+
+/**
+ * Rent can only be switched to yearly where that's the norm (MARKET_RULES). Leases already
+ * paid yearly keep working wherever they are.
+ */
+export const assertAnnualRentAvailable = (
+  paymentFrequency: string | undefined,
+  propertyAddress: Parameters<typeof allowsAnnualRent>[0],
+  previousFrequency?: string
+): void => {
+  if (paymentFrequency !== 'annual' || previousFrequency === 'annual') return;
+  if (allowsAnnualRent(propertyAddress)) return;
+  throw new ValidationRequestError({
+    message: t('lease.errors.validationFailed'),
+    errorInfo: { 'fees.paymentFrequency': [t('lease.errors.annualRentNotAvailable')] },
+  });
+};
+
+/**
+ * A lease paid yearly is fixed-term and runs at least 12 months: it may end no earlier than the
+ * day before its first anniversary (a Feb 29 start counts Feb 28 as the anniversary). The lease
+ * form applies the same rule. Throws a ValidationRequestError keyed by form field.
+ */
+export const validateAnnualLeaseTerm = (lease: {
+  paymentFrequency?: string;
+  type?: string;
+  startDate?: Date | string;
+  endDate?: Date | string;
+}): void => {
+  if (lease.paymentFrequency !== 'annual') return;
+  const errors: Record<string, string[]> = {};
+
+  if (lease.type === LeaseType.MONTH_TO_MONTH) {
+    errors.type = [t('lease.errors.annualRequiresFixedTerm')];
+  }
+
+  if (lease.startDate && lease.endDate) {
+    const start = storedCalendarDay(lease.startDate);
+    const year = start.getUTCFullYear() + 1;
+    const month = start.getUTCMonth();
+    const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    const anniversary = Math.min(start.getUTCDate(), daysInMonth);
+    const earliestEnd = new Date(Date.UTC(year, month, anniversary - 1));
+    if (storedCalendarDay(lease.endDate) < earliestEnd) {
+      errors['duration.endDate'] = [t('lease.errors.annualMinimumTerm')];
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    throw new ValidationRequestError({
+      message: t('lease.errors.validationFailed'),
       errorInfo: errors,
     });
   }
@@ -925,8 +1062,13 @@ export const calculateFinancialSummary = (
   // First payment = pro-rated base rent + pro-rated management fee (if opted in)
   //               + pet monthly fee (flat, first month)
   // Deposits (security + pet) are invoiced separately for independent refund handling
-  const firstPaymentCents = proRated.amount + proRatedManagementFee + petMonthlyFee;
+  // Annual leases: the first payment is the whole first lease-year, as it is billed
+  const annual = isAnnualLease(lease);
+  const firstPaymentCents = annual
+    ? buildAnnualRentLineItems(lease, 0).reduce((sum, item) => sum + item.amountInCents, 0)
+    : proRated.amount + proRatedManagementFee + petMonthlyFee;
   const depositTotal = securityDeposit + petDeposit;
+  const annualRentAmount = annual ? lease.fees.annualRentAmount || 0 : undefined;
 
   const endDate = new Date(lease.duration.endDate);
   const lastMonthProRated = FinancialCalculator.proRateLastMonth(baseRent, endDate);
@@ -949,6 +1091,13 @@ export const calculateFinancialSummary = (
     securityDeposit: FinancialCalculator.formatCurrency(securityDeposit, currency),
     securityDepositRaw: securityDeposit,
     currency,
+    paymentFrequency: lease.fees.paymentFrequency || 'monthly',
+    annualRentAmountRaw: annualRentAmount,
+    annualRentAmount:
+      annualRentAmount !== undefined
+        ? FinancialCalculator.formatCurrency(annualRentAmount, currency)
+        : undefined,
+    paymentInstructions: lease.fees.paymentInstructions,
     rentDueDay: lease.fees.rentDueDay,
     lateFeeAmount: lease.fees.lateFeeAmount,
     lateFeeDays: lease.fees.lateFeeDays,
@@ -969,12 +1118,14 @@ export const calculateFinancialSummary = (
         .filter((p) => p.status === PaymentRecordStatus.PAID && p.paidAt)
         .sort((a, b) => new Date(b.paidAt!).getTime() - new Date(a.paidAt!).getTime())[0]?.paidAt ||
       null,
-    nextPaymentDate: calculateNextPaymentDate(
-      lease.fees.rentDueDay,
-      startDate,
-      lease.duration.endDate ? new Date(lease.duration.endDate) : undefined,
-      lease.duration.terminationDate ? new Date(lease.duration.terminationDate) : undefined
-    ),
+    nextPaymentDate: annual
+      ? calculateNextAnnualPaymentDate(lease)
+      : calculateNextPaymentDate(
+          lease.fees.rentDueDay,
+          startDate,
+          lease.duration.endDate ? new Date(lease.duration.endDate) : undefined,
+          lease.duration.terminationDate ? new Date(lease.duration.terminationDate) : undefined
+        ),
     // First-payment breakdown (pro-rated base rent at move-in — pet fee and management fee separate)
     proRatedFirstMonthAmount: proRated.amount,
     proRatedFirstMonthFormatted: FinancialCalculator.formatCurrency(proRated.amount, currency),
@@ -1042,6 +1193,27 @@ export const calculateNextPaymentDate = (
     : dueDateInMonth(today.add(1, 'month'), rentDueDay);
 
   if (effectiveEnd && nextPayment.isAfter(effectiveEnd)) return null;
+  return nextPayment.toDate();
+};
+
+/** Next rent date for an annual lease: the next start-date anniversary, within the lease term. */
+export const calculateNextAnnualPaymentDate = (
+  lease: Pick<ILeaseDocument, 'duration'>
+): Date | null => {
+  const today = dayjs().startOf('day');
+  const firstDueDate = annualRentDueDate(lease.duration.startDate, 0);
+
+  // Up to and including the start day the first payment is next (same as monthly leases);
+  // after that, the anniversary following the latest one
+  let nextPayment = firstDueDate;
+  const latestDueDate = latestAnnualDueDate(lease.duration.startDate, today);
+  if (firstDueDate.isBefore(today) && latestDueDate) {
+    const yearIndex = latestDueDate.year() - firstDueDate.year() + 1;
+    nextPayment = annualRentDueDate(lease.duration.startDate, yearIndex);
+  }
+
+  const leaseEnd = lease.duration.terminationDate ?? lease.duration.endDate;
+  if (leaseEnd && nextPayment.isAfter(dayjs(leaseEnd).endOf('day'))) return null;
   return nextPayment.toDate();
 };
 
@@ -1290,6 +1462,12 @@ export function calculateRenewalMetadata(lease: ILeaseDocument, includeFormData 
       acceptedPaymentMethod: Array.isArray(lease.fees?.acceptedPaymentMethod)
         ? lease.fees?.acceptedPaymentMethod?.[0]
         : lease.fees?.acceptedPaymentMethod || '',
+      // A renewal keeps how rent is paid unless the form changes it
+      paymentFrequency: lease.fees?.paymentFrequency || 'monthly',
+      ...(lease.fees?.paymentFrequency === 'annual' && {
+        annualRentAmount: FinancialCalculator.fromCents(lease.fees?.annualRentAmount || 0),
+      }),
+      paymentInstructions: lease.fees?.paymentInstructions || '',
     },
     type: lease.type,
     signingMethod: lease.signingMethod,

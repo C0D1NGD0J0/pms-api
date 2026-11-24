@@ -180,7 +180,10 @@ export class SubscriptionPlanConfig {
     return config.features[feature] === true;
   }
 
-  public getTransactionFeePercent(planName: PlanName): number {
+  /** The plan's platform fee rate, unless the provider sets its own (Paystack does). */
+  public getTransactionFeePercent(planName: PlanName, provider: string = 'stripe'): number {
+    const providerRate = platformConfig.paymentGateways[provider]?.transactionFeePercent;
+    if (providerRate != null) return providerRate;
     const config = this.getConfig(planName);
     return config.transactionFeePercent;
   }
@@ -390,11 +393,14 @@ export class SubscriptionPlanConfig {
       throw new Error(`Payment gateway not found: ${provider}`);
     }
     const isAch = paymentMethodType === 'auto-debit';
-    const fees = isAch ? gateway.acssProcessingFee : gateway.processingFee;
+    // Providers without a bank-debit rate (Paystack) use their card rate
+    const fees = (isAch && gateway.acssProcessingFee) || gateway.processingFee;
+    const isFixedFeeWaived =
+      fees.fixedFeeWaivedBelowCents != null && amountInCents < fees.fixedFeeWaivedBelowCents;
     return FinancialCalculator.gatewayFee(
       amountInCents,
       fees.percentRate,
-      fees.fixedFeeCents,
+      isFixedFeeWaived ? 0 : fees.fixedFeeCents,
       fees.maxFeeCents
     );
   }

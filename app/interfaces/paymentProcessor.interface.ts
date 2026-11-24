@@ -10,6 +10,8 @@ export interface IPaymentProcessor {
   serviceAgreement?: PaymentProcessorServiceAgreement;
   disputeStats?: IPaymentProcessorDisputeStats;
   accountType: PaymentProcessorAccountType;
+  /** Which provider holds the account: Stripe Connect (acct_…) or a Paystack subaccount (ACCT_…). Missing = stripe */
+  provider?: PaymentProcessorProvider;
   payoutsBlockedBy?: Types.ObjectId;
   ownerType?: 'client' | 'vendor';
   payoutsBlockedReason?: string;
@@ -37,6 +39,7 @@ export interface IPaymentProcessor {
 export interface IPaymentProcessorFormData {
   serviceAgreement?: PaymentProcessorServiceAgreement;
   accountType: PaymentProcessorAccountType;
+  provider?: PaymentProcessorProvider;
   ownerType?: 'client' | 'vendor';
   detailsSubmitted?: boolean;
   chargesEnabled?: boolean;
@@ -61,3 +64,5 @@ export interface IPaymentProcessorDisputeStats {
 }
 
 export type PaymentProcessorServiceAgreement = 'full' | 'recipient';
+
+export type PaymentProcessorProvider = 'stripe' | 'paystack';

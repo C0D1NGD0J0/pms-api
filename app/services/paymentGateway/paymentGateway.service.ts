@@ -1,8 +1,24 @@
+import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
-import { CustomError } from '@shared/customErrors';
 import { IPromiseReturnedData } from '@interfaces/index';
+import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
+import { FeatureFlag } from '@interfaces/featureFlag.interface';
+import { BadRequestError, CustomError } from '@shared/customErrors';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
+import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
+import { PaystackService } from '@services/external/paystack/paystack.service';
+import {
+  IPaystackChargeAuthorizationInput,
+  IPaystackCreateSubaccountInput,
+  IPaystackInitializeResult,
+  IPaystackInitializeInput,
+  IPaystackResolvedAccount,
+  IPaystackWebhookEvent,
+  IPaystackTransaction,
+  IPaystackSubaccount,
+  IPaystackBank,
+} from '@interfaces/paystack.interface';
 import {
   IIdentityVerificationReport,
   ICreateIdentitySessionInput,
@@ -26,18 +42,41 @@ import {
 } from '@interfaces/paymentGateway.interface';
 
 interface IConstructor {
+  paymentProcessorDAO?: PaymentProcessorDAO;
+  // Paystack routing (Nigerian accounts). Optional so Stripe-only tests can build the gateway.
+  featureFlagService?: FeatureFlagService;
+  paystackService?: PaystackService;
   stripeService: StripeService;
+  clientDAO?: ClientDAO;
 }
+
+/** References the app makes for Paystack charges start with this; anything else is Stripe. */
+export const PAYSTACK_REFERENCE_PREFIX = 'psk_';
+
 export class PaymentGatewayService {
   private log = createLogger('PaymentGatewayService');
   private providers: Map<IPaymentGatewayProvider, IPaymentProvider>;
+  private readonly paystackService?: PaystackService;
+  private readonly paymentProcessorDAO?: PaymentProcessorDAO;
+  private readonly clientDAO?: ClientDAO;
+  private readonly featureFlagService?: FeatureFlagService;
 
-  constructor({ stripeService }: IConstructor) {
+  constructor({
+    stripeService,
+    paystackService,
+    paymentProcessorDAO,
+    clientDAO,
+    featureFlagService,
+  }: IConstructor) {
     this.providers = new Map();
     this.registerProviders({ stripeService });
+    this.paystackService = paystackService;
+    this.paymentProcessorDAO = paymentProcessorDAO;
+    this.clientDAO = clientDAO;
+    this.featureFlagService = featureFlagService;
   }
 
-  private registerProviders({ stripeService }: IConstructor): void {
+  private registerProviders({ stripeService }: Pick<IConstructor, 'stripeService'>): void {
     try {
       const stripe = stripeService;
       this.providers.set(IPaymentGatewayProvider.STRIPE, stripe);
@@ -48,6 +87,10 @@ export class PaymentGatewayService {
   }
 
   private getProvider(provider: IPaymentGatewayProvider): IPaymentProvider {
+    // Paystack has its own methods below; the Stripe-shaped ones don't apply to it
+    if (provider === IPaymentGatewayProvider.PAYSTACK) {
+      throw new BadRequestError({ message: 'This action is not available for Paystack accounts.' });
+    }
     const providerInstance = this.providers.get(provider);
 
     if (!providerInstance) {
@@ -1105,5 +1148,76 @@ export class PaymentGatewayService {
         message: error instanceof Error ? error.message : 'Failed to create setup checkout session',
       };
     }
+  }
+
+  // ── Paystack (Nigerian accounts) ─────────────────────────────────────────────
+  // Rent, maintenance charges and payouts only. The app subscription is always Stripe and
+  // never goes through this routing.
+
+  /**
+   * Which provider collects an account's rent and maintenance charges and pays it out:
+   * 1. the landlord's payout account says which provider holds it;
+   * 2. otherwise a naira (NGN) account uses Paystack while the Paystack switch is on;
+   * 3. otherwise Stripe.
+   */
+  async getProviderForClient(cuid: string): Promise<IPaymentGatewayProvider> {
+    // ownerType: vendors' payout accounts carry their client's cuid too
+    const processor = await this.paymentProcessorDAO?.findFirst({
+      cuid,
+      ownerType: { $ne: 'vendor' },
+    });
+    if (processor) {
+      return processor.provider === 'paystack'
+        ? IPaymentGatewayProvider.PAYSTACK
+        : IPaymentGatewayProvider.STRIPE;
+    }
+
+    const client = await this.clientDAO?.getClientByCuid(cuid);
+    const isNairaAccount = client?.settings?.defaultCurrency === 'NGN';
+    return isNairaAccount && this.featureFlagService?.isEnabled(FeatureFlag.PAYSTACK)
+      ? IPaymentGatewayProvider.PAYSTACK
+      : IPaymentGatewayProvider.STRIPE;
+  }
+
+  /** The provider an existing payment was made with, from its reference. */
+  providerForPayment(payment: { gatewayPaymentId?: string | null }): IPaymentGatewayProvider {
+    return payment.gatewayPaymentId?.startsWith(PAYSTACK_REFERENCE_PREFIX)
+      ? IPaymentGatewayProvider.PAYSTACK
+      : IPaymentGatewayProvider.STRIPE;
+  }
+
+  listBanks(): Promise<IPaystackBank[]> {
+    return this.paystack().listBanks();
+  }
+
+  resolveBankAccount(accountNumber: string, bankCode: string): Promise<IPaystackResolvedAccount> {
+    return this.paystack().resolveAccount(accountNumber, bankCode);
+  }
+
+  createPayoutSubaccount(input: IPaystackCreateSubaccountInput): Promise<IPaystackSubaccount> {
+    return this.paystack().createSubaccount(input);
+  }
+
+  initializeCardCheckout(input: IPaystackInitializeInput): Promise<IPaystackInitializeResult> {
+    return this.paystack().initializeTransaction(input);
+  }
+
+  verifyPaystackTransaction(reference: string): Promise<IPaystackTransaction> {
+    return this.paystack().verifyTransaction(reference);
+  }
+
+  chargeSavedCard(input: IPaystackChargeAuthorizationInput): Promise<IPaystackTransaction> {
+    return this.paystack().chargeAuthorization(input);
+  }
+
+  verifyPaystackWebhook(rawBody: Buffer | string, signature?: string): IPaystackWebhookEvent {
+    return this.paystack().verifyWebhookSignature(rawBody, signature);
+  }
+
+  private paystack(): PaystackService {
+    if (!this.paystackService) {
+      throw new Error("Payment provider 'paystack' not registered");
+    }
+    return this.paystackService;
   }
 }

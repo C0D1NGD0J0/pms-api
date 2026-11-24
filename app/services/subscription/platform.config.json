@@ -57,6 +57,20 @@
         "description": "Standard PayPal rate (2.99% + $0.49). Verify with your PayPal account."
       },
       "note": "This is an estimate. Actual fees may vary based on transaction type."
+    },
+    "paystack": {
+      "provider": "paystack",
+      "displayName": "Paystack",
+      "isActive": true,
+      "processingFee": {
+        "percentRate": 1.5,
+        "fixedFeeCents": 10000,
+        "fixedFeeWaivedBelowCents": 250000,
+        "maxFeeCents": 200000,
+        "description": "Nigerian local cards, amounts in kobo: 1.5% + NGN 100, the NGN 100 waived under NGN 2,500, capped at NGN 2,000. Verify with your Paystack dashboard."
+      },
+      "transactionFeePercent": 1.5,
+      "note": "Rent and maintenance charges for Nigerian accounts only; subscriptions stay on Stripe. transactionFeePercent is the platform fee on Paystack charges and replaces the plan's rate (placeholder, confirm before going live)."
     }
   },
 

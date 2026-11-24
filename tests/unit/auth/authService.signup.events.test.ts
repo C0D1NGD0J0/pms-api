@@ -101,7 +101,7 @@ const makeMocks = () => {
   };
 };
 
-const makeService = (mocks: ReturnType<typeof makeMocks>) =>
+const makeService = (mocks: ReturnType<typeof makeMocks>, { paystackEnabled = false } = {}) =>
   new AuthService({
     ...mocks,
     tokenService: {} as any,
@@ -113,7 +113,7 @@ const makeService = (mocks: ReturnType<typeof makeMocks>) =>
     paymentGatewayService: {} as any,
     paymentService: {} as any,
     twilioService: {} as any,
-    featureFlagService: { isEnabled: jest.fn().mockReturnValue(false) } as any,
+    featureFlagService: { isEnabled: jest.fn().mockReturnValue(paystackEnabled) } as any,
   } as any);
 
 describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
@@ -236,5 +236,51 @@ describe('AuthService — USER_SIGNUP_INITIATED event emission', () => {
       EventTypes.USER_SIGNUP_INITIATED,
       expect.anything()
     );
+  });
+});
+
+describe('AuthService — signup country (Paystack for Nigeria)', () => {
+  afterEach(() => jest.clearAllMocks());
+
+  const nigerianSignup = () => makeSignupData({ location: 'Lekki, Lagos, Nigeria' });
+
+  it('blocks a Nigerian signup while the Paystack switch is off', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks, { paystackEnabled: false });
+
+    await expect(service.signup(nigerianSignup())).rejects.toThrow();
+    expect(mocks.clientDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('allows a Nigerian signup when the Paystack switch is on, with a naira account', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks, { paystackEnabled: true });
+
+    await service.signup(nigerianSignup());
+
+    expect(mocks.clientDAO.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ settings: expect.objectContaining({ defaultCurrency: 'NGN' }) }),
+      expect.anything()
+    );
+  });
+
+  it('creates the Nigerian account subscription the same way as any other (billed on Stripe)', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks, { paystackEnabled: true });
+
+    await service.signup(nigerianSignup());
+
+    const [, subscriptionData] = mocks.subscriptionService.createSubscription.mock.calls[0];
+    expect(subscriptionData).toEqual(
+      expect.objectContaining({ planLookUpKey: 'essential_monthly', planName: 'essential' })
+    );
+    expect(JSON.stringify(subscriptionData)).not.toMatch(/paystack/i);
+  });
+
+  it('still blocks countries neither provider supports, even with the switch on', async () => {
+    const mocks = makeMocks();
+    const service = makeService(mocks, { paystackEnabled: true });
+
+    await expect(service.signup(makeSignupData({ location: 'Accra, Ghana' }))).rejects.toThrow();
   });
 });

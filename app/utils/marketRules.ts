@@ -16,6 +16,11 @@ import { getCountryCodeFromLocation } from './helpers';
  *   paid yearly keep working and renewing wherever the property is.
  */
 interface MarketRules {
+  /**
+   * Who collects rent and maintenance charges and pays landlords and vendors there. Missing =
+   * Stripe. Never the app subscription, which is Stripe in every country.
+   */
+  paymentProvider?: 'paystack';
   /** Rent may be billed once a year (common in Nigeria, not in North America). */
   annualRent?: boolean;
 }
@@ -28,7 +33,7 @@ interface MarketRules {
  * Add a country only once its local practice and law have been confirmed.
  */
 export const MARKET_RULES: Record<string, MarketRules> = {
-  NG: { annualRent: true },
+  NG: { annualRent: true, paymentProvider: 'paystack' },
 };
 
 type AddressInput =
@@ -72,3 +77,10 @@ export const allowsAnnualRent = (address?: AddressInput): boolean => {
   const code = getPropertyCountryCode(address);
   return !!code && MARKET_RULES[code]?.annualRent === true;
 };
+
+/**
+ * The provider for rent, maintenance charges and payouts in a country (ISO-2), or null for
+ * the default (Stripe). The app subscription is always Stripe, whatever this returns.
+ */
+export const paymentProviderForCountry = (countryCode?: string | null): 'paystack' | null =>
+  (countryCode && MARKET_RULES[countryCode.toUpperCase()]?.paymentProvider) || null;

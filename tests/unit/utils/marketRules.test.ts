@@ -1,4 +1,8 @@
-import { getPropertyCountryCode, allowsAnnualRent } from '@utils/marketRules';
+import {
+  paymentProviderForCountry,
+  getPropertyCountryCode,
+  allowsAnnualRent,
+} from '@utils/marketRules';
 
 describe('marketRules', () => {
   it('reads the country from the free-text country field', () => {
@@ -41,5 +45,19 @@ describe('marketRules', () => {
     // Properties get the country from address autocomplete or CSV geocoding, so this is rare;
     // when it happens yearly rent is simply not offered
     expect(allowsAnnualRent({ fullAddress: '123 Victoria Island, Lagos' })).toBe(false);
+  });
+});
+
+describe('paymentProviderForCountry', () => {
+  it('names Paystack for Nigeria, in any letter case', () => {
+    expect(paymentProviderForCountry('NG')).toBe('paystack');
+    expect(paymentProviderForCountry('ng')).toBe('paystack');
+  });
+
+  it('returns null for Stripe countries and unknown or missing codes', () => {
+    expect(paymentProviderForCountry('CA')).toBeNull();
+    expect(paymentProviderForCountry('US')).toBeNull();
+    expect(paymentProviderForCountry(undefined)).toBeNull();
+    expect(paymentProviderForCountry(null)).toBeNull();
   });
 });

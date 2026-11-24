@@ -10,6 +10,8 @@ export enum FeatureFlag {
   INVOICE_WEBHOOK = 'INVOICE_WEBHOOK',
   INSPECTION = 'INSPECTION',
   ESIGNATURE = 'ESIGNATURE',
+  // Paystack for Nigerian accounts (rent, maintenance charges, payouts). Off by default.
+  PAYSTACK = 'PAYSTACK',
   MCP = 'MCP',
   SMS = 'SMS',
 }

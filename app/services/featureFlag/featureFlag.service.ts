@@ -30,6 +30,8 @@ export class FeatureFlagService {
         return envVariables.FEATURES.INSPECTION_ENABLED;
       case FeatureFlag.ESIGNATURE:
         return envVariables.FEATURES.ESIGNATURE_ENABLED;
+      case FeatureFlag.PAYSTACK:
+        return envVariables.FEATURES.PAYSTACK_ENABLED;
       case FeatureFlag.SMS:
         return envVariables.FEATURES.SMS_ENABLED;
       case FeatureFlag.MCP:

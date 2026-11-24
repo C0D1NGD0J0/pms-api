@@ -26,6 +26,7 @@ export {
   AnthropicService,
   GeoCoderService,
   BoldSignService,
+  PaystackService,
   TwilioService,
   StripeService,
 } from './external/index';

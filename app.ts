@@ -122,14 +122,16 @@ export class App implements IAppSetup {
       try {
         const redisService = req.container.resolve<RedisService>('redisService');
         const redisStats = await redisService.getConnectionStats();
-        const isHealthy = redisStats.success && !redisStats.total?.exceeded;
+        const isDbConnected = this.db.isConnected();
+        // Railway only routes traffic to a new deploy once this returns 2xx.
+        const isHealthy = isDbConnected && redisStats.success && !redisStats.total?.exceeded;
         const healthCheck = {
           uptime: process.uptime(),
           message: isHealthy ? 'OK' : 'Unhealthy',
           timestamp: Date.now(),
           environment: process.env.NODE_ENV,
           processType: process.env.PROCESS_TYPE,
-          database: this.db.isConnected() ? 'Connected' : 'Disconnected',
+          database: isDbConnected ? 'Connected' : 'Disconnected',
           redis: redisStats.success
             ? {
                 thisProcess: redisStats.thisProcess,
@@ -141,7 +143,7 @@ export class App implements IAppSetup {
                 details: redisStats.error,
               },
         };
-        res.status(200).json(healthCheck);
+        res.status(isHealthy ? 200 : 503).json(healthCheck);
       } catch (error) {
         this.log.error({ error }, 'Health check error');
         res.status(500).json({

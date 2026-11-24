@@ -2921,5 +2921,8 @@ openApiRegistry.registerPath({
         },
       },
     },
+    503: {
+      description: 'Database or Redis unavailable (same body, message "Unhealthy")',
+    },
   },
 });

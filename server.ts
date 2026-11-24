@@ -221,16 +221,25 @@ class Server {
     }, 10000); // 10 seconds timeout
 
     try {
-      // close socket connections
-      if (container.hasRegistration('ioServer')) {
-        const io = container.resolve<SocketIOServer>('ioServer');
-        await new Promise<void>((resolve) => {
+      // Stop accepting connections and let in-flight requests finish before
+      // closing the Redis/DB connections they depend on.
+      await Promise.all([
+        new Promise<void>((resolve) => {
+          if (!this.httpServer) return resolve();
+          this.httpServer.close(() => {
+            this.log.info('HTTP server closed');
+            resolve();
+          });
+        }),
+        new Promise<void>((resolve) => {
+          if (!container.hasRegistration('ioServer')) return resolve();
+          const io = container.resolve<SocketIOServer>('ioServer');
           io.close(() => {
             this.log.info('Socket.IO server closed');
             resolve();
           });
-        });
-      }
+        }),
+      ]);
 
       // close Redis clients if they exist
       if (this.redisClients) {
@@ -244,16 +253,6 @@ class Server {
             .catch((err: unknown) => this.log.error('Error closing Redis sub client:', err)),
         ]);
         this.log.info('Redis clients closed');
-      }
-
-      // close HTTP server
-      if (this.httpServer) {
-        await new Promise<void>((resolve) => {
-          this.httpServer?.close(() => {
-            this.log.info('HTTP server closed');
-            resolve();
-          });
-        });
       }
 
       // cleanup queues and services first

@@ -2568,10 +2568,23 @@ export class PaymentService implements ICronProvider {
     return this.payoutAccountService.resolvePayoutBankAccount(cuid, data);
   }
 
+  async updatePaystackPayoutBankAccount(
+    cuid: string,
+    actorId: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{ accountNumberLast4: string; accountName: string; bankName: string }> {
+    return this.payoutAccountService.updatePaystackPayoutBankAccount(cuid, actorId, data);
+  }
+
   async createPaystackPayoutAccount(
     cuid: string,
     data: { bankCode: string; accountNumber: string }
-  ) {
+  ): IPromiseReturnedData<{
+    accountNumberLast4: string;
+    accountName: string;
+    accountId: string;
+    bankName: string;
+  }> {
     return this.payoutAccountService.createPaystackPayoutAccount(cuid, data);
   }
 

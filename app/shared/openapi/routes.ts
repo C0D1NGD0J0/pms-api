@@ -1349,8 +1349,26 @@ openApiRegistry.registerPath({
 
 openApiRegistry.registerPath({
   method: 'post',
-  path: '/payments/{cuid}/payout-account/paystack',
-  summary: 'Add a Paystack payout bank account (Nigerian accounts)',
+  path: '/payments/{cuid}/payout-account/bank',
+  summary: 'Add the payout bank account (accounts paid out by bank, e.g. Nigeria)',
+  tags: ['Payments'],
+  request: {
+    params: cuidParams,
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ bankCode: z.string(), accountNumber: z.string().length(10) }),
+        },
+      },
+    },
+  },
+  responses: { ...ok200, ...err401, ...err400, ...err403, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'patch',
+  path: '/payments/{cuid}/payout-account/bank',
+  summary: 'Change the payout bank account (alerts the account managers)',
   tags: ['Payments'],
   request: {
     params: cuidParams,

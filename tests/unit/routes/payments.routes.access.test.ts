@@ -62,6 +62,7 @@ const controllerMethods = [
   'listPayoutBanks',
   'resolvePayoutBankAccount',
   'createPaystackPayoutAccount',
+  'updatePaystackPayoutBankAccount',
 ] as const;
 
 const mockController = Object.fromEntries(
@@ -378,7 +379,7 @@ describe('Paystack payout bank account routes', () => {
 
     const saved = await send(
       'post',
-      `${base}/payout-account/paystack`,
+      `${base}/payout-account/bank`,
       { role: ROLES.SUPER_ADMIN },
       validBody
     );
@@ -395,13 +396,40 @@ describe('Paystack payout bank account routes', () => {
         { role },
         validBody
       );
-      const saved = await send('post', `${base}/payout-account/paystack`, { role }, validBody);
+      const saved = await send('post', `${base}/payout-account/bank`, { role }, validBody);
       expect(resolved.status).toBe(403);
       expect(saved.status).toBe(403);
       expect(mockController.resolvePayoutBankAccount).not.toHaveBeenCalled();
       expect(mockController.createPaystackPayoutAccount).not.toHaveBeenCalled();
     }
   );
+
+  it('lets only a billing manager change the payout bank account', async () => {
+    const allowed = await send(
+      'patch',
+      `${base}/payout-account/bank`,
+      { role: ROLES.SUPER_ADMIN },
+      validBody
+    );
+    expect(allowed.body.handledBy).toBe('updatePaystackPayoutBankAccount');
+
+    for (const role of [ROLES.TENANT, ROLES.VENDOR, ROLES.STAFF]) {
+      const res = await send('patch', `${base}/payout-account/bank`, { role }, validBody);
+      expect(res.status).toBe(403);
+    }
+    expect(mockController.updatePaystackPayoutBankAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an invalid account number when changing the bank', async () => {
+    const res = await send(
+      'patch',
+      `${base}/payout-account/bank`,
+      { role: ROLES.SUPER_ADMIN },
+      { bankCode: '058', accountNumber: '123' }
+    );
+    expect(res.status).toBe(422);
+    expect(mockController.updatePaystackPayoutBankAccount).not.toHaveBeenCalled();
+  });
 
   it.each([
     { bankCode: '058', accountNumber: '12345' },
@@ -410,7 +438,7 @@ describe('Paystack payout bank account routes', () => {
   ])('rejects bank account body %o', async (body) => {
     const res = await send(
       'post',
-      `${base}/payout-account/paystack`,
+      `${base}/payout-account/bank`,
       { role: ROLES.SUPER_ADMIN },
       body
     );

@@ -375,7 +375,7 @@ router.post(
 );
 
 router.post(
-  '/:cuid/payout-account/paystack',
+  '/:cuid/payout-account/bank',
   basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
   requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
   requireVerifiedClient,
@@ -387,6 +387,23 @@ router.post(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.createPaystackPayoutAccount(req, res);
+  })
+);
+
+// Changing where rent settles: tight limit, and managers are alerted on every change
+router.patch(
+  '/:cuid/payout-account/bank',
+  basicLimiter({ max: 3, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: PaymentValidations.paystackBankAccount,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.updatePaystackPayoutBankAccount(req, res);
   })
 );
 

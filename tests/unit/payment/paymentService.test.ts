@@ -126,6 +126,7 @@ const makeServiceWithMocks = (
 
   const payoutAccountService = new PayoutAccountService({
     paymentGatewayService,
+    emitterService,
     paymentProcessorDAO,
     profileDAO,
     clientDAO,
@@ -2314,6 +2315,7 @@ describe('PaymentService - createConnectAccount', () => {
     expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledWith({
       cuid: CUID,
       ownerType: 'client',
+      deletedAt: null,
     });
   });
 
@@ -7235,7 +7237,7 @@ describe('PaymentService - Paystack payout account', () => {
 
   it.each(['en', 'fr'])('never names the payment provider in %s payout messages', (lang) => {
     const locale = JSON.parse(
-      readFileSync(join(process.cwd(), `app/shared/languages/locales/${lang}.json`), 'utf8')
+      readFileSync(join(__dirname, `../../../app/shared/languages/locales/${lang}.json`), 'utf8')
     );
     const userFacing = JSON.stringify([locale.payment.payout, locale.payment.errors]);
 
@@ -7372,6 +7374,7 @@ describe('PaymentService - Paystack payout account', () => {
     expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledWith({
       cuid: CUID,
       ownerType: 'client',
+      deletedAt: null,
     });
     expect(mockPaymentGatewayService.createPayoutSubaccount).not.toHaveBeenCalled();
   });
@@ -7387,5 +7390,130 @@ describe('PaymentService - Paystack payout account', () => {
       t('payment.payout.errors.notAvailableForAccount')
     );
     expect(mockPaymentGatewayService.getConnectBalance).not.toHaveBeenCalled();
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Changing the Paystack payout bank account
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - change Paystack payout bank account', () => {
+  const ACTOR_ID = 'user-123';
+  const processorId = new Types.ObjectId();
+  const newAccount = { bankCode: '044', accountNumber: '9876543210' };
+  let paymentService: PaymentService;
+  let mockPaymentProcessorDAO: Record<string, jest.Mock>;
+  let mockPaymentGatewayService: Record<string, jest.Mock>;
+  let emitterService: { emit: jest.Mock; on: jest.Mock };
+
+  beforeEach(() => {
+    mockPaymentProcessorDAO = {
+      findFirst: jest.fn().mockResolvedValue({
+        _id: processorId,
+        accountId: 'ACCT_landlord1',
+        provider: 'paystack',
+        bankDetails: { accountNumberLast4: '6789' },
+      }),
+      update: jest.fn().mockResolvedValue({}),
+    };
+    mockPaymentGatewayService = {
+      listBanks: jest
+        .fn()
+        .mockResolvedValue([
+          { name: 'Access Bank', code: '044', slug: 'access', currency: 'NGN', active: true },
+        ]),
+      resolveBankAccount: jest
+        .fn()
+        .mockResolvedValue({ account_number: '9876543210', account_name: 'ADEBAYO TOLU' }),
+      updatePayoutSubaccount: jest
+        .fn()
+        .mockResolvedValue({ subaccount_code: 'ACCT_landlord1', active: true }),
+    };
+    emitterService = { emit: jest.fn(), on: jest.fn() };
+
+    paymentService = makeServiceWithMocks({
+      paymentProcessorDAO: mockPaymentProcessorDAO as any,
+      paymentGatewayService: mockPaymentGatewayService as any,
+      emitterService,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('moves the same subaccount to the new bank and stores only the last 4 digits', async () => {
+    const result = await paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount);
+
+    expect(mockPaymentGatewayService.updatePayoutSubaccount).toHaveBeenCalledWith(
+      'ACCT_landlord1',
+      { settlement_bank: '044', account_number: '9876543210' }
+    );
+    expect(mockPaymentProcessorDAO.update).toHaveBeenCalledWith(
+      { _id: processorId },
+      {
+        $set: {
+          bankDetails: {
+            bankCode: '044',
+            bankName: 'Access Bank',
+            accountName: 'ADEBAYO TOLU',
+            accountNumberLast4: '3210',
+          },
+          chargesEnabled: true,
+          payoutsEnabled: true,
+        },
+      }
+    );
+    expect(JSON.stringify(mockPaymentProcessorDAO.update.mock.calls[0])).not.toContain(
+      '9876543210'
+    );
+    expect(result.data).toEqual({
+      bankName: 'Access Bank',
+      accountName: 'ADEBAYO TOLU',
+      accountNumberLast4: '3210',
+    });
+  });
+
+  it('alerts the managers with who made the change', async () => {
+    await paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount);
+
+    expect(emitterService.emit).toHaveBeenCalledWith(EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED, {
+      cuid: CUID,
+      changedByUserId: ACTOR_ID,
+      bankName: 'Access Bank',
+      accountNumberLast4: '3210',
+    });
+  });
+
+  it('changes nothing when the new account cannot be verified', async () => {
+    mockPaymentGatewayService.resolveBankAccount.mockRejectedValue(
+      new BadRequestError({ message: 'Could not resolve account name' })
+    );
+
+    await expect(
+      paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount)
+    ).rejects.toThrow(BadRequestError);
+    expect(mockPaymentGatewayService.updatePayoutSubaccount).not.toHaveBeenCalled();
+    expect(mockPaymentProcessorDAO.update).not.toHaveBeenCalled();
+    expect(emitterService.emit).not.toHaveBeenCalled();
+  });
+
+  it('refuses a Stripe payout account, which changes its bank inside Stripe', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({
+      _id: processorId,
+      accountId: 'acct_stripe1',
+      provider: 'stripe',
+    });
+
+    await expect(
+      paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount)
+    ).rejects.toThrow(BadRequestError);
+    expect(mockPaymentGatewayService.updatePayoutSubaccount).not.toHaveBeenCalled();
+  });
+
+  it('refuses when no payout account is set up yet', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+
+    await expect(
+      paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount)
+    ).rejects.toThrow(BadRequestError);
   });
 });

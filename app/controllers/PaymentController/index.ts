@@ -197,6 +197,17 @@ export class PaymentController {
     return res.status(201).json(result);
   }
 
+  async updatePaystackPayoutBankAccount(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { bankCode, accountNumber } = req.body;
+    const result = await this.paymentService.updatePaystackPayoutBankAccount(
+      cuid,
+      req.context.currentuser!.sub,
+      { bankCode, accountNumber }
+    );
+    return res.status(200).json(result);
+  }
+
   async getOnboardingLink(req: AppRequest, res: Response) {
     const { cuid } = req.params;
     const { returnUrl, refreshUrl } = req.query as { returnUrl?: string; refreshUrl?: string };

@@ -38,6 +38,7 @@ describe('PaymentGatewayService - getProviderForClient', () => {
     expect(paymentProcessorDAO.findFirst).toHaveBeenCalledWith({
       cuid: 'C1',
       ownerType: { $ne: 'vendor' },
+      deletedAt: null,
     });
   });
 

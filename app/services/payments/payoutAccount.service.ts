@@ -4,7 +4,9 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { FinancialCalculator } from '@utils/financial';
+import { EventTypes } from '@interfaces/events.interface';
 import { IPaymentGatewayProvider } from '@interfaces/index';
+import { EventEmitterService } from '@services/eventEmitter';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { PaymentProcessorDAO, ProfileDAO, ClientDAO, VendorDAO } from '@dao/index';
@@ -58,17 +60,18 @@ interface IStripePayoutEntry {
   id: string;
 }
 
-interface IStripeInstantBalanceEntry extends IStripeBalanceEntry {
-  /** Present only when the platform sets instant payout pricing (Platform Pricing Tool) */
-  net_available?: { amount: number; destination: string }[];
-}
-
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  emitterService: EventEmitterService;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   vendorDAO: VendorDAO;
+}
+
+interface IStripeInstantBalanceEntry extends IStripeBalanceEntry {
+  /** Present only when the platform sets instant payout pricing (Platform Pricing Tool) */
+  net_available?: { amount: number; destination: string }[];
 }
 
 interface IStripeBalanceData {
@@ -90,6 +93,7 @@ interface IStripeBalanceEntry {
 export class PayoutAccountService {
   private readonly log: Logger;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly emitterService: EventEmitterService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
@@ -97,6 +101,7 @@ export class PayoutAccountService {
 
   constructor({
     paymentGatewayService,
+    emitterService,
     paymentProcessorDAO,
     profileDAO,
     clientDAO,
@@ -104,6 +109,7 @@ export class PayoutAccountService {
   }: IConstructor) {
     this.log = createLogger('PayoutAccountService');
     this.paymentGatewayService = paymentGatewayService;
+    this.emitterService = emitterService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
@@ -203,9 +209,11 @@ export class PayoutAccountService {
   ): IPromiseReturnedData<any> {
     try {
       // Vendor processors carry the inviting client's cuid too — only the client's own counts
+      // A removed (soft-deleted) account doesn't block setting up a new one
       const existingProcessor = await this.paymentProcessorDAO.findFirst({
         cuid,
         ownerType: 'client',
+        deletedAt: null,
       });
       if (existingProcessor?.accountId) {
         throw new BadRequestError({ message: t('payment.payout.errors.alreadyExists') });
@@ -354,6 +362,85 @@ export class PayoutAccountService {
     }
   }
 
+  /**
+   * The bank must be in the active list, and the account name is checked with Paystack here
+   * rather than trusting the name the form showed.
+   */
+  private async verifyBankAccount(cuid: string, data: { bankCode: string; accountNumber: string }) {
+    const banks = await this.paymentGatewayService.listBanks();
+    const bank = banks.find((entry) => entry.code === data.bankCode && entry.active);
+    if (!bank) {
+      throw new BadRequestError({ message: t('payment.payout.errors.chooseBankFromList') });
+    }
+    const account = await this.resolveBankAccountOrThrow(cuid, data);
+    return { bank, account };
+  }
+
+  /**
+   * Moves rent payouts to a different bank account. The Paystack subaccount keeps its code, so
+   * nothing else changes. Managers are alerted, because this decides where rent goes.
+   */
+  async updatePaystackPayoutBankAccount(
+    cuid: string,
+    actorId: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{ accountNumberLast4: string; accountName: string; bankName: string }> {
+    try {
+      const processor = await this.getProcessorOrThrow(cuid);
+      if (processor.provider !== 'paystack') {
+        throw new BadRequestError({ message: t('payment.payout.errors.notAvailableForAccount') });
+      }
+
+      const { bank, account } = await this.verifyBankAccount(cuid, data);
+
+      const subaccount = await this.paymentGatewayService.updatePayoutSubaccount(
+        processor.accountId,
+        { settlement_bank: data.bankCode, account_number: data.accountNumber }
+      );
+
+      const bankDetails = {
+        bankCode: bank.code,
+        bankName: bank.name,
+        accountName: account.account_name,
+        accountNumberLast4: data.accountNumber.slice(-4),
+      };
+      const isActive = subaccount.active !== false;
+      await this.paymentProcessorDAO.update(
+        { _id: processor._id },
+        { $set: { bankDetails, chargesEnabled: isActive, payoutsEnabled: isActive } }
+      );
+
+      this.log.info(
+        {
+          cuid,
+          actorId,
+          previousLast4: processor.bankDetails?.accountNumberLast4,
+          newLast4: bankDetails.accountNumberLast4,
+        },
+        'Payout bank account changed'
+      );
+      this.emitterService.emit(EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED, {
+        cuid,
+        changedByUserId: actorId,
+        bankName: bankDetails.bankName,
+        accountNumberLast4: bankDetails.accountNumberLast4,
+      });
+
+      return {
+        success: true,
+        data: {
+          bankName: bankDetails.bankName,
+          accountName: bankDetails.accountName,
+          accountNumberLast4: bankDetails.accountNumberLast4,
+        },
+        message: t('payment.payout.success.bankAccountUpdated'),
+      };
+    } catch (error) {
+      this.log.error('Error changing Paystack payout bank account', error);
+      throw error;
+    }
+  }
+
   async createPaystackPayoutAccount(
     cuid: string,
     data: { bankCode: string; accountNumber: string }
@@ -366,9 +453,11 @@ export class PayoutAccountService {
     try {
       await this.assertPaystackClient(cuid);
 
+      // A removed (soft-deleted) account doesn't block setting up a new one
       const existingProcessor = await this.paymentProcessorDAO.findFirst({
         cuid,
         ownerType: 'client',
+        deletedAt: null,
       });
       if (existingProcessor?.accountId) {
         throw new BadRequestError({ message: t('payment.payout.errors.alreadyExists') });
@@ -379,14 +468,7 @@ export class PayoutAccountService {
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
-      const banks = await this.paymentGatewayService.listBanks();
-      const bank = banks.find((entry) => entry.code === data.bankCode && entry.active);
-      if (!bank) {
-        throw new BadRequestError({ message: t('payment.payout.errors.chooseBankFromList') });
-      }
-
-      // Checked again here rather than trusting the name the form showed
-      const account = await this.resolveBankAccountOrThrow(cuid, data);
+      const { bank, account } = await this.verifyBankAccount(cuid, data);
 
       const subaccount = await this.paymentGatewayService.createPayoutSubaccount({
         business_name:

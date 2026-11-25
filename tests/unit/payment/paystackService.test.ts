@@ -97,6 +97,29 @@ describe('PaystackService', () => {
       });
     });
 
+    it('changes a subaccount bank with a PUT to the same subaccount code', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          status: true,
+          message: 'Subaccount updated',
+          data: { subaccount_code: 'ACCT_landlord1', settlement_bank: 'Access Bank', active: true },
+        })
+      );
+
+      await service.updateSubaccount('ACCT_landlord1', {
+        settlement_bank: '044',
+        account_number: '9876543210',
+      });
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.paystack.co/subaccount/ACCT_landlord1');
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(init.body)).toEqual({
+        settlement_bank: '044',
+        account_number: '9876543210',
+      });
+    });
+
     it('resolves an account with an encoded query string and no body', async () => {
       fetchMock.mockResolvedValue(jsonResponse(200, fixtures.resolve));
 

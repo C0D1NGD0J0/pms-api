@@ -122,6 +122,12 @@ export interface IPaystackInitializeResult {
   reference: string;
 }
 
+/** Changes the bank a subaccount settles to; the subaccount code (ACCT_…) stays the same. */
+export interface IPaystackUpdateSubaccountInput {
+  settlement_bank: string; // bank code
+  account_number: string;
+}
+
 /** Webhook body: `event` is e.g. 'charge.success', 'refund.processed', 'transfer.success'. */
 export interface IPaystackWebhookEvent<T = Record<string, unknown>> {
   event: string;

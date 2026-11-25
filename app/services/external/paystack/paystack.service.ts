@@ -14,6 +14,7 @@ import {
 import {
   IPaystackChargeAuthorizationInput,
   IPaystackCreateSubaccountInput,
+  IPaystackUpdateSubaccountInput,
   IPaystackCreateRefundInput,
   IPaystackInitializeResult,
   IPaystackInitializeInput,
@@ -105,6 +106,17 @@ export class PaystackService {
     return this.request<IPaystackSubaccount>('POST', '/subaccount', input);
   }
 
+  async updateSubaccount(
+    subaccountCode: string,
+    input: IPaystackUpdateSubaccountInput
+  ): Promise<IPaystackSubaccount> {
+    return this.request<IPaystackSubaccount>(
+      'PUT',
+      `/subaccount/${encodeURIComponent(subaccountCode)}`,
+      input
+    );
+  }
+
   async fetchSubaccount(subaccountCode: string): Promise<IPaystackSubaccount> {
     return this.request<IPaystackSubaccount>(
       'GET',
@@ -149,6 +161,10 @@ export class PaystackService {
     this.assertEnabled();
     const secretKey = envVariables.PAYSTACK.SECRET_KEY;
     if (!secretKey || !signature) {
+      this.log.warn(
+        { hasSignature: !!signature },
+        'Paystack webhook rejected: missing signature or key'
+      );
       throw new UnauthorizedError({ message: t('payment.errors.invalidWebhook') });
     }
 
@@ -159,12 +175,14 @@ export class PaystackService {
       expectedBuffer.length === receivedBuffer.length &&
       crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
     if (!matches) {
+      this.log.warn('Paystack webhook rejected: signature mismatch');
       throw new UnauthorizedError({ message: t('payment.errors.invalidWebhook') });
     }
 
     try {
       return JSON.parse(rawBody.toString()) as IPaystackWebhookEvent;
     } catch {
+      this.log.warn('Paystack webhook rejected: signed body is not valid JSON');
       throw new BadRequestError({ message: t('payment.errors.invalidWebhook') });
     }
   }
@@ -177,14 +195,18 @@ export class PaystackService {
 
   // ── HTTP ───────────────────────────────────────────────────────────────────
 
-  private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: 'GET' | 'POST' | 'PUT',
+    path: string,
+    body?: unknown
+  ): Promise<T> {
     const payload = await this.requestWithMeta<T>(method, path, body);
     return payload.data;
   }
 
   /** The whole response, for list endpoints that page with `meta.next`. */
   private async requestWithMeta<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PUT',
     path: string,
     body?: unknown
   ): Promise<IPaystackResponse<T>> {

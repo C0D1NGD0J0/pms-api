@@ -8,6 +8,7 @@ export interface FeaturesConfig {
   INVOICE_WEBHOOK_ENABLED: boolean;
   INSPECTION_ENABLED: boolean;
   ESIGNATURE_ENABLED: boolean;
+  PAYSTACK_ENABLED: boolean;
   SMS_ENABLED: boolean;
   MCP_ENABLED: boolean;
   AI_ENABLED: boolean;
@@ -128,6 +129,13 @@ export interface AnthropicConfig {
 export interface GeocoderConfig {
   PROVIDER_KEY: string;
   PROVIDER: string;
+}
+
+// Paystack (Nigeria): rent, maintenance charges and payouts. Webhooks are signed with the
+// secret key, so there is no separate webhook secret.
+export interface PaystackConfig {
+  SECRET_KEY: string;
+  BASE_URL: string;
 }
 
 export interface BullBoardConfig {

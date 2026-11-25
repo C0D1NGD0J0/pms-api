@@ -39,6 +39,12 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
       required: [true, 'Account type is required'],
       default: PaymentProcessorAccountType.EXPRESS,
     },
+    // Stripe Connect account or Paystack subaccount; existing records are Stripe
+    provider: {
+      type: String,
+      enum: ['stripe', 'paystack'],
+      default: 'stripe',
+    },
     chargesEnabled: {
       type: Boolean,
       required: true,

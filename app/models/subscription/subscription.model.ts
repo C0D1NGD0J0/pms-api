@@ -104,7 +104,7 @@ const SubscriptionSchema = new Schema<ISubscriptionDocument>(
       },
       provider: {
         type: String,
-        enum: ['stripe', 'paypal', 'none', 'paystack'],
+        enum: ['stripe', 'paypal', 'none'], // the app subscription never uses Paystack
         required: true,
         default: 'none',
       },

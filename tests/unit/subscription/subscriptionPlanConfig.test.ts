@@ -200,4 +200,37 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       ); // 1% of $200 + $0.40
     });
   });
+
+  describe('Paystack fees (amounts in kobo)', () => {
+    it('waives the NGN 100 fixed fee under NGN 2,500', () => {
+      // NGN 2,000: 1.5% = NGN 30, no fixed fee
+      expect(subscriptionPlanConfig.calculatePaymentGatewayFee(200000, 'paystack')).toBe(3000);
+    });
+
+    it('charges 1.5% + NGN 100 on a normal payment', () => {
+      // NGN 10,000: NGN 150 + NGN 100
+      expect(subscriptionPlanConfig.calculatePaymentGatewayFee(1000000, 'paystack')).toBe(25000);
+    });
+
+    it('caps the fee at NGN 2,000 on large payments', () => {
+      // NGN 1.2M: 1.5% + 100 would be NGN 18,100
+      expect(subscriptionPlanConfig.calculatePaymentGatewayFee(120000000, 'paystack')).toBe(200000);
+    });
+
+    it('uses the card rate for a bank-debit lease, since Paystack has no separate rate', () => {
+      expect(
+        subscriptionPlanConfig.calculatePaymentGatewayFee(1000000, 'paystack', 'auto-debit')
+      ).toBe(25000);
+    });
+
+    it("charges Paystack accounts their plan's platform rate, the same as Stripe", () => {
+      expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(4.2);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(3.9);
+    });
+
+    it('leaves Stripe fees unchanged', () => {
+      // $100: 2.9% + $0.30
+      expect(subscriptionPlanConfig.calculatePaymentGatewayFee(10000, 'stripe')).toBe(320);
+    });
+  });
 });

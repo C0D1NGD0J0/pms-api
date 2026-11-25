@@ -11,6 +11,7 @@ import type {
   FrontendConfig,
   GeocoderConfig,
   WebAuthnConfig,
+  PaystackConfig,
   ClamavConfig,
   ServerConfig,
   StripeConfig,
@@ -36,6 +37,7 @@ class EnvVariables {
   public FRONTEND: FrontendConfig;
   public GEOCODER: GeocoderConfig;
   public STRIPE: StripeConfig;
+  public PAYSTACK: PaystackConfig;
   public BOLDSIGN: BoldsignConfig;
   public ANTHROPIC: AnthropicConfig;
   public TWILIO: TwilioConfig;
@@ -144,6 +146,10 @@ class EnvVariables {
       // Payments Canada Rule H1: days between the PAD pre-debit notice and the bank debit.
       PAD_PRE_NOTIFICATION_DAYS: Number(process.env.PAD_PRE_NOTIFICATION_DAYS) || 10,
     };
+    this.PAYSTACK = {
+      SECRET_KEY: process.env.PAYSTACK_SECRET_KEY || '',
+      BASE_URL: process.env.PAYSTACK_BASE_URL || 'https://api.paystack.co',
+    };
     this.BOLDSIGN = {
       API_KEY: process.env.BOLDSIGN_API_KEY || '',
       API_URL: process.env.BOLDSIGN_API_URL || 'https://api.boldsign.com/v1',
@@ -199,6 +205,8 @@ class EnvVariables {
       PUSH_NOTIFICATIONS_ENABLED: process.env.FEATURE_PUSH_NOTIFICATIONS_ENABLED !== 'false',
       INSPECTION_ENABLED: process.env.FEATURE_INSPECTION_ENABLED !== 'false',
       INVOICE_WEBHOOK_ENABLED: process.env.FEATURE_INVOICE_WEBHOOK_ENABLED === 'true',
+      // Paystack for Nigerian accounts — opt-in until the integration is live
+      PAYSTACK_ENABLED: process.env.FEATURE_PAYSTACK_ENABLED === 'true',
     };
     this.WEBAUTHN = {
       ENABLED: process.env.WEBAUTHN_ENABLED === 'true',
@@ -229,6 +237,12 @@ class EnvVariables {
 
       if (!this.REDIS.URL) {
         missingVars.push('REDIS.URL (REDIS_URL, REDIS_PRIVATE_URL, or REDIS_PUBLIC_URL)');
+      }
+
+      if (this.FEATURES.PAYSTACK_ENABLED && !this.PAYSTACK.SECRET_KEY) {
+        missingVars.push(
+          'PAYSTACK.SECRET_KEY (PAYSTACK_SECRET_KEY), required when FEATURE_PAYSTACK_ENABLED=true'
+        );
       }
 
       if (missingVars.length > 0) {

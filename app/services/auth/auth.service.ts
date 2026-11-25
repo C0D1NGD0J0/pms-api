@@ -9,6 +9,7 @@ import { QueueFactory } from '@services/queue';
 import { UserCache } from '@caching/user.cache';
 import { ICurrentUser } from '@interfaces/user.interface';
 import { IUserRole } from '@shared/constants/roles.constants';
+import { paymentProviderForCountry } from '@utils/marketRules';
 import { PaymentMethodType } from '@interfaces/lease.interface';
 import { subscriptionPlanConfig } from '@services/subscription';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
@@ -267,9 +268,22 @@ export class AuthService {
     };
   }
 
+  /**
+   * Stripe countries, plus Paystack countries (Nigeria) while the Paystack switch is on.
+   * Only rent and payouts use Paystack; the app subscription is billed on Stripe either way.
+   */
+  private isSignupCountrySupported(countryCode: string | null | undefined): countryCode is string {
+    if (!countryCode) return false;
+    if (STRIPE_SUPPORTED_COUNTRY_CODES.includes(countryCode)) return true;
+    return (
+      paymentProviderForCountry(countryCode) === 'paystack' &&
+      this.featureFlagService.isEnabled(FeatureFlag.PAYSTACK)
+    );
+  }
+
   async signup(signupData: ISignupData): Promise<ISuccessReturnData> {
     const countryCode = getCountryCodeFromLocation(signupData.location);
-    if (!countryCode || !STRIPE_SUPPORTED_COUNTRY_CODES.includes(countryCode)) {
+    if (!this.isSignupCountrySupported(countryCode)) {
       const normalizedLocation = getLocationDetails(signupData.location);
       const locationParts = normalizedLocation?.split(', ') ?? [];
       const countryName = locationParts[locationParts.length - 1] || signupData.location;

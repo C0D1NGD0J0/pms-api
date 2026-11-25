@@ -26,6 +26,7 @@ import {
   SubscriptionCache,
   NotificationCache,
   IdempotencyCache,
+  PaystackCache,
   PropertyCache,
   VendorCache,
   LeaseCache,
@@ -171,6 +172,7 @@ import {
   PropertyService,
   BoldSignService,
   LeasePdfService,
+  PaystackService,
   InvoiceService,
   ExpenseService,
   MetricsService,
@@ -259,6 +261,7 @@ const ServiceResources = {
   mailerService: asClass(MailService).singleton(),
   leaseService: asClass(LeaseService).singleton(),
   stripeService: asClass(StripeService).singleton(),
+  paystackService: asClass(PaystackService).singleton(),
   twilioService: asClass(TwilioService).singleton(),
   clientService: asClass(ClientService).singleton(),
   vendorService: asClass(VendorService).singleton(),
@@ -353,6 +356,7 @@ const CacheResources = {
   idempotencyCache: asClass(IdempotencyCache).singleton(),
   subscriptionCache: asClass(SubscriptionCache).singleton(),
   notificationCache: asClass(NotificationCache).singleton(),
+  paystackCache: asClass(PaystackCache).singleton(),
 };
 
 const WorkerResources = {

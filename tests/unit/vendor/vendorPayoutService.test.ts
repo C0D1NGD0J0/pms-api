@@ -101,19 +101,39 @@ describe('VendorService - initiatePayoutOnboarding', () => {
   let mockVendorDAO: { findFirst: jest.Mock; updateClientPayoutAccount: jest.Mock };
   let mockPaymentProcessorDAO: { findByVuid: jest.Mock };
   let mockPayoutAccountService: { initiateVendorAccount: jest.Mock };
+  let mockPaymentGatewayService: { getProviderForClient: jest.Mock };
 
   beforeEach(() => {
     mockClientDAO = { getClientByCuid: jest.fn() };
     mockVendorDAO = { findFirst: jest.fn(), updateClientPayoutAccount: jest.fn() };
     mockPaymentProcessorDAO = { findByVuid: jest.fn() };
     mockPayoutAccountService = { initiateVendorAccount: jest.fn() };
+    mockPaymentGatewayService = {
+      getProviderForClient: jest.fn().mockResolvedValue(IPaymentGatewayProvider.STRIPE),
+    };
 
     vendorService = makeService({
       clientDAO: mockClientDAO as any,
       vendorDAO: mockVendorDAO as any,
       paymentProcessorDAO: mockPaymentProcessorDAO as any,
       payoutAccountService: mockPayoutAccountService,
+      paymentGatewayService: mockPaymentGatewayService as any,
     });
+  });
+
+  it('should refuse Stripe onboarding for vendors of a Paystack (Nigerian) client', async () => {
+    mockClientDAO.getClientByCuid.mockReturnValue(
+      Promise.resolve(makeClient({ settings: { vendorPayoutMode: 'express' } }))
+    );
+    mockPaymentGatewayService.getProviderForClient.mockResolvedValue(
+      IPaymentGatewayProvider.PAYSTACK
+    );
+
+    await expect(vendorService.initiatePayoutOnboarding(CUID, VUID)).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentProcessorDAO.findByVuid).not.toHaveBeenCalled();
+    expect(mockPayoutAccountService.initiateVendorAccount).not.toHaveBeenCalled();
   });
 
   afterEach(() => jest.clearAllMocks());

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { PaystackCache } from '@caching/paystack.cache';
 import { CircuitBreaker, createLogger } from '@utils/index';
@@ -148,7 +149,7 @@ export class PaystackService {
     this.assertEnabled();
     const secretKey = envVariables.PAYSTACK.SECRET_KEY;
     if (!secretKey || !signature) {
-      throw new UnauthorizedError({ message: 'Invalid Paystack webhook signature' });
+      throw new UnauthorizedError({ message: t('payment.errors.invalidWebhook') });
     }
 
     const expected = crypto.createHmac('sha512', secretKey).update(rawBody).digest('hex');
@@ -158,19 +159,19 @@ export class PaystackService {
       expectedBuffer.length === receivedBuffer.length &&
       crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
     if (!matches) {
-      throw new UnauthorizedError({ message: 'Invalid Paystack webhook signature' });
+      throw new UnauthorizedError({ message: t('payment.errors.invalidWebhook') });
     }
 
     try {
       return JSON.parse(rawBody.toString()) as IPaystackWebhookEvent;
     } catch {
-      throw new BadRequestError({ message: 'Invalid Paystack webhook body' });
+      throw new BadRequestError({ message: t('payment.errors.invalidWebhook') });
     }
   }
 
   private assertEnabled(): void {
     if (!this.featureFlagService.isEnabled(FeatureFlag.PAYSTACK)) {
-      throw new ForbiddenError({ message: 'Paystack payments are not available.' });
+      throw new ForbiddenError({ message: t('payment.errors.onlinePaymentsUnavailable') });
     }
   }
 
@@ -204,7 +205,7 @@ export class PaystackService {
       } catch (error) {
         this.log.error({ error, method, path }, 'Paystack request failed to reach the API');
         throw new ServiceUnavailableError({
-          message: 'Paystack is not reachable right now. Please try again shortly.',
+          message: t('payment.errors.serviceUnavailable'),
           originalError: error as Error,
         });
       }
@@ -214,7 +215,7 @@ export class PaystackService {
       if (response.status >= 500) {
         this.log.error({ status: response.status, method, path }, 'Paystack server error');
         throw new ServiceUnavailableError({
-          message: 'Paystack is having problems right now. Please try again shortly.',
+          message: t('payment.errors.serviceUnavailable'),
         });
       }
       if (!response.ok || !payload?.status) {
@@ -222,7 +223,8 @@ export class PaystackService {
           { status: response.status, method, path, message: payload?.message },
           'Paystack rejected the request'
         );
-        throw new BadRequestError({ message: payload?.message || 'Paystack rejected the request' });
+        // Paystack's own message stays in the logs; users get a neutral one
+        throw new BadRequestError({ message: t('payment.errors.requestRejected') });
       }
 
       return payload;

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { PaystackService } from '@services/external/paystack/paystack.service';
 import {
@@ -191,12 +192,12 @@ describe('PaystackService', () => {
   });
 
   describe('errors', () => {
-    it("turns a rejected request into a BadRequestError with Paystack's message", async () => {
+    it("turns a rejected request into a neutral BadRequestError, never Paystack's message", async () => {
       fetchMock.mockResolvedValue(jsonResponse(401, fixtures.invalidKey));
 
       await expect(service.listBanks()).rejects.toMatchObject({
         constructor: BadRequestError,
-        message: 'Invalid key',
+        message: t('payment.errors.requestRejected'),
       });
     });
 

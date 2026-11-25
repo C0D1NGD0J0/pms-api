@@ -1876,8 +1876,13 @@ export class PaymentCronService implements ICronProvider {
   private async syncConnectAccountStatuses(): Promise<void> {
     this.log.info('Starting Stripe Connect account status sync');
 
+    // Paystack subaccounts have no Stripe Connect status to sync
     const processors = await this.paymentProcessorDAO.list(
-      { accountId: { $exists: true, $ne: null }, deletedAt: null } as any,
+      {
+        accountId: { $exists: true, $ne: null },
+        deletedAt: null,
+        provider: { $ne: 'paystack' },
+      } as any,
       { limit: 10000 }
     );
 

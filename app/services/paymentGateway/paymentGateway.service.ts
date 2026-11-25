@@ -1,3 +1,4 @@
+import { t } from '@shared/languages';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/index';
@@ -89,7 +90,7 @@ export class PaymentGatewayService {
   private getProvider(provider: IPaymentGatewayProvider): IPaymentProvider {
     // Paystack has its own methods below; the Stripe-shaped ones don't apply to it
     if (provider === IPaymentGatewayProvider.PAYSTACK) {
-      throw new BadRequestError({ message: 'This action is not available for Paystack accounts.' });
+      throw new BadRequestError({ message: t('payment.payout.errors.notAvailableForAccount') });
     }
     const providerInstance = this.providers.get(provider);
 

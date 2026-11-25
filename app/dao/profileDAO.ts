@@ -283,7 +283,16 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
           $lookup: {
             from: 'paymentprocessors',
             let: { activeCuid: activeCuidExpr },
-            pipeline: [{ $match: { $expr: { $eq: ['$cuid', '$$activeCuid'] } } }],
+            // Vendor payout accounts carry the inviting client's cuid too; only the client's own counts
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [{ $eq: ['$cuid', '$$activeCuid'] }, { $ne: ['$ownerType', 'vendor'] }],
+                  },
+                },
+              },
+            ],
             as: 'paymentProcessorData',
           },
         },
@@ -736,6 +745,8 @@ export class ProfileDAO extends BaseDAO<IProfileDocument> implements IProfileDAO
                   accountId: { $ifNull: ['$paymentProcessorInfo.accountId', null] },
                   accountType: { $ifNull: ['$paymentProcessorInfo.accountType', null] },
                   onboardedAt: { $ifNull: ['$paymentProcessorInfo.onboardedAt', null] },
+                  // Which setup screen to show; account details come from GET /payout-account
+                  provider: { $ifNull: ['$paymentProcessorInfo.provider', 'stripe'] },
                 },
                 else: '$$REMOVE',
               },

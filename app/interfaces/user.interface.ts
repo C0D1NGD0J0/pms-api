@@ -1,9 +1,12 @@
 import { Document, Types } from 'mongoose';
 import { IUserRoleType } from '@shared/constants/roles.constants';
 
-import { PaymentProcessorAccountType } from './paymentProcessor.interface';
 import { IClientUserConnections, ICompanyProfile } from './client.interface';
 import { ISubscriptionEntitlements, ISubscriptionStatus, PlanName } from './subscription.interface';
+import {
+  PaymentProcessorAccountType,
+  PaymentProcessorProvider,
+} from './paymentProcessor.interface';
 import {
   EmployeeDepartment,
   IProfileDocument,
@@ -68,6 +71,18 @@ export interface ICurrentUser {
     isFormerTenant?: boolean;
   };
 
+  /** Payout account status (Stripe Connect or Paystack) — only for super-admin with a payment processor */
+  paymentProcessor?: {
+    provider: PaymentProcessorProvider;
+    isSetup: boolean;
+    chargesEnabled: boolean;
+    payoutsEnabled: boolean;
+    needsOnboarding: boolean;
+    accountId: string | null;
+    accountType: PaymentProcessorAccountType | null;
+    onboardedAt: Date | null;
+  };
+
   /** Vendor-specific info — only populated for vendor role */
   vendorInfo?: {
     vendorId?: string;
@@ -80,17 +95,6 @@ export interface ICurrentUser {
       payoutsEnabled: boolean;
       chargesEnabled: boolean;
     };
-  };
-
-  /** Stripe Connect account status — only populated for super-admin with a payment processor */
-  paymentProcessor?: {
-    isSetup: boolean;
-    chargesEnabled: boolean;
-    payoutsEnabled: boolean;
-    needsOnboarding: boolean;
-    accountId: string | null;
-    accountType: PaymentProcessorAccountType | null;
-    onboardedAt: Date | null;
   };
 
   /** Tenant-specific info — only populated for tenant role */

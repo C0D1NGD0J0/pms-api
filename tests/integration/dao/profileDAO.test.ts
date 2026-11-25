@@ -1,8 +1,9 @@
 import { Types } from 'mongoose';
 import { ProfileDAO } from '@dao/profileDAO';
-import { Profile, User } from '@models/index';
 import { clearTestDatabase } from '@tests/helpers';
+import { PaymentProcessor, Profile, User } from '@models/index';
 import { DataRetentionPolicy } from '@interfaces/profile.interface';
+import { PaymentProcessorAccountType } from '@interfaces/paymentProcessor.interface';
 
 describe('ProfileDAO Integration Tests', () => {
   let profileDAO: ProfileDAO;
@@ -746,6 +747,90 @@ describe('ProfileDAO Integration Tests', () => {
         expect((result?.client as any)?.isPrimaryVendor).toBe(true);
         // subscription must still be absent for vendor
         expect((result as any)?.subscription).toBeUndefined();
+      });
+    });
+
+    describe('paymentProcessor (payout account)', () => {
+      const makeSuperAdmin = () =>
+        User.updateOne(
+          { _id: testUserId },
+          {
+            cuids: [
+              {
+                cuid: 'TEST_CUID',
+                clientDisplayName: 'Test Client',
+                roles: ['super-admin'],
+                primaryRole: 'super-admin',
+                isConnected: true,
+              },
+            ],
+          }
+        );
+
+      it("shows the landlord's Paystack account status without bank details, ignoring a vendor's account", async () => {
+        await makeSuperAdmin();
+        // Inserted first so an unfiltered lookup would pick it up
+        await PaymentProcessor.create({
+          cuid: 'TEST_CUID',
+          client: new Types.ObjectId(),
+          ownerType: 'vendor',
+          vuid: 'VENDOR1',
+          accountId: 'acct_vendor_stripe',
+          chargesEnabled: false,
+          payoutsEnabled: false,
+        });
+        await PaymentProcessor.create({
+          cuid: 'TEST_CUID',
+          client: new Types.ObjectId(),
+          provider: 'paystack',
+          accountType: PaymentProcessorAccountType.SUBACCOUNT,
+          accountId: 'ACCT_landlord1',
+          chargesEnabled: true,
+          payoutsEnabled: true,
+          detailsSubmitted: true,
+          bankDetails: {
+            bankCode: '058',
+            bankName: 'Guaranty Trust Bank',
+            accountName: 'ADEBAYO TOLU',
+            accountNumberLast4: '6789',
+          },
+        });
+
+        const result = await profileDAO.generateCurrentUserInfo(testUserId.toString());
+
+        expect(result?.paymentProcessor).toEqual(
+          expect.objectContaining({
+            accountId: 'ACCT_landlord1',
+            provider: 'paystack',
+            chargesEnabled: true,
+            needsOnboarding: false,
+          })
+        );
+        // Bank details are only served by GET /payout-account, never on the current user
+        const payload = JSON.stringify(result?.paymentProcessor);
+        expect(payload).not.toContain('ADEBAYO');
+        expect(payload).not.toContain('6789');
+        expect((result?.paymentProcessor as any)?.bankSummary).toBeUndefined();
+      });
+
+      it('reports an existing account with no provider as stripe', async () => {
+        await makeSuperAdmin();
+        await PaymentProcessor.collection.insertOne({
+          cuid: 'TEST_CUID',
+          client: new Types.ObjectId(),
+          ppuid: 'PP_OLD',
+          accountId: 'acct_old_stripe',
+          accountType: 'express',
+          chargesEnabled: true,
+          payoutsEnabled: true,
+          detailsSubmitted: true,
+        });
+
+        const result = await profileDAO.generateCurrentUserInfo(testUserId.toString());
+
+        expect(result?.paymentProcessor).toEqual(
+          expect.objectContaining({ accountId: 'acct_old_stripe', provider: 'stripe' })
+        );
       });
     });
 

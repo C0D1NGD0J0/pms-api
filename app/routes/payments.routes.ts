@@ -59,6 +59,19 @@ router.get(
   })
 );
 
+// Account details live here rather than on the current user, which goes out on every request.
+// Registered before '/:cuid/:pytuid', which would otherwise match 'payout-account' as a payment id
+router.get(
+  '/:cuid/payout-account',
+  basicLimiter(),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.getPayoutAccount(req, res);
+  })
+);
+
 router.post(
   '/:cuid/:pytuid/invoice',
   basicLimiter(),
@@ -330,6 +343,50 @@ router.post(
   asyncWrapper((req, res) => {
     const controller = req.container.resolve<PaymentController>('paymentController');
     return controller.createConnectAccount(req, res);
+  })
+);
+
+// Paystack (Nigerian accounts): bank list → account-name check → save the bank account
+router.get(
+  '/:cuid/payout-account/banks',
+  basicLimiter({ max: 30, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  validateRequest({ params: UtilsValidations.cuid }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.listPayoutBanks(req, res);
+  })
+);
+
+// Tight limit: each call reveals an account holder's name
+router.post(
+  '/:cuid/payout-account/banks/resolve',
+  basicLimiter({ max: 10, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: PaymentValidations.paystackBankAccount,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.resolvePayoutBankAccount(req, res);
+  })
+);
+
+router.post(
+  '/:cuid/payout-account/paystack',
+  basicLimiter({ max: 5, windowMs: 15 * 60 * 1000 }),
+  requirePermission(PermissionResource.BILLING, PermissionAction.MANAGE),
+  requireVerifiedClient,
+  idempotency,
+  validateRequest({
+    params: UtilsValidations.cuid,
+    body: PaymentValidations.paystackBankAccount,
+  }),
+  asyncWrapper((req, res) => {
+    const controller = req.container.resolve<PaymentController>('paymentController');
+    return controller.createPaystackPayoutAccount(req, res);
   })
 );
 

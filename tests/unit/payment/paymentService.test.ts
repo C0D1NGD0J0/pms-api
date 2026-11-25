@@ -1,4 +1,7 @@
+import { join } from 'path';
 import { Types } from 'mongoose';
+import { readFileSync } from 'fs';
+import { t } from '@shared/languages';
 
 // Break the circular import chain: payments.service → @shared/middlewares → @di/index → registerResources → payments.service (undefined)
 jest.mock('@shared/middlewares', () => ({
@@ -14,6 +17,7 @@ import { PaymentService } from '@services/payments/payments.service';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { PaymentCronService } from '@services/payments/paymentCron.service';
 import { RentPaymentService } from '@services/payments/rentPayment.service';
+import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PayoutAccountService } from '@services/payments/payoutAccount.service';
 import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
@@ -2195,6 +2199,7 @@ describe('PaymentService - createConnectAccount', () => {
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
       createConnectAccount: jest.fn(),
+      getProviderForClient: jest.fn().mockResolvedValue(IPaymentGatewayProvider.STRIPE),
     } as unknown as jest.Mocked<PaymentGatewayService>;
 
     paymentService = makeServiceWithMocks({
@@ -2203,6 +2208,18 @@ describe('PaymentService - createConnectAccount', () => {
       paymentProcessorDAO: mockPaymentProcessorDAO,
       paymentGatewayService: mockPaymentGatewayService,
     });
+  });
+
+  it('should refuse Stripe Connect for a Paystack (Nigerian) client', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(null);
+    mockPaymentGatewayService.getProviderForClient.mockResolvedValue(
+      IPaymentGatewayProvider.PAYSTACK
+    );
+
+    await expect(
+      paymentService.createConnectAccount(CUID, { email: 'pm@example.com', country: 'NG' })
+    ).rejects.toThrow(BadRequestError);
+    expect(mockPaymentGatewayService.createConnectAccount).not.toHaveBeenCalled();
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -3532,18 +3549,22 @@ describe('PaymentService - instant payouts', () => {
     expect(mockPaymentGatewayService.createInstantPayout).not.toHaveBeenCalled();
   });
 
-  it('should surface a Stripe failure as BadRequestError', async () => {
+  it("should surface a provider failure as a neutral BadRequestError, not the provider's text", async () => {
     mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
     mockBalance(makeBalance());
     mockPaymentGatewayService.createInstantPayout.mockResolvedValue({
       success: false,
       data: null,
-      message: 'Debit card does not support instant payouts',
+      message: 'Stripe: debit card does not support instant payouts',
     } as any);
 
-    await expect(paymentService.requestInstantPayout(CUID, 'user-1', 'req-key-3')).rejects.toThrow(
-      'Debit card does not support instant payouts'
-    );
+    const error = await paymentService
+      .requestInstantPayout(CUID, 'user-1', 'req-key-3')
+      .catch((err) => err);
+
+    expect(error).toBeInstanceOf(BadRequestError);
+    expect(error.message).toBe(t('payment.payout.errors.instantPayoutFailed'));
+    expect(error.message).not.toMatch(/stripe/i);
   });
 });
 
@@ -7148,5 +7169,223 @@ describe('PaymentService - createCardPaymentSession — session expiry and retur
         new RegExp(`^${FRONTEND}/tenants/${CUID}/.+payment_success=true$`)
       );
     }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Paystack payout bank account (Nigerian accounts)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - Paystack payout account', () => {
+  let paymentService: PaymentService;
+  let mockClientDAO: jest.Mocked<ClientDAO>;
+  let mockPaymentProcessorDAO: jest.Mocked<PaymentProcessorDAO>;
+  let mockPaymentGatewayService: Record<string, jest.Mock>;
+
+  const banks = [
+    { name: 'Guaranty Trust Bank', code: '058', slug: 'gtb', currency: 'NGN', active: true },
+    { name: 'Closed Bank', code: '999', slug: 'closed', currency: 'NGN', active: false },
+  ];
+  const bankAccount = { bankCode: '058', accountNumber: '0123456789' };
+
+  beforeEach(() => {
+    mockClientDAO = {
+      findFirst: jest.fn().mockResolvedValue({
+        _id: new Types.ObjectId(),
+        cuid: CUID,
+        displayName: 'Lekki Homes',
+        companyProfile: { tradingName: 'Lekki Homes Ltd' },
+      }),
+    } as unknown as jest.Mocked<ClientDAO>;
+    mockPaymentProcessorDAO = {
+      findFirst: jest.fn().mockResolvedValue(null),
+      insert: jest.fn().mockResolvedValue({}),
+    } as unknown as jest.Mocked<PaymentProcessorDAO>;
+    mockPaymentGatewayService = {
+      getProviderForClient: jest.fn().mockResolvedValue(IPaymentGatewayProvider.PAYSTACK),
+      listBanks: jest.fn().mockResolvedValue(banks),
+      resolveBankAccount: jest
+        .fn()
+        .mockResolvedValue({ account_number: '0123456789', account_name: 'ADEBAYO TOLU' }),
+      createPayoutSubaccount: jest.fn().mockResolvedValue({
+        subaccount_code: 'ACCT_landlord1',
+        settlement_bank: 'Guaranty Trust Bank',
+        account_number: '0123456789',
+        business_name: 'Lekki Homes Ltd',
+        percentage_charge: 0,
+        active: true,
+      }),
+      getConnectBalance: jest.fn(),
+    };
+
+    paymentService = makeServiceWithMocks({
+      clientDAO: mockClientDAO,
+      paymentProcessorDAO: mockPaymentProcessorDAO,
+      paymentGatewayService: mockPaymentGatewayService as any,
+    });
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('lists only active banks, as name and code', async () => {
+    const result = await paymentService.listPayoutBanks(CUID);
+
+    expect(result.data).toEqual([{ name: 'Guaranty Trust Bank', code: '058' }]);
+  });
+
+  it.each(['en', 'fr'])('never names the payment provider in %s payout messages', (lang) => {
+    const locale = JSON.parse(
+      readFileSync(join(process.cwd(), `app/shared/languages/locales/${lang}.json`), 'utf8')
+    );
+    const userFacing = JSON.stringify([locale.payment.payout, locale.payment.errors]);
+
+    expect(userFacing).not.toMatch(/stripe|paystack|connect/i);
+  });
+
+  it('shows the payout account details masked, for the settings page', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({
+      accountId: 'ACCT_landlord1234',
+      provider: 'paystack',
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      onboardedAt: new Date('2026-11-20'),
+      bankDetails: {
+        bankCode: '058',
+        bankName: 'Guaranty Trust Bank',
+        accountName: 'ADEBAYO TOLU',
+        accountNumberLast4: '6789',
+      },
+    } as any);
+
+    const result = await paymentService.getPayoutAccountDetails(CUID);
+
+    expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledWith({
+      cuid: CUID,
+      ownerType: 'client',
+      deletedAt: null,
+    });
+    expect(result.data).toEqual({
+      provider: 'paystack',
+      accountIdLast4: '1234',
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      onboardedAt: new Date('2026-11-20'),
+      bank: {
+        bankName: 'Guaranty Trust Bank',
+        accountName: 'ADEBAYO TOLU',
+        accountNumberLast4: '6789',
+      },
+    });
+    expect(JSON.stringify(result.data)).not.toContain('ACCT_landlord');
+  });
+
+  it('returns no details when no payout account is set up', async () => {
+    const result = await paymentService.getPayoutAccountDetails(CUID);
+
+    expect(result).toEqual({ success: true, data: null });
+  });
+
+  it("returns the account holder's name for confirmation", async () => {
+    const result = await paymentService.resolvePayoutBankAccount(CUID, bankAccount);
+
+    expect(mockPaymentGatewayService.resolveBankAccount).toHaveBeenCalledWith('0123456789', '058');
+    expect(result.data).toEqual({ accountName: 'ADEBAYO TOLU' });
+  });
+
+  it('refuses bank-account setup for accounts that use Stripe', async () => {
+    mockPaymentGatewayService.getProviderForClient.mockResolvedValue(
+      IPaymentGatewayProvider.STRIPE
+    );
+
+    await expect(paymentService.listPayoutBanks(CUID)).rejects.toThrow(BadRequestError);
+    await expect(paymentService.createPaystackPayoutAccount(CUID, bankAccount)).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentGatewayService.listBanks).not.toHaveBeenCalled();
+    expect(mockPaymentGatewayService.createPayoutSubaccount).not.toHaveBeenCalled();
+  });
+
+  it('creates the subaccount and saves a Paystack payout account with only the last 4 digits', async () => {
+    const result = await paymentService.createPaystackPayoutAccount(CUID, bankAccount);
+
+    expect(mockPaymentGatewayService.createPayoutSubaccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        business_name: 'Lekki Homes Ltd',
+        settlement_bank: '058',
+        account_number: '0123456789',
+        percentage_charge: 0,
+      })
+    );
+    expect(mockPaymentProcessorDAO.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cuid: CUID,
+        provider: 'paystack',
+        accountType: 'subaccount',
+        accountId: 'ACCT_landlord1',
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+        onboardedAt: expect.any(Date),
+        bankDetails: {
+          bankCode: '058',
+          bankName: 'Guaranty Trust Bank',
+          accountName: 'ADEBAYO TOLU',
+          accountNumberLast4: '6789',
+        },
+      })
+    );
+    const saved = (mockPaymentProcessorDAO.insert as jest.Mock).mock.calls[0][0];
+    expect(JSON.stringify(saved)).not.toContain('0123456789');
+    expect(result.data).toEqual({
+      accountId: 'ACCT_landlord1',
+      bankName: 'Guaranty Trust Bank',
+      accountName: 'ADEBAYO TOLU',
+      accountNumberLast4: '6789',
+    });
+  });
+
+  it('checks the account name itself before creating the subaccount, with a neutral message', async () => {
+    mockPaymentGatewayService.resolveBankAccount.mockRejectedValue(
+      new BadRequestError({ message: 'Could not resolve account name' })
+    );
+
+    await expect(paymentService.createPaystackPayoutAccount(CUID, bankAccount)).rejects.toThrow(
+      t('payment.payout.errors.accountNotVerified')
+    );
+    expect(mockPaymentGatewayService.createPayoutSubaccount).not.toHaveBeenCalled();
+    expect(mockPaymentProcessorDAO.insert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a bank that is not in the active list', async () => {
+    await expect(
+      paymentService.createPaystackPayoutAccount(CUID, { ...bankAccount, bankCode: '999' })
+    ).rejects.toThrow(BadRequestError);
+    expect(mockPaymentGatewayService.createPayoutSubaccount).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second payout account for the same client', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({ accountId: 'ACCT_existing' } as any);
+
+    await expect(paymentService.createPaystackPayoutAccount(CUID, bankAccount)).rejects.toThrow(
+      BadRequestError
+    );
+    expect(mockPaymentProcessorDAO.findFirst).toHaveBeenCalledWith({
+      cuid: CUID,
+      ownerType: 'client',
+    });
+    expect(mockPaymentGatewayService.createPayoutSubaccount).not.toHaveBeenCalled();
+  });
+
+  it('refuses Stripe-only payout actions on a Paystack account without calling Stripe', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue({
+      accountId: 'ACCT_landlord1',
+      provider: 'paystack',
+      payoutsEnabled: true,
+    } as any);
+
+    await expect(paymentService.getPayoutBalance(CUID)).rejects.toThrow(
+      t('payment.payout.errors.notAvailableForAccount')
+    );
+    expect(mockPaymentGatewayService.getConnectBalance).not.toHaveBeenCalled();
   });
 });

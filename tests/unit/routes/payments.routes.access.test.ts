@@ -431,7 +431,23 @@ describe('Paystack payout bank account routes', () => {
     expect(mockController.updatePaystackPayoutBankAccount).not.toHaveBeenCalled();
   });
 
+  it.each(['058', '035A', 'MFB51116M', '00zap', '09'])(
+    'accepts real Paystack bank code %s',
+    async (bankCode) => {
+      const res = await send(
+        'post',
+        `${base}/payout-account/bank`,
+        { role: ROLES.SUPER_ADMIN },
+        { bankCode, accountNumber: '0123456789' }
+      );
+      expect(res.status).toBe(200);
+    }
+  );
+
   it.each([
+    { bankCode: '058-1', accountNumber: '0123456789' },
+    { bankCode: '0', accountNumber: '0123456789' },
+    { bankCode: '1234567890123', accountNumber: '0123456789' },
     { bankCode: '058', accountNumber: '12345' },
     { bankCode: '058', accountNumber: '01234567ab' },
     { accountNumber: '0123456789' },

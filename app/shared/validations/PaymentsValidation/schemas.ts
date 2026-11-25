@@ -102,12 +102,14 @@ export const createConnectAccount = z.object({
   country: z.string().length(2).toUpperCase(),
 });
 
-// Nigerian account numbers (NUBAN) are 10 digits; bank codes come from the bank list
+// Nigerian account numbers (NUBAN) are 10 digits. Bank codes come from Paystack's bank list:
+// letters and digits, 2–9 characters as of 2026-11 (e.g. '058', '035A' ALAT, 'MFB51116M', '00zap'),
+// so they are not all numeric. The code is also checked against the active list on save.
 export const paystackBankAccount = z.object({
   bankCode: z
     .string()
     .trim()
-    .regex(/^[0-9A-Za-z-]{2,20}$/, 'Invalid bank'),
+    .regex(/^[0-9A-Za-z]{2,12}$/, 'Invalid bank code'),
   accountNumber: z
     .string()
     .trim()

@@ -7496,6 +7496,16 @@ describe('PaymentService - change Paystack payout bank account', () => {
     expect(emitterService.emit).not.toHaveBeenCalled();
   });
 
+  it('fails without alerting when Paystack changed but the local save did not', async () => {
+    mockPaymentProcessorDAO.update.mockRejectedValue(new Error('db down'));
+
+    await expect(
+      paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount)
+    ).rejects.toThrow('db down');
+    expect(mockPaymentGatewayService.updatePayoutSubaccount).toHaveBeenCalled();
+    expect(emitterService.emit).not.toHaveBeenCalled();
+  });
+
   it('refuses a Stripe payout account, which changes its bank inside Stripe', async () => {
     mockPaymentProcessorDAO.findFirst.mockResolvedValue({
       _id: processorId,

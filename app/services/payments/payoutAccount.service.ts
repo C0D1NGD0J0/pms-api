@@ -405,10 +405,21 @@ export class PayoutAccountService {
         accountNumberLast4: data.accountNumber.slice(-4),
       };
       const isActive = subaccount.active !== false;
-      await this.paymentProcessorDAO.update(
-        { _id: processor._id },
-        { $set: { bankDetails, chargesEnabled: isActive, payoutsEnabled: isActive } }
-      );
+      // Paystack is updated first. If this save fails, Paystack already settles to the new bank
+      // while our record shows the old one; the request fails and the idempotency claim is
+      // released, so retrying the same change re-sends the same details and both sides match.
+      try {
+        await this.paymentProcessorDAO.update(
+          { _id: processor._id },
+          { $set: { bankDetails, chargesEnabled: isActive, payoutsEnabled: isActive } }
+        );
+      } catch (error) {
+        this.log.error(
+          { cuid, actorId, newLast4: bankDetails.accountNumberLast4, error },
+          'Paystack payout bank changed but the local record was not saved; retry the change'
+        );
+        throw error;
+      }
 
       this.log.info(
         {
@@ -419,6 +430,9 @@ export class PayoutAccountService {
         },
         'Payout bank account changed'
       );
+      // Alerted on every successful change, even a resubmit of the same details: we only keep the
+      // last 4 digits, so a "same account" check could hide a real switch to another account
+      // ending in the same 4 digits at the same bank.
       this.emitterService.emit(EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED, {
         cuid,
         changedByUserId: actorId,

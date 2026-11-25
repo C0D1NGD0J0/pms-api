@@ -625,7 +625,11 @@
       "paymentFailedNoFallback": "Le paiement a échoué et aucun autre mode de paiement n'est enregistré.",
       "retryFailedMissingInfo": "La nouvelle tentative de paiement a échoué. Veuillez mettre à jour les renseignements de votre compte.",
       "paymentFailedAddPaymentMethod": "Le paiement a échoué. Veuillez ajouter un mode de paiement pour effectuer le paiement.",
-      "instantPayoutUnavailable": "Le versement instantané n'est pas disponible : {{reason}}"
+      "instantPayoutUnavailable": "Le versement instantané n'est pas disponible : {{reason}}",
+      "serviceUnavailable": "Les paiements en ligne sont temporairement indisponibles. Veuillez réessayer sous peu.",
+      "requestRejected": "La demande de paiement n'a pas pu être traitée. Vérifiez les renseignements et réessayez.",
+      "onlinePaymentsUnavailable": "Les paiements en ligne ne sont pas offerts pour ce compte.",
+      "invalidWebhook": "Requête webhook invalide."
     },
     "success": {
       "instantPayoutRequested": "Versement instantané demandé. Les fonds arrivent généralement en moins de 30 minutes."
@@ -638,6 +642,41 @@
       "open_disputes": "ce compte a un litige de paiement en cours",
       "no_instant_balance": "aucun solde n'est admissible au versement instantané, ou aucune carte de débit n'est liée",
       "pricing_unavailable": "les versements instantanés sont temporairement indisponibles"
+    },
+    "payout": {
+      "errors": {
+        "notConfigured": "Votre compte de versement n'est pas encore configuré.",
+        "notAvailableForAccount": "Cette option n'est pas offerte pour votre compte de versement.",
+        "bankSetupNotAvailable": "L'ajout d'un compte bancaire pour les versements n'est pas offert pour ce compte.",
+        "useBankAccountSetup": "Ajoutez un compte bancaire pour recevoir les versements sur ce compte.",
+        "alreadyExists": "Un compte de versement est déjà configuré pour ce compte.",
+        "chooseBankFromList": "Veuillez choisir une banque dans la liste.",
+        "accountNotVerified": "Nous n'avons pas pu vérifier ce compte bancaire. Vérifiez la banque et le numéro de compte, puis réessayez.",
+        "setupFailed": "Nous n'avons pas pu configurer votre compte de versement. Veuillez réessayer.",
+        "linkFailed": "Nous n'avons pas pu ouvrir la page de votre compte de versement. Veuillez réessayer.",
+        "payoutsNotEnabled": "Les versements ne sont pas encore activés pour ce compte.",
+        "balanceUnavailable": "Nous n'avons pas pu charger le solde de vos versements. Veuillez réessayer.",
+        "historyUnavailable": "Nous n'avons pas pu charger l'historique de vos versements. Veuillez réessayer.",
+        "scheduleUnavailable": "Nous n'avons pas pu charger le calendrier de vos versements. Veuillez réessayer.",
+        "scheduleUpdateFailed": "Nous n'avons pas pu mettre à jour le calendrier de vos versements. Veuillez réessayer.",
+        "instantPayoutFailed": "Nous n'avons pas pu effectuer le versement instantané. Veuillez réessayer.",
+        "openDisputes": "Les versements ne peuvent pas être débloqués tant que {{count}} litige(s) de paiement sont ouverts.",
+        "vendorEmailRequired": "L'adresse courriel du fournisseur est requise pour configurer un compte de versement.",
+        "vendorAccountNotFound": "Compte de versement introuvable. Veuillez d'abord commencer la configuration des versements.",
+        "vendorAccountIncomplete": "La configuration du compte de versement n'est pas encore terminée.",
+        "vendorPayoutNotAvailable": "La configuration des versements aux fournisseurs n'est pas encore offerte pour ce compte."
+      },
+      "success": {
+        "accountCreated": "Compte de versement créé avec succès.",
+        "bankAccountAdded": "Compte bancaire de versement ajouté avec succès.",
+        "bankAccountUpdated": "Compte bancaire de versement mis à jour avec succès.",
+        "onboardingLinkCreated": "Lien de configuration des versements créé.",
+        "updateLinkCreated": "Lien de mise à jour du compte de versement créé.",
+        "dashboardLinkCreated": "Lien du tableau de bord des versements créé.",
+        "scheduleUpdated": "Calendrier des versements mis à jour avec succès.",
+        "notBlocked": "Les versements ne sont pas bloqués.",
+        "unblocked": "Versements débloqués avec succès."
+      }
     }
   },
   "sms": {
@@ -1004,6 +1043,10 @@
       "depositRefundFailed": {
         "title": "Échec du remboursement du dépôt de garantie",
         "message": "Le remboursement du dépôt de garantie de {{amount}} pour le paiement {{pytuid}} n'a pas pu être traité. Motif : {{reason}}. Veuillez vérifier la situation et rembourser le locataire autrement au besoin."
+      },
+      "payoutBankAccountChanged": {
+        "title": "Compte bancaire de versement modifié",
+        "message": "Les versements des loyers iront désormais au compte {{bankName}} se terminant par {{last4}}. Si vous n'avez pas fait cette modification, communiquez immédiatement avec le soutien."
       },
       "accountPayoutPaid": {
         "title": "Versement déposé",

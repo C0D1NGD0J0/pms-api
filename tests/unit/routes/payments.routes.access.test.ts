@@ -58,6 +58,11 @@ const controllerMethods = [
   'downloadMyReceipt',
   'requestInstantPayout',
   'updatePayoutSchedule',
+  'getPayoutAccount',
+  'listPayoutBanks',
+  'resolvePayoutBankAccount',
+  'createPaystackPayoutAccount',
+  'updatePaystackPayoutBankAccount',
 ] as const;
 
 const mockController = Object.fromEntries(
@@ -341,6 +346,121 @@ describe('payout routes', () => {
       expect(mockController.updatePayoutSchedule).not.toHaveBeenCalled();
     }
   );
+});
+
+describe('Paystack payout bank account routes', () => {
+  const validBody = { bankCode: '058', accountNumber: '0123456789' };
+
+  it('shows payout account details to a billing manager only', async () => {
+    const allowed = await request(app)
+      .get(`${base}/payout-account`)
+      .set('x-test-role', ROLES.SUPER_ADMIN);
+    expect(allowed.body.handledBy).toBe('getPayoutAccount');
+
+    const tenant = await request(app)
+      .get(`${base}/payout-account`)
+      .set('x-test-role', ROLES.TENANT);
+    expect(tenant.status).toBe(403);
+  });
+
+  it('lets a billing manager list banks, check an account and save it', async () => {
+    const banks = await request(app)
+      .get(`${base}/payout-account/banks`)
+      .set('x-test-role', ROLES.SUPER_ADMIN);
+    expect(banks.body.handledBy).toBe('listPayoutBanks');
+
+    const resolved = await send(
+      'post',
+      `${base}/payout-account/banks/resolve`,
+      { role: ROLES.SUPER_ADMIN },
+      validBody
+    );
+    expect(resolved.body.handledBy).toBe('resolvePayoutBankAccount');
+
+    const saved = await send(
+      'post',
+      `${base}/payout-account/bank`,
+      { role: ROLES.SUPER_ADMIN },
+      validBody
+    );
+    expect(saved.status).toBe(200);
+    expect(saved.body.handledBy).toBe('createPaystackPayoutAccount');
+  });
+
+  it.each([ROLES.TENANT, ROLES.VENDOR, ROLES.STAFF])(
+    'forbids a %s from checking or saving a payout bank account',
+    async (role) => {
+      const resolved = await send(
+        'post',
+        `${base}/payout-account/banks/resolve`,
+        { role },
+        validBody
+      );
+      const saved = await send('post', `${base}/payout-account/bank`, { role }, validBody);
+      expect(resolved.status).toBe(403);
+      expect(saved.status).toBe(403);
+      expect(mockController.resolvePayoutBankAccount).not.toHaveBeenCalled();
+      expect(mockController.createPaystackPayoutAccount).not.toHaveBeenCalled();
+    }
+  );
+
+  it('lets only a billing manager change the payout bank account', async () => {
+    const allowed = await send(
+      'patch',
+      `${base}/payout-account/bank`,
+      { role: ROLES.SUPER_ADMIN },
+      validBody
+    );
+    expect(allowed.body.handledBy).toBe('updatePaystackPayoutBankAccount');
+
+    for (const role of [ROLES.TENANT, ROLES.VENDOR, ROLES.STAFF]) {
+      const res = await send('patch', `${base}/payout-account/bank`, { role }, validBody);
+      expect(res.status).toBe(403);
+    }
+    expect(mockController.updatePaystackPayoutBankAccount).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an invalid account number when changing the bank', async () => {
+    const res = await send(
+      'patch',
+      `${base}/payout-account/bank`,
+      { role: ROLES.SUPER_ADMIN },
+      { bankCode: '058', accountNumber: '123' }
+    );
+    expect(res.status).toBe(422);
+    expect(mockController.updatePaystackPayoutBankAccount).not.toHaveBeenCalled();
+  });
+
+  it.each(['058', '035A', 'MFB51116M', '00zap', '09'])(
+    'accepts real Paystack bank code %s',
+    async (bankCode) => {
+      const res = await send(
+        'post',
+        `${base}/payout-account/bank`,
+        { role: ROLES.SUPER_ADMIN },
+        { bankCode, accountNumber: '0123456789' }
+      );
+      expect(res.status).toBe(200);
+    }
+  );
+
+  it.each([
+    { bankCode: '058-1', accountNumber: '0123456789' },
+    { bankCode: '0', accountNumber: '0123456789' },
+    { bankCode: '1234567890123', accountNumber: '0123456789' },
+    { bankCode: '058', accountNumber: '12345' },
+    { bankCode: '058', accountNumber: '01234567ab' },
+    { accountNumber: '0123456789' },
+  ])('rejects bank account body %o', async (body) => {
+    const res = await send(
+      'post',
+      `${base}/payout-account/bank`,
+      { role: ROLES.SUPER_ADMIN },
+      body
+    );
+    expect(res.status).toBe(422);
+    expect(mockController.createPaystackPayoutAccount).not.toHaveBeenCalled();
+  });
 });
 
 describe('invoice webhook production guard', () => {

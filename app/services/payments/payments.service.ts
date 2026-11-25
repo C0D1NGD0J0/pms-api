@@ -14,6 +14,7 @@ import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { ROLE_GROUPS, ROLES } from '@shared/constants/roles.constants';
 import { StripeService } from '@services/external/stripe/stripe.service';
+import { IPayoutAccountDetails } from '@interfaces/paymentProcessor.interface';
 import { InvoiceTemplateRenderer, InvoiceRenderData } from '@services/invoice';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
@@ -2550,6 +2551,41 @@ export class PaymentService implements ICronProvider {
     data: { email: string; country: string }
   ): IPromiseReturnedData<any> {
     return this.payoutAccountService.createConnectAccount(cuid, data);
+  }
+
+  async getPayoutAccountDetails(cuid: string): IPromiseReturnedData<IPayoutAccountDetails | null> {
+    return this.payoutAccountService.getPayoutAccountDetails(cuid);
+  }
+
+  async listPayoutBanks(cuid: string): IPromiseReturnedData<{ name: string; code: string }[]> {
+    return this.payoutAccountService.listPayoutBanks(cuid);
+  }
+
+  async resolvePayoutBankAccount(
+    cuid: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{ accountName: string }> {
+    return this.payoutAccountService.resolvePayoutBankAccount(cuid, data);
+  }
+
+  async updatePaystackPayoutBankAccount(
+    cuid: string,
+    actorId: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{ accountNumberLast4: string; accountName: string; bankName: string }> {
+    return this.payoutAccountService.updatePaystackPayoutBankAccount(cuid, actorId, data);
+  }
+
+  async createPaystackPayoutAccount(
+    cuid: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{
+    accountNumberLast4: string;
+    accountName: string;
+    accountId: string;
+    bankName: string;
+  }> {
+    return this.payoutAccountService.createPaystackPayoutAccount(cuid, data);
   }
 
   async getKycOnboardingLink(

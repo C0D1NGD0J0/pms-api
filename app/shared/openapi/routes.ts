@@ -1313,6 +1313,78 @@ openApiRegistry.registerPath({
 
 openApiRegistry.registerPath({
   method: 'get',
+  path: '/payments/{cuid}/payout-account',
+  summary: 'Get the payout account details (masked) for the payment settings page',
+  tags: ['Payments'],
+  request: { params: cuidParams },
+  responses: { ...ok200, ...err401, ...err403 },
+});
+
+openApiRegistry.registerPath({
+  method: 'get',
+  path: '/payments/{cuid}/payout-account/banks',
+  summary: 'List Nigerian banks for a Paystack payout account',
+  tags: ['Payments'],
+  request: { params: cuidParams },
+  responses: { ...ok200, ...err401, ...err400, ...err403 },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/payments/{cuid}/payout-account/banks/resolve',
+  summary: "Check a Nigerian bank account and return the holder's name",
+  tags: ['Payments'],
+  request: {
+    params: cuidParams,
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ bankCode: z.string(), accountNumber: z.string().length(10) }),
+        },
+      },
+    },
+  },
+  responses: { ...ok200, ...err401, ...err400, ...err403, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/payments/{cuid}/payout-account/bank',
+  summary: 'Add the payout bank account (accounts paid out by bank, e.g. Nigeria)',
+  tags: ['Payments'],
+  request: {
+    params: cuidParams,
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ bankCode: z.string(), accountNumber: z.string().length(10) }),
+        },
+      },
+    },
+  },
+  responses: { ...ok200, ...err401, ...err400, ...err403, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'patch',
+  path: '/payments/{cuid}/payout-account/bank',
+  summary: 'Change the payout bank account (alerts the account managers)',
+  tags: ['Payments'],
+  request: {
+    params: cuidParams,
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({ bankCode: z.string(), accountNumber: z.string().length(10) }),
+        },
+      },
+    },
+  },
+  responses: { ...ok200, ...err401, ...err400, ...err403, ...err422 },
+});
+
+openApiRegistry.registerPath({
+  method: 'get',
   path: '/payments/{cuid}/payout-account/onboard',
   summary: 'Get payout account onboarding link',
   tags: ['Payments'],
@@ -2920,6 +2992,9 @@ openApiRegistry.registerPath({
             .openapi('HealthCheckResponse'),
         },
       },
+    },
+    503: {
+      description: 'Database or Redis unavailable (same body, message "Unhealthy")',
     },
   },
 });

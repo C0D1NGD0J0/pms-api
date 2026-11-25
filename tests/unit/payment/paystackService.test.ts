@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { PaystackService } from '@services/external/paystack/paystack.service';
 import {
@@ -93,6 +94,29 @@ describe('PaystackService', () => {
         amount: 120_000_000,
         subaccount: 'ACCT_landlord',
         transaction_charge: 1_800_000,
+      });
+    });
+
+    it('changes a subaccount bank with a PUT to the same subaccount code', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse(200, {
+          status: true,
+          message: 'Subaccount updated',
+          data: { subaccount_code: 'ACCT_landlord1', settlement_bank: 'Access Bank', active: true },
+        })
+      );
+
+      await service.updateSubaccount('ACCT_landlord1', {
+        settlement_bank: '044',
+        account_number: '9876543210',
+      });
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.paystack.co/subaccount/ACCT_landlord1');
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(init.body)).toEqual({
+        settlement_bank: '044',
+        account_number: '9876543210',
       });
     });
 
@@ -191,12 +215,12 @@ describe('PaystackService', () => {
   });
 
   describe('errors', () => {
-    it("turns a rejected request into a BadRequestError with Paystack's message", async () => {
+    it("turns a rejected request into a neutral BadRequestError, never Paystack's message", async () => {
       fetchMock.mockResolvedValue(jsonResponse(401, fixtures.invalidKey));
 
       await expect(service.listBanks()).rejects.toMatchObject({
         constructor: BadRequestError,
-        message: 'Invalid key',
+        message: t('payment.errors.requestRejected'),
       });
     });
 

@@ -180,6 +180,11 @@ export const NotificationMessages = {
       title: 'Vendor Payout Completed',
       message: 'A payout of {{amount}} has been successfully deposited to the vendor bank account',
     },
+    payoutBankAccountChanged: {
+      title: 'Payout Bank Account Changed',
+      message:
+        'Rent payouts now go to {{bankName}} account ending {{last4}}. If you did not make this change, contact support right away.',
+    },
     accountPayoutPaid: {
       title: 'Payout Deposited',
       message: 'Your payout of {{amount}} has been deposited to your bank account',
@@ -443,6 +448,7 @@ export type NotificationMessageKey =
   | 'payment.cancelled'
   | 'payment.payoutFailed'
   | 'payment.payoutPaid'
+  | 'payment.payoutBankAccountChanged'
   | 'payment.accountPayoutPaid'
   | 'payment.accountInstantPayoutPaid'
   | 'payment.accountPayoutFailed'

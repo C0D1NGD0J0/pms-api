@@ -1114,6 +1114,14 @@ export class VendorService {
         });
       }
 
+      // Nigerian vendors will be paid by Paystack bank transfer (coming next), not Stripe
+      const provider = await this.paymentGatewayService.getProviderForClient(cuid);
+      if (provider === IPaymentGatewayProvider.PAYSTACK) {
+        throw new BadRequestError({
+          message: t('payment.payout.errors.vendorPayoutNotAvailable'),
+        });
+      }
+
       // Idempotent: vendor has one Stripe account regardless of which client invited them
       const existing = await this.paymentProcessorDAO.findByVuid(vuid);
       if (existing) {

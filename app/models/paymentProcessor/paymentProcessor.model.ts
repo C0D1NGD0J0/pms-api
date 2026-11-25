@@ -45,6 +45,19 @@ const PaymentProcessorSchema = new Schema<IPaymentProcessorDocument>(
       enum: ['stripe', 'paystack'],
       default: 'stripe',
     },
+    // Paystack only: the settlement bank, for display (Paystack holds the full account number)
+    bankDetails: {
+      type: new Schema(
+        {
+          bankCode: { type: String, required: true, trim: true },
+          bankName: { type: String, required: true, trim: true },
+          accountName: { type: String, required: true, trim: true },
+          accountNumberLast4: { type: String, required: true, trim: true, maxlength: 4 },
+        },
+        { _id: false }
+      ),
+      default: undefined,
+    },
     chargesEnabled: {
       type: Boolean,
       required: true,

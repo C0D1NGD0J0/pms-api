@@ -1,3 +1,4 @@
+import { t } from '@shared/languages';
 import { ClientDAO } from '@dao/clientDAO';
 import { createLogger } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/index';
@@ -10,6 +11,7 @@ import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { PaystackService } from '@services/external/paystack/paystack.service';
 import {
   IPaystackChargeAuthorizationInput,
+  IPaystackUpdateSubaccountInput,
   IPaystackCreateSubaccountInput,
   IPaystackInitializeResult,
   IPaystackInitializeInput,
@@ -89,7 +91,7 @@ export class PaymentGatewayService {
   private getProvider(provider: IPaymentGatewayProvider): IPaymentProvider {
     // Paystack has its own methods below; the Stripe-shaped ones don't apply to it
     if (provider === IPaymentGatewayProvider.PAYSTACK) {
-      throw new BadRequestError({ message: 'This action is not available for Paystack accounts.' });
+      throw new BadRequestError({ message: t('payment.payout.errors.notAvailableForAccount') });
     }
     const providerInstance = this.providers.get(provider);
 
@@ -1171,6 +1173,7 @@ export class PaymentGatewayService {
     const processor = await this.paymentProcessorDAO?.findFirst({
       cuid,
       ownerType: { $ne: 'vendor' },
+      deletedAt: null,
     });
     if (processor) {
       return processor.provider === 'paystack'
@@ -1202,6 +1205,13 @@ export class PaymentGatewayService {
 
   createPayoutSubaccount(input: IPaystackCreateSubaccountInput): Promise<IPaystackSubaccount> {
     return this.paystack().createSubaccount(input);
+  }
+
+  updatePayoutSubaccount(
+    subaccountCode: string,
+    input: IPaystackUpdateSubaccountInput
+  ): Promise<IPaystackSubaccount> {
+    return this.paystack().updateSubaccount(subaccountCode, input);
   }
 
   initializeCardCheckout(input: IPaystackInitializeInput): Promise<IPaystackInitializeResult> {

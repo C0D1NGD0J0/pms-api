@@ -165,6 +165,49 @@ export class PaymentController {
     return res.status(201).json(result);
   }
 
+  async getPayoutAccount(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const result = await this.paymentService.getPayoutAccountDetails(cuid);
+    return res.status(200).json(result);
+  }
+
+  async listPayoutBanks(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const result = await this.paymentService.listPayoutBanks(cuid);
+    return res.status(200).json(result);
+  }
+
+  async resolvePayoutBankAccount(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { bankCode, accountNumber } = req.body;
+    const result = await this.paymentService.resolvePayoutBankAccount(cuid, {
+      bankCode,
+      accountNumber,
+    });
+    return res.status(200).json(result);
+  }
+
+  async createPaystackPayoutAccount(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { bankCode, accountNumber } = req.body;
+    const result = await this.paymentService.createPaystackPayoutAccount(cuid, {
+      bankCode,
+      accountNumber,
+    });
+    return res.status(201).json(result);
+  }
+
+  async updatePaystackPayoutBankAccount(req: AppRequest, res: Response) {
+    const { cuid } = req.params;
+    const { bankCode, accountNumber } = req.body;
+    const result = await this.paymentService.updatePaystackPayoutBankAccount(
+      cuid,
+      req.context.currentuser!.sub,
+      { bankCode, accountNumber }
+    );
+    return res.status(200).json(result);
+  }
+
   async getOnboardingLink(req: AppRequest, res: Response) {
     const { cuid } = req.params;
     const { returnUrl, refreshUrl } = req.query as { returnUrl?: string; refreshUrl?: string };

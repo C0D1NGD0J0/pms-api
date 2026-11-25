@@ -628,7 +628,11 @@
       "paymentFailedNoFallback": "Payment failed and no alternate payment method is on file.",
       "retryFailedMissingInfo": "Payment retry failed. Please update your account information.",
       "paymentFailedAddPaymentMethod": "Payment failed. Please add a payment method to complete payment.",
-      "instantPayoutUnavailable": "Instant payout is not available: {{reason}}"
+      "instantPayoutUnavailable": "Instant payout is not available: {{reason}}",
+      "serviceUnavailable": "Online payments are temporarily unavailable. Please try again shortly.",
+      "requestRejected": "The payment request couldn't be completed. Please check the details and try again.",
+      "onlinePaymentsUnavailable": "Online payments aren't available for this account.",
+      "invalidWebhook": "Invalid webhook request."
     },
     "success": {
       "instantPayoutRequested": "Instant payout requested. Funds usually arrive within 30 minutes."
@@ -641,6 +645,41 @@
       "open_disputes": "this account has an open payment dispute",
       "no_instant_balance": "there is no balance eligible for instant payout, or no debit card is linked",
       "pricing_unavailable": "instant payouts are temporarily unavailable"
+    },
+    "payout": {
+      "errors": {
+        "notConfigured": "Your payout account isn't set up yet.",
+        "notAvailableForAccount": "This option isn't available for your payout account.",
+        "bankSetupNotAvailable": "Adding a bank account for payouts isn't available for this account.",
+        "useBankAccountSetup": "Add a bank account to receive payouts on this account.",
+        "alreadyExists": "A payout account is already set up for this account.",
+        "chooseBankFromList": "Please choose a bank from the list.",
+        "accountNotVerified": "We couldn't verify this bank account. Check the bank and account number and try again.",
+        "setupFailed": "We couldn't set up your payout account. Please try again.",
+        "linkFailed": "We couldn't open your payout account page. Please try again.",
+        "payoutsNotEnabled": "Payouts are not enabled for this account yet.",
+        "balanceUnavailable": "We couldn't load your payout balance. Please try again.",
+        "historyUnavailable": "We couldn't load your payout history. Please try again.",
+        "scheduleUnavailable": "We couldn't load your payout schedule. Please try again.",
+        "scheduleUpdateFailed": "We couldn't update your payout schedule. Please try again.",
+        "instantPayoutFailed": "We couldn't send the instant payout. Please try again.",
+        "openDisputes": "Payouts can't be unblocked while {{count}} payment dispute(s) are still open.",
+        "vendorEmailRequired": "The vendor's contact email is required to set up a payout account.",
+        "vendorAccountNotFound": "Payout account not found. Please start the payout setup first.",
+        "vendorAccountIncomplete": "Payout account setup isn't complete yet.",
+        "vendorPayoutNotAvailable": "Vendor payout setup isn't available for this account yet."
+      },
+      "success": {
+        "accountCreated": "Payout account created successfully.",
+        "bankAccountAdded": "Payout bank account added successfully.",
+        "bankAccountUpdated": "Payout bank account updated successfully.",
+        "onboardingLinkCreated": "Payout setup link created.",
+        "updateLinkCreated": "Payout account update link created.",
+        "dashboardLinkCreated": "Payout dashboard link created.",
+        "scheduleUpdated": "Payout schedule updated successfully.",
+        "notBlocked": "Payouts are not blocked.",
+        "unblocked": "Payouts unblocked successfully."
+      }
     }
   },
   "sms": {
@@ -1010,6 +1049,10 @@
       "depositRefundFailed": {
         "title": "Deposit Refund Failed",
         "message": "A deposit refund of {{amount}} for payment {{pytuid}} could not be processed. Reason: {{reason}}. Please review it and refund the tenant another way if needed."
+      },
+      "payoutBankAccountChanged": {
+        "title": "Payout Bank Account Changed",
+        "message": "Rent payouts now go to {{bankName}} account ending {{last4}}. If you did not make this change, contact support right away."
       },
       "accountPayoutPaid": {
         "title": "Payout Deposited",

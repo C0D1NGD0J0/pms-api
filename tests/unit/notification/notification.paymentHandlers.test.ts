@@ -4,14 +4,15 @@ import { Types } from 'mongoose';
 import { envVariables } from '@shared/config';
 import { MailType } from '@interfaces/utils.interface';
 import { ROLES } from '@shared/constants/roles.constants';
-import { RecipientTypeEnum } from '@interfaces/notification.interface';
 import { MAIL_POLICY } from '@services/notification/notificationPolicy';
 import { resolveTenantRecipient } from '@services/notification/notification.helpers';
+import { NotificationPriorityEnum, RecipientTypeEnum } from '@interfaces/notification.interface';
 import {
   handleMaintenanceChargeSkipped,
   handleMaintenanceChargeCreated,
 } from '@services/notification/notification.maintenance.handlers';
 import {
+  handlePayoutBankAccountChanged,
   handlePadPreDebitNotification,
   handlePaymentRetriedWithCard,
   handlePaymentRequestCreated,
@@ -601,6 +602,37 @@ describe('handleDepositRefundFailed', () => {
     });
     expect(ctx.leaseDAO!.findFirst).not.toHaveBeenCalled();
     expect(emailCall(ctx, 'depositRefundFailed').to).toBe('owner@example.com');
+  });
+});
+
+describe('handlePayoutBankAccountChanged', () => {
+  const payload = {
+    cuid: CUID,
+    changedByUserId: 'user-123',
+    bankName: 'Access Bank',
+    accountNumberLast4: '3210',
+  };
+
+  it('sends managers a required, high-priority alert naming the new bank and last 4 digits', async () => {
+    const ctx = buildCtx();
+
+    await handlePayoutBankAccountChanged(ctx, payload);
+
+    const [notice] = announcements(ctx);
+    expect(notice.required).toBe(true);
+    expect(notice.priority).toBe(NotificationPriorityEnum.HIGH);
+    expect(notice.message).toContain('Access Bank');
+    expect(notice.message).toContain('3210');
+    expect(notice.targetRoles).toEqual(expect.arrayContaining([ROLES.SUPER_ADMIN]));
+    expect(notice.metadata).toEqual({ changedByUserId: 'user-123' });
+  });
+
+  it('logs instead of throwing when the notification cannot be created', async () => {
+    const ctx = buildCtx();
+    ctx.createNotification.mockRejectedValue(new Error('db down'));
+
+    await expect(handlePayoutBankAccountChanged(ctx, payload)).resolves.toBeUndefined();
+    expect(ctx.log.error).toHaveBeenCalled();
   });
 });
 

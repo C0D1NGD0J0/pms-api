@@ -4,12 +4,18 @@ import { Types } from 'mongoose';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { FinancialCalculator } from '@utils/financial';
+import { EventTypes } from '@interfaces/events.interface';
 import { IPaymentGatewayProvider } from '@interfaces/index';
+import { EventEmitterService } from '@services/eventEmitter';
 import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { PaymentProcessorDAO, ProfileDAO, ClientDAO, VendorDAO } from '@dao/index';
 import { IPromiseReturnedData, ISuccessReturnData } from '@interfaces/utils.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import {
+  PaymentProcessorAccountType,
+  IPayoutAccountDetails,
+} from '@interfaces/paymentProcessor.interface';
 import {
   getCountryCodeFromLocation,
   INSTANT_PAYOUT_MAX_CENTS,
@@ -54,17 +60,18 @@ interface IStripePayoutEntry {
   id: string;
 }
 
-interface IStripeInstantBalanceEntry extends IStripeBalanceEntry {
-  /** Present only when the platform sets instant payout pricing (Platform Pricing Tool) */
-  net_available?: { amount: number; destination: string }[];
-}
-
 interface IConstructor {
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
+  emitterService: EventEmitterService;
   profileDAO: ProfileDAO;
   clientDAO: ClientDAO;
   vendorDAO: VendorDAO;
+}
+
+interface IStripeInstantBalanceEntry extends IStripeBalanceEntry {
+  /** Present only when the platform sets instant payout pricing (Platform Pricing Tool) */
+  net_available?: { amount: number; destination: string }[];
 }
 
 interface IStripeBalanceData {
@@ -86,6 +93,7 @@ interface IStripeBalanceEntry {
 export class PayoutAccountService {
   private readonly log: Logger;
   private readonly paymentGatewayService: PaymentGatewayService;
+  private readonly emitterService: EventEmitterService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly profileDAO: ProfileDAO;
   private readonly clientDAO: ClientDAO;
@@ -93,6 +101,7 @@ export class PayoutAccountService {
 
   constructor({
     paymentGatewayService,
+    emitterService,
     paymentProcessorDAO,
     profileDAO,
     clientDAO,
@@ -100,6 +109,7 @@ export class PayoutAccountService {
   }: IConstructor) {
     this.log = createLogger('PayoutAccountService');
     this.paymentGatewayService = paymentGatewayService;
+    this.emitterService = emitterService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.profileDAO = profileDAO;
     this.clientDAO = clientDAO;
@@ -113,9 +123,40 @@ export class PayoutAccountService {
       deletedAt: null,
     });
     if (!processor?.accountId) {
-      throw new BadRequestError({ message: 'Payment account not configured' });
+      throw new BadRequestError({ message: t('payment.payout.errors.notConfigured') });
     }
     return processor;
+  }
+
+  /** Logs the provider's own message and gives the user a neutral one that doesn't name the provider. */
+  private providerError(
+    providerMessage: string | undefined,
+    userMessageKey: string,
+    context: Record<string, unknown>
+  ): BadRequestError {
+    this.log.warn({ ...context, providerMessage }, 'Payout provider request failed');
+    return new BadRequestError({ message: t(userMessageKey) });
+  }
+
+  /** Dashboard links, balance, payout history, schedule and instant payouts only exist on Stripe. */
+  private async getStripeProcessorOrThrow(cuid: string) {
+    const processor = await this.getProcessorOrThrow(cuid);
+    if (processor.provider === 'paystack') {
+      throw new BadRequestError({
+        message: t('payment.payout.errors.notAvailableForAccount'),
+      });
+    }
+    return processor;
+  }
+
+  /** Bank-account payout setup is for accounts that collect through Paystack (Nigeria). */
+  private async assertPaystackClient(cuid: string): Promise<void> {
+    const provider = await this.paymentGatewayService.getProviderForClient(cuid);
+    if (provider !== IPaymentGatewayProvider.PAYSTACK) {
+      throw new BadRequestError({
+        message: t('payment.payout.errors.bankSetupNotAvailable'),
+      });
+    }
   }
 
   private async getOnboardingOrUpdateLink(
@@ -124,7 +165,7 @@ export class PayoutAccountService {
     urls: { refreshUrl: string; returnUrl: string }
   ): Promise<ISuccessReturnData<{ url: string }>> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
 
       const baseUrl = envVariables.FRONTEND.URL || 'http://localhost:3000';
       const fallback = getPaymentProcessorUrls(baseUrl, cuid);
@@ -143,16 +184,16 @@ export class PayoutAccountService {
       );
 
       if (!linkResult.success || !linkResult.data) {
-        const label = type === 'onboarding' ? 'onboarding link' : 'account update link';
-        throw new BadRequestError({
-          message: linkResult.message || `Failed to create ${label}`,
+        throw this.providerError(linkResult.message, 'payment.payout.errors.linkFailed', {
+          cuid,
+          type,
         });
       }
 
       const message =
         type === 'onboarding'
-          ? 'Onboarding link created successfully'
-          : 'Account update link created successfully';
+          ? t('payment.payout.success.onboardingLinkCreated')
+          : t('payment.payout.success.updateLinkCreated');
 
       return { success: true, data: { url: linkResult.data.url }, message };
     } catch (error) {
@@ -168,19 +209,26 @@ export class PayoutAccountService {
   ): IPromiseReturnedData<any> {
     try {
       // Vendor processors carry the inviting client's cuid too — only the client's own counts
+      // A removed (soft-deleted) account doesn't block setting up a new one
       const existingProcessor = await this.paymentProcessorDAO.findFirst({
         cuid,
         ownerType: 'client',
+        deletedAt: null,
       });
       if (existingProcessor?.accountId) {
+        throw new BadRequestError({ message: t('payment.payout.errors.alreadyExists') });
+      }
+
+      const provider = await this.paymentGatewayService.getProviderForClient(cuid);
+      if (provider === IPaymentGatewayProvider.PAYSTACK) {
         throw new BadRequestError({
-          message: 'Connect account already exists for this client',
+          message: t('payment.payout.errors.useBankAccountSetup'),
         });
       }
 
       const client = await this.clientDAO.findFirst({ cuid });
       if (!client) {
-        throw new NotFoundError({ message: 'Client not found' });
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
       const adminProfile = client.accountAdmin
@@ -213,8 +261,8 @@ export class PayoutAccountService {
         }
       );
       if (!accountResult.success || !accountResult.data) {
-        throw new BadRequestError({
-          message: accountResult.message || 'Failed to create Connect account',
+        throw this.providerError(accountResult.message, 'payment.payout.errors.setupFailed', {
+          cuid,
         });
       }
 
@@ -236,10 +284,251 @@ export class PayoutAccountService {
           payoutsEnabled: accountResult.data.payoutsEnabled,
           detailsSubmitted: accountResult.data.detailsSubmitted,
         },
-        message: 'Connect account created successfully',
+        message: t('payment.payout.success.accountCreated'),
       };
     } catch (error) {
       this.log.error('Error creating Connect account', error);
+      throw error;
+    }
+  }
+
+  /** The landlord's payout account for the payment settings page, or null when none is set up. */
+  async getPayoutAccountDetails(cuid: string): IPromiseReturnedData<IPayoutAccountDetails | null> {
+    const processor = await this.paymentProcessorDAO.findFirst({
+      cuid,
+      ownerType: 'client',
+      deletedAt: null,
+    });
+    if (!processor?.accountId) {
+      return { success: true, data: null };
+    }
+
+    return {
+      success: true,
+      data: {
+        provider: processor.provider ?? 'stripe',
+        accountIdLast4: processor.accountId.slice(-4),
+        chargesEnabled: processor.chargesEnabled,
+        payoutsEnabled: processor.payoutsEnabled,
+        onboardedAt: processor.onboardedAt ?? null,
+        bank: processor.bankDetails
+          ? {
+              bankName: processor.bankDetails.bankName,
+              accountName: processor.bankDetails.accountName,
+              accountNumberLast4: processor.bankDetails.accountNumberLast4,
+            }
+          : null,
+      },
+    };
+  }
+
+  // ── Paystack (Nigerian accounts) ─────────────────────────────────────────────
+  // The landlord picks a bank and enters an account number; the app checks the account name
+  // with Paystack, then creates a Paystack subaccount that rent settles into.
+
+  /** Active Nigerian banks for the payout form. */
+  async listPayoutBanks(cuid: string): IPromiseReturnedData<{ name: string; code: string }[]> {
+    await this.assertPaystackClient(cuid);
+    const banks = await this.paymentGatewayService.listBanks();
+    const data = banks
+      .filter((bank) => bank.active)
+      .map((bank) => ({ name: bank.name, code: bank.code }));
+    return { success: true, data };
+  }
+
+  /** The account holder's name, shown to the landlord to confirm before saving. */
+  async resolvePayoutBankAccount(
+    cuid: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{ accountName: string }> {
+    await this.assertPaystackClient(cuid);
+    const account = await this.resolveBankAccountOrThrow(cuid, data);
+    return { success: true, data: { accountName: account.account_name } };
+  }
+
+  /** A failed account check becomes "we couldn't verify this bank account"; outages pass through. */
+  private async resolveBankAccountOrThrow(
+    cuid: string,
+    data: { bankCode: string; accountNumber: string }
+  ) {
+    try {
+      return await this.paymentGatewayService.resolveBankAccount(data.accountNumber, data.bankCode);
+    } catch (error) {
+      if (error instanceof BadRequestError) {
+        this.log.warn({ cuid, bankCode: data.bankCode }, 'Bank account could not be verified');
+        throw new BadRequestError({ message: t('payment.payout.errors.accountNotVerified') });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The bank must be in the active list, and the account name is checked with Paystack here
+   * rather than trusting the name the form showed.
+   */
+  private async verifyBankAccount(cuid: string, data: { bankCode: string; accountNumber: string }) {
+    const banks = await this.paymentGatewayService.listBanks();
+    const bank = banks.find((entry) => entry.code === data.bankCode && entry.active);
+    if (!bank) {
+      throw new BadRequestError({ message: t('payment.payout.errors.chooseBankFromList') });
+    }
+    const account = await this.resolveBankAccountOrThrow(cuid, data);
+    return { bank, account };
+  }
+
+  /**
+   * Moves rent payouts to a different bank account. The Paystack subaccount keeps its code, so
+   * nothing else changes. Managers are alerted, because this decides where rent goes.
+   */
+  async updatePaystackPayoutBankAccount(
+    cuid: string,
+    actorId: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{ accountNumberLast4: string; accountName: string; bankName: string }> {
+    try {
+      const processor = await this.getProcessorOrThrow(cuid);
+      if (processor.provider !== 'paystack') {
+        throw new BadRequestError({ message: t('payment.payout.errors.notAvailableForAccount') });
+      }
+
+      const { bank, account } = await this.verifyBankAccount(cuid, data);
+
+      const subaccount = await this.paymentGatewayService.updatePayoutSubaccount(
+        processor.accountId,
+        { settlement_bank: data.bankCode, account_number: data.accountNumber }
+      );
+
+      const bankDetails = {
+        bankCode: bank.code,
+        bankName: bank.name,
+        accountName: account.account_name,
+        accountNumberLast4: data.accountNumber.slice(-4),
+      };
+      const isActive = subaccount.active !== false;
+      // Paystack is updated first. If this save fails, Paystack already settles to the new bank
+      // while our record shows the old one; the request fails and the idempotency claim is
+      // released, so retrying the same change re-sends the same details and both sides match.
+      try {
+        await this.paymentProcessorDAO.update(
+          { _id: processor._id },
+          { $set: { bankDetails, chargesEnabled: isActive, payoutsEnabled: isActive } }
+        );
+      } catch (error) {
+        this.log.error(
+          { cuid, actorId, newLast4: bankDetails.accountNumberLast4, error },
+          'Paystack payout bank changed but the local record was not saved; retry the change'
+        );
+        throw error;
+      }
+
+      this.log.info(
+        {
+          cuid,
+          actorId,
+          previousLast4: processor.bankDetails?.accountNumberLast4,
+          newLast4: bankDetails.accountNumberLast4,
+        },
+        'Payout bank account changed'
+      );
+      // Alerted on every successful change, even a resubmit of the same details: we only keep the
+      // last 4 digits, so a "same account" check could hide a real switch to another account
+      // ending in the same 4 digits at the same bank.
+      this.emitterService.emit(EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED, {
+        cuid,
+        changedByUserId: actorId,
+        bankName: bankDetails.bankName,
+        accountNumberLast4: bankDetails.accountNumberLast4,
+      });
+
+      return {
+        success: true,
+        data: {
+          bankName: bankDetails.bankName,
+          accountName: bankDetails.accountName,
+          accountNumberLast4: bankDetails.accountNumberLast4,
+        },
+        message: t('payment.payout.success.bankAccountUpdated'),
+      };
+    } catch (error) {
+      this.log.error('Error changing Paystack payout bank account', error);
+      throw error;
+    }
+  }
+
+  async createPaystackPayoutAccount(
+    cuid: string,
+    data: { bankCode: string; accountNumber: string }
+  ): IPromiseReturnedData<{
+    accountNumberLast4: string;
+    accountName: string;
+    accountId: string;
+    bankName: string;
+  }> {
+    try {
+      await this.assertPaystackClient(cuid);
+
+      // A removed (soft-deleted) account doesn't block setting up a new one
+      const existingProcessor = await this.paymentProcessorDAO.findFirst({
+        cuid,
+        ownerType: 'client',
+        deletedAt: null,
+      });
+      if (existingProcessor?.accountId) {
+        throw new BadRequestError({ message: t('payment.payout.errors.alreadyExists') });
+      }
+
+      const client = await this.clientDAO.findFirst({ cuid });
+      if (!client) {
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+      }
+
+      const { bank, account } = await this.verifyBankAccount(cuid, data);
+
+      const subaccount = await this.paymentGatewayService.createPayoutSubaccount({
+        business_name:
+          client.companyProfile?.tradingName ||
+          client.companyProfile?.legalEntityName ||
+          client.displayName,
+        settlement_bank: data.bankCode,
+        account_number: data.accountNumber,
+        // The platform fee is taken per charge (transaction_charge), not as a fixed share
+        percentage_charge: 0,
+        description: `PropertyDesk client ${cuid}`,
+      });
+
+      const bankDetails = {
+        bankCode: bank.code,
+        bankName: bank.name,
+        accountName: account.account_name,
+        accountNumberLast4: data.accountNumber.slice(-4),
+      };
+      const isActive = subaccount.active !== false;
+
+      await this.paymentProcessorDAO.insert({
+        cuid,
+        client: client._id,
+        provider: 'paystack',
+        accountType: PaymentProcessorAccountType.SUBACCOUNT,
+        accountId: subaccount.subaccount_code,
+        chargesEnabled: isActive,
+        payoutsEnabled: isActive,
+        detailsSubmitted: true,
+        onboardedAt: new Date(),
+        bankDetails,
+      });
+
+      return {
+        success: true,
+        data: {
+          accountId: subaccount.subaccount_code,
+          bankName: bankDetails.bankName,
+          accountName: bankDetails.accountName,
+          accountNumberLast4: bankDetails.accountNumberLast4,
+        },
+        message: t('payment.payout.success.bankAccountAdded'),
+      };
+    } catch (error) {
+      this.log.error('Error creating Paystack payout account', error);
       throw error;
     }
   }
@@ -266,7 +555,7 @@ export class PayoutAccountService {
 
   async getExternalDashboardLoginLink(cuid: string): IPromiseReturnedData<{ url: string }> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
 
       const linkResult = await this.paymentGatewayService.createDashboardLoginLink(
         IPaymentGatewayProvider.STRIPE,
@@ -274,13 +563,13 @@ export class PayoutAccountService {
       );
 
       if (!linkResult.success || !linkResult.data) {
-        throw new BadRequestError({ message: linkResult.message || 'Failed to create login link' });
+        throw this.providerError(linkResult.message, 'payment.payout.errors.linkFailed', { cuid });
       }
 
       return {
         success: true,
         data: { url: linkResult.data.url },
-        message: 'Login link created successfully',
+        message: t('payment.payout.success.dashboardLinkCreated'),
       };
     } catch (error) {
       this.log.error('Error creating login link', error);
@@ -290,9 +579,9 @@ export class PayoutAccountService {
 
   async getPayoutBalance(cuid: string): IPromiseReturnedData<any> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
       if (!paymentProcessor.payoutsEnabled) {
-        throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
+        throw new BadRequestError({ message: t('payment.payout.errors.payoutsNotEnabled') });
       }
 
       const result = await this.paymentGatewayService.getConnectBalance(
@@ -300,7 +589,9 @@ export class PayoutAccountService {
         paymentProcessor.accountId
       );
       if (!result.success || !result.data) {
-        throw new BadRequestError({ message: result.message || 'Failed to fetch balance' });
+        throw this.providerError(result.message, 'payment.payout.errors.balanceUnavailable', {
+          cuid,
+        });
       }
 
       const balance = result.data as IStripeBalanceData;
@@ -323,9 +614,9 @@ export class PayoutAccountService {
     query: { limit?: number; cursor?: string }
   ): IPromiseReturnedData<any> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
       if (!paymentProcessor.payoutsEnabled) {
-        throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
+        throw new BadRequestError({ message: t('payment.payout.errors.payoutsNotEnabled') });
       }
 
       const result = await this.paymentGatewayService.listConnectPayouts(
@@ -334,7 +625,9 @@ export class PayoutAccountService {
         { limit: query.limit, starting_after: query.cursor }
       );
       if (!result.success || !result.data) {
-        throw new BadRequestError({ message: result.message || 'Failed to fetch payouts' });
+        throw this.providerError(result.message, 'payment.payout.errors.historyUnavailable', {
+          cuid,
+        });
       }
 
       const list = result.data as IStripePayoutList;
@@ -370,14 +663,16 @@ export class PayoutAccountService {
 
   async getPayoutSchedule(cuid: string): IPromiseReturnedData<IPayoutSchedule> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
 
       const result = await this.paymentGatewayService.getPayoutSchedule(
         IPaymentGatewayProvider.STRIPE,
         paymentProcessor.accountId
       );
       if (!result.success || !result.data) {
-        throw new BadRequestError({ message: result.message || 'Failed to fetch payout schedule' });
+        throw this.providerError(result.message, 'payment.payout.errors.scheduleUnavailable', {
+          cuid,
+        });
       }
 
       return { success: true, data: result.data };
@@ -393,9 +688,9 @@ export class PayoutAccountService {
     weeklyAnchor: Weekday
   ): IPromiseReturnedData<null> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
       if (!paymentProcessor.payoutsEnabled) {
-        throw new BadRequestError({ message: 'Payouts are not enabled for this account' });
+        throw new BadRequestError({ message: t('payment.payout.errors.payoutsNotEnabled') });
       }
 
       const result = await this.paymentGatewayService.updatePayoutSchedule(
@@ -405,8 +700,8 @@ export class PayoutAccountService {
         weeklyAnchor
       );
       if (!result.success) {
-        throw new BadRequestError({
-          message: result.message || 'Failed to update payout schedule',
+        throw this.providerError(result.message, 'payment.payout.errors.scheduleUpdateFailed', {
+          cuid,
         });
       }
 
@@ -416,7 +711,7 @@ export class PayoutAccountService {
       );
 
       this.log.info({ cuid, interval, weeklyAnchor }, 'Payout schedule updated');
-      return { success: true, data: null, message: 'Payout schedule updated successfully' };
+      return { success: true, data: null, message: t('payment.payout.success.scheduleUpdated') };
     } catch (error) {
       this.log.error('Error updating payout schedule', error);
       throw error;
@@ -440,14 +735,20 @@ export class PayoutAccountService {
     arrivalDate: string;
   }> {
     try {
-      const paymentProcessor = await this.getProcessorOrThrow(cuid);
+      const paymentProcessor = await this.getStripeProcessorOrThrow(cuid);
 
       const balanceResult = await this.paymentGatewayService.getConnectBalance(
         IPaymentGatewayProvider.STRIPE,
         paymentProcessor.accountId
       );
       if (!balanceResult.success || !balanceResult.data) {
-        throw new BadRequestError({ message: balanceResult.message || 'Failed to fetch balance' });
+        throw this.providerError(
+          balanceResult.message,
+          'payment.payout.errors.balanceUnavailable',
+          {
+            cuid,
+          }
+        );
       }
 
       const quote = this.buildInstantPayoutQuote(
@@ -473,9 +774,13 @@ export class PayoutAccountService {
         }
       );
       if (!payoutResult.success || !payoutResult.data) {
-        throw new BadRequestError({
-          message: payoutResult.message || 'Failed to create instant payout',
-        });
+        throw this.providerError(
+          payoutResult.message,
+          'payment.payout.errors.instantPayoutFailed',
+          {
+            cuid,
+          }
+        );
       }
 
       const payout = payoutResult.data;
@@ -569,13 +874,13 @@ export class PayoutAccountService {
       const processor = await this.getProcessorOrThrow(cuid);
 
       if (!processor.payoutsBlocked) {
-        return { success: true, data: null, message: 'Payouts are not blocked' };
+        return { success: true, data: null, message: t('payment.payout.success.notBlocked') };
       }
 
       // Only allow unblocking if there are no open disputes
       if (processor.disputeStats?.open && processor.disputeStats.open > 0) {
         throw new BadRequestError({
-          message: `Cannot unblock payouts — ${processor.disputeStats.open} dispute(s) are still open`,
+          message: t('payment.payout.errors.openDisputes', { count: processor.disputeStats.open }),
         });
       }
 
@@ -593,7 +898,7 @@ export class PayoutAccountService {
 
       this.log.info({ cuid, userId, ppuid: processor.ppuid }, 'Payouts unblocked by admin');
 
-      return { success: true, data: null, message: 'Payouts unblocked successfully' };
+      return { success: true, data: null, message: t('payment.payout.success.unblocked') };
     } catch (error) {
       this.log.error('Error unblocking payouts', error);
       throw error;
@@ -612,13 +917,17 @@ export class PayoutAccountService {
         this.vendorDAO.findFirst({ vuid, cuid, deletedAt: null }),
       ]);
 
-      if (!client) throw new NotFoundError({ message: 'Client not found' });
-      if (!vendor) throw new NotFoundError({ message: 'Vendor not found' });
+      if (!client) {
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
+      }
+      if (!vendor) {
+        throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Vendor' }) });
+      }
 
       const email = (vendor.contactPerson as any)?.email;
       if (!email) {
         throw new BadRequestError({
-          message: 'Vendor contact email is required to set up a payout account.',
+          message: t('payment.payout.errors.vendorEmailRequired'),
         });
       }
 
@@ -641,8 +950,9 @@ export class PayoutAccountService {
       );
 
       if (!result.success || !result.data) {
-        throw new BadRequestError({
-          message: result.message || 'Failed to create payout account with provider.',
+        throw this.providerError(result.message, 'payment.payout.errors.setupFailed', {
+          cuid,
+          vuid,
         });
       }
 
@@ -680,9 +990,7 @@ export class PayoutAccountService {
     try {
       const processor = await this.paymentProcessorDAO.findByVuid(vuid);
       if (!processor) {
-        throw new NotFoundError({
-          message: 'Payout account not found. Please initiate onboarding first.',
-        });
+        throw new NotFoundError({ message: t('payment.payout.errors.vendorAccountNotFound') });
       }
 
       const result = await this.paymentGatewayService.createKycOnboardingLink(
@@ -691,8 +999,9 @@ export class PayoutAccountService {
       );
 
       if (!result.success || !result.data) {
-        throw new BadRequestError({
-          message: result.message || 'Failed to generate onboarding link.',
+        throw this.providerError(result.message, 'payment.payout.errors.linkFailed', {
+          cuid,
+          vuid,
         });
       }
 
@@ -707,11 +1016,11 @@ export class PayoutAccountService {
     try {
       const processor = await this.paymentProcessorDAO.findByVuid(vuid);
       if (!processor) {
-        throw new NotFoundError({ message: 'Payout account not found.' });
+        throw new NotFoundError({ message: t('payment.payout.errors.vendorAccountNotFound') });
       }
 
       if (!processor.detailsSubmitted) {
-        throw new BadRequestError({ message: 'Payout account setup not complete.' });
+        throw new BadRequestError({ message: t('payment.payout.errors.vendorAccountIncomplete') });
       }
 
       const result = await this.paymentGatewayService.createDashboardLoginLink(
@@ -720,8 +1029,9 @@ export class PayoutAccountService {
       );
 
       if (!result.success || !result.data) {
-        throw new BadRequestError({
-          message: result.message || 'Failed to generate dashboard link.',
+        throw this.providerError(result.message, 'payment.payout.errors.linkFailed', {
+          cuid,
+          vuid,
         });
       }
 

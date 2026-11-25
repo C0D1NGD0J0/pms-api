@@ -36,6 +36,7 @@ export enum EventTypes {
   MAINTENANCE_REQUEST_CREATED = 'maintenance:request:created',
   MAINTENANCE_REQUEST_UPDATED = 'maintenance:request:updated',
   MAINTENANCE_FUNDS_AVAILABLE = 'maintenance:funds:available',
+  PAYOUT_BANK_ACCOUNT_CHANGED = 'payout:bank-account-changed',
   PAD_PRE_DEBIT_NOTIFICATION = 'pad:pre:debit:notification',
   LEASE_ESIGNATURE_REQUESTED = 'lease:esignature:requested',
   LEASE_ESIGNATURE_COMPLETED = 'lease:esignature:completed',
@@ -200,6 +201,7 @@ export type EventPayloadMap = {
   [EventTypes.INVOICE_GENERATED]: InvoiceGeneratedPayload;
   [EventTypes.PAYOUT_FAILED]: PayoutFailedPayload;
   [EventTypes.PAYOUT_PAID]: PayoutPaidPayload;
+  [EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED]: PayoutBankAccountChangedPayload;
   [EventTypes.INVOICE_OVERDUE]: InvoiceOverduePayload;
   [EventTypes.GUEST_PASS_CREATED]: GuestPassCreatedPayload;
   [EventTypes.GUEST_PASS_VALIDATED]: GuestPassValidatedPayload;
@@ -583,6 +585,7 @@ export interface InspectionApprovedPayload {
   iuid: string;
   cuid: string;
 }
+
 export interface PaymentFailedPayload {
   hostedInvoiceUrl?: string;
   failureReason?: string;
@@ -593,7 +596,6 @@ export interface PaymentFailedPayload {
   pytuid: string;
   cuid: string;
 }
-
 export interface MaintenanceInvoiceSubmittedPayload {
   invoiceId?: string;
   requestId: string;
@@ -910,6 +912,14 @@ export interface InspectionDisputedPayload {
   inspectorUid: string;
   tenantId: string;
   iuid: string;
+  cuid: string;
+}
+
+/** The landlord's payout bank changed: managers are alerted, since this redirects where rent goes. */
+export interface PayoutBankAccountChangedPayload {
+  accountNumberLast4: string;
+  changedByUserId: string;
+  bankName: string;
   cuid: string;
 }
 

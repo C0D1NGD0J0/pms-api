@@ -180,10 +180,8 @@ export class SubscriptionPlanConfig {
     return config.features[feature] === true;
   }
 
-  /** The plan's platform fee rate, unless the provider sets its own (Paystack does). */
-  public getTransactionFeePercent(planName: PlanName, provider: string = 'stripe'): number {
-    const providerRate = platformConfig.paymentGateways[provider]?.transactionFeePercent;
-    if (providerRate != null) return providerRate;
+  /** The plan's platform fee rate; the same for Stripe and Paystack accounts. */
+  public getTransactionFeePercent(planName: PlanName): number {
     const config = this.getConfig(planName);
     return config.transactionFeePercent;
   }
@@ -353,7 +351,7 @@ export class SubscriptionPlanConfig {
 
   /**
    * Get payment gateway processing fees
-   * @param provider - Payment gateway provider (e.g., 'stripe', 'paypal')
+   * @param provider - Payment gateway provider (e.g., 'stripe', 'paystack', 'paypal')
    * @returns Processing fees configuration
    *
    * NOTE: This is an estimate. Actual fees should be fetched from gateway API
@@ -375,7 +373,7 @@ export class SubscriptionPlanConfig {
   /**
    * Calculate payment gateway processing fee (ESTIMATION ONLY)
    * @param amountInCents - Transaction amount in cents
-   * @param provider - Payment gateway provider
+   * @param provider - Payment gateway provider ('stripe', 'paystack', 'paypal')
    * @param paymentMethodType - 'auto-debit' for ACH/ACSS bank debit, anything else uses card rate
    * @returns Estimated processing fee in cents
    *

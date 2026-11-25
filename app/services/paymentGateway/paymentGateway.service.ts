@@ -1159,6 +1159,12 @@ export class PaymentGatewayService {
    * 1. the landlord's payout account says which provider holds it;
    * 2. otherwise a naira (NGN) account uses Paystack while the Paystack switch is on;
    * 3. otherwise Stripe.
+   *
+   * This is per account, not per property: a landlord has one payout account, so all their
+   * rent settles through one provider. Market rules (yearly rent) go by the property's
+   * country instead. The app only charges NGN through Paystack, so a Paystack account's
+   * non-naira leases (e.g. a USD Lagos lease) are paid by bank transfer outside the app; that is
+   * enforced when charging (P3/P4).
    */
   async getProviderForClient(cuid: string): Promise<IPaymentGatewayProvider> {
     // ownerType: vendors' payout accounts carry their client's cuid too

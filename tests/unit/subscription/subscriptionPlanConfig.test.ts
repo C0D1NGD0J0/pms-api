@@ -223,10 +223,9 @@ describe('SubscriptionPlanConfig Unit Tests', () => {
       ).toBe(25000);
     });
 
-    it("uses Paystack's own platform fee rate instead of the plan's", () => {
-      expect(subscriptionPlanConfig.getTransactionFeePercent('essential', 'paystack')).toBe(1.5);
+    it("charges Paystack accounts their plan's platform rate, the same as Stripe", () => {
       expect(subscriptionPlanConfig.getTransactionFeePercent('essential')).toBe(4.2);
-      expect(subscriptionPlanConfig.getTransactionFeePercent('essential', 'stripe')).toBe(4.2);
+      expect(subscriptionPlanConfig.getTransactionFeePercent('growth')).toBe(3.9);
     });
 
     it('leaves Stripe fees unchanged', () => {

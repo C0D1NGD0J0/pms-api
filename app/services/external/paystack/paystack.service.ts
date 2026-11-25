@@ -85,7 +85,8 @@ export class PaystackService {
       });
       if (cursor) query.set('next', cursor);
       const page = await this.requestWithMeta<IPaystackBank[]>('GET', `/bank?${query.toString()}`);
-      banks.push(...page.data);
+      // Paystack still lists removed banks, flagged is_deleted
+      banks.push(...page.data.filter((bank) => !bank.is_deleted));
       cursor = page.meta?.next;
     } while (cursor);
 
@@ -144,6 +145,7 @@ export class PaystackService {
    * with the secret key. Returns the parsed event, or throws UnauthorizedError.
    */
   verifyWebhookSignature(rawBody: Buffer | string, signature?: string): IPaystackWebhookEvent {
+    this.assertEnabled();
     const secretKey = envVariables.PAYSTACK.SECRET_KEY;
     if (!secretKey || !signature) {
       throw new UnauthorizedError({ message: 'Invalid Paystack webhook signature' });

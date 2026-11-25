@@ -144,6 +144,25 @@ describe('PaystackService', () => {
       expect(fetchMock.mock.calls[1][0]).toContain('&next=YmFua186OTk%3D');
     });
 
+    it('leaves out banks Paystack has marked as deleted', async () => {
+      const banks = [
+        { name: 'GTBank', code: '058', slug: 'gtb', currency: 'NGN', active: true },
+        {
+          name: 'Old Bank',
+          code: '999',
+          slug: 'old',
+          currency: 'NGN',
+          active: false,
+          is_deleted: true,
+        },
+      ];
+      fetchMock.mockResolvedValue(jsonResponse(200, { status: true, message: 'ok', data: banks }));
+
+      const result = await service.listBanks();
+
+      expect(result.map((bank) => bank.code)).toEqual(['058']);
+    });
+
     it('serves the bank list from the cache after the first load', async () => {
       const banks = [{ name: 'GTBank', code: '058', slug: 'gtb', currency: 'NGN', active: true }];
       fetchMock.mockResolvedValue(jsonResponse(200, { status: true, message: 'ok', data: banks }));
@@ -222,6 +241,12 @@ describe('PaystackService', () => {
         UnauthorizedError
       );
       expect(() => service.verifyWebhookSignature(body, undefined)).toThrow(UnauthorizedError);
+    });
+
+    it('refuses webhooks while the Paystack switch is off, even when correctly signed', () => {
+      flagEnabled = false;
+
+      expect(() => service.verifyWebhookSignature(body, sign(body))).toThrow(ForbiddenError);
     });
   });
 });

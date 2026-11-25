@@ -11,6 +11,7 @@ import {
 import {
   PaymentMethodSetupCompletedPayload,
   SubscriptionRenewalUpcomingPayload,
+  PayoutBankAccountChangedPayload,
   PadPreDebitNotificationPayload,
   PaymentRetriedWithCardPayload,
   PaymentRequestCreatedPayload,
@@ -786,6 +787,28 @@ export async function handleInvoiceOverdue(
     );
   } catch (error) {
     ctx.log.error('Error sending invoice overdue notification', { error, payload });
+  }
+}
+
+export async function handlePayoutBankAccountChanged(
+  ctx: INotificationContext,
+  payload: PayoutBankAccountChangedPayload
+): Promise<void> {
+  try {
+    await notifyAnnouncement(
+      ctx,
+      payload.cuid,
+      NotificationTypeEnum.PAYMENT,
+      'payment.payoutBankAccountChanged',
+      { bankName: payload.bankName, last4: payload.accountNumberLast4 },
+      MGMT_ROLES,
+      { changedByUserId: payload.changedByUserId },
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS,
+      true // a security alert: sent even if payment notifications are muted
+    );
+  } catch (error) {
+    ctx.log.error('Error sending payout bank account changed notification', { error, payload });
   }
 }
 

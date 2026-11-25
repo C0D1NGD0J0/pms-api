@@ -75,6 +75,7 @@ import {
 import {
   handlePaymentMethodSetupCompleted,
   handleSubscriptionRenewalUpcoming,
+  handlePayoutBankAccountChanged,
   handlePadPreDebitNotification,
   handlePaymentRetriedWithCard,
   handlePaymentRequestCreated,
@@ -1588,6 +1589,9 @@ export class NotificationService {
     this.emitterService.on(EventTypes.PAYMENT_CANCELLED, (p) => handlePaymentCancelled(ctx, p));
     this.emitterService.on(EventTypes.PAYOUT_FAILED, (p) => handlePayoutFailed(ctx, p));
     this.emitterService.on(EventTypes.PAYOUT_PAID, (p) => handlePayoutPaid(ctx, p));
+    this.emitterService.on(EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED, (p) =>
+      handlePayoutBankAccountChanged(ctx, p)
+    );
     this.emitterService.on(EventTypes.INVOICE_OVERDUE, (p) => handleInvoiceOverdue(ctx, p));
     this.emitterService.on(EventTypes.PAD_MANDATE_CONFIRMED, (p) =>
       handlePadMandateConfirmed(ctx, p)

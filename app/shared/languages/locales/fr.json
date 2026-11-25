@@ -669,6 +669,7 @@
       "success": {
         "accountCreated": "Compte de versement créé avec succès.",
         "bankAccountAdded": "Compte bancaire de versement ajouté avec succès.",
+        "bankAccountUpdated": "Compte bancaire de versement mis à jour avec succès.",
         "onboardingLinkCreated": "Lien de configuration des versements créé.",
         "updateLinkCreated": "Lien de mise à jour du compte de versement créé.",
         "dashboardLinkCreated": "Lien du tableau de bord des versements créé.",
@@ -1042,6 +1043,10 @@
       "depositRefundFailed": {
         "title": "Échec du remboursement du dépôt de garantie",
         "message": "Le remboursement du dépôt de garantie de {{amount}} pour le paiement {{pytuid}} n'a pas pu être traité. Motif : {{reason}}. Veuillez vérifier la situation et rembourser le locataire autrement au besoin."
+      },
+      "payoutBankAccountChanged": {
+        "title": "Compte bancaire de versement modifié",
+        "message": "Les versements des loyers iront désormais au compte {{bankName}} se terminant par {{last4}}. Si vous n'avez pas fait cette modification, communiquez immédiatement avec le soutien."
       },
       "accountPayoutPaid": {
         "title": "Versement déposé",

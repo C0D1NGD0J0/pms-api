@@ -672,6 +672,7 @@
       "success": {
         "accountCreated": "Payout account created successfully.",
         "bankAccountAdded": "Payout bank account added successfully.",
+        "bankAccountUpdated": "Payout bank account updated successfully.",
         "onboardingLinkCreated": "Payout setup link created.",
         "updateLinkCreated": "Payout account update link created.",
         "dashboardLinkCreated": "Payout dashboard link created.",
@@ -1048,6 +1049,10 @@
       "depositRefundFailed": {
         "title": "Deposit Refund Failed",
         "message": "A deposit refund of {{amount}} for payment {{pytuid}} could not be processed. Reason: {{reason}}. Please review it and refund the tenant another way if needed."
+      },
+      "payoutBankAccountChanged": {
+        "title": "Payout Bank Account Changed",
+        "message": "Rent payouts now go to {{bankName}} account ending {{last4}}. If you did not make this change, contact support right away."
       },
       "accountPayoutPaid": {
         "title": "Payout Deposited",

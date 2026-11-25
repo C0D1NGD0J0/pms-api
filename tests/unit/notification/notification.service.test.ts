@@ -790,6 +790,22 @@ describe('NotificationService - MR event handlers', () => {
     await service.destroy();
   });
 
+  it('alerts managers when the payout bank account changes', async () => {
+    syncEmitter.emit(EventTypes.PAYOUT_BANK_ACCOUNT_CHANGED, {
+      cuid: 'cuid1',
+      changedByUserId: 'user-1',
+      bankName: 'Access Bank',
+      accountNumberLast4: '3210',
+    });
+    await flushPromises();
+
+    expect(service.createNotification).toHaveBeenCalledWith(
+      'cuid1',
+      expect.anything(),
+      expect.objectContaining({ required: true, metadata: { changedByUserId: 'user-1' } })
+    );
+  });
+
   it('should create in-app notification and enqueue email on MAINTENANCE_REQUEST_CREATED', async () => {
     syncEmitter.emit(EventTypes.MAINTENANCE_REQUEST_CREATED, {
       cuid: 'cuid1',

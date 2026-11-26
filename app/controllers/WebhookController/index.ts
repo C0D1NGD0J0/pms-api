@@ -12,12 +12,16 @@ import { StripeService } from '@services/external/stripe/stripe.service';
 import { BoldSignService } from '@services/external/esignature/boldSign.service';
 import { SubscriptionService } from '@services/subscription/subscription.service';
 import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
+import { PaystackPaymentService } from '@services/payments/paystackPayment.service';
+import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { IInvoiceWebhookPayload, InvoiceSource } from '@interfaces/maintenanceRequest.interface';
 import { MaintenanceInvoiceService } from '@services/maintenanceRequest/maintenanceInvoice.service';
 
 interface IConstructor {
   maintenanceInvoiceService: MaintenanceInvoiceService;
+  paystackPaymentService: PaystackPaymentService;
   paymentWebhookService: PaymentWebhookService;
+  paymentGatewayService: PaymentGatewayService;
   subscriptionService: SubscriptionService;
   idempotencyCache: IdempotencyCache;
   boldSignService: BoldSignService;
@@ -36,6 +40,8 @@ export class WebhookController {
   private subscriptionService: SubscriptionService;
   private paymentService: PaymentService;
   private paymentWebhookService: PaymentWebhookService;
+  private paystackPaymentService: PaystackPaymentService;
+  private paymentGatewayService: PaymentGatewayService;
   private clientService: ClientService;
   private idempotencyCache: IdempotencyCache;
   private maintenanceInvoiceService: MaintenanceInvoiceService;
@@ -50,6 +56,8 @@ export class WebhookController {
     stripeService,
     paymentService,
     paymentWebhookService,
+    paystackPaymentService,
+    paymentGatewayService,
     twilioService,
     clientService,
     idempotencyCache,
@@ -62,6 +70,8 @@ export class WebhookController {
     this.subscriptionService = subscriptionService;
     this.paymentService = paymentService;
     this.paymentWebhookService = paymentWebhookService;
+    this.paystackPaymentService = paystackPaymentService;
+    this.paymentGatewayService = paymentGatewayService;
     this.twilioService = twilioService;
     this.clientService = clientService;
     this.idempotencyCache = idempotencyCache;
@@ -127,6 +137,47 @@ export class WebhookController {
         success: false,
         message: 'Internal server error',
       });
+    }
+  };
+
+  handlePaystackWebhook = async (req: Request, res: Response): Promise<Response> => {
+    const signature = req.headers['x-paystack-signature'];
+    const rawBody = (req as any).rawBody;
+    if (!rawBody) {
+      return res.status(400).json({ success: false, message: 'Invalid webhook request' });
+    }
+
+    let event;
+    try {
+      event = this.paymentGatewayService.verifyPaystackWebhook(
+        rawBody,
+        typeof signature === 'string' ? signature : undefined
+      );
+    } catch (verificationError: any) {
+      this.log.warn({ error: verificationError.message }, 'Paystack webhook rejected');
+      return res
+        .status(verificationError.statusCode || 401)
+        .json({ success: false, message: verificationError.message });
+    }
+
+    // Paystack events carry no event id; the event name plus the object's id is unique per event
+    const data = event.data as Record<string, any>;
+    const eventKey = `paystack:${event.event}:${data?.id ?? data?.reference ?? ''}`;
+    const claimed = await this.idempotencyCache.claimWebhookEvent(eventKey);
+    if (!claimed) {
+      this.log.info({ eventKey }, 'Duplicate Paystack webhook — skipping');
+      return res.status(200).json({ success: true, received: true });
+    }
+
+    try {
+      await this.paystackPaymentService.handleWebhookEvent(event);
+      await this.idempotencyCache.markWebhookProcessed(eventKey);
+      return res.status(200).json({ success: true, received: true });
+    } catch (error: any) {
+      await this.idempotencyCache.releaseWebhookClaim(eventKey);
+      this.log.error({ error: error.message, eventKey }, 'Error processing Paystack webhook');
+      // Paystack retries non-200 responses
+      return res.status(500).json({ success: false, message: 'Webhook processing failed' });
     }
   };
 

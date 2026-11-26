@@ -52,8 +52,11 @@ interface IConstructor {
   clientDAO?: ClientDAO;
 }
 
-/** References the app makes for Paystack charges start with this; anything else is Stripe. */
-export const PAYSTACK_REFERENCE_PREFIX = 'psk_';
+/**
+ * References the app makes for Paystack charges start with this; anything else is Stripe.
+ * Paystack only allows letters, digits, '-', '.' and '=' in references.
+ */
+export const PAYSTACK_REFERENCE_PREFIX = 'psk-';
 
 export class PaymentGatewayService {
   private log = createLogger('PaymentGatewayService');
@@ -1065,6 +1068,24 @@ export class PaymentGatewayService {
     currency: string;
   } | null> {
     try {
+      if (provider === IPaymentGatewayProvider.PAYSTACK) {
+        // chargeId is the Paystack transaction id (or reference); Paystack has no idempotency key
+        const refund = await this.paystack().createRefund({
+          transaction: params.chargeId,
+          amount: params.amountInCents,
+          merchant_note: params.note,
+        });
+        return {
+          success: true,
+          data: {
+            refundId: String(refund.id),
+            status: refund.status,
+            amount: refund.amount,
+            currency: refund.currency,
+          },
+        };
+      }
+
       const providerInstance = this.getProvider(provider);
       const result = await providerInstance.createRefund(params);
       return { success: true, data: result };

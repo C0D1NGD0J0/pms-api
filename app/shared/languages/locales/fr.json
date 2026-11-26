@@ -629,7 +629,11 @@
       "serviceUnavailable": "Les paiements en ligne sont temporairement indisponibles. Veuillez réessayer sous peu.",
       "requestRejected": "La demande de paiement n'a pas pu être traitée. Vérifiez les renseignements et réessayez.",
       "onlinePaymentsUnavailable": "Les paiements en ligne ne sont pas offerts pour ce compte.",
-      "invalidWebhook": "Requête webhook invalide."
+      "invalidWebhook": "Requête webhook invalide.",
+      "cardCheckoutCurrencyUnsupported": "Ce paiement ne peut pas être réglé par carte en ligne. Veuillez suivre les instructions de paiement de votre gestionnaire immobilier.",
+      "checkoutNotFound": "Nous n'avons pas trouvé ce paiement par carte. Si vous avez été débité, il apparaîtra ici sous peu.",
+      "refundFailed": "Le remboursement n'a pas pu être effectué. Veuillez réessayer.",
+      "refundOnlinePaymentsOnly": "Les remboursements ne sont offerts que pour les paiements effectués en ligne."
     },
     "success": {
       "instantPayoutRequested": "Versement instantané demandé. Les fonds arrivent généralement en moins de 30 minutes."

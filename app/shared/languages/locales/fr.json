@@ -1067,6 +1067,10 @@
       "accountInstantPayoutFailed": {
         "title": "Échec du versement instantané",
         "message": "Votre versement instantané de {{amount}} a échoué et les fonds ont été remis dans votre solde; les frais de versement instantané sont remboursés. Raison : {{reason}}"
+      },
+      "refundFailed": {
+        "title": "Échec du remboursement",
+        "message": "Un remboursement de {{amount}} pour le paiement {{pytuid}} n'a pas abouti; le locataire ne l'a donc pas reçu. Veuillez l'examiner et rembourser le locataire autrement au besoin."
       }
     },
     "fragments": {

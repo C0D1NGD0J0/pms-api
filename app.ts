@@ -94,6 +94,7 @@ export class App implements IAppSetup {
             req.originalUrl === '/api/v1/webhooks/stripe' ||
             req.originalUrl === '/api/v1/webhooks/stripe/connect' ||
             req.originalUrl === '/api/v1/webhooks/boldsign' ||
+            req.originalUrl === '/api/v1/webhooks/paystack' ||
             req.originalUrl.startsWith('/api/v1/webhooks/invoices/')
           ) {
             req.rawBody = buf;

@@ -626,6 +626,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       const [deposit] = await paymentsOf(lease._id, PaymentRecordType.SECURITY_DEPOSIT);
 
       const paymentService = new PaymentService({
+        paystackPaymentService: {} as any,
         rentPaymentService: service,
         paymentGatewayService: paymentGatewayService as any,
         subscriptionDAO: subscriptionDAO as any,

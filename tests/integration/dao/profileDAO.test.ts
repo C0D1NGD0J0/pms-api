@@ -490,6 +490,54 @@ describe('ProfileDAO Integration Tests', () => {
     });
   });
 
+  describe('tenantInfo.paystackCards (saved Paystack cards)', () => {
+    const savedCard = {
+      authorizationCode: 'AUTH_8dfhjjdt',
+      email: 'tenant@example.com',
+      brand: 'visa',
+      last4: '4081',
+      savedAt: new Date(),
+    };
+
+    it('saves a card but keeps it out of normal reads, since the code can charge the card', async () => {
+      // The same two writes the settlement uses: tenantInfo starts as null
+      await profileDAO.update(
+        { _id: testProfileId, tenantInfo: null },
+        { $set: { tenantInfo: {} } }
+      );
+      await profileDAO.update(
+        { _id: testProfileId },
+        { $set: { 'tenantInfo.paystackCards.ACCT_landlord1': savedCard } }
+      );
+
+      const normalRead = await profileDAO.findFirst({ _id: testProfileId });
+      expect(JSON.stringify(normalRead)).not.toContain('AUTH_8dfhjjdt');
+
+      const explicitRead: any = await Profile.findById(testProfileId)
+        .select('+tenantInfo.paystackCards')
+        .lean();
+      expect(explicitRead.tenantInfo.paystackCards.ACCT_landlord1).toMatchObject({
+        authorizationCode: 'AUTH_8dfhjjdt',
+        last4: '4081',
+      });
+    });
+
+    it('never includes saved cards in the current-user payload', async () => {
+      await profileDAO.update(
+        { _id: testProfileId, tenantInfo: null },
+        { $set: { tenantInfo: {} } }
+      );
+      await profileDAO.update(
+        { _id: testProfileId },
+        { $set: { 'tenantInfo.paystackCards.ACCT_landlord1': savedCard } }
+      );
+
+      const currentUser = await profileDAO.generateCurrentUserInfo(testUserId.toString());
+
+      expect(JSON.stringify(currentUser)).not.toContain('AUTH_8dfhjjdt');
+    });
+  });
+
   describe('generateCurrentUserInfo', () => {
     beforeEach(async () => {
       // Update user with proper client connections for testing

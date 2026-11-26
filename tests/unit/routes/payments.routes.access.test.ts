@@ -59,6 +59,7 @@ const controllerMethods = [
   'requestInstantPayout',
   'updatePayoutSchedule',
   'getPayoutAccount',
+  'confirmCardCheckout',
   'listPayoutBanks',
   'resolvePayoutBankAccount',
   'createPaystackPayoutAccount',
@@ -344,6 +345,28 @@ describe('payout routes', () => {
       const res = await send('patch', scheduleUrl, { role: ROLES.SUPER_ADMIN }, body);
       expect(res.status).toBe(422);
       expect(mockController.updatePayoutSchedule).not.toHaveBeenCalled();
+    }
+  );
+});
+
+describe('card checkout confirm route', () => {
+  const url = `${base}/${PYTUID}/card-checkout/confirm`;
+
+  it('lets the tenant confirm their checkout with a valid reference', async () => {
+    const res = await request(app)
+      .get(`${url}?reference=psk-0a1b2c3d4e5f6a7b8c9d`)
+      .set('x-test-role', ROLES.TENANT);
+    expect(res.body.handledBy).toBe('confirmCardCheckout');
+  });
+
+  it.each(['psk_0a1b2c3d4e5f6a7b8c9d', 'pi_123', 'psk-short'])(
+    'rejects reference %s',
+    async (reference) => {
+      const res = await request(app)
+        .get(`${url}?reference=${reference}`)
+        .set('x-test-role', ROLES.TENANT);
+      expect(res.status).toBe(422);
+      expect(mockController.confirmCardCheckout).not.toHaveBeenCalled();
     }
   );
 });

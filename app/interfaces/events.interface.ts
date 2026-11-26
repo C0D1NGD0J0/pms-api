@@ -59,6 +59,7 @@ export enum EventTypes {
   GUEST_PASS_ACKNOWLEDGED = 'guestPass:acknowledged',
   INSPECTION_AI_ANALYZED = 'inspection:ai:analyzed',
   DEPOSIT_REFUND_FAILED = 'deposit:refund:failed',
+  PAYMENT_REFUND_FAILED = 'payment:refund:failed',
   PAD_MANDATE_CONFIRMED = 'pad:mandate:confirmed',
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
@@ -190,6 +191,7 @@ export type EventPayloadMap = {
   [EventTypes.PAD_DEBIT_INITIATED]: PadDebitInitiatedPayload;
   [EventTypes.PAYMENT_RETRIED_WITH_CARD]: PaymentRetriedWithCardPayload;
   [EventTypes.DEPOSIT_REFUND_FAILED]: DepositRefundFailedPayload;
+  [EventTypes.PAYMENT_REFUND_FAILED]: PaymentRefundFailedPayload;
   [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
   [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
   [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
@@ -975,6 +977,14 @@ export interface MaintenanceFundsAvailablePayload {
   amountInCents: number;
   invuid: string;
   mruid: string;
+  cuid: string;
+}
+
+/** A refund the payment provider accepted later failed, so the tenant's money did not go back. */
+export interface PaymentRefundFailedPayload {
+  currency: string;
+  amount: number; // cents
+  pytuid: string;
   cuid: string;
 }
 

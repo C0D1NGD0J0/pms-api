@@ -5,6 +5,7 @@ import { IPromiseReturnedData } from '@interfaces/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { BadRequestError, CustomError } from '@shared/customErrors';
+import { PAYSTACK_REFERENCE_PREFIX } from '@utils/paystackReference';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
@@ -52,8 +53,8 @@ interface IConstructor {
   clientDAO?: ClientDAO;
 }
 
-/** References the app makes for Paystack charges start with this; anything else is Stripe. */
-export const PAYSTACK_REFERENCE_PREFIX = 'psk_';
+// Re-exported so payment code keeps importing the prefix from the gateway
+export { PAYSTACK_REFERENCE_PREFIX };
 
 export class PaymentGatewayService {
   private log = createLogger('PaymentGatewayService');
@@ -1065,6 +1066,24 @@ export class PaymentGatewayService {
     currency: string;
   } | null> {
     try {
+      if (provider === IPaymentGatewayProvider.PAYSTACK) {
+        // chargeId is the Paystack transaction id (or reference); Paystack has no idempotency key
+        const refund = await this.paystack().createRefund({
+          transaction: params.chargeId,
+          amount: params.amountInCents,
+          merchant_note: params.note,
+        });
+        return {
+          success: true,
+          data: {
+            refundId: String(refund.id),
+            status: refund.status,
+            amount: refund.amount,
+            currency: refund.currency,
+          },
+        };
+      }
+
       const providerInstance = this.getProvider(provider);
       const result = await providerInstance.createRefund(params);
       return { success: true, data: result };

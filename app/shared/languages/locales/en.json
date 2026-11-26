@@ -632,7 +632,11 @@
       "serviceUnavailable": "Online payments are temporarily unavailable. Please try again shortly.",
       "requestRejected": "The payment request couldn't be completed. Please check the details and try again.",
       "onlinePaymentsUnavailable": "Online payments aren't available for this account.",
-      "invalidWebhook": "Invalid webhook request."
+      "invalidWebhook": "Invalid webhook request.",
+      "cardCheckoutCurrencyUnsupported": "This payment can't be paid by card online. Please use the payment instructions from your property manager.",
+      "checkoutNotFound": "We couldn't find that card payment. If you were charged, it will appear here shortly.",
+      "refundFailed": "The refund couldn't be completed. Please try again.",
+      "refundOnlinePaymentsOnly": "Refunds are only available for payments made online."
     },
     "success": {
       "instantPayoutRequested": "Instant payout requested. Funds usually arrive within 30 minutes."
@@ -1069,6 +1073,10 @@
       "accountInstantPayoutFailed": {
         "title": "Instant Payout Failed",
         "message": "Your instant payout of {{amount}} failed and the funds were returned to your balance; the instant payout fee is refunded. Reason: {{reason}}"
+      },
+      "refundFailed": {
+        "title": "Refund Failed",
+        "message": "A refund of {{amount}} for payment {{pytuid}} did not go through, so the tenant has not received it. Please review it and refund the tenant another way if needed."
       }
     },
     "fragments": {

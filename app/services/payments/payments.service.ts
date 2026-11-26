@@ -18,7 +18,6 @@ import { IPayoutAccountDetails } from '@interfaces/paymentProcessor.interface';
 import { InvoiceTemplateRenderer, InvoiceRenderData } from '@services/invoice';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
 import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { isAllowedCheckoutReturnUrl } from '@shared/validations/PaymentsValidation/checkoutReturnUrl';
 import {
   IPromiseReturnedData,
@@ -36,6 +35,10 @@ import {
   IVendorEarningItem,
   PaymentErrorCode,
 } from '@interfaces/payments.interface';
+import {
+  PAYSTACK_REFERENCE_PREFIX,
+  PaymentGatewayService,
+} from '@services/paymentGateway/paymentGateway.service';
 import {
   MaintenanceRequestDAO,
   PaymentProcessorDAO,
@@ -69,6 +72,7 @@ import {
 import { PaymentCronService } from './paymentCron.service';
 import { RentPaymentService } from './rentPayment.service';
 import { PayoutAccountService } from './payoutAccount.service';
+import { PaystackPaymentService } from './paystackPayment.service';
 import { MaintenancePaymentService } from './maintenancePayment.service';
 import {
   IStripePaymentIntentWebhookData,
@@ -86,6 +90,7 @@ interface IConstructor {
   maintenancePaymentService: MaintenancePaymentService;
   invoiceTemplateRenderer: InvoiceTemplateRenderer;
   subscriptionPlanConfig: SubscriptionPlanConfig;
+  paystackPaymentService: PaystackPaymentService;
   paymentGatewayService: PaymentGatewayService;
   paymentWebhookService: PaymentWebhookService;
   maintenanceRequestDAO: MaintenanceRequestDAO;
@@ -129,6 +134,7 @@ const MANUAL_ENTRY_VOID_ROLES: string[] = [ROLES.ROOT_ADMIN, ...ROLE_GROUPS.MANA
 export class PaymentService implements ICronProvider {
   private readonly log: Logger;
   private readonly payoutAccountService: PayoutAccountService;
+  private readonly paystackPaymentService: PaystackPaymentService;
   private readonly paymentWebhookService: PaymentWebhookService;
   private readonly paymentCronService: PaymentCronService;
   private readonly maintenancePaymentService: MaintenancePaymentService;
@@ -156,6 +162,7 @@ export class PaymentService implements ICronProvider {
 
   constructor({
     payoutAccountService,
+    paystackPaymentService,
     paymentWebhookService,
     paymentCronService,
     maintenancePaymentService,
@@ -180,6 +187,7 @@ export class PaymentService implements ICronProvider {
     userDAO,
   }: IConstructor) {
     this.payoutAccountService = payoutAccountService;
+    this.paystackPaymentService = paystackPaymentService;
     this.paymentWebhookService = paymentWebhookService;
     this.paymentCronService = paymentCronService;
     this.maintenancePaymentService = maintenancePaymentService;
@@ -1586,7 +1594,11 @@ export class PaymentService implements ICronProvider {
         });
       }
 
-      if (payment.gatewayPaymentId) {
+      // Paystack has no open charge to void; an unpaid checkout that is paid later is refunded
+      const hasStripeCharge =
+        !!payment.gatewayPaymentId &&
+        !payment.gatewayPaymentId.startsWith(PAYSTACK_REFERENCE_PREFIX);
+      if (hasStripeCharge && payment.gatewayPaymentId) {
         const voidResult = await this.paymentGatewayService.cancelCharge(
           IPaymentGatewayProvider.STRIPE,
           payment.gatewayPaymentId
@@ -1744,9 +1756,7 @@ export class PaymentService implements ICronProvider {
       }
 
       if (!payment.gatewayChargeId) {
-        throw new BadRequestError({
-          message: 'Refunds are only available for online payments processed through Stripe',
-        });
+        throw new BadRequestError({ message: t('payment.errors.refundOnlinePaymentsOnly') });
       }
 
       const alreadyRefunded = payment.refund?.amount ?? 0;
@@ -1812,7 +1822,7 @@ export class PaymentService implements ICronProvider {
         }
 
         const refundResult = await this.paymentGatewayService.createRefund(
-          IPaymentGatewayProvider.STRIPE,
+          this.paymentGatewayService.providerForPayment(payment),
           {
             chargeId: payment.gatewayChargeId,
             amountInCents: refundAmount,
@@ -1822,9 +1832,8 @@ export class PaymentService implements ICronProvider {
           }
         );
         if (!refundResult.success) {
-          throw new BadRequestError({
-            message: refundResult.message || 'Stripe refund failed',
-          });
+          this.log.warn({ pytuid, providerMessage: refundResult.message }, 'Refund failed');
+          throw new BadRequestError({ message: t('payment.errors.refundFailed') });
         }
         gatewayRefundId = refundResult.data?.refundId;
       } catch (refundError) {
@@ -2014,7 +2023,7 @@ export class PaymentService implements ICronProvider {
       }
 
       const refundResult = await this.paymentGatewayService.createRefund(
-        IPaymentGatewayProvider.STRIPE,
+        this.paymentGatewayService.providerForPayment(payment),
         {
           chargeId: payment.gatewayChargeId,
           amountInCents: refundAmount,
@@ -2026,9 +2035,11 @@ export class PaymentService implements ICronProvider {
       );
 
       if (!refundResult.success) {
-        throw new BadRequestError({
-          message: refundResult.message || 'Stripe deposit refund failed',
-        });
+        this.log.warn(
+          { pytuid: payment.pytuid, providerMessage: refundResult.message },
+          'Deposit refund failed'
+        );
+        throw new BadRequestError({ message: t('payment.errors.refundFailed') });
       }
 
       const updated = await this.paymentDAO.updateById(payment._id.toString(), {
@@ -2283,6 +2294,19 @@ export class PaymentService implements ICronProvider {
         defaultCancelUrl
       );
 
+      if (paymentProcessor.provider === 'paystack') {
+        const checkout = await this.paystackPaymentService.createCardCheckout({
+          payment,
+          processor: paymentProcessor,
+          applicationFee: cardApplicationFee,
+          customerEmail,
+          successUrl,
+          cancelUrl,
+          tenantUid: uid,
+        });
+        return { success: true, data: checkout };
+      }
+
       // Use Stripe customer ID (if available) so the card is saved for future
       // charges (e.g., automatic ACSS-to-card retry when bank debit fails).
       const tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
@@ -2347,12 +2371,36 @@ export class PaymentService implements ICronProvider {
   }
 
   /**
+   * The tenant's return page after a card checkout: confirms the payment right away instead of
+   * waiting for the webhook. Only the charge's own tenant can confirm it.
+   */
+  async confirmCardCheckout(
+    cuid: string,
+    pytuid: string,
+    tenantUserId: string,
+    reference: string
+  ): IPromiseReturnedData<{ status: PaymentRecordStatus }> {
+    const payment = await this.paymentDAO.findFirst({ pytuid, cuid, deletedAt: null });
+    if (!payment) {
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Payment' }) });
+    }
+    const tenantProfile = await this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
+    if (!payment.tenant.equals(tenantProfile._id)) {
+      throw new BadRequestError({ message: t('payment.errors.checkoutNotFound') });
+    }
+
+    const { status } = await this.paystackPaymentService.confirmCheckout(payment, reference);
+    return { success: true, data: { status } };
+  }
+
+  /**
    * Expires the charge's previous card checkout session so it can no longer be paid. Refuses
    * when that session was already paid (the webhook is still confirming it) or when Stripe
    * can't be reached — leaving it open could let the tenant pay the same charge twice.
    */
   private async expireOpenCardCheckout(payment: IPaymentDocument): Promise<void> {
     if (!payment.cardCheckoutSessionId) return;
+    if (payment.cardCheckoutSessionId.startsWith(PAYSTACK_REFERENCE_PREFIX)) return;
 
     const result = await this.paymentGatewayService.expireCheckoutSession(
       IPaymentGatewayProvider.STRIPE,

@@ -1173,26 +1173,32 @@ export class PaymentWebhookService {
     // Save the card to a separate field so the bank account (primary) is not
     // overwritten. This card is used by retryPaymentWithCard for ACSS fallback
     // and can also be used for maintenance payments.
-    const tenantId = session.metadata?.uid;
-    const cuid = session.metadata?.cuid;
-    if (paymentMethodId && tenantId && cuid) {
+    // The tenant comes from the charge: metadata.uid is the short user uid, not a database id.
+    const tenantUid = session.metadata?.uid;
+    if (paymentMethodId) {
       try {
-        const processor = await this.paymentProcessorDAO.findFirst({ cuid });
+        // Vendor payout accounts carry the client's cuid too; the card belongs to the client's
+        const processor = await this.paymentProcessorDAO.findFirst({
+          cuid: payment.cuid,
+          ownerType: 'client',
+          deletedAt: null,
+        });
         if (processor?.accountId) {
+          // MongoDB cannot $set nested paths through a null parent (tenantInfo starts as null)
           await this.profileDAO.update(
-            { user: new Types.ObjectId(tenantId) },
+            { _id: payment.tenant, tenantInfo: null },
+            { $set: { tenantInfo: {} } }
+          );
+          await this.profileDAO.update(
+            { _id: payment.tenant },
             { $set: { [`tenantInfo.cardPaymentMethods.${processor.accountId}`]: paymentMethodId } }
           );
           this.log.info(
             { pytuid, paymentMethodId },
             'Card saved to tenant profile for future payments'
           );
-          const tenantProfile = await this.profileDAO.findFirst(
-            { user: new Types.ObjectId(tenantId) },
-            { populate: ['user'] }
-          );
-          if ((tenantProfile as any)?.user?.uid) {
-            await this.userCache.invalidateUserDetail(cuid, (tenantProfile as any).user.uid);
+          if (tenantUid) {
+            await this.userCache.invalidateUserDetail(payment.cuid, tenantUid);
           }
         }
       } catch (err) {
@@ -1205,8 +1211,10 @@ export class PaymentWebhookService {
       pytuid: payment.pytuid,
       invoiceId: paymentIntentId ?? session.id,
       amount: payment.baseAmount,
+      currency: payment.currency,
       paidAt: dayjs().toDate(),
-      tenantId: session.metadata?.uid,
+      // The tenant's profile id, which the receipt email lookup understands
+      tenantId: payment.tenant.toString(),
       receiptUrl: receiptUrl ?? undefined,
       paymentType: payment.paymentType,
     });
@@ -1891,7 +1899,8 @@ export class PaymentWebhookService {
     }
   }
 
-  private async markMaintenanceChargePaid(
+  /** Also used by Paystack settlement, so a paid maintenance charge updates its invoice the same way. */
+  async markMaintenanceChargePaid(
     payment: IPaymentDocument,
     chargeId?: string,
     receiptUrl?: string

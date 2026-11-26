@@ -187,6 +187,7 @@ const makeServiceWithMocks = (
     maintenancePaymentService,
     paymentWebhookService,
     payoutAccountService,
+    paystackPaymentService: ((overrides as any).paystackPaymentService ?? {}) as any,
     paymentCronService,
     rentPaymentService,
     invoiceTemplateRenderer: {
@@ -1520,6 +1521,8 @@ describe('PaymentService - refundPayment', () => {
       findFirst: jest.fn().mockResolvedValue(makeProcessor()),
     } as unknown as jest.Mocked<PaymentProcessorDAO>;
     mockPaymentGatewayService = {
+      // The real routing rule: a psk- reference is Paystack, anything else Stripe
+      providerForPayment: PaymentGatewayService.prototype.providerForPayment,
       createRefund: jest.fn().mockResolvedValue({
         success: true,
         data: { refundId: 're_test_123', status: 'succeeded', amount: 150000, currency: 'cad' },
@@ -1584,6 +1587,22 @@ describe('PaymentService - refundPayment', () => {
     );
   });
 
+  it('sends the refund to Paystack for a payment made through Paystack', async () => {
+    mockPaymentDAO.findFirst.mockResolvedValue(
+      makePaidPayment({
+        gatewayPaymentId: 'psk-0a1b2c3d4e5f6a7b8c9d',
+        gatewayChargeId: '4099260516',
+      }) as any
+    );
+
+    await paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 50000 });
+
+    expect(mockPaymentGatewayService.createRefund).toHaveBeenCalledWith(
+      'paystack',
+      expect.objectContaining({ chargeId: '4099260516', amountInCents: 50000 })
+    );
+  });
+
   it('keeps a partially refunded payment PAID with the cumulative refund amount', async () => {
     mockPaymentDAO.findFirst.mockResolvedValue(makePaidPayment({ baseAmount: 200000 }) as any);
 
@@ -1636,7 +1655,7 @@ describe('PaymentService - refundPayment', () => {
     expect(mockPaymentGatewayService.createRefund).not.toHaveBeenCalled();
   });
 
-  it('releases the claim when Stripe fails', async () => {
+  it("releases the claim when the provider fails, without showing the provider's message", async () => {
     const payment = makePaidPayment({ refund: { amount: 10000 } });
     mockPaymentDAO.findFirst.mockResolvedValue(payment as any);
     mockPaymentGatewayService.createRefund.mockResolvedValue({
@@ -1647,7 +1666,7 @@ describe('PaymentService - refundPayment', () => {
 
     await expect(
       paymentService.refundPayment(CUID, PYTUID, ADMIN_ID, { amount: 5000 })
-    ).rejects.toThrow('card_declined');
+    ).rejects.toThrow(t('payment.errors.refundFailed'));
 
     expect(mockPaymentDAO.update).toHaveBeenLastCalledWith(
       { _id: payment._id, 'refund.amount': 15000 },
@@ -6277,6 +6296,42 @@ describe('PaymentService - createCardPaymentSession', () => {
     );
   });
 
+  it('sends a Paystack account to the Paystack checkout, without touching Stripe', async () => {
+    const d = makeDefaults();
+    const mockStripe = { createPaymentCheckoutSession: jest.fn() };
+    const paystackPaymentService = {
+      createCardCheckout: jest
+        .fn()
+        .mockResolvedValue({ checkoutUrl: 'https://checkout.paystack.com/abc' }),
+    };
+    const svc = makeServiceWithMocks({
+      paymentDAO: {
+        findFirst: jest.fn().mockResolvedValue({ ...d.payment, currency: 'NGN' }),
+      } as any,
+      paymentProcessorDAO: {
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({ ...d.processor, accountId: 'ACCT_landlord1', provider: 'paystack' }),
+      } as any,
+      profileDAO: { findFirst: jest.fn().mockResolvedValue(d.profile) } as any,
+      userDAO: { findFirst: jest.fn().mockResolvedValue(d.tenantUser) } as any,
+      stripeService: mockStripe,
+      paystackPaymentService,
+    } as any);
+
+    const result = await svc.createCardPaymentSession(CUID, PYTUID, TENANT_USER_ID);
+
+    expect(result.data.checkoutUrl).toBe('https://checkout.paystack.com/abc');
+    expect(paystackPaymentService.createCardCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerEmail: 'tenant@example.com',
+        tenantUid: 'TENANTUID001',
+        successUrl: expect.stringContaining('payment_success=true'),
+      })
+    );
+    expect(mockStripe.createPaymentCheckoutSession).not.toHaveBeenCalled();
+  });
+
   it('voids the open invoices (including split ones) before creating the checkout session', async () => {
     const d = makeDefaults();
     const payment = {
@@ -6492,9 +6547,48 @@ describe('PaymentService - handleCardPaymentSessionCompleted', () => {
       EventTypes.PAYMENT_SUCCEEDED,
       expect.objectContaining({
         pytuid: PYTUID,
-        tenantId: 'user123',
+        // The profile id the receipt email can look up, not the short uid from the metadata
+        tenantId: PROFILE_ID.toString(),
         paymentType: 'rent',
       })
+    );
+  });
+
+  it("saves the card on the charge's tenant under the client's own payout account", async () => {
+    const payment = makePayment({ tenant: PROFILE_ID, paymentType: 'rent' });
+    const mockPaymentDAO = {
+      findFirst: jest.fn().mockResolvedValue(payment),
+      update: jest.fn().mockResolvedValue({}),
+    } as any;
+    const mockProfileDAO = { update: jest.fn().mockResolvedValue({}) } as any;
+    const mockProcessorDAO = {
+      findFirst: jest.fn().mockResolvedValue({ accountId: 'acct_landlord' }),
+    } as any;
+    const mockStripe = {
+      createPaymentCheckoutSession: jest.fn(),
+      getPaymentIntentChargeInfo: jest
+        .fn()
+        .mockResolvedValue({ chargeId: 'ch_1', receiptUrl: null, paymentMethodId: 'pm_card_1' }),
+    };
+
+    const svc = makeServiceWithMocks({
+      paymentDAO: mockPaymentDAO,
+      profileDAO: mockProfileDAO,
+      paymentProcessorDAO: mockProcessorDAO,
+      stripeService: mockStripe,
+    });
+    await svc.handleCardPaymentSessionCompleted(
+      makeSession({ metadata: { pytuid: PYTUID, cuid: CUID, uid: 'TENANTUID001' } })
+    );
+
+    expect(mockProcessorDAO.findFirst).toHaveBeenCalledWith({
+      cuid: payment.cuid,
+      ownerType: 'client',
+      deletedAt: null,
+    });
+    expect(mockProfileDAO.update).toHaveBeenCalledWith(
+      { _id: PROFILE_ID },
+      { $set: { 'tenantInfo.cardPaymentMethods.acct_landlord': 'pm_card_1' } }
     );
   });
 
@@ -7525,5 +7619,62 @@ describe('PaymentService - change Paystack payout bank account', () => {
     await expect(
       paymentService.updatePaystackPayoutBankAccount(CUID, ACTOR_ID, newAccount)
     ).rejects.toThrow(BadRequestError);
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// confirmCardCheckout (tenant return page)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - confirmCardCheckout', () => {
+  const TENANT_USER_ID = new Types.ObjectId().toString();
+  const PROFILE_ID = new Types.ObjectId();
+  const REFERENCE = 'psk-0a1b2c3d4e5f6a7b8c9d';
+
+  const setup = (payment: unknown) => {
+    const paystackPaymentService = {
+      confirmCheckout: jest
+        .fn()
+        .mockResolvedValue({ outcome: 'paid', status: PaymentRecordStatus.PAID }),
+    };
+    const svc = makeServiceWithMocks({
+      paymentDAO: { findFirst: jest.fn().mockResolvedValue(payment) } as any,
+      profileDAO: {
+        findFirst: jest.fn().mockResolvedValue({ _id: PROFILE_ID }),
+      } as any,
+      paystackPaymentService,
+    } as any);
+    return { svc, paystackPaymentService };
+  };
+
+  it('returns NotFound when the charge does not exist', async () => {
+    const { svc, paystackPaymentService } = setup(null);
+
+    await expect(
+      svc.confirmCardCheckout(CUID, PYTUID, TENANT_USER_ID, REFERENCE)
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(paystackPaymentService.confirmCheckout).not.toHaveBeenCalled();
+  });
+
+  it("refuses another tenant's charge with the same generic message", async () => {
+    const { svc, paystackPaymentService } = setup(makePayment({ tenant: new Types.ObjectId() }));
+
+    const error = await svc
+      .confirmCardCheckout(CUID, PYTUID, TENANT_USER_ID, REFERENCE)
+      .catch((err) => err);
+
+    expect(error).toBeInstanceOf(BadRequestError);
+    expect(error.message).toBe(t('payment.errors.checkoutNotFound'));
+    expect(paystackPaymentService.confirmCheckout).not.toHaveBeenCalled();
+  });
+
+  it("confirms the tenant's own charge and returns its status", async () => {
+    const payment = makePayment({ tenant: PROFILE_ID });
+    const { svc, paystackPaymentService } = setup(payment);
+
+    const result = await svc.confirmCardCheckout(CUID, PYTUID, TENANT_USER_ID, REFERENCE);
+
+    expect(paystackPaymentService.confirmCheckout).toHaveBeenCalledWith(payment, REFERENCE);
+    expect(result).toEqual({ success: true, data: { status: PaymentRecordStatus.PAID } });
   });
 });

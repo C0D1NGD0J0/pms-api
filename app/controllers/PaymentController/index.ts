@@ -1,5 +1,6 @@
 import fs from 'fs';
 import { Response } from 'express';
+import { t } from '@shared/languages';
 import { createLogger, Weekday } from '@utils/index';
 import ROLES from '@shared/constants/roles.constants';
 import { AppRequest } from '@interfaces/utils.interface';
@@ -354,6 +355,24 @@ export class PaymentController {
       successUrl,
       cancelUrl,
     });
+    return res.status(200).json(result);
+  }
+
+  async confirmCardCheckout(req: AppRequest, res: Response) {
+    const { cuid, pytuid } = req.params;
+    const tenantUserId = req.context?.currentuser?.sub;
+    const { reference } = req.query as { reference: string };
+
+    if (!tenantUserId) {
+      return res.status(401).json({ success: false, message: t('common.errors.unauthorized') });
+    }
+
+    const result = await this.paymentService.confirmCardCheckout(
+      cuid,
+      pytuid,
+      tenantUserId,
+      reference
+    );
     return res.status(200).json(result);
   }
 

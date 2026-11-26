@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { WEEKDAYS } from '@utils/constants';
+import { PAYSTACK_REFERENCE_PATTERN } from '@utils/paystackReference';
 
 import { calendarDate, safeString } from '../UtilsValidation';
 import { isAllowedCheckoutReturnUrl } from './checkoutReturnUrl';
@@ -14,6 +15,11 @@ export const cardCheckoutParams = z.object({
 
 const checkoutReturnUrl = z.string().trim().max(2048).refine(isAllowedCheckoutReturnUrl, {
   message: 'Return URL must be a path in this app or on the app domain',
+});
+
+// The reference a checkout was started with; the format lives in one place
+export const cardCheckoutConfirmQuery = z.object({
+  reference: z.string().trim().regex(PAYSTACK_REFERENCE_PATTERN, 'Invalid payment reference'),
 });
 
 export const cardCheckoutBody = z.object({

@@ -1294,6 +1294,18 @@ openApiRegistry.registerPath({
 });
 
 openApiRegistry.registerPath({
+  method: 'get',
+  path: '/payments/{cuid}/{pytuid}/card-checkout/confirm',
+  summary: "Confirm the tenant's finished card checkout from the return page",
+  tags: ['Payments'],
+  request: {
+    params: z.object({ cuid: z.string(), pytuid: z.string() }),
+    query: z.object({ reference: z.string() }),
+  },
+  responses: { ...ok200, ...err401, ...err400, ...err422 },
+});
+
+openApiRegistry.registerPath({
   method: 'post',
   path: '/payments/{cuid}/{pytuid}/pay',
   summary: 'Process payment via saved method',
@@ -2860,6 +2872,18 @@ openApiRegistry.registerPath({
   responses: {
     200: { description: 'Webhook processed' },
     400: { description: 'Invalid signature' },
+  },
+});
+
+openApiRegistry.registerPath({
+  method: 'post',
+  path: '/webhooks/paystack',
+  summary: 'Paystack webhook endpoint (card payments and refunds)',
+  tags: ['Webhooks'],
+  security: [],
+  responses: {
+    200: { description: 'Webhook processed' },
+    401: { description: 'Invalid signature' },
   },
 });
 

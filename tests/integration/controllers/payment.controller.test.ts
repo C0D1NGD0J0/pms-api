@@ -74,6 +74,8 @@ describe('PaymentController Integration Tests', () => {
   // The manual-entry receipt is uploaded during the request (uploadRequestFiles)
   const mockUploadRequestFiles = jest.fn();
   const mockPaymentGatewayService = {
+    // The real routing rule: a psk- reference is Paystack, anything else Stripe
+    providerForPayment: PaymentGatewayService.prototype.providerForPayment,
     createRefund: mockCreateRefund,
     createCustomer: jest.fn(),
     createCharge: jest.fn(),
@@ -146,6 +148,7 @@ describe('PaymentController Integration Tests', () => {
       maintenancePaymentService,
       paymentWebhookService: {} as any,
       payoutAccountService: {} as any,
+      paystackPaymentService: {} as any,
       paymentCronService: {} as any,
       rentPaymentService,
       invoiceTemplateRenderer: {

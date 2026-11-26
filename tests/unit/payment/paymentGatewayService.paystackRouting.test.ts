@@ -82,8 +82,8 @@ describe('PaymentGatewayService - getProviderForClient', () => {
 describe('PaymentGatewayService - providerForPayment', () => {
   const { gateway } = makeGateway();
 
-  it('reads Paystack from the psk_ reference', () => {
-    expect(gateway.providerForPayment({ gatewayPaymentId: 'psk_PY123_1' })).toBe(
+  it('reads Paystack from the psk- reference', () => {
+    expect(gateway.providerForPayment({ gatewayPaymentId: 'psk-3f9a1c' })).toBe(
       IPaymentGatewayProvider.PAYSTACK
     );
   });
@@ -100,6 +100,32 @@ describe('PaymentGatewayService - providerForPayment', () => {
 });
 
 describe('PaymentGatewayService - Paystack calls', () => {
+  it('sends a refund for a Paystack payment to Paystack and returns the usual shape', async () => {
+    const createRefund = jest
+      .fn()
+      .mockResolvedValue({ id: 3018284, status: 'pending', amount: 50000, currency: 'NGN' });
+    const gateway = new PaymentGatewayService({
+      stripeService: {} as any,
+      paystackService: { createRefund } as any,
+    });
+
+    const result = await gateway.createRefund(IPaymentGatewayProvider.PAYSTACK, {
+      chargeId: '4099260516',
+      amountInCents: 50000,
+      note: 'Tenant moved out early',
+    } as any);
+
+    expect(createRefund).toHaveBeenCalledWith({
+      transaction: '4099260516',
+      amount: 50000,
+      merchant_note: 'Tenant moved out early',
+    });
+    expect(result).toEqual({
+      success: true,
+      data: { refundId: '3018284', status: 'pending', amount: 50000, currency: 'NGN' },
+    });
+  });
+
   it('passes Paystack-only calls through to the Paystack service', async () => {
     const { gateway, paystackService } = makeGateway();
 
@@ -112,7 +138,7 @@ describe('PaymentGatewayService - Paystack calls', () => {
 
     const result = await gateway.getInvoiceIdForPaymentIntent(
       IPaymentGatewayProvider.PAYSTACK,
-      'psk_PY1_1'
+      'psk-1a2b3c'
     );
 
     expect(result.success).toBe(false);

@@ -28,6 +28,7 @@ export enum DataRetentionPolicy {
 
 export interface ITenantInfo {
   padMandateDetails?: Map<string, IPadMandateDetails>;
+  paystackCards?: Map<string, IPaystackSavedCard>;
   paymentGatewayCustomers?: Map<string, string>;
   backgroundChecks?: IBackgroundCheckItem[];
   cardPaymentMethods?: Map<string, string>;
@@ -117,6 +118,21 @@ export interface IPopulatedUser {
   updatedAt: Date;
   email: string;
   uid: string;
+}
+
+/**
+ * A tenant's card saved by Paystack after a payment, per landlord subaccount. The authorization
+ * code can charge the card again, so the whole field is hidden from queries (select: false) and
+ * must never reach the frontend. Paystack can't look these details up later, so they are kept.
+ */
+export interface IPaystackSavedCard {
+  authorizationCode: string; // AUTH_…
+  expMonth?: string;
+  expYear?: string;
+  brand?: string;
+  last4?: string;
+  email: string; // repeat charges must use the email the card was first paid with
+  savedAt: Date;
 }
 
 export interface ILeaseHistoryItem {

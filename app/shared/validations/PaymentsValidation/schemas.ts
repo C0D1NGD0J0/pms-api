@@ -16,6 +16,14 @@ const checkoutReturnUrl = z.string().trim().max(2048).refine(isAllowedCheckoutRe
   message: 'Return URL must be a path in this app or on the app domain',
 });
 
+// The reference a checkout was started with (psk- + hex); see PAYSTACK_REFERENCE_PREFIX
+export const cardCheckoutConfirmQuery = z.object({
+  reference: z
+    .string()
+    .trim()
+    .regex(/^psk-[a-f0-9]{20}$/, 'Invalid payment reference'),
+});
+
 export const cardCheckoutBody = z.object({
   successUrl: checkoutReturnUrl.optional(),
   cancelUrl: checkoutReturnUrl.optional(),

@@ -1,4 +1,13 @@
 export {
+  MaintenancePaymentService,
+  PaystackPaymentService,
+  PaymentWebhookService,
+  PayoutAccountService,
+  PaymentCronService,
+  RentPaymentService,
+  PaymentService,
+} from './payments';
+export {
   PropertyVerificationService,
   PropertyApprovalService,
   PropertyMediaService,
@@ -6,14 +15,6 @@ export {
   PropertyUnitService,
   PropertyService,
 } from './property';
-export {
-  MaintenancePaymentService,
-  PaymentWebhookService,
-  PayoutAccountService,
-  PaymentCronService,
-  RentPaymentService,
-  PaymentService,
-} from './payments';
 export {
   LeaseSignatureService,
   LeaseDocumentService,

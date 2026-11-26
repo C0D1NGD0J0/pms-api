@@ -253,6 +253,24 @@ const ProfileSchema = new Schema<IProfileDocument>(
           of: String,
           default: {},
         },
+        // Paystack saved cards, keyed by the landlord's subaccount. Hidden: the code can charge the card
+        paystackCards: {
+          type: Map,
+          of: new Schema(
+            {
+              authorizationCode: { type: String, required: true },
+              email: { type: String, required: true, lowercase: true, trim: true },
+              expMonth: { type: String },
+              expYear: { type: String },
+              brand: { type: String },
+              last4: { type: String, maxlength: 4 },
+              savedAt: { type: Date, required: true },
+            },
+            { _id: false }
+          ),
+          default: undefined,
+          select: false,
+        },
         padMandateDetails: {
           type: Map,
           of: new Schema(

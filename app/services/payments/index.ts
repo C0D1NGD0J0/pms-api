@@ -1,4 +1,5 @@
 export * from './maintenancePayment.service';
+export * from './paystackPayment.service';
 export * from './paymentWebhook.service';
 export * from './payoutAccount.service';
 export * from './paymentCron.service';

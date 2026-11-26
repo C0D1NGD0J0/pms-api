@@ -636,10 +636,15 @@
       "cardCheckoutCurrencyUnsupported": "This payment can't be paid by card online. Please use the payment instructions from your property manager.",
       "checkoutNotFound": "We couldn't find that card payment. If you were charged, it will appear here shortly.",
       "refundFailed": "The refund couldn't be completed. Please try again.",
-      "refundOnlinePaymentsOnly": "Refunds are only available for payments made online."
+      "refundOnlinePaymentsOnly": "Refunds are only available for payments made online.",
+      "payByCardFirst": "Pay this charge by card once to turn on automatic payments.",
+      "cardDeclined": "The card on file was declined. Please pay by card with another card or contact your bank.",
+      "cardCheckoutTypeUnsupported": "This charge can't be paid by card online."
     },
     "success": {
-      "instantPayoutRequested": "Instant payout requested. Funds usually arrive within 30 minutes."
+      "instantPayoutRequested": "Instant payout requested. Funds usually arrive within 30 minutes.",
+      "cardCharged": "Payment received. Thank you!",
+      "cardChargeProcessing": "Your payment is being processed. It will show as paid shortly."
     },
     "instantPayoutReasons": {
       "country_not_supported": "instant payouts are not offered in your payout account's country",

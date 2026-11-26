@@ -633,10 +633,15 @@
       "cardCheckoutCurrencyUnsupported": "Ce paiement ne peut pas être réglé par carte en ligne. Veuillez suivre les instructions de paiement de votre gestionnaire immobilier.",
       "checkoutNotFound": "Nous n'avons pas trouvé ce paiement par carte. Si vous avez été débité, il apparaîtra ici sous peu.",
       "refundFailed": "Le remboursement n'a pas pu être effectué. Veuillez réessayer.",
-      "refundOnlinePaymentsOnly": "Les remboursements ne sont offerts que pour les paiements effectués en ligne."
+      "refundOnlinePaymentsOnly": "Les remboursements ne sont offerts que pour les paiements effectués en ligne.",
+      "payByCardFirst": "Payez ce montant une première fois par carte pour activer les paiements automatiques.",
+      "cardDeclined": "La carte enregistrée a été refusée. Veuillez payer avec une autre carte ou communiquer avec votre banque.",
+      "cardCheckoutTypeUnsupported": "Ce montant ne peut pas être payé par carte en ligne."
     },
     "success": {
-      "instantPayoutRequested": "Versement instantané demandé. Les fonds arrivent généralement en moins de 30 minutes."
+      "instantPayoutRequested": "Versement instantané demandé. Les fonds arrivent généralement en moins de 30 minutes.",
+      "cardCharged": "Paiement reçu. Merci!",
+      "cardChargeProcessing": "Votre paiement est en cours de traitement. Il apparaîtra comme payé sous peu."
     },
     "instantPayoutReasons": {
       "country_not_supported": "les versements instantanés ne sont pas offerts dans le pays de votre compte de versement",

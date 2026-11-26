@@ -124,6 +124,7 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
     };
 
     service = new RentPaymentService({
+      paystackPaymentService: {} as any,
       subscriptionPlanConfig,
       paymentGatewayService: paymentGatewayService as any,
       paymentWebhookService: { retryPaymentWithCard: jest.fn() } as any,
@@ -198,6 +199,31 @@ describe('RentPaymentService — activation, rent creation and deposits (integra
       expect(deposit.tenant.toString()).toBe(tenantProfileId.toString());
       expect(deposit.applicationFee).toBe(0);
       expect(paymentGatewayService.createCharge).toHaveBeenCalledTimes(2);
+    });
+
+    it('records the first month and the deposit for a Paystack account, with nothing at Stripe', async () => {
+      await PaymentProcessor.updateOne(
+        { cuid },
+        { $set: { provider: 'paystack', accountId: 'ACCT_landlord1', accountType: 'subaccount' } }
+      );
+      const lease = await createActiveLease({ 'fees.currency': 'NGN' });
+
+      await activate(lease);
+
+      // No invoice exists at Paystack: the saved card is charged on the due date
+      const [rent] = await paymentsOf(lease._id, PaymentRecordType.RENT);
+      expect(rent.gatewayPaymentId).toBeUndefined();
+      expect(rent.status).toBe(PaymentRecordStatus.PENDING);
+      expect(rent.paymentMethod).toBe(PaymentMethod.ONLINE);
+      expect(rent.isManualEntry).toBe(false);
+      expect(rent.baseAmount).toBe(RENT);
+
+      const [deposit] = await paymentsOf(lease._id, PaymentRecordType.SECURITY_DEPOSIT);
+      expect(deposit.baseAmount).toBe(SECURITY_DEPOSIT + PET_DEPOSIT);
+      expect(deposit.gatewayPaymentId).toBeUndefined();
+
+      expect(paymentGatewayService.createCustomer).not.toHaveBeenCalled();
+      expect(paymentGatewayService.createCharge).not.toHaveBeenCalled();
     });
 
     it('does not invoice the deposit again for a renewal lease', async () => {

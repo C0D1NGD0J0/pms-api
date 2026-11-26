@@ -7,6 +7,7 @@ import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { createPaystackReference } from '@utils/paystackReference';
+import { IPaystackSavedCard } from '@interfaces/profile.interface';
 import { IPaymentProcessorDocument } from '@interfaces/paymentProcessor.interface';
 import { PaymentProcessorDAO, SubscriptionDAO, PaymentDAO, ProfileDAO } from '@dao/index';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
@@ -33,6 +34,13 @@ export type PaystackSettleOutcome =
   | 'needs_review' // amount, currency or destination doesn't match the charge
   | 'not_found'; // no charge matches the transaction's metadata
 
+/** What happened when the app tried to charge a tenant's saved card. */
+export type PaystackAutoChargeOutcome =
+  | 'paid' // charged and recorded
+  | 'processing' // Paystack is still working on it; the webhook or reconcile settles it
+  | 'no_saved_card' // nothing to charge: the tenant hasn't paid by card yet (or not NGN)
+  | 'declined'; // the card was refused
+
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentWebhookService: PaymentWebhookService;
@@ -44,11 +52,17 @@ interface IConstructor {
   profileDAO: ProfileDAO;
 }
 
+// PROCESSING is an in-flight automatic card charge, which settles like any other
 const PAYABLE_STATUSES = [
   PaymentRecordStatus.PENDING,
   PaymentRecordStatus.OVERDUE,
   PaymentRecordStatus.FAILED,
+  PaymentRecordStatus.PROCESSING,
 ];
+const CHARGEABLE_STATUSES = [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE];
+
+/** Hours a pending automatic card charge can stay unresolved before it counts as failed. */
+const STALE_CARD_CHARGE_HOURS = 72;
 
 /**
  * Tenant card payments for accounts that collect through Paystack (Nigeria).
@@ -111,7 +125,6 @@ export class PaystackPaymentService {
     }
 
     const reference = createPaystackReference();
-    const isMaintenance = payment.paymentType === PaymentRecordType.MAINTENANCE;
 
     const checkout = await this.paymentGatewayService.initializeCardCheckout({
       email: input.customerEmail,
@@ -126,12 +139,7 @@ export class PaystackPaymentService {
         type: 'card_payment',
         cancel_action: input.cancelUrl, // where Paystack sends the tenant if they cancel
       },
-      // Maintenance money stays in the platform balance until the vendor is paid
-      ...(!isMaintenance && {
-        subaccount: processor.accountId,
-        bearer: 'account' as const,
-        ...(input.applicationFee > 0 && { transaction_charge: input.applicationFee }),
-      }),
+      ...this.splitFor(payment, processor, input.applicationFee),
     });
 
     // The open checkout's reference; an older one can still be paid, which settlement refunds
@@ -258,6 +266,109 @@ export class PaystackPaymentService {
     return { outcome, status: (current?.status ?? payment.status) as PaymentRecordStatus };
   }
 
+  /**
+   * Charges the tenant's saved card for a charge that's due (the auto-charge cron, or the tenant's
+   * "pay now"). Never throws for a declined card — the caller decides how to record that.
+   */
+  async chargeSavedCard(payment: IPaymentDocument): Promise<PaystackAutoChargeOutcome> {
+    const processor = await this.paymentProcessorDAO.findFirst({
+      cuid: payment.cuid,
+      ownerType: 'client',
+      deletedAt: null,
+    });
+    if (!processor?.accountId || payment.currency?.toUpperCase() !== 'NGN') {
+      return 'no_saved_card';
+    }
+
+    // Saved cards are hidden by default: the authorization code can charge the card
+    const profile = await this.profileDAO.findFirst({ _id: payment.tenant }, {
+      select: '+tenantInfo.paystackCards',
+    } as any);
+    const card = this.readSavedCard(profile?.tenantInfo?.paystackCards, processor.accountId);
+    if (!card) return 'no_saved_card';
+
+    // A new reference per attempt; it is the open checkout until the charge settles
+    const reference = createPaystackReference();
+    const claimed = await this.paymentDAO.update(
+      { _id: payment._id, status: { $in: CHARGEABLE_STATUSES }, deletedAt: null },
+      { $set: { cardCheckoutSessionId: reference, chargedAt: dayjs().toDate() } }
+    );
+    if (!claimed) return 'no_saved_card'; // paid or closed meanwhile
+
+    const applicationFee = await this.platformFeeFor(payment);
+    const transaction = await this.paymentGatewayService.chargeSavedCard({
+      authorization_code: card.authorizationCode,
+      email: card.email,
+      amount: payment.baseAmount,
+      currency: 'NGN',
+      reference,
+      // charge_authorization takes metadata as a JSON string
+      metadata: JSON.stringify({ pytuid: payment.pytuid, cuid: payment.cuid, type: 'auto_charge' }),
+      ...this.splitFor(payment, processor, applicationFee),
+    });
+
+    if (transaction.status === 'success') {
+      const outcome = await this.settleTransaction(reference);
+      return outcome === 'paid' || outcome === 'already_paid' ? 'paid' : 'processing';
+    }
+
+    if (transaction.status === 'failed' || transaction.status === 'abandoned') {
+      this.log.warn(
+        { pytuid: payment.pytuid, reference, gatewayResponse: transaction.gateway_response },
+        'Saved card was declined'
+      );
+      await this.paymentDAO.update({ _id: payment._id }, { $unset: { cardCheckoutSessionId: '' } });
+      return 'declined';
+    }
+
+    // pending, ongoing, queued…: settled later by the charge.success webhook or reconcile
+    await this.paymentDAO.update(
+      { _id: payment._id, status: { $in: CHARGEABLE_STATUSES } },
+      { $set: { status: PaymentRecordStatus.PROCESSING } }
+    );
+    return 'processing';
+  }
+
+  /**
+   * Resolves an automatic card charge still PROCESSING (the reconcile cron): records it if Paystack
+   * says it succeeded, or reopens the charge as OVERDUE when it failed or has hung too long.
+   */
+  async reconcileProcessingCharge(
+    payment: IPaymentDocument
+  ): Promise<'paid' | 'reopened' | 'waiting'> {
+    const reference = payment.cardCheckoutSessionId;
+    if (!reference) return 'waiting';
+
+    const transaction = await this.paymentGatewayService.verifyPaystackTransaction(reference);
+    if (transaction.status === 'success') {
+      await this.settleTransaction(reference);
+      return 'paid';
+    }
+
+    const hasFailed = ['abandoned', 'reversed', 'failed'].includes(transaction.status);
+    const isStale =
+      dayjs().diff(dayjs(payment.chargedAt ?? payment.dueDate), 'hour') >= STALE_CARD_CHARGE_HOURS;
+    if (!hasFailed && !isStale) return 'waiting';
+
+    await this.paymentDAO.update(
+      { _id: payment._id, status: PaymentRecordStatus.PROCESSING },
+      {
+        $set: {
+          status: PaymentRecordStatus.OVERDUE,
+          'failure.reason': t('payment.errors.cardDeclined'),
+          'failure.lastFailedAt': dayjs().toDate(),
+        },
+        $inc: { 'failure.retryCount': 1 },
+        $unset: { cardCheckoutSessionId: '' },
+      }
+    );
+    this.log.warn(
+      { pytuid: payment.pytuid, reference, status: transaction.status },
+      'Card charge reopened'
+    );
+    return 'reopened';
+  }
+
   /** Handles a webhook event whose signature has already been checked. */
   async handleWebhookEvent(event: IPaystackWebhookEvent): Promise<void> {
     const data = event.data as Record<string, any>;
@@ -316,6 +427,48 @@ export class PaystackPaymentService {
     });
   }
 
+  /**
+   * Where the money goes. Rent and late fees settle to the landlord's subaccount, with the
+   * platform fee as transaction_charge; deposits too, without a fee. Maintenance stays in the
+   * platform balance until the vendor is paid.
+   */
+  private splitFor(
+    payment: IPaymentDocument,
+    processor: IPaymentProcessorDocument,
+    applicationFee: number
+  ) {
+    if (payment.paymentType === PaymentRecordType.MAINTENANCE) return {};
+    const takesPlatformFee = payment.paymentType !== PaymentRecordType.SECURITY_DEPOSIT;
+    return {
+      subaccount: processor.accountId,
+      bearer: 'account' as const,
+      ...(takesPlatformFee && applicationFee > 0 && { transaction_charge: applicationFee }),
+    };
+  }
+
+  /** The plan's platform fee for rent and late fees; other charges keep their stored fee. */
+  private async platformFeeFor(payment: IPaymentDocument): Promise<number> {
+    const usesPlanRate =
+      payment.paymentType === PaymentRecordType.RENT ||
+      payment.paymentType === PaymentRecordType.LATE_FEE;
+    if (!usesPlanRate) return payment.applicationFee ?? 0;
+
+    const subscription = await this.subscriptionDAO.findFirst({ cuid: payment.cuid });
+    if (!subscription?.planName) return payment.applicationFee ?? 0;
+    return FinancialCalculator.percentOf(
+      payment.baseAmount,
+      this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
+    );
+  }
+
+  private readSavedCard(
+    cards: Map<string, IPaystackSavedCard> | Record<string, IPaystackSavedCard> | undefined,
+    subaccountCode: string
+  ): IPaystackSavedCard | undefined {
+    if (!cards) return undefined;
+    return cards instanceof Map ? cards.get(subaccountCode) : cards[subaccountCode];
+  }
+
   private readMetadata(transaction: IPaystackTransaction): {
     pytuid?: string;
     cuid?: string;
@@ -355,7 +508,8 @@ export class PaystackPaymentService {
 
   /**
    * Paystack's actual fee when it reports one, otherwise the estimate. The platform fee is the
-   * plan's rate (what checkout sent as transaction_charge); maintenance keeps its stored fee.
+   * plan's rate for rent and late fees (what was sent as transaction_charge); other charges keep
+   * their stored fee.
    */
   private async calculateFees(
     payment: IPaymentDocument,
@@ -365,16 +519,7 @@ export class PaystackPaymentService {
       transaction.fees ??
       this.subscriptionPlanConfig.calculatePaymentGatewayFee(payment.baseAmount, 'paystack');
 
-    let applicationFee = payment.applicationFee ?? 0;
-    if (payment.paymentType !== PaymentRecordType.MAINTENANCE) {
-      const subscription = await this.subscriptionDAO.findFirst({ cuid: payment.cuid });
-      if (subscription?.planName) {
-        applicationFee = FinancialCalculator.percentOf(
-          payment.baseAmount,
-          this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
-        );
-      }
-    }
+    const applicationFee = await this.platformFeeFor(payment);
 
     // The model doesn't allow negative revenue; a loss on a tiny payment is recorded as zero
     const platformRevenue = Math.max(0, applicationFee - processingFee);

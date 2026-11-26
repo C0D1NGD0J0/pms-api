@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
@@ -38,6 +39,7 @@ import {
 
 import { PaymentCronService } from './paymentCron.service';
 import { PaymentWebhookService } from './paymentWebhook.service';
+import { PaystackPaymentService } from './paystackPayment.service';
 import {
   annualYearIndexForPeriod,
   buildAnnualRentLineItems,
@@ -47,6 +49,7 @@ import {
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
+  paystackPaymentService: PaystackPaymentService;
   paymentGatewayService: PaymentGatewayService;
   paymentWebhookService: PaymentWebhookService;
   paymentProcessorDAO: PaymentProcessorDAO;
@@ -66,6 +69,7 @@ export class RentPaymentService {
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentWebhookService: PaymentWebhookService;
+  private readonly paystackPaymentService: PaystackPaymentService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
@@ -81,6 +85,7 @@ export class RentPaymentService {
     subscriptionPlanConfig,
     paymentGatewayService,
     paymentWebhookService,
+    paystackPaymentService,
     paymentProcessorDAO,
     emitterService,
     subscriptionDAO,
@@ -96,6 +101,7 @@ export class RentPaymentService {
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.paymentGatewayService = paymentGatewayService;
     this.paymentWebhookService = paymentWebhookService;
+    this.paystackPaymentService = paystackPaymentService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
@@ -585,7 +591,10 @@ export class RentPaymentService {
       }
       const totalAmountInCents = RentPaymentService.sumLineItems(lineItems);
 
-      if (!options?.createStripeInvoice) {
+      // Paystack has no invoice to create up front: the record is charged to the tenant's saved
+      // card on the due date (auto-charge cron) or paid by card checkout
+      const isPaystackAccount = paymentProcessor.provider === 'paystack';
+      if (!options?.createStripeInvoice || isPaystackAccount) {
         const payment = await this.createManualTrackingPayment({
           cuid,
           tenantId: tenantUserId,
@@ -613,6 +622,16 @@ export class RentPaymentService {
             paymentType: effectivePaymentType,
             dueDate: data.dueDate,
             description: data.description,
+          });
+        }
+        if (isPaystackAccount && options?.invoiceDeposit && leaseFees.deposits.total > 0) {
+          await this.createDepositTrackingRecord({
+            cuid,
+            leaseId: lease._id.toString(),
+            tenantUserId,
+            dueDate: dayjs(data.dueDate).toDate(),
+            currency: leaseFees.currency,
+            deposits: leaseFees.deposits,
           });
         }
         return { success: true, data: payment, message: 'Payment request created' };
@@ -865,6 +884,29 @@ export class RentPaymentService {
    * Creates a Stripe invoice → finalizes (auto-charges) → updates payment record with gateway ID.
    * Status stays PENDING until webhook confirms PAID.
    */
+  /** "Pay now" on a Paystack account: charges the card the tenant saved on an earlier card payment. */
+  private async payPendingChargeWithSavedCard(
+    payment: IPaymentDocument
+  ): IPromiseReturnedData<IPaymentDocument> {
+    const outcome = await this.paystackPaymentService.chargeSavedCard(payment);
+    if (outcome === 'no_saved_card') {
+      throw new BadRequestError({ message: t('payment.errors.payByCardFirst') });
+    }
+    if (outcome === 'declined') {
+      throw new BadRequestError({ message: t('payment.errors.cardDeclined') });
+    }
+
+    const updated = await this.paymentDAO.findFirst({ _id: payment._id });
+    return {
+      success: true,
+      data: (updated ?? payment) as IPaymentDocument,
+      message:
+        outcome === 'paid'
+          ? t('payment.success.cardCharged')
+          : t('payment.success.cardChargeProcessing'),
+    };
+  }
+
   async payPendingCharge(
     cuid: string,
     pytuid: string,
@@ -916,6 +958,10 @@ export class RentPaymentService {
       }
 
       const paymentProcessor = await this.getActiveProcessorOrThrow(cuid);
+
+      if (paymentProcessor.provider === 'paystack') {
+        return this.payPendingChargeWithSavedCard(payment);
+      }
 
       if (payment.paymentType === PaymentRecordType.RENT) {
         let activeInvoiceId = payment.gatewayPaymentId;

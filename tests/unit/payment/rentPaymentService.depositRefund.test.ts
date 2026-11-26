@@ -64,6 +64,7 @@ describe('RentPaymentService — handleDepositRefund', () => {
     };
 
     new RentPaymentService({
+      paystackPaymentService: {} as any,
       paymentDAO: mockPaymentDAO as any,
       clientDAO: mockClientDAO as any,
       paymentGatewayService: mockPaymentGatewayService as any,

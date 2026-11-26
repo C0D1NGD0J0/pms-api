@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
@@ -14,9 +15,12 @@ import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { getLocalDateParts, localCalendarDay } from '@utils/timezone.utils';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { MaintenanceFundsAvailablePayload, EventTypes } from '@interfaces/events.interface';
+import {
+  PAYSTACK_REFERENCE_PREFIX,
+  PaymentGatewayService,
+} from '@services/paymentGateway/paymentGateway.service';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -38,6 +42,7 @@ import {
   LeaseStatus,
 } from '@interfaces/index';
 
+import { PaystackPaymentService } from './paystackPayment.service';
 import {
   annualYearIndexForPeriod,
   buildAnnualRentLineItems,
@@ -47,6 +52,7 @@ import {
 
 interface IConstructor {
   maintenancePaymentService: MaintenancePaymentService;
+  paystackPaymentService: PaystackPaymentService;
   subscriptionPlanConfig: SubscriptionPlanConfig;
   paymentGatewayService: PaymentGatewayService;
   paymentProcessorDAO: PaymentProcessorDAO;
@@ -105,6 +111,7 @@ const LOCAL_HOUR = {
 export class PaymentCronService implements ICronProvider {
   private readonly log: Logger;
   private readonly maintenancePaymentService: MaintenancePaymentService;
+  private readonly paystackPaymentService: PaystackPaymentService;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -120,6 +127,7 @@ export class PaymentCronService implements ICronProvider {
 
   constructor({
     maintenancePaymentService,
+    paystackPaymentService,
     paymentGatewayService,
     paymentProcessorDAO,
     subscriptionPlanConfig,
@@ -135,6 +143,7 @@ export class PaymentCronService implements ICronProvider {
   }: IConstructor) {
     this.log = createLogger('PaymentCronService');
     this.maintenancePaymentService = maintenancePaymentService;
+    this.paystackPaymentService = paystackPaymentService;
     this.paymentGatewayService = paymentGatewayService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.subscriptionPlanConfig = subscriptionPlanConfig;
@@ -197,6 +206,16 @@ export class PaymentCronService implements ICronProvider {
         enabled: true,
         service: 'PaymentCronService',
         description: 'Reconcile PROCESSING payments by checking Stripe invoice status',
+        timeout: 300000,
+      },
+      {
+        name: 'payment.reconcile-paystack-card-charges',
+        schedule: '30 3 * * *', // 3:30 AM UTC — after the Stripe reconcile
+        handler: this.reconcilePaystackCardCharges.bind(this),
+        enabled: true,
+        service: 'PaymentCronService',
+        description:
+          'Record or reopen automatic Paystack card charges still processing after a day',
         timeout: 300000,
       },
       {
@@ -861,8 +880,8 @@ export class PaymentCronService implements ICronProvider {
 
   private async getProcessor(
     cuid: string,
-    cache: Map<string, { accountId?: string; chargesEnabled?: boolean } | null>
-  ): Promise<{ accountId?: string; chargesEnabled?: boolean } | null> {
+    cache: Map<string, { accountId?: string; chargesEnabled?: boolean; provider?: string } | null>
+  ): Promise<{ accountId?: string; chargesEnabled?: boolean; provider?: string } | null> {
     if (!cache.has(cuid)) {
       const processor = await this.paymentProcessorDAO.findFirst({ cuid });
       cache.set(cuid, processor ?? null);
@@ -1081,6 +1100,9 @@ export class PaymentCronService implements ICronProvider {
     for await (const batch of this.iteratePaymentBatches(filter)) {
       totals.total += batch.length;
       const result = await this.processAutoChargePayments(batch, 'maintenance', async (payment) => {
+        const processor = await this.getProcessor(payment.cuid, processorCache);
+        if (processor?.provider === 'paystack') return this.chargePaystackCard(payment);
+
         const method = await this.resolveTenantChargeMethod(payment, processorCache);
         if (!method.tenantUserId) {
           this.log.warn(
@@ -1157,6 +1179,89 @@ export class PaymentCronService implements ICronProvider {
     }
 
     this.log.info(totals, '[Cron] Auto-charge due rent payments complete');
+
+    // Separate pass: a Paystack problem must never stop Stripe auto-charges (or the reverse)
+    try {
+      await this.autoChargeDuePaystackPayments(cuidFilter, startOfLocalTomorrow);
+    } catch (err) {
+      this.log.error({ err }, '[Cron] Auto-charge of Paystack card payments failed');
+    }
+  }
+
+  /**
+   * Paystack accounts have no invoice to pay: their rent and deposit charges carry no gateway id
+   * until paid, so they're picked up here and charged to the tenant's saved card. Only charges on
+   * auto-debit leases — offline (bank transfer) leases have the same shape and are never charged.
+   */
+  private async autoChargeDuePaystackPayments(
+    cuidFilter: { cuid?: { $in: string[] } },
+    startOfLocalTomorrow: Date
+  ): Promise<void> {
+    const paystackProcessors = await this.paymentProcessorDAO.list(
+      { provider: 'paystack', ownerType: { $ne: 'vendor' }, deletedAt: null } as any,
+      { limit: 10000 }
+    );
+    const timezoneCuids = cuidFilter.cuid?.$in;
+    const cuids = paystackProcessors.items
+      .map((processor) => processor.cuid)
+      .filter((cuid) => !timezoneCuids || timezoneCuids.includes(cuid));
+    if (cuids.length === 0) return;
+
+    const autoDebitLeases = await this.leaseDAO.list(
+      {
+        cuid: { $in: cuids },
+        status: LeaseStatus.ACTIVE,
+        'fees.acceptedPaymentMethod': 'auto-debit',
+        deletedAt: null,
+      } as any,
+      { limit: 10000 }
+    );
+    if (autoDebitLeases.items.length === 0) return;
+
+    const filter = {
+      paymentType: { $in: INVOICED_AUTO_CHARGE_TYPES },
+      status: { $in: CHARGEABLE_STATUSES },
+      isManualEntry: false,
+      cuid: { $in: cuids },
+      lease: { $in: autoDebitLeases.items.map((lease) => lease._id) },
+      gatewayPaymentId: { $in: [null] },
+      gatewayChargeId: { $exists: false },
+      dueDate: { $lt: startOfLocalTomorrow },
+      'dispute.status': { $nin: OPEN_DISPUTE_STATUSES },
+      deletedAt: null,
+    };
+
+    const totals = { charged: 0, failed: 0, deferred: 0, total: 0 };
+    for await (const batch of this.iteratePaymentBatches(filter)) {
+      totals.total += batch.length;
+      const result = await this.processAutoChargePayments(batch, 'rent', (payment) =>
+        this.chargePaystackCard(payment)
+      );
+      totals.charged += result.charged;
+      totals.failed += result.failed;
+      totals.deferred += result.deferred;
+    }
+
+    this.log.info(totals, '[Cron] Auto-charge due Paystack card payments complete');
+  }
+
+  /**
+   * Charges a Paystack tenant's saved card. A declined card throws so the shared loop records
+   * the failure (retry count, OVERDUE, then FAILED with a notice) as it does for Stripe.
+   */
+  private async chargePaystackCard(payment: IPaymentDocument): Promise<AutoChargeOutcome> {
+    const outcome = await this.paystackPaymentService.chargeSavedCard(payment);
+    if (outcome === 'declined') {
+      throw new Error(t('payment.errors.cardDeclined'));
+    }
+    if (outcome === 'no_saved_card') {
+      this.log.info(
+        { pytuid: payment.pytuid },
+        '[Cron] Skipping auto-charge: tenant has no saved card yet'
+      );
+      return 'skipped';
+    }
+    return 'charged';
   }
 
   /**
@@ -1609,6 +1714,32 @@ export class PaymentCronService implements ICronProvider {
    * Stripe invoice(s). Catches missed webhooks, voided invoices, and charges that never
    * completed. A split payment is PAID only when every split invoice is paid.
    */
+  /** Automatic Paystack card charges still PROCESSING after a day: record or reopen them. */
+  private async reconcilePaystackCardCharges(): Promise<void> {
+    const filter = {
+      status: PaymentRecordStatus.PROCESSING,
+      cardCheckoutSessionId: { $regex: `^${PAYSTACK_REFERENCE_PREFIX}` },
+      chargedAt: { $lt: dayjs().subtract(24, 'hour').toDate() },
+      gatewayChargeId: { $exists: false },
+      deletedAt: null,
+    };
+    const counts = { paid: 0, reopened: 0, waiting: 0 };
+
+    for await (const batch of this.iteratePaymentBatches(filter)) {
+      for (const payment of batch) {
+        try {
+          counts[await this.paystackPaymentService.reconcileProcessingCharge(payment)]++;
+        } catch (err) {
+          this.log.error({ err, pytuid: payment.pytuid }, '[Cron] Failed to reconcile card charge');
+        }
+      }
+    }
+
+    if (counts.paid + counts.reopened + counts.waiting > 0) {
+      this.log.info(counts, '[Cron] Paystack card charge reconciliation complete');
+    }
+  }
+
   private async reconcileStaleProcessingPayments(): Promise<void> {
     const staleCutoff = dayjs().subtract(24, 'hour').toDate();
     const filter = {

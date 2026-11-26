@@ -1164,6 +1164,14 @@ export class AuthService {
         });
       }
 
+      // Paystack saves the card when the tenant first pays by card; there's no setup step
+      if (processor.provider === 'paystack') {
+        return {
+          success: true,
+          data: { requiresSetup: false, reason: 'card_saved_on_first_payment', paymentMethod },
+        };
+      }
+
       const tenantProfile = await this.profileDAO.findFirst({
         user: new Types.ObjectId(currentuser.sub),
       });
@@ -1252,6 +1260,36 @@ export class AuthService {
    * Return the tenant's saved payment method details for the PM's connected account.
    * Reads from the profile's paymentMethods map, then fetches human-readable details from Stripe.
    */
+  /**
+   * A Paystack tenant's saved card, for display only: brand and last 4 digits. The authorization
+   * code that can charge it never leaves the API.
+   */
+  private async getPaystackSavedCard(
+    currentuser: ICurrentUser,
+    subaccountCode: string
+  ): Promise<{
+    success: boolean;
+    data: { hasPaymentMethod: boolean; card: { hasCard: boolean; brand?: string; last4?: string } };
+  }> {
+    const tenantProfile = await this.profileDAO.findFirst(
+      { user: new Types.ObjectId(currentuser.sub) },
+      { select: '+tenantInfo.paystackCards' } as any
+    );
+    const cards = tenantProfile?.tenantInfo?.paystackCards;
+    const card =
+      cards instanceof Map ? cards.get(subaccountCode) : (cards as any)?.[subaccountCode];
+    if (!card) {
+      return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
+    }
+    return {
+      success: true,
+      data: {
+        hasPaymentMethod: true,
+        card: { hasCard: true, brand: card.brand, last4: card.last4 },
+      },
+    };
+  }
+
   async getPaymentMethod(
     cuid: string,
     currentuser: ICurrentUser
@@ -1284,6 +1322,10 @@ export class AuthService {
     });
     if (!processor) {
       return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
+    }
+
+    if (processor.provider === 'paystack') {
+      return this.getPaystackSavedCard(currentuser, processor.accountId);
     }
 
     const tenantProfile = await this.profileDAO.findFirst({

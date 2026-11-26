@@ -83,6 +83,7 @@ const makeService = () => {
   const noop = {} as any;
 
   const service = new PaymentCronService({
+    paystackPaymentService: {} as any,
     maintenancePaymentService: noop,
     paymentGatewayService: paymentGatewayService as any,
     paymentProcessorDAO: {

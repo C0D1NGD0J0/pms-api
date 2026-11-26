@@ -49,6 +49,7 @@ const makeMocks = () => {
   const noop = {} as any;
 
   const service = new PaymentCronService({
+    paystackPaymentService: {} as any,
     maintenancePaymentService,
     paymentGatewayService: noop,
     paymentProcessorDAO: noop,

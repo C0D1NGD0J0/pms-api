@@ -2175,11 +2175,10 @@ export class PaymentService implements ICronProvider {
         PaymentRecordType.RENT,
         PaymentRecordType.MAINTENANCE,
         PaymentRecordType.LATE_FEE,
+        PaymentRecordType.SECURITY_DEPOSIT, // Paystack accounts only — checked below
       ];
       if (!CARD_CHECKOUT_ALLOWED_TYPES.includes(payment.paymentType)) {
-        throw new BadRequestError({
-          message: `Card checkout is not supported for payment type: ${payment.paymentType}`,
-        });
+        throw new BadRequestError({ message: t('payment.errors.cardCheckoutTypeUnsupported') });
       }
 
       const tenantProfile = await this.getProfileOrThrow(tenantUserId, 'Tenant profile not found');
@@ -2196,6 +2195,13 @@ export class PaymentService implements ICronProvider {
         throw new BadRequestError({
           message: 'Payment account not configured or not ready for charges',
         });
+      }
+
+      // Stripe deposits are invoiced and charged automatically. On Paystack accounts a card is only
+      // saved by paying one by card, so the tenant can pay the deposit (or rent) first, either way
+      const isPaystackAccount = paymentProcessor.provider === 'paystack';
+      if (payment.paymentType === PaymentRecordType.SECURITY_DEPOSIT && !isPaystackAccount) {
+        throw new BadRequestError({ message: t('payment.errors.cardCheckoutTypeUnsupported') });
       }
 
       const MONTH_NAMES = [

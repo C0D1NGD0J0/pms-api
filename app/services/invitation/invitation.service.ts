@@ -579,6 +579,10 @@ export class InvitationService {
 
   private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {
     try {
+      // Paystack accounts have no customer object; the card is saved on the first card payment
+      const provider = await this.paymentGatewayService.getProviderForClient?.(cuid);
+      if (provider === IPaymentGatewayProvider.PAYSTACK) return;
+
       const existingProfile = await this.profileDAO.findFirst({ user: user._id });
       const existingCustomerId =
         existingProfile?.tenantInfo?.paymentGatewayCustomers?.get('platform');

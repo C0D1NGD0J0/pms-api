@@ -346,17 +346,42 @@ describe('PaystackPaymentService - confirmCheckout and webhook events', () => {
     expect(paymentGatewayService.verifyPaystackTransaction).toHaveBeenCalledWith(REFERENCE);
   });
 
-  it('flags a failed refund on its payment', async () => {
-    const { service, paymentDAO } = makeService();
+  it('flags a failed refund on its payment and alerts managers', async () => {
+    const { service, paymentDAO, emitterService } = makeService();
+    paymentDAO.update.mockResolvedValue(makePayment({ status: PaymentRecordStatus.REFUNDED }));
+
+    await service.handleWebhookEvent({
+      event: 'refund.failed',
+      data: { transaction_reference: REFERENCE, amount: 5_000_000 },
+    });
+
+    expect(paymentDAO.update).toHaveBeenCalledWith(
+      { gatewayPaymentId: REFERENCE },
+      { $set: expect.objectContaining({ 'refund.failedAt': expect.any(Date) }) }
+    );
+    expect(emitterService.emit).toHaveBeenCalledWith(EventTypes.PAYMENT_REFUND_FAILED, {
+      cuid: CUID,
+      pytuid: PYTUID,
+      amount: 5_000_000,
+      currency: 'NGN',
+    });
+  });
+
+  it('uses the deposit alert (in-app + email) for a failed deposit refund', async () => {
+    const { service, paymentDAO, emitterService } = makeService();
+    const leaseId = new Types.ObjectId();
+    paymentDAO.update.mockResolvedValue(
+      makePayment({ paymentType: PaymentRecordType.SECURITY_DEPOSIT, lease: leaseId })
+    );
 
     await service.handleWebhookEvent({
       event: 'refund.failed',
       data: { transaction_reference: REFERENCE },
     });
 
-    expect(paymentDAO.update).toHaveBeenCalledWith(
-      { gatewayPaymentId: REFERENCE },
-      { $set: expect.objectContaining({ 'refund.failedAt': expect.any(Date) }) }
+    expect(emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.DEPOSIT_REFUND_FAILED,
+      expect.objectContaining({ pytuid: PYTUID, leaseId: leaseId.toString(), amount: 120_000_000 })
     );
   });
 });

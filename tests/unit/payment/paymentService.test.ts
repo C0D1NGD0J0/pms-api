@@ -7621,3 +7621,60 @@ describe('PaymentService - change Paystack payout bank account', () => {
     ).rejects.toThrow(BadRequestError);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// confirmCardCheckout (tenant return page)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('PaymentService - confirmCardCheckout', () => {
+  const TENANT_USER_ID = new Types.ObjectId().toString();
+  const PROFILE_ID = new Types.ObjectId();
+  const REFERENCE = 'psk-0a1b2c3d4e5f6a7b8c9d';
+
+  const setup = (payment: unknown) => {
+    const paystackPaymentService = {
+      confirmCheckout: jest
+        .fn()
+        .mockResolvedValue({ outcome: 'paid', status: PaymentRecordStatus.PAID }),
+    };
+    const svc = makeServiceWithMocks({
+      paymentDAO: { findFirst: jest.fn().mockResolvedValue(payment) } as any,
+      profileDAO: {
+        findFirst: jest.fn().mockResolvedValue({ _id: PROFILE_ID }),
+      } as any,
+      paystackPaymentService,
+    } as any);
+    return { svc, paystackPaymentService };
+  };
+
+  it('returns NotFound when the charge does not exist', async () => {
+    const { svc, paystackPaymentService } = setup(null);
+
+    await expect(
+      svc.confirmCardCheckout(CUID, PYTUID, TENANT_USER_ID, REFERENCE)
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(paystackPaymentService.confirmCheckout).not.toHaveBeenCalled();
+  });
+
+  it("refuses another tenant's charge with the same generic message", async () => {
+    const { svc, paystackPaymentService } = setup(makePayment({ tenant: new Types.ObjectId() }));
+
+    const error = await svc
+      .confirmCardCheckout(CUID, PYTUID, TENANT_USER_ID, REFERENCE)
+      .catch((err) => err);
+
+    expect(error).toBeInstanceOf(BadRequestError);
+    expect(error.message).toBe(t('payment.errors.checkoutNotFound'));
+    expect(paystackPaymentService.confirmCheckout).not.toHaveBeenCalled();
+  });
+
+  it("confirms the tenant's own charge and returns its status", async () => {
+    const payment = makePayment({ tenant: PROFILE_ID });
+    const { svc, paystackPaymentService } = setup(payment);
+
+    const result = await svc.confirmCardCheckout(CUID, PYTUID, TENANT_USER_ID, REFERENCE);
+
+    expect(paystackPaymentService.confirmCheckout).toHaveBeenCalledWith(payment, REFERENCE);
+    expect(result).toEqual({ success: true, data: { status: PaymentRecordStatus.PAID } });
+  });
+});

@@ -80,6 +80,22 @@ describe('WebhookController - Paystack webhooks', () => {
     expect(paystackPaymentService.handleWebhookEvent).not.toHaveBeenCalled();
   });
 
+  it('handles an event with no id or reference without a shared idempotency key', async () => {
+    const { controller, idempotencyCache, paymentGatewayService, paystackPaymentService } =
+      makeController();
+    paymentGatewayService.verifyPaystackWebhook.mockReturnValue({
+      event: 'customeridentification.success',
+      data: {},
+    });
+    const res = makeResponse();
+
+    await controller.handlePaystackWebhook(makeRequest(), res);
+
+    expect(idempotencyCache.claimWebhookEvent).not.toHaveBeenCalled();
+    expect(paystackPaymentService.handleWebhookEvent).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it('skips an event it has already handled', async () => {
     const { controller, idempotencyCache, paystackPaymentService } = makeController();
     idempotencyCache.claimWebhookEvent.mockResolvedValue(false);

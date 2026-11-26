@@ -28,6 +28,7 @@ const PAYMENT_NOTICE_KEYS = [
   'payment.retriedWithCard',
   'payment.retriedWithCardTenant',
   'payment.depositRefundFailed',
+  'payment.refundFailed',
   'maintenance.chargeCreated',
   'maintenance.chargeCreatedManual',
   'maintenance.chargeSkipped',

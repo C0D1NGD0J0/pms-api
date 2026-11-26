@@ -17,6 +17,7 @@ import {
   handlePaymentRetriedWithCard,
   handlePaymentRequestCreated,
   handleDepositRefundFailed,
+  handlePaymentRefundFailed,
   handlePadMandateConfirmed,
   handlePadDebitInitiated,
   handlePaymentSucceeded,
@@ -538,6 +539,24 @@ describe('handlePaymentRefunded', () => {
       refundAmount: 50000,
     });
     expect(emailCall(ctx, 'paymentRefunded').to).toBe('tenant@example.com');
+  });
+});
+
+describe('handlePaymentRefundFailed', () => {
+  it('alerts managers (required, high priority) that the tenant was not refunded', async () => {
+    const ctx = buildCtx();
+    await handlePaymentRefundFailed(ctx, {
+      cuid: CUID,
+      pytuid: 'PYT-RENT',
+      amount: 5_000_000,
+      currency: 'NGN',
+    });
+
+    const [notice] = announcements(ctx);
+    expect(notice.required).toBe(true);
+    expect(notice.priority).toBe(NotificationPriorityEnum.HIGH);
+    expect(notice.message).toContain('PYT-RENT');
+    expect(notice.message).not.toMatch(/stripe|paystack/i);
   });
 });
 

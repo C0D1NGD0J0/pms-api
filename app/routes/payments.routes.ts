@@ -315,7 +315,10 @@ router.post(
 );
 
 // The tenant's return page after a card checkout confirms it right away, without waiting for
-// the webhook (used by checkouts that come back with a reference)
+// the webhook (used by checkouts that come back with a reference). GET because the payment
+// provider redirects the browser here; it only records a payment Paystack confirms, and doing
+// so twice is a no-op. The reference ends up in access logs and browser history, which is fine:
+// it's single-use and only works for the charge's own tenant.
 router.get(
   '/:cuid/:pytuid/card-checkout/confirm',
   basicLimiter({ max: 20, windowMs: 15 * 60 * 1000 }),

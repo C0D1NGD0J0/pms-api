@@ -1,5 +1,4 @@
 import dayjs from 'dayjs';
-import crypto from 'crypto';
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
@@ -7,6 +6,7 @@ import { FinancialCalculator } from '@utils/financial';
 import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
+import { createPaystackReference } from '@utils/paystackReference';
 import { IPaymentProcessorDocument } from '@interfaces/paymentProcessor.interface';
 import { PaymentProcessorDAO, SubscriptionDAO, PaymentDAO, ProfileDAO } from '@dao/index';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
@@ -110,7 +110,7 @@ export class PaystackPaymentService {
       throw new BadRequestError({ message: t('payment.errors.cardCheckoutCurrencyUnsupported') });
     }
 
-    const reference = `${PAYSTACK_REFERENCE_PREFIX}${crypto.randomBytes(10).toString('hex')}`;
+    const reference = createPaystackReference();
     const isMaintenance = payment.paymentType === PaymentRecordType.MAINTENANCE;
 
     const checkout = await this.paymentGatewayService.initializeCardCheckout({
@@ -275,7 +275,7 @@ export class PaystackPaymentService {
       case 'refund.failed': {
         const reference = data?.transaction_reference ?? data?.transaction?.reference;
         if (typeof reference !== 'string') return;
-        await this.paymentDAO.update(
+        const payment = await this.paymentDAO.update(
           { gatewayPaymentId: reference },
           {
             $set: {
@@ -285,12 +285,35 @@ export class PaystackPaymentService {
           }
         );
         this.log.error({ reference }, 'Card refund failed — needs follow-up');
+        if (payment) this.notifyRefundFailed(payment, data?.amount);
         return;
       }
 
       default:
         this.log.info({ event: event.event }, 'Unhandled card payment webhook event');
     }
+  }
+
+  /** Tells managers the tenant's money did not go back (deposits use the deposit alert + email). */
+  private notifyRefundFailed(payment: IPaymentDocument, refundAmount?: number): void {
+    const amount = typeof refundAmount === 'number' ? refundAmount : payment.baseAmount;
+    if (payment.paymentType === PaymentRecordType.SECURITY_DEPOSIT && payment.lease) {
+      this.emitterService.emit(EventTypes.DEPOSIT_REFUND_FAILED, {
+        cuid: payment.cuid,
+        pytuid: payment.pytuid,
+        leaseId: payment.lease.toString(),
+        amount,
+        currency: payment.currency,
+        reason: t('payment.errors.refundFailed'),
+      });
+      return;
+    }
+    this.emitterService.emit(EventTypes.PAYMENT_REFUND_FAILED, {
+      cuid: payment.cuid,
+      pytuid: payment.pytuid,
+      amount,
+      currency: payment.currency,
+    });
   }
 
   private readMetadata(transaction: IPaystackTransaction): {

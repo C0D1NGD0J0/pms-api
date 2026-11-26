@@ -80,6 +80,7 @@ import {
   handlePaymentRetriedWithCard,
   handlePaymentRequestCreated,
   handleDepositRefundFailed,
+  handlePaymentRefundFailed,
   handlePadMandateConfirmed,
   handlePadDebitInitiated,
   handlePaymentSucceeded,
@@ -1605,6 +1606,9 @@ export class NotificationService {
     );
     this.emitterService.on(EventTypes.DEPOSIT_REFUND_FAILED, (p) =>
       handleDepositRefundFailed(ctx, p)
+    );
+    this.emitterService.on(EventTypes.PAYMENT_REFUND_FAILED, (p) =>
+      handlePaymentRefundFailed(ctx, p)
     );
     this.emitterService.on(EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING, (p) =>
       handleSubscriptionRenewalUpcoming(ctx, p)

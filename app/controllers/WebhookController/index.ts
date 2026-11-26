@@ -162,7 +162,27 @@ export class WebhookController {
 
     // Paystack events carry no event id; the event name plus the object's id is unique per event
     const data = event.data as Record<string, any>;
-    const eventKey = `paystack:${event.event}:${data?.id ?? data?.reference ?? ''}`;
+    const objectId = data?.id ?? data?.reference;
+    if (!objectId) {
+      // A shared key would drop every later event of this type, so handle it without one; the
+      // handlers are safe to repeat
+      this.log.warn(
+        { event: event.event },
+        'Paystack event has no id or reference — not deduplicated'
+      );
+      try {
+        await this.paystackPaymentService.handleWebhookEvent(event);
+        return res.status(200).json({ success: true, received: true });
+      } catch (error: any) {
+        this.log.error(
+          { error: error.message, event: event.event },
+          'Error processing Paystack webhook'
+        );
+        return res.status(500).json({ success: false, message: 'Webhook processing failed' });
+      }
+    }
+
+    const eventKey = `paystack:${event.event}:${objectId}`;
     const claimed = await this.idempotencyCache.claimWebhookEvent(eventKey);
     if (!claimed) {
       this.log.info({ eventKey }, 'Duplicate Paystack webhook — skipping');

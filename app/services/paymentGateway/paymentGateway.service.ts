@@ -5,6 +5,7 @@ import { IPromiseReturnedData } from '@interfaces/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { BadRequestError, CustomError } from '@shared/customErrors';
+import { PAYSTACK_REFERENCE_PREFIX } from '@utils/paystackReference';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
@@ -52,11 +53,8 @@ interface IConstructor {
   clientDAO?: ClientDAO;
 }
 
-/**
- * References the app makes for Paystack charges start with this; anything else is Stripe.
- * Paystack only allows letters, digits, '-', '.' and '=' in references.
- */
-export const PAYSTACK_REFERENCE_PREFIX = 'psk-';
+// Re-exported so payment code keeps importing the prefix from the gateway
+export { PAYSTACK_REFERENCE_PREFIX };
 
 export class PaymentGatewayService {
   private log = createLogger('PaymentGatewayService');

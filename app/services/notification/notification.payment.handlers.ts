@@ -16,6 +16,7 @@ import {
   PaymentRetriedWithCardPayload,
   PaymentRequestCreatedPayload,
   DepositRefundFailedPayload,
+  PaymentRefundFailedPayload,
   PadMandateConfirmedPayload,
   PadDebitInitiatedPayload,
   PaymentCancelledPayload,
@@ -809,6 +810,31 @@ export async function handlePayoutBankAccountChanged(
     );
   } catch (error) {
     ctx.log.error('Error sending payout bank account changed notification', { error, payload });
+  }
+}
+
+/** A refund failed after the provider accepted it — managers must refund the tenant another way. */
+export async function handlePaymentRefundFailed(
+  ctx: INotificationContext,
+  payload: PaymentRefundFailedPayload
+): Promise<void> {
+  try {
+    const { cuid, pytuid, amount } = payload;
+    const currency = await resolveNoticeCurrency(ctx, { currency: payload.currency, pytuid, cuid });
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      'payment.refundFailed',
+      { amount: formatNoticeAmount(amount, currency), pytuid },
+      MGMT_ROLES,
+      { pytuid },
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS,
+      true
+    );
+  } catch (error) {
+    ctx.log.error({ error, payload }, 'Error sending refund failed notification');
   }
 }
 

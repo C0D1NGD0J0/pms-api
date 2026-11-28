@@ -19,6 +19,7 @@ import {
   handleDepositRefundFailed,
   handlePaymentRefundFailed,
   handlePadMandateConfirmed,
+  handlePaymentNeedsReview,
   handlePadDebitInitiated,
   handlePaymentSucceeded,
   handlePaymentRefunded,
@@ -556,6 +557,24 @@ describe('handlePaymentRefundFailed', () => {
     expect(notice.required).toBe(true);
     expect(notice.priority).toBe(NotificationPriorityEnum.HIGH);
     expect(notice.message).toContain('PYT-RENT');
+    expect(notice.message).not.toMatch(/stripe|paystack/i);
+  });
+});
+
+describe('handlePaymentNeedsReview', () => {
+  it('alerts managers (required, high priority) with the reference to look it up', async () => {
+    const ctx = buildCtx();
+    await handlePaymentNeedsReview(ctx, {
+      cuid: CUID,
+      reference: 'psk-0a1b2c3d4e5f6a7b8c9d',
+      amount: 5_000_000,
+      currency: 'NGN',
+    });
+
+    const [notice] = announcements(ctx);
+    expect(notice.required).toBe(true);
+    expect(notice.priority).toBe(NotificationPriorityEnum.HIGH);
+    expect(notice.message).toContain('psk-0a1b2c3d4e5f6a7b8c9d');
     expect(notice.message).not.toMatch(/stripe|paystack/i);
   });
 });

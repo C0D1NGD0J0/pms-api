@@ -1922,6 +1922,9 @@ export class PaymentWebhookService {
         { sort: { createdAt: -1 } }
       );
 
+      // Already recorded (a retried webhook or return page): nothing to update or announce again
+      if (approvedInvoice?.tenantPaymentStatus === TenantPaymentStatus.PAID) return;
+
       if (approvedInvoice) {
         await this.invoiceDAO.update(
           { _id: approvedInvoice._id, cuid: payment.cuid },

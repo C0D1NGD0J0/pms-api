@@ -18,6 +18,7 @@ import {
   DepositRefundFailedPayload,
   PaymentRefundFailedPayload,
   PadMandateConfirmedPayload,
+  PaymentNeedsReviewPayload,
   PadDebitInitiatedPayload,
   PaymentCancelledPayload,
   PaymentSucceededPayload,
@@ -791,6 +792,31 @@ export async function handleInvoiceOverdue(
   }
 }
 
+/** A card payment arrived that couldn't be recorded — managers must record or refund it. */
+export async function handlePaymentNeedsReview(
+  ctx: INotificationContext,
+  payload: PaymentNeedsReviewPayload
+): Promise<void> {
+  try {
+    const { cuid, pytuid, amount, reference } = payload;
+    const currency = await resolveNoticeCurrency(ctx, { currency: payload.currency, pytuid, cuid });
+    await notifyAnnouncement(
+      ctx,
+      cuid,
+      NotificationTypeEnum.PAYMENT,
+      'payment.paymentNeedsReview',
+      { amount: formatNoticeAmount(amount, currency), reference },
+      MGMT_ROLES,
+      { pytuid, reference },
+      NotificationPriorityEnum.HIGH,
+      FINANCE_DEPARTMENTS,
+      true
+    );
+  } catch (error) {
+    ctx.log.error({ error, payload }, 'Error sending payment needs review notification');
+  }
+}
+
 export async function handlePayoutBankAccountChanged(
   ctx: INotificationContext,
   payload: PayoutBankAccountChangedPayload
@@ -809,7 +835,7 @@ export async function handlePayoutBankAccountChanged(
       true // a security alert: sent even if payment notifications are muted
     );
   } catch (error) {
-    ctx.log.error('Error sending payout bank account changed notification', { error, payload });
+    ctx.log.error({ error, payload }, 'Error sending payout bank account changed notification');
   }
 }
 

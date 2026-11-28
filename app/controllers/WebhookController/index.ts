@@ -174,10 +174,7 @@ export class WebhookController {
         await this.paystackPaymentService.handleWebhookEvent(event);
         return res.status(200).json({ success: true, received: true });
       } catch (error: any) {
-        this.log.error(
-          { error: error.message, event: event.event },
-          'Error processing Paystack webhook'
-        );
+        this.log.error({ error, event: event.event }, 'Error processing Paystack webhook');
         return res.status(500).json({ success: false, message: 'Webhook processing failed' });
       }
     }
@@ -195,7 +192,7 @@ export class WebhookController {
       return res.status(200).json({ success: true, received: true });
     } catch (error: any) {
       await this.idempotencyCache.releaseWebhookClaim(eventKey);
-      this.log.error({ error: error.message, eventKey }, 'Error processing Paystack webhook');
+      this.log.error({ error, eventKey }, 'Error processing Paystack webhook');
       // Paystack retries non-200 responses
       return res.status(500).json({ success: false, message: 'Webhook processing failed' });
     }

@@ -112,7 +112,7 @@ describe('PaymentCronService — automatic Paystack card charges', () => {
     expect(query).toMatchObject({
       cuid: { $in: [NG_CUID] },
       lease: { $in: [AUTO_DEBIT_LEASE_ID] },
-      gatewayPaymentId: { $in: [null] },
+      gatewayPaymentId: null,
       isManualEntry: false,
     });
     expect(paystackPaymentService.chargeSavedCard).toHaveBeenCalledWith(payment);
@@ -166,6 +166,53 @@ describe('PaymentCronService — automatic Paystack card charges', () => {
 
     expect(paymentDAO.update).not.toHaveBeenCalled();
   });
+
+  it.each(['paid', 'processing'] as const)(
+    'counts a %s card charge as charged and records no failure',
+    async (outcome) => {
+      const payment = makePayment();
+      const { service, paymentDAO, paystackPaymentService } = makeService();
+      paymentDAO.list
+        .mockReset()
+        .mockResolvedValueOnce({ items: [] })
+        .mockResolvedValueOnce({ items: [payment] })
+        .mockResolvedValue({ items: [] });
+      paymentDAO.findFirst.mockResolvedValue(payment);
+      paystackPaymentService.chargeSavedCard.mockResolvedValue(outcome);
+
+      await service.autoChargeDueRentPayments('Africa/Lagos');
+
+      expect(paystackPaymentService.chargeSavedCard).toHaveBeenCalledWith(payment);
+      // The charge itself (or the webhook / reconcile for "processing") settles it; the cron
+      // never marks it overdue or failed
+      const failureUpdates = paymentDAO.update.mock.calls.filter(
+        ([, update]) => update.$set?.['failure.reason'] || update.$inc?.['failure.retryCount']
+      );
+      expect(failureUpdates).toHaveLength(0);
+    }
+  );
+
+  it.each(['unavailable', 'needs_review'] as const)(
+    'never records a failed attempt when the card charge is %s',
+    async (outcome) => {
+      const payment = makePayment();
+      const { service, paymentDAO, paystackPaymentService } = makeService();
+      paymentDAO.list
+        .mockReset()
+        .mockResolvedValueOnce({ items: [] })
+        .mockResolvedValueOnce({ items: [payment] })
+        .mockResolvedValue({ items: [] });
+      paymentDAO.findFirst.mockResolvedValue(payment);
+      paystackPaymentService.chargeSavedCard.mockResolvedValue(outcome);
+
+      await service.autoChargeDueRentPayments('Africa/Lagos');
+
+      const failureUpdates = paymentDAO.update.mock.calls.filter(
+        ([, update]) => update.$set?.['failure.reason']
+      );
+      expect(failureUpdates).toHaveLength(0);
+    }
+  );
 
   it('keeps Stripe auto-charges running when the Paystack pass fails', async () => {
     const { service, paymentProcessorDAO, paystackPaymentService } = makeService();

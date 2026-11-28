@@ -120,4 +120,18 @@ describe('WebhookController - Paystack webhooks', () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect((res.json as jest.Mock).mock.calls[0][0].message).not.toContain('db down');
   });
+
+  it('logs the whole error (with its stack), not just the message', async () => {
+    const { controller, paystackPaymentService } = makeController();
+    const failure = new Error('db down');
+    paystackPaymentService.handleWebhookEvent.mockRejectedValue(failure);
+    const logError = jest.spyOn((controller as any).log, 'error').mockImplementation(() => {});
+
+    await controller.handlePaystackWebhook(makeRequest(), makeResponse());
+
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({ error: failure }),
+      'Error processing Paystack webhook'
+    );
+  });
 });

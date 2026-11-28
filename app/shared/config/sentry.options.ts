@@ -8,9 +8,14 @@ const NOISE_ERROR_NAMES = new Set(['CircuitBreakerOpenError']);
 
 /** Drops errors that don't need an alert, so the free-plan quota goes on real failures. */
 export const dropNoisyEvents = (event: ErrorEvent, hint: EventHint): ErrorEvent | null => {
-  const error = hint?.originalException as { name?: string; statusCode?: number } | undefined;
+  const error = hint?.originalException as
+    | { name?: string; statusCode?: number; originalError?: { name?: string } }
+    | undefined;
   if (!error || typeof error !== 'object') return event;
   if (error.name && NOISE_ERROR_NAMES.has(error.name)) return null;
+  // e.g. an open circuit wrapped as a 503 for the caller
+  const wrappedName = error.originalError?.name;
+  if (wrappedName && NOISE_ERROR_NAMES.has(wrappedName)) return null;
   // CustomErrors below 500 are expected outcomes (validation, not found, forbidden)
   if (typeof error.statusCode === 'number' && error.statusCode < 500) return null;
   return event;

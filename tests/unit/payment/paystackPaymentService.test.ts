@@ -1,7 +1,8 @@
 import { Types } from 'mongoose';
 import { t } from '@shared/languages';
-import { BadRequestError } from '@shared/customErrors';
+import { CircuitBreakerOpenError } from '@utils/index';
 import { EventTypes } from '@interfaces/events.interface';
+import { ServiceUnavailableError, BadRequestError } from '@shared/customErrors';
 import { PaystackPaymentService } from '@services/payments/paystackPayment.service';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
@@ -268,7 +269,78 @@ describe('PaystackPaymentService - settleTransaction', () => {
     paymentGatewayService.verifyPaystackTransaction.mockResolvedValue(makeTransaction(change));
 
     await expect(service.settleTransaction(REFERENCE)).resolves.toBe('needs_review');
-    expect(paymentDAO.update).not.toHaveBeenCalled();
+    const markedPaid = paymentDAO.update.mock.calls.some(
+      ([, update]) => update.$set?.status === PaymentRecordStatus.PAID
+    );
+    expect(markedPaid).toBe(false);
+  });
+
+  it('alerts managers once about money that needs review, not on every re-check', async () => {
+    const { service, paymentDAO, paymentGatewayService, emitterService } = makeService();
+    paymentDAO.findFirst.mockResolvedValue(makePayment());
+    paymentGatewayService.verifyPaystackTransaction.mockResolvedValue(
+      makeTransaction({ amount: 1_000 })
+    );
+    paymentDAO.update.mockResolvedValueOnce({}).mockResolvedValueOnce(null); // flagged already
+
+    await service.settleTransaction(REFERENCE);
+    await service.settleTransaction(REFERENCE);
+
+    expect(paymentDAO.update.mock.calls[0]).toEqual([
+      expect.objectContaining({ 'failure.reason': { $ne: t('payment.errors.needsReview') } }),
+      { $set: expect.objectContaining({ 'failure.reason': t('payment.errors.needsReview') }) },
+    ]);
+    const alerts = emitterService.emit.mock.calls.filter(
+      ([event]) => event === EventTypes.PAYMENT_NEEDS_REVIEW
+    );
+    expect(alerts).toEqual([
+      [
+        EventTypes.PAYMENT_NEEDS_REVIEW,
+        { cuid: CUID, pytuid: PYTUID, reference: REFERENCE, amount: 1_000, currency: 'NGN' },
+      ],
+    ]);
+  });
+
+  it('alerts managers about paid money with no matching charge', async () => {
+    const { service, paymentDAO, emitterService } = makeService();
+    paymentDAO.findFirst.mockResolvedValue(null);
+
+    await expect(service.settleTransaction(REFERENCE)).resolves.toBe('not_found');
+    expect(emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYMENT_NEEDS_REVIEW,
+      expect.objectContaining({ cuid: CUID, reference: REFERENCE })
+    );
+  });
+
+  it('finishes the maintenance invoice when an already-recorded payment is seen again', async () => {
+    const { service, paymentDAO, paymentWebhookService } = makeService();
+    const payment = makePayment({
+      paymentType: PaymentRecordType.MAINTENANCE,
+      status: PaymentRecordStatus.PAID,
+      gatewayPaymentId: REFERENCE,
+    });
+    paymentDAO.findFirst.mockResolvedValue(payment);
+
+    await expect(service.settleTransaction(REFERENCE)).resolves.toBe('already_paid');
+    expect(paymentWebhookService.markMaintenanceChargePaid).toHaveBeenCalledWith(
+      payment,
+      '4099260516'
+    );
+  });
+
+  it('alerts managers when a duplicate payment could not be refunded', async () => {
+    const { service, paymentDAO, paymentGatewayService, emitterService } = makeService();
+    paymentDAO.findFirst.mockResolvedValue(
+      makePayment({ status: PaymentRecordStatus.PAID, gatewayPaymentId: 'psk-older' })
+    );
+    paymentDAO.update.mockResolvedValue(null);
+    paymentGatewayService.createRefund.mockResolvedValue({ success: false, message: 'refused' });
+
+    await expect(service.settleTransaction(REFERENCE)).resolves.toBe('needs_review');
+    expect(emitterService.emit).toHaveBeenCalledWith(
+      EventTypes.PAYMENT_REFUND_FAILED,
+      expect.objectContaining({ pytuid: PYTUID, amount: 120_000_000 })
+    );
   });
 
   it('refunds a second payment for a charge that was already settled another way', async () => {
@@ -353,6 +425,31 @@ describe('PaystackPaymentService - confirmCheckout and webhook events', () => {
     const result = await service.confirmCheckout(payment as any, REFERENCE);
 
     expect(result).toEqual({ outcome: 'paid', status: PaymentRecordStatus.PAID });
+  });
+
+  it("doesn't show the tenant an error when only a step after recording the payment failed", async () => {
+    const { service, paymentDAO, paymentWebhookService } = makeService();
+    const payment = makePayment({ paymentType: PaymentRecordType.MAINTENANCE });
+    const recorded = { ...payment, status: PaymentRecordStatus.PAID, gatewayPaymentId: REFERENCE };
+    paymentDAO.findFirst.mockResolvedValueOnce(payment).mockResolvedValue(recorded);
+    paymentDAO.update.mockResolvedValue({});
+    paymentWebhookService.markMaintenanceChargePaid.mockRejectedValue(new Error('db blip'));
+
+    await expect(service.confirmCheckout(payment as any, REFERENCE)).resolves.toEqual({
+      outcome: 'paid',
+      status: PaymentRecordStatus.PAID,
+    });
+  });
+
+  it('passes the error on when nothing was recorded', async () => {
+    const { service, paymentGatewayService } = makeService();
+    paymentGatewayService.verifyPaystackTransaction.mockRejectedValue(
+      new ServiceUnavailableError({ message: 'down' })
+    );
+
+    await expect(service.confirmCheckout(makePayment() as any, REFERENCE)).rejects.toBeInstanceOf(
+      ServiceUnavailableError
+    );
   });
 
   it('settles charge.success events and ignores transactions the app did not start', async () => {
@@ -510,6 +607,68 @@ describe('PaystackPaymentService - chargeSavedCard (automatic payments)', () => 
       { $set: { status: PaymentRecordStatus.PROCESSING } }
     );
   });
+
+  const lastUpdate = (paymentDAO: { update: jest.Mock }) =>
+    paymentDAO.update.mock.calls[paymentDAO.update.mock.calls.length - 1][1];
+
+  it('keeps a charged card that needs review out of the auto-charge, so it is never charged twice', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    const payment = dueRent();
+    paymentDAO.findFirst.mockResolvedValue(payment);
+    paymentDAO.update.mockResolvedValue({});
+    paymentGatewayService.verifyPaystackTransaction.mockResolvedValue(
+      makeTransaction({ amount: 1_000 })
+    );
+
+    await expect(service.chargeSavedCard(payment as any)).resolves.toBe('needs_review');
+    expect(lastUpdate(paymentDAO)).toEqual({ $set: { status: PaymentRecordStatus.PROCESSING } });
+  });
+
+  it('leaves a charge processing when recording it failed after the card was charged', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    paymentDAO.update.mockResolvedValue({});
+    paymentDAO.findFirst.mockResolvedValue(dueRent()); // not recorded
+    paymentGatewayService.verifyPaystackTransaction.mockRejectedValue(new Error('db blip'));
+
+    await expect(service.chargeSavedCard(dueRent() as any)).resolves.toBe('processing');
+    expect(lastUpdate(paymentDAO)).toEqual({ $set: { status: PaymentRecordStatus.PROCESSING } });
+  });
+
+  it('reopens the charge without charging when Paystack is known to be down', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    paymentDAO.update.mockResolvedValue({});
+    paymentGatewayService.chargeSavedCard.mockRejectedValue(
+      new ServiceUnavailableError({
+        message: 'down',
+        originalError: new CircuitBreakerOpenError('paystack'),
+      })
+    );
+
+    await expect(service.chargeSavedCard(dueRent() as any)).resolves.toBe('unavailable');
+    expect(lastUpdate(paymentDAO)).toEqual({ $unset: { cardCheckoutSessionId: '' } });
+  });
+
+  it('leaves the charge for the reconcile when a timeout leaves the result unknown', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    paymentDAO.update.mockResolvedValue({});
+    paymentGatewayService.chargeSavedCard.mockRejectedValue(
+      new ServiceUnavailableError({ message: 'timeout', originalError: new Error('aborted') })
+    );
+
+    await expect(service.chargeSavedCard(dueRent() as any)).resolves.toBe('processing');
+    expect(lastUpdate(paymentDAO)).toEqual({ $set: { status: PaymentRecordStatus.PROCESSING } });
+  });
+
+  it('passes on a rejected charge request as a failed attempt', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    paymentDAO.update.mockResolvedValue({});
+    paymentGatewayService.chargeSavedCard.mockRejectedValue(
+      new BadRequestError({ message: 'rejected' })
+    );
+
+    await expect(service.chargeSavedCard(dueRent() as any)).rejects.toBeInstanceOf(BadRequestError);
+    expect(lastUpdate(paymentDAO)).toEqual({ $unset: { cardCheckoutSessionId: '' } });
+  });
 });
 
 describe('PaystackPaymentService - reconcileProcessingCharge', () => {
@@ -555,5 +714,43 @@ describe('PaystackPaymentService - reconcileProcessingCharge', () => {
     await expect(service.reconcileProcessingCharge(processing(80) as any)).resolves.toBe(
       'reopened'
     );
+  });
+
+  it("reopens a charge Paystack never received, without counting it as the tenant's attempt", async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    paymentGatewayService.verifyPaystackTransaction.mockRejectedValue(
+      new BadRequestError({ message: 'Transaction reference not found' })
+    );
+
+    await expect(service.reconcileProcessingCharge(processing(30) as any)).resolves.toBe(
+      'reopened'
+    );
+    const [, update] = paymentDAO.update.mock.calls[0];
+    expect(update.$set.status).toBe(PaymentRecordStatus.OVERDUE);
+    expect(update.$inc).toBeUndefined();
+  });
+
+  it('passes on an outage so the next run checks again', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    paymentGatewayService.verifyPaystackTransaction.mockRejectedValue(
+      new ServiceUnavailableError({ message: 'down' })
+    );
+
+    await expect(service.reconcileProcessingCharge(processing(30) as any)).rejects.toBeInstanceOf(
+      ServiceUnavailableError
+    );
+    expect(paymentDAO.update).not.toHaveBeenCalled();
+  });
+
+  it('reports a successful charge that does not match as needing review', async () => {
+    const { service, paymentDAO, paymentGatewayService } = makeService();
+    const payment = processing(30);
+    paymentDAO.findFirst.mockResolvedValue(payment);
+    paymentDAO.update.mockResolvedValue(null);
+    paymentGatewayService.verifyPaystackTransaction.mockResolvedValue(
+      makeTransaction({ amount: 1_000 })
+    );
+
+    await expect(service.reconcileProcessingCharge(payment as any)).resolves.toBe('needs_review');
   });
 });

@@ -182,7 +182,9 @@
       "unableToValidateCsv": "Impossible de valider le fichier CSV",
       "fileTooLarge": "Le fichier est trop volumineux. La taille maximale est de 10 Mo",
       "unknownError": "Une erreur s’est produite. Veuillez réessayer",
-      "notPropertyOwner": "Vous ne pouvez archiver que les propriétés que vous avez créées"
+      "notPropertyOwner": "Vous ne pouvez archiver que les propriétés que vous avez créées",
+      "departmentNotAllowed": "Vous n'êtes pas autorisé à créer des propriétés. Seul le personnel des services Opérations ou Gestion peut créer des propriétés.",
+      "alreadyOccupied": "La propriété est déjà indiquée comme occupée"
     },
     "success": {
       "csvImportStarted": "Tâche d'importation CSV démarrée",
@@ -514,7 +516,9 @@
       "cannotRevoke": "Cette invitation ne peut pas être révoquée",
       "cannotDecline": "Cette invitation ne peut pas être refusée",
       "declineFailed": "Échec du refus de l’invitation",
-      "reactivationFailed": "Échec de la réactivation de l’invitation"
+      "reactivationFailed": "Échec de la réactivation de l’invitation",
+      "seatLimitCanPurchase": "Limite de places atteinte. Votre forfait permet {{totalAllowed}} places ({{includedSeats}} incluses + {{additionalSeats}} supplémentaires). Vous pouvez acheter jusqu'à {{purchasable}} places de plus.",
+      "seatLimitUpgrade": "Limite de places atteinte. Votre forfait permet {{totalAllowed}} places. Veuillez changer de forfait ou archiver des utilisateurs pour libérer des places."
     },
     "csv": {
       "noValidRows": "Aucune ligne valide trouvée dans le fichier CSV",
@@ -575,7 +579,8 @@
       "cannotArchiveManagerWithActiveLeases": "[FR] Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
       "notATenant": "[FR] This action is only available for tenant accounts.",
       "cannotDeactivateSelf": "[FR] You cannot deactivate your own account.",
-      "cannotDeactivateTenantWithActiveLeases": "[FR] Cannot deactivate a user with active leases. Please terminate leases first."
+      "cannotDeactivateTenantWithActiveLeases": "[FR] Cannot deactivate a user with active leases. Please terminate leases first.",
+      "cannotReportToSelf": "Un employé ne peut pas relever de lui-même"
     },
     "success": {
       "tenantDeactivated": "[FR] Tenant deactivated successfully."
@@ -636,6 +641,8 @@
       "refundOnlinePaymentsOnly": "Les remboursements ne sont offerts que pour les paiements effectués en ligne.",
       "payByCardFirst": "Payez ce montant une première fois par carte pour activer les paiements automatiques.",
       "cardDeclined": "La carte enregistrée a été refusée. Veuillez payer avec une autre carte ou communiquer avec votre banque.",
+      "annualPeriodRequired": "Ce bail est payé annuellement — choisissez l'année de bail (le mois anniversaire de la date de début) à facturer.",
+      "needsReview": "Ce paiement a été reçu, mais votre gestionnaire immobilier doit le vérifier avant qu'il soit enregistré.",
       "cardCheckoutTypeUnsupported": "Ce montant ne peut pas être payé par carte en ligne."
     },
     "success": {
@@ -1076,6 +1083,10 @@
       "refundFailed": {
         "title": "Échec du remboursement",
         "message": "Un remboursement de {{amount}} pour le paiement {{pytuid}} n'a pas abouti; le locataire ne l'a donc pas reçu. Veuillez l'examiner et rembourser le locataire autrement au besoin."
+      },
+      "paymentNeedsReview": {
+        "title": "Paiement à vérifier",
+        "message": "Un paiement par carte de {{amount}} (référence {{reference}}) a été reçu mais n'a pas pu être associé à sa facture; il n'a donc pas été enregistré. Veuillez l'examiner, puis l'enregistrer ou le rembourser."
       }
     },
     "fragments": {
@@ -1105,7 +1116,8 @@
   },
   "report": {
     "errors": {
-      "tooManyEmailRecipients": "Votre forfait autorise jusqu'à {{max}} destinataires de courriel"
+      "tooManyEmailRecipients": "Votre forfait autorise jusqu'à {{max}} destinataires de courriel",
+      "queueFailed": "Impossible de mettre la génération du rapport en file d'attente. Veuillez réessayer."
     }
   },
   "notification": {

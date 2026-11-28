@@ -38,6 +38,7 @@ import {
   STRIPE_SUPPORTED_COUNTRY_CODES,
   getCountryCodeFromLocation,
   getCurrencyForCountry,
+  readPaystackSavedCard,
   getLocationDetails,
   generateShortUID,
   hashGenerator,
@@ -1276,8 +1277,7 @@ export class AuthService {
       { select: '+tenantInfo.paystackCards' } as any
     );
     const cards = tenantProfile?.tenantInfo?.paystackCards;
-    const card =
-      cards instanceof Map ? cards.get(subaccountCode) : (cards as any)?.[subaccountCode];
+    const card = readPaystackSavedCard(cards, subaccountCode);
     if (!card) {
       return { success: true, data: { hasPaymentMethod: false, card: { hasCard: false } } };
     }

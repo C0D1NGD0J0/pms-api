@@ -1,3 +1,4 @@
+import { readPaystackSavedCard } from '@utils/helpers';
 import {
   PAYSTACK_REFERENCE_PATTERN,
   PAYSTACK_REFERENCE_PREFIX,
@@ -23,4 +24,18 @@ describe('paystackReference', () => {
       expect(reference).not.toMatch(PAYSTACK_REFERENCE_PATTERN);
     }
   );
+});
+
+describe('readPaystackSavedCard', () => {
+  const card = { authorizationCode: 'AUTH_x', brand: 'visa', last4: '4081' } as any;
+
+  it('reads the card for a landlord from a Mongoose Map or a lean object', () => {
+    expect(readPaystackSavedCard(new Map([['ACCT_1', card]]), 'ACCT_1')).toBe(card);
+    expect(readPaystackSavedCard({ ACCT_1: card }, 'ACCT_1')).toBe(card);
+  });
+
+  it('returns undefined when there is no card for that landlord', () => {
+    expect(readPaystackSavedCard({ ACCT_1: card }, 'ACCT_2')).toBeUndefined();
+    expect(readPaystackSavedCard(undefined, 'ACCT_1')).toBeUndefined();
+  });
 });

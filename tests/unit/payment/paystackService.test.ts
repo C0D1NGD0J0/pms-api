@@ -4,6 +4,7 @@ import { envVariables } from '@shared/config';
 import { PaystackService } from '@services/external/paystack/paystack.service';
 import {
   ServiceUnavailableError,
+  InternalServerError,
   UnauthorizedError,
   BadRequestError,
   ForbiddenError,
@@ -216,7 +217,7 @@ describe('PaystackService', () => {
 
   describe('errors', () => {
     it("turns a rejected request into a neutral BadRequestError, never Paystack's message", async () => {
-      fetchMock.mockResolvedValue(jsonResponse(401, fixtures.invalidKey));
+      fetchMock.mockResolvedValue(jsonResponse(400, { status: false, message: 'Bad bank' }));
 
       await expect(service.listBanks()).rejects.toMatchObject({
         constructor: BadRequestError,
@@ -224,8 +225,23 @@ describe('PaystackService', () => {
       });
     });
 
-    it('turns a Paystack server error or an unreachable API into ServiceUnavailableError', async () => {
+    it.each([401, 403])(
+      'treats a refused API key (%i) as our configuration problem, not a bad request',
+      async (status) => {
+        fetchMock.mockResolvedValue(jsonResponse(status, fixtures.invalidKey));
+
+        await expect(service.listBanks()).rejects.toMatchObject({
+          constructor: InternalServerError,
+          message: t('payment.errors.serviceUnavailable'),
+        });
+      }
+    );
+
+    it('turns a Paystack server error, a rate limit or an unreachable API into ServiceUnavailableError', async () => {
       fetchMock.mockResolvedValueOnce(jsonResponse(502, null));
+      await expect(service.listBanks()).rejects.toBeInstanceOf(ServiceUnavailableError);
+
+      fetchMock.mockResolvedValueOnce(jsonResponse(429, { status: false, message: 'Slow down' }));
       await expect(service.listBanks()).rejects.toBeInstanceOf(ServiceUnavailableError);
 
       fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
@@ -243,7 +259,11 @@ describe('PaystackService', () => {
         await expect(service.listBanks()).rejects.toBeInstanceOf(ServiceUnavailableError);
       }
       fetchMock.mockClear();
-      await expect(service.listBanks()).rejects.toThrow(/Circuit breaker "paystack" is open/);
+      // An open circuit reaches callers as an outage with the neutral message
+      await expect(service.listBanks()).rejects.toMatchObject({
+        constructor: ServiceUnavailableError,
+        message: t('payment.errors.serviceUnavailable'),
+      });
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });

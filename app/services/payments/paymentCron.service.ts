@@ -5,16 +5,16 @@ import { t } from '@shared/languages';
 import { InvoiceDAO } from '@dao/invoiceDAO';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
-import { NotFoundError } from '@shared/customErrors';
 import { PaymentQueue } from '@queues/payment.queue';
 import { FinancialCalculator } from '@utils/financial';
 import { EventEmitterService } from '@services/eventEmitter';
 import { SMSService } from '@services/smsService/sms.service';
 import { SubscriptionPlanConfig } from '@services/subscription';
-import { MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
+import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { getLocalDateParts, localCalendarDay } from '@utils/timezone.utils';
+import { CHARGEABLE_STATUSES, MAX_CHARGE_ATTEMPTS, createLogger } from '@utils/index';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
 import { MaintenanceFundsAvailablePayload, EventTypes } from '@interfaces/events.interface';
 import {
@@ -81,7 +81,6 @@ interface ITenantChargeMethod {
 
 type AutoChargeOutcome = 'charged' | 'skipped' | 'deferred';
 
-const CHARGEABLE_STATUSES = [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE];
 // Records billed through a Stripe invoice: the auto-charge pays the invoice on/after its due date
 const INVOICED_AUTO_CHARGE_TYPES = [PaymentRecordType.RENT, PaymentRecordType.SECURITY_DEPOSIT];
 const OPEN_DISPUTE_STATUSES = ['open', 'needs_response', 'under_review'];
@@ -198,6 +197,7 @@ export class PaymentCronService implements ICronProvider {
         description:
           'Queue rent invoices for leases due soon that have no record for the period yet (catches any missed by weekly job)',
         timeout: 300000,
+        sentryMonitor: true,
       },
       {
         name: 'payment.reconcile-stale-processing',
@@ -215,7 +215,7 @@ export class PaymentCronService implements ICronProvider {
         enabled: true,
         service: 'PaymentCronService',
         description:
-          'Record or reopen automatic Paystack card charges still processing after a day',
+          'Check automatic Paystack card charges still processing after a day: record paid, reopen failed (pending ones after three days)',
         timeout: 300000,
       },
       {
@@ -1224,7 +1224,8 @@ export class PaymentCronService implements ICronProvider {
       isManualEntry: false,
       cuid: { $in: cuids },
       lease: { $in: autoDebitLeases.items.map((lease) => lease._id) },
-      gatewayPaymentId: { $in: [null] },
+      // null also matches a missing field: Paystack charges get no gateway id until paid
+      gatewayPaymentId: null,
       gatewayChargeId: { $exists: false },
       dueDate: { $lt: startOfLocalTomorrow },
       'dispute.status': { $nin: OPEN_DISPUTE_STATUSES },
@@ -1247,12 +1248,23 @@ export class PaymentCronService implements ICronProvider {
 
   /**
    * Charges a Paystack tenant's saved card. A declined card throws so the shared loop records
-   * the failure (retry count, OVERDUE, then FAILED with a notice) as it does for Stripe.
+   * the failure (retry count, OVERDUE, then FAILED with a notice) as it does for Stripe. An
+   * outage is deferred to the next run and never counts as a failed attempt.
    */
   private async chargePaystackCard(payment: IPaymentDocument): Promise<AutoChargeOutcome> {
     const outcome = await this.paystackPaymentService.chargeSavedCard(payment);
     if (outcome === 'declined') {
-      throw new Error(t('payment.errors.cardDeclined'));
+      throw new BadRequestError({
+        message: t('payment.errors.cardDeclined'),
+        code: 'card_declined',
+      });
+    }
+    if (outcome === 'unavailable') {
+      this.log.warn(
+        { pytuid: payment.pytuid },
+        '[Cron] Deferring auto-charge: Paystack unavailable'
+      );
+      return 'deferred';
     }
     if (outcome === 'no_saved_card') {
       this.log.info(
@@ -1260,6 +1272,12 @@ export class PaymentCronService implements ICronProvider {
         '[Cron] Skipping auto-charge: tenant has no saved card yet'
       );
       return 'skipped';
+    }
+    if (outcome === 'needs_review') {
+      this.log.warn(
+        { pytuid: payment.pytuid },
+        '[Cron] Card charged but the payment needs review — managers alerted'
+      );
     }
     return 'charged';
   }
@@ -1710,11 +1728,10 @@ export class PaymentCronService implements ICronProvider {
   }
 
   /**
-   * Daily cron (3 AM UTC): reconcile payments stuck in PROCESSING by checking their
-   * Stripe invoice(s). Catches missed webhooks, voided invoices, and charges that never
-   * completed. A split payment is PAID only when every split invoice is paid.
+   * Daily cron (3:30 AM UTC): checks automatic Paystack card charges still PROCESSING after a
+   * day. Paid ones are recorded and failed ones reopened; one still pending is only given up on
+   * (reopened) after STALE_CARD_CHARGE_HOURS — see PaystackPaymentService.reconcileProcessingCharge.
    */
-  /** Automatic Paystack card charges still PROCESSING after a day: record or reopen them. */
   private async reconcilePaystackCardCharges(): Promise<void> {
     const filter = {
       status: PaymentRecordStatus.PROCESSING,
@@ -1723,7 +1740,7 @@ export class PaymentCronService implements ICronProvider {
       gatewayChargeId: { $exists: false },
       deletedAt: null,
     };
-    const counts = { paid: 0, reopened: 0, waiting: 0 };
+    const counts = { paid: 0, reopened: 0, waiting: 0, needs_review: 0 };
 
     for await (const batch of this.iteratePaymentBatches(filter)) {
       for (const payment of batch) {
@@ -1735,11 +1752,16 @@ export class PaymentCronService implements ICronProvider {
       }
     }
 
-    if (counts.paid + counts.reopened + counts.waiting > 0) {
+    if (counts.paid + counts.reopened + counts.waiting + counts.needs_review > 0) {
       this.log.info(counts, '[Cron] Paystack card charge reconciliation complete');
     }
   }
 
+  /**
+   * Daily cron (3 AM UTC): reconcile payments stuck in PROCESSING by checking their
+   * Stripe invoice(s). Catches missed webhooks, voided invoices, and charges that never
+   * completed. A split payment is PAID only when every split invoice is paid.
+   */
   private async reconcileStaleProcessingPayments(): Promise<void> {
     const staleCutoff = dayjs().subtract(24, 'hour').toDate();
     const filter = {

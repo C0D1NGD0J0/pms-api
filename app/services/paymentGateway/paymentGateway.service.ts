@@ -4,12 +4,17 @@ import { createLogger } from '@utils/index';
 import { IPromiseReturnedData } from '@interfaces/index';
 import { PaymentProcessorDAO } from '@dao/paymentProcessorDAO';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
-import { BadRequestError, CustomError } from '@shared/customErrors';
 import { PAYSTACK_REFERENCE_PREFIX } from '@utils/paystackReference';
 import { StripeService } from '@services/external/stripe/stripe.service';
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
 import { PaystackService } from '@services/external/paystack/paystack.service';
+import {
+  ServiceUnavailableError,
+  InternalServerError,
+  BadRequestError,
+  CustomError,
+} from '@shared/customErrors';
 import {
   IPaystackChargeAuthorizationInput,
   IPaystackUpdateSubaccountInput,
@@ -55,6 +60,9 @@ interface IConstructor {
 
 // Re-exported so payment code keeps importing the prefix from the gateway
 export { PAYSTACK_REFERENCE_PREFIX };
+
+/** `error` on a failure result when the provider was down rather than the request being wrong. */
+export const PROVIDER_UNAVAILABLE = 'provider_unavailable';
 
 export class PaymentGatewayService {
   private log = createLogger('PaymentGatewayService');
@@ -479,6 +487,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message: error instanceof Error ? error.message : 'Failed to create Connect account',
       };
     }
@@ -501,6 +510,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message: error instanceof Error ? error.message : 'Failed to create onboarding link',
       };
     }
@@ -548,6 +558,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message:
           error instanceof CustomError
             ? error.message
@@ -594,6 +605,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message: error instanceof Error ? error.message : 'Failed to fetch Connect balance',
       };
     }
@@ -616,6 +628,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message: error instanceof Error ? error.message : 'Failed to list Connect payouts',
       };
     }
@@ -636,6 +649,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message:
           error instanceof CustomError
             ? error.message
@@ -722,6 +736,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null,
+        ...this.outageFlag(error),
         message: error instanceof Error ? error.message : 'Failed to update payout schedule',
       };
     }
@@ -740,6 +755,7 @@ export class PaymentGatewayService {
       return {
         success: false,
         data: null as unknown as IPayoutSchedule,
+        ...this.outageFlag(error),
         message: error instanceof Error ? error.message : 'Failed to fetch payout schedule',
       };
     }
@@ -1065,25 +1081,11 @@ export class PaymentGatewayService {
     amount: number;
     currency: string;
   } | null> {
-    try {
-      if (provider === IPaymentGatewayProvider.PAYSTACK) {
-        // chargeId is the Paystack transaction id (or reference); Paystack has no idempotency key
-        const refund = await this.paystack().createRefund({
-          transaction: params.chargeId,
-          amount: params.amountInCents,
-          merchant_note: params.note,
-        });
-        return {
-          success: true,
-          data: {
-            refundId: String(refund.id),
-            status: refund.status,
-            amount: refund.amount,
-            currency: refund.currency,
-          },
-        };
-      }
+    if (provider === IPaymentGatewayProvider.PAYSTACK) {
+      return this.createPaystackRefund(params);
+    }
 
+    try {
       const providerInstance = this.getProvider(provider);
       const result = await providerInstance.createRefund(params);
       return { success: true, data: result };
@@ -1249,9 +1251,55 @@ export class PaymentGatewayService {
     return this.paystack().verifyWebhookSignature(rawBody, signature);
   }
 
+  /**
+   * A refused refund comes back as `success: false` like other providers; an outage is thrown
+   * as ServiceUnavailableError so the caller reports "try again later", not "refund failed".
+   */
+  private async createPaystackRefund(params: IRefundParams): IPromiseReturnedData<{
+    refundId: string;
+    status: string;
+    amount: number;
+    currency: string;
+  } | null> {
+    try {
+      // chargeId is the Paystack transaction id (or reference); Paystack has no idempotency key
+      const refund = await this.paystack().createRefund({
+        transaction: params.chargeId,
+        amount: params.amountInCents,
+        merchant_note: params.note,
+      });
+      return {
+        success: true,
+        data: {
+          refundId: String(refund.id),
+          status: refund.status,
+          amount: refund.amount,
+          currency: refund.currency,
+        },
+      };
+    } catch (error) {
+      this.log.error({ error, chargeId: params.chargeId }, 'Error creating Paystack refund');
+      if (!(error instanceof BadRequestError)) throw error;
+      return { success: false, data: null, message: error.message };
+    }
+  }
+
+  /**
+   * Marks a failure result as an outage (the provider was unreachable, rate-limited or failed on
+   * its side), so callers can answer "try again later" instead of "your request was wrong".
+   */
+  private outageFlag(error: unknown): { error?: string } {
+    const stripeOutageTypes = ['StripeConnectionError', 'StripeAPIError', 'StripeRateLimitError'];
+    const isOutage =
+      error instanceof ServiceUnavailableError ||
+      stripeOutageTypes.includes((error as { type?: string })?.type ?? '');
+    return isOutage ? { error: PROVIDER_UNAVAILABLE } : {};
+  }
+
   private paystack(): PaystackService {
     if (!this.paystackService) {
-      throw new Error("Payment provider 'paystack' not registered");
+      this.log.error('Paystack is not registered in the container');
+      throw new InternalServerError({ message: t('payment.errors.serviceUnavailable') });
     }
     return this.paystackService;
   }

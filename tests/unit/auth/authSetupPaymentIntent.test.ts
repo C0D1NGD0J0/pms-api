@@ -3,6 +3,8 @@ jest.mock('@shared/middlewares', () => ({ preventTenantConflict: jest.fn() }));
 jest.mock('@di/index', () => ({ container: {} }));
 jest.mock('@shared/languages', () => ({ t: jest.fn((k: string) => k) }));
 jest.mock('@utils/index', () => ({
+  // Real helper: the saved-card tests check what it returns
+  readPaystackSavedCard: jest.requireActual('@utils/helpers').readPaystackSavedCard,
   createLogger: jest.fn(() => ({
     error: jest.fn(),
     info: jest.fn(),

@@ -1,5 +1,10 @@
 import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import {
+  ServiceUnavailableError,
+  InternalServerError,
+  BadRequestError,
+} from '@shared/customErrors';
 
 const makeGateway = ({
   processor = null as Record<string, unknown> | null,
@@ -126,6 +131,33 @@ describe('PaymentGatewayService - Paystack calls', () => {
     });
   });
 
+  it('returns a refused Paystack refund as a failure, but throws an outage', async () => {
+    const createRefund = jest
+      .fn()
+      .mockRejectedValueOnce(new BadRequestError({ message: 'rejected' }))
+      .mockRejectedValueOnce(new ServiceUnavailableError({ message: 'down' }));
+    const gateway = new PaymentGatewayService({
+      stripeService: {} as any,
+      paystackService: { createRefund } as any,
+    });
+    const params = { chargeId: '4099260516', amountInCents: 50000 } as any;
+
+    await expect(gateway.createRefund(IPaymentGatewayProvider.PAYSTACK, params)).resolves.toEqual({
+      success: false,
+      data: null,
+      message: 'rejected',
+    });
+    await expect(
+      gateway.createRefund(IPaymentGatewayProvider.PAYSTACK, params)
+    ).rejects.toBeInstanceOf(ServiceUnavailableError);
+  });
+
+  it('throws a typed error when Paystack is not registered', () => {
+    const gateway = new PaymentGatewayService({ stripeService: {} as any });
+
+    expect(() => gateway.verifyPaystackTransaction('psk-1')).toThrow(InternalServerError);
+  });
+
   it('passes Paystack-only calls through to the Paystack service', async () => {
     const { gateway, paystackService } = makeGateway();
 
@@ -142,11 +174,5 @@ describe('PaymentGatewayService - Paystack calls', () => {
     );
 
     expect(result.success).toBe(false);
-  });
-
-  it('fails clearly when Paystack is not wired in', () => {
-    const gateway = new PaymentGatewayService({ stripeService: {} as any });
-
-    expect(() => gateway.listBanks()).toThrow("Payment provider 'paystack' not registered");
   });
 });

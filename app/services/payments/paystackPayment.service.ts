@@ -1,21 +1,29 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { t } from '@shared/languages';
-import { createLogger } from '@utils/index';
 import { FinancialCalculator } from '@utils/financial';
-import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
 import { EventEmitterService } from '@services/eventEmitter';
 import { createPaystackReference } from '@utils/paystackReference';
-import { IPaystackSavedCard } from '@interfaces/profile.interface';
 import { IPaymentProcessorDocument } from '@interfaces/paymentProcessor.interface';
 import { PaymentProcessorDAO, SubscriptionDAO, PaymentDAO, ProfileDAO } from '@dao/index';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
 import { IPaystackWebhookEvent, IPaystackTransaction } from '@interfaces/paystack.interface';
 import {
+  ServiceUnavailableError,
+  InternalServerError,
+  BadRequestError,
+} from '@shared/customErrors';
+import {
   PAYSTACK_REFERENCE_PREFIX,
   PaymentGatewayService,
 } from '@services/paymentGateway/paymentGateway.service';
+import {
+  CircuitBreakerOpenError,
+  readPaystackSavedCard,
+  CHARGEABLE_STATUSES,
+  createLogger,
+} from '@utils/index';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -25,6 +33,15 @@ import {
 
 import { PaymentWebhookService } from './paymentWebhook.service';
 
+/** What happened when the app tried to charge a tenant's saved card. */
+export type PaystackAutoChargeOutcome =
+  | 'paid' // charged and recorded
+  | 'processing' // Paystack is still working on it; the webhook or reconcile settles it
+  | 'needs_review' // charged, but the money doesn't match the charge; managers are alerted
+  | 'unavailable' // Paystack couldn't be reached and nothing was charged; try again later
+  | 'no_saved_card' // nothing to charge: the tenant hasn't paid by card yet (or not NGN)
+  | 'declined'; // the card was refused
+
 /** What happened when a Paystack transaction was checked against its charge. */
 export type PaystackSettleOutcome =
   | 'paid' // marked paid now
@@ -33,13 +50,6 @@ export type PaystackSettleOutcome =
   | 'not_successful' // pending, failed or abandoned at Paystack — nothing to record
   | 'needs_review' // amount, currency or destination doesn't match the charge
   | 'not_found'; // no charge matches the transaction's metadata
-
-/** What happened when the app tried to charge a tenant's saved card. */
-export type PaystackAutoChargeOutcome =
-  | 'paid' // charged and recorded
-  | 'processing' // Paystack is still working on it; the webhook or reconcile settles it
-  | 'no_saved_card' // nothing to charge: the tenant hasn't paid by card yet (or not NGN)
-  | 'declined'; // the card was refused
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
@@ -59,9 +69,12 @@ const PAYABLE_STATUSES = [
   PaymentRecordStatus.FAILED,
   PaymentRecordStatus.PROCESSING,
 ];
-const CHARGEABLE_STATUSES = [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE];
 
-/** Hours a pending automatic card charge can stay unresolved before it counts as failed. */
+/**
+ * Hours a still-pending automatic card charge is given before it's reopened as failed. The daily
+ * reconcile starts checking charges after a day: paid ones are recorded and failed ones reopened
+ * straight away; only one Paystack still reports as pending waits for this.
+ */
 const STALE_CARD_CHARGE_HOURS = 72;
 
 /**
@@ -171,10 +184,13 @@ export class PaystackPaymentService {
       : null;
     if (!payment) {
       this.log.error({ reference, metadata }, 'Paid card transaction has no matching charge');
+      if (metadata.cuid) this.alertNeedsReview(metadata.cuid, transaction);
       return 'not_found';
     }
 
     if (payment.gatewayPaymentId === reference) {
+      // Finishes the maintenance invoice if an earlier attempt failed after recording the payment
+      await this.paymentWebhookService.markMaintenanceChargePaid(payment, String(transaction.id));
       return 'already_paid';
     }
 
@@ -185,11 +201,7 @@ export class PaystackPaymentService {
     });
     const mismatch = this.findMismatch(payment, transaction, processor);
     if (mismatch) {
-      this.log.error(
-        { reference, pytuid: payment.pytuid, cuid: payment.cuid, mismatch },
-        'Card transaction does not match its charge — left for review'
-      );
-      return 'needs_review';
+      return this.flagForReview(payment, transaction, mismatch);
     }
 
     const fees = await this.calculateFees(payment, transaction);
@@ -243,6 +255,7 @@ export class PaystackPaymentService {
       paymentType: payment.paymentType,
     });
 
+    // A failure here is thrown so the webhook is retried; the retry's already_paid path finishes it
     await this.paymentWebhookService.markMaintenanceChargePaid(payment, String(transaction.id));
     return 'paid';
   }
@@ -261,14 +274,28 @@ export class PaystackPaymentService {
       throw new BadRequestError({ message: t('payment.errors.checkoutNotFound') });
     }
 
-    const outcome = await this.settleTransaction(reference);
+    let outcome: PaystackSettleOutcome;
+    try {
+      outcome = await this.settleTransaction(reference);
+    } catch (error) {
+      // The tenant has paid: if the payment is recorded, a failed follow-up step (finished by the
+      // webhook's retry) must not show them an error
+      const recorded = await this.paymentDAO.findFirst({ _id: payment._id });
+      if (recorded?.gatewayPaymentId !== reference) throw error;
+      this.log.error(
+        { error, reference, pytuid: payment.pytuid },
+        'Card payment recorded, but a follow-up step failed — the webhook retry finishes it'
+      );
+      outcome = 'paid';
+    }
     const current = await this.paymentDAO.findFirst({ _id: payment._id });
     return { outcome, status: (current?.status ?? payment.status) as PaymentRecordStatus };
   }
 
   /**
    * Charges the tenant's saved card for a charge that's due (the auto-charge cron, or the tenant's
-   * "pay now"). Never throws for a declined card — the caller decides how to record that.
+   * "pay now"). Never throws for a declined card or an outage — the caller decides how to record
+   * those. A charge whose result is unknown is left PROCESSING, so it's never charged twice.
    */
   async chargeSavedCard(payment: IPaymentDocument): Promise<PaystackAutoChargeOutcome> {
     const processor = await this.paymentProcessorDAO.findFirst({
@@ -284,7 +311,7 @@ export class PaystackPaymentService {
     const profile = await this.profileDAO.findFirst({ _id: payment.tenant }, {
       select: '+tenantInfo.paystackCards',
     } as any);
-    const card = this.readSavedCard(profile?.tenantInfo?.paystackCards, processor.accountId);
+    const card = readPaystackSavedCard(profile?.tenantInfo?.paystackCards, processor.accountId);
     if (!card) return 'no_saved_card';
 
     // A new reference per attempt; it is the open checkout until the charge settles
@@ -296,20 +323,28 @@ export class PaystackPaymentService {
     if (!claimed) return 'no_saved_card'; // paid or closed meanwhile
 
     const applicationFee = await this.platformFeeFor(payment);
-    const transaction = await this.paymentGatewayService.chargeSavedCard({
-      authorization_code: card.authorizationCode,
-      email: card.email,
-      amount: payment.baseAmount,
-      currency: 'NGN',
-      reference,
-      // charge_authorization takes metadata as a JSON string
-      metadata: JSON.stringify({ pytuid: payment.pytuid, cuid: payment.cuid, type: 'auto_charge' }),
-      ...this.splitFor(payment, processor, applicationFee),
-    });
+    let transaction: IPaystackTransaction;
+    try {
+      transaction = await this.paymentGatewayService.chargeSavedCard({
+        authorization_code: card.authorizationCode,
+        email: card.email,
+        amount: payment.baseAmount,
+        currency: 'NGN',
+        reference,
+        // charge_authorization takes metadata as a JSON string
+        metadata: JSON.stringify({
+          pytuid: payment.pytuid,
+          cuid: payment.cuid,
+          type: 'auto_charge',
+        }),
+        ...this.splitFor(payment, processor, applicationFee),
+      });
+    } catch (error) {
+      return this.handleChargeRequestError(payment, reference, error);
+    }
 
     if (transaction.status === 'success') {
-      const outcome = await this.settleTransaction(reference);
-      return outcome === 'paid' || outcome === 'already_paid' ? 'paid' : 'processing';
+      return this.recordSavedCardCharge(payment, reference);
     }
 
     if (transaction.status === 'failed' || transaction.status === 'abandoned') {
@@ -317,16 +352,99 @@ export class PaystackPaymentService {
         { pytuid: payment.pytuid, reference, gatewayResponse: transaction.gateway_response },
         'Saved card was declined'
       );
-      await this.paymentDAO.update({ _id: payment._id }, { $unset: { cardCheckoutSessionId: '' } });
+      await this.releaseChargeClaim(payment);
       return 'declined';
     }
 
     // pending, ongoing, queued…: settled later by the charge.success webhook or reconcile
+    await this.markProcessing(payment);
+    return 'processing';
+  }
+
+  /**
+   * The charge request failed. An open circuit or a refused API key means the card was never
+   * charged, so the charge is reopened to try again later. Any other outage (a timeout, a server
+   * error) may still have charged the card, so it's left PROCESSING for the reconcile to check.
+   * A rejected request was never charged either; its error is passed on as a failed attempt.
+   */
+  private async handleChargeRequestError(
+    payment: IPaymentDocument,
+    reference: string,
+    error: unknown
+  ): Promise<PaystackAutoChargeOutcome> {
+    const neverSent =
+      error instanceof InternalServerError ||
+      (error instanceof ServiceUnavailableError &&
+        error.originalError instanceof CircuitBreakerOpenError);
+
+    if (neverSent) {
+      this.log.warn(
+        { pytuid: payment.pytuid, reference },
+        'Card charge not sent — Paystack unavailable'
+      );
+      await this.releaseChargeClaim(payment);
+      return 'unavailable';
+    }
+
+    if (error instanceof ServiceUnavailableError) {
+      this.log.warn(
+        { error, pytuid: payment.pytuid, reference },
+        'Card charge result unknown — left for the reconcile to check'
+      );
+      await this.markProcessing(payment);
+      return 'processing';
+    }
+
+    await this.releaseChargeClaim(payment);
+    throw error;
+  }
+
+  /**
+   * Records a saved-card charge Paystack accepted. The card has been charged, so anything short of
+   * "recorded" keeps the charge PROCESSING — out of the auto-charge — until it's settled.
+   */
+  private async recordSavedCardCharge(
+    payment: IPaymentDocument,
+    reference: string
+  ): Promise<PaystackAutoChargeOutcome> {
+    let outcome: PaystackSettleOutcome;
+    try {
+      outcome = await this.settleTransaction(reference);
+    } catch (error) {
+      const recorded = await this.paymentDAO.findFirst({ _id: payment._id });
+      if (recorded?.gatewayPaymentId === reference) {
+        this.log.error(
+          { error, pytuid: payment.pytuid, reference },
+          'Card payment recorded, but a follow-up step failed — the webhook retry finishes it'
+        );
+        return 'paid';
+      }
+      // The charge.success webhook (or the reconcile) records it once the problem clears
+      this.log.error(
+        { error, pytuid: payment.pytuid, reference },
+        'Card was charged but recording it failed — left for the webhook to settle'
+      );
+      await this.markProcessing(payment);
+      return 'processing';
+    }
+
+    // refunded_duplicate: the charge was already settled another way and this money went back
+    if (outcome === 'paid' || outcome === 'already_paid' || outcome === 'refunded_duplicate') {
+      return 'paid';
+    }
+    await this.markProcessing(payment);
+    return outcome === 'not_successful' ? 'processing' : 'needs_review';
+  }
+
+  private async markProcessing(payment: IPaymentDocument): Promise<void> {
     await this.paymentDAO.update(
       { _id: payment._id, status: { $in: CHARGEABLE_STATUSES } },
       { $set: { status: PaymentRecordStatus.PROCESSING } }
     );
-    return 'processing';
+  }
+
+  private async releaseChargeClaim(payment: IPaymentDocument): Promise<void> {
+    await this.paymentDAO.update({ _id: payment._id }, { $unset: { cardCheckoutSessionId: '' } });
   }
 
   /**
@@ -335,14 +453,29 @@ export class PaystackPaymentService {
    */
   async reconcileProcessingCharge(
     payment: IPaymentDocument
-  ): Promise<'paid' | 'reopened' | 'waiting'> {
+  ): Promise<'paid' | 'reopened' | 'waiting' | 'needs_review'> {
     const reference = payment.cardCheckoutSessionId;
     if (!reference) return 'waiting';
 
-    const transaction = await this.paymentGatewayService.verifyPaystackTransaction(reference);
-    if (transaction.status === 'success') {
-      await this.settleTransaction(reference);
-      return 'paid';
+    let transaction: IPaystackTransaction | null;
+    try {
+      transaction = await this.paymentGatewayService.verifyPaystackTransaction(reference);
+    } catch (error) {
+      // Paystack rejects a reference it has never seen: the charge request never reached it.
+      // Outages are passed on, and the next run checks again.
+      if (!(error instanceof BadRequestError)) throw error;
+      transaction = null;
+    }
+
+    if (transaction?.status === 'success') {
+      const outcome = await this.settleTransaction(reference);
+      return outcome === 'needs_review' || outcome === 'not_found' ? 'needs_review' : 'paid';
+    }
+
+    if (!transaction) {
+      // Not the tenant's fault, so it doesn't count as a failed attempt
+      await this.reopenCardCharge(payment, t('payment.errors.serviceUnavailable'), false);
+      return 'reopened';
     }
 
     const hasFailed = ['abandoned', 'reversed', 'failed'].includes(transaction.status);
@@ -350,23 +483,31 @@ export class PaystackPaymentService {
       dayjs().diff(dayjs(payment.chargedAt ?? payment.dueDate), 'hour') >= STALE_CARD_CHARGE_HOURS;
     if (!hasFailed && !isStale) return 'waiting';
 
+    await this.reopenCardCharge(payment, t('payment.errors.cardDeclined'), true);
+    return 'reopened';
+  }
+
+  private async reopenCardCharge(
+    payment: IPaymentDocument,
+    reason: string,
+    countsAsAttempt: boolean
+  ): Promise<void> {
     await this.paymentDAO.update(
       { _id: payment._id, status: PaymentRecordStatus.PROCESSING },
       {
         $set: {
           status: PaymentRecordStatus.OVERDUE,
-          'failure.reason': t('payment.errors.cardDeclined'),
+          'failure.reason': reason,
           'failure.lastFailedAt': dayjs().toDate(),
         },
-        $inc: { 'failure.retryCount': 1 },
+        ...(countsAsAttempt && { $inc: { 'failure.retryCount': 1 } }),
         $unset: { cardCheckoutSessionId: '' },
       }
     );
     this.log.warn(
-      { pytuid: payment.pytuid, reference, status: transaction.status },
+      { pytuid: payment.pytuid, reference: payment.cardCheckoutSessionId, reason },
       'Card charge reopened'
     );
-    return 'reopened';
   }
 
   /** Handles a webhook event whose signature has already been checked. */
@@ -390,7 +531,7 @@ export class PaystackPaymentService {
           { gatewayPaymentId: reference },
           {
             $set: {
-              'refund.failureReason': 'The refund failed at the payment provider',
+              'refund.failureReason': t('payment.errors.refundFailed'),
               'refund.failedAt': dayjs().toDate(),
             },
           }
@@ -403,6 +544,38 @@ export class PaystackPaymentService {
       default:
         this.log.info({ event: event.event }, 'Unhandled card payment webhook event');
     }
+  }
+
+  /**
+   * Money arrived that doesn't match its charge. It's left unrecorded, and the charge is marked
+   * so managers are alerted once — not again each time the reconcile re-checks it.
+   */
+  private async flagForReview(
+    payment: IPaymentDocument,
+    transaction: IPaystackTransaction,
+    mismatch: string
+  ): Promise<PaystackSettleOutcome> {
+    this.log.error(
+      { reference: transaction.reference, pytuid: payment.pytuid, cuid: payment.cuid, mismatch },
+      'Card transaction does not match its charge — left for review'
+    );
+    const reviewReason = t('payment.errors.needsReview');
+    const firstTime = await this.paymentDAO.update(
+      { _id: payment._id, 'failure.reason': { $ne: reviewReason } },
+      { $set: { 'failure.reason': reviewReason, 'failure.lastFailedAt': dayjs().toDate() } }
+    );
+    if (firstTime) this.alertNeedsReview(payment.cuid, transaction, payment.pytuid);
+    return 'needs_review';
+  }
+
+  private alertNeedsReview(cuid: string, transaction: IPaystackTransaction, pytuid?: string): void {
+    this.emitterService.emit(EventTypes.PAYMENT_NEEDS_REVIEW, {
+      cuid,
+      pytuid,
+      reference: transaction.reference,
+      amount: transaction.amount,
+      currency: transaction.currency,
+    });
   }
 
   /** Tells managers the tenant's money did not go back (deposits use the deposit alert + email). */
@@ -459,14 +632,6 @@ export class PaystackPaymentService {
       payment.baseAmount,
       this.subscriptionPlanConfig.getTransactionFeePercent(subscription.planName)
     );
-  }
-
-  private readSavedCard(
-    cards: Map<string, IPaystackSavedCard> | Record<string, IPaystackSavedCard> | undefined,
-    subaccountCode: string
-  ): IPaystackSavedCard | undefined {
-    if (!cards) return undefined;
-    return cards instanceof Map ? cards.get(subaccountCode) : cards[subaccountCode];
   }
 
   private readMetadata(transaction: IPaystackTransaction): {
@@ -539,11 +704,13 @@ export class PaystackPaymentService {
         note: 'Duplicate payment for a charge that was already settled',
       }
     );
+    // An outage is thrown instead, so the webhook is retried and the refund tried again
     if (!refund.success) {
       this.log.error(
         { reference: transaction.reference, pytuid: payment.pytuid, message: refund.message },
         'Duplicate card payment could not be refunded — refund it manually'
       );
+      this.notifyRefundFailed(payment, transaction.amount);
       return 'needs_review';
     }
 

@@ -185,7 +185,9 @@
       "noCsvUploaded": "Upload a CSV file to continue",
       "unableToValidateCsv": "Couldn't validate the CSV file",
       "fileTooLarge": "The file is too large. The maximum size is 10 MB",
-      "unknownError": "Something went wrong. Please try again"
+      "unknownError": "Something went wrong. Please try again",
+      "departmentNotAllowed": "You are not authorized to create properties. Only staff in Operations or Management departments can create properties.",
+      "alreadyOccupied": "Property already marked as occupied"
     },
     "success": {
       "csvImportStarted": "CSV import job started",
@@ -517,7 +519,9 @@
       "cannotRevoke": "This invitation can't be revoked",
       "cannotDecline": "This invitation can't be declined",
       "declineFailed": "Failed to decline the invitation",
-      "reactivationFailed": "Failed to reactivate the invitation"
+      "reactivationFailed": "Failed to reactivate the invitation",
+      "seatLimitCanPurchase": "Seat limit reached. Your plan allows {{totalAllowed}} seats ({{includedSeats}} included + {{additionalSeats}} additional). You can purchase up to {{purchasable}} more seats.",
+      "seatLimitUpgrade": "Seat limit reached. Your plan allows {{totalAllowed}} seats. Please upgrade your plan or archive users to free up seats."
     },
     "csv": {
       "noValidRows": "No valid rows found in the CSV file",
@@ -578,7 +582,8 @@
       "cannotArchiveManagerWithActiveLeases": "Cannot archive user. They manage properties with {{count}} active lease(s). Reassign properties or terminate leases first.",
       "notATenant": "This action is only available for tenant accounts.",
       "cannotDeactivateSelf": "You cannot deactivate your own account.",
-      "cannotDeactivateTenantWithActiveLeases": "Cannot deactivate a user with active leases. Please terminate leases first."
+      "cannotDeactivateTenantWithActiveLeases": "Cannot deactivate a user with active leases. Please terminate leases first.",
+      "cannotReportToSelf": "An employee cannot report to themselves"
     },
     "success": {
       "tenantDeactivated": "Tenant deactivated successfully."
@@ -639,6 +644,8 @@
       "refundOnlinePaymentsOnly": "Refunds are only available for payments made online.",
       "payByCardFirst": "Pay this charge by card once to turn on automatic payments.",
       "cardDeclined": "The card on file was declined. Please pay by card with another card or contact your bank.",
+      "annualPeriodRequired": "This lease is paid yearly — choose the lease-year (the start-date anniversary month) to bill.",
+      "needsReview": "This payment was received but is being reviewed by your property manager before it's recorded.",
       "cardCheckoutTypeUnsupported": "This charge can't be paid by card online."
     },
     "success": {
@@ -1082,6 +1089,10 @@
       "refundFailed": {
         "title": "Refund Failed",
         "message": "A refund of {{amount}} for payment {{pytuid}} did not go through, so the tenant has not received it. Please review it and refund the tenant another way if needed."
+      },
+      "paymentNeedsReview": {
+        "title": "Payment Needs Review",
+        "message": "A card payment of {{amount}} (reference {{reference}}) was received but couldn't be matched to its charge, so it hasn't been recorded. Please review it, then record or refund it."
       }
     },
     "fragments": {
@@ -1111,7 +1122,8 @@
   },
   "report": {
     "errors": {
-      "tooManyEmailRecipients": "Your plan allows up to {{max}} email recipients"
+      "tooManyEmailRecipients": "Your plan allows up to {{max}} email recipients",
+      "queueFailed": "Failed to queue report generation. Please try again."
     }
   },
   "notification": {

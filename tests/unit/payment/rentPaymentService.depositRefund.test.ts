@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { BadRequestError } from '@shared/customErrors';
 import { EventTypes } from '@interfaces/events.interface';
 import { IPaymentGatewayProvider } from '@interfaces/index';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
@@ -408,5 +409,35 @@ describe('RentPaymentService — handleDepositRefund', () => {
         handler({ refundAmount: 50000, leaseId: LEASE_ID, cuid: CUID })
       ).resolves.not.toThrow();
     });
+  });
+});
+
+describe('RentPaymentService — annual lease line items', () => {
+  const service = new RentPaymentService({
+    emitterService: { emit: jest.fn(), on: jest.fn(), off: jest.fn() },
+  } as any) as any;
+  const annualLease = {
+    fees: {
+      paymentFrequency: 'annual',
+      annualRentAmount: 120000000,
+      rentAmount: 10000000,
+      securityDeposit: 0,
+      rentDueDay: 1,
+      currency: 'NGN',
+    },
+    duration: { startDate: new Date('2026-03-15'), endDate: new Date('2028-03-14') },
+    petPolicy: null,
+  };
+
+  it('bills the first lease-year when no period is given', () => {
+    expect(service.buildRentLineItems(annualLease, {})).toEqual([
+      { description: 'Annual Rent (Mar 2026 – Feb 2027)', amountInCents: 120000000 },
+    ]);
+  });
+
+  it('refuses a month that is not the lease anniversary instead of billing the first year', () => {
+    expect(() =>
+      service.buildRentLineItems(annualLease, { period: { month: 7, year: 2027 } })
+    ).toThrow(BadRequestError);
   });
 });

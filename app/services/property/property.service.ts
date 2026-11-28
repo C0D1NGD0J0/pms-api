@@ -26,6 +26,12 @@ import {
   S3Service,
 } from '@services/index';
 import {
+  ValidationRequestError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
+import {
   NotificationPriorityEnum,
   NotificationTypeEnum,
   RecipientTypeEnum,
@@ -36,13 +42,6 @@ import {
   PropertyLeasingBlock,
   AUTO_VERIFIED_NOTE,
 } from '@utils/propertyLeasing';
-import {
-  ValidationRequestError,
-  InvalidRequestError,
-  BadRequestError,
-  ForbiddenError,
-  NotFoundError,
-} from '@shared/customErrors';
 import {
   ExtractedMediaFile,
   ISuccessReturnData,
@@ -259,10 +258,13 @@ export class PropertyService implements ICronProvider {
       const { leaseId, propertyId, propertyUnitId } = payload;
 
       if (propertyUnitId) {
-        this.log.info('Lease has propertyUnitId - skipping direct property update', {
-          leaseId,
-          propertyId,
-        });
+        this.log.info(
+          {
+            leaseId,
+            propertyId,
+          },
+          'Lease has propertyUnitId - skipping direct property update'
+        );
         return {
           success: false,
           message: 'Lease has propertyUnitId - skipping direct property update',
@@ -274,7 +276,7 @@ export class PropertyService implements ICronProvider {
       if (!property) {
         return {
           success: false,
-          message: 'Property not found',
+          message: t('common.errors.notFound', { resource: 'Property' }),
           data: null,
         };
       }
@@ -282,7 +284,7 @@ export class PropertyService implements ICronProvider {
       if (property.occupancyStatus === 'occupied') {
         return {
           success: false,
-          message: 'Property already marked as occupied',
+          message: t('property.errors.alreadyOccupied'),
           data: null,
         };
       }
@@ -306,10 +308,13 @@ export class PropertyService implements ICronProvider {
         message: 'Property marked as occupied',
       };
     } catch (error) {
-      this.log.error('Error handling lease activation for property', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        payload,
-      });
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          payload,
+        },
+        'Error handling lease activation for property'
+      );
       return { success: false, message: 'Error handling lease activation', data: null };
     }
   }
@@ -324,10 +329,13 @@ export class PropertyService implements ICronProvider {
 
       // Skip if this is a unit-level lease (unit service handles it)
       if (propertyUnitId) {
-        this.log.info('Lease has propertyUnitId - skipping direct property update', {
-          leaseId,
-          propertyId,
-        });
+        this.log.info(
+          {
+            leaseId,
+            propertyId,
+          },
+          'Lease has propertyUnitId - skipping direct property update'
+        );
         return {
           success: false,
           message: 'Lease has propertyUnitId - skipping direct property update',
@@ -340,7 +348,7 @@ export class PropertyService implements ICronProvider {
       if (!property) {
         return {
           success: false,
-          message: 'Property not found',
+          message: t('common.errors.notFound', { resource: 'Property' }),
           data: null,
         };
       }
@@ -365,10 +373,13 @@ export class PropertyService implements ICronProvider {
         message: 'Property marked as vacant after lease termination',
       };
     } catch (error) {
-      this.log.error('Error handling lease termination for property', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        payload,
-      });
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          payload,
+        },
+        'Error handling lease termination for property'
+      );
       return { success: false, message: 'Error handling lease termination', data: null };
     }
   }
@@ -384,9 +395,12 @@ export class PropertyService implements ICronProvider {
       if (!payload.cuid) return;
       await this.propertyCache.invalidateAllPropertyDetails(payload.cuid);
     } catch (error) {
-      this.log.error('Error invalidating property detail cache on inspection change', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+        'Error invalidating property detail cache on inspection change'
+      );
     }
   }
 
@@ -407,10 +421,8 @@ export class PropertyService implements ICronProvider {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'add property to this account' }),
-      });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const userRole = currentuser.client.role;
@@ -419,7 +431,7 @@ export class PropertyService implements ICronProvider {
       !PROPERTY_STAFF_ROLES.includes(userRoleEnum) &&
       !PROPERTY_APPROVAL_ROLES.includes(userRoleEnum)
     ) {
-      throw new InvalidRequestError({ message: t('common.errors.insufficientPermissions') });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     const cleanPropertyData = { ...propertyData };
@@ -520,10 +532,13 @@ export class PropertyService implements ICronProvider {
         },
       ];
       message = t('common.success.created', { resource: 'Property' });
-      this.log.info('Property auto-approved for admin/manager', {
-        userId: currentuser.sub,
-        role: userRole,
-      });
+      this.log.info(
+        {
+          userId: currentuser.sub,
+          role: userRole,
+        },
+        'Property auto-approved for admin/manager'
+      );
     } else if (PROPERTY_STAFF_ROLES.includes(userRoleEnum)) {
       // Staff - check department and require approval
       const userProfile = await this.profileDAO.getProfileByUserId(currentuser.sub);
@@ -533,10 +548,7 @@ export class PropertyService implements ICronProvider {
         !userDepartment ||
         !PROPERTY_CREATION_ALLOWED_DEPARTMENTS.includes(userDepartment as any)
       ) {
-        throw new InvalidRequestError({
-          message:
-            'You are not authorized to create properties. Only staff in Operations or Management departments can create properties.',
-        });
+        throw new ForbiddenError({ message: t('property.errors.departmentNotAllowed') });
       }
 
       approvalStatus = PropertyApprovalStatusEnum.PENDING;
@@ -548,14 +560,15 @@ export class PropertyService implements ICronProvider {
         },
       ];
       message = 'Property submitted for approval';
-      this.log.info('Property pending approval for staff', {
-        userId: currentuser.sub,
-        department: userDepartment,
-      });
+      this.log.info(
+        {
+          userId: currentuser.sub,
+          department: userDepartment,
+        },
+        'Property pending approval for staff'
+      );
     } else {
-      throw new InvalidRequestError({
-        message: t('common.errors.insufficientPermissions'),
-      });
+      throw new ForbiddenError({ message: t('common.errors.insufficientPermissions') });
     }
 
     cleanPropertyData.createdBy = new Types.ObjectId(currentuser.sub);
@@ -700,11 +713,14 @@ export class PropertyService implements ICronProvider {
           },
         });
       } catch (notificationError) {
-        this.log.error('Failed to send property creation notification', {
-          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
-          propertyId: result.pid,
-          creatorId: currentuser.sub,
-        });
+        this.log.error(
+          {
+            error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+            propertyId: result.pid,
+            creatorId: currentuser.sub,
+          },
+          'Failed to send property creation notification'
+        );
       }
     }
 
@@ -729,7 +745,7 @@ export class PropertyService implements ICronProvider {
     try {
       await this.mediaUploadService.removeUploadedFiles(uploads);
     } catch (error) {
-      this.log.error('Failed to remove files uploaded for a failed property write', { pid, error });
+      this.log.error({ pid, error }, 'Failed to remove files uploaded for a failed property write');
     }
   }
 
@@ -856,10 +872,8 @@ export class PropertyService implements ICronProvider {
     }
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'add property to this account' }),
-      });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     // Pre-check: reject immediately if already at the property limit — avoids queueing a job that will fully fail
@@ -909,8 +923,8 @@ export class PropertyService implements ICronProvider {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({ message: t('property.errors.unableToValidateCsv') });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     if (csvFile.fileSize > megabytes(10)) {
@@ -970,10 +984,8 @@ export class PropertyService implements ICronProvider {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'get properties for this account' }),
-      });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const { pagination, filters } = queryParams || {};
@@ -1161,10 +1173,8 @@ export class PropertyService implements ICronProvider {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'get properties for this account' }),
-      });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const accessFilter =
@@ -1736,11 +1746,14 @@ export class PropertyService implements ICronProvider {
     if (isApprover) {
       if (pendingChangesInfo) {
         overrideMessage = ` (overriding pending changes from ${pendingChangesInfo.displayName})`;
-        this.log.info('Admin overriding pending changes', {
-          propertyId: property.id,
-          adminId: ctx.currentuser.sub,
-          originalRequesterId: pendingChangesInfo.updatedBy,
-        });
+        this.log.info(
+          {
+            propertyId: property.id,
+            adminId: ctx.currentuser.sub,
+            originalRequesterId: pendingChangesInfo.updatedBy,
+          },
+          'Admin overriding pending changes'
+        );
       }
 
       updateOperation.$set.approvalStatus = PropertyApprovalStatusEnum.APPROVED;
@@ -1854,7 +1867,7 @@ export class PropertyService implements ICronProvider {
         try {
           await this.mediaUploadService.removeUploadedFiles(discardedMedia, { deleteAssets: true });
         } catch (error) {
-          this.log.error('Failed to delete files from overridden pending changes', { pid, error });
+          this.log.error({ pid, error }, 'Failed to delete files from overridden pending changes');
         }
       }
     }
@@ -1869,7 +1882,7 @@ export class PropertyService implements ICronProvider {
         hardDelete
       );
     } catch (error) {
-      this.log.error('Failed to clean up removed property media', { pid, error });
+      this.log.error({ pid, error }, 'Failed to clean up removed property media');
     }
 
     // If managedBy changed, remove new manager from assignedStaff (can't be both)
@@ -1933,12 +1946,15 @@ export class PropertyService implements ICronProvider {
         }
       );
     } catch (notificationError) {
-      this.log.error('Failed to send override notification to staff', {
-        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
-        propertyId: property.pid,
-        adminId: ctx.currentuser.sub,
-        originalRequesterId,
-      });
+      this.log.error(
+        {
+          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+          propertyId: property.pid,
+          adminId: ctx.currentuser.sub,
+          originalRequesterId,
+        },
+        'Failed to send override notification to staff'
+      );
     }
   }
 
@@ -1987,12 +2003,15 @@ export class PropertyService implements ICronProvider {
         },
       });
     } catch (notificationError) {
-      this.log.error('Failed to send update notification', {
-        error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
-        propertyId: updatedProperty.pid,
-        userId: ctx.currentuser.sub,
-        isDirectUpdate,
-      });
+      this.log.error(
+        {
+          error: notificationError instanceof Error ? notificationError.message : 'Unknown error',
+          propertyId: updatedProperty.pid,
+          userId: ctx.currentuser.sub,
+          isDirectUpdate,
+        },
+        'Failed to send update notification'
+      );
     }
   }
 
@@ -2132,10 +2151,8 @@ export class PropertyService implements ICronProvider {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'archive property' }),
-      });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     const property = await this.propertyDAO.findFirst({
@@ -2341,10 +2358,8 @@ export class PropertyService implements ICronProvider {
 
     const client = await this.clientDAO.getClientByCuid(cuid);
     if (!client) {
-      this.log.error(`Client with cuid ${cuid} not found`);
-      throw new BadRequestError({
-        message: t('common.errors.operationFailed', { action: 'unarchive property' }),
-      });
+      this.log.error({ cuid }, 'Client not found');
+      throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
     }
 
     // Find archived property
@@ -2577,7 +2592,7 @@ export class PropertyService implements ICronProvider {
         monthlyNetIncome,
       };
     } catch (error) {
-      this.log.error('Error calculating property metrics:', error);
+      this.log.error({ error }, 'Error calculating property metrics');
       return {
         rentAmount: 0,
         annualRevenue: 0,
@@ -2748,11 +2763,14 @@ export class PropertyService implements ICronProvider {
         },
       };
 
-      this.log.info('Successfully retrieved assignable users', {
-        cuid,
-        count: users.length,
-        total,
-      });
+      this.log.info(
+        {
+          cuid,
+          count: users.length,
+          total,
+        },
+        'Successfully retrieved assignable users'
+      );
 
       return {
         success: true,
@@ -2760,11 +2778,14 @@ export class PropertyService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'Assignable users' }),
       };
     } catch (error) {
-      this.log.error('Failed to get assignable users', {
-        cuid,
-        filters,
-        error: error.message,
-      });
+      this.log.error(
+        {
+          cuid,
+          filters,
+          error: error.message,
+        },
+        'Failed to get assignable users'
+      );
       throw error;
     }
   }
@@ -2829,7 +2850,7 @@ export class PropertyService implements ICronProvider {
         fetchUnits
       );
       if (cachedResult.success && cachedResult.data) {
-        this.log.info('Returning leaseable properties from cache', { cuid, fetchUnits });
+        this.log.info({ cuid, fetchUnits }, 'Returning leaseable properties from cache');
         return {
           success: true,
           data: {
@@ -2845,7 +2866,7 @@ export class PropertyService implements ICronProvider {
 
       const client = await this.clientDAO.getClientByCuid(cuid);
       if (!client) {
-        this.log.error(`Client with cuid ${cuid} not found`);
+        this.log.error({ cuid }, 'Client not found');
         throw new NotFoundError({ message: t('common.errors.notFound', { resource: 'Client' }) });
       }
 
@@ -2979,13 +3000,13 @@ export class PropertyService implements ICronProvider {
       );
 
       this.log.info(
-        `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`,
         {
           fetchUnits,
           totalUnits: leaseableProperties.reduce((sum, p) => sum + (p.units?.length || 0), 0),
           filteredCount: filteredProperties.length,
           cached: true,
-        }
+        },
+        `Retrieved ${leaseableProperties.length} lease-able properties for client ${cuid}`
       );
 
       return {
@@ -3001,11 +3022,14 @@ export class PropertyService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'Properties' }),
       };
     } catch (error) {
-      this.log.error('Failed to get lease-able properties', {
-        cuid,
-        fetchUnits,
-        error: error.message,
-      });
+      this.log.error(
+        {
+          cuid,
+          fetchUnits,
+          error: error.message,
+        },
+        'Failed to get lease-able properties'
+      );
       throw error;
     }
   }

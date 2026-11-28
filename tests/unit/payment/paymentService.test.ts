@@ -21,10 +21,18 @@ import { IPaymentGatewayProvider } from '@interfaces/subscription.interface';
 import { PayoutAccountService } from '@services/payments/payoutAccount.service';
 import { PaymentWebhookService } from '@services/payments/paymentWebhook.service';
 import { TenantPaymentStatus, InvoiceStatus } from '@interfaces/invoice.interface';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { SubscriptionPlanConfig, subscriptionPlanConfig } from '@services/subscription';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MaintenancePaymentService } from '@services/payments/maintenancePayment.service';
+import {
+  PaymentGatewayService,
+  PROVIDER_UNAVAILABLE,
+} from '@services/paymentGateway/paymentGateway.service';
+import {
+  ServiceUnavailableError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   PaymentRecordStatus,
   PaymentRecordType,
@@ -3083,6 +3091,21 @@ describe('PaymentService - getPayoutBalance', () => {
     } as any);
 
     await expect(paymentService.getPayoutBalance(CUID)).rejects.toThrow(BadRequestError);
+  });
+
+  it('answers "try again later" (503) when the provider is down, not a bad request', async () => {
+    mockPaymentProcessorDAO.findFirst.mockResolvedValue(makeProcessor() as any);
+    mockPaymentGatewayService.getConnectBalance.mockResolvedValue({
+      success: false,
+      data: null,
+      message: 'connection reset',
+      error: PROVIDER_UNAVAILABLE,
+    } as any);
+
+    await expect(paymentService.getPayoutBalance(CUID)).rejects.toMatchObject({
+      statusCode: 503,
+      message: t('payment.errors.serviceUnavailable'),
+    });
   });
 });
 
@@ -7501,6 +7524,26 @@ describe('PaymentService - Paystack payout account', () => {
     });
   });
 
+  it('logs the new subaccount code when saving it fails, so it can be linked by hand', async () => {
+    const outage = Object.assign(new Error('connection lost'), { name: 'MongoNetworkError' });
+    (mockPaymentProcessorDAO.insert as jest.Mock).mockRejectedValue(outage);
+    const payoutAccountService = (paymentService as any).payoutAccountService;
+    const logError = jest.spyOn(payoutAccountService.log, 'error').mockImplementation(() => {});
+
+    // A database outage reaches the landlord as "try again later", not a bad request
+    await expect(
+      paymentService.createPaystackPayoutAccount(CUID, bankAccount)
+    ).rejects.toBeInstanceOf(ServiceUnavailableError);
+    expect(logError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cuid: CUID,
+        subaccountCode: 'ACCT_landlord1',
+        accountNumberLast4: '6789',
+      }),
+      expect.stringContaining('link it to the account manually')
+    );
+  });
+
   it('checks the account name itself before creating the subaccount, with a neutral message', async () => {
     mockPaymentGatewayService.resolveBankAccount.mockRejectedValue(
       new BadRequestError({ message: 'Could not resolve account name' })
@@ -7798,5 +7841,14 @@ describe('PaymentService - payPendingCharge (Paystack saved card)', () => {
     await expect(svc.payPendingCharge(CUID, payment.pytuid, TENANT_USER_ID)).rejects.toThrow(
       t('payment.errors.cardDeclined')
     );
+  });
+
+  it('answers "try again later" (503) when the card could not be charged because of an outage', async () => {
+    const { svc, payment } = setup('unavailable');
+
+    await expect(svc.payPendingCharge(CUID, payment.pytuid, TENANT_USER_ID)).rejects.toMatchObject({
+      statusCode: 503,
+      message: t('payment.errors.serviceUnavailable'),
+    });
   });
 });

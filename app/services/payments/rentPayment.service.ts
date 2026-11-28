@@ -12,8 +12,13 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, JOB_NAME } from '@utils/constants';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import {
+  ServiceUnavailableError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -425,10 +430,7 @@ export class RentPaymentService {
           ? annualYearIndexForPeriod(lease.duration.startDate, data.period)
           : null;
         if (yearIndex === null) {
-          throw new BadRequestError({
-            message:
-              'This lease is paid yearly — choose the lease-year (the start-date anniversary month) to bill.',
-          });
+          throw new BadRequestError({ message: t('payment.errors.annualPeriodRequired') });
         }
         data.period = annualRentPeriod(lease.duration.startDate, yearIndex);
       }
@@ -536,11 +538,11 @@ export class RentPaymentService {
       }
       if (subscription.status !== ISubscriptionStatus.ACTIVE) {
         this.log.warn(
-          'Subscription not active — payment will be collected but payouts are paused',
           {
             cuid,
             subscriptionStatus: subscription.status,
-          }
+          },
+          'Subscription not active — payment will be collected but payouts are paused'
         );
       }
 
@@ -669,10 +671,13 @@ export class RentPaymentService {
 
       let tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
       if (!tenantCustomerId) {
-        this.log.info('No platform Stripe customer for tenant — creating one', {
-          profileId: tenantProfile._id,
-          cuid,
-        });
+        this.log.info(
+          {
+            profileId: tenantProfile._id,
+            cuid,
+          },
+          'No platform Stripe customer for tenant — creating one'
+        );
 
         const customerResult = await this.paymentGatewayService.createCustomer({
           provider: IPaymentGatewayProvider.STRIPE,
@@ -874,7 +879,7 @@ export class RentPaymentService {
         message: 'Rent payment processed successfully',
       };
     } catch (error: any) {
-      this.log.error('Error creating rent payment:', error);
+      this.log.error({ error }, 'Error creating rent payment');
       throw error;
     }
   }
@@ -894,6 +899,9 @@ export class RentPaymentService {
     }
     if (outcome === 'declined') {
       throw new BadRequestError({ message: t('payment.errors.cardDeclined') });
+    }
+    if (outcome === 'unavailable') {
+      throw new ServiceUnavailableError({ message: t('payment.errors.serviceUnavailable') });
     }
 
     const updated = await this.paymentDAO.findFirst({ _id: payment._id });
@@ -1218,7 +1226,12 @@ export class RentPaymentService {
       );
 
       if (!payResult.success) {
-        throw new BadRequestError({ message: payResult.message || 'Failed to initiate payment' });
+        // The provider's own message stays in the logs; the tenant gets a neutral one
+        this.log.warn(
+          { pytuid, cuid, providerMessage: payResult.message },
+          'Pending charge payment failed'
+        );
+        throw new BadRequestError({ message: t('payment.errors.requestRejected') });
       }
 
       this.log.info(
@@ -1519,10 +1532,14 @@ export class RentPaymentService {
   ): { description: string; amountInCents: number }[] {
     // Annual leases bill the whole lease-year; there is no first-month pro-ration
     if (isAnnualLease(lease)) {
+      // No period means the first lease-year; a period that isn't an anniversary is a mistake
       const yearIndex = billing.period
         ? annualYearIndexForPeriod(lease.duration.startDate, billing.period)
-        : null;
-      return buildAnnualRentLineItems(lease, yearIndex ?? 0);
+        : 0;
+      if (yearIndex === null) {
+        throw new BadRequestError({ message: t('payment.errors.annualPeriodRequired') });
+      }
+      return buildAnnualRentLineItems(lease, yearIndex);
     }
 
     const { baseRent, petMonthlyFee, managementFee } = FinancialCalculator.leaseMonthlyFees(lease);

@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { BadRequestError } from '@shared/customErrors';
 import { UserService } from '@services/user/user.service';
 import { ProfileService } from '@services/profile/profile.service';
@@ -125,7 +126,10 @@ describe('employeeInfo.reportsTo — supervisor uid contract', () => {
 
       await expect(
         service.resolveSupervisorId(CUID, SUPERVISOR_UID, employeeId.toString())
-      ).rejects.toBeInstanceOf(BadRequestError);
+      ).rejects.toMatchObject({
+        constructor: BadRequestError,
+        message: t('user.errors.cannotReportToSelf'),
+      });
     });
   });
 
@@ -319,5 +323,17 @@ describe('employeeInfo.reportsTo — supervisor uid contract', () => {
       });
       expect(current.metadata.employeeInfo.reportsTo).toBe('OTHERSUP0001');
     });
+  });
+});
+
+describe('UserService — employee properties on the profile', () => {
+  it('passes a database error on instead of showing the employee as managing no properties', async () => {
+    const failure = new Error('db down');
+    const service = buildUserService(
+      {},
+      { propertyDAO: { getPropertiesByClientId: jest.fn().mockRejectedValue(failure) } }
+    );
+
+    await expect((service as any).getUserProperties('USER1', CUID)).rejects.toBe(failure);
   });
 });

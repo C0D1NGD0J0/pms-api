@@ -17,7 +17,7 @@ import { ICronProvider, ICronJob } from '@interfaces/cron.interface';
 import { toEmailBrandContext, loadBrandConfig } from '@branding/index';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
 import { SubscriptionPlanConfig } from '@services/subscription/subscription_plans.config';
-import { InternalServerError, BadRequestError, NotFoundError } from '@shared/customErrors';
+import { ServiceUnavailableError, BadRequestError, NotFoundError } from '@shared/customErrors';
 import {
   ReportAnalysisAIService,
   PdfGeneratorService,
@@ -312,8 +312,10 @@ export class ReportService implements ICronProvider {
     } catch (enqueueError: any) {
       // A failed enqueue must not consume the quota slot or leave a stuck PENDING report
       await this._rollBackUnqueuedReport(cuid, report._id.toString(), enqueueError);
-      throw new InternalServerError({
-        message: 'Failed to queue report generation. Please try again.',
+      // The queue (Redis) is down, not the request: a 503 with the cause kept for the logs
+      throw new ServiceUnavailableError({
+        message: t('report.errors.queueFailed'),
+        originalError: enqueueError,
       });
     }
 

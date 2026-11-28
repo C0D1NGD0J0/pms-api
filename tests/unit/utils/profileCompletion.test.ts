@@ -32,10 +32,7 @@ const makeAccountData = (overrides: Partial<IAccountSetupData> = {}): IAccountSe
   unitCount: 10,
   hasPaymentProcessor: true,
   payoutsEnabled: true,
-  staffCount: 2,
-  vendorCount: 1,
   tenantCount: 5,
-  tenantHasPaymentMethod: true,
   leaseCount: 4,
   ...overrides,
 });
@@ -44,7 +41,6 @@ describe('computeProfileCompletion — account setup sections', () => {
   it('should NOT include setup sections without accountData', () => {
     const result = computeProfileCompletion(makeProfile(), makeClient(), ['super-admin']);
     expect(result.sections.find((s) => s.key === 'accountSetup')).toBeUndefined();
-    expect(result.sections.find((s) => s.key === 'teamSetup')).toBeUndefined();
     expect(result.sections.find((s) => s.key === 'tenantSetup')).toBeUndefined();
   });
 
@@ -58,16 +54,27 @@ describe('computeProfileCompletion — account setup sections', () => {
     expect(result.sections.find((s) => s.key === 'accountSetup')).toBeUndefined();
   });
 
-  it('should include all 3 setup sections for super-admin with accountData', () => {
+  it('should include the setup sections for super-admin with accountData', () => {
     const result = computeProfileCompletion(
       makeProfile(),
       makeClient(),
       ['super-admin'],
       makeAccountData()
     );
-    expect(result.sections.find((s) => s.key === 'accountSetup')).toBeDefined();
-    expect(result.sections.find((s) => s.key === 'teamSetup')).toBeDefined();
-    expect(result.sections.find((s) => s.key === 'tenantSetup')).toBeDefined();
+    expect(result.sections.map((s) => s.key)).toEqual(['core', 'accountSetup', 'tenantSetup']);
+  });
+
+  it('should keep the checklist short: 9 steps, 12 with a business profile', () => {
+    const countSteps = (isEnterpriseAccount: boolean) =>
+      computeProfileCompletion(
+        makeProfile(),
+        makeClient({ accountType: { category: 'business', isEnterpriseAccount } }),
+        ['super-admin'],
+        makeAccountData()
+      ).sections.reduce((total, s) => total + s.totalFields, 0);
+
+    expect(countSteps(false)).toBe(9);
+    expect(countSteps(true)).toBe(12);
   });
 
   it('should mark all fields filled when account is fully set up', () => {
@@ -121,43 +128,15 @@ describe('computeProfileCompletion — account setup sections', () => {
     expect(fieldFor(true).filled).toBe(true);
   });
 
-  it('should mark payoutBank as incomplete when payoutsEnabled is false', () => {
-    const result = computeProfileCompletion(
-      makeProfile(),
-      makeClient(),
-      ['super-admin'],
-      makeAccountData({ payoutsEnabled: false })
-    );
-    const field = result.sections
-      .find((s) => s.key === 'accountSetup')!
-      .fields.find((f) => f.key === 'payoutBank');
-    expect(field!.filled).toBe(false);
-  });
+  it('should mark payments done only once processing and payouts are both set up', () => {
+    const paymentsFilled = (data: Partial<IAccountSetupData>) =>
+      computeProfileCompletion(makeProfile(), makeClient(), ['super-admin'], makeAccountData(data))
+        .sections.find((s) => s.key === 'accountSetup')!
+        .fields.find((f) => f.key === 'payments')!.filled;
 
-  it('should mark staff/vendor as incomplete when counts are 0', () => {
-    const result = computeProfileCompletion(
-      makeProfile(),
-      makeClient(),
-      ['super-admin'],
-      makeAccountData({ staffCount: 0, vendorCount: 0 })
-    );
-    const team = result.sections.find((s) => s.key === 'teamSetup')!;
-    expect(team.fields.find((f) => f.key === 'staff')!.filled).toBe(false);
-    expect(team.fields.find((f) => f.key === 'vendor')!.filled).toBe(false);
-    expect(team.completedFields).toBe(0);
-  });
-
-  it('should mark tenantPayment as incomplete when no tenant has payment method', () => {
-    const result = computeProfileCompletion(
-      makeProfile(),
-      makeClient(),
-      ['super-admin'],
-      makeAccountData({ tenantHasPaymentMethod: false })
-    );
-    const field = result.sections
-      .find((s) => s.key === 'tenantSetup')!
-      .fields.find((f) => f.key === 'tenantPayment');
-    expect(field!.filled).toBe(false);
+    expect(paymentsFilled({})).toBe(true);
+    expect(paymentsFilled({ payoutsEnabled: false })).toBe(false);
+    expect(paymentsFilled({ hasPaymentProcessor: false })).toBe(false);
   });
 
   it('should include incomplete setup fields in missingFields', () => {
@@ -165,11 +144,10 @@ describe('computeProfileCompletion — account setup sections', () => {
       makeProfile(),
       makeClient(),
       ['super-admin'],
-      makeAccountData({ propertyCount: 0, leaseCount: 0, vendorCount: 0 })
+      makeAccountData({ propertyCount: 0, leaseCount: 0 })
     );
     expect(result.missingFields).toContain('Add your first property');
     expect(result.missingFields).toContain('Create a lease');
-    expect(result.missingFields).toContain('Connect a vendor');
   });
 
   it('should reduce overall percent when setup sections are incomplete', () => {
@@ -186,11 +164,8 @@ describe('computeProfileCompletion — account setup sections', () => {
       makeAccountData({
         propertyCount: 0,
         unitCount: 0,
-        staffCount: 0,
-        vendorCount: 0,
         tenantCount: 0,
         leaseCount: 0,
-        tenantHasPaymentMethod: false,
         hasPaymentProcessor: false,
         payoutsEnabled: false,
         subscriptionActive: false,

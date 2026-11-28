@@ -1251,21 +1251,12 @@ export class ProfileService {
     const isAdmin = roles.some((r) => [ROLES.SUPER_ADMIN, ROLES.ADMIN].includes(r as any));
 
     if (isAdmin) {
-      const [subscription, processor, userStats, vendorCount, leaseCount, tenantWithPayment] =
-        await Promise.all([
-          this.subscriptionDAO.findFirst({ cuid }),
-          this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null }),
-          this.userDAO.getUserStats(cuid),
-          this.vendorDAO.countDocuments({ 'connectedClients.cuid': cuid, deletedAt: null }),
-          this.leaseDAO.countDocuments({ cuid, deletedAt: null }),
-          this.userDAO.countDocuments({
-            'cuids.cuid': cuid,
-            'cuids.roles': 'tenant',
-            'cuids.isConnected': true,
-            stripePaymentMethodId: { $exists: true, $ne: null },
-            deletedAt: null,
-          }),
-        ]);
+      const [subscription, processor, userStats, leaseCount] = await Promise.all([
+        this.subscriptionDAO.findFirst({ cuid }),
+        this.paymentProcessorDAO.findFirst({ cuid, deletedAt: null }),
+        this.userDAO.getUserStats(cuid),
+        this.leaseDAO.countDocuments({ cuid, deletedAt: null }),
+      ]);
 
       accountData = {
         subscriptionActive: subscription?.status === 'active',
@@ -1273,10 +1264,7 @@ export class ProfileService {
         unitCount: subscription?.resourceTracker?.unitCount ?? 0,
         hasPaymentProcessor: !!processor?.accountId,
         payoutsEnabled: !!processor?.payoutsEnabled,
-        staffCount: Math.max(0, (userStats?.staff ?? 0) - 1), // exclude the account holder
-        vendorCount,
         tenantCount: userStats?.tenants ?? 0,
-        tenantHasPaymentMethod: tenantWithPayment > 0,
         leaseCount,
       };
     }

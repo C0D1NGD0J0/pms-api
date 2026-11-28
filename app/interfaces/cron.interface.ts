@@ -1,5 +1,6 @@
 export interface ICronJob {
   handler: () => Promise<void>; // Handler function to execute, that must be bound to service instance
+  sentryMonitor?: boolean; // Sentry Cron Monitor alerts on missed runs; the free plan allows only one
   description: string;
   timezone?: string;
   schedule: string; // Cron expression (e.g., '0 2 * * *' for 2 AM daily) (minute hour day month day-of-week)

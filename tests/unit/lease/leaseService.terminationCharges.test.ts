@@ -45,6 +45,16 @@ describe('LeaseService - charges after a lease termination', () => {
     } as any);
   });
 
+  it('cancels an unpaid Paystack charge locally, without asking Stripe to void it', async () => {
+    const charge = makeCharge({ gatewayPaymentId: 'psk-0a1b2c3d4e5f6a7b8c9d' });
+    mockPaymentDAO.list.mockResolvedValue({ items: [charge] });
+
+    await cancelCharges();
+
+    expect(mockPaymentGatewayService.cancelCharge).not.toHaveBeenCalled();
+    expect(cancelledIds()).toEqual([charge._id.toString()]);
+  });
+
   it('only looks at rent and late-fee charges due after the termination date', async () => {
     await cancelCharges();
 

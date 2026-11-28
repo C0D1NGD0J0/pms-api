@@ -134,7 +134,7 @@ export class InvitationService {
       const validatedData = InvitationValidations.sendInvitation.parse(invitationData);
       return await this.dispatchInvitation(inviterUserId, cuid, validatedData as IInvitationData);
     } catch (error) {
-      this.log.error('Error sending invitation:', error);
+      this.log.error({ error }, 'Error sending invitation');
       throw error;
     }
   }
@@ -213,8 +213,13 @@ export class InvitationService {
         if (seatInfo.availableSeats <= 0) {
           const canPurchase = seatInfo.canPurchaseMore;
           const message = canPurchase
-            ? `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats (${seatInfo.includedSeats} included + ${seatInfo.additionalSeats} additional). You can purchase up to ${seatInfo.maxAdditionalSeats - seatInfo.additionalSeats} more seats.`
-            : `Seat limit reached. Your plan allows ${seatInfo.totalAllowed} seats. Please upgrade your plan or archive users to free up seats.`;
+            ? t('invitation.errors.seatLimitCanPurchase', {
+                totalAllowed: seatInfo.totalAllowed,
+                includedSeats: seatInfo.includedSeats,
+                additionalSeats: seatInfo.additionalSeats,
+                purchasable: seatInfo.maxAdditionalSeats - seatInfo.additionalSeats,
+              })
+            : t('invitation.errors.seatLimitUpgrade', { totalAllowed: seatInfo.totalAllowed });
 
           throw new BadRequestError({ message });
         }
@@ -389,7 +394,7 @@ export class InvitationService {
         message: t('invitation.success.updated', { email: invitationData.inviteeEmail }),
       };
     } catch (error) {
-      this.log.error('Error updating invitation:', error);
+      this.log.error({ error }, 'Error updating invitation');
       throw error;
     }
   }
@@ -579,6 +584,10 @@ export class InvitationService {
 
   private async createTenantPaymentCustomer(user: any, cuid: string): Promise<void> {
     try {
+      // Paystack accounts have no customer object; the card is saved on the first card payment
+      const provider = await this.paymentGatewayService.getProviderForClient?.(cuid);
+      if (provider === IPaymentGatewayProvider.PAYSTACK) return;
+
       const existingProfile = await this.profileDAO.findFirst({ user: user._id });
       const existingCustomerId =
         existingProfile?.tenantInfo?.paymentGatewayCustomers?.get('platform');
@@ -730,7 +739,7 @@ export class InvitationService {
         message: invitation ? t('invitation.success.retrieved') : t('invitation.info.notFound'),
       };
     } catch (error) {
-      this.log.error('Error getting invitation by iuid:', error);
+      this.log.error({ error }, 'Error getting invitation by iuid');
       throw error;
     }
   }
@@ -968,7 +977,7 @@ export class InvitationService {
           : t('invitation.success.resent', { email: invitation.inviteeEmail }),
       };
     } catch (error) {
-      this.log.error('Error resending invitation:', error);
+      this.log.error({ error }, 'Error resending invitation');
       throw error;
     }
   }
@@ -1008,7 +1017,7 @@ export class InvitationService {
         message: t('invitation.success.statsRetrieved'),
       };
     } catch (error) {
-      this.log.error('Error getting invitation stats:', error);
+      this.log.error({ error }, 'Error getting invitation stats');
       throw error;
     }
   }
@@ -1041,7 +1050,7 @@ export class InvitationService {
             });
           }
         } catch (eventError) {
-          this.log.error('Error emitting invitation expired event:', eventError);
+          this.log.error({ error: eventError }, 'Error emitting invitation expired event');
           // Continue processing other invitations
         }
       }
@@ -1053,7 +1062,7 @@ export class InvitationService {
         message: t('invitation.success.expired', { count: expiredCount }),
       };
     } catch (error) {
-      this.log.error('Error expiring invitations:', error);
+      this.log.error({ error }, 'Error expiring invitations');
       throw error;
     }
   }
@@ -1155,7 +1164,7 @@ export class InvitationService {
         message: t('invitation.success.csvValidationStarted'),
       };
     } catch (error) {
-      this.log.error('Error validating invitation CSV:', error);
+      this.log.error({ error }, 'Error validating invitation CSV');
       throw error;
     }
   }
@@ -1197,7 +1206,7 @@ export class InvitationService {
         message: t('invitation.success.csvImportStarted'),
       };
     } catch (error) {
-      this.log.error('Error importing invitations from CSV:', error);
+      this.log.error({ error }, 'Error importing invitations from CSV');
       throw error;
     }
   }
@@ -1306,8 +1315,8 @@ export class InvitationService {
             error: error.message || 'Unknown error',
           });
           this.log.error(
-            `Failed to process invitation ${invitation.iuid} for ${invitation.inviteeEmail}:`,
-            error
+            { error },
+            `Failed to process invitation ${invitation.iuid} for ${invitation.inviteeEmail}`
           );
         }
       }
@@ -1334,7 +1343,7 @@ export class InvitationService {
         },
       };
     } catch (error) {
-      this.log.error('Error processing pending invitations:', error);
+      this.log.error({ error }, 'Error processing pending invitations');
       throw error;
     }
   }
@@ -1397,7 +1406,7 @@ export class InvitationService {
             );
           }
         } catch (error) {
-          this.log.error(`Failed to update invitation ${invitationId} status:`, error);
+          this.log.error({ error }, `Failed to update invitation ${invitationId} status`);
         }
       }
     }
@@ -1433,7 +1442,7 @@ export class InvitationService {
         );
       }
     } catch (error) {
-      this.log.error(`Failed to record email failure for invitation ${invitationId}:`, error);
+      this.log.error({ error }, `Failed to record email failure for invitation ${invitationId}`);
     }
   }
 
@@ -1464,23 +1473,32 @@ export class InvitationService {
       );
 
       if (updateResult.modifiedCount === 0) {
-        this.log.info('No leases found to migrate from invitation', {
-          invitationId: invitationId.toString(),
-        });
+        this.log.info(
+          {
+            invitationId: invitationId.toString(),
+          },
+          'No leases found to migrate from invitation'
+        );
         return;
       }
 
-      this.log.info('Leases migrated successfully', {
-        count: updateResult.modifiedCount,
-        invitationId: invitationId.toString(),
-        userId: userId.toString(),
-      });
+      this.log.info(
+        {
+          count: updateResult.modifiedCount,
+          invitationId: invitationId.toString(),
+          userId: userId.toString(),
+        },
+        'Leases migrated successfully'
+      );
     } catch (error) {
-      this.log.error('Error migrating leases from invitation to user', {
-        error: error instanceof Error ? error.message : 'Unknown error',
-        invitationId: invitationId.toString(),
-        userId: userId.toString(),
-      });
+      this.log.error(
+        {
+          error: error instanceof Error ? error.message : 'Unknown error',
+          invitationId: invitationId.toString(),
+          userId: userId.toString(),
+        },
+        'Error migrating leases from invitation to user'
+      );
       // don't throw - let invitation acceptance succeed even if lease migration fails
     }
   }

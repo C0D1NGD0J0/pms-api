@@ -53,6 +53,12 @@ describe('dropNoisyEvents', () => {
     expect(dropNoisyEvents(event, hintFor(error))).toBeNull();
   });
 
+  it('drops an open circuit wrapped as a 503', () => {
+    const open = Object.assign(new Error('open'), { name: 'CircuitBreakerOpenError' });
+    const error = Object.assign(new Error('unavailable'), { statusCode: 503, originalError: open });
+    expect(dropNoisyEvents(event, hintFor(error))).toBeNull();
+  });
+
   it('drops expected client errors below 500', () => {
     const error = Object.assign(new Error('Not found'), { statusCode: 404 });
     expect(dropNoisyEvents(event, hintFor(error))).toBeNull();

@@ -1,5 +1,6 @@
 import { IUserRole } from '@shared/constants/roles.constants';
 import { VendorServicesOffered } from '@interfaces/vendor.interface';
+import { PaymentRecordStatus } from '@interfaces/payments.interface';
 import { IPropertyFilterQuery, EmployeeDepartment } from '@interfaces/index';
 import { MaintenanceCategory } from '@interfaces/maintenanceRequest.interface';
 
@@ -423,6 +424,9 @@ export const CATEGORY_TO_VENDOR_SERVICE: Record<MaintenanceCategory, keyof Vendo
   };
 
 export const MAX_CHARGE_ATTEMPTS = 2;
+
+/** Statuses a charge can be paid or auto-charged from (card checkout, saved card, auto-charge cron). */
+export const CHARGEABLE_STATUSES = [PaymentRecordStatus.PENDING, PaymentRecordStatus.OVERDUE];
 
 export const WEEKDAYS = [
   'monday',

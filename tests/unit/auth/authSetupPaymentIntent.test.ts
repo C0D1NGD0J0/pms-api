@@ -3,6 +3,8 @@ jest.mock('@shared/middlewares', () => ({ preventTenantConflict: jest.fn() }));
 jest.mock('@di/index', () => ({ container: {} }));
 jest.mock('@shared/languages', () => ({ t: jest.fn((k: string) => k) }));
 jest.mock('@utils/index', () => ({
+  // Real helper: the saved-card tests check what it returns
+  readPaystackSavedCard: jest.requireActual('@utils/helpers').readPaystackSavedCard,
   createLogger: jest.fn(() => ({
     error: jest.fn(),
     info: jest.fn(),
@@ -700,5 +702,83 @@ describe('AuthService.setupPaymentIntent — checkout session', () => {
     const result = await service.setupPaymentIntent(CUID, user, RETURN_URL, CANCEL_URL);
 
     expect(result.data.paymentMethod).toBe('auto-debit');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Paystack accounts: the card is saved on the first card payment
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe('AuthService — Paystack accounts', () => {
+  const PAYSTACK_PROCESSOR = { accountId: 'ACCT_landlord1', provider: 'paystack' };
+
+  it('needs no setup step: the card is saved when the tenant first pays by card', async () => {
+    const paymentGatewayService = {
+      createCustomer: jest.fn(),
+      createSetupCheckoutSession: jest.fn(),
+    };
+    const service = makeService({
+      leaseDAO: { getActiveLeaseByTenant: jest.fn().mockResolvedValue(makeLease('auto-debit')) },
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(PAYSTACK_PROCESSOR) },
+      paymentGatewayService,
+    });
+
+    const result = await service.setupPaymentIntent(CUID, makeTenantUser(), RETURN_URL, CANCEL_URL);
+
+    expect(result.data).toEqual({
+      requiresSetup: false,
+      reason: 'card_saved_on_first_payment',
+      paymentMethod: 'auto-debit',
+    });
+    expect(paymentGatewayService.createCustomer).not.toHaveBeenCalled();
+    expect(paymentGatewayService.createSetupCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('shows the saved card as brand and last 4 only, never the authorization code', async () => {
+    const profileDAO = {
+      findFirst: jest.fn().mockResolvedValue({
+        tenantInfo: {
+          paystackCards: new Map([
+            [
+              'ACCT_landlord1',
+              {
+                authorizationCode: 'AUTH_8dfhjjdt',
+                email: 'tenant@example.com',
+                brand: 'visa',
+                last4: '4081',
+              },
+            ],
+          ]),
+        },
+      }),
+    };
+    const service = makeService({
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(PAYSTACK_PROCESSOR) },
+      profileDAO,
+    });
+
+    const result = await service.getPaymentMethod(CUID, makeTenantUser());
+
+    expect(profileDAO.findFirst).toHaveBeenCalledWith(
+      { user: new Types.ObjectId(TENANT_SUB) },
+      { select: '+tenantInfo.paystackCards' }
+    );
+    expect(result.data).toEqual({
+      hasPaymentMethod: true,
+      card: { hasCard: true, brand: 'visa', last4: '4081' },
+    });
+    expect(JSON.stringify(result)).not.toContain('AUTH_');
+    expect(JSON.stringify(result)).not.toContain('ACCT_');
+  });
+
+  it('reports no card when the tenant has not paid by card yet', async () => {
+    const service = makeService({
+      paymentProcessorDAO: { findFirst: jest.fn().mockResolvedValue(PAYSTACK_PROCESSOR) },
+      profileDAO: { findFirst: jest.fn().mockResolvedValue({ tenantInfo: {} }) },
+    });
+
+    const result = await service.getPaymentMethod(CUID, makeTenantUser());
+
+    expect(result.data).toEqual({ hasPaymentMethod: false, card: { hasCard: false } });
   });
 });

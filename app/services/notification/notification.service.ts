@@ -73,26 +73,6 @@ import {
   notifyApprovalNeeded as notifyApprovalNeededFn,
 } from './notification.property';
 import {
-  handlePaymentMethodSetupCompleted,
-  handleSubscriptionRenewalUpcoming,
-  handlePayoutBankAccountChanged,
-  handlePadPreDebitNotification,
-  handlePaymentRetriedWithCard,
-  handlePaymentRequestCreated,
-  handleDepositRefundFailed,
-  handlePaymentRefundFailed,
-  handlePadMandateConfirmed,
-  handlePadDebitInitiated,
-  handlePaymentSucceeded,
-  handlePaymentCancelled,
-  handlePaymentRefunded,
-  handlePaymentOverdue,
-  handleInvoiceOverdue,
-  handlePaymentFailed,
-  handlePayoutFailed,
-  handlePayoutPaid,
-} from './notification.payment.handlers';
-import {
   handleMaintenanceFundsAvailable,
   handleMaintenanceChargeSkipped,
   handleMaintenanceChargeCreated,
@@ -115,6 +95,27 @@ import {
   handleMRWorkDone,
   handleMRCreated,
 } from './notification.maintenance.handlers';
+import {
+  handlePaymentMethodSetupCompleted,
+  handleSubscriptionRenewalUpcoming,
+  handlePayoutBankAccountChanged,
+  handlePadPreDebitNotification,
+  handlePaymentRetriedWithCard,
+  handlePaymentRequestCreated,
+  handleDepositRefundFailed,
+  handlePaymentRefundFailed,
+  handlePadMandateConfirmed,
+  handlePaymentNeedsReview,
+  handlePadDebitInitiated,
+  handlePaymentSucceeded,
+  handlePaymentCancelled,
+  handlePaymentRefunded,
+  handlePaymentOverdue,
+  handleInvoiceOverdue,
+  handlePaymentFailed,
+  handlePayoutFailed,
+  handlePayoutPaid,
+} from './notification.payment.handlers';
 
 interface IConstructor {
   maintenanceRequestDAO: MaintenanceRequestDAO;
@@ -1609,6 +1610,9 @@ export class NotificationService {
     );
     this.emitterService.on(EventTypes.PAYMENT_REFUND_FAILED, (p) =>
       handlePaymentRefundFailed(ctx, p)
+    );
+    this.emitterService.on(EventTypes.PAYMENT_NEEDS_REVIEW, (p) =>
+      handlePaymentNeedsReview(ctx, p)
     );
     this.emitterService.on(EventTypes.SUBSCRIPTION_RENEWAL_UPCOMING, (p) =>
       handleSubscriptionRenewalUpcoming(ctx, p)

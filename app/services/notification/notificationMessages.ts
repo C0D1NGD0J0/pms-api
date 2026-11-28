@@ -164,6 +164,11 @@ export const NotificationMessages = {
       message:
         'A refund of {{amount}} for payment {{pytuid}} did not go through, so the tenant has not received it. Please review it and refund the tenant another way if needed.',
     },
+    paymentNeedsReview: {
+      title: 'Payment Needs Review',
+      message:
+        "A card payment of {{amount}} (reference {{reference}}) was received but couldn't be matched to its charge, so it hasn't been recorded. Please review it, then record or refund it.",
+    },
     depositRefundFailed: {
       title: 'Deposit Refund Failed',
       message:
@@ -447,6 +452,7 @@ export type NotificationMessageKey =
   | 'payment.retriedWithCardTenant'
   | 'payment.depositRefundFailed'
   | 'payment.refundFailed'
+  | 'payment.paymentNeedsReview'
   | 'payment.succeeded'
   | 'payment.overdue'
   | 'payment.failed'

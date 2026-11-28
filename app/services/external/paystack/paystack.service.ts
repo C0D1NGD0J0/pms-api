@@ -2,11 +2,12 @@ import crypto from 'crypto';
 import { t } from '@shared/languages';
 import { envVariables } from '@shared/config';
 import { PaystackCache } from '@caching/paystack.cache';
-import { CircuitBreaker, createLogger } from '@utils/index';
 import { FeatureFlag } from '@interfaces/featureFlag.interface';
 import { FeatureFlagService } from '@services/featureFlag/featureFlag.service';
+import { CircuitBreakerOpenError, CircuitBreaker, createLogger } from '@utils/index';
 import {
   ServiceUnavailableError,
+  InternalServerError,
   UnauthorizedError,
   BadRequestError,
   ForbiddenError,
@@ -212,6 +213,25 @@ export class PaystackService {
   ): Promise<IPaystackResponse<T>> {
     this.assertEnabled();
 
+    try {
+      return await this.sendRequest<T>(method, path, body);
+    } catch (error) {
+      // Too many recent outages: fail fast as an outage, not as a bad request
+      if (error instanceof CircuitBreakerOpenError) {
+        throw new ServiceUnavailableError({
+          message: t('payment.errors.serviceUnavailable'),
+          originalError: error,
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async sendRequest<T>(
+    method: 'GET' | 'POST' | 'PUT',
+    path: string,
+    body?: unknown
+  ): Promise<IPaystackResponse<T>> {
     return this.breaker.exec(async () => {
       let response: Response;
       try {
@@ -234,11 +254,20 @@ export class PaystackService {
 
       const payload = (await response.json().catch(() => null)) as IPaystackResponse<T> | null;
 
-      if (response.status >= 500) {
+      // A 429 is Paystack asking us to back off: an outage for the caller, and it trips the breaker
+      if (response.status >= 500 || response.status === 429) {
         this.log.error({ status: response.status, method, path }, 'Paystack server error');
         throw new ServiceUnavailableError({
           message: t('payment.errors.serviceUnavailable'),
         });
+      }
+      // Our secret key was refused: a configuration problem, never the user's fault
+      if (response.status === 401 || response.status === 403) {
+        this.log.error(
+          { status: response.status, method, path, message: payload?.message },
+          'Paystack refused the API key — check PAYSTACK_SECRET_KEY'
+        );
+        throw new InternalServerError({ message: t('payment.errors.serviceUnavailable') });
       }
       if (!response.ok || !payload?.status) {
         this.log.warn(

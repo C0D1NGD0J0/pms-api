@@ -681,6 +681,28 @@ describe('PaymentWebhookService - maintenance invoice stamping', () => {
 
     expect(mocks.invoiceDAO.update).not.toHaveBeenCalled();
   });
+
+  it('does nothing again for an invoice already marked paid (a retried webhook)', async () => {
+    const mocks = makeMocks();
+    mocks.invoiceDAO.findFirst.mockResolvedValue({
+      _id: new Types.ObjectId(),
+      tenantPaymentStatus: TenantPaymentStatus.PAID,
+    });
+
+    await mocks.service.markMaintenanceChargePaid(
+      makePayment({
+        paymentType: PaymentRecordType.MAINTENANCE,
+        maintenanceRequestUid: 'MR-3',
+      }) as any,
+      'ch_again'
+    );
+
+    expect(mocks.invoiceDAO.update).not.toHaveBeenCalled();
+    expect(mocks.emitterService.emit).not.toHaveBeenCalledWith(
+      EventTypes.MAINTENANCE_CHARGE_PAID,
+      expect.anything()
+    );
+  });
 });
 
 describe('PaymentWebhookService - disputes', () => {

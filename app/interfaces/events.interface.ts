@@ -64,6 +64,7 @@ export enum EventTypes {
   USER_SIGNUP_INITIATED = 'user:signup:initiated',
   LEASE_ESIGNATURE_SENT = 'lease:esignature:sent',
   PDF_GENERATION_FAILED = 'pdf:generation:failed',
+  PAYMENT_NEEDS_REVIEW = 'payment:needs:review',
   PAYMENT_DISPUTE_LOST = 'payment:dispute:lost',
   INSPECTION_SCHEDULED = 'inspection:scheduled',
   INSPECTION_SUBMITTED = 'inspection:submitted',
@@ -192,6 +193,7 @@ export type EventPayloadMap = {
   [EventTypes.PAYMENT_RETRIED_WITH_CARD]: PaymentRetriedWithCardPayload;
   [EventTypes.DEPOSIT_REFUND_FAILED]: DepositRefundFailedPayload;
   [EventTypes.PAYMENT_REFUND_FAILED]: PaymentRefundFailedPayload;
+  [EventTypes.PAYMENT_NEEDS_REVIEW]: PaymentNeedsReviewPayload;
   [EventTypes.PAYMENT_REQUEST_CREATED]: PaymentRequestCreatedPayload;
   [EventTypes.PAYMENT_CANCELLED]: PaymentCancelledPayload;
   [EventTypes.MAINTENANCE_CHARGE_CREATED]: MaintenanceChargeCreatedPayload;
@@ -418,6 +420,15 @@ export interface PayoutFailedPayload {
   cuid: string;
 }
 
+/** Money arrived that couldn't be recorded against its charge (wrong amount, unknown charge). */
+export interface PaymentNeedsReviewPayload {
+  reference: string; // the provider's transaction reference, to find it in their dashboard
+  currency: string;
+  pytuid?: string; // missing when no charge matched
+  amount: number; // cents
+  cuid: string;
+}
+
 export interface UploadCompletedPayload {
   senderInfo?: {
     email: string;
@@ -587,7 +598,6 @@ export interface InspectionApprovedPayload {
   iuid: string;
   cuid: string;
 }
-
 export interface PaymentFailedPayload {
   hostedInvoiceUrl?: string;
   failureReason?: string;
@@ -598,6 +608,7 @@ export interface PaymentFailedPayload {
   pytuid: string;
   cuid: string;
 }
+
 export interface MaintenanceInvoiceSubmittedPayload {
   invoiceId?: string;
   requestId: string;

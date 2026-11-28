@@ -118,6 +118,13 @@ describe('NotificationService - New Methods', () => {
     jest.spyOn(notificationService['log'], 'warn').mockImplementation((_msg: unknown) => undefined);
   });
 
+  it('listens for payments that need review, so managers are alerted', () => {
+    expect(mockEmitterService.on).toHaveBeenCalledWith(
+      EventTypes.PAYMENT_NEEDS_REVIEW,
+      expect.any(Function)
+    );
+  });
+
   describe('notifyLeaseLifecycleEvent', () => {
     it('should send notification to tenant for renewal_created event', async () => {
       const params = {

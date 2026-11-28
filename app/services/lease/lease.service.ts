@@ -27,9 +27,12 @@ import { DEFAULT_LATE_FEE_GRACE_DAYS, FinancialCalculator } from '@utils/financi
 import { getUidsByUserId, getUserIdsByUid } from '@services/property/propertyHelpers';
 import { ProcessedWebhookData } from '@services/external/esignature/boldSign.service';
 import { PaymentRecordStatus, PaymentRecordType } from '@interfaces/payments.interface';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import { MediaUploadService, UserService, SMSService, S3Service } from '@services/index';
 import { InvitationDAO, ProfileDAO, PaymentDAO, ClientDAO, LeaseDAO, UserDAO } from '@dao/index';
+import {
+  PAYSTACK_REFERENCE_PREFIX,
+  PaymentGatewayService,
+} from '@services/paymentGateway/paymentGateway.service';
 import {
   EventEmitterService,
   NotificationService,
@@ -1520,7 +1523,11 @@ export class LeaseService {
         continue;
       }
 
-      if (charge.gatewayPaymentId) {
+      // Unpaid Paystack charges have nothing to void at the provider
+      if (
+        charge.gatewayPaymentId &&
+        !charge.gatewayPaymentId.startsWith(PAYSTACK_REFERENCE_PREFIX)
+      ) {
         const voidResult = this.paymentGatewayService
           ? await this.paymentGatewayService.cancelCharge(
               IPaymentGatewayProvider.STRIPE,

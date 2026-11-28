@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { EventTypes } from '@interfaces/events.interface';
 import { InvitationService } from '@services/invitation/invitation.service';
 import { ServiceUnavailableError, BadRequestError, ForbiddenError } from '@shared/customErrors';
@@ -103,6 +104,21 @@ describe('InvitationService.dispatchInvitation — shared single/CSV send path',
     await expect(
       service.dispatchInvitation(inviterId, cuid, invite({ role: 'admin' }))
     ).resolves.toEqual(expect.objectContaining({ success: true }));
+  });
+
+  it('explains a full seat limit in the translated message', async () => {
+    (service as any).subscriptionService.getAvailableSeats.mockResolvedValue({
+      availableSeats: 0,
+      canPurchaseMore: false,
+      totalAllowed: 3,
+    });
+
+    await expect(
+      service.dispatchInvitation(inviterId, cuid, invite({ role: 'staff' }))
+    ).rejects.toMatchObject({
+      constructor: BadRequestError,
+      message: t('invitation.errors.seatLimitUpgrade', { totalAllowed: 3 }),
+    });
   });
 
   it('rejects inviting yourself', async () => {

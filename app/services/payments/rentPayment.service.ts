@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import Logger from 'bunyan';
 import { Types } from 'mongoose';
+import { t } from '@shared/languages';
 import { createLogger } from '@utils/index';
 import { envVariables } from '@shared/config';
 import { QueueFactory } from '@services/queue';
@@ -11,8 +12,13 @@ import { EventEmitterService } from '@services/eventEmitter';
 import { SubscriptionPlanConfig } from '@services/subscription';
 import { MAX_CHARGE_ATTEMPTS, JOB_NAME } from '@utils/constants';
 import { IPromiseReturnedData, MailType } from '@interfaces/utils.interface';
-import { BadRequestError, ForbiddenError, NotFoundError } from '@shared/customErrors';
 import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
+import {
+  ServiceUnavailableError,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   PaymentProcessorDAO,
   SubscriptionDAO,
@@ -38,6 +44,7 @@ import {
 
 import { PaymentCronService } from './paymentCron.service';
 import { PaymentWebhookService } from './paymentWebhook.service';
+import { PaystackPaymentService } from './paystackPayment.service';
 import {
   annualYearIndexForPeriod,
   buildAnnualRentLineItems,
@@ -47,6 +54,7 @@ import {
 
 interface IConstructor {
   subscriptionPlanConfig: SubscriptionPlanConfig;
+  paystackPaymentService: PaystackPaymentService;
   paymentGatewayService: PaymentGatewayService;
   paymentWebhookService: PaymentWebhookService;
   paymentProcessorDAO: PaymentProcessorDAO;
@@ -66,6 +74,7 @@ export class RentPaymentService {
   private readonly subscriptionPlanConfig: SubscriptionPlanConfig;
   private readonly paymentGatewayService: PaymentGatewayService;
   private readonly paymentWebhookService: PaymentWebhookService;
+  private readonly paystackPaymentService: PaystackPaymentService;
   private readonly paymentProcessorDAO: PaymentProcessorDAO;
   private readonly emitterService: EventEmitterService;
   private readonly subscriptionDAO: SubscriptionDAO;
@@ -81,6 +90,7 @@ export class RentPaymentService {
     subscriptionPlanConfig,
     paymentGatewayService,
     paymentWebhookService,
+    paystackPaymentService,
     paymentProcessorDAO,
     emitterService,
     subscriptionDAO,
@@ -96,6 +106,7 @@ export class RentPaymentService {
     this.subscriptionPlanConfig = subscriptionPlanConfig;
     this.paymentGatewayService = paymentGatewayService;
     this.paymentWebhookService = paymentWebhookService;
+    this.paystackPaymentService = paystackPaymentService;
     this.paymentProcessorDAO = paymentProcessorDAO;
     this.emitterService = emitterService;
     this.subscriptionDAO = subscriptionDAO;
@@ -419,10 +430,7 @@ export class RentPaymentService {
           ? annualYearIndexForPeriod(lease.duration.startDate, data.period)
           : null;
         if (yearIndex === null) {
-          throw new BadRequestError({
-            message:
-              'This lease is paid yearly — choose the lease-year (the start-date anniversary month) to bill.',
-          });
+          throw new BadRequestError({ message: t('payment.errors.annualPeriodRequired') });
         }
         data.period = annualRentPeriod(lease.duration.startDate, yearIndex);
       }
@@ -530,11 +538,11 @@ export class RentPaymentService {
       }
       if (subscription.status !== ISubscriptionStatus.ACTIVE) {
         this.log.warn(
-          'Subscription not active — payment will be collected but payouts are paused',
           {
             cuid,
             subscriptionStatus: subscription.status,
-          }
+          },
+          'Subscription not active — payment will be collected but payouts are paused'
         );
       }
 
@@ -585,7 +593,10 @@ export class RentPaymentService {
       }
       const totalAmountInCents = RentPaymentService.sumLineItems(lineItems);
 
-      if (!options?.createStripeInvoice) {
+      // Paystack has no invoice to create up front: the record is charged to the tenant's saved
+      // card on the due date (auto-charge cron) or paid by card checkout
+      const isPaystackAccount = paymentProcessor.provider === 'paystack';
+      if (!options?.createStripeInvoice || isPaystackAccount) {
         const payment = await this.createManualTrackingPayment({
           cuid,
           tenantId: tenantUserId,
@@ -613,6 +624,16 @@ export class RentPaymentService {
             paymentType: effectivePaymentType,
             dueDate: data.dueDate,
             description: data.description,
+          });
+        }
+        if (isPaystackAccount && options?.invoiceDeposit && leaseFees.deposits.total > 0) {
+          await this.createDepositTrackingRecord({
+            cuid,
+            leaseId: lease._id.toString(),
+            tenantUserId,
+            dueDate: dayjs(data.dueDate).toDate(),
+            currency: leaseFees.currency,
+            deposits: leaseFees.deposits,
           });
         }
         return { success: true, data: payment, message: 'Payment request created' };
@@ -650,10 +671,13 @@ export class RentPaymentService {
 
       let tenantCustomerId = tenantProfile.tenantInfo?.paymentGatewayCustomers?.get('platform');
       if (!tenantCustomerId) {
-        this.log.info('No platform Stripe customer for tenant — creating one', {
-          profileId: tenantProfile._id,
-          cuid,
-        });
+        this.log.info(
+          {
+            profileId: tenantProfile._id,
+            cuid,
+          },
+          'No platform Stripe customer for tenant — creating one'
+        );
 
         const customerResult = await this.paymentGatewayService.createCustomer({
           provider: IPaymentGatewayProvider.STRIPE,
@@ -855,7 +879,7 @@ export class RentPaymentService {
         message: 'Rent payment processed successfully',
       };
     } catch (error: any) {
-      this.log.error('Error creating rent payment:', error);
+      this.log.error({ error }, 'Error creating rent payment');
       throw error;
     }
   }
@@ -865,6 +889,32 @@ export class RentPaymentService {
    * Creates a Stripe invoice → finalizes (auto-charges) → updates payment record with gateway ID.
    * Status stays PENDING until webhook confirms PAID.
    */
+  /** "Pay now" on a Paystack account: charges the card the tenant saved on an earlier card payment. */
+  private async payPendingChargeWithSavedCard(
+    payment: IPaymentDocument
+  ): IPromiseReturnedData<IPaymentDocument> {
+    const outcome = await this.paystackPaymentService.chargeSavedCard(payment);
+    if (outcome === 'no_saved_card') {
+      throw new BadRequestError({ message: t('payment.errors.payByCardFirst') });
+    }
+    if (outcome === 'declined') {
+      throw new BadRequestError({ message: t('payment.errors.cardDeclined') });
+    }
+    if (outcome === 'unavailable') {
+      throw new ServiceUnavailableError({ message: t('payment.errors.serviceUnavailable') });
+    }
+
+    const updated = await this.paymentDAO.findFirst({ _id: payment._id });
+    return {
+      success: true,
+      data: (updated ?? payment) as IPaymentDocument,
+      message:
+        outcome === 'paid'
+          ? t('payment.success.cardCharged')
+          : t('payment.success.cardChargeProcessing'),
+    };
+  }
+
   async payPendingCharge(
     cuid: string,
     pytuid: string,
@@ -916,6 +966,10 @@ export class RentPaymentService {
       }
 
       const paymentProcessor = await this.getActiveProcessorOrThrow(cuid);
+
+      if (paymentProcessor.provider === 'paystack') {
+        return this.payPendingChargeWithSavedCard(payment);
+      }
 
       if (payment.paymentType === PaymentRecordType.RENT) {
         let activeInvoiceId = payment.gatewayPaymentId;
@@ -1172,7 +1226,12 @@ export class RentPaymentService {
       );
 
       if (!payResult.success) {
-        throw new BadRequestError({ message: payResult.message || 'Failed to initiate payment' });
+        // The provider's own message stays in the logs; the tenant gets a neutral one
+        this.log.warn(
+          { pytuid, cuid, providerMessage: payResult.message },
+          'Pending charge payment failed'
+        );
+        throw new BadRequestError({ message: t('payment.errors.requestRejected') });
       }
 
       this.log.info(
@@ -1473,10 +1532,14 @@ export class RentPaymentService {
   ): { description: string; amountInCents: number }[] {
     // Annual leases bill the whole lease-year; there is no first-month pro-ration
     if (isAnnualLease(lease)) {
+      // No period means the first lease-year; a period that isn't an anniversary is a mistake
       const yearIndex = billing.period
         ? annualYearIndexForPeriod(lease.duration.startDate, billing.period)
-        : null;
-      return buildAnnualRentLineItems(lease, yearIndex ?? 0);
+        : 0;
+      if (yearIndex === null) {
+        throw new BadRequestError({ message: t('payment.errors.annualPeriodRequired') });
+      }
+      return buildAnnualRentLineItems(lease, yearIndex);
     }
 
     const { baseRent, petMonthlyFee, managementFee } = FinancialCalculator.leaseMonthlyFees(lease);

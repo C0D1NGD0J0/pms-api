@@ -10,6 +10,7 @@ import { ForbiddenError } from '@shared/customErrors';
 import { Country, State, City } from 'country-state-city';
 import { NextFunction, Response, Request } from 'express';
 import { IUserRole, ROLES } from '@shared/constants/roles.constants';
+import type { IPaystackSavedCard } from '@interfaces/profile.interface';
 import {
   AsyncRequestHandler,
   ExtractedMediaFile,
@@ -921,3 +922,15 @@ export async function* iterateInPages<T extends { _id: unknown }>(
     lastId = items[items.length - 1]._id;
   }
 }
+
+/**
+ * A tenant's saved Paystack card for one landlord (keyed by the landlord's subaccount code).
+ * `paystackCards` is a Mongoose Map on a document, or a plain object on a lean result.
+ */
+export const readPaystackSavedCard = (
+  cards: Map<string, IPaystackSavedCard> | Record<string, IPaystackSavedCard> | undefined | null,
+  subaccountCode: string
+): IPaystackSavedCard | undefined => {
+  if (!cards) return undefined;
+  return cards instanceof Map ? cards.get(subaccountCode) : cards[subaccountCode];
+};

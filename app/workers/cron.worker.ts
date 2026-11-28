@@ -1,5 +1,6 @@
 import { Job } from 'bull';
 import Logger from 'bunyan';
+import * as Sentry from '@sentry/node';
 import { createLogger } from '@utils/index';
 import { CronService } from '@services/cron/cron.service';
 
@@ -56,7 +57,7 @@ export class CronWorker {
     }
 
     try {
-      await handler();
+      await this.runHandler(jobName, handler);
       const duration = Date.now() - startTime;
       this.log.info(
         `✓ Cron job completed: ${jobName} - Duration: (${duration}ms) - Service: ${service}`
@@ -73,4 +74,17 @@ export class CronWorker {
       this.activeJobs.delete(jobName);
     }
   };
+
+  /** Monitored jobs send Sentry check-ins, so a missed or stuck run raises an alert. */
+  private runHandler(jobName: string, handler: () => Promise<void>): Promise<void> {
+    const cronJob = this.cronService.getCronJob(jobName);
+    if (!cronJob?.sentryMonitor) return handler();
+
+    return Sentry.withMonitor(jobName, handler, {
+      schedule: { type: 'crontab', value: cronJob.schedule },
+      timezone: cronJob.timezone || 'UTC',
+      checkinMargin: 30, // minutes late before a run counts as missed
+      maxRuntime: Math.ceil((cronJob.timeout || 300000) / 60000), // minutes
+    });
+  }
 }

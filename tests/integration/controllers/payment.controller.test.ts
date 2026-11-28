@@ -129,6 +129,7 @@ describe('PaymentController Integration Tests', () => {
     });
 
     const rentPaymentService = new RentPaymentService({
+      paystackPaymentService: {} as any,
       subscriptionPlanConfig,
       paymentGatewayService: mockPaymentGatewayService,
       paymentWebhookService: {} as any,

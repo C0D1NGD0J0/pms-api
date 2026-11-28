@@ -7,15 +7,23 @@ import { FinancialCalculator } from '@utils/financial';
 import { EventTypes } from '@interfaces/events.interface';
 import { IPaymentGatewayProvider } from '@interfaces/index';
 import { EventEmitterService } from '@services/eventEmitter';
-import { BadRequestError, NotFoundError } from '@shared/customErrors';
 import { IPayoutSchedule } from '@interfaces/paymentGateway.interface';
 import { PaymentProcessorDAO, ProfileDAO, ClientDAO, VendorDAO } from '@dao/index';
 import { IPromiseReturnedData, ISuccessReturnData } from '@interfaces/utils.interface';
-import { PaymentGatewayService } from '@services/paymentGateway/paymentGateway.service';
 import {
   PaymentProcessorAccountType,
   IPayoutAccountDetails,
 } from '@interfaces/paymentProcessor.interface';
+import {
+  PaymentGatewayService,
+  PROVIDER_UNAVAILABLE,
+} from '@services/paymentGateway/paymentGateway.service';
+import {
+  ServiceUnavailableError,
+  handleMongoError,
+  BadRequestError,
+  NotFoundError,
+} from '@shared/customErrors';
 import {
   getCountryCodeFromLocation,
   INSTANT_PAYOUT_MAX_CENTS,
@@ -128,13 +136,22 @@ export class PayoutAccountService {
     return processor;
   }
 
-  /** Logs the provider's own message and gives the user a neutral one that doesn't name the provider. */
+  /**
+   * Logs the provider's own message and gives the user a neutral one that doesn't name the
+   * provider. An outage answers "try again later" (503) instead of blaming the request.
+   */
   private providerError(
-    providerMessage: string | undefined,
+    result: { message?: string; error?: string },
     userMessageKey: string,
     context: Record<string, unknown>
-  ): BadRequestError {
-    this.log.warn({ ...context, providerMessage }, 'Payout provider request failed');
+  ): BadRequestError | ServiceUnavailableError {
+    this.log.warn(
+      { ...context, providerMessage: result.message },
+      'Payout provider request failed'
+    );
+    if (result.error === PROVIDER_UNAVAILABLE) {
+      return new ServiceUnavailableError({ message: t('payment.errors.serviceUnavailable') });
+    }
     return new BadRequestError({ message: t(userMessageKey) });
   }
 
@@ -184,7 +201,7 @@ export class PayoutAccountService {
       );
 
       if (!linkResult.success || !linkResult.data) {
-        throw this.providerError(linkResult.message, 'payment.payout.errors.linkFailed', {
+        throw this.providerError(linkResult, 'payment.payout.errors.linkFailed', {
           cuid,
           type,
         });
@@ -261,7 +278,7 @@ export class PayoutAccountService {
         }
       );
       if (!accountResult.success || !accountResult.data) {
-        throw this.providerError(accountResult.message, 'payment.payout.errors.setupFailed', {
+        throw this.providerError(accountResult, 'payment.payout.errors.setupFailed', {
           cuid,
         });
       }
@@ -450,7 +467,7 @@ export class PayoutAccountService {
         message: t('payment.payout.success.bankAccountUpdated'),
       };
     } catch (error) {
-      this.log.error('Error changing Paystack payout bank account', error);
+      this.log.error({ error, cuid }, 'Error changing Paystack payout bank account');
       throw error;
     }
   }
@@ -504,18 +521,32 @@ export class PayoutAccountService {
       };
       const isActive = subaccount.active !== false;
 
-      await this.paymentProcessorDAO.insert({
-        cuid,
-        client: client._id,
-        provider: 'paystack',
-        accountType: PaymentProcessorAccountType.SUBACCOUNT,
-        accountId: subaccount.subaccount_code,
-        chargesEnabled: isActive,
-        payoutsEnabled: isActive,
-        detailsSubmitted: true,
-        onboardedAt: new Date(),
-        bankDetails,
-      });
+      try {
+        await this.paymentProcessorDAO.insert({
+          cuid,
+          client: client._id,
+          provider: 'paystack',
+          accountType: PaymentProcessorAccountType.SUBACCOUNT,
+          accountId: subaccount.subaccount_code,
+          chargesEnabled: isActive,
+          payoutsEnabled: isActive,
+          detailsSubmitted: true,
+          onboardedAt: new Date(),
+          bankDetails,
+        });
+      } catch (saveError) {
+        // The subaccount exists at Paystack but isn't linked here: logged so it can be linked by hand
+        this.log.error(
+          {
+            error: saveError,
+            cuid,
+            subaccountCode: subaccount.subaccount_code,
+            accountNumberLast4: bankDetails.accountNumberLast4,
+          },
+          'Paystack subaccount created but not saved — link it to the account manually'
+        );
+        throw handleMongoError(saveError as Error);
+      }
 
       return {
         success: true,
@@ -528,7 +559,7 @@ export class PayoutAccountService {
         message: t('payment.payout.success.bankAccountAdded'),
       };
     } catch (error) {
-      this.log.error('Error creating Paystack payout account', error);
+      this.log.error({ error, cuid }, 'Error creating Paystack payout account');
       throw error;
     }
   }
@@ -563,7 +594,7 @@ export class PayoutAccountService {
       );
 
       if (!linkResult.success || !linkResult.data) {
-        throw this.providerError(linkResult.message, 'payment.payout.errors.linkFailed', { cuid });
+        throw this.providerError(linkResult, 'payment.payout.errors.linkFailed', { cuid });
       }
 
       return {
@@ -589,7 +620,7 @@ export class PayoutAccountService {
         paymentProcessor.accountId
       );
       if (!result.success || !result.data) {
-        throw this.providerError(result.message, 'payment.payout.errors.balanceUnavailable', {
+        throw this.providerError(result, 'payment.payout.errors.balanceUnavailable', {
           cuid,
         });
       }
@@ -625,7 +656,7 @@ export class PayoutAccountService {
         { limit: query.limit, starting_after: query.cursor }
       );
       if (!result.success || !result.data) {
-        throw this.providerError(result.message, 'payment.payout.errors.historyUnavailable', {
+        throw this.providerError(result, 'payment.payout.errors.historyUnavailable', {
           cuid,
         });
       }
@@ -670,7 +701,7 @@ export class PayoutAccountService {
         paymentProcessor.accountId
       );
       if (!result.success || !result.data) {
-        throw this.providerError(result.message, 'payment.payout.errors.scheduleUnavailable', {
+        throw this.providerError(result, 'payment.payout.errors.scheduleUnavailable', {
           cuid,
         });
       }
@@ -700,7 +731,7 @@ export class PayoutAccountService {
         weeklyAnchor
       );
       if (!result.success) {
-        throw this.providerError(result.message, 'payment.payout.errors.scheduleUpdateFailed', {
+        throw this.providerError(result, 'payment.payout.errors.scheduleUpdateFailed', {
           cuid,
         });
       }
@@ -742,13 +773,9 @@ export class PayoutAccountService {
         paymentProcessor.accountId
       );
       if (!balanceResult.success || !balanceResult.data) {
-        throw this.providerError(
-          balanceResult.message,
-          'payment.payout.errors.balanceUnavailable',
-          {
-            cuid,
-          }
-        );
+        throw this.providerError(balanceResult, 'payment.payout.errors.balanceUnavailable', {
+          cuid,
+        });
       }
 
       const quote = this.buildInstantPayoutQuote(
@@ -774,13 +801,9 @@ export class PayoutAccountService {
         }
       );
       if (!payoutResult.success || !payoutResult.data) {
-        throw this.providerError(
-          payoutResult.message,
-          'payment.payout.errors.instantPayoutFailed',
-          {
-            cuid,
-          }
-        );
+        throw this.providerError(payoutResult, 'payment.payout.errors.instantPayoutFailed', {
+          cuid,
+        });
       }
 
       const payout = payoutResult.data;
@@ -950,7 +973,7 @@ export class PayoutAccountService {
       );
 
       if (!result.success || !result.data) {
-        throw this.providerError(result.message, 'payment.payout.errors.setupFailed', {
+        throw this.providerError(result, 'payment.payout.errors.setupFailed', {
           cuid,
           vuid,
         });
@@ -999,7 +1022,7 @@ export class PayoutAccountService {
       );
 
       if (!result.success || !result.data) {
-        throw this.providerError(result.message, 'payment.payout.errors.linkFailed', {
+        throw this.providerError(result, 'payment.payout.errors.linkFailed', {
           cuid,
           vuid,
         });
@@ -1029,7 +1052,7 @@ export class PayoutAccountService {
       );
 
       if (!result.success || !result.data) {
-        throw this.providerError(result.message, 'payment.payout.errors.linkFailed', {
+        throw this.providerError(result, 'payment.payout.errors.linkFailed', {
           cuid,
           vuid,
         });

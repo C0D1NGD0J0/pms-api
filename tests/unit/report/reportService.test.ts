@@ -165,7 +165,7 @@ describe('ReportService', () => {
 
       await expect(
         service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS })
-      ).rejects.toThrow(/Failed to queue report generation/);
+      ).rejects.toMatchObject({ statusCode: 503 }); // the queue is down: try again later
 
       expect(mockReportDAO.deleteItem).toHaveBeenCalledWith({ _id: expect.anything() });
       expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
@@ -183,7 +183,7 @@ describe('ReportService', () => {
 
       await expect(
         service.requestReport(CUID, USER_ID, { period: ReportPeriod.LAST_30_DAYS })
-      ).rejects.toThrow(/Failed to queue report generation/);
+      ).rejects.toMatchObject({ statusCode: 503 }); // the queue is down: try again later
 
       expect(mockSubscriptionDAO.incrementUsageCounter).toHaveBeenCalledWith(
         CUID,

@@ -222,6 +222,22 @@ describe('PropertyService Integration Tests', () => {
     });
 
     describe('addProperty', () => {
+      it('refuses a role that cannot add properties with ForbiddenError (403)', async () => {
+        const ctx = createMockContext(testClient.cuid, adminUser._id.toString(), ROLES.TENANT);
+
+        await expect(
+          propertyService.addProperty(ctx as any, { name: 'Not allowed' } as any)
+        ).rejects.toThrow(ForbiddenError);
+      });
+
+      it('answers NotFoundError for an account that does not exist', async () => {
+        const ctx = createMockContext('NO_SUCH_CLIENT', adminUser._id.toString(), ROLES.ADMIN);
+
+        await expect(
+          propertyService.addProperty(ctx as any, { name: 'Nowhere' } as any)
+        ).rejects.toThrow(NotFoundError);
+      });
+
       it('should create property and persist to database (admin auto-approved)', async () => {
         const propertyData = {
           name: `Test Property ${Date.now()}`,

@@ -28,6 +28,7 @@ const makeMocks = () => {
   const noop = {} as any;
 
   const service = new PaymentCronService({
+    paystackPaymentService: {} as any,
     maintenancePaymentService: noop,
     paymentGatewayService: noop,
     paymentProcessorDAO: { findFirst: jest.fn().mockReturnValue(Promise.resolve(null)) } as any,

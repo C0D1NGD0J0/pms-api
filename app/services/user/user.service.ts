@@ -227,7 +227,7 @@ export class UserService implements ICronProvider {
   ): Promise<ISuccessReturnData<IUserDetailResponse> | null> {
     const cachedData = await this.userCache.getUserDetail(clientId, uid);
     if (cachedData.success && cachedData.data) {
-      this.log.info('User detail retrieved from cache', { clientId, uid });
+      this.log.info({ clientId, uid }, 'User detail retrieved from cache');
       return {
         success: true,
         data: cachedData.data,
@@ -254,7 +254,7 @@ export class UserService implements ICronProvider {
 
     const userDetail = await this.buildUserDetailData(user, clientConnection, clientId, client);
     await this.userCache.cacheUserDetail(clientId, uid, userDetail);
-    this.log.info('User detail cached', { clientId, uid });
+    this.log.info({ clientId, uid }, 'User detail cached');
 
     return userDetail;
   }
@@ -280,11 +280,14 @@ export class UserService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'User information' }),
       };
     } catch (error) {
-      this.log.error('Error getting client user:', {
-        cuid,
-        uid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          uid,
+          error: error.message || error,
+        },
+        'Error getting client user'
+      );
       throw error;
     }
   }
@@ -430,11 +433,14 @@ export class UserService implements ICronProvider {
         pagination: paginationOpts,
         totalCount: result.pagination?.total,
       });
-      this.log.info('Filtered users cached', {
-        cuid,
-        count: users.length,
-        total: result.pagination?.total,
-      });
+      this.log.info(
+        {
+          cuid,
+          count: users.length,
+          total: result.pagination?.total,
+        },
+        'Filtered users cached'
+      );
 
       return {
         success: true,
@@ -445,11 +451,14 @@ export class UserService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'Users' }),
       };
     } catch (error) {
-      this.log.error('Error getting filtered users:', {
-        cuid,
-        filterOptions,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          filterOptions,
+          error: error.message || error,
+        },
+        'Error getting filtered users'
+      );
       throw error;
     }
   }
@@ -493,16 +502,19 @@ export class UserService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'User statistics' }),
       };
     } catch (error) {
-      this.log.error('Error getting user stats:', {
-        cuid,
-        filterOptions,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          filterOptions,
+          error: error.message || error,
+        },
+        'Error getting user stats'
+      );
       throw error;
     }
   }
 
-  async getUserProperties(userId: string, clientId: string): Promise<IUserProperty[]> {
+  private async getUserProperties(userId: string, clientId: string): Promise<IUserProperty[]> {
     try {
       // Query properties managed by this user with minimal fields
       const result = await this.propertyDAO.getPropertiesByClientId(
@@ -528,8 +540,9 @@ export class UserService implements ICronProvider {
         since: this.formatDate(property.createdAt),
       }));
     } catch (error) {
-      this.log.error('Error getting user properties:', error);
-      return [];
+      // Rethrown: an empty list would wrongly show the employee as managing no properties
+      this.log.error({ error, userId, cuid: clientId }, 'Error getting user properties');
+      throw error;
     }
   }
 
@@ -802,7 +815,7 @@ export class UserService implements ICronProvider {
           };
         });
       } catch (error) {
-        this.log.error('Error fetching linked vendor users:', error);
+        this.log.error({ error }, 'Error fetching linked vendor users');
         linkedUsers = [];
       }
     }
@@ -1230,7 +1243,7 @@ export class UserService implements ICronProvider {
 
       return user;
     } catch (error) {
-      this.log.error('Failed to get user with client context', { error, userId, cuid });
+      this.log.error({ error, userId, cuid }, 'Failed to get user with client context');
       return null;
     }
   }
@@ -1251,17 +1264,20 @@ export class UserService implements ICronProvider {
       const supervisor = await this.findSupervisor(reportsTo, cuid);
 
       if (!supervisor) {
-        this.log.warn('Supervisor not found or not in same client', {
-          userId,
-          reportsTo: String(reportsTo),
-          cuid,
-        });
+        this.log.warn(
+          {
+            userId,
+            reportsTo: String(reportsTo),
+            cuid,
+          },
+          'Supervisor not found or not in same client'
+        );
         return null;
       }
 
       return supervisor._id.toString();
     } catch (error) {
-      this.log.error('Failed to find user supervisor', { error, userId, cuid });
+      this.log.error({ error, userId, cuid }, 'Failed to find user supervisor');
       return null;
     }
   }
@@ -1284,7 +1300,7 @@ export class UserService implements ICronProvider {
       ROLE_GROUPS.EMPLOYEE_ROLES
     );
     if (employeeUserId && supervisorId.toString() === employeeUserId) {
-      throw new BadRequestError({ message: 'An employee cannot report to themselves' });
+      throw new BadRequestError({ message: t('user.errors.cannotReportToSelf') });
     }
     return supervisorId;
   }
@@ -1320,7 +1336,7 @@ export class UserService implements ICronProvider {
       const { firstName, lastName, displayName } = user.profile.personalInfo;
       return displayName || `${firstName} ${lastName}`.trim() || user.email || 'Unknown User';
     } catch (error) {
-      this.log.error('Failed to get user display name', { error, userId, cuid });
+      this.log.error({ error, userId, cuid }, 'Failed to get user display name');
       return 'Unknown User';
     }
   }
@@ -1332,7 +1348,7 @@ export class UserService implements ICronProvider {
       });
 
       if (!user) {
-        this.log.warn('User not found for announcement filters', { userId, cuid });
+        this.log.warn({ userId, cuid }, 'User not found for announcement filters');
         return { roles: [] };
       }
 
@@ -1357,10 +1373,13 @@ export class UserService implements ICronProvider {
             vendorId = vendorEntity.vuid;
           }
         } catch (error) {
-          this.log.warn('Failed to get vendor entity for primary vendor', {
-            userId,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
+          this.log.warn(
+            {
+              userId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            },
+            'Failed to get vendor entity for primary vendor'
+          );
         }
       }
       // Check if staff user is associated with a vendor through profile
@@ -1380,7 +1399,7 @@ export class UserService implements ICronProvider {
         inAppDisabled: notificationPrefs?.inAppNotifications === false,
       };
     } catch (error) {
-      this.log.error('Error getting user announcement filters', { userId, cuid, error });
+      this.log.error({ userId, cuid, error }, 'Error getting user announcement filters');
       return { roles: [] };
     }
   }
@@ -1434,7 +1453,7 @@ export class UserService implements ICronProvider {
 
     await this.userDAO.clearPendingEmail(target._id.toString());
     await this.invalidateUserDetailEverywhere(target);
-    this.log.info('Email change cancelled', { uid: target.uid, cancelledBy: actor.uid });
+    this.log.info({ uid: target.uid, cancelledBy: actor.uid }, 'Email change cancelled');
 
     return {
       success: true,
@@ -1546,7 +1565,7 @@ export class UserService implements ICronProvider {
         expiresInHours: EMAIL_CHANGE_TTL_HOURS,
       },
     });
-    this.log.info('Email change requested', { uid: target.uid, requestedBy: actor.uid, cuid });
+    this.log.info({ uid: target.uid, requestedBy: actor.uid, cuid }, 'Email change requested');
 
     return { uid: target.uid, email: target.email, pendingEmail, expiresAt };
   }
@@ -1579,7 +1598,7 @@ export class UserService implements ICronProvider {
     await Promise.all(
       (user.cuids ?? []).map((connection) =>
         this.userCache.invalidateUserDetail(connection.cuid, user.uid).catch((error: unknown) => {
-          this.log.warn('Failed to invalidate user detail cache', { uid: user.uid, error });
+          this.log.warn({ uid: user.uid, error }, 'Failed to invalidate user detail cache');
         })
       )
     );
@@ -1655,11 +1674,14 @@ export class UserService implements ICronProvider {
           };
         });
 
-      this.log.info('Available tenants retrieved', {
-        cuid,
-        total: result.items.length,
-        available: availableTenants.length,
-      });
+      this.log.info(
+        {
+          cuid,
+          total: result.items.length,
+          available: availableTenants.length,
+        },
+        'Available tenants retrieved'
+      );
 
       return {
         success: true,
@@ -1667,10 +1689,13 @@ export class UserService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'Tenants' }),
       };
     } catch (error: any) {
-      this.log.error('Error getting available tenants:', {
-        cuid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          error: error.message || error,
+        },
+        'Error getting available tenants'
+      );
       throw error;
     }
   }
@@ -1803,7 +1828,7 @@ export class UserService implements ICronProvider {
         pagination: result.pagination,
       };
 
-      this.log.info('Tenants retrieved', { cuid, count: enrichedTenants.length });
+      this.log.info({ cuid, count: enrichedTenants.length }, 'Tenants retrieved');
 
       return {
         success: true,
@@ -1811,11 +1836,14 @@ export class UserService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'Tenants' }),
       };
     } catch (error) {
-      this.log.error('Error getting tenants by client:', {
-        cuid,
-        filters,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          filters,
+          error: error.message || error,
+        },
+        'Error getting tenants by client'
+      );
       throw error;
     }
   }
@@ -1867,7 +1895,7 @@ export class UserService implements ICronProvider {
                 propertyName: property?.name || item.propertyName || `Property ${item.propertyId}`,
               };
             } catch (error) {
-              this.log.warn(`Failed to get property name for ${item.propertyId}:`, error);
+              this.log.warn({ error }, `Failed to get property name for ${item.propertyId}`);
               return item;
             }
           })
@@ -1875,7 +1903,7 @@ export class UserService implements ICronProvider {
         stats.distributionByProperty = enhancedDistribution;
       }
 
-      this.log.info('Tenant stats retrieved', { cuid, total: stats.total });
+      this.log.info({ cuid, total: stats.total }, 'Tenant stats retrieved');
 
       return {
         success: true,
@@ -1883,11 +1911,14 @@ export class UserService implements ICronProvider {
         message: t('common.success.retrieved', { resource: 'Tenant statistics' }),
       };
     } catch (error) {
-      this.log.error('Error getting tenant stats:', {
-        cuid,
-        filters,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          filters,
+          error: error.message || error,
+        },
+        'Error getting tenant stats'
+      );
       throw error;
     }
   }
@@ -1989,11 +2020,14 @@ export class UserService implements ICronProvider {
         joinedDate: (rawTenantDetails as any).joinedDate || (rawTenantDetails as any).createdAt,
       };
 
-      this.log.info('Tenant details retrieved', {
-        cuid,
-        tenantUid,
-        hasActiveLeases: !!transformedResponse.tenantInfo.activeLeases?.length,
-      });
+      this.log.info(
+        {
+          cuid,
+          tenantUid,
+          hasActiveLeases: !!transformedResponse.tenantInfo.activeLeases?.length,
+        },
+        'Tenant details retrieved'
+      );
 
       return {
         success: true,
@@ -2001,11 +2035,14 @@ export class UserService implements ICronProvider {
         message: t('tenant.success.detailsRetrieved'),
       };
     } catch (error) {
-      this.log.error('Error getting client tenant details:', {
-        cuid,
-        tenantUid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          tenantUid,
+          error: error.message || error,
+        },
+        'Error getting client tenant details'
+      );
       throw error;
     }
   }
@@ -2042,11 +2079,14 @@ export class UserService implements ICronProvider {
 
       return result;
     } catch (error) {
-      this.log.error('Error getting client tenant info:', {
-        cuid,
-        uid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          uid,
+          error: error.message || error,
+        },
+        'Error getting client tenant info'
+      );
       throw error;
     }
   }
@@ -2065,10 +2105,13 @@ export class UserService implements ICronProvider {
       // Leverage the existing getTenantStats method
       return await this.getTenantStats(cuid, undefined, currentUser);
     } catch (error) {
-      this.log.error('Error getting tenants stats:', {
-        cuid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          error: error.message || error,
+        },
+        'Error getting tenants stats'
+      );
       throw error;
     }
   }
@@ -2172,7 +2215,7 @@ export class UserService implements ICronProvider {
       await this.userCache.invalidateUserDetail(cuid, uid);
       await this.userCache.invalidateUserLists(cuid);
 
-      this.log.info('Tenant profile updated', { cuid, uid });
+      this.log.info({ cuid, uid }, 'Tenant profile updated');
 
       return {
         success: true,
@@ -2180,11 +2223,14 @@ export class UserService implements ICronProvider {
         message: t('tenant.success.profileUpdated'),
       };
     } catch (error) {
-      this.log.error('Error updating tenant profile:', {
-        cuid,
-        uid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          uid,
+          error: error.message || error,
+        },
+        'Error updating tenant profile'
+      );
       throw error;
     }
   }
@@ -2280,7 +2326,7 @@ export class UserService implements ICronProvider {
 
       // Check for active leases if user is a tenant
       if (roles.includes('tenant')) {
-        this.log.info('Checking for active leases before archiving tenant', { uid, cuid });
+        this.log.info({ uid, cuid }, 'Checking for active leases before archiving tenant');
 
         const now = new Date();
         const activeLeasesResult = await this.leaseDAO.list({
@@ -2293,11 +2339,14 @@ export class UserService implements ICronProvider {
         const activeLeases = activeLeasesResult.items || [];
 
         if (activeLeases.length > 0) {
-          this.log.warn('Cannot archive tenant with active leases', {
-            uid,
-            cuid,
-            activeLeaseCount: activeLeases.length,
-          });
+          this.log.warn(
+            {
+              uid,
+              cuid,
+              activeLeaseCount: activeLeases.length,
+            },
+            'Cannot archive tenant with active leases'
+          );
 
           throw new BadRequestError({
             message: t('user.errors.cannotArchiveTenantWithActiveLeases', {
@@ -2346,10 +2395,13 @@ export class UserService implements ICronProvider {
       );
 
       if (managedProperties.items.length > 0) {
-        this.log.info('User manages properties, attempting reassignment', {
-          uid,
-          propertyCount: managedProperties.items.length,
-        });
+        this.log.info(
+          {
+            uid,
+            propertyCount: managedProperties.items.length,
+          },
+          'User manages properties, attempting reassignment'
+        );
 
         // Get user's supervisor
         const supervisorId = await this.getUserSupervisor(user._id.toString(), cuid);
@@ -2368,17 +2420,23 @@ export class UserService implements ICronProvider {
             reassignedTo: supervisorId,
           });
 
-          this.log.info('Properties reassigned to supervisor', {
-            uid,
-            supervisorId,
-            propertyCount: managedProperties.items.length,
-          });
+          this.log.info(
+            {
+              uid,
+              supervisorId,
+              propertyCount: managedProperties.items.length,
+            },
+            'Properties reassigned to supervisor'
+          );
         } else {
           // No supervisor found - properties need manual reassignment
-          this.log.warn('No supervisor found for user with managed properties', {
-            uid,
-            propertyCount: managedProperties.items.length,
-          });
+          this.log.warn(
+            {
+              uid,
+              propertyCount: managedProperties.items.length,
+            },
+            'No supervisor found for user with managed properties'
+          );
 
           archivalSummary.actions.push({
             action: 'properties_require_manual_reassignment',
@@ -2410,11 +2468,14 @@ export class UserService implements ICronProvider {
             const linkedUsers = await this.userDAO.getLinkedVendorUsers(vendor.vuid, cuid);
 
             if (linkedUsers.items.length > 0) {
-              this.log.info('Queueing background disconnect for linked vendor team members', {
-                uid,
-                vendorId: vendor.vuid,
-                linkedAccountCount: linkedUsers.items.length,
-              });
+              this.log.info(
+                {
+                  uid,
+                  vendorId: vendor.vuid,
+                  linkedAccountCount: linkedUsers.items.length,
+                },
+                'Queueing background disconnect for linked vendor team members'
+              );
 
               const companyName =
                 client.displayName ||
@@ -2448,10 +2509,13 @@ export class UserService implements ICronProvider {
             });
           }
         } catch (error) {
-          this.log.error('Error handling vendor account cleanup:', {
-            uid,
-            error: error.message || error,
-          });
+          this.log.error(
+            {
+              uid,
+              error: error.message || error,
+            },
+            'Error handling vendor account cleanup'
+          );
           // Continue with user archival even if vendor cleanup fails
         }
       }
@@ -2461,14 +2525,17 @@ export class UserService implements ICronProvider {
       const isMultiTenantUser = activeConnections.length > 1;
 
       if (isMultiTenantUser) {
-        this.log.info('User belongs to multiple clients, performing soft disconnect only', {
-          uid,
-          cuid,
-          totalClients: activeConnections.length,
-          otherClients: activeConnections
-            .filter((c: any) => c.cuid !== cuid)
-            .map((c: any) => c.cuid),
-        });
+        this.log.info(
+          {
+            uid,
+            cuid,
+            totalClients: activeConnections.length,
+            otherClients: activeConnections
+              .filter((c: any) => c.cuid !== cuid)
+              .map((c: any) => c.cuid),
+          },
+          'User belongs to multiple clients, performing soft disconnect only'
+        );
 
         archivalSummary.actions.push({
           action: 'multi_tenant_soft_disconnect',
@@ -2478,10 +2545,13 @@ export class UserService implements ICronProvider {
         // Don't set global deletedAt or isActive flags
         // Only disconnect from THIS client
       } else {
-        this.log.info('User belongs to single client, performing disconnect', {
-          uid,
-          cuid,
-        });
+        this.log.info(
+          {
+            uid,
+            cuid,
+          },
+          'User belongs to single client, performing disconnect'
+        );
 
         // No global deletion - preserve data for compliance/audit
         // The isConnected: false flag below is sufficient to block access
@@ -2541,7 +2611,7 @@ export class UserService implements ICronProvider {
       });
 
       if (isEmployee) {
-        this.log.info('USER_ARCHIVED event emitted for seat tracking', { uid, cuid, roles });
+        this.log.info({ uid, cuid, roles }, 'USER_ARCHIVED event emitted for seat tracking');
       }
 
       // Send disconnection notification to the affected user
@@ -2567,7 +2637,7 @@ export class UserService implements ICronProvider {
           },
         });
       } catch (emailError) {
-        this.log.error('Failed to queue disconnection email', { uid, error: emailError });
+        this.log.error({ uid, error: emailError }, 'Failed to queue disconnection email');
       }
 
       return {
@@ -2576,11 +2646,14 @@ export class UserService implements ICronProvider {
         message: t('common.success.archived', { resource: 'User' }),
       };
     } catch (error) {
-      this.log.error('Error archiving user:', {
-        cuid,
-        uid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          uid,
+          error: error.message || error,
+        },
+        'Error archiving user'
+      );
       throw error;
     }
   }
@@ -2718,12 +2791,15 @@ export class UserService implements ICronProvider {
         cuid,
       });
 
-      this.log.info('Tenant deactivated successfully', {
-        cuid,
-        uid,
-        deactivatedBy: context.currentuser.uid,
-        summary: deactivationSummary,
-      });
+      this.log.info(
+        {
+          cuid,
+          uid,
+          deactivatedBy: context.currentuser.uid,
+          summary: deactivationSummary,
+        },
+        'Tenant deactivated successfully'
+      );
 
       return {
         success: true,
@@ -2731,11 +2807,14 @@ export class UserService implements ICronProvider {
         message: t('user.success.tenantDeactivated'),
       };
     } catch (error) {
-      this.log.error('Error deactivating tenant:', {
-        cuid,
-        uid,
-        error: error.message || error,
-      });
+      this.log.error(
+        {
+          cuid,
+          uid,
+          error: error.message || error,
+        },
+        'Error deactivating tenant'
+      );
       throw error;
     }
   }
@@ -2818,10 +2897,13 @@ export class UserService implements ICronProvider {
               }
             );
 
-            this.log.info('Auto-deactivated stale tenant (30-day safety net)', {
-              userId: user._id.toString(),
-              cuid: conn.cuid,
-            });
+            this.log.info(
+              {
+                userId: user._id.toString(),
+                cuid: conn.cuid,
+              },
+              'Auto-deactivated stale tenant (30-day safety net)'
+            );
 
             if (user.uid) {
               await this.userCache?.invalidateUserDetail(conn.cuid, user.uid);
@@ -2830,7 +2912,7 @@ export class UserService implements ICronProvider {
         }
       }
     } catch (error) {
-      this.log.error('Error in autoDeactivateStaleTenants cron', { error });
+      this.log.error({ error }, 'Error in autoDeactivateStaleTenants cron');
     }
   }
 }
